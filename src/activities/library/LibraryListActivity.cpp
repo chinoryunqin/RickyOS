@@ -1109,36 +1109,41 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
   const int gap = std::max<int>(6, theme.spaceSm);
   const int labelHeight = screen.target().lineHeight(theme.smallText.font);
   const int count = bookRowCount();
+  RickyPageUi::Bold bold(renderer, 1);
   auto titleRect = screen.takeTop(screen.target().lineHeight(theme.titleText.font), gap);
   auto countRect = titleRect;
   countRect.width = titleRect.width / 3;
   countRect.x = titleRect.right() - countRect.width;
   titleRect.width -= countRect.width + gap;
-  screen.target().text(titleRect, headerTitle(), theme.titleText);
+  auto pageTitle = theme.titleText;
+  pageTitle.bold = true;
+  {
+    // Title-size strokes need two pixels of synthetic weight to read as bold.
+    RickyPageUi::Bold heading(renderer, 2);
+    screen.target().text(titleRect, headerTitle(), pageTitle);
+  }
   char position[48];
   snprintf(position, sizeof(position), tr(STR_RICKY_LIBRARY_COUNT), static_cast<unsigned>(count));
   auto countStyle = theme.smallText;
   countStyle.align = fui::TextAlign::Right;
   screen.target().text(countRect, position, countStyle);
   auto filters = screen.takeTop(labelHeight + gap * 2, gap * 2);
-  const int buttonWidth = std::max(44, filters.width / 6);
-  auto searchRect = filters;
-  searchRect.x += filters.width - 2 * buttonWidth - gap;
-  searchRect.width = buttonWidth;
-  searchRect.height -= gap;
-  auto refreshRect = searchRect;
-  refreshRect.x += buttonWidth + gap;
+  // Search needs text entry, and the device has no Chinese input yet: offer
+  // only the sort/refresh menu, as quiet text at the end of the tab row.
+  const int moreWidth = std::max(44, filters.width / 6);
+  auto moreRect = filters;
+  moreRect.x += filters.width - moreWidth;
+  moreRect.width = moreWidth;
+  moreRect.height -= gap;
   fui::ButtonProps button;
-  button.label = tr(STR_SEARCH);
+  button.label = tr(STR_TOOL_MORE);
   button.text = theme.smallText;
-  button.action = ACTION_SEARCH;
+  button.text.align = fui::TextAlign::Right;
+  button.action = ACTION_SHELF_OPTIONS;
   button.inputMask = fui::InputTouch;
   button.minTouchSize = 0;
   button.styles = fui::plainStyles(fui::Paint::solid(fui::Color::Black));
-  fui::button(screen.frame(), searchRect, button);
-  button.label = tr(STR_TOOL_MORE);
-  button.action = ACTION_SHELF_OPTIONS;
-  fui::button(screen.frame(), refreshRect, button);
+  fui::button(screen.frame(), moreRect, button);
   const StrId filterLabels[] = {StrId::STR_RICKY_BOOKS_ALL, StrId::STR_RICKY_BOOKS_READING,
                                 StrId::STR_RICKY_BOOKS_UNREAD};
   int widestLabel = 0;
@@ -1146,10 +1151,10 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
     widestLabel = std::max(
         widestLabel,
         static_cast<int>(screen.target().measureText(theme.smallText.font, I18N.get(id), theme.smallText).width));
-  const int width = std::min((searchRect.x - filters.x - gap * 3) / 3, std::max(44, widestLabel + gap * 3));
+  const int width = std::min((moreRect.x - filters.x - gap * 3) / 3, std::max(44, widestLabel + gap * 3));
   const int separatorY = filters.bottom() - 2;
-  screen.target().fill(fui::Rect{filters.x, static_cast<int16_t>(separatorY), filters.width, 2},
-                       fui::Paint::dither(fui::Color::DarkGray));
+  screen.target().fill(fui::Rect{filters.x, static_cast<int16_t>(separatorY + 1), filters.width, 1},
+                       fui::Paint::solid(fui::Color::Black));
   for (int i = 0; i < 3; ++i) {
     auto rect = filters;
     rect.x += i * (width + gap);
@@ -1179,8 +1184,9 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
   const int columns = body.width > body.height ? 4 : 2;
   const int rows = SHELF_CAPACITY / columns;
   const int rowHeight = std::max(1, (body.height - gap * (rows - 1)) / rows);
-  const int coverHeight = std::max(
-      1, std::min(rowHeight - labelHeight * 2 - gap, ((body.width - gap * (columns - 1)) / columns - gap * 2) * 3 / 2));
+  // 3:4 covers with air around them, like printed spines on a shelf.
+  const int coverHeight = std::max(1, std::min(rowHeight - labelHeight * 2 - gap * 3,
+                                               (body.width - gap * (columns - 1)) / columns * 64 / 100 * 4 / 3));
   auto& n = activeNav();
   fui::ListProps paging;
   // Feed the existing atomic list-nav requests with four virtual one-pixel rows.
@@ -1198,8 +1204,8 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
     shelfCount = visible;
     // Materialize only four bounded index records; no vector of every book/cover.
     for (int i = 0; i < visible; ++i) {
-      std::string author;
-      rowTextFor(start + i, shelfTitles[i], author);
+      rowTextFor(start + i, shelfTitles[i], shelfAuthors[i]);
+      RickyPageUi::stripBookExtension(shelfTitles[i]);
       if (!entryPath(start + i, shelfPaths[i])) shelfPaths[i].clear();
       const auto& path = shelfPaths[i];
       const char* format = FsHelpers::hasEpubExtension(path)       ? "EPUB"
@@ -1239,7 +1245,7 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
   shelfGrid.rowHeight = rowHeight;
   shelfGrid.gap = shelfGrid.rowGap = gap;
   shelfGrid.cellInset = fui::Insets{0, static_cast<int16_t>(gap), 0, static_cast<int16_t>(gap)};
-  shelfGrid.coverSize = fui::Size{static_cast<int16_t>(coverHeight * 2 / 3), static_cast<int16_t>(coverHeight)};
+  shelfGrid.coverSize = fui::Size{static_cast<int16_t>(coverHeight * 3 / 4), static_cast<int16_t>(coverHeight)};
   shelfGrid.labelHeight = labelHeight;
   shelfGrid.labelGap = gap;
   shelfGrid.titleText = theme.smallText;
@@ -1262,7 +1268,9 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
           GUI.drawCoverThumbFill(self.renderer, bitmap, Rect{rect.x, rect.y, rect.width, rect.height}))
         return true;
     }
-    RickyPageUi::bookPlaceholder(target, rect, item.title, self.shelfGrid.titleText);
+    // The label under the cover already names the format.
+    RickyPageUi::generatedCover(target, rect, item.title, self.shelfAuthors[slot].c_str(), nullptr,
+                                self.shelfGrid.titleText);
     return true;
   };
   fui::coverGrid(screen.frame(), body, shelfGrid);

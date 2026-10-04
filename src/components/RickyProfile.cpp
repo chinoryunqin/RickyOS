@@ -61,20 +61,15 @@ void drawAvatar(const GfxRenderer& renderer, const Rect& rect) {
   }
   if (!painted) {
     // Approved portrait/dog badge as the initial avatar; changing this personal
-    // image never replaces the immutable full boot/standby brand mark.
-    const int sourceHeight = RickyLogoAsset::wordmarkTop;
-    const int extent = std::max<int>(RickyLogoAsset::width, sourceHeight);
-    const int width = size * RickyLogoAsset::width / extent;
-    const int height = size * sourceHeight / extent;
-    for (int y = 0; y < height; ++y) {
-      for (int x = 0; x < width; ++x) {
-        if (RickyBrandMark::pixel(x * RickyLogoAsset::width / width, y * sourceHeight / height, 3))
-          renderer.drawPixel(rect.x + (size - width) / 2 + x, rect.y + (size - height) / 2 + y);
-      }
-    }
+    // image never replaces the immutable full boot/standby brand mark. The
+    // badge's own ring is the avatar edge, so no second outline is drawn.
+    RickyBrandMark::drawBadge(renderer, Rect{rect.x, rect.y, size, size});
+    renderer.maskRoundedRectOutsideCorners(rect.x, rect.y, size, size, size / 2);
+    return;
   }
+  // Imported photos get one even ring, scaled with the avatar.
   renderer.maskRoundedRectOutsideCorners(rect.x, rect.y, size, size, size / 2);
-  renderer.drawRoundedRect(rect.x, rect.y, size, size, 1, size / 2, true);
+  renderer.drawRoundedRect(rect.x, rect.y, size, size, std::max(2, size / 48), size / 2, true);
 }
 
 void drawCard(UiScreen& screen, const GfxRenderer& renderer, freeink::ui::Rect rect, freeink::ui::ActionId action,

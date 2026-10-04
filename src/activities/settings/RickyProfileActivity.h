@@ -1,7 +1,5 @@
 #pragma once
 #ifdef RICKYOS_PRODUCT
-#include <array>
-
 #include "activities/UiListActivity.h"
 
 class RickyProfileActivity final : public UiListActivity {
@@ -17,7 +15,6 @@ class RickyProfileActivity final : public UiListActivity {
   bool handleCustomInput() override;
 
  private:
-  std::array<freeink::ui::ListItem, 3> rows{};
   bool waitForConfirmRelease = false;
   bool failed = false;
 };

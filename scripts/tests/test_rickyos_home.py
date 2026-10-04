@@ -76,43 +76,24 @@ int main() {
 ''', include_dirs=(ROOT / 'freeink-sdk/libs/ui/FreeInkUI/include',))
         home = method((ROOT / 'src/components/RickyHomeUi.cpp').read_text(), 'void RickyHomeUi::drawPortrait(')
         self.assertIn('RickyPageUi::wrappedText(screen.target(), intro, greetingText', home)
-        self.assertIn('RickyPageUi::wrappedText(screen.target(), label', home)
+        self.assertIn('target.text(label, titleOf(item), strong)', home)
 
-    def test_portrait_uses_remaining_height_for_full_covers_and_two_line_titles(self):
-        run_cpp(r'''
-#include <cassert>
-#include <initializer_list>
-#include "components/RickyHomeLayout.h"
-int main() {
-  for (int width : {400, 526, 580, 610, 916})
-  for (int height : {500, 600, 700, 800, 1000})
-  for (int heading : {28, 34, 46}) for (int label : {24, 28, 34}) {
-    const int gap = 12;
-    auto m = RickyHomeLayout::fitPortrait(width, height, heading, label, gap);
-    assert(m.continueHeight > 0 && m.recentCoverHeight > 0);
-    assert(m.recentCoverHeight * 2 / 3 <= m.cellWidth);
-    assert(m.cellWidth * 2 + gap * 2 <= width);
-    const int recentCell = m.recentCoverHeight + label * 3 + gap + gap / 2;
-    const int used = heading * 2 + gap * 4 + m.continueHeight + recentCell;
-    assert(used <= height);
-    if (height == 700 && width == 610) {
-      // Native Pico-size content no longer leaves a landscape-tile void.
-      assert(height - used <= 2);
-      assert(m.recentCoverHeight > m.cellWidth / 2);
-      assert(m.continueHeight > m.recentCoverHeight);
-    }
-    auto text = RickyHomeLayout::fitText(m.continueHeight-gap-6, heading, label, gap, false);
-    if (text.progress)
-      assert(text.titleLines*heading + (text.author ? gap+label : 0) + label+gap+6+8 <= m.continueHeight);
-  }
-}
-''', include_dirs=(ROOT / 'src',))
+    def test_portrait_follows_the_quiet_home_layout(self):
         source = method((ROOT / 'src/components/RickyHomeUi.cpp').read_text(),
                         'void RickyHomeUi::drawPortrait(')
-        self.assertIn('recentTitle.maxLines = 2', source)
+        # Continue reading, stats with a hairline, then landscape recent tiles.
+        order = [source.index(key) for key in ('STR_CONTINUE_READING', 'STR_RICKY_HOME_TODAY',
+                                               'STR_RICKY_HOME_RECENT', 'RickyPageUi::bookTile(')]
+        self.assertEqual(order, sorted(order))
         self.assertIn('screen.frame().hit(cell, OPEN_BOOK, index', source)
-        self.assertIn('screen.takeBottom(labelHeight + gap * 2, gap * 2)', source)
-        self.assertNotIn('std::min(width / 2', source)
+        self.assertIn('screen.frame().hit(stats, OPEN_BOOK, STATISTICS', source)
+        # Leftover height is shared between sections instead of pooling above the note.
+        self.assertIn('const int section = gap + std::min(spare / 3', source)
+        # Neighbouring tiles never repeat a motif.
+        self.assertIn('if (kind == previous)', source)
+        # Book titles use the full-coverage small face, never the UI-only larger faces.
+        self.assertIn('auto strong = small;', source)
+        self.assertNotIn('theme.bodyText;\n  bookTitle', source)
 
     def test_real_cover_renderer_preserves_ratio_and_centers_without_changing_stock(self):
         source = (ROOT / 'src/activities/home/InxRecentActivity.cpp').read_text()
@@ -160,7 +141,8 @@ int main() {
         self.assertIn('activity.setThumbnailHeight(activity.rickyHome->coverHeight())', source)
         self.assertNotIn('activity.setThumbnailHeight(bounds.height)', source)
         home = method((ROOT / 'src/components/RickyHomeUi.cpp').read_text(), 'void RickyHomeUi::drawPortrait(')
-        self.assertIn('thumbnailHeight = std::max(coverHeight, layout.recentCoverHeight)', home)
+        # Recent tiles are typographic; only the continue cover uses the cache size.
+        self.assertIn('thumbnailHeight = coverHeight;', home)
 
     def test_greeting_varies_per_visit_not_per_render_and_fits_existing_buffer(self):
         run_cpp(r'''
