@@ -1,4 +1,4 @@
-"""RickyOS 12pt CJK face: the shared common set plus GB2312 level 1, product-only."""
+"""RickyOS 12pt CJK face: the shared common set plus GB2312 and Big5 level 1, product-only."""
 import hashlib
 import os
 from pathlib import Path
@@ -25,15 +25,37 @@ def intervals(header_text, name):
 
 
 class RickyCjkCoverageTest(unittest.TestCase):
-    def test_charset_is_common_set_plus_gb2312_level_one(self):
+    def test_charset_is_common_set_plus_gb2312_and_big5_level_one(self):
         common = (SCRIPTS / 'cn_common_chars.txt').read_text(encoding='utf-8').strip()
-        level1 = han((SCRIPTS / 'gb2312_lv1.txt').read_text(encoding='utf-8'))
+        gb2312 = han((SCRIPTS / 'gb2312_lv1.txt').read_text(encoding='utf-8'))
+        big5 = han((SCRIPTS / 'big5_lv1.txt').read_text(encoding='utf-8'))
+        self.assertEqual(len(gb2312), 3755)
+        self.assertEqual(len(big5), 5401)
+        # The vendored Big5 list is exactly level 1 (A440-C67E) of Python's codec.
+        expected = []
+        for lead in range(0xA4, 0xC7):
+            for trail in list(range(0x40, 0x7F)) + list(range(0xA1, 0xFF)):
+                if not 0xA440 <= (lead << 8 | trail) <= 0xC67E:
+                    continue
+                try:
+                    character = bytes([lead, trail]).decode('big5')
+                except UnicodeDecodeError:
+                    continue
+                if 0x4E00 <= ord(character) <= 0x9FFF:
+                    expected.append(character)
+        self.assertEqual(big5, expected)
+        # RickyOS keeps Big5 level 1 minus its 300 least frequent extra characters.
+        selected = han((SCRIPTS / 'big5_rickyos_chars.txt').read_text(encoding='utf-8'))
+        self.assertEqual(selected, [c for c in big5 if c in set(selected)])  # Big5 order, a subset
+        self.assertEqual(len(set(big5) - set(selected)), 300)
+        self.assertFalse((set(big5) - set(selected)) & (set(common) | set(gb2312)))
         product = (SCRIPTS / 'cn_rickyos_chars.txt').read_text(encoding='utf-8')
         self.assertTrue(product.startswith(common))
         extra = product[len(common):]
         self.assertEqual(len(extra), len(set(extra)))
-        self.assertEqual(set(extra), set(level1) - set(common))
-        self.assertIn('亨', extra)
+        self.assertEqual(set(extra), (set(gb2312) | set(selected)) - set(common))
+        for character in '亨們體廣壓產國':
+            self.assertIn(character, extra)
 
     def test_header_has_a_glyph_for_every_character(self):
         text = HEADER.read_text(encoding='utf-8')

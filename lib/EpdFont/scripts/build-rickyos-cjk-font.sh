@@ -1,9 +1,12 @@
 #!/bin/bash
 #
 # Generates the RickyOS 12pt CJK header: the shared common set
-# (cn_common_chars.txt) plus every GB2312 level-1 hanzi (gb2312_lv1.txt), so
-# book titles and author names such as 亨利 render instead of falling back to
-# tofu. Read Pico's high-density profile uses only the 12pt face, so the
+# (cn_common_chars.txt) plus every GB2312 level-1 hanzi (gb2312_lv1.txt) and the
+# common Traditional set: Big5 level 1 (big5_lv1.txt, A440-C67E) less its 300
+# least frequent extra characters (big5_rickyos_chars.txt, from
+# select_rickyos_big5.py), so author names such as 亨利 and Traditional titles
+# such as 他們 render instead of tofu. Read Pico's high-density profile
+# uses only the 12pt face, so the
 # product swaps this one font and leaves the shared 8/10/12pt headers (and
 # their common interval table) untouched for every other target.
 #
@@ -36,15 +39,20 @@ if digest != sys.argv[2]:
     sys.exit(f'Error: source SHA-256 {digest} differs from the committed fonts\' {sys.argv[2]}')
 EOF
 
-# Common set first, then GB2312 level-1 hanzi it lacks, in file order.
-"$PYTHON" - cn_common_chars.txt gb2312_lv1.txt "$CHARSET_FILE" <<'EOF'
+# Common set first, then the GB2312 and Big5 level-1 hanzi it lacks, in file order.
+"$PYTHON" - cn_common_chars.txt gb2312_lv1.txt big5_rickyos_chars.txt "$CHARSET_FILE" <<'EOF'
 import sys
 common = open(sys.argv[1], encoding='utf-8').read().strip()
 seen = set(common)
-extra = [c for c in open(sys.argv[2], encoding='utf-8').read()
-         if 0x4E00 <= ord(c) <= 0x9FFF and c not in seen and not seen.add(c)]
-open(sys.argv[3], 'w', encoding='utf-8').write(common + ''.join(extra))
-print(f'{sys.argv[3]}: {len(common)} common + {len(extra)} GB2312 level-1 characters')
+counts = []
+text = common
+for source in sys.argv[2:4]:
+    extra = [c for c in open(source, encoding='utf-8').read()
+             if 0x4E00 <= ord(c) <= 0x9FFF and c not in seen and not seen.add(c)]
+    counts.append(len(extra))
+    text += ''.join(extra)
+open(sys.argv[4], 'w', encoding='utf-8').write(text)
+print(f'{sys.argv[4]}: {len(common)} common + {counts[0]} GB2312 + {counts[1]} Big5 level-1 characters')
 EOF
 
 mkdir -p "$TMP_DIR"
