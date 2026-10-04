@@ -809,6 +809,10 @@ build-assigned discovery counter — breaks ties and carries books whose
 filesystem reports no time. Fold version 3 introduced the timestamp key; a
 fold bump rebuilds ranks while preserving `firstSeen`.
 Fold version 4 preserves leading articles in title sort and search keys.
+Fold version 6 changes which files are books: protected folders (`XTCache`,
+`System Volume Information`, dot-entries), small reader TXT records
+(`progress.txt`, `readTime.txt`, ... under 4 KiB) and `/crash_report.txt` are
+skipped. Version 5 was a development step and never merged.
 
 Sections are 512-byte aligned so each starts on an SD block boundary.
 

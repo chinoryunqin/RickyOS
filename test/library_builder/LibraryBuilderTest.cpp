@@ -194,6 +194,36 @@ TEST_F(LibraryBuilderTest, RebuildVotesFromSourceAuthorInsteadOfPriorCanonicalAu
   EXPECT_EQ(author, "Victor Hugo");
 }
 
+TEST_F(LibraryBuilderTest, SmallReaderDataTextFilesAreNotBooks) {
+  // Another reader's per-book records sit beside the books they describe.
+  fake::add("/Walden/progress.txt", "1234");
+  fake::add("/Walden/readTime.txt", "56");
+  fake::add("/Walden/BOOKMARK.TXT", "7");
+  fake::add("/Walden/Walden.txt", std::string(8192, 'w'));
+  // A real book that happens to share a record name is far larger than a record.
+  fake::add("/History.txt", std::string(64 * 1024, 'h'));
+  // Ordinary short text that is not a record name stays a book.
+  fake::add("/notes.txt", "short story");
+  // Another firmware's cache folder and this firmware's crash report.
+  fake::add("/XTCache/abc123/chapter.txt", std::string(8192, 'c'));
+  fake::add("/.hidden/book.txt", std::string(8192, 'x'));
+  fake::add("/crash_report.txt", std::string(4724, 'r'));
+  fake::add("/logs/crash_report.txt", std::string(8192, 'l'));  // Only the root report is firmware's.
+  initial();
+
+  EXPECT_EQ(stats.books, 6);             // a.epub, b.epub, Walden.txt, History.txt, notes.txt, logs/crash_report.txt
+  EXPECT_EQ(stats.dataFilesSkipped, 4);  // three records plus the root crash report
+  LibraryIndexFile index;
+  ASSERT_TRUE(index.open(INDEX));
+  std::vector<std::string> paths;
+  for (uint16_t row = 0; row < index.bookCount(); ++row) paths.push_back(pathAt(index, SortOrder::TitleAsc, row));
+  for (const char* record : {"/Walden/progress.txt", "/Walden/readTime.txt", "/Walden/BOOKMARK.TXT",
+                             "/XTCache/abc123/chapter.txt", "/.hidden/book.txt", "/crash_report.txt"})
+    EXPECT_EQ(std::count(paths.begin(), paths.end(), record), 0) << record;
+  for (const char* book : {"/Walden/Walden.txt", "/History.txt", "/notes.txt"})
+    EXPECT_EQ(std::count(paths.begin(), paths.end(), book), 1) << book;
+}
+
 TEST_F(LibraryBuilderTest, EqualBasenamesInDifferentFoldersReconcileIndependently) {
   fake::add("/one/same.epub");
   fake::add("/two/same.epub");

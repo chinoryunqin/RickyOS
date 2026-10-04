@@ -30,10 +30,12 @@ inline constexpr char CLIX_MAGIC[4] = {'C', 'L', 'X', '1'};
 // validation and is rebuilt. No previous development format is accepted.
 inline constexpr uint8_t CLIX_FORMAT_VERSION = 2;
 
-// Bump when the fold or a permutation's sort key changes.
-// Forces fold and ranks to be rebuilt while firstSeen values are preserved, so
-// arrival history survives.
-inline constexpr uint8_t CLIX_FOLD_VERSION = 4;
+// Bump when the fold, a permutation's sort key, or the rule for which files are
+// books changes. Forces a rescan and rebuilt ranks while firstSeen values are
+// preserved, so arrival history survives.
+// 6: protected folders (XTCache, System Volume Information), small reader TXT
+//    records (progress.txt, readTime.txt, ...) and /crash_report.txt are not books.
+inline constexpr uint8_t CLIX_FOLD_VERSION = 6;
 
 inline constexpr uint32_t CLIX_ALIGN = 512;
 inline constexpr size_t CLIX_FOLD_BYTES = 96;
