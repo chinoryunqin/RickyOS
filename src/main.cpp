@@ -57,6 +57,9 @@
 #include "util/ScreenshotUtil.h"
 #include "util/Timezones.h"
 #include "util/UserGuide.h"
+#ifdef RICKYOS_PRODUCT
+#include "util/RickyStorageLayout.h"
+#endif
 
 #if CROSSPOINT_VECTOR_FONTS
 // Rendering (incl. FreeType TTF rasterization) runs on the Arduino loop task.
@@ -854,6 +857,14 @@ void setup() {
   const bool recentsLoaded = RECENT_BOOKS.loadFromFile();
   if (!recoveryFirmwareMode && !HalSystem::isRebootFromPanic()) UserGuide::prepare(recentsLoaded);
   READING_STATS.loadFromFile();
+#ifdef RICKYOS_PRODUCT
+  // Fixed folders, and the one-time move of legacy books into /books. Runs after
+  // recents and statistics load so their paths follow the moved books.
+  if (!recoveryFirmwareMode) {
+    RickyStorageLayout::ensureFolders();
+    RickyStorageLayout::migrateLegacyBooks();
+  }
+#endif
   ACHIEVEMENTS.loadFromFile();
   I18N.setLanguage(static_cast<Language>(SETTINGS.language));
   KOREADER_STORE.loadFromFile();

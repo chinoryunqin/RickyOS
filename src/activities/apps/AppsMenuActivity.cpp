@@ -35,7 +35,9 @@ constexpr AppEntry kAppEntries[] = {
 #ifdef ENABLE_CHINESE_VERSION
     {AppId::WeRead, StrId::STR_WEREAD_TITLE, UIIcon::WeRead, &ActivityManager::goToWeRead},
 #endif
+#ifndef RICKYOS_PRODUCT
     {AppId::AirPage, StrId::STR_AIRPAGE_TITLE, UIIcon::AirPage, &ActivityManager::goToAirPage},
+#endif
     {AppId::ReadingStats, StrId::STR_READING_STATS, UIIcon::ReadingStats, &ActivityManager::goToReadingStatsMenu},
 #ifndef RICKYOS_PRODUCT
     {AppId::Sudoku, StrId::STR_SUDOKU_TITLE, UIIcon::Sudoku, &ActivityManager::goToSudoku},

@@ -29,11 +29,11 @@
 #include "FontDownloadActivity.h"
 #ifdef RICKYOS_PRODUCT
 #include "FontLibraryActivity.h"
-#include "RickyHomePhraseActivity.h"
 #include "RickyProfileActivity.h"
 #include "activities/util/ImageViewerActivity.h"
 #include "components/RickyPageUi.h"
 #include "components/RickyProfile.h"
+#include "components/icons/rickyPageIcons.h"
 #endif
 #include "HomeButtonSettingsActivity.h"
 #include "InxItemLayout.h"
@@ -63,10 +63,19 @@
 #include "util/ButtonNavigator.h"
 #include "util/ReadingBackground.h"
 #include "util/SystemSettingsReset.h"
+#ifdef RICKYOS_PRODUCT
+#include "util/RickyStorageLayout.h"
+#endif
 
 namespace fui = freeink::ui;
 
 namespace {
+// Image pickers open where RickyOS keeps pictures; other builds start at the root.
+#ifdef RICKYOS_PRODUCT
+constexpr const char* kImagePickerStart = RickyStorageLayout::IMAGES;
+#else
+constexpr const char* kImagePickerStart = "/";
+#endif
 constexpr StrId OK_OPTION[] = {StrId::STR_OK_BUTTON};
 constexpr uint64_t BYTES_PER_TENTH_GB = 100000000ULL;
 
@@ -480,8 +489,6 @@ void SettingsActivity::rebuildSettingsLists() {
   readerSettings.push_back(SettingInfo::Action(StrId::STR_READING_STATS, SettingAction::ReadingStatsSettings));
 
 #ifdef RICKYOS_PRODUCT
-  displaySettings.insert(displaySettings.begin(),
-                         SettingInfo::Action(StrId::STR_RICKY_PHRASE_TITLE, SettingAction::RickyHomePhrase));
   systemSettings.insert(systemSettings.begin(),
                         SettingInfo::Action(StrId::STR_RICKY_PROFILE, SettingAction::RickyProfile));
   reorganizeRickySettings();
@@ -1110,12 +1117,6 @@ void SettingsActivity::toggleCurrentSetting() {
       case SettingAction::RickyProfile:
         startActivityForResultWith<RickyProfileActivity>(resultHandler);
         break;
-      case SettingAction::RickyHomePhrase:
-        startActivityForResultWith<RickyHomePhraseActivity>([this](const ActivityResult&) {
-          rebuildSettingsLists();
-          requestUpdate();
-        });
-        break;
       case SettingAction::RickySleepWallpaper: {
         // Reuse the fallible activity stack and release catalog/row heap before decoding.
         releaseListsForMemoryHungryChild();
@@ -1131,7 +1132,7 @@ void SettingsActivity::toggleCurrentSetting() {
                 restore(result);
               }
             },
-            "/", FileBrowserActivity::Mode::PickWallpaper);
+            kImagePickerStart, FileBrowserActivity::Mode::PickWallpaper);
         if (!opened) {
           rebuildSettingsLists();
           requestUpdate();
@@ -1355,7 +1356,7 @@ void SettingsActivity::openReadingBackgroundPicker() {
           optionPopup.show(StrId::STR_FAILED_LOWER, OK_OPTION, static_cast<int>(std::size(OK_OPTION)), 0, [](int) {});
         }
       },
-      "/", FileBrowserActivity::Mode::PickPng);
+      kImagePickerStart, FileBrowserActivity::Mode::PickPng);
   if (!started) {
     optionPopup.show(StrId::STR_MEMORY_ERROR, OK_OPTION, static_cast<int>(std::size(OK_OPTION)), 0, [](int) {});
     requestUpdate();
@@ -1432,22 +1433,47 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
 #ifdef RICKYOS_PRODUCT
   if (categoryRoot_) {
     const auto& theme = screen.theme();
+    auto& target = screen.target();
     screen.insetContent(fui::Insets{theme.spaceSm, theme.spaceLg, theme.spaceSm, theme.spaceLg});
-    screen.target().text(screen.takeTop(screen.target().lineHeight(theme.titleText.font), theme.spaceLg),
-                         tr(STR_SETTINGS_TITLE), theme.titleText);
-    const int height = screen.target().lineHeight(theme.bodyText.font) +
-                       screen.target().lineHeight(theme.smallText.font) + theme.spaceSm;
-    RickyProfile::drawCard(screen, renderer, screen.takeTop(height, theme.spaceLg), ACTION_TAB_USER + 20);
-    const auto body = screen.body();
+    const int gap = std::max<int>(12, theme.spaceSm);
+    const int pad = gap + gap / 2;
+    const int bodyHeight = target.lineHeight(theme.bodyText.font);
+    const int smallHeight = target.lineHeight(theme.smallText.font);
+    auto pageTitle = theme.titleText;
+    pageTitle.bold = true;
+    {
+      RickyPageUi::Bold heading(renderer, 2);
+      target.text(screen.takeTop(target.lineHeight(theme.titleText.font), gap * 2), tr(STR_SETTINGS_TITLE), pageTitle);
+    }
+    // Profile card, then the categories as Boox-style icon cards in two columns.
+    const int profileHeight = bodyHeight + smallHeight + gap + pad * 2;
+    const int columns = content.width > content.height ? 3 : 2;
+    const int rows = (categoryCount + columns - 1) / columns;
+    const int baseCell = std::max(48, bodyHeight) + pad * 2;
+    const int roomy = (screen.body().height - profileHeight - gap * 2 * (rows + 1)) / rows;
+    const int cellHeight = std::clamp(roomy, baseCell, baseCell * 13 / 10);
+    const int needed = profileHeight + cellHeight * rows + gap * rows;
+    const int section = gap + std::clamp((screen.body().height - needed) / 3, 0, gap * 2);
+    RickyProfile::drawCard(screen, renderer, screen.takeTop(profileHeight, section), ACTION_TAB_USER + 20);
     const int selected = RickyPageUi::syncNav(nav, categoryCount);
-    constexpr RickyPageUi::Icon icons[] = {RickyPageUi::Icon::Display, RickyPageUi::Icon::Book,
-                                           RickyPageUi::Icon::Network, RickyPageUi::Icon::Font,
-                                           RickyPageUi::Icon::Power,   RickyPageUi::Icon::System};
+    const bool focus = showMainTabContentSelection();
+    const freeink::Icon* icons[] = {&icon_ricky_display_40, &icon_ricky_reader_40, &icon_ricky_network_40,
+                                    &icon_ricky_fonts_40,   &icon_ricky_power_40,  &icon_ricky_system_40};
+    static_assert(sizeof(icons) / sizeof(icons[0]) == categoryCount);
+    const auto grid = screen.takeTop(cellHeight * rows + gap * (rows - 1), 0);
+    auto label = theme.bodyText;
+    label.maxLines = 1;
     for (int i = 0; i < categoryCount; ++i) {
-      const Rect tile = RickyPageLayout::cell(Rect{body.x, body.y, body.width, body.height}, i, categoryCount,
-                                              std::max<int>(6, theme.spaceLg));
-      RickyPageUi::tile(screen, tile, I18N.get(categoryNames[i]), nullptr, icons[i], ACTION_ROW, i,
-                        showMainTabContentSelection() && selected == i);
+      const auto rect = RickyPageUi::uiRect(
+          RickyPageLayout::cell(Rect{grid.x, grid.y, grid.width, grid.height}, i, categoryCount, gap, columns));
+      RickyPageUi::card(target, rect, focus && selected == i);
+      screen.frame().hit(rect, ACTION_ROW, i, fui::InputTouch);
+      const int middle = rect.y + rect.height / 2;
+      RickyPageUi::pageIcon(target, rect.x + pad, middle, *icons[i]);
+      const int x = rect.x + pad + icons[i]->w + gap;
+      target.text(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(middle - bodyHeight / 2),
+                            static_cast<int16_t>(rect.right() - x - pad), static_cast<int16_t>(bodyHeight)},
+                  I18N.get(categoryNames[i]), label);
     }
     return;
   }

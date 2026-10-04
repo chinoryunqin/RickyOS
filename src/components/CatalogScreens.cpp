@@ -9,6 +9,7 @@
 #include <numeric>
 
 #include "HeaderBackTapTarget.h"
+#include "UIScale.h"
 #include "UITheme.h"
 #include "icons/headerIcons.h"
 
@@ -34,8 +35,9 @@ void catalogScreenHeader(UiAppHost::UiScreen& screen, const GfxRenderer& rendere
     static constexpr fui::ActionId PAINT_ONLY_BACK = 0xFFFF;
     header.leadingIcon = fui::bitmapFromIcon(icon_header_back_32);
     header.leadingAction = PAINT_ONLY_BACK;
-    HeaderBackTapTarget::set(frameRect.x + 4, metrics.topPadding + 4 + header.actionOffsetY, header.leadingSize,
-                             header.leadingSize);
+    const int titleWidth = title ? renderer.getTextWidth(uiScaleSpec(false).titleFontId, title) : 0;
+    HeaderBackTapTarget::setLeading(frameRect.x, metrics.topPadding, frameRect.width, metrics.headerHeight,
+                                    4 + header.leadingSize + titleWidth + 24);
   }
   if (trailingIcon && trailingAction != fui::NO_ACTION) {
     header.trailingIcon = trailingIcon;

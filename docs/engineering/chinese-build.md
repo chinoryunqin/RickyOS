@@ -263,7 +263,11 @@ The `rickyos_readpico` and `simulator_rickyos` builds use only the 12pt CJK face
 in the high-density profile, so they link `notosans_cjk_12_rickyos.h` instead of
 the shared `notosans_cjk_12.h`. Its character set, `cn_rickyos_chars.txt`, is the
 shared `cn_common_chars.txt` followed by every GB2312 level-1 hanzi it lacks
-(367 characters, e.g. 亨). The shared 8/10/12pt headers and their common interval
+(367 characters, e.g. 亨) and the common Traditional set: Big5 level 1
+(`big5_lv1.txt`, A440-C67E) less its 300 least frequent extra characters, 2590
+characters (e.g. 們, 體, 國) listed in `big5_rickyos_chars.txt`. That list comes
+from `select_rickyos_big5.py` (wordfreq Zipf ranking) and is committed, so
+regeneration does not depend on the wordfreq version. The shared 8/10/12pt headers and their common interval
 table are unchanged, so other targets are unaffected. Regenerate after changing
 `cn_common_chars.txt`, with the same verified source:
 
@@ -272,7 +276,8 @@ PYTHON=/tmp/cn_font_venv/bin/python3 bash lib/EpdFont/scripts/build-rickyos-cjk-
 ```
 
 On the shared characters the bitmaps are byte-identical to `notosans_cjk_12.h`.
-GB2312 level-2 characters (e.g. 佚) are not included.
+GB2312 level-2 characters (e.g. 佚) and the 300 rarest Big5 level-1 characters
+are not included.
 
 ## Force-including feature-specific glyphs
 

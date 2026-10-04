@@ -69,7 +69,12 @@ int RickyHomeUi::selectedAction(const MappedInputManager& input) {
 }
 
 bool RickyHomeUi::paint(fui::Rect rect, int index) {
-  if (painter && painter(owner, index, Rect{rect.x, rect.y, rect.width, rect.height})) return true;
+  if (painter && painter(owner, index, Rect{rect.x, rect.y, rect.width, rect.height})) {
+    // Real artwork gets the same hairline edge as generated covers; pale covers
+    // would otherwise dissolve into the page.
+    uiTarget.stroke(rect, fui::Paint::solid(fui::Color::Black), 1);
+    return true;
+  }
   if (!books || index < 0 || index >= static_cast<int>(books->size())) return false;
   const auto& book = (*books)[index];
   auto text = grid.titleText;
@@ -121,7 +126,7 @@ void RickyHomeUi::draw(UiScreen& screen) {
   auto greeting = heading;
   greeting.maxLines = quietPortrait ? 2 : 1;
   screen.target().text(textRect, greetingText, greeting);
-  screen.frame().hit(profileRect, OPEN_BOOK, PROFILE, fui::InputTouch);
+  screen.frame().hit(profileRect, OPEN_BOOK, STATISTICS, fui::InputTouch);
   if (quietPortrait) {
     auto phrase = theme.smallText;
     phrase.align = fui::TextAlign::Center;
@@ -298,7 +303,8 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   intro.y += titleHeight + gap / 3;
   intro.height = greetingHeight;
   RickyPageUi::wrappedText(screen.target(), intro, greetingText, greeting);
-  screen.frame().hit(profile, OPEN_BOOK, PROFILE, fui::InputTouch);
+  // The avatar row opens reading statistics; the profile lives in Settings.
+  screen.frame().hit(profile, OPEN_BOOK, STATISTICS, fui::InputTouch);
 
   // The note to self anchors the bottom of the page.
   auto phrase = theme.bodyText;
@@ -320,13 +326,14 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
               small);
   // Fixed proportions first, then share what is left between the section gaps
   // so the page breathes evenly instead of collecting space above the note.
+  // The current book and the two recent ones share one cover size (and one
+  // thumbnail cache size), so recent covers are as legible as the main one.
   const int labels = smallHeight * 2 + gap / 2 + gap;
-  const int tileHeight = smallHeight * 3 + gap;
-  const int fixed = smallHeight + gap + gap + smallHeight + gap + tileHeight + labels;
+  const int fixed = smallHeight + gap + gap + smallHeight + gap + labels;
   const int coverWidth =
-      std::min<int>(screen.body().width * 27 / 100, std::max(0, screen.body().height - fixed - gap * 4) * 3 / 4);
+      std::min<int>(screen.body().width * 27 / 100, std::max(0, screen.body().height - fixed - gap * 4) / 2 * 3 / 4);
   const int coverHeight = std::max(smallHeight * 3, coverWidth * 4 / 3);
-  const int spare = std::max(0, screen.body().height - fixed - coverHeight - gap * 3);
+  const int spare = std::max(0, screen.body().height - fixed - coverHeight * 2 - gap * 3);
   const int section = gap + std::min(spare / 3, gap * 2);
   thumbnailHeight = coverHeight;
   const auto row = screen.takeTop(coverHeight, section);
@@ -375,7 +382,7 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
               fui::Paint::solid(fui::Color::Black));
   screen.frame().hit(stats, OPEN_BOOK, STATISTICS, fui::InputTouch);
 
-  // Recently opened: landscape tiles keep the two books readable at a glance.
+  // Recently opened: two covers, real artwork when the book has it.
   auto recent = screen.takeTop(smallHeight, gap);
   auto all = recent;
   all.width = recent.width / 3;
@@ -398,30 +405,28 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   const int count = std::min<int>(2, books->size() - start - 1);
   const int column = gap * 2;
   const int width = (body.width - column) / 2;
-  auto previous = RickyPageUi::Motif::Count;
+  auto centeredTitle = strong;
+  centeredTitle.align = fui::TextAlign::Center;
+  auto centeredSmall = small;
+  centeredSmall.align = fui::TextAlign::Center;
   for (int i = 0; i < count; ++i) {
     const int index = start + i + 1;
     const auto& item = (*books)[index];
     const fui::Rect cell{static_cast<int16_t>(body.x + i * (width + column)), body.y, static_cast<int16_t>(width),
-                         static_cast<int16_t>(tileHeight + labels)};
-    const fui::Rect tile{cell.x, cell.y, cell.width, static_cast<int16_t>(tileHeight)};
-    // Neighbouring tiles never share a motif, even when their titles hash alike.
-    auto kind = RickyPageUi::motifFor(titleOf(item));
-    if (kind == previous)
-      kind =
-          static_cast<RickyPageUi::Motif>((static_cast<int>(kind) + 1) % static_cast<int>(RickyPageUi::Motif::Count));
-    previous = kind;
-    RickyPageUi::bookTile(target, tile, titleOf(item), small, kind);
-    if (showSelection && selected == index) target.stroke(tile, fui::Paint::solid(fui::Color::Black), 3);
+                         static_cast<int16_t>(coverHeight + labels)};
+    const fui::Rect thumb{static_cast<int16_t>(cell.x + (width - cover.width) / 2), cell.y, cover.width,
+                          static_cast<int16_t>(coverHeight)};
+    paint(thumb, index);
+    if (showSelection && selected == index) target.stroke(thumb, fui::Paint::solid(fui::Color::Black), 3);
     auto label =
-        fui::Rect{cell.x, static_cast<int16_t>(tile.bottom() + gap), cell.width, static_cast<int16_t>(smallHeight)};
-    target.text(label, titleOf(item), strong);
+        fui::Rect{cell.x, static_cast<int16_t>(thumb.bottom() + gap), cell.width, static_cast<int16_t>(smallHeight)};
+    target.text(label, titleOf(item), centeredTitle);
     label.y += smallHeight + gap / 2;
     const auto* saved = READING_STATS.findMatchingBookForPath(item.path);
     if (saved)
       snprintf(statsText, sizeof(statsText), tr(STR_RICKY_READ_PROGRESS),
                static_cast<unsigned>(saved->lastProgressPercent));
-    target.text(label, saved ? statsText : tr(STR_RICKY_READ_UNREAD), small);
+    target.text(label, saved ? statsText : tr(STR_RICKY_READ_UNREAD), centeredSmall);
     screen.frame().hit(cell, OPEN_BOOK, index, fui::InputTouch);
   }
 }

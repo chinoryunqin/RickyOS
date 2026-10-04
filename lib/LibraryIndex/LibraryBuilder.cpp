@@ -10,6 +10,7 @@
 #include <Utf8.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cstddef>
 #include <cstring>
 
@@ -190,14 +191,36 @@ bool isBookName(const std::string& name) {
          FsHelpers::checkFileExtension(name, ".md") || FsHelpers::checkFileExtension(name, ".xtc");
 }
 
-// macOS AppleDouble sidecars and hidden entries. The file browser already hides
-// these (FileBrowserActivity isMacOSMetadataEntry); the shelf must agree, or a
-// card written on a Mac shows every book twice.
-bool isHiddenOrSidecar(const char* name) { return name[0] == '.'; }
+// Hidden entries (including macOS AppleDouble sidecars) and system folders such
+// as XTCache, another firmware's per-book cache full of TXT records. The web
+// server and file browser already treat these as protected; the shelf agrees,
+// or a card shows every Mac-written book twice and every cache record as a book.
+bool isProtectedEntry(const char* name) { return FsHelpers::isProtectedPathComponent(name); }
+
+// The crash handler writes /crash_report.txt (HalSystem); it is not a book.
+bool isFirmwareFile(const std::string& folder, const std::string& name) {
+  return folder == "/" && name == "crash_report.txt";
+}
 
 std::string stemOf(const std::string& name) {
   const size_t dot = name.find_last_of('.');
   return (dot == std::string::npos || dot == 0) ? name : name.substr(0, dot);
+}
+
+// Other readers and sync tools leave small TXT records beside books (reading
+// progress, reading time, bookmarks). A known record name under 4 KiB is data,
+// not a book; a real "History.txt" novel is far larger and stays on the shelf.
+bool isReaderDataFile(const std::string& name, const uint32_t size) {
+  constexpr uint32_t MAX_RECORD_BYTES = 4096;
+  if (size >= MAX_RECORD_BYTES || !FsHelpers::checkFileExtension(name, ".txt")) return false;
+  std::string stem = stemOf(name);
+  for (char& c : stem) c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
+  static constexpr const char* RECORD_NAMES[] = {"progress", "readtime", "readingtime", "bookmark", "bookmarks",
+                                                 "position", "lastread", "history",     "record",   "state"};
+  for (const char* record : RECORD_NAMES) {
+    if (stem == record) return true;
+  }
+  return false;
 }
 
 struct PriorEntry {
@@ -252,6 +275,7 @@ struct WalkState {
   uint16_t nextFirstSeen = 0;
   uint16_t duplicatesDropped = 0;
   uint16_t unreadableSkipped = 0;
+  uint16_t dataFilesSkipped = 0;
   uint64_t* dedupKeys = nullptr;
   uint16_t activeDedupCount = 0;
   bool dedupDegraded = false;
@@ -469,7 +493,7 @@ void walk(WalkState& st, const std::string& path, const int depth) {
     const uint32_t modificationTime = isDir ? 0 : entry.modificationTime();
     entry.close();
 
-    if (st.nameBuf[0] == '\0' || isHiddenOrSidecar(st.nameBuf)) continue;
+    if (st.nameBuf[0] == '\0' || isProtectedEntry(st.nameBuf)) continue;
     const std::string name(st.nameBuf);
 
     if (isDir) {
@@ -493,6 +517,12 @@ void walk(WalkState& st, const std::string& path, const int depth) {
     // the contents do not exist. Counted rather than silently dropped.
     if (size == 0) {
       st.unreadableSkipped++;
+      continue;
+    }
+    if (isReaderDataFile(name, size) || isFirmwareFile(path, name)) {
+      // Name the first few so a surprising card layout is visible in the log.
+      if (st.dataFilesSkipped++ < 8)
+        LOG_INF("LIBIDX", "not a book (reader data): %s", joinLibraryPath(path, name).c_str());
       continue;
     }
     // The index stores the name and the folder path behind one length byte
@@ -1176,6 +1206,7 @@ bool buildLibraryIndex(const char* rootPath, BuildStats& stats, const bool readM
   stats.folders = st.folderId;
   stats.duplicatesDropped = st.duplicatesDropped;
   stats.unreadableSkipped = st.unreadableSkipped;
+  stats.dataFilesSkipped = st.dataFilesSkipped;
   stats.dedupDegraded = st.dedupDegraded;
   stats.unchanged = st.reused;
   stats.enriched = st.enriched;
@@ -1367,11 +1398,13 @@ bool buildLibraryIndex(const char* rootPath, BuildStats& stats, const bool readM
   stats.walkMs = millis() - startMs;
   stats.indexReplaced = ok;
   LOG_INF("LIBIDX",
-          "%s: %u books, %u folders, %u parsed, %u metadata reused, replaced %u, %u dup dropped, %u unreadable, %ums",
+          "%s: %u books, %u folders, %u parsed, %u metadata reused, replaced %u, %u dup dropped, %u unreadable, "
+          "%u reader data, %ums",
           ok ? "built" : "FAILED", static_cast<unsigned>(stats.books), static_cast<unsigned>(stats.folders),
           static_cast<unsigned>(stats.parsed), static_cast<unsigned>(stats.metadataReused),
           static_cast<unsigned>(stats.indexReplaced), static_cast<unsigned>(stats.duplicatesDropped),
-          static_cast<unsigned>(stats.unreadableSkipped), static_cast<unsigned>(stats.walkMs));
+          static_cast<unsigned>(stats.unreadableSkipped), static_cast<unsigned>(stats.dataFilesSkipped),
+          static_cast<unsigned>(stats.walkMs));
   if (ok) clearLibraryIndexDirty();
   return ok;
 }

@@ -43,6 +43,9 @@ class FileBrowserActivity final : public UiListActivity {
 
   // Files state
   std::string basepath = "/";
+  // Back never climbs above this folder: "/" normally, or the folder a scoped
+  // browse started in, so Back there returns to the page that opened it.
+  std::string rootPath = "/";
   std::vector<std::string> files;
   std::unique_ptr<char[]> fileNameBuffer;
 
@@ -105,7 +108,7 @@ class FileBrowserActivity final : public UiListActivity {
 
  public:
   explicit FileBrowserActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string initialPath = "/",
-                               Mode mode = Mode::Books);
+                               Mode mode = Mode::Books, bool scoped = false);
   void onEnter() override;
   void onExit() override;
   void render(RenderLock&& lock) override;
@@ -117,6 +120,8 @@ class FileBrowserActivity final : public UiListActivity {
     return mode == Mode::Books && browserState == BrowserState::Browsing ? MainTab::Library : MainTab::None;
 #endif
   }
-  bool mainTabBackReturnsToTabs() const override { return browserState == BrowserState::Browsing && basepath == "/"; }
+  bool mainTabBackReturnsToTabs() const override {
+    return browserState == BrowserState::Browsing && basepath == rootPath;
+  }
   void selectMainTabContentEdge(MainTabContentEdge edge) override;
 };

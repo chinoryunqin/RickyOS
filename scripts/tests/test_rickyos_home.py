@@ -76,21 +76,23 @@ int main() {
 ''', include_dirs=(ROOT / 'freeink-sdk/libs/ui/FreeInkUI/include',))
         home = method((ROOT / 'src/components/RickyHomeUi.cpp').read_text(), 'void RickyHomeUi::drawPortrait(')
         self.assertIn('RickyPageUi::wrappedText(screen.target(), intro, greetingText', home)
-        self.assertIn('target.text(label, titleOf(item), strong)', home)
+        self.assertIn('target.text(label, titleOf(item), centeredTitle)', home)
 
     def test_portrait_follows_the_quiet_home_layout(self):
         source = method((ROOT / 'src/components/RickyHomeUi.cpp').read_text(),
                         'void RickyHomeUi::drawPortrait(')
-        # Continue reading, stats with a hairline, then landscape recent tiles.
+        # Continue reading, stats with a hairline, then two recent covers.
         order = [source.index(key) for key in ('STR_CONTINUE_READING', 'STR_RICKY_HOME_TODAY',
-                                               'STR_RICKY_HOME_RECENT', 'RickyPageUi::bookTile(')]
+                                               'STR_RICKY_HOME_RECENT', 'paint(thumb, index)')]
         self.assertEqual(order, sorted(order))
         self.assertIn('screen.frame().hit(cell, OPEN_BOOK, index', source)
         self.assertIn('screen.frame().hit(stats, OPEN_BOOK, STATISTICS', source)
         # Leftover height is shared between sections instead of pooling above the note.
         self.assertIn('const int section = gap + std::min(spare / 3', source)
-        # Neighbouring tiles never repeat a motif.
-        self.assertIn('if (kind == previous)', source)
+        # Recent covers share the current book's cover size and thumbnail cache.
+        self.assertIn('const fui::Rect thumb{', source)
+        self.assertIn('cover.width,', source)
+        self.assertIn('static_cast<int16_t>(coverHeight)};', source)
         # Book titles use the full-coverage small face, never the UI-only larger faces.
         self.assertIn('auto strong = small;', source)
         self.assertNotIn('theme.bodyText;\n  bookTitle', source)

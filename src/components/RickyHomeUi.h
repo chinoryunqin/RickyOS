@@ -17,7 +17,6 @@ class RickyHomeUi final : public UiAppHost {
   void configure(Rect content, int selection, bool showSelection, int progress);
   int selectedAction(const MappedInputManager& input);
   int coverHeight() const { return thumbnailHeight; }
-  static constexpr int PROFILE = -2;
   static constexpr int LIBRARY = -3;
   static constexpr int STATISTICS = -4;
 

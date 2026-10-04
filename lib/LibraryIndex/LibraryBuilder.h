@@ -42,6 +42,7 @@ struct BuildStats {
   uint16_t folders = 0;
   uint16_t duplicatesDropped = 0;
   uint16_t unreadableSkipped = 0;
+  uint16_t dataFilesSkipped = 0;  // Reader TXT records (progress, readTime, ...), not books.
   uint32_t walkMs = 0;
   // Reconciliation against the previous index. Their sum over a rebuild with no
   // card changes should be: unchanged == books, everything else zero.

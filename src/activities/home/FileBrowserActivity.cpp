@@ -49,10 +49,12 @@ std::string getFileName(std::string filename);
 std::string getFileExtension(const std::string& filename);
 
 FileBrowserActivity::FileBrowserActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                                         std::string initialPath, const Mode mode)
+                                         std::string initialPath, const Mode mode, const bool scoped)
     : UiListActivity("FileBrowser", renderer, mappedInput, /*wantsTouchLongPress=*/true),
       mode(mode),
-      basepath(initialPath.empty() ? "/" : std::move(initialPath)) {}
+      basepath(initialPath.empty() ? "/" : std::move(initialPath)) {
+  if (scoped) rootPath = basepath;
+}
 
 void FileBrowserActivity::loadFiles() {
   prewarmedStart = -1;
@@ -231,6 +233,7 @@ void FileBrowserActivity::onEnter() {
   auto root = Storage.open(basepath.c_str());
   if (!root) {
     basepath = "/";
+    rootPath = "/";
     loadFiles();
   } else if (!root.isDirectory()) {
     const std::string oldPath = basepath;
@@ -678,12 +681,12 @@ bool FileBrowserActivity::handleCustomInput() {
   // In firmware-pick mode we keep navigation simple: short Back = up dir / cancel.
   if (mode == Mode::Books && browserState == BrowserState::Browsing &&
       mappedInput.wasReleased(MappedInputManager::Button::Back) && mappedInput.getHeldTime() >= GO_HOME_MS &&
-      basepath != "/") {
+      basepath != rootPath) {
     {
       // buildScreen() runs on the render task and reads basepath plus the
       // row caches rebuildRowItems() frees; mutate only under the render lock.
       RenderLock lock(*this);
-      basepath = "/";
+      basepath = rootPath;
       loadFiles();
       nav.selected = 0;
       nav.top = 0;
@@ -711,7 +714,7 @@ bool FileBrowserActivity::handleButtons() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     // Short press: go up one directory, or go home if at root
     if (mappedInput.getHeldTime() < GO_HOME_MS) {
-      if (basepath != "/") {
+      if (basepath != rootPath) {
         const std::string oldPath = basepath;
 
         {
@@ -877,7 +880,7 @@ void FileBrowserActivity::drawFooter() {
   const char* backLabel =
       browserState == BrowserState::ChoosingMoveDestination
           ? tr(STR_BACK)
-          : ((basepath == "/") ? (mode != Mode::Books ? tr(STR_BACK) : tr(STR_HOME)) : tr(STR_BACK));
+          : ((basepath == rootPath) ? (mode != Mode::Books ? tr(STR_BACK) : tr(STR_HOME)) : tr(STR_BACK));
   // In PickFirmware mode, Confirm on a .bin returns the path to the caller (not "open"); show
   // STR_SELECT instead. Directories in the same picker still descend, so keep STR_OPEN there.
   const bool selectingFile = mode != Mode::Books && !files.empty() && nav.selected >= 0 && nav.selected < listCount() &&

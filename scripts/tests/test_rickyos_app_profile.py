@@ -7,7 +7,8 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-DIRECTORIES = ('sudoku', 'sokoban', 'chinese-chess', 'minesweeper', '2048', 'avatar', 'buddy', 'pixel-switch', 'woodfish')
+DIRECTORIES = ('sudoku', 'sokoban', 'chinese-chess', 'minesweeper', '2048', 'avatar', 'buddy', 'pixel-switch', 'woodfish',
+               'airpage')
 
 
 class RickyAppProfileTest(unittest.TestCase):
@@ -31,9 +32,9 @@ int main() {
   using appVisibility::appBit;
   constexpr AppId removed[] = {AppId::Sudoku, AppId::Sokoban, AppId::ChineseChess,
                              AppId::Minesweeper, AppId::Game2048, AppId::UglyAvatar,
-                             AppId::Buddy, AppId::PixelSwitch, AppId::Woodfish};
+                             AppId::Buddy, AppId::PixelSwitch, AppId::Woodfish, AppId::AirPage};
   constexpr AppId tools[] = {AppId::Gomoku, AppId::Calculator,
-                             AppId::FileTransfer, AppId::AirPage, AppId::ReadingStats,
+                             AppId::FileTransfer, AppId::ReadingStats,
                              AppId::Standby, AppId::OpdsBrowser};
   for (auto id : tools) {
     bool found=false;
@@ -55,9 +56,9 @@ int main() {
   }
 #ifdef RICKYOS_PRODUCT
 #ifdef ENABLE_CHINESE_VERSION
-  static_assert(kAppCount == 8);
-#else
   static_assert(kAppCount == 7);
+#else
+  static_assert(kAppCount == 6);
 #endif
 #else
 #ifdef ENABLE_CHINESE_VERSION
@@ -70,7 +71,10 @@ int main() {
 #ifdef ENABLE_CHINESE_VERSION
     AppId::WeRead,
 #endif
-    AppId::AirPage, AppId::ReadingStats,
+#ifndef RICKYOS_PRODUCT
+    AppId::AirPage,
+#endif
+    AppId::ReadingStats,
 #ifndef RICKYOS_PRODUCT
     AppId::Sudoku,
 #endif

@@ -13,6 +13,7 @@
 
 #include "CrossPointSettings.h"
 #include "RickyBrandMark.h"
+#include "RickyPageUi.h"
 #include "UITheme.h"
 #include "util/TimeUtils.h"
 
@@ -76,19 +77,32 @@ void drawCard(UiScreen& screen, const GfxRenderer& renderer, freeink::ui::Rect r
               int value) {
   namespace fui = freeink::ui;
   const auto& theme = screen.theme();
-  const int gap = std::max<int>(6, theme.spaceSm);
-  const int size = std::min<int>(rect.height, rect.width / 4);
-  drawAvatar(renderer, Rect{rect.x, rect.y, size, size});
-  auto text = rect;
-  text.x += size + gap;
-  text.width -= size + gap;
-  text.height = screen.target().lineHeight(theme.bodyText.font);
-  auto nameStyle = theme.bodyText;
-  nameStyle.bold = true;
-  screen.target().text(text, nickname(), nameStyle);
-  text.y += text.height + gap;
-  text.height = screen.target().lineHeight(theme.smallText.font);
-  screen.target().text(text, tr(STR_RICKY_PROFILE_SUBTITLE), theme.smallText);
+  auto& target = screen.target();
+  const int gap = std::max<int>(12, theme.spaceSm);
+  const int pad = gap + gap / 2;
+  RickyPageUi::card(target, rect, false);
+  const int size = std::max(0, rect.height - pad * 2);
+  drawAvatar(renderer, Rect{rect.x + pad, rect.y + pad, size, size});
+  const int bodyHeight = target.lineHeight(theme.bodyText.font);
+  const int smallHeight = target.lineHeight(theme.smallText.font);
+  const int x = rect.x + pad * 2 + size;
+  const int width = rect.right() - x - pad - 24;
+  const int top = rect.y + (rect.height - bodyHeight - smallHeight - gap / 2) / 2;
+  auto name = theme.bodyText;
+  name.bold = true;
+  name.maxLines = 1;
+  {
+    RickyPageUi::Bold bold(renderer, 1);
+    target.text(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(top), static_cast<int16_t>(width),
+                          static_cast<int16_t>(bodyHeight)},
+                nickname(), name);
+  }
+  auto detail = theme.smallText;
+  detail.maxLines = 1;
+  target.text(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(top + bodyHeight + gap / 2),
+                        static_cast<int16_t>(width), static_cast<int16_t>(smallHeight)},
+              tr(STR_RICKY_PROFILE), detail);
+  RickyPageUi::chevron(target, fui::Rect{static_cast<int16_t>(rect.right() - 24 - pad), rect.y, 24, rect.height});
   if (action != fui::NO_ACTION) screen.frame().hit(rect, action, static_cast<int16_t>(value), fui::InputTouch);
 }
 
