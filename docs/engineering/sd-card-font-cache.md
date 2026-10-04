@@ -1,5 +1,18 @@
 # SD-Card Font Cache
 
+## RickyOS 0.5 product exception
+
+Font management opens the local SD library without Wi-Fi or TLS. Online catalog
+downloads are a separate explicit entry. Selecting a changed, cacheable bitmap
+font adopts the upstream read-only preflight and asks before Flash acceleration;
+it does not silently start cache writes. Oversized bitmap fonts continue directly
+from SD without an installation-failed message. Vector fonts keep their existing
+SD path. Actual I/O, invalid-font and memory failures remain visible.
+
+Preload callbacks wait for the displayed progress frame outside RenderLock
+before resuming Flash writes. The partition and rollback protections below are
+unchanged. This is not approval to install fonts or write the physical device.
+
 The inactive OTA application slot doubles as a disposable cache for one SD-card
 reader font. This removes most filesystem and SD-SPI latency from the reader's
 initial font load, first-page prewarm, later page prewarms, and on-demand glyph
@@ -155,6 +168,16 @@ changes its point size. A normal OTA overwrites the cache slot and rebuilds it
 after the new firmware is confirmed.
 
 ## Rebuild triggers and progress
+
+RickyOS product builds check the final source's length against the existing
+`capacity()` before the standalone Text Settings exit preload. An oversized
+source is a valid SD font: save acceleration off and exit without attempting
+preprocessing or showing an installation-failure popup. The check opens the
+source read-only, releases its handle before navigation, and introduces no
+resident allocation. An unreadable source keeps the existing error path.
+Upstream builds, unchanged/restored selections and reader-toolbar confirmation
+remain unchanged. This accommodates complete CJK Regular/Bold packs larger than
+the inactive OTA slot; it does not expand the slot or reduce glyph coverage.
 
 The hidden `sdFontFlashPreload` setting stores the user's preference:
 

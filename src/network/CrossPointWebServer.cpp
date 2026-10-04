@@ -125,6 +125,7 @@ LocalizedPage localizedPage(const char* chinese, const size_t chineseSize, const
 }
 
 memory::ByteBuffer makeWebBuffer(const size_t size) {
+  if constexpr (transferMemory::guarded) return transferMemory::allocateBuffer(size);
   // These activity-lifetime, sequential I/O buffers cannot be stack storage.
   // PSRAM keeps them out of the Read Pico panel's scarce internal SRAM; boards
   // without PSRAM retain the existing internal-RAM fallback.
@@ -190,11 +191,24 @@ CrossPointWebServer::CrossPointWebServer() {}
 
 CrossPointWebServer::~CrossPointWebServer() { stop(); }
 
+bool CrossPointWebServer::checkMemoryReserve(const bool startup) {
+  if constexpr (!transferMemory::guarded) return true;
+  const auto heap = HalMemory::getInternalHeap();
+  if (transferMemory::healthy(heap, startup)) return true;
+  memoryError = true;
+  LOG_ERR("NETMEM", "%s refused: internal free/min/largest=%zu/%zu/%zu", startup ? "Startup" : "Service",
+          heap.freeBytes, heap.minFreeBytes, heap.largestBlockBytes);
+  return false;
+}
+
 bool CrossPointWebServer::begin() {
   if (running) {
     LOG_DBG("WEB", "Web server already running");
     return true;
   }
+  memoryError = false;
+  transferMemory::logSnapshot("before server");
+  if (!checkMemoryReserve(true)) return false;
 
   // Check if we have a valid network connection (either STA connected or AP mode)
   const wifi_mode_t wifiMode = WiFi.getMode();
@@ -216,6 +230,7 @@ bool CrossPointWebServer::begin() {
   server = makeUniqueNoThrow<CrossPointHttpServer>(port);
   if (!server) {
     LOG_ERR("WEB", "OOM: WebServer (%u bytes)", static_cast<unsigned>(sizeof(WebServer)));
+    memoryError = true;
     return false;
   }
 
@@ -235,6 +250,7 @@ bool CrossPointWebServer::begin() {
   fontUpload.buffer = makeWebBuffer(FontUploadState::BUFFER_SIZE);
   if (!upload.buffer || !fontUpload.buffer) {
     LOG_ERR("WEB", "OOM: upload buffers (%u bytes each)", static_cast<unsigned>(UploadState::UPLOAD_BUFFER_SIZE));
+    memoryError = true;
     stop();
     return false;
   }
@@ -306,21 +322,25 @@ bool CrossPointWebServer::begin() {
 
   server->onNotFound([this] { handleNotFound(); });
   LOG_DBG("WEB", "[MEM] Free heap after route setup: %d bytes", ESP.getFreeHeap());
+  transferMemory::logSnapshot("after routes");
+  if (!checkMemoryReserve(false)) {
+    stop();
+    return false;
+  }
 
   // Collect WebDAV headers and register handler.
   // If-None-Match is collected so the static-page handlers can answer conditional GETs with 304.
   const char* collectedHeaders[] = {"Depth",      "Destination", "Overwrite",    "If",
                                     "Lock-Token", "Timeout",     "If-None-Match"};
   server->collectHeaders(collectedHeaders, 7);
-  // WebServer takes ownership and deletes this handler.  It must be nothrow:
-  // an OOM here previously called abort() on ESP32 builds with exceptions off.
-  auto* webDavHandler = new (std::nothrow) WebDAVHandler();
-  if (!webDavHandler) {
+  auto davHandler = makeUniqueNoThrow<WebDAVHandler>();
+  if (!davHandler) {
     LOG_ERR("WEB", "OOM: WebDAVHandler (%u bytes)", static_cast<unsigned>(sizeof(WebDAVHandler)));
+    memoryError = true;
     stop();
     return false;
   }
-  server->addHandler(webDavHandler);  // WebServer owns webDavHandler after this call.
+  server->addHandler(davHandler.release());  // WebServer takes ownership.
   LOG_DBG("WEB", "WebDAV handler initialized");
 
   server->begin();
@@ -330,6 +350,7 @@ bool CrossPointWebServer::begin() {
   wsServer = makeUniqueNoThrow<WebSocketsServer>(wsPort);
   if (!wsServer) {
     LOG_ERR("WEB", "OOM: WebSocketsServer (%u bytes)", static_cast<unsigned>(sizeof(WebSocketsServer)));
+    memoryError = true;
     stop();
     return false;
   }
@@ -350,11 +371,18 @@ bool CrossPointWebServer::begin() {
   fileListBatch = makeWebBuffer(FILE_LIST_BATCH_CAPACITY);
   if (!fileListBatch) {
     LOG_ERR("WEB", "OOM: %zu-byte file list response buffer", FILE_LIST_BATCH_CAPACITY);
+    memoryError = true;
+    stop();
+    return false;
+  }
+  transferMemory::logSnapshot("after server");
+  if (!checkMemoryReserve(false)) {
     stop();
     return false;
   }
 
   running = true;
+  lastMemoryCheck = millis();
 
   LOG_DBG("WEB", "Web server started on port %d", port);
   // Show the correct IP based on network mode
@@ -418,7 +446,7 @@ void CrossPointWebServer::abortWsUpload(const char* tag) {
 }
 
 void CrossPointWebServer::stop() {
-  if (!server) {
+  if (!running && !server && !wsServer && !upload.buffer && !fontUpload.buffer) {
     LOG_DBG("WEB", "stop() called but already stopped (running=%d, server=%p)", running, server.get());
     fileListBatch.reset();
     return;
@@ -426,6 +454,12 @@ void CrossPointWebServer::stop() {
 
   LOG_DBG("WEB", "STOP INITIATED - setting running=false first (was running=%d)", running);
   running = false;  // Set this FIRST to prevent handleClient from using server
+
+  abortFontUpload();
+  upload.file.close();
+  upload.buffer.reset();
+  upload.bufferPos = 0;
+  fontUpload.buffer.reset();
 
   LOG_DBG("WEB", "[MEM] Free heap before stop: %d bytes", ESP.getFreeHeap());
 
@@ -451,7 +485,7 @@ void CrossPointWebServer::stop() {
   // Brief delay to allow any in-flight handleClient() calls to complete
   delay(20);
 
-  server->stop();
+  if (server) server->stop();
   LOG_DBG("WEB", "[MEM] Free heap after server->stop(): %d bytes", ESP.getFreeHeap());
 
   // Brief delay before deletion
@@ -481,6 +515,16 @@ void CrossPointWebServer::handleClient() {
   if (!server) {
     LOG_DBG("WEB", "WARNING: handleClient called with null server!");
     return;
+  }
+
+  if constexpr (transferMemory::guarded) {
+    if (millis() - lastMemoryCheck >= 250) {
+      lastMemoryCheck = millis();
+      if (!checkMemoryReserve(false)) {
+        stop();
+        return;
+      }
+    }
   }
 
   // Print debug every 10 seconds to confirm handleClient is being called
@@ -2982,6 +3026,59 @@ void CrossPointWebServer::handleFontList() const {
   sendJson(doc);
 }
 
+bool CrossPointWebServer::flushFontUploadBuffer() {
+  if (!fontUpload.valid) return false;
+  if (fontUpload.bufferPos == 0) return true;
+  const size_t expected = fontUpload.bufferPos;
+  const size_t written = fontUpload.file.write(fontUpload.buffer.get(), expected);
+  fontUpload.bytesWritten += written;
+  fontUpload.bufferPos = 0;
+  if (written != expected) {
+    LOG_ERR("WEB", "Font SD write failed: %zu/%zu bytes", written, expected);
+    fontUpload.valid = false;
+    fontUpload.storageError = true;
+    return false;
+  }
+  return true;
+}
+
+void CrossPointWebServer::abortFontUpload() {
+  fontUpload.file.close();
+  // Only remove the temporary file owned by this request, never the installed font.
+  if (!fontUpload.temporaryPath.empty()) {
+    if (!Storage.remove(fontUpload.temporaryPath.c_str())) {
+      LOG_ERR("WEB", "Cannot remove partial font: %s", fontUpload.temporaryPath.c_str());
+    }
+    fontUpload.temporaryPath.clear();
+  }
+  fontUpload.valid = false;
+  fontUpload.complete = false;
+  fontUpload.bufferPos = 0;
+}
+
+bool CrossPointWebServer::commitFontUpload() {
+  // FAT renames are not a power-loss transaction. Keep the old file until the
+  // completed upload is promoted, and leave its backup recoverable if rollback fails.
+  const std::string backupPath = fontUpload.filePath + ".upload-backup";
+  if (Storage.exists(backupPath.c_str())) {
+    LOG_ERR("WEB", "Unresolved font backup: %s", backupPath.c_str());
+    return false;
+  }
+  const bool replacing = Storage.exists(fontUpload.filePath.c_str());
+  if (replacing && !Storage.rename(fontUpload.filePath.c_str(), backupPath.c_str())) return false;
+  if (!Storage.rename(fontUpload.temporaryPath.c_str(), fontUpload.filePath.c_str())) {
+    if (replacing && !Storage.rename(backupPath.c_str(), fontUpload.filePath.c_str())) {
+      LOG_ERR("WEB", "Font rollback failed; original retained at %s", backupPath.c_str());
+    }
+    return false;
+  }
+  fontUpload.temporaryPath.clear();
+  if (replacing && !Storage.remove(backupPath.c_str())) {
+    LOG_ERR("WEB", "Installed font; cannot remove old backup: %s", backupPath.c_str());
+  }
+  return true;
+}
+
 void CrossPointWebServer::handleFontUploadData() {
   HTTPUpload& upload = server->upload();
 
@@ -2989,19 +3086,15 @@ void CrossPointWebServer::handleFontUploadData() {
     case UPLOAD_FILE_START: {
       resetTaskWatchdogIfSubscribed();
       String family = server->arg("family");
-      fontUpload.file = HalFile();
+      abortFontUpload();
       fontUpload.familyName.clear();
       fontUpload.filePath.clear();
       fontUpload.valid = false;
       fontUpload.magicChecked = false;
+      fontUpload.storageError = false;
       fontUpload.bytesWritten = 0;
       fontUpload.bufferPos = 0;
       fontUpload.buffer.reset();
-
-      if (!fontUpload.buffer) {
-        LOG_ERR("WEB", "Font upload unavailable: no buffer");
-        break;
-      }
 
       if (!FontInstaller::isValidFamilyName(family.c_str())) {
         LOG_ERR("WEB", "Invalid font family name: %s", family.c_str());
@@ -3019,12 +3112,21 @@ void CrossPointWebServer::handleFontUploadData() {
         break;
       }
 
+      // Bound paths before directory creation: buildFontPath uses a fixed 128-byte buffer.
+      const char* root = SdCardFontRegistry::findFamilyRoot(family.c_str());
+      if (!root) root = SdCardFontRegistry::defaultWriteRoot();
+      if (strlen(root) + family.length() + filename.length() + 2 >= 128) {
+        LOG_ERR("WEB", "Font upload path too long");
+        break;
+      }
+
       fontUpload.familyName = family.c_str();
 
       // Create a temporary FontInstaller for directory creation
       FontInstaller installer(sdFontSystem.registry());
       if (!installer.ensureFamilyDir(family.c_str())) {
         LOG_ERR("WEB", "Failed to create font family dir");
+        fontUpload.storageError = true;
         break;
       }
 
@@ -3038,11 +3140,14 @@ void CrossPointWebServer::handleFontUploadData() {
       FontInstaller::buildFontPath(family.c_str(), filename.c_str(), path, sizeof(path));
       fontUpload.filePath = path;
 
-      if (!Storage.openFileForWrite("WEB", path, fontUpload.file)) {
-        LOG_ERR("WEB", "Failed to open font file for write: %s", path);
-        fontUpload.buffer.reset();
+      const std::string temporaryPath = fontUpload.filePath + ".upload-part";
+      if (Storage.exists(temporaryPath.c_str()) ||
+          !Storage.openFileForWrite("WEB", temporaryPath.c_str(), fontUpload.file)) {
+        LOG_ERR("WEB", "Cannot create temporary font file: %s", temporaryPath.c_str());
+        fontUpload.storageError = true;
         break;
       }
+      fontUpload.temporaryPath = temporaryPath;
 
       fontUpload.valid = true;
       LOG_DBG("WEB", "Font upload started: %s -> %s", filename.c_str(), path);
@@ -3052,16 +3157,6 @@ void CrossPointWebServer::handleFontUploadData() {
     case UPLOAD_FILE_WRITE: {
       if (dropUploadIfCancelled() || !fontUpload.valid) break;
       resetTaskWatchdogIfSubscribed();
-
-      // Validate magic bytes on first chunk only
-      if (!fontUpload.magicChecked && upload.currentSize >= 8) {
-        if (memcmp(upload.buf, "CPFONT\0\0", 8) != 0) {
-          LOG_ERR("WEB", "Invalid .cpfont magic bytes");
-          fontUpload.valid = false;
-          break;
-        }
-        fontUpload.magicChecked = true;
-      }
 
       // Buffer writes for efficiency
       size_t remaining = upload.currentSize;
@@ -3074,14 +3169,18 @@ void CrossPointWebServer::handleFontUploadData() {
         src += chunk;
         remaining -= chunk;
 
-        if (fontUpload.bufferPos >= FontUploadState::BUFFER_SIZE) {
-          if (fontUpload.file.write(fontUpload.buffer.get(), fontUpload.bufferPos) != fontUpload.bufferPos) {
-            LOG_ERR("WEB", "Font upload write failed: %s", fontUpload.filePath.c_str());
+        // Check the buffered prefix, even if the first network chunk was <8 bytes.
+        if (!fontUpload.magicChecked && fontUpload.bufferPos >= 8) {
+          if (memcmp(fontUpload.buffer.get(), "CPFONT\0\0", 8) != 0) {
+            LOG_ERR("WEB", "Invalid .cpfont magic bytes");
             fontUpload.valid = false;
             break;
           }
-          fontUpload.bytesWritten += fontUpload.bufferPos;
-          fontUpload.bufferPos = 0;
+          fontUpload.magicChecked = true;
+        }
+
+        if (fontUpload.bufferPos >= FontUploadState::BUFFER_SIZE) {
+          if (!flushFontUploadBuffer()) break;
           resetTaskWatchdogIfSubscribed();
         }
       }
@@ -3090,38 +3189,28 @@ void CrossPointWebServer::handleFontUploadData() {
 
     case UPLOAD_FILE_END: {
       // Flush remaining buffer
-      if (fontUpload.valid && fontUpload.bufferPos > 0) {
-        if (fontUpload.file.write(fontUpload.buffer.get(), fontUpload.bufferPos) != fontUpload.bufferPos) {
-          LOG_ERR("WEB", "Font upload write failed: %s", fontUpload.filePath.c_str());
-          fontUpload.valid = false;
-        }
-        fontUpload.bytesWritten += fontUpload.bufferPos;
-        fontUpload.bufferPos = 0;
-      }
+      if (fontUpload.valid) flushFontUploadBuffer();
       if (fontUpload.file.isOpen()) {
         fontUpload.file.close();
       }
       fontUpload.bufferPos = 0;
       fontUpload.buffer.reset();
 
-      if (!fontUpload.valid && !fontUpload.filePath.empty()) {
-        Storage.remove(fontUpload.filePath.c_str());
+      if (!fontUpload.magicChecked || fontUpload.bytesWritten != upload.totalSize) fontUpload.valid = false;
+      if (fontUpload.valid && !commitFontUpload()) {
+        fontUpload.valid = false;
+        fontUpload.storageError = true;
       }
+      if (!fontUpload.valid) abortFontUpload();
+      fontUpload.complete = fontUpload.valid;
 
       LOG_DBG("WEB", "Font upload end: valid=%d, %zu bytes", fontUpload.valid, fontUpload.bytesWritten);
       break;
     }
 
     case UPLOAD_FILE_ABORTED: {
-      fontUpload.bufferPos = 0;
+      abortFontUpload();
       fontUpload.buffer.reset();
-      if (fontUpload.file) {
-        fontUpload.file.close();
-      }
-      if (!fontUpload.filePath.empty()) {
-        Storage.remove(fontUpload.filePath.c_str());
-      }
-      fontUpload.valid = false;
       LOG_DBG("WEB", "Font upload aborted");
       break;
     }
@@ -3129,10 +3218,12 @@ void CrossPointWebServer::handleFontUploadData() {
 }
 
 void CrossPointWebServer::handleFontUpload() {
-  if (fontUpload.valid) {
+  if (fontUpload.valid && fontUpload.complete) {
     sdFontSystem.markRegistryDirty();
     server->send(200, "application/json", "{\"ok\":true}");
     LOG_DBG("WEB", "Font upload complete: %s", fontUpload.filePath.c_str());
+  } else if (fontUpload.storageError) {
+    server->send(500, "application/json", "{\"error\":\"SD card write failed; check space and card, then retry\"}");
   } else {
     server->send(400, "application/json", "{\"error\":\"Invalid .cpfont file\"}");
   }

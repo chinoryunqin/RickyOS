@@ -20,14 +20,16 @@
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
-#include "components/CoverGridHomeUi.h"
 #include "components/SelectionCursorPolicy.h"
 #include "components/themes/BaseTheme.h"
 #include "components/themes/inx/InxTheme.h"
+#ifndef RICKYOS_PRODUCT
+#include "components/CoverGridHomeUi.h"
 #include "components/themes/lyra/Lyra3CoversTheme.h"
 #include "components/themes/lyra/LyraCarouselTheme.h"
 #include "components/themes/lyra/LyraTheme.h"
 #include "components/themes/roundedraff/RoundedRaffTheme.h"
+#endif
 #ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
 #include <builtinFonts/notosans_14_bold.h>
 #include <builtinFonts/notosans_14_regular.h>
@@ -72,6 +74,9 @@ UITheme::UITheme() {
 }
 
 void UITheme::reload() {
+#ifdef RICKYOS_PRODUCT
+  SETTINGS.enforceProductLayout();
+#endif
   const bool inx = SETTINGS.uiTheme == CrossPointSettings::INX;
 #ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
   (void)inx;
@@ -85,13 +90,38 @@ void UITheme::reload() {
   setTheme(themeType);
 }
 
-bool UITheme::supportsCoverGrid() { return HalMemory::getPsramHeap().totalBytes > 0; }
+bool UITheme::supportsCoverGrid() {
+#ifdef RICKYOS_PRODUCT
+  return false;
+#else
+  return HalMemory::getPsramHeap().totalBytes > 0;
+#endif
+}
 
-bool UITheme::hasCoverGridHome() { return SETTINGS.uiTheme == CrossPointSettings::COVER_GRID && supportsCoverGrid(); }
+bool UITheme::hasCoverGridHome() {
+#ifdef RICKYOS_PRODUCT
+  return false;
+#else
+  return SETTINGS.uiTheme == CrossPointSettings::COVER_GRID && supportsCoverGrid();
+#endif
+}
 
-void UITheme::drawCoverGridHome(CoverGridHomeUi& home) { home.renderUi(); }
+void UITheme::drawCoverGridHome(CoverGridHomeUi& home) {
+#ifdef RICKYOS_PRODUCT
+  (void)home;
+#else
+  home.renderUi();
+#endif
+}
 
 void UITheme::setTheme(CrossPointSettings::UI_THEME type) {
+#ifdef RICKYOS_PRODUCT
+  (void)type;
+  SETTINGS.enforceProductLayout();
+  currentTheme = &fixedTheme;
+  currentMetrics = &InxMetrics::values;
+  currentType = CrossPointSettings::INX;
+#else
   std::unique_ptr<BaseTheme> nextTheme;
   const ThemeMetrics* nextMetrics = &BaseMetrics::values;
   if (type == CrossPointSettings::COVER_GRID && !supportsCoverGrid()) type = CrossPointSettings::LYRA;
@@ -146,6 +176,7 @@ void UITheme::setTheme(CrossPointSettings::UI_THEME type) {
     currentMetrics = nextMetrics;
     currentType = type;
   }
+#endif
   metricsValid = false;
 }
 

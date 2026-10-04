@@ -30,6 +30,7 @@ constexpr int LOCAL_UDP_PORT=8134, FILE_LIST_BATCH_CAPACITY=1400;
 int allocation=0, failAt=0, httpLive=0, wsLive=0, httpListening=0, wsListening=0;
 bool udpSuccess=true;
 void delay(int) {}
+unsigned long millis() { return 0; }
 struct Address { String toString() const { return "192.168.4.1"; } };
 struct {
  int mode=WIFI_MODE_AP;
@@ -42,6 +43,7 @@ struct {
  Address localIP() { return {}; }
 } WiFi;
 struct { int getFreeHeap() { return 50000; } } ESP;
+namespace transferMemory { void logSnapshot(const char*) {} }
 struct WebDAVHandler {
  static void* operator new(size_t size, const std::nothrow_t&) noexcept {
   return ++allocation == failAt ? nullptr : ::operator new(size, std::nothrow);
@@ -70,7 +72,7 @@ struct WebSocketsServer {
 };
 template<class T, class... A> std::unique_ptr<T> makeUniqueNoThrow(A&&... args) {
  if (++allocation == failAt) return nullptr;
- return std::make_unique<T>(std::forward<A>(args)...);
+ return std::unique_ptr<T>(new(std::nothrow) T(std::forward<A>(args)...));
 }
 using Buffer=std::unique_ptr<unsigned char[]>;
 Buffer makeWebBuffer(size_t size) {
@@ -80,11 +82,18 @@ Buffer makeWebBuffer(size_t size) {
 bool wsUploadInProgress=false, wsUploadFile=false;
 class CrossPointWebServer;
 CrossPointWebServer* wsInstance=nullptr;
-struct UploadState { static constexpr int UPLOAD_BUFFER_SIZE=4096; Buffer buffer; };
+struct UploadState {
+ static constexpr int UPLOAD_BUFFER_SIZE=4096; Buffer buffer; int bufferPos=0;
+ struct { void close() {} } file;
+};
 struct FontUploadState { static constexpr int BUFFER_SIZE=4096; Buffer buffer; };
 class CrossPointWebServer {
  public:
  bool running=false, apMode=false, udpActive=false;
+ bool memoryError=false;
+ unsigned long lastMemoryCheck=0;
+ bool checkMemoryReserve(bool) { return true; }
+ void abortFontUpload() {}
  int port=80, wsPort=81;
  std::unique_ptr<WebServer> server;
  std::unique_ptr<WebSocketsServer> wsServer;
@@ -156,6 +165,10 @@ ByteBuffer makeInternalByteBufferNoThrow(size_t size) {
  ++internalCalls;
  return internalAvailable ? std::make_unique<unsigned char[]>(size) : nullptr;
 }
+}
+namespace transferMemory {
+constexpr bool guarded=false;
+memory::ByteBuffer allocateBuffer(size_t) { assert(false); return nullptr; }
 }
 ''' + body + r'''
 int main() {

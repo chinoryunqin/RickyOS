@@ -37,8 +37,11 @@ constexpr AppEntry kAppEntries[] = {
 #endif
     {AppId::AirPage, StrId::STR_AIRPAGE_TITLE, UIIcon::AirPage, &ActivityManager::goToAirPage},
     {AppId::ReadingStats, StrId::STR_READING_STATS, UIIcon::ReadingStats, &ActivityManager::goToReadingStatsMenu},
+#ifndef RICKYOS_PRODUCT
     {AppId::Sudoku, StrId::STR_SUDOKU_TITLE, UIIcon::Sudoku, &ActivityManager::goToSudoku},
+#endif
     {AppId::Gomoku, StrId::STR_GOMOKU_TITLE, UIIcon::Gomoku, &ActivityManager::goToGomoku},
+#ifndef RICKYOS_PRODUCT
     {AppId::Sokoban, StrId::STR_SOKOBAN_TITLE, UIIcon::Sokoban, &ActivityManager::goToSokoban},
 #ifdef ENABLE_CHINESE_VERSION
     {AppId::ChineseChess, StrId::STR_CHINESE_CHESS_TITLE, UIIcon::ChineseChess, &ActivityManager::goToChineseChess},
@@ -48,8 +51,11 @@ constexpr AppEntry kAppEntries[] = {
     {AppId::UglyAvatar, StrId::STR_UGLY_AVATAR, UIIcon::Avatar, &ActivityManager::goToUglyAvatar},
     {AppId::Buddy, StrId::STR_BUDDY_TITLE, UIIcon::Buddy, &ActivityManager::goToBuddy},
     {AppId::PixelSwitch, StrId::STR_PIXEL_SWITCH_TITLE, UIIcon::PixelSwitch, &ActivityManager::goToPixelSwitch},
+#endif
     {AppId::Calculator, StrId::STR_CALCULATOR_TITLE, UIIcon::Calculator, &ActivityManager::goToCalculator},
+#ifndef RICKYOS_PRODUCT
     {AppId::Woodfish, StrId::STR_WOODFISH_TITLE, UIIcon::Woodfish, &ActivityManager::goToWoodfish},
+#endif
     {AppId::Standby, StrId::STR_STANDBY_TITLE, UIIcon::Standby, &ActivityManager::goToStandby},
 };
 
@@ -95,7 +101,7 @@ static_assert(static_cast<uint8_t>(AppId::Count) <= 32, "hiddenAppsMask supports
 static_assert(appIdsAreUnique(), "stable app IDs must not be reused");
 static_assert(visibleAppCount(0) == kAppCount, "a zero mask must show every compiled app");
 static_assert(visibleAppCount(UINT32_MAX) == 0, "a full mask must hide every compiled app");
-static_assert(visibleAppCount(appBit(AppId::Woodfish)) == kAppCount - 1, "the widened mask must hide Woodfish");
+static_assert(visibleAppCount(appBit(AppId::Gomoku)) == kAppCount - 1, "the mask must hide compiled Gomoku");
 static_assert(visibleAppCount(effectiveHiddenMask(0, false)) == kAppCount - 1,
               "OPDS must be hidden when no server is configured");
 static_assert(visibleAppCount(effectiveHiddenMask(0, true)) == kAppCount,

@@ -107,6 +107,27 @@ may run after the edge's frame. Do not simulate consumption with another
 Touch input remains independent; only arm a physical-button barrier when that
 button is actually held.
 
+Home's Back-to-Standby shortcut is owned by `ActivityManager`, before the home
+Activity's input loop. It applies to all `HomeActivity` themes, including Cover
+Grid, and to INX Recent while focus is on the tabs. All use
+`standbyShortcutEnabled`; selecting Standby directly in Apps remains independent.
+The manager requires a local logical Back press followed by release, or a
+completed touch Back gesture that publishes both edges in the same frame.
+Push/Pop/Replace cancel the old pair; activation and parent restoration seed a
+release barrier from the held state. Tab/focus actions and consumed long-press
+releases also cancel the pair. An inherited hold never blocks independent touch
+navigation, and its release cannot activate Standby. INX content Back returns to
+the tabs, and other tabs return to Recent; entering Standby requires a new gesture.
+This ownership guard does not change the SDK's button debounce interval.
+
+Run `python3 scripts/tests/test_reading_ui_regressions.py` for the production
+dispatch/transition regression cases. On ReadPico, hold the middle strip key to
+exit the crash report, then release after Home appears: it must stay on Home.
+A fresh middle-key press/release must enter Standby exactly once. Repeat on INX,
+Classic, carousel, and Cover Grid, including returning from the control center
+and disabling the shortcut. In INX content focus, the first Back returns to the
+tabs; only a subsequent gesture enters Standby.
+
 Settings enums normally cycle in place when they have two choices and open an
 `OptionPopup` when they have more. A dynamic enum marked with
 `withManagedEnumPicker()` always opens the popup and receives callbacks only
@@ -256,6 +277,65 @@ shared icon assets and other themes remain unchanged.
 > and the i18n workflow in [generated-files.md](generated-files.md).
 
 INX SDK layout compatibility and regression coverage: [INX theme compatibility](inx-theme-compatibility.md).
+
+RickyOS product main pages use category cards for Storage and the Settings
+root, with shared drawing/hit geometry in `RickyPageLayout` / `RickyPageUi`.
+Each uses the existing `ListNav` virtual viewport (six items) for button
+selection; no second gesture owner or framebuffer is introduced. Settings
+child pages remain lists with enter/back navigation. Product Library uses a
+four-book page, retains All/Reading/Unread, and moves sort/rebuild into More.
+The configurable Home phrase uses a two-line reservation and defaults when its
+bounded settings field is empty. Product cover placeholders draw real titles
+when there is no usable cover bitmap; stock placeholder art is unchanged.
+
+The RickyOS product's advertised visual chrome differs from stock INX: it uses
+native thin-line icons plus localized names in a 116 px high-DPI (86 px normal)
+bar with a gray rule, and a heavier active name instead of the stock top marker.
+The active icon expands existing ink by a bounded 2 px high-DPI (1 px normal)
+radius inside its original slot; inactive pixels stay unchanged. This adds no
+bitmap asset, heap cache, resampling buffer or change to touch bounds.
+The same reserved rectangle owns drawing and tab input in both placements.
+Library uses text/underline filters and a live heading count; Storage uses open,
+left-aligned sections with gray rules. Storage orientation comes from the full
+content rectangle, not the reduced category body, so portrait remains 2×2.
+Portrait Home has a nickname greeting, real continue/progress, two tall recent
+covers with two-line titles, split today/streak below the books, and the custom
+phrase. Its geometry budgets both title lines and progress labels before
+allocating the remaining height to covers, rather than leaving a wide-tile void.
+Continue Reading receives 60% of the available cover-height budget (capped at
+half the content width); recent covers share the remaining 40%, establishing
+the current book as the primary visual. Title/progress/gap reservations remain.
+Five localized greetings use the current profile nickname; one is selected on
+Activity entry with UTC/visit-count mixing and no immediate repeat. Redraws and
+cover generation retain it; returning from profile editing updates the nickname
+without choosing a new greeting. There is no refresh timer or network request.
+The existing bounded greeting buffer is reused; no greeting heap is added.
+Home multiline labels and title-only cover fallbacks use SDK `layoutText`'s
+fixed-capacity UTF-8 character splitting and emit single-line runs to the native
+target. This avoids the native renderer's no-space-word truncation and its
+temporary wrap vectors, and agrees with the SDK measurement used for height.
+Product covers use centered, aspect-preserving downscaling instead of crop-fill.
+Both rows share one thumbnail cache height, so drawing differently-sized cards
+does not repeatedly invalidate the existing bounded cover caches. Stock cover
+rendering and all retained recent-book pagination remain unchanged.
+No layout-only rewrite creates
+reading statistics or chapter metadata; missing values are not made up.
+Product main pages omit decorative help copy: Home has no phrase caption,
+Library has no books/folders footer, and Storage has no intro or category
+descriptions. Their layout reservations are removed too; the editable phrase,
+category names, page counters and missing-folder feedback remain functional.
+
+RickyOS fixes the product UI to its customized INX renderer. Its shared settings
+catalog omits theme, Home/Library/Apps layout and tab-position rows. Product
+loading and theme selection/reload enforce INX, Flow Home, icon Library/Apps,
+and bottom navigation. JSON loading normalizes historical values and requests
+a resave; JSON saving emits fixed compatible IDs, and legacy binary migration
+ignores the old theme field and normalizes layouts. Other preferences and
+enum IDs remain unchanged. `UITheme` owns one lifetime `InxTheme` member on the
+product path; selection/reload cannot allocate or fall back to another layout.
+Product builds omit standalone RoundedRaff, Lyra 3 Covers and Lyra Carousel
+translation units, while retaining Lyra/Base implementation inherited by INX.
+Stock builds keep the original theme picker, PSRAM capability and OOM fallback.
 
 ### Missing glyphs
 

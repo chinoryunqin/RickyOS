@@ -9,6 +9,11 @@
 #include "RecentBooksStore.h"
 #include "activities/Activity.h"
 
+#ifdef RICKYOS_PRODUCT
+#include "Memory.h"
+#include "components/RickyHomeUi.h"
+#endif
+
 #if defined(BOARD_HAS_PSRAM) && !defined(SIMULATOR) && !defined(CROSSPOINT_EMULATED)
 #include <cstddef>
 
@@ -47,6 +52,9 @@ class InxRecentActivity final : public Activity {
 #endif
   int selected = 0;
   int thumbnailHeight = 0;
+#ifdef RICKYOS_PRODUCT
+  std::unique_ptr<RickyHomeUi> rickyHome;
+#endif
 
   InxRecentLayout layout() const;
   Rect contentRect() const;

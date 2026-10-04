@@ -13,6 +13,10 @@ I18n& I18n::getInstance() {
 }
 
 const char* I18n::get(StrId id) const {
+#ifdef CROSSPOINT_PRODUCT_NAME
+  // Product names are not translated; all callers still use the i18n key.
+  if (id == StrId::STR_CROSSPOINT) return CROSSPOINT_PRODUCT_NAME;
+#endif
   const auto index = static_cast<size_t>(id);
   if (index >= static_cast<size_t>(StrId::_COUNT)) {
     return "???";

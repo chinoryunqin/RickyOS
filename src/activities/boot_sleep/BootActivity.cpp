@@ -11,6 +11,10 @@
 #include "SdCardFontSystem.h"
 #include "components/FontPreloadView.h"
 #include "components/UITheme.h"
+#ifdef RICKYOS_PRODUCT
+#include "components/RickyBrandMark.h"
+#include "util/TaskWatchdog.h"
+#endif
 #include "fontIds.h"
 
 void BootActivity::onEnter() {
@@ -25,6 +29,20 @@ void BootActivity::onEnter() {
 }
 
 void BootActivity::renderSplash() {
+#ifdef RICKYOS_PRODUCT
+  // Dwell begins after each frame is visible. Cold splash only; normal wake and
+  // PostOta retain their separate lifecycle. No video loop or fake percentage.
+  for (uint8_t phase = 0; phase < RickyBrandMark::bootHoldMs.size(); ++phase) {
+    GUI.drawRickyPowerScreen(renderer, false, false, CROSSPOINT_VERSION, phase);
+    renderer.displayBuffer(phase == 0 ? HalDisplay::FULL_REFRESH : HalDisplay::HALF_REFRESH);
+    const unsigned shownAt = millis();
+    while (millis() - shownAt < RickyBrandMark::bootHoldMs[phase]) {
+      resetTaskWatchdogIfSubscribed();
+      delay(25);
+    }
+  }
+  return;
+#endif
   GUI.drawSplash(renderer, tr(STR_BOOTING), CROSSPOINT_VERSION);
 #if FREEINK_DEVICE_EEGO_A4
   // A4: the panel is being powered on for the first time here, and a FAST

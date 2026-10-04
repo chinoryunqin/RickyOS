@@ -36,6 +36,10 @@ enum class SettingAction {
   Plugins,
   KeyboardLayouts,
   HomeButton,
+#ifdef RICKYOS_PRODUCT
+  RickyProfile,
+  RickyHomePhrase,
+#endif
 };
 
 struct SettingInfo {
@@ -213,6 +217,18 @@ class SettingsActivity final : public UiTabListActivity {
   std::vector<SettingInfo> readerSettings;
   std::vector<SettingInfo> controlsSettings;
   std::vector<SettingInfo> systemSettings;
+#ifdef RICKYOS_PRODUCT
+  bool categoryRoot_ = true;
+  freeink::ui::ListNav categoryNav_;
+  void openRickyCategory(int index);
+  void backToRickyCategories();
+  // Move existing entries into these on rebuild; never clone the settings.
+  std::vector<SettingInfo> sleepSettings;
+  std::vector<SettingInfo> connectionSettings;
+  std::vector<SettingInfo> fontSettings;
+  void reorganizeRickySettings();
+  static const char* rickySettingDescription(const SettingInfo& setting);
+#endif
   const std::vector<SettingInfo>* currentSettings = nullptr;
 
   bool preserveQuickResumeTimeoutOn = false;
@@ -233,9 +249,19 @@ class SettingsActivity final : public UiTabListActivity {
   void rebuildRowItems();
   void rebuildAccordionRows();
 
+#ifdef RICKYOS_PRODUCT
+  static constexpr int categoryCount = 6;
+  static constexpr StrId categoryNames[categoryCount] = {StrId::STR_RICKY_CAT_DISPLAY,    StrId::STR_RICKY_CAT_READER,
+                                                         StrId::STR_RICKY_CAT_CONNECTION, StrId::STR_RICKY_CAT_FONTS,
+                                                         StrId::STR_RICKY_CAT_SLEEP,      StrId::STR_RICKY_CAT_SYSTEM};
+  static constexpr StrId categoryDescriptions[categoryCount] = {
+      StrId::STR_RICKY_DESC_DISPLAY,      StrId::STR_RICKY_DESC_READER, StrId::STR_RICKY_DESC_CONNECTION,
+      StrId::STR_RICKY_FONT_IMPORT_TYPES, StrId::STR_RICKY_DESC_SLEEP,  StrId::STR_RICKY_DESC_SYSTEM};
+#else
   static constexpr int categoryCount = 4;
   static constexpr StrId categoryNames[categoryCount] = {StrId::STR_CAT_DISPLAY, StrId::STR_CAT_READER,
                                                          StrId::STR_CAT_CONTROLS, StrId::STR_CAT_SYSTEM};
+#endif
 
   // --- UiTabListActivity contract ---
   int listCount() const override;
@@ -279,7 +305,19 @@ class SettingsActivity final : public UiTabListActivity {
   void onEnter() override;
   void onExit() override;
   void render(RenderLock&&) override;
-  MainTab mainTab() const override { return MainTab::Settings; }
-  bool mainTabBackReturnsToTabs() const override { return !usesAccordion() || expandedCategories == 0; }
+  MainTab mainTab() const override {
+#ifdef RICKYOS_PRODUCT
+    return categoryRoot_ ? MainTab::Settings : MainTab::None;
+#else
+    return MainTab::Settings;
+#endif
+  }
+  bool mainTabBackReturnsToTabs() const override {
+#ifdef RICKYOS_PRODUCT
+    return categoryRoot_;
+#else
+    return !usesAccordion() || expandedCategories == 0;
+#endif
+  }
   void selectMainTabContentEdge(MainTabContentEdge edge) override;
 };

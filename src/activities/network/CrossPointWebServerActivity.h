@@ -14,6 +14,7 @@ enum class WebServerActivityState {
   WIFI_SELECTION,  // WifiSelectionActivity is active
   AP_STARTING,     // Starting Access Point mode
   SERVER_RUNNING,  // Web server is running and handling requests
+  MEMORY_ERROR,    // Controlled stop, no panic/reboot on low internal RAM
   SHUTTING_DOWN    // Shutting down server and WiFi
 };
 
@@ -66,6 +67,7 @@ class CrossPointWebServerActivity final : public Activity {
   void onWifiSelectionComplete(bool connected);
   void startAccessPoint();
   void startWebServer();
+  void showMemoryError();
 
  public:
   explicit CrossPointWebServerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,

@@ -541,14 +541,27 @@ void SleepActivity::onEnter() {
     return renderTransparentCustomSleepScreen();
   }
 
-  // Show popup with reader orientation only when going to sleep from reader
-  if (APP_STATE.lastSleepFromReader) {
-    ReaderUtils::applyOrientation(renderer, SETTINGS.orientation);
-    GUI.drawPopup(renderer, tr(STR_ENTERING_SLEEP));
-    renderer.setOrientation(GfxRenderer::Orientation::Portrait);
-  } else {
-    GUI.drawPopup(renderer, tr(STR_ENTERING_SLEEP));
-  }
+#ifdef RICKYOS_PRODUCT
+  const bool defaultScene = SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::LIGHT ||
+                            SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::DARK;
+  if (defaultScene) {
+    // Automatic timeout needs only the retained final frame. Manual power-off
+    // gets one closing pose; quick resume/custom/cover/transparent stay intact.
+    if (!fromTimeout) {
+      GUI.drawRickyPowerScreen(renderer, true, true);
+      if (SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::DARK) renderer.invertScreen();
+      renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+    }
+  } else
+#endif
+    // Show popup with reader orientation only when going to sleep from reader
+    if (APP_STATE.lastSleepFromReader) {
+      ReaderUtils::applyOrientation(renderer, SETTINGS.orientation);
+      GUI.drawPopup(renderer, tr(STR_ENTERING_SLEEP));
+      renderer.setOrientation(GfxRenderer::Orientation::Portrait);
+    } else {
+      GUI.drawPopup(renderer, tr(STR_ENTERING_SLEEP));
+    }
 
   switch (SETTINGS.sleepScreen) {
     case (CrossPointSettings::SLEEP_SCREEN_MODE::BLANK):
@@ -620,7 +633,11 @@ void SleepActivity::renderCustomSleepScreen() const {
 // sequence, used once for the sleep image. It never runs the multi-flash GC
 // waveform (0xF7) that FULL_REFRESH selects (#2471's blinking complaint).
 void SleepActivity::renderDefaultSleepScreen() const {
+#ifdef RICKYOS_PRODUCT
+  GUI.drawRickyPowerScreen(renderer, true, false);
+#else
   GUI.drawSplash(renderer, tr(STR_SLEEPING));
+#endif
 
   // Make sleep screen dark unless light is selected in settings
   if (SETTINGS.sleepScreen != CrossPointSettings::SLEEP_SCREEN_MODE::LIGHT) {

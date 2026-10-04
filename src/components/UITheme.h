@@ -7,6 +7,9 @@
 
 #include "CrossPointSettings.h"
 #include "components/themes/BaseTheme.h"
+#ifdef RICKYOS_PRODUCT
+#include "components/themes/inx/InxTheme.h"
+#endif
 
 class CoverGridHomeUi;
 
@@ -48,11 +51,19 @@ class UITheme {
   static int getProgressBarHeight();
 
  private:
+#ifdef RICKYOS_PRODUCT
+  // One lifetime-owned product theme: no heap churn or Classic fallback on reload.
+  InxTheme fixedTheme;
+  const ThemeMetrics* currentMetrics = &InxMetrics::values;
+  BaseTheme* currentTheme = &fixedTheme;
+  CrossPointSettings::UI_THEME currentType = CrossPointSettings::UI_THEME::INX;
+#else
   BaseTheme fallbackTheme;
   const ThemeMetrics* currentMetrics = &BaseMetrics::values;
   std::unique_ptr<BaseTheme> ownedTheme;
   BaseTheme* currentTheme = &fallbackTheme;
   CrossPointSettings::UI_THEME currentType = CrossPointSettings::UI_THEME::CLASSIC;
+#endif
   mutable ThemeMetrics adjustedMetrics;
   mutable bool metricsValid = false;
   mutable bool metricsForButtonHints = false;

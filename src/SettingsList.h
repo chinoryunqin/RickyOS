@@ -185,6 +185,7 @@ inline std::vector<StrId> buildLongPressMenuValues() {
   return {VALUES, VALUES + count};
 }
 
+#ifndef RICKYOS_PRODUCT
 inline std::vector<StrId> homeThemeValues() {
   static constexpr StrId VALUES[] = {StrId::STR_THEME_CLASSIC,       StrId::STR_THEME_LYRA,
                                      StrId::STR_THEME_LYRA_EXTENDED, StrId::STR_THEME_ROUNDEDRAFF,
@@ -193,6 +194,7 @@ inline std::vector<StrId> homeThemeValues() {
   const size_t count = UITheme::supportsCoverGrid() ? std::size(VALUES) : std::size(VALUES) - 1;
   return {VALUES, VALUES + count};
 }
+#endif
 
 // Shared settings list used by both the device settings UI and the web settings API.
 // Each entry has a key (for JSON API) and category (for grouping).
@@ -237,6 +239,7 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
                           {StrId::STR_PAGES_1, StrId::STR_PAGES_5, StrId::STR_PAGES_10, StrId::STR_PAGES_15,
                            StrId::STR_PAGES_30, StrId::STR_NEVER},
                           "refreshFrequency", StrId::STR_CAT_DISPLAY),
+#ifndef RICKYOS_PRODUCT
         SettingInfo::Enum(StrId::STR_UI_THEME, &CrossPointSettings::uiTheme, homeThemeValues(), "uiTheme",
                           StrId::STR_CAT_DISPLAY),
         SettingInfo::Enum(StrId::STR_INX_RECENT_LAYOUT, &CrossPointSettings::inxRecentLayout,
@@ -250,6 +253,7 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
                           {StrId::STR_LAYOUT_ICONS, StrId::STR_LAYOUT_LIST}, "inxAppsLayout", StrId::STR_CAT_DISPLAY),
         SettingInfo::Enum(StrId::STR_INX_TAB_POSITION, &CrossPointSettings::inxTabPosition,
                           {StrId::STR_TOP, StrId::STR_BOTTOM}, "inxTabPosition", StrId::STR_CAT_DISPLAY),
+#endif
         SettingInfo::Toggle(StrId::STR_SUNLIGHT_FADING_FIX, &CrossPointSettings::fadingFix, "fadingFix",
                             StrId::STR_CAT_DISPLAY),
         SettingInfo::Toggle(StrId::STR_SHOW_BUTTON_HINTS, &CrossPointSettings::showButtonHints, "showButtonHints",

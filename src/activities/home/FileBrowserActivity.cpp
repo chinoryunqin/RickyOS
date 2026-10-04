@@ -95,17 +95,25 @@ void FileBrowserActivity::loadFiles() {
       std::string_view filename{fileNameBuffer.get()};
       switch (mode) {
         case Mode::Books:
+#ifdef RICKYOS_PRODUCT
+          files.emplace_back(filename);
+#else
           if (FsHelpers::hasEpubExtension(filename) || FsHelpers::hasXtcExtension(filename) ||
               FsHelpers::hasTxtExtension(filename) || FsHelpers::hasMarkdownExtension(filename) ||
               FsHelpers::hasBmpExtension(filename) || FsHelpers::hasPngExtension(filename)) {
             files.emplace_back(filename);
           }
+#endif
           break;
         case Mode::PickFirmware:
           if (FsHelpers::checkFileExtension(filename, ".bin")) files.emplace_back(filename);
           break;
         case Mode::PickPng:
           if (FsHelpers::hasPngExtension(filename)) files.emplace_back(filename);
+          break;
+        case Mode::PickAvatar:
+          if (FsHelpers::hasPngExtension(filename) || FsHelpers::hasBmpExtension(filename) ||
+              FsHelpers::hasJpgExtension(filename)) files.emplace_back(filename);
           break;
       }
     }
@@ -588,7 +596,7 @@ void FileBrowserActivity::activateIndex(const int index) {
 void FileBrowserActivity::onRowLongPress(const int index) {
   (void)index;  // base already synced nav.selected to the pressed row
   app.clearTapFlash();
-  if (mode != Mode::Books && !UITheme::getInstance().hasMainTabs()) {
+  if (mode != Mode::Books) {
     activateSelected();
   } else {
     showEditMenu();
@@ -636,6 +644,14 @@ void FileBrowserActivity::activateSelected() {
   } else {
     const std::string fullPath = basepath + entry;
     lock.unlock();
+#ifdef RICKYOS_PRODUCT
+    if (!FsHelpers::hasEpubExtension(fullPath) && !FsHelpers::hasXtcExtension(fullPath) &&
+        !FsHelpers::hasTxtExtension(fullPath) && !FsHelpers::hasMarkdownExtension(fullPath) &&
+        !FsHelpers::hasBmpExtension(fullPath) && !FsHelpers::hasPngExtension(fullPath)) {
+      showNotice(StrId::STR_RICKY_NO_PREVIEW);
+      return;
+    }
+#endif
     onSelectBook(fullPath);
   }
 }
@@ -719,7 +735,13 @@ bool FileBrowserActivity::handleButtons() {
         setResult(std::move(res));
         finish();
       } else {
+#ifdef RICKYOS_PRODUCT
+        // RickyOS file browsing is a child of Storage. Finish the child instead
+        // of replacing the entire activity stack with Home.
+        finish();
+#else
         onGoHome();
+#endif
       }
     }
     return true;

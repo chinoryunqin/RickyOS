@@ -1,6 +1,9 @@
-# CrossMux Development Guide
+# RickyOS Development Guide
 
-Project: CrossMux, a community fork of CrossPoint Reader for ESP32 e-ink devices.
+Project: RickyOS by Ricky AI Studio, a Read Pico product derivative of CrossMux.
+Collaboration repository: `chinoryunqin/RickyOS`; base branch: `main`.
+Product quick start and scope: [`README.md`](README.md) and
+[`docs/rickyos-collaboration.md`](docs/rickyos-collaboration.md).
 Mission: Keep reading fast and reliable while supporting lightweight apps, reading analytics, standby faces, and on-demand services within the hardware budget.
 Targets: Xteink X3/X4 share an ESP32-C3 image; ESP32-S3 targets have separate images. See [`scripts/nightly_targets.py`](scripts/nightly_targets.py) for release targets and channels.
 
@@ -45,7 +48,7 @@ full reasoning, examples, and edge cases.
 9. **Free in `onExit()` what you alloc in `onEnter()`.** `vTaskDelete()` tasks before activity destruction; activities are heap-allocated and deleted on exit. → [architecture-and-patterns.md](docs/engineering/architecture-and-patterns.md)
 10. **Bump the cache format version BEFORE changing a binary layout** (`book.bin`, `section.bin`); document it in `docs/file-formats.md`. → [cache-management.md](docs/engineering/cache-management.md)
 11. **Edit sources, not generated files** (`*.generated.h`, `I18n*` generated headers). → [generated-files.md](docs/engineering/generated-files.md)
-12. **Verify repo context before any git op; commit only when explicitly requested.** Unqualified PR requests target `0x1abin/crossmux:main` via `origin` without asking; an explicit user target overrides this default. Do not merge upstream during ordinary tasks. Never stage `.gitignore`d files. → [git-workflow.md](docs/engineering/git-workflow.md)
+12. **Verify repo context before any git op; commit only when explicitly requested.** In this product repository, unqualified PR requests target `chinoryunqin/RickyOS:main` via `origin`; CrossMux is read-only `upstream` unless the user explicitly asks for an upstream contribution. An explicit user target overrides this default. Do not merge upstream during ordinary tasks. Never stage `.gitignore`d files. → [git-workflow.md](docs/engineering/git-workflow.md)
 13. **One physical button gesture causes one action.** Normal Activities read the shared input snapshot; across popups and Activities, gate inherited held buttons and consume the triggering release. → [ui-and-input.md](docs/engineering/ui-and-input.md)
 14. **Adjacent interactive controls keep at least 6 px of visible space.** Their hit regions must not overlap, and drawing plus hit-testing must use the same geometry source. → [touch-and-ui.md](docs/contributing/touch-and-ui.md)
 

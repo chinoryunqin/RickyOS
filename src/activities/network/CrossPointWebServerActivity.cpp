@@ -17,6 +17,7 @@
 #include "NetworkStartup.h"
 #include "SilentRestart.h"
 #include "WifiSelectionActivity.h"
+#include "activities/RenderLock.h"
 #include "activities/network/CalibreConnectActivity.h"
 #include "components/SubpageLayout.h"
 #include "components/UITheme.h"
@@ -79,6 +80,7 @@ void CrossPointWebServerActivity::onEnter() {
   // demand — release them up front instead of aborting in startWebServer()
   // when the heap comes up short (observed on X3 with a Korean SD font).
   if (auto* fcm = renderer.getFontCacheManager()) {
+    RenderLock lock;
     fcm->releaseSdFontCaches();
     LOG_DBG("WEBACT", "Free heap after SD font cache release: %d bytes", ESP.getFreeHeap());
   }
@@ -304,6 +306,7 @@ void CrossPointWebServerActivity::startWebServer() {
   // Repeat the release right before the allocation: the WiFi selection screen
   // rendered since onEnter(), and a CJK SSID repopulates the SD-font caches.
   if (auto* fcm = renderer.getFontCacheManager()) {
+    RenderLock lock;
     LOG_DBG("WEBACT", "Free heap before SD font cache release: %d bytes", ESP.getFreeHeap());
     fcm->releaseSdFontCaches();
     LOG_DBG("WEBACT", "Free heap before server alloc: %d bytes", ESP.getFreeHeap());
@@ -313,7 +316,11 @@ void CrossPointWebServerActivity::startWebServer() {
   webServer = makeUniqueNoThrow<CrossPointWebServer>();
   if (!webServer) {
     LOG_ERR("WEBACT", "OOM: CrossPointWebServer (%u bytes)", static_cast<unsigned>(sizeof(CrossPointWebServer)));
-    onGoHome();
+    if constexpr (transferMemory::guarded) {
+      showMemoryError();
+    } else {
+      onGoHome();
+    }
     return;
   }
   // An upload holds loop() inside handleClient(), so input is sampled on each received chunk instead. On a slow
@@ -347,13 +354,39 @@ void CrossPointWebServerActivity::startWebServer() {
     requestUpdate();
   } else {
     LOG_ERR("WEBACT", "ERROR: Failed to start web server!");
+    if (transferMemory::guarded && webServer->hasMemoryError()) {
+      showMemoryError();
+      return;
+    }
     webServer.reset();
     // Go back on error
     onGoHome();
   }
 }
 
+void CrossPointWebServerActivity::showMemoryError() {
+  state = WebServerActivityState::MEMORY_ERROR;
+  if (webServer) webServer->stop();
+  stopDnsServer();
+  MDNS.end();
+  // Release Wi-Fi's internal allocations before drawing the explanation. These
+  // APIs do not erase saved credentials. Exit later follows the normal lifecycle.
+  if (isApMode) WiFi.softAPdisconnect(true);
+  WiFi.disconnect(true);
+  transferMemory::logSnapshot("after memory stop");
+  requestUpdate();
+}
+
 void CrossPointWebServerActivity::loop() {
+  if (state == WebServerActivityState::MEMORY_ERROR) {
+    int x = 0;
+    int y = 0;
+    if (mappedInput.wasReleased(MappedInputManager::Button::Back) || mappedInput.wasHomeGesture() ||
+        mappedInput.wasScreenTapped(x, y)) {
+      onGoHome();
+    }
+    return;
+  }
   // Handle different states
   if (state == WebServerActivityState::SERVER_RUNNING) {
     // Handle DNS requests for captive portal (AP mode only)
@@ -427,6 +460,10 @@ void CrossPointWebServerActivity::loop() {
           onGoHome();
           return;
         }
+        if (transferMemory::guarded && webServer->hasMemoryError()) {
+          showMemoryError();
+          return;
+        }
         // Reset watchdog every 32 iterations
         if ((i & 0x1F) == 0x1F) {
           resetTaskWatchdogIfSubscribed();
@@ -461,6 +498,20 @@ const char* CrossPointWebServerActivity::headerTitle() const {
 }
 
 void CrossPointWebServerActivity::render(RenderLock&&) {
+  if (state == WebServerActivityState::MEMORY_ERROR) {
+    renderer.clearScreen();
+    const auto& metrics = UITheme::getInstance().getMetrics();
+    const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
+    GUI.drawHeader(renderer, Rect{safe.x, safe.y + metrics.topPadding, safe.width, metrics.headerHeight},
+                   tr(STR_FILE_TRANSFER), nullptr);
+    const Rect content = SubpageLayout::contentRect(safe, metrics);
+    const Rect text = SubpageLayout::insetHorizontal(content, metrics.contentSidePadding);
+    UITheme::drawCenteredWrappedText(renderer, text, UI_12_FONT_ID, tr(STR_TRANSFER_LOW_MEMORY), 5);
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    renderer.displayBuffer();
+    return;
+  }
   if (!UITheme::getInstance().hasMainTabs()) {
     // Only render our own UI when server is running
     // Subactivities handle their own rendering

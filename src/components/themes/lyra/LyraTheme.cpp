@@ -110,36 +110,38 @@ const uint8_t* LyraTheme::iconForName(UIIcon icon, int size) {
         return BlocksIcon;
       case UIIcon::Apps:
         return AppsIcon;
+      case UIIcon::Gomoku:
+        return GomokuIcon;
+#ifndef RICKYOS_PRODUCT
       case UIIcon::Sudoku:
         return SudokuIcon;
       case UIIcon::Sokoban:
         return SokobanIcon;
-      case UIIcon::Gomoku:
-        return GomokuIcon;
 #ifdef ENABLE_CHINESE_VERSION
       case UIIcon::ChineseChess:
         return ChineseChessIcon;
+#endif
+      case UIIcon::Minesweeper:
+        return MinesweeperIcon;
+      case UIIcon::Game2048:
+        return Game2048Icon;
+      case UIIcon::Avatar:
+        return AvatarIcon;
+      case UIIcon::Buddy:
+        return BuddyIcon;
+      case UIIcon::PixelSwitch:
+        return PixelSwitchIcon;
+      case UIIcon::Woodfish:
+        return WoodfishIcon;
 #endif
 #ifdef ENABLE_CHINESE_VERSION
       case UIIcon::WeRead:
         return WeReadIcon;
 #endif
-      case UIIcon::Minesweeper:
-        return MinesweeperIcon;
-      case UIIcon::Avatar:
-        return AvatarIcon;
       case UIIcon::Standby:
         return StandbyIcon;
-      case UIIcon::Game2048:
-        return Game2048Icon;
-      case UIIcon::Buddy:
-        return BuddyIcon;
-      case UIIcon::PixelSwitch:
-        return PixelSwitchIcon;
       case UIIcon::Calculator:
         return CalculatorIcon;
-      case UIIcon::Woodfish:
-        return WoodfishIcon;
       default:
         return nullptr;
     }

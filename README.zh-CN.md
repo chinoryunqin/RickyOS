@@ -1,4 +1,11 @@
-# CrossMux
+# RickyOS — 上游中文参考
+
+本仓库是 Ricky AI Studio 的 RickyOS 协作项目，针对 Read Pico。
+产品功能、构建/预览步骤和当前限制请先阅读 [主 README](README.md)
+及 [协作说明](docs/rickyos-collaboration.md)。下文保留上游 CrossMux 的
+中文资料，发布渠道和应用列表不代表 RickyOS 的发行范围。
+
+## CrossMux
 
 [English](./README.md) | **简体中文**
 

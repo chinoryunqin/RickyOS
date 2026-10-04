@@ -10,6 +10,11 @@
 #include "RecentBooksStore.h"
 #include "activities/UiTabListActivity.h"
 #include "components/OptionPopup.h"
+#ifdef RICKYOS_PRODUCT
+#include <array>
+
+#include "components/media/cover-grid.h"
+#endif
 
 // One Library screen: every indexed book on the card shown by recency, title,
 // or author. The Recent shelf orders by file modification time (when a book
@@ -35,6 +40,13 @@ class LibraryListActivity final : public UiTabListActivity {
 
   void onEnter() override;
   void onExit() override;
+#ifdef RICKYOS_PRODUCT
+  MainTab mainTab() const override { return MainTab::Library; }
+  void selectMainTabContentEdge(MainTabContentEdge edge) override {
+    activeNav().requestSelection(MainTabs::contentEdgeIndex(edge, listCount()) + 1);
+  }
+  bool mainTabBackReturnsToTabs() const override { return query.empty(); }
+#endif
 
  protected:
   // --- UiListActivity / UiTabListActivity contract ---------------------------
@@ -189,4 +201,19 @@ class LibraryListActivity final : public UiTabListActivity {
   // Row options modal (Recent long-press menu); owned here so it outlives the
   // touch event that opened it.
   OptionPopup optionPopup;
+#ifdef RICKYOS_PRODUCT
+  static constexpr int SHELF_CAPACITY = 4;
+  static constexpr freeink::ui::ActionId ACTION_READING_FILTER = ACTION_BACK + 1;
+  static constexpr freeink::ui::ActionId ACTION_SHELF_OPTIONS = ACTION_READING_FILTER + 1;
+  uint8_t readingFilter = 0;
+  int shelfStart = -1;
+  int shelfHeight = 0;
+  int shelfCount = 0;
+  std::array<std::string, SHELF_CAPACITY> shelfTitles{}, shelfPaths{}, shelfCovers{};
+  std::array<std::array<char, 56>, SHELF_CAPACITY> shelfDetails{};
+  std::array<freeink::ui::CoverGridItem, SHELF_CAPACITY> shelfItems{};
+  freeink::ui::CoverGridProps shelfGrid{};
+  void buildRickyShelf(UiScreen& screen);
+  bool entryPath(int entry, std::string& path);
+#endif
 };

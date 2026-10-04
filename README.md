@@ -1,4 +1,58 @@
-# CrossMux
+# RickyOS
+
+由 **Ricky AI Studio** 为 MindReset Read Pico（小纸 Pico）打造的阅读与生活工具固件。
+基于 [CrossMux](https://github.com/0x1abin/crossmux) 二次开发，保留上游历史、MIT
+许可证和各第三方组件的许可。本仓库是未公开发布的协作开发仓库，不是上游官方固件。
+
+当前版本：`1.6.5-rickyos-pico.11-dev`；设备：ESP32-S3 / 16 MB Flash，
+684 × 1216 竖屏。RickyOS 品牌界面仅由产品环境启用；其他上游环境仍保留。
+
+- 首页：昵称问候、继续阅读、最近书籍、阅读统计、自定义短句和头像。
+- 书库：全部 / 在读 / 未读；存储单独管理文件与字体。
+- 固定主题与主页面布局，选中导航图标加粗，统一点入/返回的设置交互。
+- 专属人物与狗狗 logo、开机过渡和待机品牌画面。
+- 保留五子棋及阅读/生活工具；移除九款已确认不要的小游戏和趣味应用。
+- macOS 浏览器预览直接显示原生模拟器帧缓冲，不另造一套网页 UI。
+
+设备内置中文拼音输入尚未实现。字体管理内存、墨水屏残影/刷新、功耗和长期稳定性
+需要实机验收；当前固件未达到公开发布的应用分区余量门槛。不要作为正式发行版发布。
+
+## 协作快速开始
+
+```sh
+git clone --recurse-submodules https://github.com/chinoryunqin/RickyOS.git
+cd RickyOS
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install pioarduino==6.2.0
+pio run -e rickyos_readpico
+```
+
+已有克隆使用 `git submodule update --init --recursive` 获取固定版本的 SDK。
+默认环境是上游 C3，不要直接运行不带 `-e` 的构建/上传命令来操作 Read Pico。
+
+macOS 原生预览需要 Xcode Command Line Tools、SDL2、curl/pkg-config 开发依赖
+（可通过 `brew install sdl2 curl pkg-config` 安装）：
+
+```sh
+pio run -e simulator_rickyos
+python tools/rickyos-browser/server.py --open
+```
+
+打开 http://127.0.0.1:8765/。详见 [浏览器预览说明](tools/rickyos-browser/README.md)。
+测试：`python -m unittest discover -s scripts/tests -v`。
+字体和品牌资源生成另需开发依赖；普通构建使用已提交资源，不必重新生成。
+
+提交请使用功能分支并通过 Pull Request 合入 `main`。先阅读 [AGENTS.md](AGENTS.md)，
+再看 [RickyOS 协作与验证](docs/rickyos-collaboration.md)。不要上传设备备份、账号资料、
+私人书籍、`.env`、本机日志或编译产物。实机刷写必须按设备身份、完整备份、分区与
+镜像检查流程单独授权；本仓库没有包含绑定原作者设备的私有安装脚本。
+
+## 上游 CrossMux 说明
+
+下面保留上游参考内容；其发布链接、设备范围和应用列表并不等于 RickyOS 发行范围。
+
+### CrossMux
 
 **English** | [简体中文](./README.zh-CN.md)
 

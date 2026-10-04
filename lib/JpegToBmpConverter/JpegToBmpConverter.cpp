@@ -646,7 +646,12 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(HalFile& jpegFile, Print& b
   // of allocating 32 KB just to produce a 112x164 shelf cover.
   const int scaleOption =
       progressiveDecode ? JPEG_SCALE_EIGHTH : chooseJpegScale(srcWidth, srcHeight, outWidth, outHeight);
-  const int scaleDenominator = scaleOption == 0 ? 1 : scaleOption;
+  // Decoder flags are not necessarily numeric denominators (the host shim
+  // uses 1/2/4 flags, while the device library uses 2/4/8).
+  const int scaleDenominator = scaleOption == JPEG_SCALE_EIGHTH    ? 8
+                               : scaleOption == JPEG_SCALE_QUARTER ? 4
+                               : scaleOption == JPEG_SCALE_HALF    ? 2
+                                                                   : 1;
   const int scaleSrcWidth = (srcWidth + scaleDenominator - 1) / scaleDenominator;
   const int scaleSrcHeight = (srcHeight + scaleDenominator - 1) / scaleDenominator;
   LOG_DBG("JPG", "JPEG decoder scale: 1/%d (%dx%d -> %dx%d), output=%dx%d", scaleDenominator, srcWidth, srcHeight,

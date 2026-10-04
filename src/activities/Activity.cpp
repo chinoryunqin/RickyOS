@@ -60,11 +60,16 @@ MainTabLayout Activity::mainTabLayout() const {
     safe.width = std::max(0, safeRight - safe.x);
     safe.height = std::max(0, safeBottom - safe.y);
   }
+#ifdef RICKYOS_PRODUCT
+  return MainTabs::layout(safe, metrics.topPadding, MainTabs::bottomBarHeight, tabsAtBottom,
+                          showStatus ? MainTabs::statusBarHeight : 0);
+#else
   return MainTabs::layout(safe, metrics.topPadding,
                           tabsAtBottom                ? MainTabs::bottomBarHeight
                           : UiHighDpiProfile::enabled ? UiHighDpiProfile::navigationHeight
                                                       : metrics.headerHeight,
                           tabsAtBottom, showStatus ? MainTabs::statusBarHeight : 0);
+#endif
 }
 
 Rect Activity::pageContentRect() const {

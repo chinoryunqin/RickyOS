@@ -16,6 +16,10 @@
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
 #include "components/HeaderBackTapTarget.h"
+#ifdef RICKYOS_PRODUCT
+#include "components/RickyBrandMark.h"
+#include "components/RickyPowerLayout.h"
+#endif
 #include "components/UIScale.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
@@ -41,6 +45,10 @@ void BaseTheme::drawSplash(const GfxRenderer& renderer, const char* status, cons
   const int pageWidth = renderer.getScreenWidth();
   const int pageHeight = renderer.getScreenHeight();
   renderer.clearScreen();
+#ifdef RICKYOS_PRODUCT
+  drawRickyPowerScreen(renderer, false, false, version);
+  return;
+#endif
   if (UiHighDpiProfile::enabled) {
     const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer);
     const int titleHeight = renderer.getLineHeight(UI_12_FONT_ID);
@@ -66,6 +74,35 @@ void BaseTheme::drawSplash(const GfxRenderer& renderer, const char* status, cons
   renderer.drawCenteredText(SMALL_FONT_ID, pageHeight / 2 + 95, status);
   if (version) renderer.drawCenteredText(SMALL_FONT_ID, pageHeight - 30, version);
 }
+
+#ifdef RICKYOS_PRODUCT
+void BaseTheme::drawRickyPowerScreen(const GfxRenderer& renderer, const bool sleeping, const bool transition,
+                                     const char* version, const uint8_t reveal) {
+  renderer.clearScreen();
+  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer);
+  const GfxRenderer::ClipScope clip(renderer, safe.x, safe.y, safe.width, safe.height);
+  const auto layout = RickyPowerLayout::fit(safe, renderer.getLineHeight(UI_10_FONT_ID), UiHighDpiProfile::controlGap);
+  const uint8_t phase = sleeping ? 3 : std::min<uint8_t>(reveal, 3);
+  RickyBrandMark::draw(renderer, layout.mark, phase);
+  // A powered-down display must not imply that a clock keeps updating.
+  if (sleeping && layout.mark.y - safe.y > renderer.getLineHeight(UI_10_FONT_ID) * 3) {
+    Rect eyebrow{safe.x, safe.y + (layout.mark.y - safe.y) / 3, safe.width, renderer.getLineHeight(UI_10_FONT_ID)};
+    UITheme::drawCenteredWrappedText(renderer, eyebrow, UI_10_FONT_ID, tr(STR_RICKY_REST), 1);
+    const int inset = std::max(12, safe.width / 12);
+    const int lineY = eyebrow.y + eyebrow.height + UiHighDpiProfile::controlGap;
+    renderer.drawLine(safe.x + inset, lineY, safe.x + safe.width - inset - 1, lineY, 1, true);
+  }
+  const char* message = sleeping ? (transition ? tr(STR_ENTERING_SLEEP) : tr(STR_RICKY_BRAND_TAGLINE))
+                                 : (phase < 3 ? tr(STR_BOOTING) : tr(STR_RICKY_BRAND_TAGLINE));
+  UITheme::drawCenteredWrappedText(renderer, layout.message, UI_10_FONT_ID, message, 2);
+  const int separatorWidth = std::min(safe.width / 4, 120);
+  const int separatorY = layout.footer.y - std::max(6, UiHighDpiProfile::controlGap);
+  renderer.drawLine(safe.x + (safe.width - separatorWidth) / 2, separatorY, safe.x + (safe.width + separatorWidth) / 2,
+                    separatorY, 1, true);
+  const char* footer = sleeping ? tr(STR_RICKY_POWER_WAKE_HINT) : version;
+  if (footer) UITheme::drawCenteredWrappedText(renderer, layout.footer, UI_10_FONT_ID, footer, 2);
+}
+#endif
 
 void BaseTheme::setCheckboxRow(freeink::ui::ListItem& item, const bool checked) {
   item.toggle = true;

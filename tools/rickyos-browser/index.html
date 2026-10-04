@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="ricky-token" content="__TOKEN__">
+  <title>RickyOS · 浏览器预览</title>
+  <link rel="stylesheet" href="/style.css">
+  <script defer src="/app.js"></script>
+</head>
+<body>
+  <header class="masthead"><div><strong>RickyOS</strong><span class="divider">/</span><span>浏览器预览</span></div><span class="local">仅本机 · 不连接设备</span></header>
+  <main>
+    <aside>
+      <p class="eyebrow">LIVE FIRMWARE</p>
+      <h1>先看效果，<br>再上实机。</h1>
+      <p class="intro">当前画面来自 RickyOS 固件模拟器。直接点击屏幕，或按住拖动来滑动。</p>
+      <div class="status-panel"><span id="status-dot"></span><span id="status" role="status" aria-live="polite">正在启动…</span><small id="activity">等待第一帧</small></div>
+      <div class="controls" aria-label="模拟设备操作">
+        <button class="primary" data-key="BACK">← 返回</button>
+        <button data-key="ENTER">确认 ↵</button>
+        <button data-key="UP">↑ 上一项</button>
+        <button data-key="DOWN">↓ 下一项</button>
+        <button data-key="LEFT">← 上一页</button>
+        <button data-key="RIGHT">下一页 →</button>
+        <button data-key="SLEEP">休眠</button>
+        <button data-key="POWER">电源 / 唤醒</button>
+      </div>
+      <div class="actions">
+        <a class="button" href="/api/screenshot" download="RickyOS-preview.png">保存原始截图 ↗</a>
+        <button id="restart">重新启动</button>
+        <button id="rebuild">更新预览 · 重新编译</button>
+      </div>
+      <p id="notice" role="status" class="notice"></p>
+      <div class="notes"><strong>独立演示 SD 卡</strong><p>书籍、头像和设置只保存在这台电脑上，不会修改设备。休眠后请按“电源 / 唤醒”。</p><strong>键盘也可以操作</strong><p>Esc 返回 · Enter 确认 · 方向键导航<br>P 电源 · S 休眠</p></div>
+    </aside>
+    <section class="preview" aria-label="RickyOS 屏幕预览">
+      <div class="preview-bar"><span id="dimensions">684 × 1216</span><button id="scale" aria-pressed="false">原始尺寸</button></div>
+      <div class="stage" id="stage">
+        <div class="device"><img id="screen" alt="RickyOS 实时屏幕，可点击或滑动" width="684" height="1216" tabindex="0" draggable="false"><div id="loading">正在启动 RickyOS…</div></div>
+      </div>
+      <div class="caption"><span id="frame-status">等待固件画面</span><span>MindReset Read Pico · 原生分辨率</span></div>
+    </section>
+  </main>
+  <footer><span>Ricky AI Studio</span><span>预览用于布局与交互。残影、功耗、联网及设备内存仍需实机验证。</span><span id="build-time"></span></footer>
+</body>
+</html>

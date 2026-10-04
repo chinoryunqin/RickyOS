@@ -2,6 +2,7 @@
 
 #include <GfxRenderer.h>
 #include <HalDisplay.h>
+#include <HalStorage.h>
 #include <I18n.h>
 #include <Logging.h>
 #include <SdCardFontCache.h>
@@ -871,6 +872,13 @@ void TextSettingsActivity::finishFinalFont(const bool accepted) {
   }
   const auto* file = fontFileForFamily(currentFamilyIndex_, SETTINGS.fontPointSize);
   const auto check = file ? SdCardFontCache::preflight(file->path.c_str()) : SdCardFontCache::Result::InvalidFont;
+#ifdef RICKYOS_PRODUCT
+  if (check == SdCardFontCache::Result::TooLarge) {
+    LOG_DBG("FSET", "Font exceeds cache capacity; keeping SD backend");
+    completeExit();
+    return;
+  }
+#endif
   if (check != SdCardFontCache::Result::Ok && check != SdCardFontCache::Result::AlreadyCached) {
     showPreloadFailure(check);
     return;

@@ -438,7 +438,13 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t inxRecentLayout = static_cast<uint8_t>(InxRecentLayout::Flow);
   uint8_t inxLibraryLayout = static_cast<uint8_t>(InxItemLayout::Icons);
   uint8_t inxAppsLayout = static_cast<uint8_t>(InxItemLayout::Icons);
+#ifdef RICKYOS_PRODUCT
+  uint8_t inxTabPosition = INX_TAB_BOTTOM;
+  // Keep compatible field/enum IDs, but product loading/theme reload fixes them.
+  void enforceProductLayout();
+#else
   uint8_t inxTabPosition = BoardConfig::hasTouch() ? INX_TAB_BOTTOM : INX_TAB_TOP;
+#endif
   // Show and enable the Standby shortcut on the home screen.
   uint8_t standbyShortcutEnabled = 1;
   // Sunlight fading compensation
@@ -455,6 +461,12 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t imageScaling = IMAGE_SCALING_NEAREST;
   // SD card font family name (empty = use built-in fontFamily)
   char sdFontFamilyName[32] = "";
+#ifdef RICKYOS_PRODUCT
+  // Bounded personal profile, additive JSON keys; never changes reader caches.
+  char rickyNickname[49] = "";
+  char rickyAvatarPath[96] = "";
+  char rickyHomePhrase[97] = "";  // Empty uses the localized default; at most 96 UTF-8 bytes.
+#endif
   // Prefer the internal Flash cache for the selected SD reader font.
   uint8_t sdFontFlashPreload = 0;
   // Dictionary folder name under /dictionaries (empty = no dictionary)

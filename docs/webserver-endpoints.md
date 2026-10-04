@@ -11,6 +11,25 @@ available while CrossPoint Reader is in File Transfer or Calibre Wireless mode.
 Examples use `crosspoint.local`. If mDNS does not resolve on your network, use
 the IP address shown on the device screen.
 
+### RickyOS Read Pico memory reserve (0.4)
+
+The derivative keeps all endpoints and capacities. Its two 4096-byte upload
+buffers and 1400-byte listing buffer use PSRAM through HalMemory (9592 bytes
+total), rather than competing for internal RAM. PSRAM allocation failure does
+not fall back to scarce internal RAM. Other firmware retains normal allocation.
+
+Startup requires at least 16 KiB internal free heap and a 4 KiB contiguous
+block. After service construction and every 250 ms while handling requests,
+the reserve is 8 KiB free and a 1 KiB contiguous block. A failed check stops
+the service, closes uploads and disables Wi-Fi before showing the
+translated memory message; Back, Home gesture or a tap returns to Home.
+Saved Wi-Fi credentials are not erased. These are conservative admission
+checks, not a guarantee against every allocation inside an SDK handler.
+Transfers interrupted by a stop must be retried; ordinary HTTP files may be
+left partial (unlike font staging / WebSocket cleanup). Font replacement protection
+below still applies. Inspect NETMEM snapshots and MEM free/min/largest logs
+on hardware; simulator heap statistics are synthetic.
+
 ## HTTP Pages
 
 | Method | Path | Purpose |
@@ -328,8 +347,24 @@ curl -X POST \
   http://crosspoint.local/api/fonts/upload
 ```
 
-The handler validates the family name, `.cpfont` filename, and `CPFONT` magic
-bytes before accepting the file.
+The handler validates the family name, bounded `.cpfont` path, and `CPFONT`
+magic bytes (including prefixes split across network chunks). Uploads use the
+existing 4 KB buffer; every SD write and the final received-byte count must
+match before success is returned. This is not full glyph/table validation.
+
+Data is staged at `<filename>.upload-part`, not written over an installed font.
+Replacing a font first renames the old file to `<filename>.upload-backup`, then
+promotes the completed upload. A failed promotion attempts to restore the old
+file. Invalid or aborted uploads remove only their own temporary file. Existing
+unresolved temporary/backup files are not overwritten or deleted by a new
+request: inspect them on the SD card and recover/remove them before retrying.
+FAT renames are not a power-loss transaction. If rollback fails, the original
+remains at the backup path; preserve it for recovery.
+
+Malformed uploads return HTTP 400. SD open/write/rename failures return HTTP
+500, not a false success. Only a completed installation marks the font registry
+dirty. Reusing the same server instance releases upload buffers on `stop()`;
+startup allocation failure also cleans up partially initialized resources.
 
 Successful response:
 
@@ -706,7 +741,9 @@ started again. AP mode initialization failure returns before starting services.
 Read Pico enables WiFi/LwIP PSRAM allocation while retaining the 32 KiB internal
 reserve and 4096-byte ordinary-allocation threshold. The two 4096-byte upload
 buffers and 1400-byte listing buffer prefer PSRAM, with internal fallback on
-failure or devices without PSRAM. This does not make third-party constructors,
+failure or devices without PSRAM in stock CrossMux. RickyOS on Read Pico instead
+keeps the reserve guards described above and never falls back to internal RAM
+after a PSRAM allocation failure. This does not make third-party constructors,
 route registration, mDNS, or void-returning listener startup fully OOM-safe.
 
 Run `python3 scripts/tests/test_webserver_startup_failure.py` for injected

@@ -11,6 +11,8 @@
 #include <string>
 #include <vector>
 
+#include "TransferMemory.h"
+
 // Structure to hold file information
 struct FileInfo {
   String name;
@@ -62,6 +64,7 @@ class CrossPointWebServer {
 
   // Check if server is running
   bool isRunning() const { return running; }
+  bool hasMemoryError() const { return memoryError; }
 
   WsUploadStatus getWsUploadStatus() const;
 
@@ -77,6 +80,8 @@ class CrossPointWebServer {
   std::unique_ptr<WebSocketsServer> wsServer = nullptr;
   memory::ByteBuffer fileListBatch;
   bool running = false;
+  bool memoryError = false;
+  unsigned long lastMemoryCheck = 0;
   bool apMode = false;  // true when running in AP mode, false for STA mode
   uint16_t port = 80;
   uint16_t wsPort = 81;  // WebSocket port
@@ -84,6 +89,7 @@ class CrossPointWebServer {
   bool udpActive = false;
   std::function<bool()> uploadCancelCheck;
   bool dropUploadIfCancelled() const;
+  bool checkMemoryReserve(bool startup);
 
   // WebSocket upload state
   void onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length);
@@ -125,6 +131,9 @@ class CrossPointWebServer {
   void handleFontList() const;
   void handleFontUpload();
   void handleFontUploadData();
+  bool flushFontUploadBuffer();
+  void abortFontUpload();
+  bool commitFontUpload();
   void handleFontDelete();
 
   // Font upload state
@@ -132,8 +141,11 @@ class CrossPointWebServer {
     HalFile file;
     std::string familyName;
     std::string filePath;
+    std::string temporaryPath;
     bool valid = false;
     bool magicChecked = false;
+    bool complete = false;
+    bool storageError = false;
     size_t bytesWritten = 0;
     static constexpr size_t BUFFER_SIZE = 4096;
     memory::ByteBuffer buffer;

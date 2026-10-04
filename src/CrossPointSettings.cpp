@@ -1,4 +1,7 @@
 #include "CrossPointSettings.h"
+#ifdef RICKYOS_PRODUCT
+#include <Utf8.h>
+#endif
 
 #include <BoardConfig.h>
 #include <HalStorage.h>
@@ -202,6 +205,16 @@ uint8_t CrossPointSettings::sleepTimeoutEnumToMinutes(const uint8_t legacyValue)
   }
 }
 
+#ifdef RICKYOS_PRODUCT
+void CrossPointSettings::enforceProductLayout() {
+  uiTheme = INX;
+  inxRecentLayout = static_cast<uint8_t>(InxRecentLayout::Flow);
+  inxLibraryLayout = static_cast<uint8_t>(InxItemLayout::Icons);
+  inxAppsLayout = static_cast<uint8_t>(InxItemLayout::Icons);
+  inxTabPosition = INX_TAB_BOTTOM;
+}
+#endif
+
 void CrossPointSettings::toJson(JsonDocument& doc) const {
   const CrossPointSettings& s = *this;
 
@@ -255,6 +268,17 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
     doc["sdFontFamilyName"] = sdFontFamilyName;
   }
   doc["sdFontFlashPreload"] = sdFontFlashPreload;
+#ifdef RICKYOS_PRODUCT
+  // Keep a fixed legacy-compatible value without exposing a mutable menu/API row.
+  doc["uiTheme"] = static_cast<uint8_t>(INX);
+  doc["inxRecentLayout"] = static_cast<uint8_t>(InxRecentLayout::Flow);
+  doc["inxLibraryLayout"] = static_cast<uint8_t>(InxItemLayout::Icons);
+  doc["inxAppsLayout"] = static_cast<uint8_t>(InxItemLayout::Icons);
+  doc["inxTabPosition"] = static_cast<uint8_t>(INX_TAB_BOTTOM);
+  doc["rickyNickname"] = rickyNickname;
+  doc["rickyAvatarPath"] = rickyAvatarPath;
+  doc["rickyHomePhrase"] = rickyHomePhrase;
+#endif
   // Dictionary folder name — uses dynamic getter/setter in SettingsList, save manually
   if (dictionaryName[0] != '\0') {
     doc["dictionaryName"] = dictionaryName;
@@ -461,6 +485,30 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   const char* sfn = doc["sdFontFamilyName"] | "";
   strncpy(sdFontFamilyName, sfn, sizeof(sdFontFamilyName) - 1);
   sdFontFamilyName[sizeof(sdFontFamilyName) - 1] = '\0';
+#ifdef RICKYOS_PRODUCT
+  uiTheme = INX;
+  if (!doc["uiTheme"].isNull() && (!doc["uiTheme"].is<uint8_t>() || doc["uiTheme"].as<uint8_t>() != INX)) {
+    needsResave = true;
+  }
+  copyToField(rickyNickname, doc["rickyNickname"] | "", sizeof(rickyNickname));
+  copyToField(rickyAvatarPath, doc["rickyAvatarPath"] | "", sizeof(rickyAvatarPath));
+  copyToField(rickyHomePhrase, doc["rickyHomePhrase"] | "", sizeof(rickyHomePhrase));
+  rickyHomePhrase[utf8SafeTruncateBuffer(rickyHomePhrase, strlen(rickyHomePhrase))] = '\0';
+  // Old backups/direct JSON edits must not select a different product layout.
+  struct FixedLayout {
+    const char* key;
+    uint8_t expected;
+  };
+  static constexpr FixedLayout fixedLayouts[] = {{"inxRecentLayout", static_cast<uint8_t>(InxRecentLayout::Flow)},
+                                                 {"inxLibraryLayout", static_cast<uint8_t>(InxItemLayout::Icons)},
+                                                 {"inxAppsLayout", static_cast<uint8_t>(InxItemLayout::Icons)},
+                                                 {"inxTabPosition", INX_TAB_BOTTOM}};
+  for (const auto& layout : fixedLayouts) {
+    const auto saved = doc[layout.key];
+    if (!saved.isNull() && (!saved.is<uint8_t>() || saved.as<uint8_t>() != layout.expected)) needsResave = true;
+  }
+  enforceProductLayout();
+#endif
   sdFontFlashPreload =
       clamp(static_cast<uint8_t>(doc["sdFontFlashPreload"] | 0), static_cast<uint8_t>(2), static_cast<uint8_t>(0));
   if (storedFontFamily == LEGACY_OPENDYSLEXIC && sdFontFamilyName[0] == '\0') {
@@ -639,7 +687,12 @@ bool CrossPointSettings::loadFromBinaryFile() {
   longPressButtonBehavior = validated(17, longPressButtonBehavior, LONG_PRESS_BUTTON_BEHAVIOR_COUNT);
   hyphenationEnabled = value(18, hyphenationEnabled);
   sleepScreenCoverFilter = validated(19, sleepScreenCoverFilter, SLEEP_SCREEN_COVER_FILTER_COUNT);
+#ifdef RICKYOS_PRODUCT
+  uiTheme = INX;
+  enforceProductLayout();
+#else
   uiTheme = value(20, uiTheme);
+#endif
   frontButtonBack = validated(21, frontButtonBack, FRONT_BUTTON_HARDWARE_COUNT);
   frontButtonConfirm = validated(22, frontButtonConfirm, FRONT_BUTTON_HARDWARE_COUNT);
   frontButtonLeft = validated(23, frontButtonLeft, FRONT_BUTTON_HARDWARE_COUNT);

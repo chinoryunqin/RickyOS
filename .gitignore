@@ -30,6 +30,21 @@ lib/EpdFont/scripts/output/
 weread_apikey*.txt
 weread_apikey*.bin
 
+# Local device credentials, backups and private installation records are not source.
+/device-backups/
+/device-installations/
+/device-diagnostics/
+/artifacts/
+/design/
+/docs/rickyos.md
+/scripts/backup_readpico.py
+/scripts/flash_rickyos_readpico.py
+/scripts/tests/test_backup_readpico.py
+/scripts/tests/test_flash_rickyos_readpico.py
+.env
+.env.*
+!.env.example
+
 /managed_components
 /.dummy
 /CMakeLists.txt

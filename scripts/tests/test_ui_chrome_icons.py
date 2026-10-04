@@ -283,7 +283,8 @@ int main() {
 #include <cassert>
 #include <cstdint>
 #include <initializer_list>
-constexpr int READER_STATUS_FONT_ID=1, SMALL_FONT_ID=2;
+[[maybe_unused]] constexpr int READER_STATUS_FONT_ID=1;
+[[maybe_unused]] constexpr int SMALL_FONT_ID=2;
 struct BaseTheme { static constexpr int STATUS_NUMERIC_FONT_ID=3; };
 struct Metrics { int statusBarVerticalMargin=UiHighDpiProfile::enabled?48:19, progressBarMarginTop=1; };
 using ThemeMetrics=Metrics;

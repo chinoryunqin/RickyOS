@@ -9,7 +9,7 @@
 
 class FileBrowserActivity final : public UiListActivity {
  public:
-  enum class Mode { Books, PickFirmware, PickPng };
+  enum class Mode { Books, PickFirmware, PickPng, PickAvatar };
 
  private:
   enum class EditAction : uint8_t { Rename, Move, Delete, Open };
@@ -110,7 +110,12 @@ class FileBrowserActivity final : public UiListActivity {
   void onExit() override;
   void render(RenderLock&& lock) override;
   MainTab mainTab() const override {
+#ifdef RICKYOS_PRODUCT
+    // File navigation is a child of Storage, not the book shelf.
+    return MainTab::None;
+#else
     return mode == Mode::Books && browserState == BrowserState::Browsing ? MainTab::Library : MainTab::None;
+#endif
   }
   bool mainTabBackReturnsToTabs() const override { return browserState == BrowserState::Browsing && basepath == "/"; }
   void selectMainTabContentEdge(MainTabContentEdge edge) override;

@@ -1,0 +1,189 @@
+"""Exercise the actual product icon routing/rasterizer without changing tab input."""
+from pathlib import Path
+import os
+import re
+import shutil
+import subprocess
+import tempfile
+import unittest
+import xml.etree.ElementTree as ET
+
+from test_reading_ui_regressions import ROOT, method, run_cpp
+
+HEADER = ROOT / 'src/components/icons/rickyNavigationIcons.h'
+SOURCE = ROOT / 'src/components/themes/inx/InxTheme.cpp'
+NAMES = ('home', 'library', 'apps', 'settings', 'statistics', 'storage')
+NODE = os.environ.get('RICKY_ICON_NODE') or shutil.which('node')
+
+
+def sharp_available():
+    return NODE and subprocess.run([NODE, '-e', 'require("sharp")'],
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+
+
+class RickyNavigationIconTest(unittest.TestCase):
+    def test_original_sources_and_native_white_padding(self):
+        sources = ROOT / 'src/components/icons/sources/rickyos'
+        for name in NAMES:
+            svg = ET.parse(sources / f'{name}.svg').getroot()
+            self.assertEqual(svg.attrib['viewBox'], '0 0 56 56')
+            self.assertEqual(svg.attrib['stroke-width'], '3.6' if name == 'statistics' else '2.4')
+            self.assertEqual(svg.attrib['stroke-linecap'], 'round')
+            self.assertEqual(svg.attrib['stroke-linejoin'], 'round')
+        arrays = re.findall(r'uint8_t (\w+)\[\] = \{([^}]+)\}', HEADER.read_text())
+        self.assertEqual(len(arrays), 12)
+        payload = 0
+        unique = set()
+        for name, body in arrays:
+            size = int(name.rsplit('_', 1)[1])
+            self.assertIn(size, (38, 56))
+            bits = bytes(int(value, 16) for value in re.findall(r'0x([0-9A-F]{2})', body))
+            stride = (size + 7) // 8
+            self.assertEqual(len(bits), stride * size)
+            payload += len(bits)
+            ink = {(x, y) for y in range(size) for x in range(size)
+                   if not bits[y * stride + x // 8] & (0x80 >> (x % 8))}
+            self.assertGreater(len(ink), size * size // 20)
+            self.assertLess(len(ink), size * size // 3)
+            self.assertTrue(all(3 <= x < size - 3 and 3 <= y < size - 3 for x, y in ink))
+            if size % 8:
+                padding_mask = (1 << (8 - size % 8)) - 1
+                self.assertTrue(all(bits[y * stride + stride - 1] & padding_mask == padding_mask
+                                    for y in range(size)))
+            unique.add(bits)
+        self.assertEqual(len(unique), 12)
+        self.assertEqual(payload, 3492)
+
+    @unittest.skipUnless(sharp_available(), 'regeneration requires developer Node.js + sharp')
+    def test_regeneration_is_deterministic_and_matches_resource(self):
+        with tempfile.TemporaryDirectory(prefix='ricky-nav-icons-') as directory:
+            output = Path(directory) / 'icons.h'
+            command = [NODE, str(ROOT / 'scripts/build_rickyos_navigation_icons.cjs'), '--out', str(output)]
+            subprocess.run(command, check=True)
+            self.assertEqual(output.read_bytes(), HEADER.read_bytes())
+            first = output.read_bytes()
+            subprocess.run(command, check=True)
+            self.assertEqual(output.read_bytes(), first)
+
+    def test_product_routing_pixels_orientation_and_tab_hit_regions(self):
+        source = SOURCE.read_text()
+        for size in (38, 56):
+            with self.subTest(size=size):
+                program = r'''
+#include <cassert>
+#include <cstdint>
+#include "activities/MainTab.h"
+#include "components/icons/rickyNavigationIcons.h"
+constexpr int kIconSize=SIZE;
+struct GfxRenderer {
+  mutable bool pixels[SIZE+11][SIZE+11]{};
+  int orientation=0;
+  void drawPixel(int x,int y,bool ink) const {
+    assert(x>=0 && x<SIZE+11 && y>=0 && y<SIZE+11);
+    int px=x,py=y;
+    if(orientation==1) {px=SIZE+10-y;py=x;}
+    if(orientation==2) {px=SIZE+10-x;py=SIZE+10-y;}
+    if(orientation==3) {px=y;py=SIZE+10-x;}
+    assert(ink);pixels[py][px]=ink;
+  }
+  bool pixel(int x,int y) const {
+    if(orientation==1) return pixels[x][SIZE+10-y];
+    if(orientation==2) return pixels[SIZE+10-y][SIZE+10-x];
+    if(orientation==3) return pixels[SIZE+10-x][y];
+    return pixels[y][x];
+  }
+  void fillRect(int x,int y,int w,int h,bool ink)const {
+    for(int row=y;row<y+h;++row) for(int col=x;col<x+w;++col) drawPixel(col,row,ink);
+  }
+};
+''' + method(source, 'const uint8_t* iconForTab(') + method(source, 'void drawInxIcon(') + method(source, 'void drawSelectedInxIcon(') + r'''
+int main() {
+  const uint8_t* expected[]={ricky_nav_home_SIZE,ricky_nav_library_SIZE,ricky_nav_storage_SIZE,
+                            ricky_nav_apps_SIZE,ricky_nav_settings_SIZE};
+  assert(iconForTab(MainTab::None)==nullptr);
+  assert(iconForTab(static_cast<MainTab>(255))==nullptr);
+  for(unsigned i=0;i<MainTabs::values.size();++i) {
+    auto tab=MainTabs::values[i];
+    assert(iconForTab(tab)==expected[i]);
+    for(int orientation=0;orientation<4;++orientation) {
+      GfxRenderer renderer; renderer.orientation=orientation;
+      drawInxIcon(renderer,iconForTab(tab),3,5);
+      GfxRenderer active; active.orientation=orientation;
+      drawSelectedInxIcon(active,iconForTab(tab),3,5);
+      int normalInk=0,activeInk=0;
+      for(int y=0;y<SIZE+11;++y) for(int x=0;x<SIZE+11;++x) {
+        bool black=false;
+        if(x>=3 && x<3+SIZE && y>=5 && y<5+SIZE)
+          black=(expected[i][(y-5)*((SIZE+7)/8)+(x-3)/8]&(0x80U>>((x-3)%8)))==0;
+        assert(renderer.pixel(x,y)==black);
+        if(black) {++normalInk;assert(active.pixel(x,y));}
+        if(active.pixel(x,y)) {
+          ++activeInk;
+          assert(x>=3 && x<3+SIZE && y>=5 && y<5+SIZE);
+        }
+      }
+      assert(activeInk>normalInk*5/4);
+    }
+    for(int width : {480,684,800,1216}) {
+      const auto bounds=MainTabs::tabBounds(i,width);
+      assert(MainTabs::fromX((bounds.left+bounds.right)/2,width)==tab);
+      assert(bounds.right-bounds.left>=SIZE);
+      if(i+1<MainTabs::values.size()) {
+        const auto next=MainTabs::tabBounds(i+1,width);
+        assert(next.left-bounds.right>=6);
+        for(int x=bounds.right;x<next.left;++x) assert(MainTabs::fromX(x,width)==MainTab::None);
+      }
+    }
+  }
+}
+'''
+                defines = ('RICKYOS_PRODUCT', 'CROSSMUX_UI_PROFILE_HIGH_DPI') if size == 56 else ('RICKYOS_PRODUCT',)
+                run_cpp(program.replace('SIZE', str(size)), include_dirs=(ROOT / 'src',), defines=defines)
+
+    def test_non_product_routing_keeps_upstream_assets(self):
+        source = SOURCE.read_text()
+        program = r'''
+#include <cassert>
+#include "activities/MainTab.h"
+#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
+#include "components/icons/uiChromeIcons.h"
+#else
+#include "components/icons/inx_tabs.h"
+#endif
+''' + method(source, 'const uint8_t* iconForTab(') + r'''
+int main() {
+#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
+  const uint8_t* expected[]={icon_tab_recent_56.bits,icon_tab_library_56.bits,icon_tab_apps_56.bits,
+                            icon_tab_settings_56.bits,icon_tab_statistics_56.bits};
+#else
+  const uint8_t* expected[]={InxRecentTabIcon,InxLibraryTabIcon,InxAppsTabIcon,
+                            InxSettingsTabIcon,InxStatisticsTabIcon};
+#endif
+  for(unsigned i=0;i<MainTabs::values.size();++i) assert(iconForTab(MainTabs::values[i])==expected[i]);
+  assert(iconForTab(MainTab::None)==nullptr);
+}
+'''
+        for defines in ((), ('CROSSMUX_UI_PROFILE_HIGH_DPI',)):
+            run_cpp(program, include_dirs=(ROOT / 'src', ROOT / 'freeink-sdk/libs/assets/Icons/include'), defines=defines)
+
+    def test_resource_switch_does_not_change_navigation_geometry_or_allocate(self):
+        source = SOURCE.read_text()
+        for signature in ('const uint8_t* iconForTab(', 'void drawInxIcon(', 'void drawSelectedInxIcon('):
+            body = method(source, signature)
+            body = re.sub(r'//[^\n]*|/\*.*?\*/', '', body, flags=re.S)
+            for allocation in ('malloc(', 'calloc(', 'new ', 'std::vector'):
+                self.assertNotIn(allocation, body)
+        draw = method(source, 'void InxTheme::drawMainTabBar(')
+        self.assertIn('MainTabs::tabBounds', draw)
+        self.assertIn('rect.height - kIconSize - bottomIconInset', draw)
+        self.assertIn('renderer.fillRect(iconX, indicatorY, kIconSize, kUnderlineHeight)', draw)
+        stock = draw.split('#else', 1)[1]
+        self.assertNotIn('drawText', stock)
+        product = draw.split('#else', 1)[0]
+        self.assertIn('renderer.fillRectDither', product)
+        self.assertIn('renderer.drawText', product)
+        self.assertNotIn('kUnderlineHeight', product)
+
+
+if __name__ == '__main__':
+    unittest.main()

@@ -71,6 +71,9 @@ void init() {
   const int64_t floor = readFloor();
   if (floor < MIN_VALID_EPOCH) return;
   raiseFloor(floor);
+#ifndef SIMULATOR
+  // Only the device owns its system clock. The desktop simulator must never
+  // attempt to change the host clock; its trusted floor remains enforced above.
   if (static_cast<int64_t>(time(nullptr)) < floor) {
     // Cold boot reset the clock; resume from the floor so time keeps moving
     // forward across power cycles instead of restarting at epoch 0.
@@ -78,6 +81,7 @@ void init() {
     settimeofday(&tv, nullptr);
     LOG_DBG("TIME", "Clock restored to persisted floor");
   }
+#endif
 }
 
 void note() {

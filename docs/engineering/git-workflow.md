@@ -20,16 +20,18 @@ git status --short
 Preserve unrelated user changes. Confirm the intended remote and branch before
 any push, merge, reset, or other history-changing operation.
 
-## CrossMux contribution target
+## RickyOS collaboration target
 
-- Unqualified PR requests target **`0x1abin/crossmux:main`**. In the maintainer
-  checkout, `origin` is `0x1abin/crossmux`; push the feature branch there when
-  authorized by the PR request. Do not ask for the default target again.
+- Unqualified PR requests in this repository target **`chinoryunqin/RickyOS:main`**.
+  `origin` is the user's private RickyOS repository; `upstream` is
+  `0x1abin/crossmux` and is read-only unless an upstream contribution is explicitly
+  requested. Do not publish product work to CrossMux by default.
 - An explicit user-supplied repository or base branch overrides that default.
   If the configured remote differs, resolve the destination before pushing.
-- Contributors using a personal fork push there and open their PR against
-  CrossMux `main`, not upstream CrossPoint `develop` or `master`.
-- Create a focused branch from CrossMux `main`; agents use `codex/<topic>` by
+- Contributors use a feature branch and open their PR against RickyOS `main`.
+  A separately requested CrossMux contribution targets CrossMux `main`, not
+  upstream CrossPoint `develop` or `master`.
+- Create a focused branch from RickyOS `main`; agents use `codex/<topic>` by
   default. Human contributors may use `feature/`, `fix/`, `refactor/`, or `docs/`.
 
 ## Upstream synchronization is a separate task

@@ -14,7 +14,10 @@
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
 #include "components/icons/inx_apps.h"
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
+#ifdef RICKYOS_PRODUCT
+#include "components/RickyPageLayout.h"
+#include "components/icons/rickyNavigationIcons.h"
+#elif defined(CROSSMUX_UI_PROFILE_HIGH_DPI)
 #include "components/icons/uiChromeIcons.h"
 #else
 #include "components/icons/inx_tabs.h"
@@ -54,6 +57,18 @@ const char* hintLabel(const char* label) {
 }
 
 const uint8_t* iconForTab(const MainTab tab) {
+#ifdef RICKYOS_PRODUCT
+#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
+  static constexpr const uint8_t* icons[] = {ricky_nav_home_56, ricky_nav_library_56, ricky_nav_storage_56,
+                                             ricky_nav_apps_56, ricky_nav_settings_56};
+#else
+  static constexpr const uint8_t* icons[] = {ricky_nav_home_38, ricky_nav_library_38, ricky_nav_storage_38,
+                                             ricky_nav_apps_38, ricky_nav_settings_38};
+#endif
+  static_assert(sizeof(icons) / sizeof(icons[0]) == MainTabs::values.size());
+  const int index = MainTabs::indexOf(tab);
+  return index < 0 ? nullptr : icons[index];
+#else
   switch (tab) {
     case MainTab::Recent:
 #ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
@@ -85,10 +100,12 @@ const uint8_t* iconForTab(const MainTab tab) {
 #else
       return InxAppsTabIcon;
 #endif
+    case MainTab::StorageFiles:
     case MainTab::None:
       return nullptr;
   }
   return nullptr;
+#endif
 }
 
 void drawInxIcon(const GfxRenderer& renderer, const uint8_t* icon, const int x, const int y) {
@@ -101,13 +118,39 @@ void drawInxIcon(const GfxRenderer& renderer, const uint8_t* icon, const int x, 
   }
 }
 
+#ifdef RICKYOS_PRODUCT
+void drawSelectedInxIcon(const GfxRenderer& renderer, const uint8_t* icon, const int x, const int y) {
+  // Dilate ink inside the original icon slot. No new asset, heap, resampling
+  // buffer or hit geometry; inactive tabs retain their exact native pixels.
+  constexpr int rowBytes = (kIconSize + 7) / 8;
+  constexpr int radius = UiHighDpiProfile::enabled ? 2 : 1;
+  for (int row = 0; row < kIconSize; ++row) {
+    for (int column = 0; column < kIconSize; ++column) {
+      if ((icon[row * rowBytes + column / 8] & (0x80U >> (column % 8))) != 0) continue;
+      const int left = std::max(0, column - radius), top = std::max(0, row - radius);
+      const int right = std::min(kIconSize - 1, column + radius), bottom = std::min(kIconSize - 1, row + radius);
+      renderer.fillRect(x + left, y + top, right - left + 1, bottom - top + 1, true);
+    }
+  }
+}
+#endif
+
 void drawDottedSeparator(const GfxRenderer& renderer, const int x, const int y, const int width) {
   for (int px = x; px < x + width; px += 3) renderer.drawPixel(px, y, true);
 }
 }  // namespace
 
 void InxTheme::drawHeader(const GfxRenderer& renderer, const Rect rect, const char* title, const char* subtitle,
-                          bool) const {
+                          const bool backButton) const {
+#ifdef RICKYOS_PRODUCT
+  // Product-wide hierarchical navigation: pushed touch pages need the same
+  // visible Back target and title reserve as the shared FreeInkUI header.
+  if (backButton && gpio.hasTouch()) {
+    BaseTheme::drawHeader(renderer, rect, title, subtitle, true);
+    return;
+  }
+#endif
+  (void)backButton;
   constexpr int titleFont = UiHighDpiProfile::enabled ? UI_12_FONT_ID : NOTOSERIF_12_FONT_ID;
   renderer.fillRect(rect.x, rect.y, rect.width, rect.height, false);
 
@@ -439,6 +482,35 @@ void InxTheme::drawOptionPopup(const GfxRenderer& renderer, const char* title, c
 
 void InxTheme::drawMainTabBar(const GfxRenderer& renderer, const Rect rect, const MainTab selected) const {
   renderer.fillRect(rect.x, rect.y, rect.width, rect.height, false);
+#ifdef RICKYOS_PRODUCT
+  const bool tabsAtBottom = SETTINGS.inxTabPosition == CrossPointSettings::INX_TAB_BOTTOM;
+  const int separatorY = tabsAtBottom ? rect.y : rect.y + rect.height - 2;
+  renderer.fillRectDither(rect.x, separatorY, rect.width, 2, Color::DarkGray);
+  const auto rows = RickyPageLayout::navigationRows(rect, kIconSize, renderer.getLineHeight(SMALL_FONT_ID));
+  static constexpr StrId labels[] = {StrId::STR_RICKY_NAV_HOME, StrId::STR_LIBRARY, StrId::STR_RICKY_STORAGE,
+                                     StrId::STR_APPS_TITLE, StrId::STR_SETTINGS_TITLE};
+  static_assert(std::size(labels) == MainTabs::values.size());
+  for (size_t i = 0; i < MainTabs::values.size(); ++i) {
+    const MainTab tab = MainTabs::values[i];
+    const auto bounds = MainTabs::tabBounds(static_cast<int>(i), rect.width);
+    const int left = rect.x + bounds.left;
+    const int width = bounds.right - bounds.left;
+    const GfxRenderer::ClipScope clip(renderer, left, rect.y, width, rect.height);
+    const int iconX = left + (width - kIconSize) / 2;
+    if (const uint8_t* icon = iconForTab(tab)) {
+      if (tab == selected)
+        drawSelectedInxIcon(renderer, icon, iconX, rows.iconY);
+      else
+        drawInxIcon(renderer, icon, iconX, rows.iconY);
+    }
+    const auto style = tab == selected ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR;
+    const char* label = I18N.get(labels[i]);
+    const int textX = left + std::max(0, (width - renderer.getTextWidth(SMALL_FONT_ID, label, style)) / 2);
+    renderer.drawText(SMALL_FONT_ID, textX, rows.labelY, label, true, style);
+    // Embedded CJK has only a regular face: make the active label visibly heavier.
+    if (tab == selected) renderer.drawText(SMALL_FONT_ID, textX + 1, rows.labelY, label, true, style);
+  }
+#else
   constexpr int bottomIconInset = UiHighDpiProfile::enabled ? 18 : 6;
   const bool tabsAtBottom = SETTINGS.inxTabPosition == CrossPointSettings::INX_TAB_BOTTOM;
   const int iconY =
@@ -460,6 +532,7 @@ void InxTheme::drawMainTabBar(const GfxRenderer& renderer, const Rect rect, cons
   if (!tabsAtBottom) {
     renderer.drawLine(rect.x, rect.y + rect.height - 1, rect.x + rect.width - 1, rect.y + rect.height - 1, true);
   }
+#endif
 }
 
 void InxTheme::drawMainTabStatusBar(const GfxRenderer& renderer, const Rect rect) const {

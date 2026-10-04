@@ -285,36 +285,40 @@ constexpr const uint8_t* get(const UIIcon icon) {
       return ReadingProfile.data();
     case UIIcon::Achievements:
       return Achievements.data();
-    case UIIcon::Sudoku:
-      return Sudoku.data();
     case UIIcon::Gomoku:
       return Gomoku.data();
+#ifndef RICKYOS_PRODUCT
+    case UIIcon::Sudoku:
+      return Sudoku.data();
     case UIIcon::Sokoban:
       return Sokoban.data();
 #ifdef ENABLE_CHINESE_VERSION
     case UIIcon::ChineseChess:
       return ChineseChess.data();
-    case UIIcon::WeRead:
-      return WeRead.data();
 #endif
     case UIIcon::Minesweeper:
       return Minesweeper.data();
-    case UIIcon::Avatar:
-      return Avatar.data();
-    case UIIcon::Standby:
-      return Standby.data();
     case UIIcon::Game2048:
       return Game2048.data();
+    case UIIcon::Avatar:
+      return Avatar.data();
     case UIIcon::Buddy:
       return Buddy.data();
     case UIIcon::PixelSwitch:
       return PixelSwitch.data();
+    case UIIcon::Woodfish:
+      return Woodfish.data();
+#endif
+#ifdef ENABLE_CHINESE_VERSION
+    case UIIcon::WeRead:
+      return WeRead.data();
+#endif
+    case UIIcon::Standby:
+      return Standby.data();
     case UIIcon::AirPage:
       return AirPage.data();
     case UIIcon::Calculator:
       return Calculator.data();
-    case UIIcon::Woodfish:
-      return Woodfish.data();
     default:
       return nullptr;
   }

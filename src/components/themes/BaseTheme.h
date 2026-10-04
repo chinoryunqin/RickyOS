@@ -352,6 +352,10 @@ class BaseTheme {
   virtual void drawMainTabBar(const GfxRenderer& renderer, Rect rect, MainTab selected) const;
   virtual void drawMainTabStatusBar(const GfxRenderer& renderer, Rect rect) const;
   static void drawSplash(const GfxRenderer& renderer, const char* status, const char* version = nullptr);
+#ifdef RICKYOS_PRODUCT
+  static void drawRickyPowerScreen(const GfxRenderer& renderer, bool sleeping, bool transition,
+                                   const char* version = nullptr, uint8_t reveal = 3);
+#endif
   // Also draws the wall clock opposite the battery when the user enabled
   // SETTINGS.clockShowInHeader and system time is valid. On touch boards a
   // tappable back button leads the band (see HeaderBackTapTarget); root

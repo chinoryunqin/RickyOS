@@ -13,34 +13,39 @@
 
 #include "CrossPointSettings.h"
 #include "OpdsServerStore.h"
+#ifndef RICKYOS_PRODUCT
 #include "apps/2048/Game2048Activity.h"
-#include "apps/AppsMenuActivity.h"
-#include "apps/airpage/AirPageActivity.h"
 #include "apps/avatar/UglyAvatarActivity.h"
 #include "apps/buddy/BuddyActivity.h"
-#include "apps/calculator/CalculatorActivity.h"
+#include "apps/minesweeper/MinesweeperMenuActivity.h"
+#include "apps/pixel-switch/PixelSwitchActivity.h"
 #include "apps/sokoban/SokobanGameActivity.h"
-#include "components/SubpageLayout.h"
+#include "apps/sudoku/SudokuMenuActivity.h"
+#include "apps/woodfish/WoodfishActivity.h"
 #ifdef ENABLE_CHINESE_VERSION
 #include "apps/chinese-chess/ChineseChessMenuActivity.h"
 #endif
+#endif
+#include "apps/AppsMenuActivity.h"
+#include "apps/airpage/AirPageActivity.h"
+#include "apps/calculator/CalculatorActivity.h"
+#include "components/SubpageLayout.h"
 #ifdef ENABLE_CHINESE_VERSION
 #include "apps/weread/WeReadActivity.h"
 #endif
 #include "apps/gomoku/GomokuMenuActivity.h"
-#include "apps/minesweeper/MinesweeperMenuActivity.h"
-#include "apps/pixel-switch/PixelSwitchActivity.h"
 #include "apps/reading-stats/ReadingStatsActivity.h"
 #include "apps/reading-stats/ReadingStatsMenuActivity.h"
 #include "apps/standby/StandbyActivity.h"
-#include "apps/sudoku/SudokuMenuActivity.h"
-#include "apps/woodfish/WoodfishActivity.h"
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
 #include "browser/OpdsBookBrowserActivity.h"
 #include "components/HeaderBackTapTarget.h"
 #include "home/CrashActivity.h"
 #include "home/FileBrowserActivity.h"
+#ifdef RICKYOS_PRODUCT
+#include "home/RickyStorageActivity.h"
+#endif
 #include "home/HomeActivity.h"
 #include "home/InxRecentActivity.h"
 #include "home/RecentBooksActivity.h"
@@ -129,7 +134,10 @@ void ActivityManager::renderTaskLoop() {
 }
 
 void ActivityManager::loop() {
-  if (mappedInput.consumeSuppressedRelease()) return;
+  if (mappedInput.consumeSuppressedRelease()) {
+    resetHomeStandbyInput();
+    return;
+  }
 
   if (currentActivity && currentActivity->requiresExclusiveStorageLoop()) {
     currentActivity->loop();
@@ -143,8 +151,12 @@ void ActivityManager::loop() {
   }
 
   if (currentActivity && pendingAction.load() == PendingAction::None) {
-    if (handleMainTabInput()) return;
+    if (handleMainTabInput()) {
+      resetHomeStandbyInput();
+      return;
+    }
     if (!currentActivity->isHomeActivity() && mappedInput.wasHomeGesture()) {
+      resetHomeStandbyInput();
       if (currentActivity->handleHomeGesture()) {
         return;
       }
@@ -168,6 +180,7 @@ void ActivityManager::loop() {
       }
     }
     if (currentActivity->name != "FrontlightPanel" && (statusBarTap || mappedInput.wasLightPanelGesture())) {
+      resetHomeStandbyInput();
       auto panel = makeUniqueNoThrow<FrontlightPanelActivity>(renderer, mappedInput);
       if (!panel) {
         LOG_ERR("ACT", "OOM: frontlight panel (%u bytes)", static_cast<unsigned>(sizeof(FrontlightPanelActivity)));
@@ -178,7 +191,7 @@ void ActivityManager::loop() {
     }
 
     // Note: do not hold a lock here, the loop() method must be responsible for acquire one if needed
-    currentActivity->loop();
+    if (!handleHomeStandbyInput()) currentActivity->loop();
   }
 
   while (pendingAction.load() != PendingAction::None) {
@@ -208,6 +221,7 @@ void ActivityManager::loop() {
       } else {
         currentActivity = std::move(stackActivities.back());
         stackActivities.pop_back();
+        resetHomeStandbyInput();
         LOG_DBG("ACT", "Popped from activity stack, new size = %zu", stackActivities.size());
         // Handle result if necessary
         if (currentActivity->resultHandler) {
@@ -252,6 +266,7 @@ void ActivityManager::loop() {
       }
       pendingAction.store(PendingAction::None);
       currentActivity = std::move(pendingActivity);
+      resetHomeStandbyInput();
 
       // Drop any one-shot tap/release edge events the outgoing activity already
       // consumed this frame. The SDK's InputManager clears these in update(),
@@ -278,6 +293,52 @@ void ActivityManager::loop() {
       xTaskNotify(renderTaskHandle, 1, eIncrement);
     }
   }
+}
+
+void ActivityManager::resetHomeStandbyInput() {
+  standbyBackState = mappedInput.isPressed(MappedInputManager::Button::Back) ? StandbyBackState::WaitingForRelease
+                                                                             : StandbyBackState::Idle;
+}
+
+bool ActivityManager::handleHomeStandbyInput() {
+  const bool eligible =
+      currentActivity && (currentActivity->isHomeActivity() ||
+                          (currentActivity->usesMainTabBar() && currentActivity->mainTab() == MainTab::Recent &&
+                           mainTabFocus == MainTabFocus::Tabs));
+  if (!eligible || !SETTINGS.standbyShortcutEnabled) {
+    resetHomeStandbyInput();
+    return false;
+  }
+
+  const bool pressed = mappedInput.wasPressed(MappedInputManager::Button::Back);
+  const bool released = mappedInput.wasReleased(MappedInputManager::Button::Back);
+  // Touch Back gestures publish a complete pair in one frame, independent of
+  // an inherited physical hold. They remain usable through the release barrier.
+  if (pressed && released) {
+    standbyBackState = StandbyBackState::Idle;
+    goToStandby();
+    return true;
+  }
+
+  switch (standbyBackState) {
+    case StandbyBackState::Idle:
+      if (pressed) standbyBackState = StandbyBackState::Pressed;
+      break;
+    case StandbyBackState::Pressed:
+      if (released) {
+        standbyBackState = StandbyBackState::Idle;
+        goToStandby();
+        return true;
+      }
+      if (!mappedInput.isPressed(MappedInputManager::Button::Back)) standbyBackState = StandbyBackState::Idle;
+      break;
+    case StandbyBackState::WaitingForRelease:
+      if (!mappedInput.isPressed(MappedInputManager::Button::Back)) standbyBackState = StandbyBackState::Idle;
+      break;
+  }
+  // Home Activities no longer handle Back themselves; ignored releases must
+  // still allow independent touch input, including on the release frame.
+  return false;
 }
 
 bool ActivityManager::handleMainTabInput() {
@@ -360,12 +421,10 @@ bool ActivityManager::handleMainTabInput() {
         return true;
       }
 
+      // Recent's Back is owned by the shared home Standby handler.
+      if (currentTab == MainTab::Recent) return false;
       if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-        const MainTab target = MainTabs::backTarget(currentTab);
-        if (target != MainTab::None)
-          goToMainTab(target);
-        else if (SETTINGS.standbyShortcutEnabled)
-          goToStandby();
+        goToMainTab(MainTabs::backTarget(currentTab));
         return true;
       }
       return mappedInput.isPressed(MappedInputManager::Button::Back);
@@ -396,6 +455,7 @@ void ActivityManager::exitActivity(const RenderLock& lock) {
 void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {
   cancelIdleRender();
   mappedInput.resetHomeButtonInput();
+  standbyBackState = StandbyBackState::Idle;
   // Note: no lock here, this is usually called by loop() and we may run into deadlock
   if (currentActivity) {
     // Defer launch if we're currently in an activity, to avoid deleting the current activity
@@ -405,6 +465,7 @@ void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {
   } else {
     // No current activity, safe to launch immediately
     currentActivity = std::move(newActivity);
+    resetHomeStandbyInput();
     currentActivity->onEnter();
   }
 }
@@ -432,7 +493,9 @@ void ActivityManager::goToUsbDrive() {
 
 void ActivityManager::goToSettings() { replaceActivityWith<SettingsActivity>(); }
 
+#ifndef RICKYOS_PRODUCT
 void ActivityManager::goToUglyAvatar() { replaceActivityWith<UglyAvatarActivity>(); }
+#endif
 
 void ActivityManager::goToFileBrowser(std::string path) { replaceActivityWith<FileBrowserActivity>(std::move(path)); }
 
@@ -447,7 +510,16 @@ void ActivityManager::goToMainTab(const MainTab tab) {
       goToInxRecent();
       return;
     case MainTab::Library:
+#ifdef RICKYOS_PRODUCT
+      goToLibrary();
+#else
       goToFileBrowser();
+#endif
+      return;
+    case MainTab::StorageFiles:
+#ifdef RICKYOS_PRODUCT
+      replaceActivityWith<RickyStorageActivity>();
+#endif
       return;
     case MainTab::Settings:
       goToSettings();
@@ -549,31 +621,33 @@ void ActivityManager::goToReadingStatsMenu() { replaceActivityWith<ReadingStatsM
 
 void ActivityManager::goToReadingStats() { replaceActivityWith<ReadingStatsActivity>(true); }
 
+void ActivityManager::goToGomoku() { replaceActivityWith<GomokuMenuActivity>(); }
+
+#ifndef RICKYOS_PRODUCT
 void ActivityManager::goToSudoku() { replaceActivityWith<SudokuMenuActivity>(); }
 
 void ActivityManager::goToSokoban() { replaceActivityWith<SokobanGameActivity>(); }
 
-void ActivityManager::goToGomoku() { replaceActivityWith<GomokuMenuActivity>(); }
-
 void ActivityManager::goToMinesweeper() { replaceActivityWith<MinesweeperMenuActivity>(); }
-
-void ActivityManager::goToPixelSwitch() { replaceActivityWith<PixelSwitchActivity>(); }
-
-void ActivityManager::goToCalculator() { replaceActivityWith<CalculatorActivity>(); }
-
-void ActivityManager::goToWoodfish() { replaceActivityWith<WoodfishActivity>(); }
 
 void ActivityManager::goToGame2048() { replaceActivityWith<Game2048Activity>(); }
 
-void ActivityManager::goToAirPage() { replaceActivityWith<AirPageActivity>(); }
+void ActivityManager::goToPixelSwitch() { replaceActivityWith<PixelSwitchActivity>(); }
+
+void ActivityManager::goToWoodfish() { replaceActivityWith<WoodfishActivity>(); }
 
 void ActivityManager::goToBuddy() { replaceActivityWith<BuddyActivity>(); }
-
-void ActivityManager::goToStandby() { replaceActivityWith<StandbyActivity>(); }
 
 #ifdef ENABLE_CHINESE_VERSION
 void ActivityManager::goToChineseChess() { replaceActivityWith<ChineseChessMenuActivity>(); }
 #endif
+#endif
+
+void ActivityManager::goToCalculator() { replaceActivityWith<CalculatorActivity>(); }
+
+void ActivityManager::goToAirPage() { replaceActivityWith<AirPageActivity>(); }
+
+void ActivityManager::goToStandby() { replaceActivityWith<StandbyActivity>(); }
 
 #ifdef ENABLE_CHINESE_VERSION
 void ActivityManager::goToWeRead() { replaceActivityWith<WeReadActivity>(); }
@@ -582,6 +656,7 @@ void ActivityManager::goToWeRead() { replaceActivityWith<WeReadActivity>(); }
 void ActivityManager::pushActivity(std::unique_ptr<Activity>&& activity) {
   cancelIdleRender();
   mappedInput.resetHomeButtonInput();
+  standbyBackState = StandbyBackState::Idle;
   if (pendingActivity) {
     // Should never happen in practice
     LOG_ERR("ACT", "pendingActivity while pushActivity is not expected");
@@ -594,6 +669,7 @@ void ActivityManager::pushActivity(std::unique_ptr<Activity>&& activity) {
 void ActivityManager::popActivity() {
   cancelIdleRender();
   mappedInput.resetHomeButtonInput();
+  standbyBackState = StandbyBackState::Idle;
   if (pendingActivity) {
     // Should never happen in practice
     LOG_ERR("ACT", "pendingActivity while popActivity is not expected");
