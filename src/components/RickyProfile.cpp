@@ -15,6 +15,7 @@
 #include "RickyBrandMark.h"
 #include "RickyPageUi.h"
 #include "UITheme.h"
+#include "icons/rickyAvatars.h"
 #include "util/TimeUtils.h"
 
 namespace RickyProfile {
@@ -46,9 +47,72 @@ bool setHomePhrase(const std::string& text) {
   return false;
 }
 
+namespace {
+constexpr char PRESET_PREFIX[] = "@avatar:";
+}  // namespace
+
+int presetAvatarIndex() {
+  const size_t length = sizeof(PRESET_PREFIX) - 1;
+  if (strncmp(SETTINGS.rickyAvatarPath, PRESET_PREFIX, length) != 0) return -1;
+  const char* digits = SETTINGS.rickyAvatarPath + length;
+  if (digits[0] < '0' || digits[0] > '9' || digits[1] != '\0') return -1;
+  const int index = digits[0] - '0';
+  return index < RickyAvatars::COUNT ? index : -1;
+}
+
+void drawPresetAvatar(const GfxRenderer& renderer, const Rect& rect, const int index) {
+  const int size = std::max(0, std::min(rect.width, rect.height));
+  if (!size || index < 0 || index >= RickyAvatars::COUNT) return;
+  // Line art like the brand badge: 1:1 at the source size, area-sampled below it
+  // so strokes stay even instead of breaking up.
+  constexpr int SOURCE = RickyAvatars::SIZE;
+  const int drawn = std::min(size, SOURCE);
+  const int x0 = rect.x + (size - drawn) / 2, y0 = rect.y + (size - drawn) / 2;
+  const uint8_t* bits = RickyAvatars::ALL[index];
+  const auto ink = [bits](const int x, const int y) {
+    return (bits[y * (SOURCE / 8) + x / 8] & (0x80 >> (x % 8))) == 0;
+  };
+  for (int y = 0; y < drawn; ++y) {
+    const int sy0 = y * SOURCE / drawn, sy1 = std::max(sy0 + 1, (y + 1) * SOURCE / drawn);
+    for (int x = 0; x < drawn; ++x) {
+      const int sx0 = x * SOURCE / drawn, sx1 = std::max(sx0 + 1, (x + 1) * SOURCE / drawn);
+      int covered = 0;
+      for (int sy = sy0; sy < sy1; ++sy)
+        for (int sx = sx0; sx < sx1; ++sx) covered += ink(sx, sy) ? 1 : 0;
+      if (covered * 16 >= 7 * (sy1 - sy0) * (sx1 - sx0)) renderer.drawPixel(x0 + x, y0 + y, true);
+    }
+  }
+  renderer.maskRoundedRectOutsideCorners(rect.x, rect.y, size, size, size / 2);
+  renderer.drawRoundedRect(rect.x, rect.y, size, size, std::max(2, size / 48), size / 2, true);
+}
+
+bool setAvatar(const char* value) {
+  char previous[sizeof(SETTINGS.rickyAvatarPath)];
+  memcpy(previous, SETTINGS.rickyAvatarPath, sizeof(previous));
+  strncpy(SETTINGS.rickyAvatarPath, value, sizeof(SETTINGS.rickyAvatarPath) - 1);
+  SETTINGS.rickyAvatarPath[sizeof(SETTINGS.rickyAvatarPath) - 1] = '\0';
+  if (SETTINGS.saveToFile()) return true;
+  memcpy(SETTINGS.rickyAvatarPath, previous, sizeof(previous));
+  return false;
+}
+
+void drawBrandAvatar(const GfxRenderer& renderer, const Rect& rect) {
+  // Approved portrait/dog badge as the initial avatar; changing this personal
+  // image never replaces the immutable full boot/standby brand mark. The
+  // badge's own ring is the avatar edge, so no second outline is drawn.
+  const int size = std::max(0, std::min(rect.width, rect.height));
+  if (!size) return;
+  RickyBrandMark::drawBadge(renderer, Rect{rect.x, rect.y, size, size});
+  renderer.maskRoundedRectOutsideCorners(rect.x, rect.y, size, size, size / 2);
+}
+
 void drawAvatar(const GfxRenderer& renderer, const Rect& rect) {
   const int size = std::max(0, std::min(rect.width, rect.height));
   if (!size) return;
+  if (const int preset = presetAvatarIndex(); preset >= 0) {
+    drawPresetAvatar(renderer, rect, preset);
+    return;
+  }
   bool painted = false;
   if (SETTINGS.rickyAvatarPath[0]) {
     HalFile file;
@@ -61,11 +125,7 @@ void drawAvatar(const GfxRenderer& renderer, const Rect& rect) {
     }
   }
   if (!painted) {
-    // Approved portrait/dog badge as the initial avatar; changing this personal
-    // image never replaces the immutable full boot/standby brand mark. The
-    // badge's own ring is the avatar edge, so no second outline is drawn.
-    RickyBrandMark::drawBadge(renderer, Rect{rect.x, rect.y, size, size});
-    renderer.maskRoundedRectOutsideCorners(rect.x, rect.y, size, size, size / 2);
+    drawBrandAvatar(renderer, rect);
     return;
   }
   // Imported photos get one even ring, scaled with the avatar.
@@ -158,13 +218,7 @@ bool importAvatar(const std::string& path) {
     Bitmap bitmap(file);
     if (!validAvatarBitmap(file, bitmap)) return false;
   }
-  char previous[sizeof(SETTINGS.rickyAvatarPath)];
-  memcpy(previous, SETTINGS.rickyAvatarPath, sizeof(previous));
-  strncpy(SETTINGS.rickyAvatarPath, target, sizeof(SETTINGS.rickyAvatarPath) - 1);
-  SETTINGS.rickyAvatarPath[sizeof(SETTINGS.rickyAvatarPath) - 1] = '\0';
-  if (SETTINGS.saveToFile()) return true;
-  memcpy(SETTINGS.rickyAvatarPath, previous, sizeof(previous));
-  return false;
+  return setAvatar(target);
 }
 }  // namespace RickyProfile
 #endif

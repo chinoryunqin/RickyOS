@@ -71,7 +71,8 @@ namespace PngToBmpConverter {bool pngFileTo1BitBmpStreamWithSize(HalFile& in,Hal
 namespace JpegToBmpConverter {bool jpegFileTo1BitBmpStreamWithSize(HalFile& in,HalFile& out,int w,int h){return convert(in,out,w,h);}}
 #define LOG_ERR(...) ((void)0)
 namespace RickyProfile {
-''' + method(source, 'bool validAvatarBitmap(') + method(source, 'bool importAvatar(') + r'''
+''' + method(source, 'bool validAvatarBitmap(') + method(source, 'bool setAvatar(') +
+                method(source, 'bool importAvatar(') + r'''
 }
 int main() {
  const std::string a="/.crosspoint/ricky-avatar-a.bmp", b="/.crosspoint/ricky-avatar-b.bmp";
