@@ -31,6 +31,7 @@
 #include "FontLibraryActivity.h"
 #include "RickyHomePhraseActivity.h"
 #include "RickyProfileActivity.h"
+#include "activities/util/ImageViewerActivity.h"
 #include "components/RickyPageUi.h"
 #include "components/RickyProfile.h"
 #endif
@@ -308,6 +309,8 @@ void SettingsActivity::reorganizeRickySettings() {
                [](const SettingInfo& setting) { return setting.valuePtr == &CrossPointSettings::sleepTimeoutMinutes; });
   moveMatching(controlsSettings, sleepSettings,
                [](const SettingInfo& setting) { return setting.valuePtr == &CrossPointSettings::shortPwrBtn; });
+  sleepSettings.insert(sleepSettings.begin() + 1,
+                       SettingInfo::Action(StrId::STR_RICKY_SELECT_WALLPAPER, SettingAction::RickySleepWallpaper));
   moveMatching(systemSettings, connectionSettings, [](const SettingInfo& setting) {
     return setting.action == SettingAction::Network || setting.action == SettingAction::KOReaderSync ||
            setting.action == SettingAction::OPDSBrowser;
@@ -1113,6 +1116,28 @@ void SettingsActivity::toggleCurrentSetting() {
           requestUpdate();
         });
         break;
+      case SettingAction::RickySleepWallpaper: {
+        // Reuse the fallible activity stack and release catalog/row heap before decoding.
+        releaseListsForMemoryHungryChild();
+        const bool opened = startActivityForResultWith<FileBrowserActivity>(
+            [this](const ActivityResult& result) {
+              const auto restore = [this](const ActivityResult&) {
+                rebuildSettingsLists();
+                requestUpdate();
+              };
+              const auto* entry = std::get_if<FilePathResult>(&result.data);
+              if (result.isCancelled || !entry ||
+                  !startActivityForResultWith<ImageViewerActivity>(restore, entry->path, true)) {
+                restore(result);
+              }
+            },
+            "/", FileBrowserActivity::Mode::PickWallpaper);
+        if (!opened) {
+          rebuildSettingsLists();
+          requestUpdate();
+        }
+        break;
+      }
 #endif
       case SettingAction::RestoreSystemSettings:
         confirmRestoreSystemSettings();

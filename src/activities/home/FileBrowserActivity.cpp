@@ -112,8 +112,10 @@ void FileBrowserActivity::loadFiles() {
           if (FsHelpers::hasPngExtension(filename)) files.emplace_back(filename);
           break;
         case Mode::PickAvatar:
+        case Mode::PickWallpaper:
           if (FsHelpers::hasPngExtension(filename) || FsHelpers::hasBmpExtension(filename) ||
-              FsHelpers::hasJpgExtension(filename)) files.emplace_back(filename);
+              FsHelpers::hasJpgExtension(filename))
+            files.emplace_back(filename);
           break;
       }
     }
@@ -647,7 +649,8 @@ void FileBrowserActivity::activateSelected() {
 #ifdef RICKYOS_PRODUCT
     if (!FsHelpers::hasEpubExtension(fullPath) && !FsHelpers::hasXtcExtension(fullPath) &&
         !FsHelpers::hasTxtExtension(fullPath) && !FsHelpers::hasMarkdownExtension(fullPath) &&
-        !FsHelpers::hasBmpExtension(fullPath) && !FsHelpers::hasPngExtension(fullPath)) {
+        !FsHelpers::hasBmpExtension(fullPath) && !FsHelpers::hasPngExtension(fullPath) &&
+        !FsHelpers::hasJpgExtension(fullPath)) {
       showNotice(StrId::STR_RICKY_NO_PREVIEW);
       return;
     }
@@ -858,11 +861,13 @@ void FileBrowserActivity::drawChrome() {
   const auto pageWidth = renderer.getScreenWidth();
   const auto& metrics = UITheme::getInstance().getMetrics();
 
-  std::string folderName = browserState == BrowserState::ChoosingMoveDestination ? std::string(tr(STR_MOVE))
-                           : mode == Mode::PickFirmware ? std::string(tr(STR_SELECT_FIRMWARE_FILE))
-                           : mode == Mode::PickPng      ? std::string(tr(STR_CUSTOM_IMAGE))
-                                                        : ((basepath == "/") ? std::string(tr(STR_SD_CARD))
-                                                                             : basepath.substr(basepath.rfind('/') + 1));
+  std::string folderName =
+      browserState == BrowserState::ChoosingMoveDestination ? std::string(tr(STR_MOVE))
+      : mode == Mode::PickFirmware                          ? std::string(tr(STR_SELECT_FIRMWARE_FILE))
+      : mode == Mode::PickPng                               ? std::string(tr(STR_CUSTOM_IMAGE))
+      : mode == Mode::PickWallpaper
+          ? std::string(tr(STR_RICKY_SELECT_WALLPAPER))
+          : ((basepath == "/") ? std::string(tr(STR_SD_CARD)) : basepath.substr(basepath.rfind('/') + 1));
   // Header via GUI.drawHeader (already FreeInkUI-themed) for the battery
   // indicator; the rest of the screen renders through the app.
   drawPageHeader(Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, folderName.c_str());

@@ -26,7 +26,12 @@
 #include "util/TimeUtils.h"
 
 namespace {
+#ifdef RICKYOS_PRODUCT
+// The product tab bar is quiet chrome: 38 px line icons over small labels.
+constexpr int kIconSize = 38;
+#else
 constexpr int kIconSize = UiHighDpiProfile::enabled ? UiHighDpiProfile::navigationIconSize : 38;
+#endif
 constexpr int kUnderlineHeight = 5;
 constexpr int kRowHeight = InxMenuGeometry::rowHeight;
 constexpr int kRowPadding = UiHighDpiProfile::enabled ? UiHighDpiProfile::contentPadding : 20;
@@ -58,13 +63,8 @@ const char* hintLabel(const char* label) {
 
 const uint8_t* iconForTab(const MainTab tab) {
 #ifdef RICKYOS_PRODUCT
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
-  static constexpr const uint8_t* icons[] = {ricky_nav_home_56, ricky_nav_library_56, ricky_nav_storage_56,
-                                             ricky_nav_apps_56, ricky_nav_settings_56};
-#else
   static constexpr const uint8_t* icons[] = {ricky_nav_home_38, ricky_nav_library_38, ricky_nav_storage_38,
                                              ricky_nav_apps_38, ricky_nav_settings_38};
-#endif
   static_assert(sizeof(icons) / sizeof(icons[0]) == MainTabs::values.size());
   const int index = MainTabs::indexOf(tab);
   return index < 0 ? nullptr : icons[index];

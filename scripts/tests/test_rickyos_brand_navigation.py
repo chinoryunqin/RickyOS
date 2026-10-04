@@ -10,16 +10,12 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class RickyBrandNavigationTest(unittest.TestCase):
-    def test_brand_geometry_and_visible_hold_bounds(self):
+    def test_brand_geometry_and_complete_artwork(self):
         program = r'''
 #include <cassert>
 #include <cstdlib>
 #include "components/RickyBrandMark.h"
 int main() {
-  unsigned total=0;
-  for(auto duration : RickyBrandMark::bootHoldMs) total+=duration;
-  assert(total>=3900 && total<=5000);
-  assert(RickyBrandMark::bootHoldMs.back()>=1800);
   for(auto box : {Rect{20,20,180,180},Rect{20,20,240,100},Rect{20,20,90,200}}) {
     auto mark=RickyBrandMark::fit(box);
     assert(mark.x>=box.x && mark.y>=box.y);

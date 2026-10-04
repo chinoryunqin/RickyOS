@@ -32,6 +32,23 @@ class RickyLogoAssetTest(unittest.TestCase):
         self.assertTrue(all((circle | full) == circle
                             for circle, full in zip(data['circleBits'], data['bits'])))
 
+    def test_avatar_badge_square_frames_the_ring(self):
+        # The default avatar maps this square onto the avatar circle, so the
+        # badge's own ring becomes the edge. It must hold all badge ink and fit
+        # it tightly, or the avatar shows a gap or clips the ring.
+        mark = (ROOT / 'src/components/RickyBrandMark.h').read_text()
+        x0, y0, size = (int(v) for v in re.search(
+            r'badgeX = (\d+), badgeY = (\d+), badgeSize = (\d+)', mark).groups())
+        text = HEADER.read_text()
+        top = int(re.search(r'wordmarkTop = (\d+)', text).group(1))
+        body = re.search(r'uint8_t bits\[\] = \{([^}]+)\}', text).group(1)
+        bits = bytes(int(value, 16) for value in re.findall(r'0x([0-9A-F]{2})', body))
+        ink = [(x, y) for y in range(top) for x in range(384) if not bits[y * 48 + x // 8] & (0x80 >> (x % 8))]
+        xs, ys = [x for x, _ in ink], [y for _, y in ink]
+        self.assertTrue(x0 <= min(xs) and max(xs) < x0 + size and y0 <= min(ys) and max(ys) < y0 + size)
+        self.assertLessEqual(min(xs) - x0 + x0 + size - 1 - max(xs), 4)
+        self.assertLessEqual(abs(size - (max(ys) - min(ys) + 1)), 16)
+
     @unittest.skipUnless(sharp_available(), 'regeneration requires developer Node.js + sharp')
     def test_regeneration_matches_approved_resource(self):
         with tempfile.TemporaryDirectory(prefix='ricky-logo-build-') as directory:
@@ -75,14 +92,18 @@ int main() {
         source = (ROOT / 'src/components/themes/BaseTheme.cpp').read_text()
         draw = method(source, 'void BaseTheme::drawRickyPowerScreen(')
         self.assertIn('RickyBrandMark::draw(renderer, layout.mark, phase)', draw)
-        self.assertIn('sleeping ? 3', draw)
+        self.assertIn('constexpr uint8_t phase = 3', draw)
         self.assertNotIn('RickyBrandMark::strokes', draw)
         self.assertNotIn('tr(STR_CROSSPOINT)', draw)
         for allocation in ('new ', 'malloc(', 'std::vector', 'Storage.'):
             self.assertNotIn(allocation, draw)
         boot = (ROOT / 'src/activities/boot_sleep/BootActivity.cpp').read_text()
-        self.assertIn('const unsigned shownAt = millis()', boot)
-        self.assertIn('resetTaskWatchdogIfSubscribed()', boot)
+        splash = method(boot, 'void BootActivity::renderSplash(').split('#endif', 1)[0]
+        self.assertIn('drawRickyPowerScreen(renderer, false, false)', splash)
+        self.assertEqual(splash.count('displayBuffer('), 1)
+        self.assertNotIn('CROSSPOINT_VERSION', splash)
+        self.assertNotIn('delay(', splash)
+        self.assertNotIn('for (', splash)
 
 
 if __name__ == '__main__':

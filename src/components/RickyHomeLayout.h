@@ -21,21 +21,6 @@ inline Metrics fit(int width, int height, int headingHeight, int labelHeight, in
   return {columns, rows, rowHeight, std::max(1, std::min(rowHeight - labelHeight - 2 * padding, coverWidth * 3 / 2))};
 }
 inline int pageStart(int selection) { return std::max(0, selection) / PAGE_BOOKS * PAGE_BOOKS; }
-struct PortraitMetrics {
-  int continueHeight;
-  int recentCoverHeight;
-  int cellWidth;
-};
-// Called after the profile, phrase and statistics have been reserved. Account
-// for both headings, their gaps, the continue-row gap and two-line book labels.
-inline PortraitMetrics fitPortrait(int width, int height, int heading, int label, int gap) {
-  const int cellWidth = std::max(0, (width - gap * 2) / 2);
-  const int coverSpace = std::max(0, height - heading * 2 - gap * 4 - label * 3 - gap - gap / 2);
-  // Continue reading is the primary book; recent covers remain supporting
-  // thumbnails. Give the main cover 60% of the available cover height budget.
-  const int continueHeight = std::min(std::max(0, width / 2), coverSpace * 3 / 5);
-  return {continueHeight, std::min(cellWidth * 3 / 2, coverSpace - continueHeight), cellWidth};
-}
 struct BitmapFit {
   int width;
   int height;

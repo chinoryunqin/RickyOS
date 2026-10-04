@@ -563,7 +563,11 @@ void ActivityManager::goToReader(std::string path, const bool allowFastInitialRe
     goToFileBrowser("/");
     return;
   }
-  if (FsHelpers::hasBmpExtension(path) || FsHelpers::hasPngExtension(path)) {
+  if (FsHelpers::hasBmpExtension(path) || FsHelpers::hasPngExtension(path)
+#ifdef RICKYOS_PRODUCT
+      || FsHelpers::hasJpgExtension(path)
+#endif
+  ) {
     replaceActivityWith<ImageViewerActivity>(std::move(path));
     return;
   }

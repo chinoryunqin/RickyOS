@@ -9,7 +9,7 @@
 
 class FileBrowserActivity final : public UiListActivity {
  public:
-  enum class Mode { Books, PickFirmware, PickPng, PickAvatar };
+  enum class Mode { Books, PickFirmware, PickPng, PickAvatar, PickWallpaper };
 
  private:
   enum class EditAction : uint8_t { Rename, Move, Delete, Open };
