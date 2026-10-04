@@ -7,13 +7,12 @@
 #include <cstring>
 
 #include "CrossPointSettings.h"
+#include "RickyAvatarPickerActivity.h"
 #include "RickyHomePhraseActivity.h"
-#include "activities/home/FileBrowserActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/RickyPageUi.h"
 #include "components/RickyProfile.h"
 #include "components/UITheme.h"
-#include "util/RickyStorageLayout.h"
 
 const char* RickyProfileActivity::headerTitle() const { return tr(STR_RICKY_PROFILE); }
 
@@ -127,27 +126,16 @@ void RickyProfileActivity::activateIndex(int index) {
         },
         tr(STR_RICKY_NICKNAME), std::string(SETTINGS.rickyNickname), sizeof(SETTINGS.rickyNickname) - 1);
   } else if (index == 1) {
-    startActivityForResultWith<FileBrowserActivity>(
-        [this](const ActivityResult& result) {
-          waitForConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
-          if (result.isCancelled) return;
-          const auto* entry = std::get_if<FilePathResult>(&result.data);
-          if (!entry) return;
-          RenderLock lock(*this);
-          closeRouting();
-          GUI.drawPopup(renderer, tr(STR_RICKY_AVATAR_IMPORTING));
-          failed = !RickyProfile::importAvatar(entry->path);
-        },
-        RickyStorageLayout::IMAGES, FileBrowserActivity::Mode::PickAvatar);
+    // Built-in portraits first; importing from the SD card lives on that page.
+    startActivityForResultWith<RickyAvatarPickerActivity>([this](const ActivityResult&) {
+      waitForConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
+      requestUpdate();
+    });
   } else if (index == 3) {
     startActivityForResultWith<RickyHomePhraseActivity>([this](const ActivityResult&) { requestUpdate(); });
   } else if (index == 2) {
     RenderLock lock(*this);
-    char previous[sizeof(SETTINGS.rickyAvatarPath)];
-    memcpy(previous, SETTINGS.rickyAvatarPath, sizeof(previous));
-    SETTINGS.rickyAvatarPath[0] = '\0';
-    failed = !SETTINGS.saveToFile();
-    if (failed) memcpy(SETTINGS.rickyAvatarPath, previous, sizeof(previous));
+    failed = !RickyProfile::setAvatar("");
     requestUpdate();
   }
 }
