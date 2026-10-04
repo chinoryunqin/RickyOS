@@ -53,6 +53,11 @@ class RickyFontCatalogTest(unittest.TestCase):
             self.assertNotRegex(family["name"], "Source|Smiley")  # OFL Reserved Font Names
             self.assertTrue(0 < len(family["description"].encode()) <= 160)
             self.assertRegex(family["font_sha256"], r"^[0-9a-f]{64}$")
+        # The download list draws descriptions in the built-in UI font, which lacks rarer Han.
+        ui_font = set((ROOT / "lib/EpdFont/scripts/cn_rickyos_chars.txt").read_text())
+        for family in catalog.FAMILIES:
+            missing = [c for c in family["description"] if "\u3400" <= c <= "\u9fff" and c not in ui_font]
+            self.assertEqual(missing, [], family["name"])
         self.assertLessEqual(catalog.MAX_INTERVALS, 4096)
         self.assertEqual(catalog.FLASH_CACHE_LIMIT, 0x640000 - 4096)
 

@@ -54,7 +54,7 @@ FAMILIES = (
      "license": "LICENSE-Serif.txt",
      "license_url": f"{ADOBE}/source-han-serif/7889f11bf31170b5d092a083b357c8c8130f89e0/LICENSE.txt",
      "license_sha256": "9ff5bb567e1b92c801fc1069e5fbf992ff8efccacb9db94e5959a5b3ba9bb903"},
-    {"name": "LXGWWenKai", "description": "霞鹜文楷 · 温润的楷体风格，适合散文诗词",
+    {"name": "LXGWWenKai", "description": "LXGW 文楷 · 温润的楷体风格，适合散文诗词",
      "origin": "LXGW WenKai v1.522",
      "font": "LXGWWenKai-Regular.ttf",
      "font_url": "https://github.com/lxgw/LxgwWenKai/releases/download/v1.522/LXGWWenKai-Regular.ttf",
