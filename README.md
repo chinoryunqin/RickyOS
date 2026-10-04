@@ -14,9 +14,11 @@
 - 待机图片可在「设置 → 电源与待机 → 选择待机图片」中预览并设定（BMP/PNG/JPG）；也可保留阅读页并显示「待机中」。
 - 保留五子棋及阅读/生活工具；移除九款已确认不要的小游戏和趣味应用。
 - macOS 浏览器预览直接显示原生模拟器帧缓冲，不另造一套网页 UI。
+- 界面语言为简体中文和英文；断字词典仅英语，以腾出应用分区空间。
 
 设备内置中文拼音输入尚未实现。字体管理内存、墨水屏残影/刷新、功耗和长期稳定性
-需要实机验收；当前固件未达到公开发布的应用分区余量门槛。不要作为正式发行版发布。
+需要实机验收；Flash 精简后应用分区余量已超过 512 KiB 门槛，但尚未刷写实机。
+不要作为正式发行版发布。
 
 ## 协作快速开始
 
@@ -26,8 +28,14 @@ cd RickyOS
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install pioarduino==6.2.0
+python scripts/patch_pioarduino_cache.py --prepare-platform
 pio run -e rickyos_readpico
 ```
+
+`--prepare-platform` 在新的 PlatformIO 工具目录首次构建前运行一次（删除或升级
+`~/.platformio` 后需重跑）；否则平台安装器会替换正在运行的 SCons，构建报
+`No module named 'SCons.Tool.FortranCommon'`。命令依赖上面激活的虚拟环境；
+未激活时使用 `.venv/bin/python`。详见 [构建系统](docs/engineering/build-system.md#tool-initialization)。
 
 已有克隆使用 `git submodule update --init --recursive` 获取固定版本的 SDK。
 默认环境是上游 C3，不要直接运行不带 `-e` 的构建/上传命令来操作 Read Pico。
