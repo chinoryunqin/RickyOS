@@ -27,8 +27,14 @@ cd RickyOS
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install pioarduino==6.2.0
+python scripts/patch_pioarduino_cache.py --prepare-platform
 pio run -e rickyos_readpico
 ```
+
+`--prepare-platform` 在新的 PlatformIO 工具目录首次构建前运行一次（删除或升级
+`~/.platformio` 后需重跑）；否则平台安装器会替换正在运行的 SCons，构建报
+`No module named 'SCons.Tool.FortranCommon'`。命令依赖上面激活的虚拟环境；
+未激活时使用 `.venv/bin/python`。详见 [构建系统](docs/engineering/build-system.md#tool-initialization)。
 
 已有克隆使用 `git submodule update --init --recursive` 获取固定版本的 SDK。
 默认环境是上游 C3，不要直接运行不带 `-e` 的构建/上传命令来操作 Read Pico。
