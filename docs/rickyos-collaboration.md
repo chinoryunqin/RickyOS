@@ -131,6 +131,15 @@ Mac 上两条线路均已下载校验（SHA256 一致）；模拟器经 jsDelivr
 Flash 预加载会提示改从 SD 卡加载；真实预加载与设备直连（Mac 经 TUN 代理）仍待实机验证。
 应用镜像 6,002,635 字节。
 
+### 下载速度（2026-10-05）
+
+实机经 jsDelivr 只有约 22 KB/s，下载第 4 个文件时连接被拒，提示「安装失败」。原因：TCP 接收窗口仅 5,760 字节，
+吞吐上限约为窗口 ÷ 往返时间（海外 CDN 约 220 ms）；同一网络下 Mac 直连同一地址约 430 KB/s。CrossMux 的源
+在国内（往返约 50 ms），所以小窗口下也不慢。处理：`rickyos_readpico` 把 `CONFIG_LWIP_TCP_WND_DEFAULT` 提到
+32768、`CONFIG_LWIP_TCP_RECVMBOX_SIZE` 提到 32（网络缓冲优先放 PSRAM），理论上限约提高 6 倍；清单增加可选
+`mirrors`（目录 v1.0.2：jsDelivr、fastly.jsdelivr、GitHub Release），单个文件失败后最多再试两次并依次换源，
+SD 卡、取消和鉴权错误不重试；清单本身也按 jsDelivr → fastly → GitHub（中文区域）顺序尝试。
+
 ## 提交流程
 
 1. 从 `main` 建功能分支；修改前查看工作区与上游差异。

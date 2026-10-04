@@ -81,6 +81,26 @@ class RickyFontCatalogTest(unittest.TestCase):
         self.assertIn("if (purpose_ != Purpose::ReaderAutoInstall)", block)  # NotoSansSC stays on CrossMux
         self.assertIn("RickyFontCatalog::manifestFor(SETTINGS.contentProfile, attempt)", block)
         self.assertIn("if (result == HttpDownloader::OK) break;", activity)
+        self.assertIn(f'"https://fastly.jsdelivr.net/gh/{repo}@latest/mirror.json"', header)
+
+    def test_failed_files_retry_on_mirrors(self):
+        script = (ROOT / "scripts/build_rickyos_font_catalog.py").read_text()
+        self.assertIn('("mirror.json", jsdelivr, [fastly, github])', script)
+        self.assertIn('("fonts.json", github, [jsdelivr, fastly])', script)
+        activity = (ROOT / "src/activities/settings/FontDownloadActivity.cpp").read_text()
+        self.assertIn('for (JsonVariant mirror : doc["mirrors"].as<JsonArray>())', activity)
+        # Only network failures retry; cancel, SD card and authorization errors stay final.
+        self.assertIn("attempt < kFileAttempts && result == HttpDownloader::HTTP_ERROR", activity)
+        self.assertIn("const std::string& base = host == 0 ? baseUrl_ : mirrorUrls_[host - 1];", activity)
+
+    def test_product_tcp_window_lifts_the_overseas_throughput_cap(self):
+        ini = (ROOT / "platformio.ini").read_text()
+        env = ini[ini.index("[env:rickyos_readpico]"):]
+        env = env.split("\n[", 1)[0]
+        self.assertIn("${readpico_hardware.custom_sdkconfig}", env)
+        self.assertIn("CONFIG_LWIP_TCP_WND_DEFAULT=32768", env)
+        self.assertIn("CONFIG_LWIP_TCP_RECVMBOX_SIZE=32", env)
+        self.assertIn("CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y", ini)  # window buffers prefer PSRAM
 
 
 if __name__ == "__main__":

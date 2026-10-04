@@ -42,6 +42,9 @@ constexpr size_t kMaxFilesPerFamily = 16;
 constexpr size_t kMaxFamilyNameBytes = 64;
 constexpr size_t kMaxDescriptionBytes = 160;
 constexpr size_t kMaxBaseUrlBytes = 256;
+constexpr size_t kMaxMirrors = 4;
+constexpr int kFileAttempts = 3;
+constexpr unsigned long kRetryDelayMs = 2000;
 constexpr size_t kMaxFontFileBytes = 25 * 1024 * 1024;
 constexpr uint8_t kDownloadProgressStepPercent = 10;
 
@@ -354,6 +357,7 @@ bool FontDownloadActivity::fetchAndParseManifest() {
   families_.clear();
   files_.clear();
   baseUrl_.clear();
+  mirrorUrls_.clear();
   downloadingFamilyIndex_ = -1;
 
   {
@@ -377,11 +381,11 @@ bool FontDownloadActivity::fetchAndParseManifest() {
     errorMessage_ = "Failed to fetch font list";
     return false;
   }
-  const char* manifestUrls[2] = {manifestUrl, nullptr};
+  const char* manifestUrls[3] = {manifestUrl, nullptr, nullptr};
 #ifdef RICKYOS_PRODUCT
   // RickyOS lists its own catalog; the reader's automatic NotoSansSC install stays on CrossMux.
   if (purpose_ != Purpose::ReaderAutoInstall) {
-    static_assert(RickyFontCatalog::MANIFEST_COUNT == 2);
+    static_assert(RickyFontCatalog::MANIFEST_COUNT == 3);
     for (int attempt = 0; attempt < RickyFontCatalog::MANIFEST_COUNT; ++attempt)
       manifestUrls[attempt] = RickyFontCatalog::manifestFor(SETTINGS.contentProfile, attempt);
   }
@@ -444,6 +448,16 @@ bool FontDownloadActivity::fetchAndParseManifest() {
     LOG_ERR("FONT", "Manifest has invalid baseUrl");
     errorMessage_ = "Invalid font manifest";
     return false;
+  }
+  for (JsonVariant mirror : doc["mirrors"].as<JsonArray>()) {
+    const char* url = mirror.as<const char*>();
+    const size_t length = url ? strlen(url) : 0;
+    if (length == 0 || length > kMaxBaseUrlBytes || strncmp(url, "https://", 8) != 0 || url[length - 1] != '/' ||
+        mirrorUrls_.size() >= kMaxMirrors) {
+      LOG_ERR("FONT", "Ignoring invalid manifest mirror");
+      continue;
+    }
+    mirrorUrls_.emplace_back(url);
   }
   families_.clear();
   files_.clear();
@@ -808,24 +822,38 @@ FontDownloadActivity::DownloadResult FontDownloadActivity::downloadFile(const Ma
     return DownloadResult::Success;
   }
 
-  std::string url = baseUrl_ + fileName;
   NetworkStartup::prepare(renderer);
-  const auto result = HttpDownloader::downloadToFile(
-      url, downloadPath,
-      [this, fileStartProgress, fileSize = file.size](size_t downloaded, size_t) {
-        mappedInput.update();
-        if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-          cancelRequested_ = true;
-        }
-        // The callback owns this input snapshot while the main loop is blocked.
-        if (mappedInput.wasHomeGesture()) {
-          cancelRequested_ = true;
-          goHomeRequested_ = true;
-        }
-        UiAppHost::routeTouch(mappedInput);
-        updateDownloadProgress(fileStartProgress + std::min(downloaded, fileSize));
-      },
-      &cancelRequested_);
+  const auto onProgress = [this, fileStartProgress, fileSize = file.size](size_t downloaded, size_t) {
+    mappedInput.update();
+    if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+      cancelRequested_ = true;
+    }
+    // The callback owns this input snapshot while the main loop is blocked.
+    if (mappedInput.wasHomeGesture()) {
+      cancelRequested_ = true;
+      goHomeRequested_ = true;
+    }
+    UiAppHost::routeTouch(mappedInput);
+    updateDownloadProgress(fileStartProgress + std::min(downloaded, fileSize));
+  };
+  // A refused or dropped connection is retried, moving to the next host that carries
+  // the same files; the CRC check below covers whichever host answered. Success,
+  // cancellation, SD card and authorization errors are final.
+  auto result = HttpDownloader::HTTP_ERROR;
+  const size_t hosts = 1 + mirrorUrls_.size();
+  for (int attempt = 0; attempt < kFileAttempts && result == HttpDownloader::HTTP_ERROR; ++attempt) {
+    const size_t host = static_cast<size_t>(attempt) % hosts;
+    const std::string& base = host == 0 ? baseUrl_ : mirrorUrls_[host - 1];
+    if (attempt > 0) {
+      LOG_INF("FONT", "Retrying %s from %s", fileName, base.c_str());
+      updateDownloadProgress(fileStartProgress);
+      delay(kRetryDelayMs);
+    }
+    const unsigned long started = millis();
+    result = HttpDownloader::downloadToFile(base + fileName, downloadPath, onProgress, &cancelRequested_);
+    if (result == HttpDownloader::OK)
+      LOG_INF("FONT", "Downloaded %s: %u B in %lu ms", fileName, static_cast<unsigned>(file.size), millis() - started);
+  }
 
   if (result == HttpDownloader::ABORTED) {
     Storage.remove(downloadPath);

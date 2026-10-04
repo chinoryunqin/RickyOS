@@ -84,6 +84,7 @@ class FontDownloadActivity final : public UiListActivity {
 
   // Manifest data
   std::string baseUrl_;
+  std::vector<std::string> mirrorUrls_;  // optional manifest "mirrors": the same files on other hosts
   std::vector<ManifestFamily> families_;
   std::vector<ManifestFile> files_;
   // Manifest-defined labels are dynamic; cap them at the 32-bit membership
