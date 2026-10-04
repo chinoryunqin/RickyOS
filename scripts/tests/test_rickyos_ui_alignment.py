@@ -17,7 +17,7 @@ class RickyUiAlignmentTest(unittest.TestCase):
 #include "activities/MainTab.h"
 #include "components/RickyPageLayout.h"
 constexpr int SMALL_FONT_ID=0;
-constexpr int kIconSize=UiHighDpiProfile::enabled?56:38;
+constexpr int kIconSize=38;  // product tab bar, both density profiles
 namespace EpdFontFamily {enum Style {REGULAR,BOLD};}
 enum class Color {DarkGray};
 enum class StrId {STR_RICKY_NAV_HOME,STR_LIBRARY,STR_RICKY_STORAGE,STR_APPS_TITLE,STR_SETTINGS_TITLE};
@@ -82,18 +82,23 @@ int main() {
             self.assertIn(key, portrait)
         self.assertIn('READING_STATS.findMatchingBookForPath', portrait)
         self.assertIn('RickyProfile::homePhrase()', portrait)
-        self.assertIn('Paint::dither', portrait)
+        # The progress track keeps the dithered gray, now through the shared helper.
+        self.assertIn('RickyPageUi::progressBar(', portrait)
+        self.assertIn('Paint::dither', method((ROOT / 'src/components/RickyPageUi.h').read_text(),
+                                              'inline void progressBar('))
 
     def test_main_pages_omit_decorative_explanations_and_their_reservations(self):
+        # The promotional images carry explanatory captions; the product keeps them out.
         home = method((ROOT / 'src/components/RickyHomeUi.cpp').read_text(),
                       'void RickyHomeUi::drawPortrait(')
         self.assertNotIn('STR_RICKY_PHRASE_CAPTION', home)
-        self.assertIn('screen.takeBottom(headingHeight * 2, gap)', home)
+        self.assertIn('screen.takeBottom(phraseHeight, gap)', home)
         self.assertIn('RickyProfile::homePhrase()', home)
         shelf = method((ROOT / 'src/activities/library/LibraryListActivity.cpp').read_text(),
                        'void LibraryListActivity::buildRickyShelf(')
         self.assertNotIn('STR_RICKY_LIBRARY_HINT', shelf)
         self.assertIn('multiplePages ? screen.takeBottom(labelHeight, gap)', shelf)
+        self.assertNotIn('STR_SEARCH', shelf)  # No Chinese text entry yet: search stays hidden.
         storage = method((ROOT / 'src/activities/home/RickyStorageActivity.cpp').read_text(),
                          'void RickyStorageActivity::buildScreen(')
         for key in ('FIND', 'ORGANIZED', 'BOOK_DETAIL', 'FONT_DETAIL', 'IMAGE_DETAIL', 'DOWNLOAD_DETAIL'):
@@ -102,44 +107,67 @@ int main() {
         self.assertIn('STR_RICKY_FOLDER_MISSING', storage)
         self.assertIn('STR_RICKY_BROWSE_FILES', storage)
         self.assertIn('STR_RICKY_UPLOAD_FILES', storage)
+        profile = method((ROOT / 'src/activities/settings/RickyProfileActivity.cpp').read_text(),
+                         'void RickyProfileActivity::buildScreen(')
+        self.assertNotIn('HINT', profile)
+        self.assertIn('if (failed) {', profile)
 
-    def test_title_only_cover_drawing_stays_inside_frame(self):
+    def test_generated_cover_drawing_stays_inside_frame(self):
         source = (ROOT / 'src/components/RickyPageUi.h').read_text()
+        covers = source[source.index('enum class Motif'):source.index('// Landscape "recently opened" tile')]
         run_cpp(r'''
 #include <algorithm>
 #include <cassert>
-#include <initializer_list>
+#include <cctype>
 #include <cstdint>
+#include <cstring>
+#include <initializer_list>
+#include <string>
 #include <vector>
 struct Rect {int x,y,width,height; explicit Rect(int x=0,int y=0,int w=0,int h=0):x(x),y(y),width(w),height(h) {}};
 namespace fui {
-struct Rect {int16_t x,y,width,height; bool empty() const {return width<=0 || height<=0;}};
-enum class Color {Black,White};
-struct Paint {static Paint solid(Color){return {};}};
-enum class TextAlign {Left,Center};
-struct TextStyle {int font=0;TextAlign align=TextAlign::Left;int maxLines=0;};
+struct Rect {int16_t x,y,width,height; bool empty() const {return width<=0 || height<=0;}
+             int16_t right() const {return x+width;} int16_t bottom() const {return y+height;}};
+struct Point {int16_t x,y;};
+struct Size {int16_t width,height;};
+enum class Color {Black,White,LightGray,DarkGray};
+struct Paint {static Paint solid(Color){return {};} static Paint dither(Color){return {};}};
+enum class TextAlign {Left,Center,Right};
+struct TextStyle {int font=0;TextAlign align=TextAlign::Left;int maxLines=0;bool bold=false;};
 struct DrawTarget {
   std::vector<Rect> blocks;
   int16_t lineHeight(int) const {return 34;}
-  void fill(Rect r,Paint) {blocks.push_back(r);}
-  void stroke(Rect r,Paint,int) {blocks.push_back(r);}
+  Size measureText(int,const char* text,TextStyle) const {return {int16_t(strlen(text)*9),34};}
+  void fill(Rect r,Paint,uint8_t=0) {blocks.push_back(r);}
+  void stroke(Rect r,Paint,uint8_t,uint8_t=0) {blocks.push_back(r);}
+  void line(Point a,Point b,uint8_t,Paint) {blocks.push_back({std::min(a.x,b.x),std::min(a.y,b.y),
+      int16_t(std::abs(a.x-b.x)+1),int16_t(std::abs(a.y-b.y)+1)});}
   void text(Rect r,const char*,TextStyle s) {assert(s.maxLines>=1 && s.maxLines<=3);blocks.push_back(r);}
 };
+inline Size measureWrappedText(DrawTarget&,const char* text,TextStyle s,int width) {
+  const int lines=std::min<int>(std::max(1,s.maxLines),int(strlen(text)*9/std::max(1,width))+1);
+  return {int16_t(width),int16_t(lines*34)};
 }
-enum class Icon {Book};
-void icon(fui::DrawTarget& t,Rect r,Icon) {t.blocks.push_back({int16_t(r.x),int16_t(r.y),int16_t(r.width),int16_t(r.height)});}
+}
+inline fui::Rect uiRect(const Rect& r) {return {int16_t(r.x),int16_t(r.y),int16_t(r.width),int16_t(r.height)};}
 void wrappedText(fui::DrawTarget& t,fui::Rect r,const char* text,fui::TextStyle style) {t.text(r,text,style);}
-''' + method(source, 'inline void bookPlaceholder(') + r'''
+''' + covers + r'''
 int main() {
- for (auto r : {fui::Rect{10,20,8,12},fui::Rect{10,20,60,90},fui::Rect{10,20,140,210},
-                fui::Rect{10,20,234,353},fui::Rect{10,20,120,180}}) {
-  fui::DrawTarget target;
-  bookPlaceholder(target,r,"long title without an embedded cover",{});
-  for (auto b : target.blocks) {
-   assert(b.width>0 && b.height>0 && b.x>=r.x && b.y>=r.y);
-   assert(b.x+b.width<=r.x+r.width && b.y+b.height<=r.y+r.height);
+  assert(strcmp(coverAuthor("亨利·戴维·梭罗"),"梭罗")==0);
+  assert(strcmp(coverAuthor("Henry David Thoreau"),"Henry David Thoreau")==0);
+  std::string title="浮生六记.txt"; stripBookExtension(title); assert(title=="浮生六记");
+  title="Walden.EPUB"; stripBookExtension(title); assert(title=="Walden");
+  for (auto r : {fui::Rect{10,20,8,12},fui::Rect{10,20,60,90},fui::Rect{10,20,140,210},
+                 fui::Rect{10,20,166,222},fui::Rect{10,20,234,353},fui::Rect{10,20,120,180}}) {
+    for (const char* footer : {static_cast<const char*>(nullptr),"EPUB"}) {
+      fui::DrawTarget target;
+      generatedCover(target,r,"long title without an embedded cover","亨利·戴维·梭罗",footer,{});
+      for (auto b : target.blocks) {
+        assert(b.width>0 && b.height>0 && b.x>=r.x && b.y>=r.y);
+        assert(b.x+b.width<=r.x+r.width && b.y+b.height<=r.y+r.height);
+      }
+    }
   }
- }
 }
 ''')
 
@@ -254,7 +282,8 @@ int main() {
         self.assertIn('!Storage.exists(path)', source)
         self.assertIn('folderMissing = true', source)
         self.assertNotIn('RickyPageUi::tile(screen', source)
-        self.assertIn('Paint::dither', source)
+        # Cells and rows are separated by solid hairlines, not boxed tiles.
+        self.assertIn('rect.bottom() - 1), rect.width, 1}, black)', source)
 
     def test_font_tile_releases_parent_lists_and_system_keeps_controls(self):
         source = (ROOT / 'src/activities/settings/SettingsActivity.cpp').read_text()

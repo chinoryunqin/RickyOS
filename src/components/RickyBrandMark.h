@@ -1,7 +1,6 @@
 #pragma once
 
 #include <algorithm>
-#include <array>
 #include <cstdint>
 
 #include "Rect.h"
@@ -10,8 +9,6 @@
 // User-selected portrait + dog + circular border + RickyOS wordmark.
 // Immutable Flash pixels; reuse the existing framebuffer with no heap allocation.
 namespace RickyBrandMark {
-inline constexpr std::array<unsigned, 4> bootHoldMs{700, 700, 700, 2000};
-
 constexpr Rect fit(const Rect box) {
   const int height = std::max(
       0, std::min({box.height, RickyLogoAsset::height, box.width * RickyLogoAsset::height / RickyLogoAsset::width}));
@@ -27,6 +24,31 @@ constexpr bool pixel(const int x, const int y, const uint8_t phase) {
   if ((RickyLogoAsset::bits[index] & mask) != 0) return false;
   if (phase >= 3 || (RickyLogoAsset::circleBits[index] & mask) == 0) return true;
   return y < RickyLogoAsset::wordmarkTop && (phase >= 2 || x < RickyLogoAsset::personRight);
+}
+
+// The portrait badge (person, dog and its own circular ring) occupies this
+// square of the asset: the ring fits a circle centred near (192, 188) with an
+// outer radius of 188 px. scripts/tests/test_rickyos_logo_asset.py re-derives it.
+constexpr int badgeX = 4, badgeY = 0, badgeSize = 376;
+
+// Area-sampled badge: each target pixel inks when at least `threshold`/16 of its
+// source block is ink, so the thin ring stays an even line when shrunk.
+template <typename Renderer>
+void drawBadge(const Renderer& renderer, const Rect box, const int threshold = 7) {
+  const int size = std::min(box.width, box.height);
+  if (size <= 0) return;
+  for (int y = 0; y < size; ++y) {
+    const int y0 = badgeY + y * badgeSize / size;
+    const int y1 = std::max(y0 + 1, badgeY + (y + 1) * badgeSize / size);
+    for (int x = 0; x < size; ++x) {
+      const int x0 = badgeX + x * badgeSize / size;
+      const int x1 = std::max(x0 + 1, badgeX + (x + 1) * badgeSize / size);
+      int ink = 0;
+      for (int sy = y0; sy < y1 && sy < RickyLogoAsset::wordmarkTop; ++sy)
+        for (int sx = x0; sx < x1; ++sx) ink += pixel(sx, sy, 3) ? 1 : 0;
+      if (ink * 16 >= threshold * (y1 - y0) * (x1 - x0)) renderer.drawPixel(box.x + x, box.y + y, true);
+    }
+  }
 }
 
 template <typename Renderer>

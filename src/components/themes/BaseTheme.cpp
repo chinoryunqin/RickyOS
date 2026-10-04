@@ -82,7 +82,9 @@ void BaseTheme::drawRickyPowerScreen(const GfxRenderer& renderer, const bool sle
   const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer);
   const GfxRenderer::ClipScope clip(renderer, safe.x, safe.y, safe.width, safe.height);
   const auto layout = RickyPowerLayout::fit(safe, renderer.getLineHeight(UI_10_FONT_ID), UiHighDpiProfile::controlGap);
-  const uint8_t phase = sleeping ? 3 : std::min<uint8_t>(reveal, 3);
+  (void)version;
+  (void)reveal;
+  constexpr uint8_t phase = 3;
   RickyBrandMark::draw(renderer, layout.mark, phase);
   // A powered-down display must not imply that a clock keeps updating.
   if (sleeping && layout.mark.y - safe.y > renderer.getLineHeight(UI_10_FONT_ID) * 3) {
@@ -92,15 +94,28 @@ void BaseTheme::drawRickyPowerScreen(const GfxRenderer& renderer, const bool sle
     const int lineY = eyebrow.y + eyebrow.height + UiHighDpiProfile::controlGap;
     renderer.drawLine(safe.x + inset, lineY, safe.x + safe.width - inset - 1, lineY, 1, true);
   }
-  const char* message = sleeping ? (transition ? tr(STR_ENTERING_SLEEP) : tr(STR_RICKY_BRAND_TAGLINE))
-                                 : (phase < 3 ? tr(STR_BOOTING) : tr(STR_RICKY_BRAND_TAGLINE));
+  const char* message = sleeping && transition ? tr(STR_ENTERING_SLEEP) : tr(STR_RICKY_BRAND_TAGLINE);
   UITheme::drawCenteredWrappedText(renderer, layout.message, UI_10_FONT_ID, message, 2);
+  if (!sleeping) return;  // No version or empty footer decoration on boot.
   const int separatorWidth = std::min(safe.width / 4, 120);
   const int separatorY = layout.footer.y - std::max(6, UiHighDpiProfile::controlGap);
   renderer.drawLine(safe.x + (safe.width - separatorWidth) / 2, separatorY, safe.x + (safe.width + separatorWidth) / 2,
                     separatorY, 1, true);
-  const char* footer = sleeping ? tr(STR_RICKY_POWER_WAKE_HINT) : version;
-  if (footer) UITheme::drawCenteredWrappedText(renderer, layout.footer, UI_10_FONT_ID, footer, 2);
+  UITheme::drawCenteredWrappedText(renderer, layout.footer, UI_10_FONT_ID, tr(STR_RICKY_POWER_WAKE_HINT), 2);
+}
+
+void BaseTheme::drawRickyStandbyIndicator(const GfxRenderer& renderer) {
+  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer);
+  const int padding = std::max(3, UiHighDpiProfile::controlGap / 2);
+  // Cover the footer's progress slot too, rather than leaving half a page number beside the badge.
+  const int width = std::min(
+      safe.width, std::max(safe.width / 5, renderer.getTextWidth(SMALL_FONT_ID, tr(STR_RICKY_STANDBY)) + padding * 2));
+  const int height = std::min(safe.height, renderer.getLineHeight(SMALL_FONT_ID) + padding * 2);
+  const Rect badge{safe.x + safe.width - width, safe.y + safe.height - height, width, height};
+  const GfxRenderer::ClipScope clip(renderer, badge.x, badge.y, badge.width, badge.height);
+  renderer.fillRect(badge.x, badge.y, badge.width, badge.height, false);
+  renderer.drawRect(badge.x, badge.y, badge.width, badge.height);
+  UITheme::drawCenteredWrappedText(renderer, badge, SMALL_FONT_ID, tr(STR_RICKY_STANDBY), 1);
 }
 #endif
 

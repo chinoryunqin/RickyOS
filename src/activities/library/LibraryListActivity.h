@@ -209,7 +209,7 @@ class LibraryListActivity final : public UiTabListActivity {
   int shelfStart = -1;
   int shelfHeight = 0;
   int shelfCount = 0;
-  std::array<std::string, SHELF_CAPACITY> shelfTitles{}, shelfPaths{}, shelfCovers{};
+  std::array<std::string, SHELF_CAPACITY> shelfTitles{}, shelfAuthors{}, shelfPaths{}, shelfCovers{};
   std::array<std::array<char, 56>, SHELF_CAPACITY> shelfDetails{};
   std::array<freeink::ui::CoverGridItem, SHELF_CAPACITY> shelfItems{};
   freeink::ui::CoverGridProps shelfGrid{};

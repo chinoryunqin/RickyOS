@@ -239,6 +239,28 @@ framebuffer or SD font is needed.
 The default sleep screen is Light. Existing saved sleep-screen selections are
 preserved; the default applies when no selection has been saved.
 
+RickyOS cold boot paints its complete logo once with FULL_REFRESH, without
+an animation, forced dwell, or version footer. Normal wake and PostOTA retain
+their distinct paths. Product Quick Resume overlays a small localized Standby
+badge at the oriented safe area's bottom-right, reusing the retained framebuffer.
+The reader orientation is applied for badge drawing then restored; night-mode
+polarity and the existing FAST transfer/cache path remain. Sleep plugin delivery
+receives no renderer on this path, so loading popups and handler toasts cannot
+replace the retained reading page. Stock builds retain their moon indicator.
+
+Product Settings → Power & Standby → Choose Standby Image opens an image-only
+file picker followed by ImageViewer preview. BMP/PNG/JPG/JPEG are accepted.
+The child returns to Settings on Back; cancellation does not install anything.
+Settings row/catalog vectors are released before pushing the picker/decoder.
+JPEG uses the existing fallible decoder and exclusive framebuffer scratch loan
+to produce an on-SD Gray8 BMP; no extra full-screen buffer or resident decoder
+is added. Successful preview is required before the Set Wallpaper action, which
+reuses the existing checked-copy and settings-save rollback to `/sleep.bmp`.
+The original file remains untouched. The independent idle Keep Page option can
+still override a wallpaper on automatic sleep; turn it off to use wallpaper then.
+Power-loss/FAT recovery, decoder memory limits, night-mode polarity and e-paper
+quality require device acceptance rather than simulator claims.
+
 ## Retained Framebuffer Updates
 
 The firmware has one framebuffer, and its contents remain available after

@@ -23,9 +23,9 @@ not redrawn. Its mask is restricted to the complete logo's black pixels.
 Both masks total 43,008 bytes of immutable Flash. Checked-in `images/RickyLogo.h`
 is generated output; edit the generator/source, never its byte arrays.
 
-Boot reveals circle → portrait → dog → embedded wordmark in four frames, with
-visible holds 700/700/700/2000ms after display completion (4.1s plus refresh time).
-Normal wake/PostOTA do not replay it. Power-off transition/default standby use
+Boot displays the complete artwork in one full refresh, without animation,
+artificial dwell or a version footer. Normal wake/PostOTA do not replay it.
+Power-off transition/default standby use
 the complete artwork. The old native R mark and duplicate text wordmark are
 removed. Other standby choices stay unchanged.
 

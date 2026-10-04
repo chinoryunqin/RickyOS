@@ -67,8 +67,10 @@ class RickyNavigationIconTest(unittest.TestCase):
 
     def test_product_routing_pixels_orientation_and_tab_hit_regions(self):
         source = SOURCE.read_text()
-        for size in (38, 56):
-            with self.subTest(size=size):
+        # The product tab bar uses the 38 px set in both UI density profiles.
+        size = 38
+        for high_dpi in (False, True):
+            with self.subTest(high_dpi=high_dpi):
                 program = r'''
 #include <cassert>
 #include <cstdint>
@@ -137,7 +139,7 @@ int main() {
   }
 }
 '''
-                defines = ('RICKYOS_PRODUCT', 'CROSSMUX_UI_PROFILE_HIGH_DPI') if size == 56 else ('RICKYOS_PRODUCT',)
+                defines = ('RICKYOS_PRODUCT', 'CROSSMUX_UI_PROFILE_HIGH_DPI') if high_dpi else ('RICKYOS_PRODUCT',)
                 run_cpp(program.replace('SIZE', str(size)), include_dirs=(ROOT / 'src',), defines=defines)
 
     def test_non_product_routing_keeps_upstream_assets(self):
