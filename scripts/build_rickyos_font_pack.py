@@ -42,15 +42,18 @@ def sha(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def validate_cpfont(data, required=()):
-    """Check the actual v4 table, coverage and every glyph's bitmap bounds."""
-    if len(data) < 96:
+def validate_cpfont(data, required=(), count=2):
+    """Check the actual v4 table, coverage and every glyph's bitmap bounds.
+
+    count=2 expects regular+bold; count=1 a regular-only file."""
+    header = 32 + count * 32
+    if len(data) < header:
         raise ValueError("truncated header/TOC")
-    magic, version, flags, count, reserved = struct.unpack_from("<8sHHB19s", data)
-    if (magic, version, flags, count, reserved) != (b"CPFONT\0\0", 4, 1, 2, bytes(19)):
-        raise ValueError("not a regular+bold cpfont v4")
+    magic, version, flags, styles, reserved = struct.unpack_from("<8sHHB19s", data)
+    if (magic, version, flags, styles, reserved) != (b"CPFONT\0\0", 4, 1, count, bytes(19)):
+        raise ValueError(f"not a {count}-style cpfont v4")
     toc = [struct.unpack_from("<B3xIIBhhHHBBBI4x", data, 32 + i * 32) for i in range(count)]
-    if [entry[0] for entry in toc] != [0, 1] or toc[0][-1] != 96:
+    if [entry[0] for entry in toc] != list(range(count)) or toc[0][-1] != header:
         raise ValueError("invalid style roles/offset")
     result = []
     for i, entry in enumerate(toc):

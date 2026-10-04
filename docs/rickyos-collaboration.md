@@ -115,6 +115,20 @@ SDK 保持上游提交，未提交本地差异。该版本的上游同时存在
 与 logo 一致。设置中保存为 `@avatar:<序号>`，序号顺序固定。共约 26 KB；应用镜像
 6,007,664 字节，余量 545,936 字节。脚本回归 227 项：217 通过，10 项环境跳过。
 
+## 在线下载字体（2026-10-04）
+
+「在线下载字体」改读 RickyOS 自己的字体目录 [chinoryunqin/RickyOS-fonts](https://github.com/chinoryunqin/RickyOS-fonts)
+（v1.0.0）：RickySans（思源黑体）、RickySerif（思源宋体）、LXGWWenKai（霞鹜文楷）、RickyGrin（得意黑），
+12–22 号。参照 CrossMux 字体的处理方式：只做常规体，字符集为 GB2312 全部、Big5 一级、3500 常用字及拉丁/标点/符号，
+补齐相邻空隙使区间不超过 4000；每个文件不超过 Flash 加速缓存上限 6,549,504 字节（最大约 5.0 MB），
+所以阅读时整份从 Flash 读取，而不是从 SD 卡逐字读取。生成脚本：`scripts/build_rickyos_font_catalog.py`
+（源文件按 URL 与 SHA256 锁定；改名避开 OFL 保留字体名 “Source”“Smiley”“得意黑”）。
+
+固件按内容区域选择清单：中文区域先读 jsDelivr 镜像 `mirror.json`，失败再读 GitHub Release 的 `fonts.json`；
+全球区域顺序相反。字体文件从提供清单的同一来源下载。阅读中缺字时自动补装 NotoSansSC 的流程仍走 CrossMux。
+Mac 上两条线路均已下载校验（SHA256 一致），但 Mac 经 TUN 代理，设备直连能否访问仍待实机验证。
+应用镜像 6,002,635 字节。
+
 ## 提交流程
 
 1. 从 `main` 建功能分支；修改前查看工作区与上游差异。

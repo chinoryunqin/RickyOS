@@ -13,6 +13,8 @@
 - 存储：书籍、字体、图片、下载四个固定文件夹（/books、/fonts、/images、/downloads），
   首次开机把 /book、/Pushed Books 里的书连同阅读进度一次性移入 /books。
 - 内置中文字体覆盖常用简体字、GB2312 一级字和常用繁体字（Big5 一级）。
+- 在线下载字体：思源黑体、思源宋体、霞鹜文楷、得意黑（RickySans / RickySerif / LXGWWenKai / RickyGrin），
+  常规体常用字子集，每个文件都能放进 Flash 加速缓存；来自 [RickyOS-fonts](https://github.com/chinoryunqin/RickyOS-fonts)。
 - 固定主题与主页面布局，选中导航图标加粗，统一点入/返回的设置交互。
 - 专属人物与狗狗 logo、静态开机标识和待机品牌画面。
 - 待机图片可在「设置 → 电源与待机 → 选择待机图片」中预览并设定（BMP/PNG/JPG）；也可保留阅读页并显示「待机中」。

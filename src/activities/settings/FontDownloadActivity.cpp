@@ -29,6 +29,7 @@
 #include "fontIds.h"
 #include "network/CrossMuxEndpoints.h"
 #include "network/HttpDownloader.h"
+#include "network/RickyFontCatalog.h"
 
 namespace fui = freeink::ui;
 
@@ -376,13 +377,27 @@ bool FontDownloadActivity::fetchAndParseManifest() {
     errorMessage_ = "Failed to fetch font list";
     return false;
   }
+  const char* manifestUrls[2] = {manifestUrl, nullptr};
+#ifdef RICKYOS_PRODUCT
+  // RickyOS lists its own catalog; the reader's automatic NotoSansSC install stays on CrossMux.
+  if (purpose_ != Purpose::ReaderAutoInstall) {
+    static_assert(RickyFontCatalog::MANIFEST_COUNT == 2);
+    for (int attempt = 0; attempt < RickyFontCatalog::MANIFEST_COUNT; ++attempt)
+      manifestUrls[attempt] = RickyFontCatalog::manifestFor(SETTINGS.contentProfile, attempt);
+  }
+#endif
   NetworkStartup::logMemory("font manifest request");
-  auto result = HttpDownloader::downloadToFile(manifestUrl, MANIFEST_TMP, nullptr);
+  auto result = HttpDownloader::HTTP_ERROR;
+  for (const char* url : manifestUrls) {
+    if (url == nullptr) break;
+    result = HttpDownloader::downloadToFile(url, MANIFEST_TMP, nullptr);
+    if (result == HttpDownloader::OK) break;
+    LOG_ERR("FONT", "Failed to fetch manifest from %s", url);
+    Storage.remove(MANIFEST_TMP);
+  }
   NetworkStartup::logMemory("font manifest request finished");
   if (result != HttpDownloader::OK) {
-    LOG_ERR("FONT", "Failed to fetch manifest from %s", manifestUrl);
     errorMessage_ = "Failed to fetch font list";
-    Storage.remove(MANIFEST_TMP);
     return false;
   }
 
