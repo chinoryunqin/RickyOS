@@ -1,0 +1,77 @@
+"""RickyOS 12pt CJK face: the shared common set plus GB2312 level 1, product-only."""
+import hashlib
+import os
+from pathlib import Path
+import re
+import importlib.util
+import subprocess
+import sys
+import unittest
+
+ROOT = Path(__file__).resolve().parents[2]
+SCRIPTS = ROOT / 'lib/EpdFont/scripts'
+FONTS = ROOT / 'lib/EpdFont/builtinFonts'
+HEADER = FONTS / 'notosans_cjk_12_rickyos.h'
+SOURCE = FONTS / 'source/NotoSansSC/NotoSansSC-Regular.otf'
+
+
+def han(text):
+    return [c for c in text if 0x4E00 <= ord(c) <= 0x9FFF]
+
+
+def intervals(header_text, name):
+    body = re.search(name + r'Intervals\[\] = \{(.*?)\};', header_text, re.S).group(1)
+    return [(int(a, 16), int(b, 16)) for a, b, _ in re.findall(r'\{ (0x[0-9A-F]+), (0x[0-9A-F]+), (0x[0-9A-F]+) \}', body)]
+
+
+class RickyCjkCoverageTest(unittest.TestCase):
+    def test_charset_is_common_set_plus_gb2312_level_one(self):
+        common = (SCRIPTS / 'cn_common_chars.txt').read_text(encoding='utf-8').strip()
+        level1 = han((SCRIPTS / 'gb2312_lv1.txt').read_text(encoding='utf-8'))
+        product = (SCRIPTS / 'cn_rickyos_chars.txt').read_text(encoding='utf-8')
+        self.assertTrue(product.startswith(common))
+        extra = product[len(common):]
+        self.assertEqual(len(extra), len(set(extra)))
+        self.assertEqual(set(extra), set(level1) - set(common))
+        self.assertIn('亨', extra)
+
+    def test_header_has_a_glyph_for_every_character(self):
+        text = HEADER.read_text(encoding='utf-8')
+        ranges = intervals(text, 'notosans_cjk_12_rickyos')
+        covered = lambda cp: any(a <= cp <= b for a, b in ranges)
+        for character in (SCRIPTS / 'cn_rickyos_chars.txt').read_text(encoding='utf-8'):
+            self.assertTrue(covered(ord(character)), f'missing glyph for {character}')
+        # The shared 12pt face is unchanged and still lacks the added characters.
+        shared = intervals((FONTS / 'notosans_cjk_common_intervals.h').read_text(encoding='utf-8'),
+                           'notosans_cjk_common')
+        self.assertFalse(any(a <= ord('亨') <= b for a, b in shared))
+
+    def test_only_the_high_density_product_uses_the_extended_face(self):
+        main = (ROOT / 'src/main.cpp').read_text(encoding='utf-8')
+        block = main[main.index('#if defined(RICKYOS_PRODUCT) && defined(CROSSMUX_UI_PROFILE_HIGH_DPI)'):]
+        block = block[:block.index('#endif')]
+        self.assertIn('#include <builtinFonts/notosans_cjk_12_rickyos.h>', block)
+        self.assertIn('cjk12Data = notosans_cjk_12_rickyos', block)
+        self.assertIn('EpdFont offlineReaderFont(&cjk12Data);', main)
+        self.assertIn('EpdFont cjk12Font(&cjk12Data);', main)
+        self.assertNotIn('notosans_cjk_12_rickyos', (FONTS / 'all.h').read_text(encoding='utf-8'))
+
+    @unittest.skipUnless(SOURCE.exists() and importlib.util.find_spec('fontTools') and importlib.util.find_spec('freetype'),
+                         'regeneration needs the gitignored Noto Sans CJK SC source and font build deps')
+    def test_regeneration_reproduces_the_committed_header(self):
+        script = (SCRIPTS / 'build-rickyos-cjk-font.sh').read_text(encoding='utf-8')
+        expected = re.search(r'SOURCE_SHA256="([0-9a-f]{64})"', script).group(1)
+        self.assertEqual(hashlib.sha256(SOURCE.read_bytes()).hexdigest(), expected)
+        before = HEADER.read_bytes(), (SCRIPTS / 'cn_rickyos_chars.txt').read_bytes()
+        try:
+            subprocess.run(['bash', str(SCRIPTS / 'build-rickyos-cjk-font.sh')], check=True, capture_output=True,
+                           env={**os.environ, 'PYTHON': sys.executable})
+            self.assertEqual(HEADER.read_bytes(), before[0])
+            self.assertEqual((SCRIPTS / 'cn_rickyos_chars.txt').read_bytes(), before[1])
+        finally:
+            HEADER.write_bytes(before[0])
+            (SCRIPTS / 'cn_rickyos_chars.txt').write_bytes(before[1])
+
+
+if __name__ == '__main__':
+    unittest.main()

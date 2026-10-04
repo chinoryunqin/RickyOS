@@ -257,6 +257,23 @@ glyphs, so output can contain more than N characters. `--top` may equal the
 pool size but may not exceed it. The script rereads both generated files and
 fails if a selected base or required character is missing.
 
+### RickyOS 12pt face
+
+The `rickyos_readpico` and `simulator_rickyos` builds use only the 12pt CJK face
+in the high-density profile, so they link `notosans_cjk_12_rickyos.h` instead of
+the shared `notosans_cjk_12.h`. Its character set, `cn_rickyos_chars.txt`, is the
+shared `cn_common_chars.txt` followed by every GB2312 level-1 hanzi it lacks
+(367 characters, e.g. 亨). The shared 8/10/12pt headers and their common interval
+table are unchanged, so other targets are unaffected. Regenerate after changing
+`cn_common_chars.txt`, with the same verified source:
+
+```bash
+PYTHON=/tmp/cn_font_venv/bin/python3 bash lib/EpdFont/scripts/build-rickyos-cjk-font.sh
+```
+
+On the shared characters the bitmaps are byte-identical to `notosans_cjk_12.h`.
+GB2312 level-2 characters (e.g. 佚) are not included.
+
 ## Force-including feature-specific glyphs
 
 Each feature that needs CJK glyphs not already covered by the natural source
