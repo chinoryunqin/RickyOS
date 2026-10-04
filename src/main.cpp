@@ -140,7 +140,15 @@ static bool wakePowerReleasePending = false;
 #include <builtinFonts/notosans_cjk_14.h>
 #include <builtinFonts/notosans_cjk_16.h>
 #endif
-EpdFont offlineReaderFont(&notosans_cjk_12);
+#if defined(RICKYOS_PRODUCT) && defined(CROSSMUX_UI_PROFILE_HIGH_DPI)
+// The product's only built-in CJK reading/UI size adds GB2312 level 1 (titles,
+// author names); the shared 8/10/12pt set stays as is for other targets.
+#include <builtinFonts/notosans_cjk_12_rickyos.h>
+static const EpdFontData& cjk12Data = notosans_cjk_12_rickyos;
+#else
+static const EpdFontData& cjk12Data = notosans_cjk_12;
+#endif
+EpdFont offlineReaderFont(&cjk12Data);
 EpdFontFamily offlineReaderFontFamily(&offlineReaderFont);
 
 // Large UI text keeps the upstream face; INX restores its historical fallback
@@ -185,7 +193,7 @@ EpdFont cjk10Font(&notosans_cjk_10);
 EpdFontFamily cjk8FontFamily(&cjk8Font);
 EpdFontFamily cjk10FontFamily(&cjk10Font);
 #endif
-EpdFont cjk12Font(&notosans_cjk_12);
+EpdFont cjk12Font(&cjk12Data);
 EpdFontFamily cjk12FontFamily(&cjk12Font);
 
 // Chinese chess piece glyphs (subset CJK font, 14 characters at 16pt).
