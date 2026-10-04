@@ -11,7 +11,7 @@ families never use an OFL Reserved Font Name ("Source", "Smiley", "得意黑").
 The output directory is the layout of the RickyOS-fonts repository: fonts/
 holds the files, fonts.json points at the GitHub release assets of --tag and
 mirror.json at the same files through jsDelivr, both in the manifest format
-FontDownloadActivity reads. Upload fonts/*.cpfont and fonts.json to the release.
+FontDownloadActivity reads; each lists the other hosts under "mirrors". Upload fonts/*.cpfont and fonts.json to the release.
 """
 import argparse
 import binascii
@@ -170,9 +170,13 @@ def build(source_dir, output, tag):
         print(f'{spec["name"]}: {len(intervals)} intervals, {len(covered)} glyphs, '
               f'largest {sources[-1]["largest_file"]:,} B', flush=True)
     shutil.rmtree(output / ".work")
-    for name, base in (("fonts.json", f"https://github.com/{RELEASE_REPO}/releases/download/{tag}/"),
-                       ("mirror.json", f"https://cdn.jsdelivr.net/gh/{RELEASE_REPO}@{tag}/fonts/")):
-        manifest = {"version": MANIFEST_VERSION, "baseUrl": base, "families": families}
+    github = f"https://github.com/{RELEASE_REPO}/releases/download/{tag}/"
+    jsdelivr = f"https://cdn.jsdelivr.net/gh/{RELEASE_REPO}@{tag}/fonts/"
+    fastly = f"https://fastly.jsdelivr.net/gh/{RELEASE_REPO}@{tag}/fonts/"
+    # "mirrors" carry the same files; the reader retries a failed file on the next one.
+    for name, base, mirrors in (("fonts.json", github, [jsdelivr, fastly]),
+                                ("mirror.json", jsdelivr, [fastly, github])):
+        manifest = {"version": MANIFEST_VERSION, "baseUrl": base, "mirrors": mirrors, "families": families}
         (output / name).write_text(json.dumps(manifest, ensure_ascii=False, indent=1) + "\n")
     (output / "sources.json").write_text(json.dumps(
         {"sizes": SIZES, "flash_cache_limit": FLASH_CACHE_LIMIT, "families": sources},
