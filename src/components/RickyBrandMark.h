@@ -1,7 +1,6 @@
 #pragma once
 
 #include <algorithm>
-#include <array>
 #include <cstdint>
 
 #include "Rect.h"
@@ -10,8 +9,6 @@
 // User-selected portrait + dog + circular border + RickyOS wordmark.
 // Immutable Flash pixels; reuse the existing framebuffer with no heap allocation.
 namespace RickyBrandMark {
-inline constexpr std::array<unsigned, 4> bootHoldMs{700, 700, 700, 2000};
-
 constexpr Rect fit(const Rect box) {
   const int height = std::max(
       0, std::min({box.height, RickyLogoAsset::height, box.width * RickyLogoAsset::height / RickyLogoAsset::width}));

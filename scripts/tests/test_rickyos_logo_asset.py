@@ -75,14 +75,18 @@ int main() {
         source = (ROOT / 'src/components/themes/BaseTheme.cpp').read_text()
         draw = method(source, 'void BaseTheme::drawRickyPowerScreen(')
         self.assertIn('RickyBrandMark::draw(renderer, layout.mark, phase)', draw)
-        self.assertIn('sleeping ? 3', draw)
+        self.assertIn('constexpr uint8_t phase = 3', draw)
         self.assertNotIn('RickyBrandMark::strokes', draw)
         self.assertNotIn('tr(STR_CROSSPOINT)', draw)
         for allocation in ('new ', 'malloc(', 'std::vector', 'Storage.'):
             self.assertNotIn(allocation, draw)
         boot = (ROOT / 'src/activities/boot_sleep/BootActivity.cpp').read_text()
-        self.assertIn('const unsigned shownAt = millis()', boot)
-        self.assertIn('resetTaskWatchdogIfSubscribed()', boot)
+        splash = method(boot, 'void BootActivity::renderSplash(').split('#endif', 1)[0]
+        self.assertIn('drawRickyPowerScreen(renderer, false, false)', splash)
+        self.assertEqual(splash.count('displayBuffer('), 1)
+        self.assertNotIn('CROSSPOINT_VERSION', splash)
+        self.assertNotIn('delay(', splash)
+        self.assertNotIn('for (', splash)
 
 
 if __name__ == '__main__':

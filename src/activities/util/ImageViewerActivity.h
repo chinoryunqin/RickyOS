@@ -9,7 +9,8 @@
 
 class ImageViewerActivity final : public Activity {
  public:
-  ImageViewerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string filePath);
+  ImageViewerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string filePath,
+                      bool wallpaperPicker = false);
 
   void onEnter() override;
   void onExit() override;
@@ -23,6 +24,8 @@ class ImageViewerActivity final : public Activity {
   void showSleepCoverOptions();
 
   std::string filePath;
+  bool wallpaperPicker = false;
+  bool imageReady = false;
   std::vector<std::string> siblingImages;
   int currentImageIndex = -1;
   OptionPopup sleepCoverPopup;

@@ -899,9 +899,16 @@ void SleepActivity::renderCoverSleepScreen() const {
 }
 
 void SleepActivity::renderLastScreenSleepScreen() const {
+#ifdef RICKYOS_PRODUCT
+  const auto previousOrientation = renderer.getOrientation();
+  if (APP_STATE.lastSleepFromReader) ReaderUtils::applyOrientation(renderer, SETTINGS.orientation);
+  GUI.drawRickyStandbyIndicator(renderer);
+  renderer.setOrientation(previousOrientation);
+#else
   const auto pageHeight = renderer.getScreenHeight();
   renderer.drawImage(MoonIcon, 0, pageHeight - MOONICON_HEIGHT, MOONICON_WIDTH, MOONICON_HEIGHT);
-  // Only the moon differs from the displayed frame, so a differential FAST
+#endif
+  // Only the standby indicator differs from the displayed frame, so a differential FAST
   // update adds it without the flashing clean pass (which sweeps the panel
   // through the inverse — a full white flash on a night-mode page).
   if (gpio.deviceIsX3()) {

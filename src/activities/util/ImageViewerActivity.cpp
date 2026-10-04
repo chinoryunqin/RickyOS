@@ -7,6 +7,9 @@
 #include <HalStorage.h>
 #include <I18n.h>
 #include <PngToBmpConverter.h>
+#ifdef RICKYOS_PRODUCT
+#include <JpegToBmpConverter.h>
+#endif
 
 #include <algorithm>
 
@@ -21,6 +24,14 @@ constexpr const char* SLEEP_IMAGE_PATH = "/sleep.bmp";
 constexpr const char* SLEEP_IMAGE_PART_PATH = "/sleep.bmp.part";
 constexpr const char* SLEEP_IMAGE_BACKUP_PATH = "/sleep.bmp.bak";
 
+constexpr StrId sleepCoverLabel() {
+#ifdef RICKYOS_PRODUCT
+  return StrId::STR_RICKY_SET_WALLPAPER;
+#else
+  return StrId::STR_SET_SLEEP_COVER;
+#endif
+}
+
 Rect sleepCoverActionRect(const GfxRenderer& renderer) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   return Rect(metrics.contentSidePadding,
@@ -29,8 +40,9 @@ Rect sleepCoverActionRect(const GfxRenderer& renderer) {
 }
 }  // namespace
 
-ImageViewerActivity::ImageViewerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string path)
-    : Activity("ImageViewer", renderer, mappedInput), filePath(std::move(path)) {}
+ImageViewerActivity::ImageViewerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string path,
+                                         const bool wallpaperPicker)
+    : Activity("ImageViewer", renderer, mappedInput), filePath(std::move(path)), wallpaperPicker(wallpaperPicker) {}
 
 void ImageViewerActivity::loadSiblingImages() {
   siblingImages.clear();
@@ -71,7 +83,8 @@ bool ImageViewerActivity::isPng() const { return FsHelpers::hasPngExtension(file
 void ImageViewerActivity::onEnter() {
   Activity::onEnter();
 
-  if (siblingImages.empty() && !filePath.empty()) {
+  imageReady = false;
+  if (!wallpaperPicker && siblingImages.empty() && !filePath.empty()) {
     loadSiblingImages();
   }
 
@@ -80,12 +93,29 @@ void ImageViewerActivity::onEnter() {
   Rect popupRect = GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
   GUI.fillPopupProgress(renderer, popupRect, 20);  // Initial 20% progress
   const bool png = isPng();
-  bool prepared = !png;
+#ifdef RICKYOS_PRODUCT
+  const bool jpeg = FsHelpers::hasJpgExtension(filePath);
+#else
+  constexpr bool jpeg = false;
+#endif
+  bool prepared = !png && !jpeg;
   if (png && Storage.ensureDirectoryExists("/.crosspoint")) {
     GfxRenderer::FrameBufferLoan loan(renderer);
     prepared = PngToBmpConverter::pngFileToBmpFile(filePath.c_str(), PNG_PREVIEW_PATH, true);
   }
-  const char* bitmapPath = png ? PNG_PREVIEW_PATH : filePath.c_str();
+#ifdef RICKYOS_PRODUCT
+  if (jpeg && Storage.ensureDirectoryExists("/.crosspoint")) {
+    GfxRenderer::FrameBufferLoan loan(renderer);
+    Storage.remove(PNG_PREVIEW_PATH);
+    HalFile input, output;
+    if (Storage.openFileForRead("IMAGE", filePath.c_str(), input) &&
+        Storage.openFileForWrite("IMAGE", PNG_PREVIEW_PATH, output)) {
+      prepared = JpegToBmpConverter::jpegFileToBmpStream(input, output, false, JpegToBmpConverter::Output::Gray8);
+      output.flush();
+    }
+  }
+#endif
+  const char* bitmapPath = png || jpeg ? PNG_PREVIEW_PATH : filePath.c_str();
   HalFile file;
   // 1. Open the file
   if (!prepared) {
@@ -127,8 +157,8 @@ void ImageViewerActivity::onEnter() {
       bool hasNext = (siblingImages.size() > 1 && currentImageIndex != -1 &&
                       currentImageIndex < static_cast<int>(siblingImages.size()) - 1);
 
-      const auto labels =
-          mappedInput.mapLabels(tr(STR_BACK), tr(STR_SET_SLEEP_COVER), (hasPrevious ? "<" : ""), (hasNext ? ">" : ""));
+      const auto labels = mappedInput.mapLabels(tr(STR_BACK), I18N.get(sleepCoverLabel()), (hasPrevious ? "<" : ""),
+                                                (hasNext ? ">" : ""));
 
       GUI.fillPopupProgress(renderer, popupRect, 50);
 
@@ -143,10 +173,15 @@ void ImageViewerActivity::onEnter() {
       // Draw UI hints on the base layer
       GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
       if (mappedInput.hasTouch()) {
-        GUI.drawActionButton(renderer, sleepCoverActionRect(renderer), tr(STR_SET_SLEEP_COVER));
+        GUI.drawActionButton(renderer, sleepCoverActionRect(renderer), I18N.get(sleepCoverLabel()));
       }
       if (bitmap.hasGreyscale()) {
+#ifdef RICKYOS_PRODUCT
+        // Read Pico's bitmap renderer emits overlay masks, not UC8279 absolute planes.
+        constexpr bool absolute = false;
+#else
         const bool absolute = renderer.grayscaleCapabilities(HalDisplay::GrayscaleMode::Absolute).supported();
+#endif
         if (absolute && !renderer.displayGrayscaleBase(HalDisplay::GrayscaleMode::Absolute)) return;
         if (!absolute) renderer.displayGrayscaleBase(HalDisplay::HALF_REFRESH);
         bool planesReady = true;
@@ -164,7 +199,7 @@ void ImageViewerActivity::onEnter() {
           }
           GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
           if (mappedInput.hasTouch())
-            GUI.drawActionButton(renderer, sleepCoverActionRect(renderer), tr(STR_SET_SLEEP_COVER));
+            GUI.drawActionButton(renderer, sleepCoverActionRect(renderer), I18N.get(sleepCoverLabel()));
           if (mode == GfxRenderer::GRAYSCALE_LSB) {
             renderer.copyGrayscaleLsbBuffers();
           } else {
@@ -185,8 +220,10 @@ void ImageViewerActivity::onEnter() {
         GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
         renderer.cleanupGrayscaleWithFrameBuffer();
         if (!planesReady) renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+        imageReady = planesReady;
       } else {
         renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+        imageReady = true;
       }
 
     } else {
@@ -284,14 +321,19 @@ void ImageViewerActivity::doSetSleepCover(const char* sourcePath, const bool tra
 }
 
 void ImageViewerActivity::showSleepCoverOptions() {
+  if (!imageReady) return;  // Never install a failed conversion or invalid preview.
   if (!isPng()) {
+#ifdef RICKYOS_PRODUCT
+    doSetSleepCover(FsHelpers::hasJpgExtension(filePath) ? PNG_PREVIEW_PATH : filePath.c_str(), false);
+#else
     doSetSleepCover(filePath.c_str(), false);
+#endif
     return;
   }
 
   static constexpr StrId options[] = {StrId::STR_NORMAL, StrId::STR_TRANSPARENT};
   static constexpr int optionCount = sizeof(options) / sizeof(options[0]);
-  sleepCoverPopup.show(StrId::STR_SET_SLEEP_COVER, options, optionCount, 0, [this](const int index) {
+  sleepCoverPopup.show(sleepCoverLabel(), options, optionCount, 0, [this](const int index) {
     doSetSleepCover(index == 1 ? filePath.c_str() : PNG_PREVIEW_PATH, index == 1);
   });
   requestUpdate();
@@ -325,7 +367,10 @@ void ImageViewerActivity::loop() {
   };
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-    activityManager.goToFileBrowser(filePath);
+    if (wallpaperPicker)
+      finish();
+    else
+      activityManager.goToFileBrowser(filePath);
     return;
   }
 
