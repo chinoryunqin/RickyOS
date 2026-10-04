@@ -8,7 +8,7 @@ class RickyProfileActivity final : public UiListActivity {
       : UiListActivity("RickyProfile", renderer, input) {}
 
  protected:
-  int listCount() const override { return 3; }
+  int listCount() const override { return 4; }  // nickname, avatar, reset avatar, home note
   const char* headerTitle() const override;
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;

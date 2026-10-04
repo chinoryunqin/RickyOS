@@ -15,6 +15,9 @@
 #include "fontIds.h"
 #include "network/HttpDownloader.h"
 #include "util/BookCacheUtils.h"
+#ifdef RICKYOS_PRODUCT
+#include "util/RickyStorageLayout.h"
+#endif
 #include "util/OpdsFilename.h"
 #include "util/PluginHttp.h"
 #include "util/StringUtils.h"
@@ -203,7 +206,12 @@ void OpdsBookBrowserActivity::downloadBook(const OpdsEntry& book) {
   std::string downloadUrl = UrlUtils::buildUrl(feedUrl, book.href);
   // opdsDownloadFolder is already a null-terminated char[64]; use it directly —
   // no std::string copy. exists()/mkdir() take const char*.
+#ifdef RICKYOS_PRODUCT
+  // RickyOS files downloaded books under /books unless the user chose a folder.
+  const char* folder = SETTINGS.opdsDownloadFolder[0] ? SETTINGS.opdsDownloadFolder : RickyStorageLayout::BOOKS;
+#else
   const char* folder = SETTINGS.opdsDownloadFolder;  // "" => SD root
+#endif
   bool haveFolder = folder[0] != '\0';
   if (haveFolder && !Storage.exists(folder) && !Storage.mkdir(folder)) {
     // exists()-guard first: mkdir's return-on-existing is unconfirmed, and every

@@ -151,7 +151,9 @@ class ActivityManager {
 #endif
 #endif
   void goToCalculator();
+#ifndef RICKYOS_PRODUCT
   void goToAirPage();
+#endif
   void goToStandby();
 #ifdef ENABLE_CHINESE_VERSION
   void goToWeRead();

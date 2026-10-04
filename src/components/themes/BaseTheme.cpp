@@ -710,7 +710,8 @@ void BaseTheme::drawHeaderWithStyle(const GfxRenderer& renderer, Rect rect, cons
   if (showBackButton) {
     props.leadingIcon = fui::bitmapFromIcon(icon_header_back_32);
     props.leadingAction = 1;  // any non-NO_ACTION id: paints the button, routing is via HeaderBackTapTarget
-    HeaderBackTapTarget::set(band.x + 4, band.y + 4 + props.actionOffsetY, backBtnSize, backBtnSize);
+    const int titleWidth = renderer.getTextWidth(uiScaleSpec(upstreamStyle).titleFontId, title);
+    HeaderBackTapTarget::setLeading(band.x, band.y, band.width, band.height, 4 + backBtnSize + titleWidth + 24);
   } else {
     HeaderBackTapTarget::clear();
   }

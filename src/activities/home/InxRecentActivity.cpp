@@ -16,7 +16,6 @@
 #include "components/SubpageLayout.h"
 #include "components/UITheme.h"
 #ifdef RICKYOS_PRODUCT
-#include "activities/settings/RickyProfileActivity.h"
 #include "components/RickyHomeLayout.h"
 #endif
 #include "components/icons/cover.h"
@@ -393,10 +392,6 @@ void InxRecentActivity::loop() {
 #ifdef RICKYOS_PRODUCT
   if (rickyHome) {
     const int action = rickyHome->selectedAction(mappedInput);
-    if (action == RickyHomeUi::PROFILE) {
-      startActivityForResultWith<RickyProfileActivity>([](const ActivityResult&) {});
-      return;
-    }
     if (action == RickyHomeUi::LIBRARY) {
       activityManager.goToLibrary();
       return;

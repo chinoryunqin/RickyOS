@@ -7,11 +7,13 @@
 #include <cstring>
 
 #include "CrossPointSettings.h"
+#include "RickyHomePhraseActivity.h"
 #include "activities/home/FileBrowserActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/RickyPageUi.h"
 #include "components/RickyProfile.h"
 #include "components/UITheme.h"
+#include "util/RickyStorageLayout.h"
 
 const char* RickyProfileActivity::headerTitle() const { return tr(STR_RICKY_PROFILE); }
 
@@ -53,7 +55,7 @@ void RickyProfileActivity::buildScreen(UiScreen& screen) {
   // Nickname reads like a field; tapping it or the primary button edits it.
   target.text(screen.takeTop(smallHeight, gap / 2), tr(STR_RICKY_NICKNAME), small);
   const int controlHeight = bodyHeight + gap * 2;
-  const auto field = screen.takeTop(controlHeight, failed ? gap / 2 : gap * 3);
+  const auto field = screen.takeTop(controlHeight, failed ? gap / 2 : gap * 2);
   target.stroke(field, black, focus && selected == 0 ? 3 : 1, radius);
   auto value = theme.bodyText;
   value.maxLines = 1;
@@ -64,8 +66,17 @@ void RickyProfileActivity::buildScreen(UiScreen& screen) {
   if (failed) {
     auto error = small;
     error.maxLines = 2;
-    target.text(screen.takeTop(smallHeight, gap * 3), tr(STR_RICKY_PROFILE_FAILED), error);
+    target.text(screen.takeTop(smallHeight, gap * 2), tr(STR_RICKY_PROFILE_FAILED), error);
   }
+
+  // The home-page note belongs to the person too: same field style, opens its editor.
+  target.text(screen.takeTop(smallHeight, gap / 2), tr(STR_RICKY_PHRASE_TITLE), small);
+  const auto phrase = screen.takeTop(controlHeight, gap * 3);
+  target.stroke(phrase, black, focus && selected == 3 ? 3 : 1, radius);
+  target.text(fui::Rect{static_cast<int16_t>(phrase.x + gap), static_cast<int16_t>(phrase.y + gap),
+                        static_cast<int16_t>(phrase.width - gap * 2), static_cast<int16_t>(bodyHeight)},
+              RickyProfile::homePhrase(), value);
+  screen.frame().hit(phrase, ACTION_ROW, 3, fui::InputTouch);
 
   const auto primary = screen.takeTop(controlHeight, gap);
   target.fill(primary, black, radius);
@@ -127,7 +138,9 @@ void RickyProfileActivity::activateIndex(int index) {
           GUI.drawPopup(renderer, tr(STR_RICKY_AVATAR_IMPORTING));
           failed = !RickyProfile::importAvatar(entry->path);
         },
-        "/", FileBrowserActivity::Mode::PickAvatar);
+        RickyStorageLayout::IMAGES, FileBrowserActivity::Mode::PickAvatar);
+  } else if (index == 3) {
+    startActivityForResultWith<RickyHomePhraseActivity>([this](const ActivityResult&) { requestUpdate(); });
   } else if (index == 2) {
     RenderLock lock(*this);
     char previous[sizeof(SETTINGS.rickyAvatarPath)];

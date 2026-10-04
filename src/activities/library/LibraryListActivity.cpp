@@ -1265,8 +1265,10 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
     if (!self.shelfCovers[slot].empty() && Storage.openFileForRead("LIB", self.shelfCovers[slot], file)) {
       Bitmap bitmap(file);
       if (bitmap.parseHeaders() == BmpReaderError::Ok &&
-          GUI.drawCoverThumbFill(self.renderer, bitmap, Rect{rect.x, rect.y, rect.width, rect.height}))
+          GUI.drawCoverThumbFill(self.renderer, bitmap, Rect{rect.x, rect.y, rect.width, rect.height})) {
+        target.stroke(rect, fui::Paint::solid(fui::Color::Black), 1);
         return true;
+      }
     }
     // The label under the cover already names the format.
     RickyPageUi::generatedCover(target, rect, item.title, self.shelfAuthors[slot].c_str(), nullptr,

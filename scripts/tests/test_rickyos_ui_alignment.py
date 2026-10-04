@@ -105,7 +105,8 @@ int main() {
             self.assertNotIn('STR_RICKY_STORAGE_' + key, storage)
         self.assertNotIn('auto intro = screen.takeTop', storage)
         self.assertIn('STR_RICKY_FOLDER_MISSING', storage)
-        self.assertIn('STR_RICKY_BROWSE_FILES', storage)
+        # The SD card summary opens the whole card; transfer stays an explicit action.
+        self.assertIn('screen.frame().hit(summary, ACTION_ROW, 4', storage)
         self.assertIn('STR_RICKY_UPLOAD_FILES', storage)
         profile = method((ROOT / 'src/activities/settings/RickyProfileActivity.cpp').read_text(),
                          'void RickyProfileActivity::buildScreen(')
@@ -275,15 +276,19 @@ int main() {
     def test_storage_does_not_create_or_reorganize_user_directories(self):
         source = (ROOT / 'src/activities/home/RickyStorageActivity.cpp').read_text()
         for key in ('STR_RICKY_DOWNLOADS','STR_RICKY_IMAGES','STR_FONT', 'STR_RICKY_BOOK_FILES',
-                    'STR_RICKY_BROWSE_FILES','STR_RICKY_UPLOAD_FILES'):
+                    'STR_RICKY_STORAGE_SPACE','STR_RICKY_UPLOAD_FILES'):
             self.assertIn(key, source)
-        for mutation in ('Storage.rename','Storage.remove','ensureDirectoryExists'):
+        # The page only creates the four fixed folders; it never renames or deletes.
+        for mutation in ('Storage.rename', 'Storage.remove', 'Storage.rmdir'):
             self.assertNotIn(mutation, source)
+        for folder in ('BOOKS', 'FONTS', 'IMAGES', 'DOWNLOADS'):
+            self.assertIn('RickyStorageLayout::' + folder, source)
         self.assertIn('!Storage.exists(path)', source)
         self.assertIn('folderMissing = true', source)
         self.assertNotIn('RickyPageUi::tile(screen', source)
-        # Cells and rows are separated by solid hairlines, not boxed tiles.
-        self.assertIn('rect.bottom() - 1), rect.width, 1}, black)', source)
+        # Folder cells are rounded icon cards whose focus thickens the outline.
+        self.assertIn('RickyPageUi::card(target, rect, focus && selected == i)', source)
+        self.assertIn('RickyPageUi::pageIcon(', source)
 
     def test_font_tile_releases_parent_lists_and_system_keeps_controls(self):
         source = (ROOT / 'src/activities/settings/SettingsActivity.cpp').read_text()
