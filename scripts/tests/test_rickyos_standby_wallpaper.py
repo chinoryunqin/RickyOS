@@ -160,5 +160,13 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
         self.assertIn('STR_RICKY_SLEEP_LIGHT: "默认画面"', (ROOT / 'lib/I18n/translations/chinese.yaml').read_text())
 
 
+    def test_unset_timezone_is_china_standard_time(self):
+        zones = (ROOT / 'src/util/Timezones.cpp').read_text()
+        product = zones.split('#ifdef RICKYOS_PRODUCT', 1)[1].split('#else', 1)[0]
+        self.assertIn('constexpr uint8_t DEFAULT_INDEX = 36;', product)
+        self.assertIn('static_assert(TABLE[DEFAULT_INDEX].stdOffsetQ == 32', product)
+        self.assertIn('return DEFAULT_INDEX;', body(zones, 'uint8_t activeIndex()'))
+
+
 if __name__ == '__main__':
     unittest.main()
