@@ -1094,9 +1094,12 @@ void loop() {
 #else
   const bool physicalPress = gpio.physicalPressedMask() != 0;
 #endif
-  if (mappedInputManager.wasAnyPressed() || mappedInputManager.wasAnyReleased() || physicalPress ||
-      gpio.wasTouchActivity()) {
-    activityManager.cancelIdleRender();
+  if (mappedInputManager.wasAnyPressed() || mappedInputManager.wasAnyReleased()) {
+    activityManager.cancelIdleRender("input", true);
+  } else if (physicalPress) {
+    activityManager.cancelIdleRender("key held", true);
+  } else if (gpio.wasTouchActivity()) {
+    activityManager.cancelIdleRender("touch", true);
   }
 #endif
 #if FREEINK_CAP_HAPTIC
@@ -1334,7 +1337,7 @@ void loop() {
   } else if (readerIsActive && (millis() - lastActivityTime) >= READING_STATS_CHECKPOINT_IDLE_MS &&
              !activityManager.skipLoopDelay() && !activityManager.preventAutoSleep() &&
              READING_STATS.shouldSaveCheckpoint()) {
-    activityManager.cancelIdleRender();
+    activityManager.cancelIdleRender("stats checkpoint", true);
     RenderLock lock;
     if (!READING_STATS.saveToFile()) {
       LOG_ERR("RST", "Failed to save idle reading checkpoint");

@@ -262,7 +262,7 @@ int main() {
     def test_readpico_input_cancellation_on_hardware_and_simulator(self):
         source = (ROOT / 'src/main.cpp').read_text()
         begin = source.index('  // Cancel before any handler can wait for the framebuffer lock.')
-        end = source.index('\n#endif', source.index('    activityManager.cancelIdleRender();', begin))
+        end = source.index('\n#endif', source.index('    activityManager.cancelIdleRender("touch", true);', begin))
         production = source[begin:end]
         program = r'''
 #include <cassert>
@@ -281,7 +281,8 @@ struct GPIO {
 #endif
   bool wasTouchActivity() const {return touch;}
 } gpio;
-struct Manager {int cancellations=0; void cancelIdleRender() {++cancellations;}} activityManager;
+// Every input source re-arms: none of them queues a render of its own.
+struct Manager {int cancellations=0; void cancelIdleRender(const char*, bool rearm) {assert(rearm); ++cancellations;}} activityManager;
 void poll() {
 ''' + production + r'''
 }
@@ -317,6 +318,7 @@ constexpr unsigned portMAX_DELAY=9999;
 #define pdMS_TO_TICKS(ms) (ms)
 #define taskENTER_CRITICAL(x) ((void)0)
 #define taskEXIT_CRITICAL(x) ((void)0)
+#define LOG_DBG(...) ((void)0)
 constexpr int eIncrement=0;
 struct Stop {};
 int notifications=0, cursor=0;
@@ -332,7 +334,7 @@ unsigned ulTaskNotifyTake(bool,unsigned);
 void xTaskNotify(TaskHandle_t,int,int) {++notifications;}
 struct Activity {
   int renders=0,idles=0;
-  bool cancelDuringRender=false,queueWaiterDuringIdle=false;
+  bool cancelDuringRender=false,inputDuringRender=false,queueWaiterDuringIdle=false;
   unsigned delay=400;
   unsigned idleRenderDelayMs() const {return delay;}
   void render(RenderLock&&);
@@ -342,6 +344,8 @@ struct ActivityManager {
   enum class PendingAction {None,Push};
   std::atomic<PendingAction> pendingAction{PendingAction::None};
   std::atomic<uint32_t> idleRenderGeneration{0};
+  std::atomic<const char*> lastIdleCancel{"none"};
+  std::atomic<bool> lastIdleCancelRearms{false};
   std::unique_ptr<Activity> currentActivity=std::make_unique<Activity>();
   TaskHandle_t waitingTaskHandle=0;
   std::atomic<bool> requestedUpdate{false};
@@ -349,7 +353,11 @@ struct ActivityManager {
 ''' + cancellation + r'''
   void renderTaskLoop();
 };
-void Activity::render(RenderLock&&) {++renders; if(cancelDuringRender) ++manager->idleRenderGeneration;}
+void Activity::render(RenderLock&&) {
+  ++renders;
+  if(cancelDuringRender) ++manager->idleRenderGeneration;
+  if(inputDuringRender) manager->cancelIdleRender("touch", true);
+}
 void Activity::renderIdle(uint32_t) {
   ++idles;
   if(queueWaiterDuringIdle) {manager->waitingTaskHandle=manager; ++manager->idleRenderGeneration;}
@@ -372,6 +380,13 @@ int main() {
    assert(m.currentActivity->renders==2 && m.currentActivity->idles==1);}
   {ActivityManager m; m.currentActivity->cancelDuringRender=true; run(m,{1,0});
    assert(m.currentActivity->idles==0);}
+  // A page turn's own touch-up lands during its render: the idle pass waits out
+  // the quiet delay again instead of being spent.
+  {ActivityManager m; m.currentActivity->inputDuringRender=true; run(m,{1,0,0});
+   assert(m.currentActivity->idles==1);
+   assert((waits==std::vector<unsigned>{portMAX_DELAY,400,400,portMAX_DELAY}));}
+  {ActivityManager m; m.currentActivity->inputDuringRender=true; m.requestedUpdate=true; run(m,{1,0});
+   assert(m.currentActivity->idles==0 && waits.back()==portMAX_DELAY);}
   {ActivityManager m; m.currentActivity->queueWaiterDuringIdle=true; run(m,{1,0});
    assert(notifications==0 && m.waitingTaskHandle==&m);}
   {ActivityManager m; m.currentActivity->queueWaiterDuringIdle=true; run(m,{1,0,1});

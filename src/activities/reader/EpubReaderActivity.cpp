@@ -1016,7 +1016,7 @@ void EpubReaderActivity::loop() {
   }
 
   if (turnGuardActive) {
-    activityManager.cancelIdleRender();
+    activityManager.cancelIdleRender("turn guard");
     pendingManualTurn = prevTriggered ? -1 : 1;
     return;
   }
@@ -2217,13 +2217,21 @@ void EpubReaderActivity::renderIdle(const uint32_t generation) {
   // ever cover +1, which made every backward turn a guaranteed miss. A reading pace
   // leaves room for both (~700 ms each); an unusually fast test pace cuts the second
   // short, which is what the cancelled() check between them is for.
+  // A build cut short by input stays retryable: the render task re-arms the idle pass
+  // once input is quiet, and a Skipped slot would otherwise never be built again.
+  const auto build = [&](const int slot, const ReaderPageCacheKey& key) {
+    if (!buildPageCacheSlot(slot, key, generation) && cancelled() && pageCache_[slot].key == key &&
+        pageCache_[slot].state == ReaderPageCache::State::Skipped) {
+      pageCache_[slot].state = ReaderPageCache::State::Empty;
+    }
+  };
   auto forward = layout;
   ++forward.page;
-  if (forward.page < static_cast<int>(section->pageCount)) buildPageCacheSlot(0, forward, generation);
+  if (forward.page < static_cast<int>(section->pageCount)) build(0, forward);
   if (cancelled() || pageCacheFailed_) return;
   auto backward = layout;
   --backward.page;
-  if (backward.page >= 0) buildPageCacheSlot(1, backward, generation);
+  if (backward.page >= 0) build(1, backward);
 }
 
 // Build one page into one slot. Returns true when the slot ends up holding a finished
