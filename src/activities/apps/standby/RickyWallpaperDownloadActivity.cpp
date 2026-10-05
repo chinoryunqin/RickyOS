@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <utility>
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
@@ -129,42 +130,52 @@ bool RickyWallpaperDownloadActivity::fetchManifest() {
   mirrors_.clear();
   baseUrl_.clear();
   if (!HttpDownloader::hasMemoryForTls()) return false;
-  auto result = HttpDownloader::HTTP_ERROR;
-  for (int attempt = 0; attempt < RickyWallpaperCatalog::MANIFEST_COUNT && result != HttpDownloader::OK; ++attempt) {
+  // CDN caches of the "@latest" manifests go stale independently (a mainland jsDelivr
+  // edge kept v1.0.0 after v1.1.0 shipped), so read every route and keep the newest
+  // release, judged by the tag in its baseUrl.
+  uint32_t bestRelease = 0;
+  for (int attempt = 0; attempt < RickyWallpaperCatalog::MANIFEST_COUNT; ++attempt) {
     const char* url = RickyWallpaperCatalog::manifestFor(SETTINGS.contentProfile, attempt);
-    result = HttpDownloader::downloadToFile(url, kManifestTmp, nullptr);
-    if (result != HttpDownloader::OK) {
+    if (HttpDownloader::downloadToFile(url, kManifestTmp, nullptr) != HttpDownloader::OK) {
       LOG_ERR("WPDL", "Manifest failed: %s", url);
       Storage.remove(kManifestTmp);
-    }
-  }
-  if (result != HttpDownloader::OK) return false;
-
-  JsonDocument doc;
-  DeserializationError error = DeserializationError::InvalidInput;
-  {
-    HalFile file;
-    if (Storage.openFileForRead("WPDL", kManifestTmp, file) && file.fileSize() <= kMaxManifestBytes)
-      error = deserializeJson(doc, file);
-  }
-  Storage.remove(kManifestTmp);
-  if (error || doc["version"].as<int>() != 1 || !validBase(doc["baseUrl"] | "")) {
-    LOG_ERR("WPDL", "Invalid manifest");
-    return false;
-  }
-  baseUrl_ = doc["baseUrl"].as<const char*>();
-  for (JsonVariant mirror : doc["mirrors"].as<JsonArray>()) {
-    if (validBase(mirror.as<const char*>()) && mirrors_.size() < 4) mirrors_.emplace_back(mirror.as<const char*>());
-  }
-  for (JsonVariant entry : doc["items"].as<JsonArray>()) {
-    const char* name = entry["name"] | "";
-    const char* file = entry["file"] | "";
-    const uint32_t size = entry["size"] | 0u;
-    if (!validName(name) || !validName(file) || size == 0 || size > kMaxItemBytes || items_.size() >= kMaxItems) {
-      LOG_ERR("WPDL", "Skipping invalid manifest item");
       continue;
     }
-    items_.push_back(Item{name, file, size, entry["crc32"] | 0u});
+    JsonDocument doc;
+    DeserializationError error = DeserializationError::InvalidInput;
+    {
+      HalFile file;
+      if (Storage.openFileForRead("WPDL", kManifestTmp, file) && file.fileSize() <= kMaxManifestBytes)
+        error = deserializeJson(doc, file);
+    }
+    Storage.remove(kManifestTmp);
+    const char* base = doc["baseUrl"] | "";
+    if (error || doc["version"].as<int>() != 1 || !validBase(base)) {
+      LOG_ERR("WPDL", "Invalid manifest: %s", url);
+      continue;
+    }
+    const uint32_t release = RickyWallpaperCatalog::releaseOf(base);
+    LOG_INF("WPDL", "Manifest %s: release %06x", url, static_cast<unsigned>(release));
+    if (!items_.empty() && release <= bestRelease) continue;
+    std::vector<Item> items;
+    for (JsonVariant entry : doc["items"].as<JsonArray>()) {
+      const char* name = entry["name"] | "";
+      const char* file = entry["file"] | "";
+      const uint32_t size = entry["size"] | 0u;
+      if (!validName(name) || !validName(file) || size == 0 || size > kMaxItemBytes || items.size() >= kMaxItems) {
+        LOG_ERR("WPDL", "Skipping invalid manifest item");
+        continue;
+      }
+      items.push_back(Item{name, file, size, entry["crc32"] | 0u});
+    }
+    if (items.empty()) continue;
+    bestRelease = release;
+    items_ = std::move(items);
+    baseUrl_ = base;
+    mirrors_.clear();
+    for (JsonVariant mirror : doc["mirrors"].as<JsonArray>()) {
+      if (validBase(mirror.as<const char*>()) && mirrors_.size() < 4) mirrors_.emplace_back(mirror.as<const char*>());
+    }
   }
   return !items_.empty();
 }

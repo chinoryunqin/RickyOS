@@ -94,6 +94,17 @@ class RickyWallpaperDownloadTest(unittest.TestCase):
         # Manifest names become card file names: no path separators.
         self.assertIn('strpbrk(name, "/\\\\:*?\\"<>|") == nullptr', source)
 
+    def test_newest_manifest_wins_over_stale_cdn_caches(self):
+        source = ACTIVITY.read_text()
+        fetch = body(source, 'bool RickyWallpaperDownloadActivity::fetchManifest()')
+        # Every route is read; none short-circuits after the first success.
+        self.assertIn('for (int attempt = 0; attempt < RickyWallpaperCatalog::MANIFEST_COUNT; ++attempt)', fetch)
+        self.assertNotIn('result != HttpDownloader::OK; ++attempt', fetch)
+        self.assertIn('RickyWallpaperCatalog::releaseOf(base)', fetch)
+        self.assertIn('release <= bestRelease) continue;', fetch)
+        header = (ROOT / 'src/network/RickyWallpaperCatalog.h').read_text()
+        self.assertIn('static_assert(releaseOf("https://cdn.jsdelivr.net/gh/x/y@v1.1.0/wallpapers/") == 0x010100);', header)
+
     def test_entry_points_in_standby_and_settings(self):
         standby = (ROOT / 'src/activities/apps/standby/StandbyActivity.cpp').read_text()
         self.assertIn('StandbyFace::PictureAction::Download', standby)
