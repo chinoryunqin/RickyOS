@@ -59,6 +59,8 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
         self.assertIn('if (currentFace_->needsPicture()) return false;', body(self.activity, 'bool StandbyActivity::tryLightSleep('))
         render = body(self.activity, 'void StandbyActivity::render(')
         self.assertLess(render.index('renderNative(renderer, viewport)'), render.index('renderer.clearScreen();'))
+        # Leaving a 16-gray picture: the next page must not refresh differentially over it.
+        self.assertIn('renderer.requestNextRefresh(HalDisplay::FULL_REFRESH);', body(self.activity, 'void StandbyActivity::onExit()'))
         picker = body(self.activity, 'void StandbyActivity::openPicturePicker()')
         self.assertIn('FileBrowserActivity::Mode::PickWallpaper', picker)
         self.assertIn('startActivityForResultWith<ImageViewerActivity>(reload, entry->path, true)', picker)

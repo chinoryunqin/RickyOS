@@ -171,6 +171,12 @@ void StandbyActivity::onExit() {
     currentFace_->onExit();
     currentFace_.reset();
   }
+#ifdef RICKYOS_PRODUCT
+  // The panel holds a 16-gray picture the B/W proxy only approximates. The next page
+  // refreshes differentially against that proxy, so pixels it thinks unchanged would
+  // keep the picture's grays under the new page; a full refresh clears them.
+  renderer.requestNextRefresh(HalDisplay::FULL_REFRESH);
+#endif
   LOG_DBG("STANDBY", "onExit free heap=%u", static_cast<unsigned>(ESP.getFreeHeap()));
   Activity::onExit();
 }

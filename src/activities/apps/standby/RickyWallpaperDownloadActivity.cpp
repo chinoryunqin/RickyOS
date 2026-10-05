@@ -192,7 +192,8 @@ bool RickyWallpaperDownloadActivity::downloadAll() {
 
 bool RickyWallpaperDownloadActivity::downloadItem(const Item& item, const std::string& dest) {
   uint32_t size = 0, crc = 0;
-  if (fileCrc32(dest, size, crc) && size == item.size && crc == item.crc32) return true;  // already here
+  if (Storage.exists(dest.c_str()) && fileCrc32(dest, size, crc) && size == item.size && crc == item.crc32)
+    return true;  // already here
   const std::string part = dest + ".part";
   const size_t done = bytesDone_;
   const auto progress = [this, done, &item](size_t downloaded, size_t) {
