@@ -100,12 +100,34 @@ void ActivityManager::renderTaskTrampoline(void* param) {
 
 void ActivityManager::renderTaskLoop() {
   auto waitTicks = portMAX_DELAY;
+  auto idleDelayTicks = portMAX_DELAY;
   uint32_t idleGeneration = 0;
   while (true) {
+    const bool idleArmed = waitTicks != portMAX_DELAY;
     const bool foreground = ulTaskNotifyTake(pdTRUE, waitTicks) != 0;
-    // ponytail: one idle attempt per render, including cancellations and I/O
-    // failures; re-arm after quiet input only if measured cache hit rate needs it.
     waitTicks = portMAX_DELAY;
+    // Name why an armed idle pass did not run; a reader page cache that never fills
+    // looks the same from outside whichever of these fired.
+    if (idleArmed && foreground) {
+      LOG_DBG("ACT", "Idle render: preempted by an update");
+    } else if (idleArmed && idleRenderCancelled(idleGeneration)) {
+      const uint32_t generation = idleRenderGeneration.load(std::memory_order_relaxed);
+      const bool byInput = idleGeneration != generation;
+      LOG_DBG("ACT", "Idle render: cancelled (%s)",
+              byInput ? lastIdleCancel.load(std::memory_order_relaxed)
+                      : (isSwitchPending() ? "switch pending" : "update requested"));
+      // One idle attempt per render, but a page turn's own touch-up or key release lands
+      // during that render and used to spend the attempt: on device the reader's page
+      // cache hit about 1 turn in 40. Input that queues no render re-arms the wait, so
+      // the pass runs once input has been quiet for the delay. Anything that does render
+      // (a turn, a switch, an update) arrives as a foreground wake instead.
+      if (byInput && lastIdleCancelRearms.load(std::memory_order_relaxed) && !isSwitchPending() &&
+          !requestedUpdate.load()) {
+        idleGeneration = generation;
+        waitTicks = idleDelayTicks;
+        continue;
+      }
+    }
     RenderLock lock;
     if (currentActivity && pendingAction.load() == PendingAction::None) {
       HalPowerManager::Lock powerLock;
@@ -116,7 +138,8 @@ void ActivityManager::renderTaskLoop() {
         idleGeneration = idleRenderGeneration.load(std::memory_order_relaxed);
         display.setInverted(SETTINGS.screenInverted != 0);
         currentActivity->render(std::move(lock));
-        if (delayMs != 0) waitTicks = pdMS_TO_TICKS(delayMs);
+        idleDelayTicks = delayMs != 0 ? pdMS_TO_TICKS(delayMs) : portMAX_DELAY;
+        waitTicks = idleDelayTicks;
       } else if (!idleRenderCancelled(idleGeneration)) {
         currentActivity->renderIdle(idleGeneration);
       }

@@ -80,6 +80,8 @@ class ActivityManager {
   // loop() consumes and clears it with exchange(false).
   std::atomic<bool> requestedUpdate{false};
   std::atomic<uint32_t> idleRenderGeneration{0};
+  std::atomic<const char*> lastIdleCancel{"none"};
+  std::atomic<bool> lastIdleCancelRearms{false};
 
  public:
   explicit ActivityManager(GfxRenderer& renderer, MappedInputManager& mappedInput)
@@ -91,7 +93,14 @@ class ActivityManager {
 
   void begin();
   void loop();
-  void cancelIdleRender() { idleRenderGeneration.fetch_add(1, std::memory_order_relaxed); }
+  // `why` names the canceller in the log when an armed idle pass is dropped (static strings only).
+  // `rearm`: the cancel came from input that queues no render of its own (a finger lifting,
+  // a key released after the turn it started), so the idle pass is retried once input is quiet.
+  void cancelIdleRender(const char* why = "other", const bool rearm = false) {
+    lastIdleCancel.store(why, std::memory_order_relaxed);
+    lastIdleCancelRearms.store(rearm, std::memory_order_relaxed);
+    idleRenderGeneration.fetch_add(1, std::memory_order_relaxed);
+  }
   bool idleRenderCancelled(uint32_t generation) const {
     return generation != idleRenderGeneration.load(std::memory_order_relaxed) || isSwitchPending() ||
            requestedUpdate.load();
