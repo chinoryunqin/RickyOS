@@ -20,6 +20,7 @@ class ImageViewerActivity final : public Activity {
  private:
   void loadSiblingImages();
   bool isPng() const;
+  bool preparePreview();
   void doSetSleepCover(const char* sourcePath, bool transparent);
   void showSleepCoverOptions();
 
