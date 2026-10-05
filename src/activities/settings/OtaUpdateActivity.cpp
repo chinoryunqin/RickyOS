@@ -29,9 +29,19 @@ namespace fui = freeink::ui;
 
 enum ReadyRow {
   CHECK_UPDATES_ROW,
+#ifndef RICKYOS_PRODUCT
   NIGHTLY_ROW,
+#endif
   READY_ROW_COUNT,
 };
+
+const char* updateTitle() {
+#ifdef RICKYOS_PRODUCT
+  return tr(STR_RICKYOS_FIRMWARE_UPDATE);
+#else
+  return tr(STR_UPDATE);
+#endif
+}
 
 constexpr uint8_t RELEASE_NOTE_MAX_LINES = 4;
 
@@ -88,13 +98,39 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
   requestUpdateAndWait();
 
 #ifdef SIMULATOR
-  updater.loadSimulatorReleaseNotes();
+#ifdef RICKYOS_PRODUCT
+  {
+    RenderLock lock(*this);
+    state = State::NoUpdate;
+  }
+  requestUpdate();
+  return;
 #else
+  updater.loadSimulatorReleaseNotes();
+#endif
+#else
+#ifdef RICKYOS_PRODUCT
+  // Certificate validation needs a sane UTC clock. Sync once before TLS, not
+  // concurrently with the handshake; never bypass certificate validity.
+  if (!halClock.hasValidTime() && !halClock.syncNow()) {
+    RenderLock lock(*this);
+    failedDetail = tr(STR_RICKYOS_OTA_CLOCK_REQUIRED);
+    state = State::Failed;
+    requestUpdate();
+    return;
+  }
+#endif
   // The checking screen can reload fonts after WiFi startup cleanup, so release them again immediately before TLS.
   NetworkStartup::prepare(renderer);
   LOG_INF("OTA", "TLS preflight (manifest): free=%u, maxAlloc=%u", static_cast<unsigned>(ESP.getFreeHeap()),
           static_cast<unsigned>(ESP.getMaxAllocHeap()));
   const auto res = updater.checkForUpdate(selectedChannel);
+  if (res == OtaUpdater::NO_UPDATE) {
+    RenderLock lock(*this);
+    state = State::NoUpdate;
+    requestUpdate();
+    return;
+  }
   if (res != OtaUpdater::OK) {
     LOG_DBG("OTA", "Update check failed: %d", res);
     {
@@ -134,7 +170,11 @@ void OtaUpdateActivity::onEnter() {
   app.on(ACTION_INSTALL_UPDATE, &OtaUpdateActivity::onInstallUpdate, this);
   app.setScreen(&OtaUpdateActivity::updateScreen, this);
   state = State::Ready;
+#ifdef RICKYOS_PRODUCT
+  selectedChannel = OtaUpdater::Channel::Stable;
+#else
   selectedChannel = SETTINGS.otaNightlyEnabled ? OtaUpdater::Channel::Nightly : OtaUpdater::Channel::Stable;
+#endif
   selectedReadyRow = CHECK_UPDATES_ROW;
   waitForConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
   requestUpdate();
@@ -145,6 +185,7 @@ void OtaUpdateActivity::activateReadyRow() {
     case CHECK_UPDATES_ROW:
       beginWifiSelection();
       break;
+#ifndef RICKYOS_PRODUCT
     case NIGHTLY_ROW:
       selectedChannel =
           selectedChannel == OtaUpdater::Channel::Stable ? OtaUpdater::Channel::Nightly : OtaUpdater::Channel::Stable;
@@ -152,6 +193,7 @@ void OtaUpdateActivity::activateReadyRow() {
       SETTINGS.saveToFile();
       requestUpdate();
       break;
+#endif
     case READY_ROW_COUNT:
       break;
   }
@@ -280,7 +322,7 @@ void OtaUpdateActivity::renderUpdateAvailable(const Rect& safeArea) {
   rebuildReleaseNotePages(safeArea, bottomInset);
 
   GUI.drawHeader(renderer, Rect{safeArea.x, safeArea.y + metrics.topPadding, safeArea.width, metrics.headerHeight},
-                 tr(STR_UPDATE));
+                 updateTitle());
 
   if (releaseNotePage == 0) {
     const int versionTop = safeArea.y + metrics.topPadding + metrics.headerHeight;
@@ -378,7 +420,7 @@ void OtaUpdateActivity::render(RenderLock&&) {
 
     renderer.clearScreen();
 
-    GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_UPDATE));
+    GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, updateTitle());
     const auto height = renderer.getLineHeight(UI_10_FONT_ID);
     const auto top = (pageHeight - height) / 2;
 
@@ -470,7 +512,7 @@ void OtaUpdateActivity::render(RenderLock&&) {
   switch (state) {
     case State::Ready: {
       GUI.drawHeader(renderer, Rect{safeArea.x, safeArea.y + metrics.topPadding, safeArea.width, metrics.headerHeight},
-                     tr(STR_UPDATE));
+                     updateTitle());
       GUI.drawSubHeader(renderer,
                         Rect{safeArea.x, safeArea.y + metrics.topPadding + metrics.headerHeight, safeArea.width,
                              metrics.tabBarHeight},
@@ -480,15 +522,29 @@ void OtaUpdateActivity::render(RenderLock&&) {
       GUI.drawList(
           renderer, readyList, READY_ROW_COUNT, selectedReadyRow,
           [](const int index) {
+#ifdef RICKYOS_PRODUCT
+            (void)index;
+            return std::string(tr(STR_CHECK_UPDATES));
+#else
             return std::string(index == CHECK_UPDATES_ROW ? tr(STR_CHECK_UPDATES) : tr(STR_UPDATE_NIGHTLY));
+#endif
           },
           nullptr, nullptr,
           [this](const int index) {
+#ifdef RICKYOS_PRODUCT
+            (void)index;
+            return std::string();
+#else
             if (index != NIGHTLY_ROW) return std::string();
             return selectedChannel == OtaUpdater::Channel::Nightly ? std::string(tr(STR_STATE_ON))
                                                                    : std::string(tr(STR_STATE_OFF));
+#endif
           },
           true);
+#ifdef RICKYOS_PRODUCT
+      renderer.drawText(UI_10_FONT_ID, readyList.x, readyList.y + readyList.height + relatedGap,
+                        tr(STR_RICKYOS_OTA_SOURCE));
+#else
       if (selectedChannel == OtaUpdater::Channel::Nightly) {
         const int warningTop = readyList.y + readyList.height + relatedGap;
         renderer.drawText(SMALL_FONT_ID, safeArea.x + metrics.contentSidePadding, warningTop, tr(STR_NIGHTLY_WARNING));
@@ -496,6 +552,7 @@ void OtaUpdateActivity::render(RenderLock&&) {
                           warningTop + renderer.getLineHeight(SMALL_FONT_ID) + relatedGap,
                           tr(STR_NIGHTLY_LOCKED_WARNING));
       }
+#endif
 
       const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
       GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
@@ -503,7 +560,7 @@ void OtaUpdateActivity::render(RenderLock&&) {
     }
     case State::CheckingForUpdate:
       GUI.drawHeader(renderer, Rect{safeArea.x, safeArea.y + metrics.topPadding, safeArea.width, metrics.headerHeight},
-                     tr(STR_UPDATE));
+                     updateTitle());
       UITheme::drawCenteredText(renderer, textBounds, UI_12_FONT_ID, SubpageLayout::centeredTop(content, titleHeight),
                                 tr(STR_CHECKING_UPDATE));
       break;
@@ -514,7 +571,7 @@ void OtaUpdateActivity::render(RenderLock&&) {
       break;
     case State::UpdateInProgress: {
       GUI.drawHeader(renderer, Rect{safeArea.x, safeArea.y + metrics.topPadding, safeArea.width, metrics.headerHeight},
-                     tr(STR_UPDATE));
+                     updateTitle());
       const int blockHeight = titleHeight + sectionGap +
                               GUI.measureProgressBarHeight(renderer, metrics.progressBarHeight) + relatedGap + height;
       int y = SubpageLayout::centeredTop(content, blockHeight);
@@ -530,7 +587,7 @@ void OtaUpdateActivity::render(RenderLock&&) {
     }
     case State::NoUpdate: {
       GUI.drawHeader(renderer, Rect{safeArea.x, safeArea.y + metrics.topPadding, safeArea.width, metrics.headerHeight},
-                     tr(STR_UPDATE));
+                     updateTitle());
       UITheme::drawCenteredText(renderer, textBounds, UI_12_FONT_ID, SubpageLayout::centeredTop(content, titleHeight),
                                 tr(STR_NO_UPDATE), true, EpdFontFamily::BOLD);
       const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
@@ -539,7 +596,7 @@ void OtaUpdateActivity::render(RenderLock&&) {
     }
     case State::Failed: {
       GUI.drawHeader(renderer, Rect{safeArea.x, safeArea.y + metrics.topPadding, safeArea.width, metrics.headerHeight},
-                     tr(STR_UPDATE));
+                     updateTitle());
       const int failedHeight = titleHeight + (failedDetail != nullptr ? relatedGap + height : 0);
       const int failedTop = SubpageLayout::centeredTop(content, failedHeight);
       UITheme::drawCenteredText(renderer, textBounds, UI_12_FONT_ID, failedTop, tr(STR_UPDATE_FAILED), true,
@@ -554,7 +611,7 @@ void OtaUpdateActivity::render(RenderLock&&) {
     }
     case State::Finished: {
       GUI.drawHeader(renderer, Rect{safeArea.x, safeArea.y + metrics.topPadding, safeArea.width, metrics.headerHeight},
-                     tr(STR_UPDATE));
+                     updateTitle());
       const int top = SubpageLayout::centeredTop(content, titleHeight + relatedGap + height);
       UITheme::drawCenteredText(renderer, textBounds, UI_12_FONT_ID, top, tr(STR_UPDATE_COMPLETE), true,
                                 EpdFontFamily::BOLD);

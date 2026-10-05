@@ -48,6 +48,9 @@ class HttpDownloader {
   static bool fetchUrl(const std::string& url, const DataCallback& onData, const std::string& username = "",
                        const std::string& password = "");
 
+  // Owned firmware delivery: verify the CA chain and hostname, no insecure fallback.
+  static bool fetchVerifiedUrl(const std::string& url, const DataCallback& onData, const char* rootCa);
+
   using Header = std::pair<std::string, std::string>;
 
   /**

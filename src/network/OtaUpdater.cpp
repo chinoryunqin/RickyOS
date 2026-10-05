@@ -19,11 +19,19 @@
 #include <string>
 #include <string_view>
 
+#ifdef RICKYOS_PRODUCT
+#include <mbedtls/sha256.h>
+
+#include "RickyOtaManifest.h"
+#include "RickyOtaTrust.h"
+#else
 #include "CrossMuxEndpoints.h"
+#endif
 #include "FirmwareBoardTag.h"
 #include "FirmwareFlasher.h"
 
 namespace {
+#ifndef RICKYOS_PRODUCT
 constexpr std::string_view nightlyTagPrefix = "nightly-";
 constexpr size_t nightlyShaLength = 7;
 
@@ -58,9 +66,47 @@ static_assert(!isSameNightlyBuild("1.5.2-rc+5064d90", "nightly"));
 // path to api.github.com.
 constexpr size_t releaseUrlCapacity = 192;
 static_assert(releaseUrlCapacity < 256);
+#else
+struct ScopedSha {
+  mbedtls_sha256_context context;
+  ScopedSha() { mbedtls_sha256_init(&context); }
+  ~ScopedSha() { mbedtls_sha256_free(&context); }
+};
+#endif
 }  // namespace
 
 OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate(const Channel requestedChannel) {
+  // Rechecking (including a failed/empty check) revokes any previous offer.
+  updateAvailable = false;
+  latestVersion.clear();
+  otaUrl.clear();
+  otaSize = totalSize = processedSize = releaseNoteCount = 0;
+#ifdef RICKYOS_PRODUCT
+  (void)requestedChannel;
+  channel = Channel::Stable;
+  expectedSha.fill(0);
+  if (std::string_view(board_tag::boardName(), board_tag::boardNameLen()) != "readpico") return WRONG_DEVICE_ERROR;
+  // Fixed, bounded stack state instead of the shared 2 KiB SAX token or a full
+  // JSON body allocation. It is released when this one network request ends.
+  static_assert(sizeof(RickyOtaManifest) <= 512);
+  RickyOtaManifest manifest;
+  const bool ok = HttpDownloader::fetchVerifiedUrl(
+      ricky_ota::MANIFEST_URL, [&manifest](const uint8_t* data, size_t len) { return manifest.feed(data, len); },
+      ricky_ota::ROOT_CA);
+  if (!ok) return HTTP_ERROR;
+  if (!manifest.valid()) return JSON_PARSE_ERROR;
+  if (!manifest.hasUpdate()) return NO_UPDATE;
+  latestVersion = manifest.getVersion();
+  // Only a validated relative filename on the owned HTTPS site, never a URL
+  // supplied by an upstream release or a locale-selected CrossMux endpoint.
+  otaUrl = ricky_ota::SITE_BASE;
+  otaUrl += manifest.getFile();
+  otaSize = totalSize = manifest.getBytes();
+  expectedSha = manifest.getSha();
+  updateAvailable = true;
+  LOG_INF("OTA", "RickyOS stable offer: %s (%zu bytes)", latestVersion.c_str(), otaSize);
+  return OK;
+#else
   channel = requestedChannel;
   char releaseUrl[releaseUrlCapacity];
   const char* channelQuery = channel == Channel::Nightly ? "&channel=nightly" : "";
@@ -122,9 +168,13 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate(const Channel requestedCh
   LOG_DBG("OTA", "Found update: tag=%s size=%zu notes=%zu", latestVersion.c_str(), otaSize, releaseNoteCount);
   LOG_DBG("OTA", "Firmware URL: %s", otaUrl.c_str());
   return OK;
+#endif
 }
 
 bool OtaUpdater::isUpdateNewer() const {
+#ifdef RICKYOS_PRODUCT
+  return updateAvailable && ricky_ota::newer(CROSSPOINT_VERSION, latestVersion);
+#else
   if (!updateAvailable || latestVersion.empty()) {
     return false;
   }
@@ -172,6 +222,7 @@ bool OtaUpdater::isUpdateNewer() const {
   }
 
   return false;
+#endif
 }
 
 const std::string& OtaUpdater::getLatestVersion() const { return latestVersion; }
@@ -191,9 +242,30 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
     LOG_ERR("OTA", "No OTA partition available");
     return INTERNAL_UPDATE_ERROR;
   }
+#ifdef RICKYOS_PRODUCT
+  const auto* runningPartition = esp_ota_get_running_partition();
+  if (!runningPartition || updatePartition->address == runningPartition->address || otaSize < 24 ||
+      updatePartition->size < ricky_ota::RESERVE_BYTES ||
+      ((otaSize + 4095u) & ~4095u) > updatePartition->size - ricky_ota::RESERVE_BYTES) {
+    LOG_ERR("OTA", "RickyOS image does not fit a separate OTA slot with its reserve");
+    return INTERNAL_UPDATE_ERROR;
+  }
+  ScopedSha sha;
+  if (mbedtls_sha256_starts(&sha.context, 0) != 0) return INTERNAL_UPDATE_ERROR;
+  ricky_ota::StringScanner brandScanner("RickyOS");
+  // Match the complete, NUL-terminated firmware version, not a prefix of a
+  // different revision. Both scanners use only fixed stack state.
+  ricky_ota::StringScanner versionScanner(std::string_view(latestVersion.c_str(), latestVersion.size() + 1));
+#endif
 
   esp_ota_handle_t otaHandle = 0;
-  esp_err_t esp_err = esp_ota_begin(updatePartition, OTA_SIZE_UNKNOWN, &otaHandle);
+  esp_err_t esp_err = esp_ota_begin(updatePartition,
+#ifdef RICKYOS_PRODUCT
+                                    otaSize,
+#else
+                                    OTA_SIZE_UNKNOWN,
+#endif
+                                    &otaHandle);
   if (esp_err != ESP_OK) {
     LOG_ERR("OTA", "esp_ota_begin failed: %s", esp_err_to_name(esp_err));
     return INTERNAL_UPDATE_ERROR;
@@ -210,46 +282,74 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
   bool wrongChip = false;
   board_tag::Scanner boardScanner;
   bool wrongBoard = false;
-  const bool fetchOk = HttpDownloader::fetchUrl(otaUrl, [&](const uint8_t* data, size_t len) {
-    if (hdrLen < sizeof(hdr)) {
-      const size_t take = std::min(len, sizeof(hdr) - hdrLen);
-      std::memcpy(hdr + hdrLen, data, take);
-      hdrLen += take;
-      if (hdrLen == sizeof(hdr)) {
-        uint16_t imageChip;
-        std::memcpy(&imageChip, hdr + 12, sizeof(imageChip));
-        const uint16_t deviceChip = firmware_flash::runningPartitionChipId();
-        if (deviceChip != 0xFFFF && imageChip != deviceChip) {
-          LOG_ERR("OTA", "wrong chip: image=0x%04X device=0x%04X", imageChip, deviceChip);
-          wrongChip = true;
-          return false;  // abort the transfer
-        }
-      }
-    }
-    boardScanner.feed(data, len);
-    if (boardScanner.mismatch()) {
-      LOG_ERR("OTA", "wrong board: image=%s device=%.*s", boardScanner.foundName(),
-              static_cast<int>(board_tag::boardNameLen()), board_tag::boardName());
-      wrongBoard = true;
-      return false;  // abort before selecting the incomplete image as bootable
-    }
-    if (esp_ota_write(otaHandle, data, len) != ESP_OK) {
-      flashOk = false;
-      return false;  // abort the transfer
-    }
-    processedSize += len;
-    // Fire the callback only on whole-percent change. Per-chunk updates wake the
-    // render task, whose framebuffer work contends with TLS on the internal arena,
-    // and e-ink can't repaint faster than a percent tick anyway.
-    if (onProgress && totalSize > 0) {
-      const int pct = static_cast<int>(static_cast<uint64_t>(processedSize) * 100 / totalSize);
-      if (pct != lastReportedPct) {
-        lastReportedPct = pct;
-        onProgress(ctx);
-      }
-    }
-    return true;
-  });
+  const bool fetchOk = HttpDownloader::
+#ifdef RICKYOS_PRODUCT
+      fetchVerifiedUrl
+#else
+      fetchUrl
+#endif
+      (
+          otaUrl,
+          [&](const uint8_t* data, size_t len) {
+#ifdef RICKYOS_PRODUCT
+            if (processedSize > totalSize || len > totalSize - processedSize) return false;
+            if (mbedtls_sha256_update(&sha.context, data, len) != 0) {
+              flashOk = false;
+              return false;
+            }
+            brandScanner.feed(data, len);
+            versionScanner.feed(data, len);
+#endif
+            if (hdrLen < sizeof(hdr)) {
+              const size_t take = std::min(len, sizeof(hdr) - hdrLen);
+              std::memcpy(hdr + hdrLen, data, take);
+              hdrLen += take;
+              if (hdrLen == sizeof(hdr)) {
+                uint16_t imageChip;
+                std::memcpy(&imageChip, hdr + 12, sizeof(imageChip));
+                const uint16_t deviceChip = firmware_flash::runningPartitionChipId();
+#ifdef RICKYOS_PRODUCT
+                if (hdr[0] != 0xe9 || hdr[1] < 1 || hdr[1] > 16 || imageChip != 9 || deviceChip != 9) {
+                  wrongChip = true;
+                  return false;
+                }
+#endif
+                if (deviceChip != 0xFFFF && imageChip != deviceChip) {
+                  LOG_ERR("OTA", "wrong chip: image=0x%04X device=0x%04X", imageChip, deviceChip);
+                  wrongChip = true;
+                  return false;  // abort the transfer
+                }
+              }
+            }
+            boardScanner.feed(data, len);
+            if (boardScanner.mismatch()) {
+              LOG_ERR("OTA", "wrong board: image=%s device=%.*s", boardScanner.foundName(),
+                      static_cast<int>(board_tag::boardNameLen()), board_tag::boardName());
+              wrongBoard = true;
+              return false;  // abort before selecting the incomplete image as bootable
+            }
+            if (esp_ota_write(otaHandle, data, len) != ESP_OK) {
+              flashOk = false;
+              return false;  // abort the transfer
+            }
+            processedSize += len;
+            // Fire the callback only on whole-percent change. Per-chunk updates wake the
+            // render task, whose framebuffer work contends with TLS on the internal arena,
+            // and e-ink can't repaint faster than a percent tick anyway.
+            if (onProgress && totalSize > 0) {
+              const int pct = static_cast<int>(static_cast<uint64_t>(processedSize) * 100 / totalSize);
+              if (pct != lastReportedPct) {
+                lastReportedPct = pct;
+                onProgress(ctx);
+              }
+            }
+            return true;
+          }
+#ifdef RICKYOS_PRODUCT
+          ,
+          ricky_ota::ROOT_CA
+#endif
+      );
 
   /* Return back to default power saving for WiFi in case of failing */
   esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
@@ -265,6 +365,16 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
     esp_ota_abort(otaHandle);
     return flashOk ? HTTP_ERROR : INTERNAL_UPDATE_ERROR;
   }
+#ifdef RICKYOS_PRODUCT
+  std::array<uint8_t, 32> actualSha{};
+  if (processedSize != totalSize || mbedtls_sha256_finish(&sha.context, actualSha.data()) != 0 ||
+      actualSha != expectedSha || !brandScanner.found() || !versionScanner.found() || !boardScanner.found()) {
+    LOG_ERR("OTA", "RickyOS firmware size, SHA-256, brand, version or required board tag mismatch");
+    esp_ota_abort(otaHandle);
+    updateAvailable = false;
+    return JSON_PARSE_ERROR;
+  }
+#endif
 
   esp_err = esp_ota_end(otaHandle);  // verifies the written image
   if (esp_err != ESP_OK) {

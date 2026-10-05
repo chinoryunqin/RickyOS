@@ -97,7 +97,7 @@ int main() {
         self.assertIn("std::move(*it)", source)
         self.assertIn("swap(sleepSettings)", source)
         self.assertIn("swap(connectionSettings)", source)
-        self.assertIn("STR_RICKY_HELP_UPSTREAM_OTA", source)
+        self.assertNotIn("STR_RICKY_HELP_OTA", source)
         self.assertIn("props.rowGap = std::max<int16_t>(6", source)
 
 

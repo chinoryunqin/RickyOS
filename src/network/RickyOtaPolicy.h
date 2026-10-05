@@ -1,0 +1,117 @@
+#pragma once
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <string_view>
+
+namespace ricky_ota {
+inline constexpr char SITE_BASE[] = "https://chinoryunqin.github.io/RickyOS-site/";
+inline constexpr char MANIFEST_URL[] = "https://chinoryunqin.github.io/RickyOS-site/ota.json";
+inline constexpr size_t SLOT_BYTES = 0x640000;
+inline constexpr size_t RESERVE_BYTES = 512 * 1024;
+
+struct Version {
+  std::array<uint32_t, 4> parts{};
+  bool development = false;
+};
+
+inline bool parseVersion(std::string_view text, Version& result, const bool allowDevelopment = false) {
+  result = {};
+  const auto number = [&text](uint32_t& value) {
+    if (text.empty() || text.front() < '0' || text.front() > '9') return false;
+    value = 0;
+    do {
+      const unsigned digit = text.front() - '0';
+      if (value > (UINT32_MAX - digit) / 10) return false;
+      value = value * 10 + digit;
+      text.remove_prefix(1);
+    } while (!text.empty() && text.front() >= '0' && text.front() <= '9');
+    return true;
+  };
+  for (size_t i = 0; i < 3; ++i) {
+    if (!number(result.parts[i])) return false;
+    if (i < 2) {
+      if (text.empty() || text.front() != '.') return false;
+      text.remove_prefix(1);
+    }
+  }
+  constexpr std::string_view suffix = "-rickyos-pico.";
+  if (!text.starts_with(suffix)) return false;
+  text.remove_prefix(suffix.size());
+  if (!number(result.parts[3])) return false;
+  if (allowDevelopment && text == "-dev") {
+    result.development = true;
+    return true;
+  }
+  return text.empty();
+}
+
+inline bool newer(std::string_view current, std::string_view candidate) {
+  Version running, offered;
+  if (!parseVersion(current, running, true) || !parseVersion(candidate, offered)) return false;
+  return offered.parts > running.parts || (offered.parts == running.parts && running.development);
+}
+
+inline bool validFile(std::string_view file) {
+  constexpr std::string_view prefix = "firmware/";
+  if (file.size() >= 128 || !file.starts_with(prefix) || !file.ends_with(".bin")) return false;
+  file.remove_prefix(prefix.size());
+  if (file.size() <= 4) return false;
+  for (const char c : file) {
+    if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '_' ||
+          c == '-'))
+      return false;
+  }
+  return true;
+}
+
+inline bool decodeSha(std::string_view text, std::array<uint8_t, 32>& digest) {
+  if (text.size() != 64) return false;
+  for (size_t i = 0; i < text.size(); ++i) {
+    const char c = text[i];
+    const int value = c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : -1;
+    if (value < 0) return false;
+    if (i % 2 == 0)
+      digest[i / 2] = static_cast<uint8_t>(value << 4);
+    else
+      digest[i / 2] |= static_cast<uint8_t>(value);
+  }
+  return true;
+}
+
+// KMP state is fixed-size; no firmware buffering or per-chunk heap growth.
+class StringScanner {
+  std::string_view needle;
+  std::array<uint8_t, 64> failure{};
+  size_t matched = 0;
+  bool seen = false;
+
+ public:
+  explicit StringScanner(std::string_view text) : needle(text) {
+    if (text.empty() || text.size() > failure.size()) {
+      needle = {};
+      return;
+    }
+    for (size_t i = 1, j = 0; i < text.size(); ++i) {
+      while (j && text[i] != text[j]) j = failure[j - 1];
+      if (text[i] == text[j]) ++j;
+      failure[i] = static_cast<uint8_t>(j);
+    }
+  }
+  void feed(const uint8_t* data, size_t size) {
+    if (seen || needle.empty()) return;
+    for (size_t i = 0; i < size; ++i) {
+      const char c = static_cast<char>(data[i]);
+      while (matched && c != needle[matched]) matched = failure[matched - 1];
+      if (c == needle[matched]) ++matched;
+      if (matched == needle.size()) {
+        seen = true;
+        return;
+      }
+    }
+  }
+  bool found() const { return seen; }
+};
+}  // namespace ricky_ota

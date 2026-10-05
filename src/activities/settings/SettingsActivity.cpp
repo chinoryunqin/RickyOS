@@ -368,7 +368,6 @@ const char* SettingsActivity::rickySettingDescription(const SettingInfo& setting
   if (setting.valuePtr == &CrossPointSettings::sleepTimeoutMinutes) return tr(STR_RICKY_HELP_TIMEOUT);
   if (setting.valuePtr == &CrossPointSettings::shortPwrBtn) return tr(STR_RICKY_HELP_POWER);
   if (setting.valuePtr == &CrossPointSettings::refreshFrequency) return tr(STR_RICKY_HELP_REFRESH);
-  if (setting.action == SettingAction::CheckForUpdates) return tr(STR_RICKY_HELP_UPSTREAM_OTA);
   if (setting.action == SettingAction::RestoreSystemSettings) return tr(STR_RICKY_HELP_RESET);
   if (setting.action == SettingAction::AppVisibility) return tr(STR_RICKY_HELP_APPS);
   return nullptr;
@@ -476,9 +475,13 @@ void SettingsActivity::rebuildSettingsLists() {
           })
           .withManagedEnumPicker());
 #endif
-  // Keep the existing CrossMux OTA proxy flow. Build-only boards compile this
-  // UI but are intentionally absent from release assets in this sync.
+  // The product uses only its owned, accepted stable channel. Other targets
+  // retain the upstream proxy and release-channel UI.
+#ifdef RICKYOS_PRODUCT
+  systemSettings.push_back(SettingInfo::Action(StrId::STR_RICKYOS_FIRMWARE_UPDATE, SettingAction::CheckForUpdates));
+#else
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CHECK_UPDATES, SettingAction::CheckForUpdates));
+#endif
   systemSettings.push_back(SettingInfo::Action(StrId::STR_SD_FIRMWARE_UPDATE, SettingAction::SdFirmwareUpdate));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_PLUGINS, SettingAction::Plugins));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_KEYBOARD_LAYOUTS, SettingAction::KeyboardLayouts));

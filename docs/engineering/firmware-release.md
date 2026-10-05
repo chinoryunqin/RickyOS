@@ -1,5 +1,8 @@
 # Firmware Release Architecture
 
+RickyOS 的设备正式更新使用自己的发行目录，不使用下述上游频道。
+见 [RickyOS 设备在线更新](rickyos-firmware-update.md)。
+
 CrossMux has two release channels, `stable` and `nightly`, managed by one
 channel-aware pipeline. Hardware identity is not a release channel. Stable
 contains the shared X3/X4 image and a separate Sticky image. Both targets support
