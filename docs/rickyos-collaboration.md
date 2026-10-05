@@ -199,3 +199,14 @@ SD 卡、取消和鉴权错误不重试；清单本身也按 jsDelivr → fastly
 品牌 PNG、SVG、生成脚本和生成头文件包含在仓库；原始人物/狗狗照片不包含。
 字体资源依据各自许可证分发；生成资源应使用规定脚本，不能手改字节数组。
 上游 MIT LICENSE 与第三方许可保留，新增品牌资产不意味着拥有上游商标。
+
+## 正式版 1.6.5-rickyos-pico.12（2026-10-06）
+
+- 标签 `v1.6.5-rickyos-pico.12`（98ccd742），应用镜像 5,958,448 字节，
+  SHA-256 `7d4eaba342a1c637f1a23ac040a47f5d49274fe94d64cb784b0f61ecdbab3ba0`。
+- 网站 `RickyOS-site` gh-pages 发布同一镜像：`releases.json` 为 `app-upgrade`，
+  网页安装只支持已装 CrossMux / RickyOS 的设备；原厂首次安装未验收，保持关闭。
+  `ota.json` 返回 `update_available`，设备从 `-dev` 版可在线升级。
+- 之后的开发构建为 `1.6.5-rickyos-pico.13-dev`。下次发版：改版本号 → 构建 →
+  放入 `tools/rickyos-flasher/public/firmware/` 并更新 `releases.json` → `npm test`、
+  `npm run build` → 把 `dist/` 推到 RickyOS-site 的 gh-pages。
