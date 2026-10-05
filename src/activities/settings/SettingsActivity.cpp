@@ -64,7 +64,7 @@
 #include "util/ReadingBackground.h"
 #include "util/SystemSettingsReset.h"
 #ifdef RICKYOS_PRODUCT
-#include "activities/apps/standby/RickyWallpaperDownloadActivity.h"
+#include "activities/apps/standby/RickyStandbySettingsActivity.h"
 #include "util/RickyStorageLayout.h"
 #endif
 
@@ -308,22 +308,25 @@ void SettingsActivity::reorganizeRickySettings() {
       }
     }
   };
-  moveMatching(displaySettings, sleepSettings, [](const SettingInfo& setting) {
+  // What the sleeping screen shows (mode, picture, defaults, Standby info) lives on
+  // the Apps → Standby page; this page links there instead of repeating it.
+  std::vector<SettingInfo> onStandbyPage;
+  moveMatching(displaySettings, onStandbyPage, [](const SettingInfo& setting) {
     return setting.valuePtr == &CrossPointSettings::sleepScreen ||
-           setting.valuePtr == &CrossPointSettings::sleepScreenCoverMode ||
+           setting.valuePtr == &CrossPointSettings::standbyOverlay;
+  });
+  moveMatching(displaySettings, sleepSettings, [](const SettingInfo& setting) {
+    return setting.valuePtr == &CrossPointSettings::sleepScreenCoverMode ||
            setting.valuePtr == &CrossPointSettings::sleepScreenCoverFilter ||
            setting.valuePtr == &CrossPointSettings::quickResumeSleepScreen ||
-           setting.valuePtr == &CrossPointSettings::standbyShortcutEnabled ||
-           setting.valuePtr == &CrossPointSettings::standbyOverlay;
+           setting.valuePtr == &CrossPointSettings::standbyShortcutEnabled;
   });
   moveMatching(systemSettings, sleepSettings,
                [](const SettingInfo& setting) { return setting.valuePtr == &CrossPointSettings::sleepTimeoutMinutes; });
   moveMatching(controlsSettings, sleepSettings,
                [](const SettingInfo& setting) { return setting.valuePtr == &CrossPointSettings::shortPwrBtn; });
-  sleepSettings.insert(sleepSettings.begin() + 1,
-                       SettingInfo::Action(StrId::STR_RICKY_SELECT_WALLPAPER, SettingAction::RickySleepWallpaper));
-  sleepSettings.insert(sleepSettings.begin() + 2,
-                       SettingInfo::Action(StrId::STR_RICKY_WALLPAPER_DOWNLOAD, SettingAction::RickyWallpaperDownload));
+  sleepSettings.insert(sleepSettings.begin(),
+                       SettingInfo::Action(StrId::STR_STANDBY_TITLE, SettingAction::RickyStandbyPage));
   moveMatching(systemSettings, connectionSettings, [](const SettingInfo& setting) {
     return setting.action == SettingAction::Network || setting.action == SettingAction::KOReaderSync ||
            setting.action == SettingAction::OPDSBrowser;
@@ -1121,36 +1124,16 @@ void SettingsActivity::toggleCurrentSetting() {
       case SettingAction::RickyProfile:
         startActivityForResultWith<RickyProfileActivity>(resultHandler);
         break;
-      case SettingAction::RickyWallpaperDownload:
-        // Restarts to Home when it leaves after using the network, like the font downloader.
+      case SettingAction::RickyStandbyPage:
         releaseListsForMemoryHungryChild();
-        if (!startActivityForResultWith<RickyWallpaperDownloadActivity>(resultHandler)) {
+        if (!startActivityForResultWith<RickyStandbySettingsActivity>([this](const ActivityResult&) {
+              rebuildSettingsLists();
+              requestUpdate();
+            })) {
           rebuildSettingsLists();
           requestUpdate();
         }
         break;
-      case SettingAction::RickySleepWallpaper: {
-        // Reuse the fallible activity stack and release catalog/row heap before decoding.
-        releaseListsForMemoryHungryChild();
-        const bool opened = startActivityForResultWith<FileBrowserActivity>(
-            [this](const ActivityResult& result) {
-              const auto restore = [this](const ActivityResult&) {
-                rebuildSettingsLists();
-                requestUpdate();
-              };
-              const auto* entry = std::get_if<FilePathResult>(&result.data);
-              if (result.isCancelled || !entry ||
-                  !startActivityForResultWith<ImageViewerActivity>(restore, entry->path, true)) {
-                restore(result);
-              }
-            },
-            kImagePickerStart, FileBrowserActivity::Mode::PickWallpaper);
-        if (!opened) {
-          rebuildSettingsLists();
-          requestUpdate();
-        }
-        break;
-      }
 #endif
       case SettingAction::RestoreSystemSettings:
         confirmRestoreSystemSettings();

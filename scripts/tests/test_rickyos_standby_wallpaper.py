@@ -131,5 +131,24 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
         self.assertIn('imageReady = shown;', native)
 
 
+    def test_power_settings_link_to_the_standby_page_instead_of_repeating_it(self):
+        settings = (ROOT / 'src/activities/settings/SettingsActivity.cpp').read_text()
+        reorganize = body(settings, 'void SettingsActivity::reorganizeRickySettings()')
+        moved = reorganize[reorganize.index('moveMatching(displaySettings, onStandbyPage'):]
+        moved = moved[:moved.index('});')]
+        self.assertIn('&CrossPointSettings::sleepScreen', moved)
+        self.assertIn('&CrossPointSettings::standbyOverlay', moved)
+        self.assertIn('SettingInfo::Action(StrId::STR_STANDBY_TITLE, SettingAction::RickyStandbyPage)', reorganize)
+        self.assertNotIn('RickySleepWallpaper', settings)
+        self.assertNotIn('RickyWallpaperDownload', settings)
+
+    def test_library_search_stays_shut_without_chinese_input(self):
+        library = (ROOT / 'src/activities/library/LibraryListActivity.cpp').read_text()
+        search = body(library, 'void LibraryListActivity::openSearch()')
+        product = search.split('#ifdef RICKYOS_PRODUCT', 1)[1].split('#endif', 1)[0]
+        self.assertIn('return;', product)
+        self.assertIn('constexpr bool canSearch = false;', library)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -134,9 +134,8 @@ class RickyWallpaperDownloadTest(unittest.TestCase):
         standby = (ROOT / 'src/activities/apps/standby/StandbyActivity.cpp').read_text()
         self.assertIn('StandbyFace::PictureAction::Download', standby)
         self.assertIn('startActivityForResultWith<RickyWallpaperDownloadActivity>', standby)
-        settings = (ROOT / 'src/activities/settings/SettingsActivity.cpp').read_text()
-        self.assertIn('SettingAction::RickyWallpaperDownload', settings)
-        self.assertIn('startActivityForResultWith<RickyWallpaperDownloadActivity>(resultHandler)', settings)
+        page = (ROOT / 'src/activities/apps/standby/RickyStandbySettingsActivity.cpp').read_text()
+        self.assertIn('startActivityForResultWith<RickyWallpaperDownloadActivity>', page)
         for language in ('chinese', 'english'):
             strings = (ROOT / f'lib/I18n/translations/{language}.yaml').read_text()
             for key in ('DOWNLOAD', 'LOADING', 'PROGRESS', 'DONE', 'FAILED'):
