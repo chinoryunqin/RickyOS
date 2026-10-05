@@ -1,5 +1,16 @@
 {
   "schema": 1,
   "product": "RickyOS",
-  "releases": []
+  "releases": [{
+    "version": "1.6.5-rickyos-pico.12",
+    "approved": true,
+    "hardwareAccepted": true,
+    "mode": "app-upgrade",
+    "board": "readpico",
+    "chipId": 9,
+    "flashBytes": 16777216,
+    "file": "firmware/RickyOS-1.6.5-rickyos-pico.12.bin",
+    "bytes": 5958448,
+    "sha256": "7d4eaba342a1c637f1a23ac040a47f5d49274fe94d64cb784b0f61ecdbab3ba0"
+  }]
 }
