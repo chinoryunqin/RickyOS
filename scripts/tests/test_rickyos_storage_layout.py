@@ -60,5 +60,17 @@ class RickyStorageLayoutTest(unittest.TestCase):
         self.assertLess(main.index('READING_STATS.loadFromFile()'), main.index('RickyStorageLayout::migrateLegacyBooks()'))
 
 
+    def test_storage_counts_files_in_subfolders_and_font_families(self):
+        page = (ROOT / 'src/activities/home/RickyStorageActivity.cpp').read_text()
+        enter = body(page, 'void RickyStorageActivity::onEnter()')
+        self.assertIn('countFiles(RickyStorageLayout::BOOKS, Kind::Books)', enter)
+        self.assertIn('sdFontSystem.registry().getFamilies().size()', enter)
+        self.assertIn('countFiles(RickyStorageLayout::IMAGES, Kind::Images)', enter)
+        walk = body(page, 'int countFiles(')
+        self.assertIn("if (name[0] == '.') continue;", walk)
+        self.assertIn('countFiles(path + "/" + name, kind, depth + 1)', walk)
+        self.assertIn('startActivityForResultWith<FontLibraryActivity>', body(page, 'void RickyStorageActivity::activateIndex('))
+
+
 if __name__ == '__main__':
     unittest.main()
