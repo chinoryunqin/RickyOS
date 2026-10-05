@@ -44,6 +44,7 @@ add_library(crosspoint_test_common INTERFACE)
 target_include_directories(crosspoint_test_common INTERFACE
   ${REPO_ROOT}
   ${REPO_ROOT}/lib
+  ${REPO_ROOT}/lib/Memory
 )
 target_compile_options(crosspoint_test_common INTERFACE
   -Wall
@@ -184,6 +185,9 @@ add_test(NAME NativeGrayscale
     ${crosspoint_simulator_SOURCE_DIR} ${CMAKE_CXX_COMPILER} ${jpegdec_SOURCE_DIR}/src)
 set_tests_properties(NativeGrayscale PROPERTIES RUN_SERIAL TRUE)
 
+add_test(NAME FileBrowserImages
+  COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/scripts/tests/test_file_browser_images.py)
+
 add_test(NAME ArduinoBootstrapLto COMMAND ${Python3_EXECUTABLE} -m unittest discover -s ${REPO_ROOT}/scripts/tests -p test_pioarduino_cache.py)
 add_subdirectory(reader_session)
 add_subdirectory(plugin_manifest_classification)
@@ -202,3 +206,18 @@ add_test(NAME TlsMemoryPreflight COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/scri
 add_test(NAME AirPageDisplayRetry COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/scripts/tests/test_airpage_display_retry.py)
 
 add_test(NAME FontPreloadRefresh COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/scripts/tests/test_font_preload_refresh.py)
+
+add_test(NAME ImagePsramIo COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/scripts/tests/test_image_psram_io.py)
+
+# Real device PNGdec callback semantics differ from the simulator shim.
+FetchContent_Declare(pngdec
+  GIT_REPOSITORY https://github.com/bitbank2/PNGdec.git
+  GIT_TAG 1.1.6
+)
+FetchContent_GetProperties(pngdec)
+if(NOT pngdec_POPULATED)
+  FetchContent_Populate(pngdec)
+endif()
+add_test(NAME RealImageDecoderCancellation
+  COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/scripts/tests/test_real_image_decoder_cancel.py
+    --png-source ${pngdec_SOURCE_DIR}/src --jpeg-source ${jpegdec_SOURCE_DIR}/src)
