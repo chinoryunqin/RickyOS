@@ -23,6 +23,7 @@ class WallpaperFace final : public StandbyFace {
   uint32_t secondsUntilNextWake() const override;
   bool wantsClock() const override;
   bool needsPicture() const override { return !hasPicture_; }
+  PictureAction pictureActionAt(int x, int y) const override;
 
  private:
   void drawCorner(GfxRenderer& renderer, const Rect& viewport, bool intoGray) const;
@@ -31,7 +32,10 @@ class WallpaperFace final : public StandbyFace {
   bool pictureShown_ = false;  // the 16-gray frame is on the panel; minute ticks update the corner only
   bool fullRedraw_ = true;     // next render redraws the picture too
   int32_t lastMinute_ = -1;    // local minute of day last drawn, -1 before the first draw
-  int32_t lastDay_ = -1;       // local day of year last drawn
+  // Empty-state buttons as last drawn, for tap hit-testing.
+  Rect chooseButton_{};
+  Rect downloadButton_{};
+  int32_t lastDay_ = -1;  // local day of year last drawn
 };
 
 #endif

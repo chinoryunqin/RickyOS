@@ -29,6 +29,7 @@
 #endif
 #include "SloppyClockFace.h"
 #ifdef RICKYOS_PRODUCT
+#include "RickyWallpaperDownloadActivity.h"
 #include "WallpaperFace.h"
 #include "activities/home/FileBrowserActivity.h"
 #include "activities/util/ImageViewerActivity.h"
@@ -461,7 +462,18 @@ void StandbyActivity::loop() {
   const bool tapped = mappedInput.wasScreenTapped(tapX, tapY);
   if (tapped || mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     lastInputMs_ = millis();
-    if (currentFace_ && currentFace_->needsPicture()) openPicturePicker();
+    if (currentFace_ && currentFace_->needsPicture()) {
+      const auto action = tapped ? currentFace_->pictureActionAt(tapX, tapY) : StandbyFace::PictureAction::Choose;
+      if (action == StandbyFace::PictureAction::Choose) openPicturePicker();
+      // The downloader restarts to Home when it is done, like the font downloader.
+      if (action == StandbyFace::PictureAction::Download &&
+          !startActivityForResultWith<RickyWallpaperDownloadActivity>([this](const ActivityResult&) {
+            if (currentFace_) currentFace_->onEnter();
+            requestUpdate();
+          })) {
+        LOG_ERR("STANDBY", "Cannot open the picture downloader");
+      }
+    }
     return;
   }
   if (mappedInput.wasAnyReleased() || mappedInput.wasSwipe() != MappedInputManager::SwipeDir::None) {

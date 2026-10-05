@@ -89,6 +89,14 @@ uint32_t WallpaperFace::secondsUntilNextWake() const {
 
 bool WallpaperFace::wantsClock() const { return showsCorner(); }
 
+StandbyFace::PictureAction WallpaperFace::pictureActionAt(const int x, const int y) const {
+  const auto inside = [x, y](const Rect& r) { return x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height; };
+  if (hasPicture_) return PictureAction::None;
+  if (inside(downloadButton_)) return PictureAction::Download;
+  if (inside(chooseButton_)) return PictureAction::Choose;
+  return PictureAction::None;
+}
+
 void WallpaperFace::drawCorner(GfxRenderer& renderer, const Rect& viewport, const bool intoGray) const {
   if (!showsCorner()) return;
   std::tm local{};
@@ -179,14 +187,25 @@ void WallpaperFace::render(GfxRenderer& renderer, const Rect& viewport) {
   if (!hasPicture_) {
     const int lineHeight = renderer.getLineHeight(UI_12_FONT_ID);
     const int centerY = viewport.y + viewport.height / 2;
-    UITheme::drawCenteredText(renderer, viewport, UI_12_FONT_ID, centerY - lineHeight * 2, tr(STR_RICKY_STANDBY_EMPTY));
-    const char* action = tr(STR_RICKY_SELECT_WALLPAPER);
-    const int buttonWidth = renderer.getTextWidth(UI_10_FONT_ID, action) + 56;
+    UITheme::drawCenteredText(renderer, viewport, UI_12_FONT_ID, centerY - lineHeight * 3, tr(STR_RICKY_STANDBY_EMPTY));
     const int buttonHeight = renderer.getLineHeight(UI_10_FONT_ID) + 28;
+    const int buttonWidth = std::max(renderer.getTextWidth(UI_10_FONT_ID, tr(STR_RICKY_SELECT_WALLPAPER)),
+                                     renderer.getTextWidth(UI_10_FONT_ID, tr(STR_RICKY_WALLPAPER_DOWNLOAD))) +
+                            72;
     const int buttonX = viewport.x + (viewport.width - buttonWidth) / 2;
-    const int buttonY = centerY;
-    renderer.drawRoundedRect(buttonX, buttonY, buttonWidth, buttonHeight, 2, buttonHeight / 2, true);
-    renderer.drawText(UI_10_FONT_ID, buttonX + 28, buttonY + 14, action, true);
+    chooseButton_ = Rect{buttonX, centerY - buttonHeight, buttonWidth, buttonHeight};
+    downloadButton_ = Rect{buttonX, centerY + 20, buttonWidth, buttonHeight};
+    // The primary action is filled; downloading the defaults is the outlined one.
+    renderer.fillRoundedRect(chooseButton_.x, chooseButton_.y, buttonWidth, buttonHeight, buttonHeight / 2,
+                             Color::Black);
+    renderer.drawRoundedRect(downloadButton_.x, downloadButton_.y, buttonWidth, buttonHeight, 2, buttonHeight / 2,
+                             true);
+    const auto label = [&](const Rect& button, const char* text, const bool ink) {
+      renderer.drawText(UI_10_FONT_ID, button.x + (button.width - renderer.getTextWidth(UI_10_FONT_ID, text)) / 2,
+                        button.y + 14, text, ink);
+    };
+    label(chooseButton_, tr(STR_RICKY_SELECT_WALLPAPER), false);
+    label(downloadButton_, tr(STR_RICKY_WALLPAPER_DOWNLOAD), true);
     return;
   }
   HalFile file;

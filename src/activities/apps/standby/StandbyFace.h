@@ -81,6 +81,10 @@ class StandbyFace {
   // True while the face has nothing to show until the user picks a picture.
   virtual bool needsPicture() const { return false; }
 
+  // While needsPicture(): which empty-state button a tap hit (PictureAction).
+  enum class PictureAction : uint8_t { None, Choose, Download };
+  virtual PictureAction pictureActionAt(int /*x*/, int /*y*/) const { return PictureAction::None; }
+
   // Note on per-orientation availability: StandbyActivity decides whether to
   // include a face in the active rotation via the `FaceEntry::isAvailable
   // (sw, sh)` predicate declared in StandbyActivity.cpp's face table. Faces

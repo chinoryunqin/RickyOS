@@ -64,6 +64,7 @@
 #include "util/ReadingBackground.h"
 #include "util/SystemSettingsReset.h"
 #ifdef RICKYOS_PRODUCT
+#include "activities/apps/standby/RickyWallpaperDownloadActivity.h"
 #include "util/RickyStorageLayout.h"
 #endif
 
@@ -293,7 +294,7 @@ void SettingsActivity::reorganizeRickySettings() {
   // These bounded vectors live only with this Activity and are released with
   // the other lists before a memory-hungry child. Moves retain all enum values,
   // persistence keys, accessors and action handlers without cloning settings.
-  sleepSettings.reserve(9);
+  sleepSettings.reserve(10);
   connectionSettings.reserve(8);
   fontSettings.reserve(1);  // One moved action, not another copy of font catalog/enum data.
   const auto moveMatching = [](std::vector<SettingInfo>& source, std::vector<SettingInfo>& destination,
@@ -321,6 +322,8 @@ void SettingsActivity::reorganizeRickySettings() {
                [](const SettingInfo& setting) { return setting.valuePtr == &CrossPointSettings::shortPwrBtn; });
   sleepSettings.insert(sleepSettings.begin() + 1,
                        SettingInfo::Action(StrId::STR_RICKY_SELECT_WALLPAPER, SettingAction::RickySleepWallpaper));
+  sleepSettings.insert(sleepSettings.begin() + 2,
+                       SettingInfo::Action(StrId::STR_RICKY_WALLPAPER_DOWNLOAD, SettingAction::RickyWallpaperDownload));
   moveMatching(systemSettings, connectionSettings, [](const SettingInfo& setting) {
     return setting.action == SettingAction::Network || setting.action == SettingAction::KOReaderSync ||
            setting.action == SettingAction::OPDSBrowser;
@@ -1117,6 +1120,14 @@ void SettingsActivity::toggleCurrentSetting() {
 #ifdef RICKYOS_PRODUCT
       case SettingAction::RickyProfile:
         startActivityForResultWith<RickyProfileActivity>(resultHandler);
+        break;
+      case SettingAction::RickyWallpaperDownload:
+        // Restarts to Home when it leaves after using the network, like the font downloader.
+        releaseListsForMemoryHungryChild();
+        if (!startActivityForResultWith<RickyWallpaperDownloadActivity>(resultHandler)) {
+          rebuildSettingsLists();
+          requestUpdate();
+        }
         break;
       case SettingAction::RickySleepWallpaper: {
         // Reuse the fallible activity stack and release catalog/row heap before decoding.
