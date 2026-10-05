@@ -447,6 +447,17 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
 #endif
   // Show and enable the Standby shortcut on the home screen.
   uint8_t standbyShortcutEnabled = 0;
+#ifdef RICKYOS_PRODUCT
+  // What the Standby wallpaper shows on top of the picture (STANDBY_OVERLAY).
+  // Time redraws only its corner each minute with a partial refresh.
+  enum STANDBY_OVERLAY : uint8_t {
+    STANDBY_OVERLAY_NONE = 0,
+    STANDBY_OVERLAY_DATE,
+    STANDBY_OVERLAY_TIME,
+    STANDBY_OVERLAY_COUNT
+  };
+  uint8_t standbyOverlay = STANDBY_OVERLAY_TIME;
+#endif
   // Sunlight fading compensation
   uint8_t fadingFix = 0;
   // Power button return from footnotes (1 = enabled, 0 = disabled)

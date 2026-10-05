@@ -57,6 +57,9 @@ class StandbyActivity final : public Activity {
   void completeTimeSync();
   void processFaceTick(bool waitForUpdate);
   bool tryLightSleep(uint32_t idleMs);
+#ifdef RICKYOS_PRODUCT
+  void openPicturePicker();
+#endif
 
   // Layer a 4-level grayscale refresh on top of the BW image just committed by
   // displayBuffer(): re-render the LSB then MSB planes and composite via the

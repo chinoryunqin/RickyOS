@@ -293,7 +293,7 @@ void SettingsActivity::reorganizeRickySettings() {
   // These bounded vectors live only with this Activity and are released with
   // the other lists before a memory-hungry child. Moves retain all enum values,
   // persistence keys, accessors and action handlers without cloning settings.
-  sleepSettings.reserve(8);
+  sleepSettings.reserve(9);
   connectionSettings.reserve(8);
   fontSettings.reserve(1);  // One moved action, not another copy of font catalog/enum data.
   const auto moveMatching = [](std::vector<SettingInfo>& source, std::vector<SettingInfo>& destination,
@@ -312,7 +312,8 @@ void SettingsActivity::reorganizeRickySettings() {
            setting.valuePtr == &CrossPointSettings::sleepScreenCoverMode ||
            setting.valuePtr == &CrossPointSettings::sleepScreenCoverFilter ||
            setting.valuePtr == &CrossPointSettings::quickResumeSleepScreen ||
-           setting.valuePtr == &CrossPointSettings::standbyShortcutEnabled;
+           setting.valuePtr == &CrossPointSettings::standbyShortcutEnabled ||
+           setting.valuePtr == &CrossPointSettings::standbyOverlay;
   });
   moveMatching(systemSettings, sleepSettings,
                [](const SettingInfo& setting) { return setting.valuePtr == &CrossPointSettings::sleepTimeoutMinutes; });

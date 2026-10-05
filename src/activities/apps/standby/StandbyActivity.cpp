@@ -28,6 +28,12 @@
 #include "ChineseCalendarFace.h"
 #endif
 #include "SloppyClockFace.h"
+#ifdef RICKYOS_PRODUCT
+#include "WallpaperFace.h"
+#include "activities/home/FileBrowserActivity.h"
+#include "activities/util/ImageViewerActivity.h"
+#include "util/RickyStorageLayout.h"
+#endif
 #include "StandbyTime.h"
 #include "WifiCredentialStore.h"
 #include "components/UITheme.h"
@@ -52,11 +58,17 @@ struct FaceEntry {
   bool (*isAvailable)(int sw, int sh);
 };
 constexpr FaceEntry kFaces[] = {
+#ifdef RICKYOS_PRODUCT
+    // RickyOS Standby is the user's own picture; the stock clock faces are not offered.
+    {[]() -> std::unique_ptr<StandbyFace> { return makeUniqueNoThrow<WallpaperFace>(); },
+     [](int, int) { return true; }},
+#else
     {[]() -> std::unique_ptr<StandbyFace> { return makeUniqueNoThrow<SloppyClockFace>(); },
      [](int, int) { return true; }},
 #ifdef ENABLE_CHINESE_VERSION
     {[]() -> std::unique_ptr<StandbyFace> { return makeUniqueNoThrow<ChineseCalendarFace>(); },
      [](int sw, int sh) { return sh > sw; }},  // portrait only
+#endif
 #endif
 };
 constexpr uint8_t kFaceCount = static_cast<uint8_t>(sizeof(kFaces) / sizeof(kFaces[0]));
@@ -128,9 +140,15 @@ void StandbyActivity::onEnter() {
     return;
   }
   currentFace_->onEnter();
+#ifdef RICKYOS_PRODUCT
+  // The picture is the whole screen from the start: no title, battery or face dots.
+  mode_ = DisplayMode::Immersive;
+#else
   mode_ = DisplayMode::Normal;
+#endif
   lastInputMs_ = millis();
-  if (!TimeUtils::isClockValid() && SETTINGS.clockAutoSync) {
+  // A face without a clock or date never needs the WiFi sync (nor its prompt).
+  if (!TimeUtils::isClockValid() && SETTINGS.clockAutoSync && currentFace_->wantsClock()) {
     syncState_ = SyncState::Delayed;
     syncStartMs_ = millis();
   }
@@ -392,6 +410,8 @@ void StandbyActivity::processFaceTick(const bool waitForUpdate) {
 bool StandbyActivity::tryLightSleep(const uint32_t idleMs) {
 #if CROSSPOINT_EMULATED == 0
   if (mode_ != DisplayMode::Immersive || !currentFace_) return false;
+  // Touch does not wake light sleep: stay awake while waiting for a picture to be picked.
+  if (currentFace_->needsPicture()) return false;
 
   const bool syncActive = syncState_ != SyncState::Idle;
   const bool wifiActive = WiFi.getMode() != WIFI_MODE_NULL;
@@ -411,7 +431,9 @@ bool StandbyActivity::tryLightSleep(const uint32_t idleMs) {
       processFaceTick(true);
       return true;
     case HalPowerManager::LightSleepWakeReason::PowerButton:
+#ifndef RICKYOS_PRODUCT
       mode_ = DisplayMode::Normal;
+#endif
       lastInputMs_ = millis();
       requestUpdate();
       return true;
@@ -430,6 +452,26 @@ void StandbyActivity::loop() {
     activityManager.goHome();
     return;
   }
+
+#ifdef RICKYOS_PRODUCT
+  // One picture, always full screen: no face switching, paging or inverse. A tap
+  // or Confirm only matters while there is no picture yet.
+  int tapX = 0;
+  int tapY = 0;
+  const bool tapped = mappedInput.wasScreenTapped(tapX, tapY);
+  if (tapped || mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    lastInputMs_ = millis();
+    if (currentFace_ && currentFace_->needsPicture()) openPicturePicker();
+    return;
+  }
+  if (mappedInput.wasAnyReleased() || mappedInput.wasSwipe() != MappedInputManager::SwipeDir::None) {
+    lastInputMs_ = millis();
+  }
+  pumpTimeSync();
+  if (tryLightSleep(millis() - lastInputMs_)) return;
+  processFaceTick(false);
+  return;
+#endif
 
   const auto swipe = mappedInput.wasSwipe();
   if (swipe != MappedInputManager::SwipeDir::None) {
@@ -540,6 +582,21 @@ void StandbyActivity::loop() {
 
 void StandbyActivity::render(RenderLock&&) {
   if (!currentFace_) return;
+#ifdef RICKYOS_PRODUCT
+  {
+    int top = 0, right = 0, bottom = 0, left = 0;
+    renderer.getOrientedViewableTRBL(&top, &right, &bottom, &left);
+    const Rect viewport{left, top, renderer.getScreenWidth() - left - right, renderer.getScreenHeight() - top - bottom};
+    if (currentFace_->renderNative(renderer, viewport)) return;
+    renderer.clearScreen();
+    {
+      const GfxRenderer::ClipScope clip(renderer, viewport.x, viewport.y, viewport.width, viewport.height);
+      currentFace_->render(renderer, viewport);
+    }
+    renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+    return;
+  }
+#endif
 
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int sw = renderer.getScreenWidth();
@@ -631,3 +688,25 @@ void StandbyActivity::applyGrayscalePass(const Rect& viewport) {
   renderer.setRenderMode(GfxRenderer::BW);
   renderer.restoreBwBuffer();
 }
+
+#ifdef RICKYOS_PRODUCT
+// Same flow as Settings → Power & Standby → Choose Standby Image: an image picker
+// in /images, then a preview whose Set action installs /sleep.bmp.
+void StandbyActivity::openPicturePicker() {
+  const auto reload = [this](const ActivityResult&) {
+    if (currentFace_) currentFace_->onEnter();
+    lastInputMs_ = millis();
+    requestUpdate();
+  };
+  const bool opened = startActivityForResultWith<FileBrowserActivity>(
+      [this, reload](const ActivityResult& result) {
+        const auto* entry = std::get_if<FilePathResult>(&result.data);
+        if (result.isCancelled || !entry ||
+            !startActivityForResultWith<ImageViewerActivity>(reload, entry->path, true)) {
+          reload(result);
+        }
+      },
+      RickyStorageLayout::IMAGES, FileBrowserActivity::Mode::PickWallpaper);
+  if (!opened) LOG_ERR("STANDBY", "Cannot open the picture picker");
+}
+#endif
