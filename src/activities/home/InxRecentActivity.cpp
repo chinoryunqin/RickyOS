@@ -397,7 +397,7 @@ void InxRecentActivity::loop() {
       return;
     }
     if (action == RickyHomeUi::STATISTICS) {
-      activityManager.goToReadingStatsMenu();
+      activityManager.goToRickyReadingStats();
       return;
     }
     if (books && action >= 0 && action < static_cast<int>(books->size())) {

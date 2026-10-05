@@ -168,6 +168,8 @@ class ReadingStatsStore {
   uint32_t getMaxStreakDays() const;
   uint32_t getDisplayTimestamp(bool* usedFallback = nullptr) const;
   bool hasReadingDays() const { return !readingDays.empty(); }
+  // Today as a local day ordinal (days since 1970-01-01), falling back to the last reading day.
+  uint32_t getTodayDayOrdinal() const { return getReferenceDayOrdinal(); }
 
   void reset();
   bool exportToFile(const std::string& path) const;

@@ -41,7 +41,11 @@ constexpr AppEntry kAppEntries[] = {
 #ifndef RICKYOS_PRODUCT
     {AppId::AirPage, StrId::STR_AIRPAGE_TITLE, UIIcon::AirPage, &ActivityManager::goToAirPage},
 #endif
+#ifdef RICKYOS_PRODUCT
+    {AppId::ReadingStats, StrId::STR_READING_STATS, UIIcon::ReadingStats, &ActivityManager::goToRickyReadingStats},
+#else
     {AppId::ReadingStats, StrId::STR_READING_STATS, UIIcon::ReadingStats, &ActivityManager::goToReadingStatsMenu},
+#endif
 #ifndef RICKYOS_PRODUCT
     {AppId::Sudoku, StrId::STR_SUDOKU_TITLE, UIIcon::Sudoku, &ActivityManager::goToSudoku},
 #endif

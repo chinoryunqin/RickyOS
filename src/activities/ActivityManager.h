@@ -131,6 +131,9 @@ class ActivityManager {
   void goToUglyAvatar();
 #endif
   void goToReadingStatsMenu();
+#ifdef RICKYOS_PRODUCT
+  void goToRickyReadingStats();
+#endif
   void goToReadingStats();
   void goToInxRecent();
   void goToMainTab(MainTab tab);
