@@ -2,16 +2,19 @@
 #include "RickyWallpaperDownloadActivity.h"
 
 #include <ArduinoJson.h>
+#include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Logging.h>
+#include <PngToBmpConverter.h>
 #include <WiFi.h>
 #include <esp_rom_crc.h>
 
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <string_view>
 #include <utility>
 
 #include "CrossPointSettings.h"
@@ -43,6 +46,12 @@ bool validName(const char* name) {
   const size_t length = name ? strlen(name) : 0;
   if (length == 0 || length > 64 || name[0] == '.') return false;
   return strpbrk(name, "/\\:*?\"<>|") == nullptr;
+}
+
+// ".png" or ".bmp" from the published name (pictures keep their format on the card).
+std::string extensionOf(const std::string& file) {
+  const size_t dot = file.rfind('.');
+  return dot == std::string::npos ? std::string(".bmp") : file.substr(dot);
 }
 
 bool fileCrc32(const std::string& path, uint32_t& size, uint32_t& crc) {
@@ -162,7 +171,10 @@ bool RickyWallpaperDownloadActivity::fetchManifest() {
       const char* name = entry["name"] | "";
       const char* file = entry["file"] | "";
       const uint32_t size = entry["size"] | 0u;
-      if (!validName(name) || !validName(file) || size == 0 || size > kMaxItemBytes || items.size() >= kMaxItems) {
+      const bool picture =
+          FsHelpers::hasPngExtension(std::string_view(file)) || FsHelpers::hasBmpExtension(std::string_view(file));
+      if (!validName(name) || !validName(file) || !picture || size == 0 || size > kMaxItemBytes ||
+          items.size() >= kMaxItems) {
         LOG_ERR("WPDL", "Skipping invalid manifest item");
         continue;
       }
@@ -177,6 +189,16 @@ bool RickyWallpaperDownloadActivity::fetchManifest() {
       if (validBase(mirror.as<const char*>()) && mirrors_.size() < 4) mirrors_.emplace_back(mirror.as<const char*>());
     }
   }
+  // File hosts: in China the jsDelivr hosts go first whichever manifest won (GitHub is
+  // slow or unreachable there); elsewhere the manifest's own order.
+  hosts_.clear();
+  hosts_.push_back(baseUrl_);
+  hosts_.insert(hosts_.end(), mirrors_.begin(), mirrors_.end());
+  if (SETTINGS.contentProfile == CrossPointSettings::ContentProfile::China) {
+    std::stable_partition(hosts_.begin(), hosts_.end(),
+                          [](const std::string& host) { return host.find("jsdelivr.net") != std::string::npos; });
+  }
+  preferredHost_ = 0;
   return !items_.empty();
 }
 
@@ -194,7 +216,7 @@ bool RickyWallpaperDownloadActivity::downloadAll() {
   requestUpdate();
   for (currentItem_ = 0; currentItem_ < items_.size(); ++currentItem_) {
     const Item& item = items_[currentItem_];
-    const std::string dest = std::string(RickyWallpaperCatalog::FOLDER) + "/" + item.name + ".bmp";
+    const std::string dest = std::string(RickyWallpaperCatalog::FOLDER) + "/" + item.name + extensionOf(item.file);
     if (!downloadItem(item, dest)) return false;
     bytesDone_ += item.size;
   }
@@ -217,12 +239,13 @@ bool RickyWallpaperDownloadActivity::downloadItem(const Item& item, const std::s
       requestUpdate(true);
     }
   };
-  const size_t hosts = 1 + mirrors_.size();
   auto result = HttpDownloader::HTTP_ERROR;
   for (int attempt = 0; attempt < kFileAttempts && result == HttpDownloader::HTTP_ERROR; ++attempt) {
-    const std::string& base = attempt % hosts == 0 ? baseUrl_ : mirrors_[attempt % hosts - 1];
+    // Start on the host that served the last picture; move on after a failure.
+    const size_t host = (preferredHost_ + attempt) % hosts_.size();
     if (attempt > 0) delay(2000);
-    result = HttpDownloader::downloadToFile(base + item.file, part, progress, &cancelRequested_);
+    result = HttpDownloader::downloadToFile(hosts_[host] + item.file, part, progress, &cancelRequested_);
+    if (result == HttpDownloader::OK) preferredHost_ = host;
   }
   if (result != HttpDownloader::OK || !fileCrc32(part, size, crc) || size != item.size || crc != item.crc32) {
     LOG_ERR("WPDL", "Download failed: %s (%d)", item.file.c_str(), result);
@@ -230,14 +253,32 @@ bool RickyWallpaperDownloadActivity::downloadItem(const Item& item, const std::s
     return false;
   }
   Storage.remove(dest.c_str());
-  return Storage.rename(part.c_str(), dest.c_str());
+  if (!Storage.rename(part.c_str(), dest.c_str())) return false;
+  // An earlier release shipped this picture as a BMP; keep one copy in the folder.
+  const std::string older = std::string(RickyWallpaperCatalog::FOLDER) + "/" + item.name + ".bmp";
+  if (older != dest && Storage.exists(older.c_str())) Storage.remove(older.c_str());
+  return true;
 }
 
 void RickyWallpaperDownloadActivity::installFirstIfUnset() {
   // Never replace a picture the user chose.
   if (items_.empty() || Storage.exists(kStandbyPicture)) return;
-  const std::string first = std::string(RickyWallpaperCatalog::FOLDER) + "/" + items_.front().name + ".bmp";
-  if (!copyFile(first, kStandbyPicture)) LOG_ERR("WPDL", "Could not install %s", first.c_str());
+  const std::string first =
+      std::string(RickyWallpaperCatalog::FOLDER) + "/" + items_.front().name + extensionOf(items_.front().file);
+  bool installed = false;
+  if (FsHelpers::hasPngExtension(first)) {
+    // Same conversion the picture preview uses: an 8-bit gray BMP keeps all 16 grays.
+    GfxRenderer::FrameBufferLoan loan(renderer);
+    installed = PngToBmpConverter::pngFileToGray8BmpFile(first.c_str(), kStandbyPicture, true);
+  } else {
+    installed = copyFile(first, kStandbyPicture);
+  }
+  if (installed) {
+    SETTINGS.sleepScreen = CrossPointSettings::CUSTOM;
+    SETTINGS.saveToFile();
+  } else {
+    LOG_ERR("WPDL", "Could not install %s", first.c_str());
+  }
 }
 
 void RickyWallpaperDownloadActivity::loop() {

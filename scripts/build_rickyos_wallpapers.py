@@ -3,15 +3,17 @@
 
 Each source picture (any size, ideally 2:3 portrait) is center-cropped to the Read Pico's 9:16 screen,
 resized to 684 x 1216, error-diffused to the panel's 16 gray levels and written as a 4-bit paletted
-BMP: the reader copies it to /sleep.bmp unchanged and draws it in native 16-gray.
+PNG (mostly white pictures compress about 6x against a BMP, which matters on slow networks). The
+reader converts the chosen PNG to an 8-bit gray BMP for /sleep.bmp and draws it in native 16-gray.
 
-Output: wallpapers/*.bmp, wallpapers.json (GitHub release URLs) and mirror.json (jsDelivr), both in
+Output: wallpapers/*.png, wallpapers.json (GitHub release URLs) and mirror.json (jsDelivr), both in
 the manifest format RickyWallpaperDownloadActivity reads, plus SHA256SUMS.
 
-Run: python3 scripts/build_rickyos_wallpapers.py --sources DIR --output DIR --slogan-font SmileySans-Oblique.otf [--tag v1.1.0]
+Run: python3 scripts/build_rickyos_wallpapers.py --sources DIR --output DIR --slogan-font SmileySans-Oblique.otf [--tag v1.2.0]
 """
 import argparse
 import hashlib
+import io
 import json
 import struct
 import zlib
@@ -28,22 +30,22 @@ LEVELS = 16
 # --slogan-font (Smiley Sans) under the doodle, never by the image model.
 WALLPAPERS = [
     # Logo style first: the first picture becomes the standby picture when none is set.
-    ("31-reading-together", "一起读书", "31-reading-together.bmp"),
-    ("32-dog-nap", "小狗午睡", "32-dog-nap.bmp"),
-    ("33-moon-reading", "月亮上读书", "33-moon-reading.bmp"),
-    ("34-dog-fetch", "叼书小狗", "34-dog-fetch.bmp"),
-    ("35-book-nap", "书本盖脸", "35-book-nap.bmp"),
-    ("36-peek", "书后探头", "36-peek.bmp"),
-    ("21-one-more-page", "先看一页", "21-one-more-page.bmp", ("先看一页", "再看亿页")),
-    ("22-do-not-disturb", "别催", "22-do-not-disturb.bmp", ("别催", "在看书")),
-    ("23-battery-full", "电量充足", "23-battery-full.bmp", ("电量充足", "精神不足")),
-    ("24-slow-reading", "慢慢读", "24-slow-reading.bmp", ("慢慢读", "不着急")),
-    ("25-stay-home", "不出门", "25-stay-home.bmp", ("只要不出门", "就是好天气")),
-    ("26-fish-culture", "摸鱼", "26-fish-culture.bmp", ("摸鱼", "也要有文化")),
-    ("12-bear-balloon", "小熊的气球", "12-bear-balloon.bmp"),
-    ("13-whale-clouds", "云上鲸鱼", "13-whale-clouds.bmp"),
-    ("14-hedgehog-library", "刺猬去图书馆", "14-hedgehog-library.bmp"),
-    ("15-fox-tree", "树上的狐狸", "15-fox-tree.bmp"),
+    ("31-reading-together", "一起读书", "31-reading-together.png"),
+    ("32-dog-nap", "小狗午睡", "32-dog-nap.png"),
+    ("33-moon-reading", "月亮上读书", "33-moon-reading.png"),
+    ("34-dog-fetch", "叼书小狗", "34-dog-fetch.png"),
+    ("35-book-nap", "书本盖脸", "35-book-nap.png"),
+    ("36-peek", "书后探头", "36-peek.png"),
+    ("21-one-more-page", "先看一页", "21-one-more-page.png", ("先看一页", "再看亿页")),
+    ("22-do-not-disturb", "别催", "22-do-not-disturb.png", ("别催", "在看书")),
+    ("23-battery-full", "电量充足", "23-battery-full.png", ("电量充足", "精神不足")),
+    ("24-slow-reading", "慢慢读", "24-slow-reading.png", ("慢慢读", "不着急")),
+    ("25-stay-home", "不出门", "25-stay-home.png", ("只要不出门", "就是好天气")),
+    ("26-fish-culture", "摸鱼", "26-fish-culture.png", ("摸鱼", "也要有文化")),
+    ("12-bear-balloon", "小熊的气球", "12-bear-balloon.png"),
+    ("13-whale-clouds", "云上鲸鱼", "13-whale-clouds.png"),
+    ("14-hedgehog-library", "刺猬去图书馆", "14-hedgehog-library.png"),
+    ("15-fox-tree", "树上的狐狸", "15-fox-tree.png"),
 ]
 # Logo-style line art is fitted into the upper band so it never meets the time corner.
 LOGO_STYLE = {"31-reading-together", "32-dog-nap", "33-moon-reading", "34-dog-fetch", "35-book-nap", "36-peek"}
@@ -118,6 +120,13 @@ def quantize(gray: Image.Image) -> Image.Image:
     return gray.convert("RGB").quantize(palette=palette, dither=Image.Dither.FLOYDSTEINBERG)
 
 
+def png4(indexed: Image.Image) -> bytes:
+    """4-bit paletted PNG holding the 16 gray levels."""
+    out = io.BytesIO()
+    indexed.save(out, "PNG", optimize=True, bits=4)
+    return out.getvalue()
+
+
 def bmp4(indexed: Image.Image) -> bytes:
     row_bytes = (WIDTH * 4 + 31) // 32 * 4
     pixels = indexed.tobytes()
@@ -138,7 +147,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--sources", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--tag", default="v1.1.0")
+    parser.add_argument("--tag", default="v1.2.0")
     parser.add_argument("--slogan-font", type=Path, help="Smiley Sans (OFL) for the slogan pictures")
     args = parser.parse_args()
 
@@ -153,7 +162,7 @@ def main() -> None:
             if not args.slogan_font:
                 parser.error("--slogan-font is required for the slogan pictures")
             gray = add_slogan(gray, slogan[0], args.slogan_font)
-        data = bmp4(quantize(gray))
+        data = png4(quantize(gray))
         (out / file).write_bytes(data)
         items.append({"name": name, "file": file, "size": len(data), "crc32": zlib.crc32(data) & 0xFFFFFFFF})
         sums.append(f"{hashlib.sha256(data).hexdigest()}  wallpapers/{file}")

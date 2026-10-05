@@ -120,5 +120,16 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
         self.assertIn('!activityManager.isSwitchPending()) onEnter();', body(viewer, 'void ImageViewerActivity::loop()'))
 
 
+    def test_preview_draws_native_16_gray_with_a_readable_button(self):
+        viewer = (ROOT / 'src/activities/util/ImageViewerActivity.cpp').read_text()
+        enter = body(viewer, 'void ImageViewerActivity::onEnter()')
+        native = enter[enter.index('Native 16-gray, as Standby'):]
+        native = native[:native.index('#endif')]
+        order = [native.index(call) for call in ('beginGrayscale16()', 'drawBitmapGrayscale16(',
+                                                 'GUI.drawActionButton(', 'copyBwToGrayscale16(', 'commitGrayscale16()')]
+        self.assertEqual(order, sorted(order))
+        self.assertIn('imageReady = shown;', native)
+
+
 if __name__ == '__main__':
     unittest.main()

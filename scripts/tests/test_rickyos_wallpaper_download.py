@@ -105,6 +105,31 @@ class RickyWallpaperDownloadTest(unittest.TestCase):
         header = (ROOT / 'src/network/RickyWallpaperCatalog.h').read_text()
         self.assertIn('static_assert(releaseOf("https://cdn.jsdelivr.net/gh/x/y@v1.1.0/wallpapers/") == 0x010100);', header)
 
+    @unittest.skipUnless(HAVE_PIL, 'needs Pillow')
+    def test_published_pictures_are_small_4_bit_pngs(self):
+        from PIL import Image
+        module = load_script()
+        self.assertTrue(all(entry[2].endswith('.png') for entry in module.WALLPAPERS))
+        page = Image.new('L', (module.WIDTH, module.HEIGHT), 255)
+        data = module.png4(module.quantize(page))
+        self.assertEqual(data[24], 4)   # IHDR bit depth
+        self.assertEqual(data[25], 3)   # palette
+        self.assertLess(len(data), 20_000)
+
+    def test_png_pictures_install_as_8_bit_gray_and_cdn_hosts_go_first(self):
+        source = ACTIVITY.read_text()
+        install = body(source, 'void RickyWallpaperDownloadActivity::installFirstIfUnset()')
+        self.assertIn('PngToBmpConverter::pngFileToGray8BmpFile(first.c_str(), kStandbyPicture, true)', install)
+        self.assertIn('SETTINGS.sleepScreen = CrossPointSettings::CUSTOM;', install)
+        fetch = body(source, 'bool RickyWallpaperDownloadActivity::fetchManifest()')
+        self.assertIn('host.find("jsdelivr.net") != std::string::npos', fetch)
+        self.assertIn('FsHelpers::hasPngExtension(std::string_view(file))', fetch)
+        item = body(source, 'bool RickyWallpaperDownloadActivity::downloadItem(')
+        self.assertIn('if (result == HttpDownloader::OK) preferredHost_ = host;', item)
+        viewer = (ROOT / 'src/activities/util/ImageViewerActivity.cpp').read_text()
+        preview = body(viewer, 'bool ImageViewerActivity::preparePreview()')
+        self.assertIn('pngFileToGray8BmpFile(filePath.c_str(), IMAGE_PREVIEW_PATH, true)', preview.split('#else', 1)[0])
+
     def test_entry_points_in_standby_and_settings(self):
         standby = (ROOT / 'src/activities/apps/standby/StandbyActivity.cpp').read_text()
         self.assertIn('StandbyFace::PictureAction::Download', standby)

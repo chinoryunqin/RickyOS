@@ -18,7 +18,6 @@
 // ============================================================================
 // IMAGE PROCESSING OPTIONS - Same as JpegToBmpConverter for consistency
 // ============================================================================
-constexpr bool USE_8BIT_OUTPUT = false;
 constexpr bool USE_ATKINSON = true;
 constexpr bool USE_FLOYD_STEINBERG = false;
 constexpr bool USE_PRESCALE = true;
@@ -562,9 +561,10 @@ static void convertScanlineToOpacity(const PngDecodeContext& ctx, uint8_t* opaci
 
 bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpOut, int targetWidth, int targetHeight,
                                                    bool oneBit, bool crop, bool preserveTransparency,
-                                                   bool originalThresholds) {
+                                                   bool originalThresholds, const bool gray8) {
   LOG_DBG("PNG", "Converting PNG to %s BMP (target: %dx%d)",
-          preserveTransparency ? "transparent 4-bit" : (oneBit ? "1-bit" : "2-bit"), targetWidth, targetHeight);
+          preserveTransparency ? "transparent 4-bit" : (oneBit ? "1-bit" : (gray8 ? "8-bit" : "2-bit")), targetWidth,
+          targetHeight);
 
   // Verify PNG signature
   uint8_t sig[8];
@@ -820,7 +820,7 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
   if (preserveTransparency) {
     writeTransparentBmpHeader4bit(bmpOut, outWidth, outHeight);
     bytesPerRow = (outWidth + 7) / 8 * 4;
-  } else if (USE_8BIT_OUTPUT && !oneBit) {
+  } else if (gray8 && !oneBit) {
     writeBmpHeader8bit(bmpOut, outWidth, outHeight);
     bytesPerRow = (outWidth + 3) / 4 * 4;
   } else if (oneBit) {
@@ -850,7 +850,7 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
 
       return false;
     }
-  } else if (!USE_8BIT_OUTPUT) {
+  } else if (!gray8) {
     if (USE_ATKINSON) {
       atkinsonDitherer = makeUniqueNoThrow<AtkinsonDitherer>(outWidth, originalThresholds);
       if (!atkinsonDitherer || !atkinsonDitherer->isValid()) {
@@ -913,7 +913,7 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
       // Direct output (no scaling)
       memset(rowBuffer.get(), 0, bytesPerRow);
 
-      if (!preserveTransparency && USE_8BIT_OUTPUT && !oneBit) {
+      if (!preserveTransparency && gray8 && !oneBit) {
         for (int x = 0; x < outWidth; x++) {
           rowBuffer[x] = adjustPixel(grayRow[x]);
         }
@@ -991,7 +991,7 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
       while (srcY_fp >= nextOutY_srcStart && currentOutY < outHeight) {
         memset(rowBuffer.get(), 0, bytesPerRow);
 
-        if (!preserveTransparency && USE_8BIT_OUTPUT && !oneBit) {
+        if (!preserveTransparency && gray8 && !oneBit) {
           for (int x = 0; x < outWidth; x++) {
             const uint8_t gray = (rowCount[x] > 0) ? (rowAccum[x] / rowCount[x]) : 0;
             rowBuffer[x] = adjustPixel(gray);
@@ -1075,7 +1075,7 @@ bool PngToBmpConverter::pngFileToBmpStream(HalFile& pngFile, Print& bmpOut, bool
 }
 
 bool PngToBmpConverter::pngFileToBmpFileInternal(const char* pngPath, const char* bmpPath, const bool crop,
-                                                 const bool preserveTransparency) {
+                                                 const bool preserveTransparency, const bool gray8) {
   if (!pngPath || !bmpPath) return false;
   if (Storage.exists(bmpPath)) Storage.remove(bmpPath);
 
@@ -1085,7 +1085,7 @@ bool PngToBmpConverter::pngFileToBmpFileInternal(const char* pngPath, const char
     HalFile output;
     converted = Storage.openFileForRead("PNG", pngPath, input) && Storage.openFileForWrite("PNG", bmpPath, output) &&
                 pngFileToBmpStreamInternal(input, output, display.getDisplayHeight(), display.getDisplayWidth(), false,
-                                           crop, preserveTransparency);
+                                           crop, preserveTransparency, false, gray8);
     if (converted) output.flush();
   }
   if (!converted && Storage.exists(bmpPath)) Storage.remove(bmpPath);
@@ -1094,6 +1094,10 @@ bool PngToBmpConverter::pngFileToBmpFileInternal(const char* pngPath, const char
 
 bool PngToBmpConverter::pngFileToBmpFile(const char* pngPath, const char* bmpPath, const bool crop) {
   return pngFileToBmpFileInternal(pngPath, bmpPath, crop, false);
+}
+
+bool PngToBmpConverter::pngFileToGray8BmpFile(const char* pngPath, const char* bmpPath, const bool crop) {
+  return pngFileToBmpFileInternal(pngPath, bmpPath, crop, false, true);
 }
 
 bool PngToBmpConverter::pngFileToTransparentBmpFile(const char* pngPath, const char* bmpPath, const bool crop) {

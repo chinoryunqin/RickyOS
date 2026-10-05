@@ -89,7 +89,12 @@ bool ImageViewerActivity::preparePreview() {
   {
     GfxRenderer::FrameBufferLoan loan(renderer);
     if (isPng()) {
+#ifdef RICKYOS_PRODUCT
+      // Read Pico's panel shows 16 grays; keep them all instead of dithering to four.
+      prepared = PngToBmpConverter::pngFileToGray8BmpFile(filePath.c_str(), IMAGE_PREVIEW_PATH, true);
+#else
       prepared = PngToBmpConverter::pngFileToBmpFile(filePath.c_str(), IMAGE_PREVIEW_PATH, true);
+#endif
     } else {
       HalFile input, output;
       if (Storage.openFileForRead("IMAGE", filePath.c_str(), input) &&
@@ -189,6 +194,28 @@ void ImageViewerActivity::onEnter() {
       if (mappedInput.hasTouch()) {
         GUI.drawActionButton(renderer, sleepCoverActionRect(renderer), I18N.get(sleepCoverLabel()));
       }
+#ifdef RICKYOS_PRODUCT
+      // Native 16-gray, as Standby and the sleep screen draw it. The overlay-mask path
+      // also painted the Set button into its gray planes, turning it into a dark bar
+      // with no readable label. Here the button is drawn in B/W and copied in.
+      if (bitmap.hasGreyscale() && renderer.getGrayscaleLevels() == 16 && bitmap.rewindToData() == BmpReaderError::Ok) {
+        bool shown =
+            renderer.beginGrayscale16() && renderer.drawBitmapGrayscale16(bitmap, x, y, pageWidth, pageHeight, 0, 0);
+        if (shown && mappedInput.hasTouch()) {
+          const Rect action = sleepCoverActionRect(renderer);
+          GUI.drawActionButton(renderer, action, I18N.get(sleepCoverLabel()));
+          renderer.copyBwToGrayscale16(action.x, action.y, action.width, action.height);
+        }
+        shown = shown && renderer.commitGrayscale16();
+        renderer.cancelGrayscale16();
+        if (!shown) {
+          LOG_ERR("BMP", "16-gray preview failed");
+          renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+        }
+        imageReady = shown;
+        return;
+      }
+#endif
       if (bitmap.hasGreyscale()) {
 #ifdef RICKYOS_PRODUCT
         // Read Pico's bitmap renderer emits overlay masks, not UC8279 absolute planes.
