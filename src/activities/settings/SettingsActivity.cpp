@@ -351,6 +351,9 @@ void SettingsActivity::reorganizeRickySettings() {
       values[CrossPointSettings::TRANSPARENT] = StrId::STR_RICKY_SLEEP_OVERLAY;
     } else if (setting.valuePtr == &CrossPointSettings::quickResumeSleepScreen) {
       setting.nameId = StrId::STR_RICKY_KEEP_PAGE_TIMEOUT;
+    } else if (setting.valuePtr == &CrossPointSettings::standbyShortcutEnabled) {
+      // Not to be confused with the Standby page row above it.
+      setting.nameId = StrId::STR_RICKY_STANDBY_SHORTCUT;
     } else if (setting.valuePtr == &CrossPointSettings::sleepScreenCoverMode) {
       setting.nameId = StrId::STR_RICKY_COVER_FIT;
     } else if (setting.valuePtr == &CrossPointSettings::sleepScreenCoverFilter) {
