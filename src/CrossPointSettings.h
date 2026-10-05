@@ -456,7 +456,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     STANDBY_OVERLAY_TIME,
     STANDBY_OVERLAY_COUNT
   };
-  uint8_t standbyOverlay = STANDBY_OVERLAY_TIME;
+  uint8_t standbyOverlay = STANDBY_OVERLAY_NONE;
 #endif
   // Sunlight fading compensation
   uint8_t fadingFix = 0;

@@ -75,7 +75,7 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
 
     def test_overlay_setting_is_persisted_and_translated(self):
         header = (ROOT / 'src/CrossPointSettings.h').read_text()
-        self.assertIn('uint8_t standbyOverlay = STANDBY_OVERLAY_TIME;', header)
+        self.assertIn('uint8_t standbyOverlay = STANDBY_OVERLAY_NONE;', header)  # plain picture by default
         settings = (ROOT / 'src/SettingsList.h').read_text()
         entry = settings[settings.index('&CrossPointSettings::standbyOverlay'):][:400]
         self.assertIn('"standbyOverlay"', entry)
