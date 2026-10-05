@@ -81,5 +81,26 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
                       (ROOT / 'src/activities/settings/SettingsActivity.cpp').read_text())
 
 
+    def test_apps_entry_opens_the_settings_page_not_standby(self):
+        menu = (ROOT / 'src/activities/apps/AppsMenuActivity.cpp').read_text()
+        product = menu.split('#ifdef RICKYOS_PRODUCT\n    {AppId::Standby', 1)[1].split('#else', 1)[0]
+        self.assertIn('&ActivityManager::goToStandbySettings', product)
+        page = (ROOT / 'src/activities/apps/standby/RickyStandbySettingsActivity.cpp').read_text()
+        activate = body(page, 'void RickyStandbySettingsActivity::activateIndex(')
+        self.assertIn('SETTINGS.sleepScreen = kModes[chosen];', activate)
+        self.assertIn('SETTINGS.standbyOverlay = static_cast<uint8_t>(chosen);', activate)
+        self.assertIn('openPicturePicker();', activate)
+        self.assertIn('startActivityForResultWith<RickyWallpaperDownloadActivity>', activate)
+        self.assertIn('startActivityForResultWith<StandbyActivity>', activate)
+        self.assertIn('static_assert(std::size(kModes) == CrossPointSettings::SLEEP_SCREEN_MODE_COUNT);', page)
+        # Full-screen Standby returns to whichever page opened it.
+        loop = body(self.activity, 'void StandbyActivity::loop()')
+        self.assertIn('finish();', loop.split('#else', 1)[0])
+        for language in ('chinese', 'english'):
+            strings = (ROOT / f'lib/I18n/translations/{language}.yaml').read_text()
+            self.assertRegex(strings, r'(?m)^STR_RICKY_STANDBY_SCREEN: "')
+            self.assertRegex(strings, r'(?m)^STR_RICKY_STANDBY_NOW: "')
+
+
 if __name__ == '__main__':
     unittest.main()

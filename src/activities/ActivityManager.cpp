@@ -39,6 +39,9 @@
 #include "apps/reading-stats/ReadingStatsActivity.h"
 #include "apps/reading-stats/ReadingStatsMenuActivity.h"
 #include "apps/standby/StandbyActivity.h"
+#ifdef RICKYOS_PRODUCT
+#include "apps/standby/RickyStandbySettingsActivity.h"
+#endif
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
 #include "browser/OpdsBookBrowserActivity.h"
@@ -675,6 +678,9 @@ void ActivityManager::goToAirPage() { replaceActivityWith<AirPageActivity>(); }
 #endif
 
 void ActivityManager::goToStandby() { replaceActivityWith<StandbyActivity>(); }
+#ifdef RICKYOS_PRODUCT
+void ActivityManager::goToStandbySettings() { replaceActivityWith<RickyStandbySettingsActivity>(); }
+#endif
 
 #ifdef ENABLE_CHINESE_VERSION
 void ActivityManager::goToWeRead() { replaceActivityWith<WeReadActivity>(); }

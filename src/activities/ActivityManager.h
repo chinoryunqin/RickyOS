@@ -164,6 +164,10 @@ class ActivityManager {
   void goToAirPage();
 #endif
   void goToStandby();
+#ifdef RICKYOS_PRODUCT
+  // Apps → Standby: choose what the sleeping screen shows; full-screen Standby is a row there.
+  void goToStandbySettings();
+#endif
 #ifdef ENABLE_CHINESE_VERSION
   void goToWeRead();
 #endif

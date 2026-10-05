@@ -456,7 +456,12 @@ bool StandbyActivity::tryLightSleep(const uint32_t idleMs) {
 
 void StandbyActivity::loop() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+#ifdef RICKYOS_PRODUCT
+    // Back to the page that opened it (the Standby settings page, or Home).
+    finish();
+#else
     activityManager.goHome();
+#endif
     return;
   }
 
