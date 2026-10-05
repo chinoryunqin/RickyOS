@@ -368,7 +368,6 @@ const char* SettingsActivity::rickySettingDescription(const SettingInfo& setting
   if (setting.valuePtr == &CrossPointSettings::sleepTimeoutMinutes) return tr(STR_RICKY_HELP_TIMEOUT);
   if (setting.valuePtr == &CrossPointSettings::shortPwrBtn) return tr(STR_RICKY_HELP_POWER);
   if (setting.valuePtr == &CrossPointSettings::refreshFrequency) return tr(STR_RICKY_HELP_REFRESH);
-  if (setting.action == SettingAction::CheckForUpdates) return tr(STR_RICKY_HELP_OTA);
   if (setting.action == SettingAction::RestoreSystemSettings) return tr(STR_RICKY_HELP_RESET);
   if (setting.action == SettingAction::AppVisibility) return tr(STR_RICKY_HELP_APPS);
   return nullptr;

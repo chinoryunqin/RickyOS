@@ -176,7 +176,6 @@ STR_RICKY_HELP_KEEP_PAGE: "Idle timeout keeps the current page with a standby in
 STR_RICKY_HELP_TIMEOUT: "Power off after this many idle minutes; Never disables the timer."
 STR_RICKY_HELP_POWER: "Choose what a short power-button press does."
 STR_RICKY_HELP_REFRESH: "Fewer pages between clean refreshes reduces ghosting, but flashes more often."
-STR_RICKY_HELP_OTA: "Installs official RickyOS releases only, after the download checks out."
 STR_RICKY_HELP_RESET: "Reset preferences only; books are not deleted."
 STR_RICKY_HELP_APPS: "Show or hide app shortcuts without uninstalling apps."
 STR_RICKY_CLOSING_BOOK: "Closing the book"
