@@ -144,6 +144,7 @@ void StandbyActivity::onEnter() {
 #ifdef RICKYOS_PRODUCT
   // The picture is the whole screen from the start: no title, battery or face dots.
   mode_ = DisplayMode::Immersive;
+  drewFrame_ = false;
 #else
   mode_ = DisplayMode::Normal;
 #endif
@@ -616,7 +617,9 @@ void StandbyActivity::render(RenderLock&&) {
       const GfxRenderer::ClipScope clip(renderer, viewport.x, viewport.y, viewport.width, viewport.height);
       currentFace_->render(renderer, viewport);
     }
-    renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+    // The rest screen is pure B/W: a clean first frame, then quiet minute updates.
+    renderer.displayBuffer(drewFrame_ ? HalDisplay::FAST_REFRESH : HalDisplay::HALF_REFRESH);
+    drewFrame_ = true;
     return;
   }
 #endif

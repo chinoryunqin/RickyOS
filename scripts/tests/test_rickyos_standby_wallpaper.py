@@ -150,5 +150,15 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
         self.assertIn('constexpr bool canSearch = false;', library)
 
 
+    def test_without_a_picture_standby_shows_the_rest_screen(self):
+        render = body(self.face, 'void WallpaperFace::render(')
+        rest = render.split('if (!hasPicture_) {', 1)[1].split('return;', 1)[0]
+        for piece in ('RickyBrandMark::draw(renderer, layout.mark, 3)', 'tr(STR_RICKY_REST)',
+                      'tr(STR_RICKY_BRAND_TAGLINE)', 'drawCorner(renderer, viewport, false)'):
+            self.assertIn(piece, rest)
+        self.assertNotIn('needsPicture', (ROOT / 'src/activities/apps/standby/WallpaperFace.h').read_text())
+        self.assertIn('STR_RICKY_SLEEP_LIGHT: "默认画面"', (ROOT / 'lib/I18n/translations/chinese.yaml').read_text())
+
+
 if __name__ == '__main__':
     unittest.main()

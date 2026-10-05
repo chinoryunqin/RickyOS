@@ -59,6 +59,7 @@ class StandbyActivity final : public Activity {
   bool tryLightSleep(uint32_t idleMs);
 #ifdef RICKYOS_PRODUCT
   void openPicturePicker();
+  bool drewFrame_ = false;  // B/W frames after the first refresh fast
 #endif
 
   // Layer a 4-level grayscale refresh on top of the BW image just committed by

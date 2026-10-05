@@ -31,7 +31,7 @@ namespace {
 constexpr char kManifestTmp[] = "/wallpapers_manifest.tmp";
 constexpr char kStandbyPicture[] = "/sleep.bmp";
 constexpr size_t kMaxManifestBytes = 8 * 1024;
-constexpr size_t kMaxItems = 16;
+constexpr size_t kMaxItems = 24;
 constexpr uint32_t kMaxItemBytes = 2 * 1024 * 1024;
 constexpr size_t kMaxUrlBytes = 256;
 constexpr int kFileAttempts = 3;

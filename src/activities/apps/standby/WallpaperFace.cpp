@@ -15,7 +15,10 @@
 #include <cstdio>
 
 #include "CrossPointSettings.h"
+#include "components/RickyBrandMark.h"
+#include "components/RickyPowerLayout.h"
 #include "components/UITheme.h"
+#include "components/UiHighDpiProfile.h"
 #include "fontIds.h"
 
 namespace {
@@ -58,7 +61,7 @@ void WallpaperFace::onEnter() {
 }
 
 StandbyFace::TickResult WallpaperFace::tick() {
-  if (!hasPicture_ || !showsCorner()) return TickResult::None;
+  if (!showsCorner()) return TickResult::None;
   std::tm local{};
   if (!halClock.localTime(local)) return TickResult::None;
   const int32_t minute = local.tm_hour * 60 + local.tm_min;
@@ -84,14 +87,6 @@ uint32_t WallpaperFace::secondsUntilNextWake() const {
 }
 
 bool WallpaperFace::wantsClock() const { return showsCorner(); }
-
-StandbyFace::PictureAction WallpaperFace::pictureActionAt(const int x, const int y) const {
-  const auto inside = [x, y](const Rect& r) { return x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height; };
-  if (hasPicture_) return PictureAction::None;
-  if (inside(downloadButton_)) return PictureAction::Download;
-  if (inside(chooseButton_)) return PictureAction::Choose;
-  return PictureAction::None;
-}
 
 void WallpaperFace::drawCorner(GfxRenderer& renderer, const Rect& viewport, const bool intoGray) const {
   if (!showsCorner()) return;
@@ -175,27 +170,25 @@ bool WallpaperFace::renderNative(GfxRenderer& renderer, const Rect& viewport) {
 // B/W path: the empty state, and the picture on panels without native 16-gray.
 void WallpaperFace::render(GfxRenderer& renderer, const Rect& viewport) {
   if (!hasPicture_) {
-    const int lineHeight = renderer.getLineHeight(UI_12_FONT_ID);
-    const int centerY = viewport.y + viewport.height / 2;
-    UITheme::drawCenteredText(renderer, viewport, UI_12_FONT_ID, centerY - lineHeight * 3, tr(STR_RICKY_STANDBY_EMPTY));
-    const int buttonHeight = renderer.getLineHeight(UI_10_FONT_ID) + 28;
-    const int buttonWidth = std::max(renderer.getTextWidth(UI_10_FONT_ID, tr(STR_RICKY_SELECT_WALLPAPER)),
-                                     renderer.getTextWidth(UI_10_FONT_ID, tr(STR_RICKY_WALLPAPER_DOWNLOAD))) +
-                            72;
-    const int buttonX = viewport.x + (viewport.width - buttonWidth) / 2;
-    chooseButton_ = Rect{buttonX, centerY - buttonHeight, buttonWidth, buttonHeight};
-    downloadButton_ = Rect{buttonX, centerY + 20, buttonWidth, buttonHeight};
-    // The primary action is filled; downloading the defaults is the outlined one.
-    renderer.fillRoundedRect(chooseButton_.x, chooseButton_.y, buttonWidth, buttonHeight, buttonHeight / 2,
-                             Color::Black);
-    renderer.drawRoundedRect(downloadButton_.x, downloadButton_.y, buttonWidth, buttonHeight, 2, buttonHeight / 2,
-                             true);
-    const auto label = [&](const Rect& button, const char* text, const bool ink) {
-      renderer.drawText(UI_10_FONT_ID, button.x + (button.width - renderer.getTextWidth(UI_10_FONT_ID, text)) / 2,
-                        button.y + 14, text, ink);
-    };
-    label(chooseButton_, tr(STR_RICKY_SELECT_WALLPAPER), false);
-    label(downloadButton_, tr(STR_RICKY_WALLPAPER_DOWNLOAD), true);
+    // No picture chosen yet: the RickyOS rest screen (the same one the sleep screen
+    // shows by default), so Standby starts out branded instead of empty.
+    const int textHeight = renderer.getLineHeight(UI_10_FONT_ID);
+    const auto layout = RickyPowerLayout::fit(viewport, textHeight, UiHighDpiProfile::controlGap);
+    RickyBrandMark::draw(renderer, layout.mark, 3);
+    if (layout.mark.y - viewport.y > textHeight * 3) {
+      const Rect eyebrow{viewport.x, viewport.y + (layout.mark.y - viewport.y) / 3, viewport.width, textHeight};
+      UITheme::drawCenteredWrappedText(renderer, eyebrow, UI_10_FONT_ID, tr(STR_RICKY_REST), 1);
+      const int inset = std::max(12, viewport.width / 12);
+      const int lineY = eyebrow.y + eyebrow.height + UiHighDpiProfile::controlGap;
+      renderer.drawLine(viewport.x + inset, lineY, viewport.x + viewport.width - inset - 1, lineY, 1, true);
+    }
+    UITheme::drawCenteredWrappedText(renderer, layout.message, UI_10_FONT_ID, tr(STR_RICKY_BRAND_TAGLINE), 2);
+    drawCorner(renderer, viewport, false);
+    std::tm local{};
+    if (halClock.localTime(local)) {
+      lastMinute_ = local.tm_hour * 60 + local.tm_min;
+      lastDay_ = local.tm_yday;
+    }
     return;
   }
   HalFile file;

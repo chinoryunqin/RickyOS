@@ -9,7 +9,7 @@ reader converts the chosen PNG to an 8-bit gray BMP for /sleep.bmp and draws it 
 Output: wallpapers/*.png, wallpapers.json (GitHub release URLs) and mirror.json (jsDelivr), both in
 the manifest format RickyWallpaperDownloadActivity reads, plus SHA256SUMS.
 
-Run: python3 scripts/build_rickyos_wallpapers.py --sources DIR --output DIR --slogan-font SmileySans-Oblique.otf [--tag v1.2.0]
+Run: python3 scripts/build_rickyos_wallpapers.py --sources DIR --output DIR --slogan-font SmileySans-Oblique.otf [--tag v1.3.0]
 """
 import argparse
 import hashlib
@@ -29,7 +29,9 @@ LEVELS = 16
 # Light pictures only: large black areas look heavy on e-paper. Slogans are set with
 # --slogan-font (Smiley Sans) under the doodle, never by the image model.
 WALLPAPERS = [
-    # Logo style first: the first picture becomes the standby picture when none is set.
+    # The RickyOS rest screen (captured from the firmware at native size) leads: the
+    # first picture becomes the standby picture when none is set.
+    ("00-rest", "休息一下", "00-rest.png"),
     ("31-reading-together", "一起读书", "31-reading-together.png"),
     ("32-dog-nap", "小狗午睡", "32-dog-nap.png"),
     ("33-moon-reading", "月亮上读书", "33-moon-reading.png"),
@@ -147,7 +149,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--sources", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--tag", default="v1.2.0")
+    parser.add_argument("--tag", default="v1.3.0")
     parser.add_argument("--slogan-font", type=Path, help="Smiley Sans (OFL) for the slogan pictures")
     args = parser.parse_args()
 
