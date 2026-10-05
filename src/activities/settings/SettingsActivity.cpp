@@ -313,12 +313,12 @@ void SettingsActivity::reorganizeRickySettings() {
   std::vector<SettingInfo> onStandbyPage;
   moveMatching(displaySettings, onStandbyPage, [](const SettingInfo& setting) {
     return setting.valuePtr == &CrossPointSettings::sleepScreen ||
-           setting.valuePtr == &CrossPointSettings::standbyOverlay;
+           setting.valuePtr == &CrossPointSettings::standbyOverlay ||
+           setting.valuePtr == &CrossPointSettings::quickResumeSleepScreen;  // folded into the screen mode
   });
   moveMatching(displaySettings, sleepSettings, [](const SettingInfo& setting) {
     return setting.valuePtr == &CrossPointSettings::sleepScreenCoverMode ||
            setting.valuePtr == &CrossPointSettings::sleepScreenCoverFilter ||
-           setting.valuePtr == &CrossPointSettings::quickResumeSleepScreen ||
            setting.valuePtr == &CrossPointSettings::standbyShortcutEnabled;
   });
   moveMatching(systemSettings, sleepSettings,
