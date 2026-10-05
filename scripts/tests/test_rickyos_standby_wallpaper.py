@@ -168,5 +168,18 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
         self.assertIn('return DEFAULT_INDEX;', body(zones, 'uint8_t activeIndex()'))
 
 
+    def test_sleep_follows_the_standby_screen_mode_only(self):
+        # The separate keep-page switch could stay on after the mode changed on the
+        # Standby page and override the chosen picture on automatic sleep.
+        for path, name in (('src/main.cpp', 'isQuickResumeSleep'),
+                           ('src/activities/boot_sleep/SleepActivity.cpp', 'renderQuickResume')):
+            source = (ROOT / path).read_text()
+            product = source.split(f'const bool {name} = SETTINGS.sleepScreen', 1)[1].split('#else', 1)[0]
+            self.assertNotIn('quickResumeSleepScreen', product, path)
+        settings = (ROOT / 'src/activities/settings/SettingsActivity.cpp').read_text()
+        hidden = settings[settings.index('moveMatching(displaySettings, onStandbyPage'):]
+        self.assertIn('&CrossPointSettings::quickResumeSleepScreen', hidden[:hidden.index('});')])
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -502,10 +502,16 @@ void releaseSdFontCachesForDecode(const GfxRenderer& renderer) {
 void SleepActivity::onEnter() {
   Activity::onEnter();
 
+#ifdef RICKYOS_PRODUCT
+  // One source of truth: the Standby page's screen mode. The separate "keep the page on
+  // automatic sleep" switch could stay on after the mode changed and override it.
+  const bool renderQuickResume = SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::QUICK_RESUME;
+#else
   const bool renderQuickResume =
       SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::QUICK_RESUME ||
       (fromTimeout &&
        SETTINGS.quickResumeSleepScreen == CrossPointSettings::QUICK_RESUME_SLEEP_SCREEN::QUICK_RESUME_AFTER_TIMEOUT);
+#endif
   const bool preservesCurrentFrame =
       renderQuickResume || SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::TRANSPARENT;
   if (display.isInverted() && preservesCurrentFrame) renderer.invertScreen();
