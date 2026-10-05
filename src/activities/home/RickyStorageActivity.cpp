@@ -1,13 +1,19 @@
 #include "RickyStorageActivity.h"
 #ifdef RICKYOS_PRODUCT
+#include <FsHelpers.h>
 #include <HalStorage.h>
 #include <I18n.h>
 
 #include <algorithm>
 #include <cstdio>
+#include <iterator>
+#include <string>
+#include <string_view>
 
 #include "FileBrowserActivity.h"
+#include "SdCardFontSystem.h"
 #include "activities/RenderLock.h"
+#include "activities/settings/FontLibraryActivity.h"
 #include "components/RickyPageUi.h"
 #include "components/UITheme.h"
 #include "components/icons/rickyPageIcons.h"
@@ -33,22 +39,47 @@ void formatBytes(char* out, size_t size, uint64_t bytes) {
     snprintf(out, size, "%u MB", static_cast<unsigned>((bytes + MB / 2) / MB));
 }
 
-// Visible entries (files and folders) directly inside `path`, capped so a huge
-// folder stays cheap. Font families are folders, so both kinds count.
-int countEntries(const char* path) {
-  if (!path || !Storage.exists(path)) return 0;
-  HalFile dir = Storage.open(path);
+enum class Kind : uint8_t { Books, Images, AnyFile };
+
+bool matches(const Kind kind, const char* name) {
+  static constexpr const char* BOOK_EXTENSIONS[] = {".epub", ".txt",  ".md",   ".xtc", ".xtch",
+                                                    ".pdf",  ".azw3", ".mobi", ".fb2"};
+  switch (kind) {
+    case Kind::Books:
+      return std::any_of(std::begin(BOOK_EXTENSIONS), std::end(BOOK_EXTENSIONS), [name](const char* extension) {
+        return FsHelpers::checkFileExtension(std::string_view(name), extension);
+      });
+    case Kind::Images:
+      return FsHelpers::hasImageExtension(std::string_view(name));
+    case Kind::AnyFile:
+      return true;
+  }
+  return false;
+}
+
+// Files of `kind` inside `path` and its subfolders (the standby pictures sit in
+// /images/待机图片), skipping hidden entries; capped so a huge card stays cheap.
+int countFiles(const std::string& path, const Kind kind, const int depth = 0) {
+  constexpr int kMaxDepth = 3;
+  constexpr int kCap = 999;
+  HalFile dir = Storage.open(path.c_str());
   if (!dir || !dir.isDirectory()) return 0;
   int count = 0;
-  char name[64];
-  for (HalFile entry = dir.openNextFile(); entry && count < 999; entry = dir.openNextFile()) {
+  char name[256];
+  for (HalFile entry = dir.openNextFile(); entry && count < kCap; entry = dir.openNextFile()) {
     name[0] = '\0';
     entry.getName(name, sizeof(name));
-    if (name[0] != '.') ++count;
+    const bool folder = entry.isDirectory();
     entry.close();
+    if (name[0] == '.') continue;
+    if (folder) {
+      if (depth < kMaxDepth) count += countFiles(path + "/" + name, kind, depth + 1);
+    } else if (matches(kind, name)) {
+      ++count;
+    }
   }
   dir.close();
-  return count;
+  return std::min(count, kCap);
 }
 }  // namespace
 
@@ -65,7 +96,12 @@ void RickyStorageActivity::onEnter() {
   uint64_t total = 0, free = 0;
   const bool measured = Storage.getSpace(total, free);
   std::array<int, 4> measuredCounts{};
-  for (int i = 0; i < 4; ++i) measuredCounts[i] = countEntries(folderFor(i));
+  measuredCounts[0] = countFiles(RickyStorageLayout::BOOKS, Kind::Books);
+  // Downloaded fonts live in /.fonts and imported ones in /fonts: count the families
+  // the font registry found in both, not the visible folder's entries.
+  measuredCounts[1] = static_cast<int>(sdFontSystem.registry().getFamilies().size());
+  measuredCounts[2] = countFiles(RickyStorageLayout::IMAGES, Kind::Images);
+  measuredCounts[3] = countFiles(RickyStorageLayout::DOWNLOADS, Kind::AnyFile);
   {
     RenderLock lock(*this);
     space = measured ? Space::Ready : Space::Unavailable;
@@ -214,6 +250,10 @@ void RickyStorageActivity::activateIndex(int index) {
   folderMissing = false;
   if (index == 5) {
     activityManager.goToFileTransfer();
+  } else if (index == 1) {
+    // Fonts are families managed in Font Management, most of them downloaded into
+    // the hidden /.fonts: the visible /fonts folder would look empty.
+    startActivityForResultWith<FontLibraryActivity>([this](const ActivityResult&) { requestUpdate(); });
   } else {
     // Every content card opens its fixed folder (created at boot; recreated here
     // if it was deleted since). The summary card opens the whole card.

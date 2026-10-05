@@ -232,6 +232,12 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
                           StrId::STR_CAT_DISPLAY),
         SettingInfo::Toggle(StrId::STR_STANDBY_TITLE, &CrossPointSettings::standbyShortcutEnabled,
                             "standbyShortcutEnabled", StrId::STR_CAT_DISPLAY),
+#ifdef RICKYOS_PRODUCT
+        SettingInfo::Enum(StrId::STR_RICKY_STANDBY_INFO, &CrossPointSettings::standbyOverlay,
+                          {StrId::STR_RICKY_STANDBY_INFO_NONE, StrId::STR_RICKY_STANDBY_INFO_DATE,
+                           StrId::STR_RICKY_STANDBY_INFO_TIME},
+                          "standbyOverlay", StrId::STR_CAT_DISPLAY),
+#endif
         SettingInfo::Enum(StrId::STR_HIDE_BATTERY, &CrossPointSettings::hideBatteryPercentage,
                           {StrId::STR_NEVER, StrId::STR_IN_READER, StrId::STR_ALWAYS}, "hideBatteryPercentage",
                           StrId::STR_CAT_DISPLAY),

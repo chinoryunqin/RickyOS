@@ -634,7 +634,7 @@ BookRecord bookRecord(const ShelfRecord& shelf) {
 std::string finalBookPath(const BookRecord& book) {
   const std::string title = StringUtils::sanitizeFilename(book.title, 80);
   const std::string id = StringUtils::sanitizeFilename(book.bookId, 40);
-  return "/WeRead/" + title + "-" + id + ".epub";
+  return std::string(kExportDir) + "/" + title + "-" + id + ".epub";
 }
 
 std::string finalBookPath(const ShelfRecord& book) { return finalBookPath(bookRecord(book)); }

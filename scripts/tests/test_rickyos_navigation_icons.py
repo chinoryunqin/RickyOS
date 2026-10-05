@@ -27,7 +27,7 @@ class RickyNavigationIconTest(unittest.TestCase):
         for name in NAMES:
             svg = ET.parse(sources / f'{name}.svg').getroot()
             self.assertEqual(svg.attrib['viewBox'], '0 0 56 56')
-            self.assertEqual(svg.attrib['stroke-width'], '3.6' if name == 'statistics' else '2.4')
+            self.assertEqual(svg.attrib['stroke-width'], '3.6')  # ~2.5 px at 40 px: solid after thresholding
             self.assertEqual(svg.attrib['stroke-linecap'], 'round')
             self.assertEqual(svg.attrib['stroke-linejoin'], 'round')
         arrays = re.findall(r'uint8_t (\w+)\[\] = \{([^}]+)\}', HEADER.read_text())
@@ -36,7 +36,7 @@ class RickyNavigationIconTest(unittest.TestCase):
         unique = set()
         for name, body in arrays:
             size = int(name.rsplit('_', 1)[1])
-            self.assertIn(size, (38, 56))
+            self.assertIn(size, (40, 56))
             bits = bytes(int(value, 16) for value in re.findall(r'0x([0-9A-F]{2})', body))
             stride = (size + 7) // 8
             self.assertEqual(len(bits), stride * size)
@@ -52,7 +52,7 @@ class RickyNavigationIconTest(unittest.TestCase):
                                     for y in range(size)))
             unique.add(bits)
         self.assertEqual(len(unique), 12)
-        self.assertEqual(payload, 3492)
+        self.assertEqual(payload, 6 * (5 * 40 + 7 * 56))
 
     @unittest.skipUnless(sharp_available(), 'regeneration requires developer Node.js + sharp')
     def test_regeneration_is_deterministic_and_matches_resource(self):
@@ -67,8 +67,10 @@ class RickyNavigationIconTest(unittest.TestCase):
 
     def test_product_routing_pixels_orientation_and_tab_hit_regions(self):
         source = SOURCE.read_text()
-        # The product tab bar uses the 38 px set in both UI density profiles.
-        size = 38
+        # The product tab bar uses the 40 px set in both UI density profiles.
+        size = 40
+        pill = ''.join(re.findall(r'constexpr int kPill\w+ = \d+;\n', source))
+        self.assertEqual(pill.count('kPill'), 2)
         for high_dpi in (False, True):
             with self.subTest(high_dpi=high_dpi):
                 program = r'''
@@ -77,54 +79,61 @@ class RickyNavigationIconTest(unittest.TestCase):
 #include "activities/MainTab.h"
 #include "components/icons/rickyNavigationIcons.h"
 constexpr int kIconSize=SIZE;
+enum Color : uint8_t {White=1,Black=0x10};
+constexpr int N=SIZE+60;  // room for the capsule, which is wider than the icon
 struct GfxRenderer {
-  mutable bool pixels[SIZE+11][SIZE+11]{};
+  mutable signed char pixels[N][N]{};  // 0 untouched, 1 ink, -1 paper
   int orientation=0;
   void drawPixel(int x,int y,bool ink) const {
-    assert(x>=0 && x<SIZE+11 && y>=0 && y<SIZE+11);
+    assert(x>=0 && x<N && y>=0 && y<N);
     int px=x,py=y;
-    if(orientation==1) {px=SIZE+10-y;py=x;}
-    if(orientation==2) {px=SIZE+10-x;py=SIZE+10-y;}
-    if(orientation==3) {px=y;py=SIZE+10-x;}
-    assert(ink);pixels[py][px]=ink;
+    if(orientation==1) {px=N-1-y;py=x;}
+    if(orientation==2) {px=N-1-x;py=N-1-y;}
+    if(orientation==3) {px=y;py=N-1-x;}
+    pixels[py][px]=ink?1:-1;
   }
-  bool pixel(int x,int y) const {
-    if(orientation==1) return pixels[x][SIZE+10-y];
-    if(orientation==2) return pixels[SIZE+10-y][SIZE+10-x];
-    if(orientation==3) return pixels[SIZE+10-x][y];
+  int pixel(int x,int y) const {
+    if(orientation==1) return pixels[x][N-1-y];
+    if(orientation==2) return pixels[N-1-y][N-1-x];
+    if(orientation==3) return pixels[N-1-x][y];
     return pixels[y][x];
   }
   void fillRect(int x,int y,int w,int h,bool ink)const {
     for(int row=y;row<y+h;++row) for(int col=x;col<x+w;++col) drawPixel(col,row,ink);
   }
+  void fillRoundedRect(int x,int y,int w,int h,int r,Color c)const {
+    assert(r==h/2 && c==Color::Black);
+    fillRect(x,y,w,h,true);
+  }
 };
-''' + method(source, 'const uint8_t* iconForTab(') + method(source, 'void drawInxIcon(') + method(source, 'void drawSelectedInxIcon(') + r'''
+''' + pill + method(source, 'const uint8_t* iconForTab(') + method(source, 'void drawInxIcon(') + method(source, 'void drawSelectedInxIcon(') + r'''
 int main() {
   const uint8_t* expected[]={ricky_nav_home_SIZE,ricky_nav_library_SIZE,ricky_nav_storage_SIZE,
                             ricky_nav_apps_SIZE,ricky_nav_settings_SIZE};
   assert(iconForTab(MainTab::None)==nullptr);
   assert(iconForTab(static_cast<MainTab>(255))==nullptr);
+  constexpr int ox=30,oy=30;
   for(unsigned i=0;i<MainTabs::values.size();++i) {
     auto tab=MainTabs::values[i];
     assert(iconForTab(tab)==expected[i]);
     for(int orientation=0;orientation<4;++orientation) {
       GfxRenderer renderer; renderer.orientation=orientation;
-      drawInxIcon(renderer,iconForTab(tab),3,5);
+      drawInxIcon(renderer,iconForTab(tab),ox,oy);
       GfxRenderer active; active.orientation=orientation;
-      drawSelectedInxIcon(active,iconForTab(tab),3,5);
-      int normalInk=0,activeInk=0;
-      for(int y=0;y<SIZE+11;++y) for(int x=0;x<SIZE+11;++x) {
+      drawSelectedInxIcon(active,iconForTab(tab),ox,oy,136);  // a 684 px tab cell
+      const int px=ox+(SIZE-kPillWidth)/2, py=oy+(SIZE-kPillHeight)/2;
+      int iconInk=0;
+      for(int y=0;y<N;++y) for(int x=0;x<N;++x) {
         bool black=false;
-        if(x>=3 && x<3+SIZE && y>=5 && y<5+SIZE)
-          black=(expected[i][(y-5)*((SIZE+7)/8)+(x-3)/8]&(0x80U>>((x-3)%8)))==0;
-        assert(renderer.pixel(x,y)==black);
-        if(black) {++normalInk;assert(active.pixel(x,y));}
-        if(active.pixel(x,y)) {
-          ++activeInk;
-          assert(x>=3 && x<3+SIZE && y>=5 && y<5+SIZE);
-        }
+        if(x>=ox && x<ox+SIZE && y>=oy && y<oy+SIZE)
+          black=(expected[i][(y-oy)*((SIZE+7)/8)+(x-ox)/8]&(0x80U>>((x-ox)%8)))==0;
+        assert(renderer.pixel(x,y)==(black?1:0));
+        const bool inPill=x>=px && x<px+kPillWidth && y>=py && y<py+kPillHeight;
+        // Selected: the icon is knocked out of a solid capsule, nothing outside it.
+        if(black) {++iconInk;assert(active.pixel(x,y)==-1);}
+        else assert(active.pixel(x,y)==(inPill?1:0));
       }
-      assert(activeInk>normalInk*5/4);
+      assert(iconInk>0);
     }
     for(int width : {480,684,800,1216}) {
       const auto bounds=MainTabs::tabBounds(i,width);
@@ -182,8 +191,10 @@ int main() {
         stock = draw.split('#else', 1)[1]
         self.assertNotIn('drawText', stock)
         product = draw.split('#else', 1)[0]
-        self.assertIn('renderer.fillRectDither', product)
-        self.assertIn('renderer.drawText', product)
+        self.assertIn('renderer.fillRect(rect.x, separatorY, rect.width, 1, true)', product)
+        self.assertIn('navigationRows(rect, kPillHeight', product)
+        self.assertEqual(product.count('renderer.drawText'), 1)  # one pass, no fake-bold overdraw
+        self.assertNotIn('EpdFontFamily::BOLD', product)
         self.assertNotIn('kUnderlineHeight', product)
 
 

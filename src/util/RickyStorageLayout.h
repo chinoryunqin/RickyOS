@@ -13,9 +13,10 @@ inline constexpr const char* DOWNLOADS = "/downloads";
 void ensureFolders();
 
 // One-time move of books from the folders other firmware used (/book and
-// /Pushed Books) into /books. Each book keeps its progress, bookmarks, caches,
-// recent entry and statistics. A name already present in /books is skipped,
-// never overwritten. Returns the number of books moved.
+// /Pushed Books), and from WeRead's former export folder (/WeRead), into
+// /books. Each book keeps its progress, bookmarks, caches, recent entry and
+// statistics. A name already present in /books is skipped, never overwritten.
+// Returns the number of books moved.
 int migrateLegacyBooks();
 }  // namespace RickyStorageLayout
 #endif

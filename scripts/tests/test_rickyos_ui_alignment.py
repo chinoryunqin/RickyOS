@@ -11,13 +11,14 @@ class RickyUiAlignmentTest(unittest.TestCase):
     def test_brand_navigation_labels_icons_and_separator_fit(self):
         source = (ROOT / 'src/components/themes/inx/InxTheme.cpp').read_text()
         run_cpp(r'''
+#include <algorithm>
 #include <cassert>
 #include <cstring>
 #include <vector>
 #include "activities/MainTab.h"
 #include "components/RickyPageLayout.h"
 constexpr int SMALL_FONT_ID=0;
-constexpr int kIconSize=38;  // product tab bar, both density profiles
+constexpr int kIconSize=40, kPillWidth=80, kPillHeight=50;  // product tab bar, both density profiles
 namespace EpdFontFamily {enum Style {REGULAR,BOLD};}
 enum class Color {DarkGray};
 enum class StrId {STR_RICKY_NAV_HOME,STR_LIBRARY,STR_RICKY_STORAGE,STR_APPS_TITLE,STR_SETTINGS_TITLE};
@@ -33,16 +34,18 @@ struct GfxRenderer {
  int lineHeight=UiHighDpiProfile::enabled?34:20;
  struct ClipScope {ClipScope(const GfxRenderer&,int,int,int,int){}};
  int getLineHeight(int) const {return lineHeight;}
- int getTextWidth(int,const char* s,EpdFontFamily::Style) const {return std::strlen(s)*6;}
- void fillRect(int,int,int,int,bool) const {}
- void fillRectDither(int x,int y,int w,int h,Color) const {++separators;blocks.emplace_back(x,y,w,h);}
- void drawText(int f,int x,int y,const char* s,bool,EpdFontFamily::Style style) const {
-  ++labels;blocks.emplace_back(x,y,getTextWidth(f,s,style),lineHeight);
+ int getTextWidth(int,const char* s) const {return std::strlen(s)*6;}
+ void fillRect(int x,int y,int w,int h,bool ink) const {if(ink){++separators;blocks.emplace_back(x,y,w,h);}}
+ void drawText(int f,int x,int y,const char* s,bool) const {
+  ++labels;blocks.emplace_back(x,y,getTextWidth(f,s),lineHeight);
  }
 };
 const uint8_t* iconForTab(MainTab) {static uint8_t ink=0;return &ink;}
 void drawInxIcon(const GfxRenderer& r,const uint8_t*,int x,int y) {++r.icons;r.blocks.emplace_back(x,y,kIconSize,kIconSize);}
-void drawSelectedInxIcon(const GfxRenderer& r,const uint8_t* b,int x,int y) {++r.selectedIcons;drawInxIcon(r,b,x,y);}
+void drawSelectedInxIcon(const GfxRenderer& r,const uint8_t*,int x,int y,int maxWidth) {
+ const int w=std::max(kIconSize+8,std::min(kPillWidth,maxWidth-8));
+ ++r.selectedIcons;r.blocks.emplace_back(x+(kIconSize-w)/2,y+(kIconSize-kPillHeight)/2,w,kPillHeight);
+}
 struct InxTheme {void drawMainTabBar(const GfxRenderer&,Rect,MainTab) const;};
 ''' + method(source, 'void InxTheme::drawMainTabBar(') + r'''
 int main() {
@@ -51,14 +54,15 @@ int main() {
   GfxRenderer renderer; SETTINGS.inxTabPosition=placement;
   Rect bar{5,17,width,MainTabs::bottomBarHeight};
   InxTheme{}.drawMainTabBar(renderer,bar,selected);
-  assert(renderer.separators==1 && renderer.icons==5 && renderer.labels==6);
+  assert(renderer.separators==1 && renderer.icons==4 && renderer.labels==5);
   assert(renderer.selectedIcons==1);
   for(auto b:renderer.blocks) {
    assert(b.x>=bar.x && b.y>=bar.y);
    assert(b.x+b.width<=bar.x+bar.width && b.y+b.height<=bar.y+bar.height);
   }
-  const auto rows=RickyPageLayout::navigationRows(bar,kIconSize,renderer.lineHeight);
-  assert(rows.labelY-rows.iconY-kIconSize>=6);
+  // The capsule, not just the icon, keeps clear of the label row.
+  const auto rows=RickyPageLayout::navigationRows(bar,kPillHeight,renderer.lineHeight);
+  assert(rows.labelY-rows.iconY-kPillHeight>=6);
  }
 }
 ''', include_dirs=(ROOT / 'src',), defines=('RICKYOS_PRODUCT', 'CROSSMUX_UI_PROFILE_HIGH_DPI'))

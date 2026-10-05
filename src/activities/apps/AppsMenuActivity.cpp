@@ -13,6 +13,9 @@
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
 #include "components/icons/inx_apps.h"
+#ifdef RICKYOS_PRODUCT
+#include "components/icons/rickyAppIcons.h"
+#endif
 #include "fontIds.h"
 
 namespace fui = freeink::ui;
@@ -38,7 +41,11 @@ constexpr AppEntry kAppEntries[] = {
 #ifndef RICKYOS_PRODUCT
     {AppId::AirPage, StrId::STR_AIRPAGE_TITLE, UIIcon::AirPage, &ActivityManager::goToAirPage},
 #endif
+#ifdef RICKYOS_PRODUCT
+    {AppId::ReadingStats, StrId::STR_READING_STATS, UIIcon::ReadingStats, &ActivityManager::goToRickyReadingStats},
+#else
     {AppId::ReadingStats, StrId::STR_READING_STATS, UIIcon::ReadingStats, &ActivityManager::goToReadingStatsMenu},
+#endif
 #ifndef RICKYOS_PRODUCT
     {AppId::Sudoku, StrId::STR_SUDOKU_TITLE, UIIcon::Sudoku, &ActivityManager::goToSudoku},
 #endif
@@ -58,7 +65,11 @@ constexpr AppEntry kAppEntries[] = {
 #ifndef RICKYOS_PRODUCT
     {AppId::Woodfish, StrId::STR_WOODFISH_TITLE, UIIcon::Woodfish, &ActivityManager::goToWoodfish},
 #endif
+#ifdef RICKYOS_PRODUCT
+    {AppId::Standby, StrId::STR_STANDBY_TITLE, UIIcon::Standby, &ActivityManager::goToStandbySettings},
+#else
     {AppId::Standby, StrId::STR_STANDBY_TITLE, UIIcon::Standby, &ActivityManager::goToStandby},
+#endif
 };
 
 constexpr int kAppCount = static_cast<int>(sizeof(kAppEntries) / sizeof(kAppEntries[0]));
@@ -112,6 +123,51 @@ static_assert(appIndexForVisibleIndex(appBit(kAppEntries[1].id), 1) == 2,
               "visible indices must skip a hidden middle app");
 
 }  // namespace
+
+#ifdef RICKYOS_PRODUCT
+namespace {
+// The product grid draws its own 56 px line icons (same system as the tab bar)
+// at native size; the stock 32 px pixel icons are only doubled, which looks coarse.
+const uint8_t* rickyAppIcon(const UIIcon icon) {
+  switch (icon) {
+    case UIIcon::Transfer:
+      return ricky_app_transfer_56;
+    case UIIcon::Opds:
+      return ricky_app_opds_56;
+    case UIIcon::WeRead:
+      return ricky_app_weread_56;
+    case UIIcon::ReadingStats:
+      return ricky_app_stats_56;
+    case UIIcon::Gomoku:
+      return ricky_app_gomoku_56;
+    case UIIcon::Calculator:
+      return ricky_app_calculator_56;
+    case UIIcon::Standby:
+      return ricky_app_standby_56;
+    default:
+      return nullptr;
+  }
+}
+
+// Selected app: an ink capsule with the icon knocked out, like the selected tab.
+constexpr int kAppPillWidth = 104;
+constexpr int kAppPillHeight = 72;
+
+void drawRickyAppIcon(const GfxRenderer& renderer, const uint8_t* icon, const int x, const int y, const bool selected) {
+  if (selected) {
+    renderer.fillRoundedRect(x + (kRickyAppIconSize - kAppPillWidth) / 2, y + (kRickyAppIconSize - kAppPillHeight) / 2,
+                             kAppPillWidth, kAppPillHeight, kAppPillHeight / 2, Color::Black);
+  }
+  constexpr int rowBytes = (kRickyAppIconSize + 7) / 8;
+  for (int row = 0; row < kRickyAppIconSize; ++row) {
+    for (int column = 0; column < kRickyAppIconSize; ++column) {
+      if ((icon[row * rowBytes + column / 8] & (0x80U >> (column % 8))) == 0)
+        renderer.drawPixel(x + column, y + row, !selected);
+    }
+  }
+}
+}  // namespace
+#endif
 
 int AppsMenuActivity::getAppCount() { return kAppCount; }
 
@@ -244,17 +300,29 @@ void AppsMenuActivity::drawIconGrid(const Rect& rect, const int visibleCount, co
     if (appIndex < 0) continue;
     const auto bounds = InxGridGeometry::cellBounds(slot, rect.width, rect.height);
     const Rect cell{rect.x + bounds.x, rect.y + bounds.y, bounds.width, bounds.height};
+    const bool isSelected = showSelection && visibleIndex == nav.selected;
+    const std::string label =
+        renderer.truncatedText(UI_10_FONT_ID, I18N.get(kAppEntries[appIndex].titleId), std::max(1, cell.width - 8));
+    const int labelX = cell.x + (cell.width - renderer.getTextWidth(UI_10_FONT_ID, label.c_str())) / 2;
+#ifdef RICKYOS_PRODUCT
+    if (const uint8_t* icon = rickyAppIcon(kAppEntries[appIndex].icon)) {
+      // Lay out the capsule's height so a selected tile never crowds its label.
+      constexpr int labelGap = 12;
+      const int blockTop = cell.y + std::max(8, (cell.height - kAppPillHeight - labelGap - lineHeight) / 2);
+      const int iconX = cell.x + (cell.width - kRickyAppIconSize) / 2;
+      const int iconY = blockTop + (kAppPillHeight - kRickyAppIconSize) / 2;
+      drawRickyAppIcon(renderer, icon, iconX, iconY, isSelected);
+      renderer.drawText(UI_10_FONT_ID, labelX, blockTop + kAppPillHeight + labelGap, label.c_str(), true);
+      continue;
+    }
+#endif
     const int iconScale = cell.height >= InxAppIcons::size * 2 + lineHeight + 18 ? 2 : 1;
     const int iconSize = InxAppIcons::size * iconScale;
-    const bool isSelected = showSelection && visibleIndex == nav.selected;
     if (isSelected) renderer.fillRect(cell.x, cell.y, cell.width, cell.height, true);
 
     const int iconX = cell.x + (cell.width - iconSize) / 2;
     const int iconY = cell.y + std::max(5, (cell.height - iconSize - lineHeight - 8) / 2);
     InxAppIcons::draw(renderer, kAppEntries[appIndex].icon, iconX, iconY, iconScale, isSelected);
-    const std::string label =
-        renderer.truncatedText(UI_10_FONT_ID, I18N.get(kAppEntries[appIndex].titleId), std::max(1, cell.width - 8));
-    const int labelX = cell.x + (cell.width - renderer.getTextWidth(UI_10_FONT_ID, label.c_str())) / 2;
     renderer.drawText(UI_10_FONT_ID, labelX, iconY + iconSize + 8, label.c_str(), !isSelected);
   }
 

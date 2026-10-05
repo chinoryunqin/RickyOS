@@ -545,6 +545,11 @@ class GfxRenderer {
   void cancelGrayscale16() const;
   bool isGrayscale16Active() const { return grayscale16Buffer != nullptr; }
   void drawGrayscale16Pixel(int x, int y, uint8_t gray) const;
+  // Copy a rectangle of the B/W proxy into the native 16-gray frame (ink -> black,
+  // paper -> white), so text and shapes drawn with the normal B/W API can sit on a
+  // 16-gray picture. `cornerRadius` leaves the corners outside a rounded rectangle
+  // untouched. No-op unless a 16-gray frame is open.
+  void copyBwToGrayscale16(int x, int y, int width, int height, int cornerRadius = 0) const;
   bool drawBitmapGrayscale16(const Bitmap& bitmap, int x, int y, int maxWidth, int maxHeight, float cropX = 0,
                              float cropY = 0) const;
   uint16_t getDisplayWidthBytes() const { return panelWidthBytes; }

@@ -64,6 +64,7 @@
 #include "util/ReadingBackground.h"
 #include "util/SystemSettingsReset.h"
 #ifdef RICKYOS_PRODUCT
+#include "activities/apps/standby/RickyStandbySettingsActivity.h"
 #include "util/RickyStorageLayout.h"
 #endif
 
@@ -293,7 +294,7 @@ void SettingsActivity::reorganizeRickySettings() {
   // These bounded vectors live only with this Activity and are released with
   // the other lists before a memory-hungry child. Moves retain all enum values,
   // persistence keys, accessors and action handlers without cloning settings.
-  sleepSettings.reserve(8);
+  sleepSettings.reserve(10);
   connectionSettings.reserve(8);
   fontSettings.reserve(1);  // One moved action, not another copy of font catalog/enum data.
   const auto moveMatching = [](std::vector<SettingInfo>& source, std::vector<SettingInfo>& destination,
@@ -307,19 +308,25 @@ void SettingsActivity::reorganizeRickySettings() {
       }
     }
   };
-  moveMatching(displaySettings, sleepSettings, [](const SettingInfo& setting) {
+  // What the sleeping screen shows (mode, picture, defaults, Standby info) lives on
+  // the Apps → Standby page; this page links there instead of repeating it.
+  std::vector<SettingInfo> onStandbyPage;
+  moveMatching(displaySettings, onStandbyPage, [](const SettingInfo& setting) {
     return setting.valuePtr == &CrossPointSettings::sleepScreen ||
-           setting.valuePtr == &CrossPointSettings::sleepScreenCoverMode ||
+           setting.valuePtr == &CrossPointSettings::standbyOverlay ||
+           setting.valuePtr == &CrossPointSettings::quickResumeSleepScreen;  // folded into the screen mode
+  });
+  moveMatching(displaySettings, sleepSettings, [](const SettingInfo& setting) {
+    return setting.valuePtr == &CrossPointSettings::sleepScreenCoverMode ||
            setting.valuePtr == &CrossPointSettings::sleepScreenCoverFilter ||
-           setting.valuePtr == &CrossPointSettings::quickResumeSleepScreen ||
            setting.valuePtr == &CrossPointSettings::standbyShortcutEnabled;
   });
   moveMatching(systemSettings, sleepSettings,
                [](const SettingInfo& setting) { return setting.valuePtr == &CrossPointSettings::sleepTimeoutMinutes; });
   moveMatching(controlsSettings, sleepSettings,
                [](const SettingInfo& setting) { return setting.valuePtr == &CrossPointSettings::shortPwrBtn; });
-  sleepSettings.insert(sleepSettings.begin() + 1,
-                       SettingInfo::Action(StrId::STR_RICKY_SELECT_WALLPAPER, SettingAction::RickySleepWallpaper));
+  sleepSettings.insert(sleepSettings.begin(),
+                       SettingInfo::Action(StrId::STR_STANDBY_TITLE, SettingAction::RickyStandbyPage));
   moveMatching(systemSettings, connectionSettings, [](const SettingInfo& setting) {
     return setting.action == SettingAction::Network || setting.action == SettingAction::KOReaderSync ||
            setting.action == SettingAction::OPDSBrowser;
@@ -344,6 +351,9 @@ void SettingsActivity::reorganizeRickySettings() {
       values[CrossPointSettings::TRANSPARENT] = StrId::STR_RICKY_SLEEP_OVERLAY;
     } else if (setting.valuePtr == &CrossPointSettings::quickResumeSleepScreen) {
       setting.nameId = StrId::STR_RICKY_KEEP_PAGE_TIMEOUT;
+    } else if (setting.valuePtr == &CrossPointSettings::standbyShortcutEnabled) {
+      // Not to be confused with the Standby page row above it.
+      setting.nameId = StrId::STR_RICKY_STANDBY_SHORTCUT;
     } else if (setting.valuePtr == &CrossPointSettings::sleepScreenCoverMode) {
       setting.nameId = StrId::STR_RICKY_COVER_FIT;
     } else if (setting.valuePtr == &CrossPointSettings::sleepScreenCoverFilter) {
@@ -1121,28 +1131,16 @@ void SettingsActivity::toggleCurrentSetting() {
       case SettingAction::RickyProfile:
         startActivityForResultWith<RickyProfileActivity>(resultHandler);
         break;
-      case SettingAction::RickySleepWallpaper: {
-        // Reuse the fallible activity stack and release catalog/row heap before decoding.
+      case SettingAction::RickyStandbyPage:
         releaseListsForMemoryHungryChild();
-        const bool opened = startActivityForResultWith<FileBrowserActivity>(
-            [this](const ActivityResult& result) {
-              const auto restore = [this](const ActivityResult&) {
-                rebuildSettingsLists();
-                requestUpdate();
-              };
-              const auto* entry = std::get_if<FilePathResult>(&result.data);
-              if (result.isCancelled || !entry ||
-                  !startActivityForResultWith<ImageViewerActivity>(restore, entry->path, true)) {
-                restore(result);
-              }
-            },
-            kImagePickerStart, FileBrowserActivity::Mode::PickWallpaper);
-        if (!opened) {
+        if (!startActivityForResultWith<RickyStandbySettingsActivity>([this](const ActivityResult&) {
+              rebuildSettingsLists();
+              requestUpdate();
+            })) {
           rebuildSettingsLists();
           requestUpdate();
         }
         break;
-      }
 #endif
       case SettingAction::RestoreSystemSettings:
         confirmRestoreSystemSettings();

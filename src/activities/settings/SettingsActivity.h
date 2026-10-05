@@ -38,7 +38,7 @@ enum class SettingAction {
   HomeButton,
 #ifdef RICKYOS_PRODUCT
   RickyProfile,
-  RickySleepWallpaper,
+  RickyStandbyPage,
 #endif
 };
 
