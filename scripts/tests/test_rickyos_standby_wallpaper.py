@@ -102,5 +102,15 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
             self.assertRegex(strings, r'(?m)^STR_RICKY_STANDBY_NOW: "')
 
 
+    def test_setting_a_picked_picture_returns_quickly(self):
+        viewer = (ROOT / 'src/activities/util/ImageViewerActivity.cpp').read_text()
+        install = body(viewer, 'bool ImageViewerActivity::doSetSleepCover(')
+        self.assertIn('static char buffer[4096];', install)
+        options = body(viewer, 'void ImageViewerActivity::showSleepCoverOptions()')
+        self.assertEqual(options.count('wallpaperPicker'), 2)
+        self.assertEqual(options.count('finish();'), 2)
+        self.assertIn('!activityManager.isSwitchPending()) onEnter();', body(viewer, 'void ImageViewerActivity::loop()'))
+
+
 if __name__ == '__main__':
     unittest.main()

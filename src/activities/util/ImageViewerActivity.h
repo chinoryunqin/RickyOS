@@ -21,7 +21,7 @@ class ImageViewerActivity final : public Activity {
   void loadSiblingImages();
   bool isPng() const;
   bool preparePreview();
-  void doSetSleepCover(const char* sourcePath, bool transparent);
+  bool doSetSleepCover(const char* sourcePath, bool transparent);
   void showSleepCoverOptions();
 
   std::string filePath;

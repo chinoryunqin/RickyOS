@@ -262,8 +262,8 @@ void ImageViewerActivity::onExit() {
   renderer.displayBuffer(HalDisplay::HALF_REFRESH);
 }
 
-void ImageViewerActivity::doSetSleepCover(const char* sourcePath, const bool transparent) {
-  if (!imageReady) return;
+bool ImageViewerActivity::doSetSleepCover(const char* sourcePath, const bool transparent) {
+  if (!imageReady) return false;
   GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
 
   const char* preparedPath = sourcePath;
@@ -281,7 +281,8 @@ void ImageViewerActivity::doSetSleepCover(const char* sourcePath, const bool tra
         Storage.openFileForWrite("IMAGE", SLEEP_IMAGE_PART_PATH, outFile)) {
       const uint64_t expected = inFile.fileSize64();
       uint64_t copied = 0;
-      char buffer[128];
+      // A full-screen 16-gray BMP is ~400 KB: 128-byte chunks took over ten seconds.
+      static char buffer[4096];
       int bytesRead;
       while ((bytesRead = inFile.read(buffer, sizeof(buffer))) > 0) {
         if (outFile.write(buffer, bytesRead) != bytesRead) {
@@ -328,19 +329,23 @@ void ImageViewerActivity::doSetSleepCover(const char* sourcePath, const bool tra
   if (success) Storage.remove(SLEEP_IMAGE_BACKUP_PATH);
   GUI.drawPopup(renderer, success ? tr(STR_DONE) : tr(STR_FAILED_LOWER));
   delay(1000);
+  return success;
 }
 
 void ImageViewerActivity::showSleepCoverOptions() {
   if (!imageReady) return;
   if (!isPng()) {
-    doSetSleepCover(FsHelpers::hasJpgExtension(filePath) ? IMAGE_PREVIEW_PATH : filePath.c_str(), false);
+    // Picking a wallpaper ends here: return to the page that asked, which shows the new picture.
+    if (doSetSleepCover(FsHelpers::hasJpgExtension(filePath) ? IMAGE_PREVIEW_PATH : filePath.c_str(), false) &&
+        wallpaperPicker)
+      finish();
     return;
   }
 
   static constexpr StrId options[] = {StrId::STR_NORMAL, StrId::STR_TRANSPARENT};
   static constexpr int optionCount = sizeof(options) / sizeof(options[0]);
   sleepCoverPopup.show(sleepCoverLabel(), options, optionCount, 0, [this](const int index) {
-    doSetSleepCover(index == 1 ? filePath.c_str() : IMAGE_PREVIEW_PATH, index == 1);
+    if (doSetSleepCover(index == 1 ? filePath.c_str() : IMAGE_PREVIEW_PATH, index == 1) && wallpaperPicker) finish();
   });
   requestUpdate();
 }
@@ -352,7 +357,7 @@ void ImageViewerActivity::loop() {
   Activity::loop();
 
   if (sleepCoverPopup.handleInput(mappedInput, [this] { requestUpdate(); })) {
-    if (!sleepCoverPopup.isActive()) onEnter();
+    if (!sleepCoverPopup.isActive() && !activityManager.isSwitchPending()) onEnter();
     return;
   }
 

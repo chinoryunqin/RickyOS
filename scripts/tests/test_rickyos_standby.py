@@ -141,7 +141,7 @@ int main(){
         options = method(viewer, 'void ImageViewerActivity::showSleepCoverOptions(')
         self.assertLess(options.index('if (!imageReady) return'), options.index('doSetSleepCover('))
         self.assertIn('FsHelpers::hasJpgExtension(filePath) ? IMAGE_PREVIEW_PATH', options)
-        install = method(viewer, 'void ImageViewerActivity::doSetSleepCover(')
+        install = method(viewer, 'bool ImageViewerActivity::doSetSleepCover(')
         self.assertIn('copied == expected', install)
         self.assertIn('if (!SETTINGS.saveToFile())', install)
         self.assertIn('SETTINGS.sleepScreen = previousMode', install)

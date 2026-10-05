@@ -27,7 +27,7 @@ class FileBrowserImagesTest(unittest.TestCase):
                 'void ImageViewerActivity::loadSiblingImages()', 'bool ImageViewerActivity::isPng()',
                 'bool ImageViewerActivity::preparePreview()',
                 'void ImageViewerActivity::showSleepCoverOptions()',
-                'void ImageViewerActivity::doSetSleepCover('))))
+                'bool ImageViewerActivity::doSetSleepCover('))))
         run_cpp(r'''
 #include <algorithm>
 #include <cassert>
@@ -133,10 +133,11 @@ constexpr StrId sleepCoverLabel() { return StrId::STR_SET_SLEEP_COVER; }
 struct ImageViewerActivity {
  std::string filePath; GfxRenderer renderer;
  std::vector<std::string> siblingImages; int currentImageIndex = -1;
- bool imageReady = false; Popup sleepCoverPopup;
+ bool imageReady = false, wallpaperPicker = false; Popup sleepCoverPopup;
+ void finish() {}
  void requestUpdate() {}
  void loadSiblingImages(); bool isPng() const; bool preparePreview();
- void showSleepCoverOptions(); void doSetSleepCover(const char*, bool);
+ void showSleepCoverOptions(); bool doSetSleepCover(const char*, bool);
 };
 std::string joinPath(const std::string& parent, const std::string& name) { return parent + "/" + name; }
 struct FileBrowserActivity {
