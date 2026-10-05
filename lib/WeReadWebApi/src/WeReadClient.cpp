@@ -2257,7 +2257,7 @@ bool Operation::preparePaths() {
   const std::string imagesDir = bookDir_ + "/images";
   return WeReadStore::ensureRoot() && Storage.ensureDirectoryExists(bookDir_.c_str()) &&
          Storage.ensureDirectoryExists(chaptersDir.c_str()) && Storage.ensureDirectoryExists(imagesDir.c_str()) &&
-         Storage.ensureDirectoryExists("/WeRead");
+         Storage.ensureDirectoryExists(WeReadStore::kExportDir);
 }
 
 Error Operation::fetchLoginUid() {

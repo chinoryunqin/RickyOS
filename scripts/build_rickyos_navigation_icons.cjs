@@ -29,7 +29,7 @@ async function main() {
   const gallery = [];
   for (const [index, name] of names.entries()) {
     const svg = fs.readFileSync(path.join(sourceDir, name + '.svg'));
-    for (const size of [38, 56]) {
+    for (const size of [40, 56]) {
       const nativeSvg = Buffer.from(svg.toString().replace('<svg ', `<svg width="${size}" height="${size}" `));
       const { data, info } = await sharp(nativeSvg).flatten({ background: '#fff' })
         .greyscale().raw().toBuffer({ resolveWithObject: true });

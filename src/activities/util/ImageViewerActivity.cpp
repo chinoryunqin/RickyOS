@@ -89,7 +89,12 @@ bool ImageViewerActivity::preparePreview() {
   {
     GfxRenderer::FrameBufferLoan loan(renderer);
     if (isPng()) {
+#ifdef RICKYOS_PRODUCT
+      // Read Pico's panel shows 16 grays; keep them all instead of dithering to four.
+      prepared = PngToBmpConverter::pngFileToGray8BmpFile(filePath.c_str(), IMAGE_PREVIEW_PATH, true);
+#else
       prepared = PngToBmpConverter::pngFileToBmpFile(filePath.c_str(), IMAGE_PREVIEW_PATH, true);
+#endif
     } else {
       HalFile input, output;
       if (Storage.openFileForRead("IMAGE", filePath.c_str(), input) &&
@@ -119,6 +124,12 @@ void ImageViewerActivity::onEnter() {
 
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
+#ifdef RICKYOS_PRODUCT
+  // Read Pico's gray image path builds on a HALF base that does not clear the page
+  // underneath (the file list stayed visible through the picture): start from paper.
+  renderer.clearScreen();
+  renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+#endif
   Rect popupRect = GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
   GUI.fillPopupProgress(renderer, popupRect, 20);  // Initial 20% progress
   const bool needsPreview = isPng() || FsHelpers::hasJpgExtension(filePath);
@@ -183,6 +194,28 @@ void ImageViewerActivity::onEnter() {
       if (mappedInput.hasTouch()) {
         GUI.drawActionButton(renderer, sleepCoverActionRect(renderer), I18N.get(sleepCoverLabel()));
       }
+#ifdef RICKYOS_PRODUCT
+      // Native 16-gray, as Standby and the sleep screen draw it. The overlay-mask path
+      // also painted the Set button into its gray planes, turning it into a dark bar
+      // with no readable label. Here the button is drawn in B/W and copied in.
+      if (bitmap.hasGreyscale() && renderer.getGrayscaleLevels() == 16 && bitmap.rewindToData() == BmpReaderError::Ok) {
+        bool shown =
+            renderer.beginGrayscale16() && renderer.drawBitmapGrayscale16(bitmap, x, y, pageWidth, pageHeight, 0, 0);
+        if (shown && mappedInput.hasTouch()) {
+          const Rect action = sleepCoverActionRect(renderer);
+          GUI.drawActionButton(renderer, action, I18N.get(sleepCoverLabel()));
+          renderer.copyBwToGrayscale16(action.x, action.y, action.width, action.height);
+        }
+        shown = shown && renderer.commitGrayscale16();
+        renderer.cancelGrayscale16();
+        if (!shown) {
+          LOG_ERR("BMP", "16-gray preview failed");
+          renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+        }
+        imageReady = shown;
+        return;
+      }
+#endif
       if (bitmap.hasGreyscale()) {
 #ifdef RICKYOS_PRODUCT
         // Read Pico's bitmap renderer emits overlay masks, not UC8279 absolute planes.
@@ -259,11 +292,16 @@ void ImageViewerActivity::onExit() {
   if (Storage.exists(IMAGE_PREVIEW_PATH)) Storage.remove(IMAGE_PREVIEW_PATH);
   if (Storage.exists(TRANSPARENT_PREVIEW_PATH)) Storage.remove(TRANSPARENT_PREVIEW_PATH);
   renderer.clearScreen();
+#ifdef RICKYOS_PRODUCT
+  // Leave no gray picture under the next page (see onEnter).
+  renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+#else
   renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+#endif
 }
 
-void ImageViewerActivity::doSetSleepCover(const char* sourcePath, const bool transparent) {
-  if (!imageReady) return;
+bool ImageViewerActivity::doSetSleepCover(const char* sourcePath, const bool transparent) {
+  if (!imageReady) return false;
   GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
 
   const char* preparedPath = sourcePath;
@@ -281,7 +319,8 @@ void ImageViewerActivity::doSetSleepCover(const char* sourcePath, const bool tra
         Storage.openFileForWrite("IMAGE", SLEEP_IMAGE_PART_PATH, outFile)) {
       const uint64_t expected = inFile.fileSize64();
       uint64_t copied = 0;
-      char buffer[128];
+      // A full-screen 16-gray BMP is ~400 KB: 128-byte chunks took over ten seconds.
+      static char buffer[4096];
       int bytesRead;
       while ((bytesRead = inFile.read(buffer, sizeof(buffer))) > 0) {
         if (outFile.write(buffer, bytesRead) != bytesRead) {
@@ -328,19 +367,23 @@ void ImageViewerActivity::doSetSleepCover(const char* sourcePath, const bool tra
   if (success) Storage.remove(SLEEP_IMAGE_BACKUP_PATH);
   GUI.drawPopup(renderer, success ? tr(STR_DONE) : tr(STR_FAILED_LOWER));
   delay(1000);
+  return success;
 }
 
 void ImageViewerActivity::showSleepCoverOptions() {
   if (!imageReady) return;
   if (!isPng()) {
-    doSetSleepCover(FsHelpers::hasJpgExtension(filePath) ? IMAGE_PREVIEW_PATH : filePath.c_str(), false);
+    // Picking a wallpaper ends here: return to the page that asked, which shows the new picture.
+    if (doSetSleepCover(FsHelpers::hasJpgExtension(filePath) ? IMAGE_PREVIEW_PATH : filePath.c_str(), false) &&
+        wallpaperPicker)
+      finish();
     return;
   }
 
   static constexpr StrId options[] = {StrId::STR_NORMAL, StrId::STR_TRANSPARENT};
   static constexpr int optionCount = sizeof(options) / sizeof(options[0]);
   sleepCoverPopup.show(sleepCoverLabel(), options, optionCount, 0, [this](const int index) {
-    doSetSleepCover(index == 1 ? filePath.c_str() : IMAGE_PREVIEW_PATH, index == 1);
+    if (doSetSleepCover(index == 1 ? filePath.c_str() : IMAGE_PREVIEW_PATH, index == 1) && wallpaperPicker) finish();
   });
   requestUpdate();
 }
@@ -352,7 +395,7 @@ void ImageViewerActivity::loop() {
   Activity::loop();
 
   if (sleepCoverPopup.handleInput(mappedInput, [this] { requestUpdate(); })) {
-    if (!sleepCoverPopup.isActive()) onEnter();
+    if (!sleepCoverPopup.isActive() && !activityManager.isSwitchPending()) onEnter();
     return;
   }
 

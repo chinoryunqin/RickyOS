@@ -36,9 +36,17 @@
 #include "apps/weread/WeReadActivity.h"
 #endif
 #include "apps/gomoku/GomokuMenuActivity.h"
+#ifndef RICKYOS_PRODUCT
+// RickyOS replaces the stock reading-stats suite with one page; leaving these out
+// lets the linker drop about 50 KB of pages nothing on RickyOS can reach.
 #include "apps/reading-stats/ReadingStatsActivity.h"
 #include "apps/reading-stats/ReadingStatsMenuActivity.h"
+#endif
 #include "apps/standby/StandbyActivity.h"
+#ifdef RICKYOS_PRODUCT
+#include "apps/reading-stats/RickyReadingStatsActivity.h"
+#include "apps/standby/RickyStandbySettingsActivity.h"
+#endif
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
 #include "browser/OpdsBookBrowserActivity.h"
@@ -642,9 +650,20 @@ void ActivityManager::goToCrashReport() { replaceActivityWith<CrashActivity>(); 
 
 void ActivityManager::goToApps() { replaceActivityWith<AppsMenuActivity>(); }
 
+#ifdef RICKYOS_PRODUCT
+void ActivityManager::goToReadingStatsMenu() { goToRickyReadingStats(); }
+#else
 void ActivityManager::goToReadingStatsMenu() { replaceActivityWith<ReadingStatsMenuActivity>(); }
+#endif
+#ifdef RICKYOS_PRODUCT
+void ActivityManager::goToRickyReadingStats() { replaceActivityWith<RickyReadingStatsActivity>(); }
+#endif
 
+#ifdef RICKYOS_PRODUCT
+void ActivityManager::goToReadingStats() { goToRickyReadingStats(); }
+#else
 void ActivityManager::goToReadingStats() { replaceActivityWith<ReadingStatsActivity>(true); }
+#endif
 
 void ActivityManager::goToGomoku() { replaceActivityWith<GomokuMenuActivity>(); }
 
@@ -675,6 +694,9 @@ void ActivityManager::goToAirPage() { replaceActivityWith<AirPageActivity>(); }
 #endif
 
 void ActivityManager::goToStandby() { replaceActivityWith<StandbyActivity>(); }
+#ifdef RICKYOS_PRODUCT
+void ActivityManager::goToStandbySettings() { replaceActivityWith<RickyStandbySettingsActivity>(); }
+#endif
 
 #ifdef ENABLE_CHINESE_VERSION
 void ActivityManager::goToWeRead() { replaceActivityWith<WeReadActivity>(); }

@@ -70,6 +70,21 @@ class StandbyFace {
   // navigation responsive.
   virtual bool wantsGrayscale() const { return false; }
 
+  // Faces that own a native 16-gray picture (the RickyOS wallpaper) draw and
+  // commit the whole frame themselves and return true; StandbyActivity then skips
+  // its B/W chrome and gray passes. Returning false falls back to render().
+  virtual bool renderNative(GfxRenderer& /*renderer*/, const Rect& /*viewport*/) { return false; }
+
+  // False when the face shows no clock or date, so Standby skips the WiFi clock sync.
+  virtual bool wantsClock() const { return true; }
+
+  // True while the face has nothing to show until the user picks a picture.
+  virtual bool needsPicture() const { return false; }
+
+  // While needsPicture(): which empty-state button a tap hit (PictureAction).
+  enum class PictureAction : uint8_t { None, Choose, Download };
+  virtual PictureAction pictureActionAt(int /*x*/, int /*y*/) const { return PictureAction::None; }
+
   // Note on per-orientation availability: StandbyActivity decides whether to
   // include a face in the active rotation via the `FaceEntry::isAvailable
   // (sw, sh)` predicate declared in StandbyActivity.cpp's face table. Faces

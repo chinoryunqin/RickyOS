@@ -124,10 +124,13 @@ int main(){
         run_cpp(program, defines=('RICKYOS_PRODUCT',))
 
     def test_wallpaper_picker_preview_cancel_and_decode_guard(self):
+        # Picking lives on the Apps → Standby page; Settings links there.
         settings = (ROOT / 'src/activities/settings/SettingsActivity.cpp').read_text()
-        self.assertIn('SettingAction::RickySleepWallpaper', settings)
-        self.assertIn('FileBrowserActivity::Mode::PickWallpaper', settings)
-        self.assertIn('startActivityForResultWith<ImageViewerActivity>(restore, entry->path, true)', settings)
+        self.assertIn('SettingAction::RickyStandbyPage', settings)
+        self.assertIn('startActivityForResultWith<RickyStandbySettingsActivity>', settings)
+        page = (ROOT / 'src/activities/apps/standby/RickyStandbySettingsActivity.cpp').read_text()
+        self.assertIn('FileBrowserActivity::Mode::PickWallpaper', page)
+        self.assertIn('startActivityForResultWith<ImageViewerActivity>(reload, entry->path, true)', page)
         viewer = (ROOT / 'src/activities/util/ImageViewerActivity.cpp').read_text()
         on_enter = method(viewer, 'void ImageViewerActivity::onEnter(')
         self.assertIn('imageReady = false', on_enter)
@@ -141,7 +144,7 @@ int main(){
         options = method(viewer, 'void ImageViewerActivity::showSleepCoverOptions(')
         self.assertLess(options.index('if (!imageReady) return'), options.index('doSetSleepCover('))
         self.assertIn('FsHelpers::hasJpgExtension(filePath) ? IMAGE_PREVIEW_PATH', options)
-        install = method(viewer, 'void ImageViewerActivity::doSetSleepCover(')
+        install = method(viewer, 'bool ImageViewerActivity::doSetSleepCover(')
         self.assertIn('copied == expected', install)
         self.assertIn('if (!SETTINGS.saveToFile())', install)
         self.assertIn('SETTINGS.sleepScreen = previousMode', install)

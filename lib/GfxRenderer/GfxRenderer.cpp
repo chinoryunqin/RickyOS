@@ -1718,6 +1718,33 @@ void GfxRenderer::drawGrayscale16Pixel(const int x, const int y, const uint8_t g
   drawPixel(x, y, level < 8);
 }
 
+void GfxRenderer::copyBwToGrayscale16(const int x, const int y, const int width, const int height,
+                                      const int cornerRadius) const {
+  if (!grayscale16Buffer || _stripActive || !frameBuffer) return;
+  const int radius = std::max(0, std::min(cornerRadius, std::min(width, height) / 2));
+  for (int row = 0; row < height; ++row) {
+    for (int column = 0; column < width; ++column) {
+      if (radius > 0) {
+        // Distance into the nearest corner square; outside the quarter circle stays as is.
+        const int dx =
+            column < radius ? radius - column : (column >= width - radius ? column - (width - radius - 1) : 0);
+        const int dy = row < radius ? radius - row : (row >= height - radius ? row - (height - radius - 1) : 0);
+        if (dx > 0 && dy > 0 && dx * dx + dy * dy > radius * radius) continue;
+      }
+      const int sx = x + column;
+      const int sy = y + row;
+      if (sx < 0 || sy < 0 || sx >= getScreenWidth() || sy >= getScreenHeight()) continue;
+      int px, py;
+      rotateCoordinates(orientation, sx, sy, &px, &py, panelWidth, panelHeight);
+      const bool ink = (frameBuffer[static_cast<size_t>(py) * panelWidthBytes + px / 8] & (0x80U >> (px % 8))) == 0;
+      const size_t index = static_cast<size_t>(py) * (panelWidth / 2) + px / 2;
+      const unsigned shift = (px & 1) * 4;
+      const uint8_t level = ink ? 0 : 15;
+      grayscale16Buffer[index] = (grayscale16Buffer[index] & ~(0x0Fu << shift)) | (level << shift);
+    }
+  }
+}
+
 bool GfxRenderer::drawBitmapGrayscale16(const Bitmap& bitmap, const int x, const int y, const int maxWidth,
                                         const int maxHeight, const float cropX, const float cropY) const {
   if (!grayscale16Buffer || !std::isfinite(cropX) || !std::isfinite(cropY) || cropX < 0 || cropX >= 1 || cropY < 0 ||
