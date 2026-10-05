@@ -27,8 +27,11 @@
 
 namespace {
 #ifdef RICKYOS_PRODUCT
-// The product tab bar is quiet chrome: 38 px line icons over small labels.
-constexpr int kIconSize = 38;
+// The product tab bar: 40 px icons drawn with ~2.5 px round strokes over small labels;
+// the selected tab reverses its icon inside an ink capsule.
+constexpr int kIconSize = 40;
+constexpr int kPillWidth = 80;
+constexpr int kPillHeight = 50;
 #else
 constexpr int kIconSize = UiHighDpiProfile::enabled ? UiHighDpiProfile::navigationIconSize : 38;
 #endif
@@ -63,8 +66,8 @@ const char* hintLabel(const char* label) {
 
 const uint8_t* iconForTab(const MainTab tab) {
 #ifdef RICKYOS_PRODUCT
-  static constexpr const uint8_t* icons[] = {ricky_nav_home_38, ricky_nav_library_38, ricky_nav_storage_38,
-                                             ricky_nav_apps_38, ricky_nav_settings_38};
+  static constexpr const uint8_t* icons[] = {ricky_nav_home_40, ricky_nav_library_40, ricky_nav_storage_40,
+                                             ricky_nav_apps_40, ricky_nav_settings_40};
   static_assert(sizeof(icons) / sizeof(icons[0]) == MainTabs::values.size());
   const int index = MainTabs::indexOf(tab);
   return index < 0 ? nullptr : icons[index];
@@ -119,17 +122,20 @@ void drawInxIcon(const GfxRenderer& renderer, const uint8_t* icon, const int x, 
 }
 
 #ifdef RICKYOS_PRODUCT
-void drawSelectedInxIcon(const GfxRenderer& renderer, const uint8_t* icon, const int x, const int y) {
-  // Dilate ink inside the original icon slot. No new asset, heap, resampling
-  // buffer or hit geometry; inactive tabs retain their exact native pixels.
+// Selected tab: an ink capsule with the icon knocked out in paper white. Pure
+// 1-bit, so it stays crisp under the fast refresh the tab bar uses.
+// `maxWidth` is the tab cell; a narrow screen shrinks the capsule, never below the icon.
+void drawSelectedInxIcon(const GfxRenderer& renderer, const uint8_t* icon, const int iconX, const int iconY,
+                         const int maxWidth) {
+  const int pillWidth = std::max(kIconSize + 8, std::min(kPillWidth, maxWidth - 8));
+  const int pillX = iconX + (kIconSize - pillWidth) / 2;
+  const int pillY = iconY + (kIconSize - kPillHeight) / 2;
+  renderer.fillRoundedRect(pillX, pillY, pillWidth, kPillHeight, kPillHeight / 2, Color::Black);
   constexpr int rowBytes = (kIconSize + 7) / 8;
-  constexpr int radius = UiHighDpiProfile::enabled ? 2 : 1;
   for (int row = 0; row < kIconSize; ++row) {
     for (int column = 0; column < kIconSize; ++column) {
-      if ((icon[row * rowBytes + column / 8] & (0x80U >> (column % 8))) != 0) continue;
-      const int left = std::max(0, column - radius), top = std::max(0, row - radius);
-      const int right = std::min(kIconSize - 1, column + radius), bottom = std::min(kIconSize - 1, row + radius);
-      renderer.fillRect(x + left, y + top, right - left + 1, bottom - top + 1, true);
+      if ((icon[row * rowBytes + column / 8] & (0x80U >> (column % 8))) == 0)
+        renderer.drawPixel(iconX + column, iconY + row, false);
     }
   }
 }
@@ -484,9 +490,11 @@ void InxTheme::drawMainTabBar(const GfxRenderer& renderer, const Rect rect, cons
   renderer.fillRect(rect.x, rect.y, rect.width, rect.height, false);
 #ifdef RICKYOS_PRODUCT
   const bool tabsAtBottom = SETTINGS.inxTabPosition == CrossPointSettings::INX_TAB_BOTTOM;
-  const int separatorY = tabsAtBottom ? rect.y : rect.y + rect.height - 2;
-  renderer.fillRectDither(rect.x, separatorY, rect.width, 2, Color::DarkGray);
-  const auto rows = RickyPageLayout::navigationRows(rect, kIconSize, renderer.getLineHeight(SMALL_FONT_ID));
+  const int separatorY = tabsAtBottom ? rect.y : rect.y + rect.height - 1;
+  renderer.fillRect(rect.x, separatorY, rect.width, 1, true);
+  // Rows are laid out for the capsule so it never touches the separator or labels.
+  auto rows = RickyPageLayout::navigationRows(rect, kPillHeight, renderer.getLineHeight(SMALL_FONT_ID));
+  rows.iconY += (kPillHeight - kIconSize) / 2;
   static constexpr StrId labels[] = {StrId::STR_RICKY_NAV_HOME, StrId::STR_LIBRARY, StrId::STR_RICKY_STORAGE,
                                      StrId::STR_APPS_TITLE, StrId::STR_SETTINGS_TITLE};
   static_assert(std::size(labels) == MainTabs::values.size());
@@ -499,16 +507,15 @@ void InxTheme::drawMainTabBar(const GfxRenderer& renderer, const Rect rect, cons
     const int iconX = left + (width - kIconSize) / 2;
     if (const uint8_t* icon = iconForTab(tab)) {
       if (tab == selected)
-        drawSelectedInxIcon(renderer, icon, iconX, rows.iconY);
+        drawSelectedInxIcon(renderer, icon, iconX, rows.iconY, width);
       else
         drawInxIcon(renderer, icon, iconX, rows.iconY);
     }
-    const auto style = tab == selected ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR;
+    // Labels stay regular: the capsule marks the tab, and the embedded CJK face has
+    // no bold to switch to.
     const char* label = I18N.get(labels[i]);
-    const int textX = left + std::max(0, (width - renderer.getTextWidth(SMALL_FONT_ID, label, style)) / 2);
-    renderer.drawText(SMALL_FONT_ID, textX, rows.labelY, label, true, style);
-    // Embedded CJK has only a regular face: make the active label visibly heavier.
-    if (tab == selected) renderer.drawText(SMALL_FONT_ID, textX + 1, rows.labelY, label, true, style);
+    const int textX = left + std::max(0, (width - renderer.getTextWidth(SMALL_FONT_ID, label)) / 2);
+    renderer.drawText(SMALL_FONT_ID, textX, rows.labelY, label, true);
   }
 #else
   constexpr int bottomIconInset = UiHighDpiProfile::enabled ? 18 : 6;
