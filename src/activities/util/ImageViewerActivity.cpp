@@ -119,6 +119,12 @@ void ImageViewerActivity::onEnter() {
 
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
+#ifdef RICKYOS_PRODUCT
+  // Read Pico's gray image path builds on a HALF base that does not clear the page
+  // underneath (the file list stayed visible through the picture): start from paper.
+  renderer.clearScreen();
+  renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+#endif
   Rect popupRect = GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
   GUI.fillPopupProgress(renderer, popupRect, 20);  // Initial 20% progress
   const bool needsPreview = isPng() || FsHelpers::hasJpgExtension(filePath);
@@ -259,7 +265,12 @@ void ImageViewerActivity::onExit() {
   if (Storage.exists(IMAGE_PREVIEW_PATH)) Storage.remove(IMAGE_PREVIEW_PATH);
   if (Storage.exists(TRANSPARENT_PREVIEW_PATH)) Storage.remove(TRANSPARENT_PREVIEW_PATH);
   renderer.clearScreen();
+#ifdef RICKYOS_PRODUCT
+  // Leave no gray picture under the next page (see onEnter).
+  renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+#else
   renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+#endif
 }
 
 bool ImageViewerActivity::doSetSleepCover(const char* sourcePath, const bool transparent) {

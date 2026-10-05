@@ -53,8 +53,6 @@ void placeBitmap(const Bitmap& bitmap, const int screenWidth, const int screenHe
 
 void WallpaperFace::onEnter() {
   hasPicture_ = Storage.exists(kPicture);
-  pictureShown_ = false;
-  fullRedraw_ = true;
   lastMinute_ = -1;
   lastDay_ = -1;
 }
@@ -67,8 +65,6 @@ StandbyFace::TickResult WallpaperFace::tick() {
   const bool dayChanged = local.tm_yday != lastDay_;
   if (!showsTime() && !dayChanged) return TickResult::None;
   if (showsTime() && minute == lastMinute_ && !dayChanged) return TickResult::None;
-  // A new day can widen the date; the hour cleans the corner's partial-refresh ghosting.
-  if (dayChanged || local.tm_min == 0) fullRedraw_ = true;
   return TickResult::Redraw;
 }
 
@@ -139,41 +135,35 @@ bool WallpaperFace::renderNative(GfxRenderer& renderer, const Rect& viewport) {
   std::tm local{};
   const bool clock = halClock.localTime(local);
 
-  if (pictureShown_ && !fullRedraw_) {
-    // The B/W proxy still matches the panel outside the corner, so a partial
-    // refresh changes the corner only and the picture keeps its grays.
-    drawCorner(renderer, viewport, false);
-    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
-  } else {
-    if (renderer.getGrayscaleLevels() != 16) return false;
-    HalFile file;
-    if (!Storage.openFileForRead("STANDBY", kPicture, file)) {
-      hasPicture_ = false;
-      return false;
-    }
-    Bitmap bitmap(file);
-    if (bitmap.parseHeaders() != BmpReaderError::Ok) {
-      LOG_ERR("STANDBY", "Unreadable standby picture");
-      hasPicture_ = false;
-      return false;
-    }
-    const int screenWidth = renderer.getScreenWidth();
-    const int screenHeight = renderer.getScreenHeight();
-    int x = 0, y = 0;
-    placeBitmap(bitmap, screenWidth, screenHeight, x, y);
-    bool shown =
-        renderer.beginGrayscale16() && renderer.drawBitmapGrayscale16(bitmap, x, y, screenWidth, screenHeight, 0, 0);
-    if (shown) {
-      drawCorner(renderer, viewport, true);
-      shown = renderer.commitGrayscale16();
-    }
-    renderer.cancelGrayscale16();
-    if (!shown) {
-      LOG_ERR("STANDBY", "16-gray standby picture failed");
-      return false;
-    }
-    pictureShown_ = true;
-    fullRedraw_ = false;
+  // Every update redraws the whole 16-gray frame. This panel has no partial
+  // refresh: a B/W refresh after a 16-gray frame drives every gray pixel to black
+  // or white, which collapsed the picture after the first minute.
+  if (renderer.getGrayscaleLevels() != 16) return false;
+  HalFile file;
+  if (!Storage.openFileForRead("STANDBY", kPicture, file)) {
+    hasPicture_ = false;
+    return false;
+  }
+  Bitmap bitmap(file);
+  if (bitmap.parseHeaders() != BmpReaderError::Ok) {
+    LOG_ERR("STANDBY", "Unreadable standby picture");
+    hasPicture_ = false;
+    return false;
+  }
+  const int screenWidth = renderer.getScreenWidth();
+  const int screenHeight = renderer.getScreenHeight();
+  int x = 0, y = 0;
+  placeBitmap(bitmap, screenWidth, screenHeight, x, y);
+  bool shown =
+      renderer.beginGrayscale16() && renderer.drawBitmapGrayscale16(bitmap, x, y, screenWidth, screenHeight, 0, 0);
+  if (shown) {
+    drawCorner(renderer, viewport, true);
+    shown = renderer.commitGrayscale16();
+  }
+  renderer.cancelGrayscale16();
+  if (!shown) {
+    LOG_ERR("STANDBY", "16-gray standby picture failed");
+    return false;
   }
   if (clock) {
     lastMinute_ = local.tm_hour * 60 + local.tm_min;

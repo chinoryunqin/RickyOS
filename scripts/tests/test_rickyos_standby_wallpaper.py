@@ -39,18 +39,26 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
         self.assertEqual(order, sorted(order))
         self.assertIn('renderer.cancelGrayscale16();', native)
 
-    def test_minute_updates_touch_only_the_corner(self):
+    def test_every_update_redraws_the_whole_16_gray_frame(self):
+        # No partial refresh on this panel: a B/W refresh after a 16-gray frame
+        # flattened the picture, so minute ticks redraw it through the gray frame.
         native = body(self.face, 'bool WallpaperFace::renderNative(')
-        partial = native.split('if (pictureShown_ && !fullRedraw_) {', 1)[1].split('} else {', 1)[0]
-        self.assertIn('drawCorner(renderer, viewport, false)', partial)
-        self.assertIn('renderer.displayBuffer(HalDisplay::FAST_REFRESH)', partial)
-        self.assertNotIn('Grayscale16', partial)
+        self.assertNotIn('displayBuffer', native)
+        self.assertNotIn('pictureShown_', self.face)
         tick = body(self.face, 'StandbyFace::TickResult WallpaperFace::tick()')
-        self.assertIn('if (dayChanged || local.tm_min == 0) fullRedraw_ = true;', tick)
+        self.assertIn('return TickResult::Redraw;', tick)
         corner = body(self.face, 'void WallpaperFace::drawCorner(')
-        # Tabular digits size every minute, so a partial update covers the last one.
         self.assertIn('getTextWidth(kTimeFont, "00:00", EpdFontFamily::BOLD)', corner)
         self.assertIn('renderer.copyBwToGrayscale16(x, y, width, height, kCornerRadius)', corner)
+
+    def test_image_preview_starts_and_ends_on_a_full_refresh(self):
+        viewer = (ROOT / 'src/activities/util/ImageViewerActivity.cpp').read_text()
+        enter = body(viewer, 'void ImageViewerActivity::onEnter()')
+        product = enter.split('#ifdef RICKYOS_PRODUCT', 1)[1].split('#endif', 1)[0]
+        self.assertIn('renderer.displayBuffer(HalDisplay::FULL_REFRESH);', product)
+        self.assertLess(enter.index('FULL_REFRESH'), enter.index('STR_LOADING_POPUP'))
+        exit_ = body(viewer, 'void ImageViewerActivity::onExit()')
+        self.assertIn('renderer.displayBuffer(HalDisplay::FULL_REFRESH);', exit_.split('#else', 1)[0])
 
     def test_activity_is_full_screen_and_syncs_only_for_a_clock(self):
         enter = body(self.activity, 'void StandbyActivity::onEnter()')
