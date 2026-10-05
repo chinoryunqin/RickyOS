@@ -246,7 +246,7 @@ STR_RICKY_HELP_KEEP_PAGE: "自动待机保留当前页面，并显示待机中�
 STR_RICKY_HELP_TIMEOUT: "无操作达到设定分钟数后休眠；选择“从不”关闭计时。"
 STR_RICKY_HELP_POWER: "选择轻按一次电源键时执行的操作。"
 STR_RICKY_HELP_REFRESH: "全刷间隔越短，残影越少，但闪屏更频繁。"
-STR_RICKY_HELP_UPSTREAM_OTA: "注意：此更新会安装 CrossMux，替换 RickyOS。"
+STR_RICKY_HELP_OTA: "只安装 RickyOS 正式版，下载校验无误后才会更换系统。"
 STR_RICKY_HELP_RESET: "只恢复设置，不删除书籍。"
 STR_RICKY_HELP_APPS: "显示或隐藏应用入口，不会卸载应用。"
 STR_RICKY_CLOSING_BOOK: "正在合上书页"
