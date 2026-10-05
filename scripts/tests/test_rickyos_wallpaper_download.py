@@ -59,6 +59,28 @@ class RickyWallpaperDownloadTest(unittest.TestCase):
         self.assertTrue(grays <= {level * 17 for level in range(16)})
         self.assertGreater(len(grays), 12)
 
+    @unittest.skipUnless(HAVE_PIL, 'needs Pillow')
+    def test_slogans_sit_under_the_doodle_and_clear_of_the_time_corner(self):
+        from PIL import Image, ImageDraw, ImageOps
+        module = load_script()
+        font = ROOT / '.cache/rickyos-font-sources/smiley/SmileySans-Oblique.otf'
+        if not font.exists():
+            self.skipTest('Smiley Sans source not downloaded')
+        page = Image.new('L', (module.WIDTH, module.HEIGHT), 255)
+        ImageDraw.Draw(page).ellipse((240, 260, 440, 520), outline=0, width=6)  # the "doodle"
+        result = module.add_slogan(page, ('先看一页', '再看亿页'), font)
+        text = ImageOps.invert(result.crop((0, 540, module.WIDTH, module.HEIGHT))).point(lambda v: 255 if v > 60 else 0)
+        box = text.getbbox()
+        self.assertIsNotNone(box)
+        self.assertLessEqual(540 + box[3], round(module.HEIGHT * module.SLOGAN_BOTTOM))
+        for entry in module.WALLPAPERS:
+            if len(entry) == 4:
+                self.assertTrue(all(len(line) <= 6 for line in entry[3]), entry)
+        # Light pictures only: the dark night and lamp scenes are gone.
+        stems = [entry[0] for entry in module.WALLPAPERS]
+        self.assertNotIn('04-moon', stems)
+        self.assertNotIn('06-lamp', stems)
+
     def test_downloader_verifies_retries_and_never_replaces_a_chosen_picture(self):
         source = ACTIVITY.read_text()
         item = body(source, 'bool RickyWallpaperDownloadActivity::downloadItem(')
