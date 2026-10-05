@@ -11,6 +11,12 @@ namespace WeReadStore {
 using WorkCallback = void (*)(void*);
 
 constexpr const char* kRoot = "/.crosspoint/weread";
+// Folder that exported EPUBs land in (finalBookPath); RickyOS uses its /books.
+#ifdef RICKYOS_PRODUCT
+constexpr const char* kExportDir = "/books";
+#else
+constexpr const char* kExportDir = "/WeRead";
+#endif
 constexpr const char* kDisclaimerAcceptancePath = "/.crosspoint/weread/disclaimer.accepted";
 constexpr const char* kSessionPath = "/.crosspoint/weread/session.bin";
 constexpr const char* kShelfPath = "/.crosspoint/weread/shelf.bin";

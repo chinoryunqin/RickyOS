@@ -15,6 +15,10 @@ namespace {
 // Written once the move has run, so a /book folder created later is left alone.
 constexpr char MIGRATION_MARKER[] = "/.crosspoint/ricky-storage-layout-1";
 constexpr const char* LEGACY_BOOK_FOLDERS[] = {"/book", "/Pushed Books"};
+// WeRead exported to /WeRead before it moved to /books (WeReadStore::finalBookPath);
+// its own marker lets devices that already ran the first move pick these up.
+constexpr char WEREAD_MIGRATION_MARKER[] = "/.crosspoint/ricky-storage-layout-2";
+constexpr const char* WEREAD_BOOK_FOLDERS[] = {"/WeRead"};
 constexpr const char* BOOK_EXTENSIONS[] = {".epub", ".txt", ".md", ".xtc", ".xtch", ".pdf", ".azw3", ".mobi", ".fb2"};
 
 bool isBookFile(const std::string& name) {
@@ -59,11 +63,13 @@ void ensureFolders() {
   }
 }
 
-int migrateLegacyBooks() {
-  if (Storage.exists(MIGRATION_MARKER)) return 0;
+namespace {
+template <size_t N>
+int moveBooksOnce(const char* marker, const char* const (&folders)[N]) {
+  if (Storage.exists(marker)) return 0;
   ensureFolders();
   int moved = 0, skipped = 0;
-  for (const char* folder : LEGACY_BOOK_FOLDERS) {
+  for (const char* folder : folders) {
     if (!Storage.exists(folder)) continue;
     for (const std::string& name : bookFilesIn(folder)) {
       const std::string from = std::string(folder) + "/" + name;
@@ -83,10 +89,16 @@ int migrateLegacyBooks() {
     if (isEmptyFolder(folder)) Storage.rmdir(folder);
   }
   if (moved > 0) library::markLibraryIndexDirty();
-  HalFile marker = Storage.open(MIGRATION_MARKER, O_WRITE | O_CREAT | O_TRUNC);
-  if (marker) marker.close();
+  HalFile done = Storage.open(marker, O_WRITE | O_CREAT | O_TRUNC);
+  if (done) done.close();
   LOG_INF("LAYOUT", "legacy books: %d moved to %s, %d left in place", moved, BOOKS, skipped);
   return moved;
+}
+}  // namespace
+
+int migrateLegacyBooks() {
+  return moveBooksOnce(MIGRATION_MARKER, LEGACY_BOOK_FOLDERS) +
+         moveBooksOnce(WEREAD_MIGRATION_MARKER, WEREAD_BOOK_FOLDERS);
 }
 }  // namespace RickyStorageLayout
 #endif
