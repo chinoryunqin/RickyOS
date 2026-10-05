@@ -466,9 +466,13 @@ void SettingsActivity::rebuildSettingsLists() {
           })
           .withManagedEnumPicker());
 #endif
-  // Keep the existing CrossMux OTA proxy flow. Build-only boards compile this
-  // UI but are intentionally absent from release assets in this sync.
+  // The product uses only its owned, accepted stable channel. Other targets
+  // retain the upstream proxy and release-channel UI.
+#ifdef RICKYOS_PRODUCT
+  systemSettings.push_back(SettingInfo::Action(StrId::STR_RICKYOS_FIRMWARE_UPDATE, SettingAction::CheckForUpdates));
+#else
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CHECK_UPDATES, SettingAction::CheckForUpdates));
+#endif
   systemSettings.push_back(SettingInfo::Action(StrId::STR_SD_FIRMWARE_UPDATE, SettingAction::SdFirmwareUpdate));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_PLUGINS, SettingAction::Plugins));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_KEYBOARD_LAYOUTS, SettingAction::KeyboardLayouts));

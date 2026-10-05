@@ -24,6 +24,9 @@ class OtaUpdater {
   size_t totalSize = 0;
   std::array<ReleaseNote, ReleaseJsonParser::RELEASE_NOTE_COUNT_MAX> releaseNotes{};
   size_t releaseNoteCount = 0;
+#ifdef RICKYOS_PRODUCT
+  std::array<uint8_t, 32> expectedSha{};
+#endif
 
  public:
   using ProgressCallback = void (*)(void* ctx);

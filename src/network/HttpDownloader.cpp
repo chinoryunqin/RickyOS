@@ -27,7 +27,8 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
                                            const std::string& password,
                                            const std::vector<HttpDownloader::Header>& headers,
                                            const freeink::FetchSink& sink, const bool* cancelFlag = nullptr,
-                                           size_t* bytesOut = nullptr, const bool downgradeRedirectsToHttp = false) {
+                                           size_t* bytesOut = nullptr, const bool downgradeRedirectsToHttp = false,
+                                           const char* rootCa = nullptr) {
   char userAgent[80];
   const int length =
       snprintf(userAgent, sizeof(userAgent), "CrossMux-%s-" CROSSPOINT_VERSION, HalSystem::getDeviceModel());
@@ -35,11 +36,22 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
   WifiPowerSaveGuard psGuard;
   freeink::FetchOptions options;
   options.redirectToHttp = downgradeRedirectsToHttp;
+  bool rejectedRedirect = false;
   const freeink::FetchResult result = freeink::fetchResumable(
       url, options,
       [&](freeink::SecureHttpClient& http, const bool sameOrigin) {
+        // ResumableFetch follows redirects itself, outside the HTTP client's
+        // downgrade guard. A verified firmware request must never leave its
+        // original HTTPS origin. Abort before the redirected socket connects.
+        if (rootCa && !sameOrigin) {
+          rejectedRedirect = true;
+          return;
+        }
         http.setTimeout(HTTP_TIMEOUT_MS);
-        http.setInsecure();
+        if (rootCa)
+          http.setCACert(rootCa);
+        else
+          http.setInsecure();
         // setUserAgent replaces SecureHttpClient's built-in UA; addHeader would
         // append a second User-Agent header, which strict servers reject (aiohttp
         // answers 400 "Duplicate 'User-Agent' header found").
@@ -53,7 +65,7 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
         LOG_DBG("HTTP", "wolfSSL GET: %s (heap %u, max block %u)", url.c_str(), (unsigned)ESP.getFreeHeap(),
                 (unsigned)ESP.getMaxAllocHeap());
       },
-      sink, [cancelFlag] { return cancelFlag && *cancelFlag; });
+      sink, [&rejectedRedirect, cancelFlag] { return rejectedRedirect || (cancelFlag && *cancelFlag); });
   if (bytesOut) *bytesOut = result.bytes;
 
   if (result.aborted) return HttpDownloader::ABORTED;
@@ -102,6 +114,13 @@ bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData
   freeink::FetchSink sink;
   sink.write = onData;
   return runGetSecure(url, username, password, {}, sink) == OK;
+}
+
+bool HttpDownloader::fetchVerifiedUrl(const std::string& url, const DataCallback& onData, const char* rootCa) {
+  if (!rootCa || !url.starts_with("https://")) return false;
+  freeink::FetchSink sink;
+  sink.write = onData;
+  return runGetSecure(url, "", "", {}, sink, nullptr, nullptr, false, rootCa) == OK;
 }
 
 HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& url, const std::string& destPath,
