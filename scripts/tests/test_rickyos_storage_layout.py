@@ -51,7 +51,8 @@ class RickyStorageLayoutTest(unittest.TestCase):
         self.assertIn('WEREAD_BOOK_FOLDERS[] = {"/WeRead"}', self.source)
         self.assertIn('WEREAD_MIGRATION_MARKER[] = "/.crosspoint/ricky-storage-layout-2"', self.source)
         migrate = body(self.source, 'int migrateLegacyBooks()')
-        self.assertIn('moveBooksOnce(MIGRATION_MARKER, LEGACY_BOOK_FOLDERS)', migrate)
+        # Folders other firmware owns (/book, /Pushed Books) stay put: the card may go back there.
+        self.assertNotIn('moveBooksOnce(MIGRATION_MARKER, LEGACY_BOOK_FOLDERS)', migrate)
         self.assertIn('moveBooksOnce(WEREAD_MIGRATION_MARKER, WEREAD_BOOK_FOLDERS)', migrate)
 
     def test_boot_moves_after_recents_and_statistics_load(self):

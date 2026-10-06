@@ -4,9 +4,10 @@
 <body><main class="wrap legal-page"><a href="./">← 返回产品首页</a> · <a href="./install.html">安装工作台</a><h1>开源与隐私说明</h1>
 <h2>本地处理，不上传备份</h2><p>串口读取、固件校验和备份文件校验均在当前浏览器中完成。本站没有接收设备数据的接口，不使用第三方统计、字体 CDN 或账号系统。下载的备份可能含有设备凭据，请妥善保管，不要公开分享。关闭页面会释放内存中的备份；重新安装必须重新连接并备份。</p>
 <p>网站托管服务仍可能记录普通网页访问。操作记录可由你主动保存；页面会隐藏串口日志中的 MAC 地址，但分享前仍请检查记录是否含有敏感信息。</p>
-<h2>第三方固件与风险</h2><p>RickyOS 由 Ricky AI Studio 基于 CrossMux 二次开发，并非 MindReset 官方固件。不承诺原厂保修政策或无风险恢复。网站不会操作 SD 卡，但完整 Flash 备份不包含 SD 卡。首次安装会调整分区、替换启动组件并清理原厂内部文件，原厂设置不保证能沿用。当前正式安装包尚未开放；原厂版本和安装组件须实机验收后才允许迁移。备份恢复刷写和其他机型暂不支持。</p>
+<h2>第三方固件与风险</h2><p>RickyOS 由 Ricky AI Studio 基于 CrossMux 二次开发，并非 MindReset 官方固件。不承诺原厂保修政策或无风险恢复。网站不会操作 SD 卡，但完整 Flash 备份不包含 SD 卡。首次安装会调整分区、替换启动组件并清理原厂内部文件，原厂设置不保证能沿用。备份恢复刷写和其他机型暂不支持。</p>
 <h2>开源组件</h2><ul>
-<li><a href="https://github.com/0x1abin/crossmux">CrossMux</a>：MIT；RickyOS 保留仓库的上游许可证及第三方资源说明。</li>
+<li><a href="https://github.com/0x1abin/crossmux">CrossMux</a>：MIT，Copyright Dave Allie、FreeInk、EEGO A4 Template Firmware contributors、CrossPoint Reader organization；RickyOS 固件基于它开发，许可原文随固件一同提供，见下方 third-party-licenses.txt。</li>
+<li><a href="https://github.com/rsms/inter">Inter</a>：SIL Open Font License 1.1；待机时钟的数字字形取自 Inter Display。</li>
 <li><a href="https://github.com/espressif/esptool-js">esptool-js 0.7.0</a>：Apache-2.0，Copyright Espressif Systems；用于浏览器串口通信。</li>
 <li><a href="https://github.com/Daninet/hash-wasm">hash-wasm 4.12.0</a>：MIT，Copyright Dani Nagy；用于本地 MD5 / SHA-256 校验。</li>
 <li>esptool-js 的依赖 pako：MIT / Zlib；atob-lite：MIT。构建工具 Vite 及其依赖不属于固件。</li>

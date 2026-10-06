@@ -106,6 +106,10 @@ struct GfxRenderer {
     fillRect(x,y,w,h,true);
   }
 };
+// No 16-level frame in these checks: the anti-aliased twin never draws.
+namespace RickyAaIcons {
+inline bool draw(const GfxRenderer&,const uint8_t*,int,int,int,int,bool) { return false; }
+}
 ''' + pill + method(source, 'const uint8_t* iconForTab(') + method(source, 'void drawInxIcon(') + method(source, 'void drawSelectedInxIcon(') + r'''
 int main() {
   const uint8_t* expected[]={ricky_nav_home_SIZE,ricky_nav_library_SIZE,ricky_nav_storage_SIZE,

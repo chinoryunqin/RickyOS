@@ -158,7 +158,7 @@ struct EpubReaderActivity {
   ReaderPageCacheKey pageCacheKey(int,int,int,int,int) const;
   void freePageCache();
   void renderIdle(uint32_t);
-  bool buildPageCacheSlot(int,const ReaderPageCacheKey&,uint32_t);
+  bool buildPageCacheSlot(int,const ReaderPageCacheKey&,uint32_t,Section* source=nullptr);
   EpubReaderActivity() {renderedPageKey_=pageCacheKey(section->currentPage,1,1,1,1);}
   uint32_t missingGlyph(bool pageCacheHit) {
     auto* fcm=renderer.getFontCacheManager();

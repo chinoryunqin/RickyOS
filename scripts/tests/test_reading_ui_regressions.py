@@ -501,10 +501,15 @@ enum { eIncrement };
 void xTaskNotify(int,int,int) {}
 struct { void clearTouchTapEvent() {} } gpio;
 struct RenderLock {
+  enum class Mode { Block,Try };
   static inline bool busy=false;
+  RenderLock() = default;
+  explicit RenderLock(Mode) {}
   static bool peek() { return busy; }
+  bool ownsLock() const { return false; }
   void unlock() {}
 };
+[[maybe_unused]] static struct { void railsOffIfIdle(uint32_t) {} } display;
 struct ActivityResult {};
 struct MappedInputManager {
   enum class Button { None,Back,Confirm,Left,Right,Up,Down };

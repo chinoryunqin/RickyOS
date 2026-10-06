@@ -57,8 +57,13 @@ class RickyAppIconTest(unittest.TestCase):
         routing = source.split('const uint8_t* rickyAppIcon(', 1)[1].split('\n}\n', 1)[0]
         self.assertEqual(icons, set(re.findall(r'case UIIcon::(\w+):', routing)))
         draw = source.split('void drawRickyAppIcon(', 1)[1].split('\n}\n', 1)[0]
-        self.assertIn('fillRoundedRect(', draw)
-        self.assertIn('kAppPillHeight / 2, Color::Black', draw)
+        # Every app sits on a rounded-square tile; the selected one is filled with the
+        # icon knocked out (B/W pass), or its anti-aliased twin on a 16-level frame.
+        self.assertIn('renderer.fillRoundedRect(tileX, tileY, kAppTileSize, kAppTileSize, kAppTileRadius, Color::Black)',
+                      draw)
+        self.assertIn('renderer.drawRoundedRect(tileX, tileY, kAppTileSize, kAppTileSize, kAppTileStroke, kAppTileRadius, true)',
+                      draw)
+        self.assertIn('RickyAaIcons::draw(renderer, icon, kRickyAppIconSize, kRickyAppIconSize, x, y, !selected)', draw)
         self.assertIn('renderer.drawPixel(x + column, y + row, !selected)', draw)
 
     @unittest.skipUnless(sharp_available(), 'regeneration requires developer Node.js + sharp')

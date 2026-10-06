@@ -128,7 +128,9 @@ class RickyWallpaperDownloadTest(unittest.TestCase):
         self.assertIn('if (result == HttpDownloader::OK) preferredHost_ = host;', item)
         viewer = (ROOT / 'src/activities/util/ImageViewerActivity.cpp').read_text()
         preview = body(viewer, 'bool ImageViewerActivity::preparePreview()')
-        self.assertIn('pngFileToGray8BmpFile(filePath.c_str(), IMAGE_PREVIEW_PATH, true)', preview.split('#else', 1)[0])
+        # Converted aside into the preview cache, then renamed into place.
+        self.assertIn('pngFileToGray8BmpFile(filePath.c_str(), outPath.c_str(), true)', preview)
+        self.assertIn('Storage.rename(outPath.c_str(), previewPath.c_str())', preview)
 
     def test_entry_points_in_standby_and_settings(self):
         standby = (ROOT / 'src/activities/apps/standby/StandbyActivity.cpp').read_text()

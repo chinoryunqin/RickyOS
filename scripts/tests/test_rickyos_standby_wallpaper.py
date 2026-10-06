@@ -55,8 +55,11 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
         viewer = (ROOT / 'src/activities/util/ImageViewerActivity.cpp').read_text()
         enter = body(viewer, 'void ImageViewerActivity::onEnter()')
         product = enter.split('#ifdef RICKYOS_PRODUCT', 1)[1].split('#endif', 1)[0]
-        self.assertIn('renderer.displayBuffer(HalDisplay::FULL_REFRESH);', product)
-        self.assertLess(enter.index('FULL_REFRESH'), enter.index('STR_LOADING_POPUP'))
+        # No blank page before the loading popup (a white screen read as a hang); the
+        # picture itself lands in one clean full GC16 refresh.
+        self.assertNotIn('displayBuffer', product)
+        native = enter[enter.index('Native 16-gray, as Standby'):]
+        self.assertLess(native.index('display.setNextGray16Profile(3);'), native.index('commitGrayscale16()'))
         exit_ = body(viewer, 'void ImageViewerActivity::onExit()')
         self.assertIn('renderer.displayBuffer(HalDisplay::FULL_REFRESH);', exit_.split('#else', 1)[0])
 
@@ -69,7 +72,7 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
         self.assertLess(render.index('renderNative(renderer, viewport)'), render.index('renderer.clearScreen();'))
         # Leaving a 16-gray picture: the next page must not refresh differentially over it.
         self.assertIn('renderer.requestNextRefresh(HalDisplay::FULL_REFRESH);', body(self.activity, 'void StandbyActivity::onExit()'))
-        picker = body(self.activity, 'void StandbyActivity::openPicturePicker()')
+        picker = body(self.activity, 'void StandbyActivity::openPicturePicker(')
         self.assertIn('FileBrowserActivity::Mode::PickWallpaper', picker)
         self.assertIn('startActivityForResultWith<ImageViewerActivity>(reload, entry->path, true)', picker)
 
@@ -124,7 +127,7 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
         viewer = (ROOT / 'src/activities/util/ImageViewerActivity.cpp').read_text()
         enter = body(viewer, 'void ImageViewerActivity::onEnter()')
         native = enter[enter.index('Native 16-gray, as Standby'):]
-        native = native[:native.index('#endif')]
+        native = native[:native.index('return;')]
         order = [native.index(call) for call in ('beginGrayscale16()', 'drawBitmapGrayscale16(',
                                                  'GUI.drawActionButton(', 'copyBwToGrayscale16(', 'commitGrayscale16()')]
         self.assertEqual(order, sorted(order))

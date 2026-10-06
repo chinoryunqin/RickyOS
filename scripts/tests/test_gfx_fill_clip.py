@@ -40,6 +40,7 @@ struct GfxRenderer {
   // and the expectations below still describe the byte-level fill.
   const uint8_t* grayscale16Buffer = nullptr;
   void drawPixel(int, int, bool) const {}
+  void drawGrayscale16Pixel(int, int, uint8_t) const {}  // 16-level gray fills (not exercised here)
   template<Color C> void fillRectImpl(int, int, int, int) const;
 };
 ''' + rotate + "\ntemplate<Color C>\n" + fill + r'''

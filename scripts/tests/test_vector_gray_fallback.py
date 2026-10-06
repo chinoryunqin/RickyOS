@@ -18,8 +18,8 @@ class VectorGrayFallbackTest(unittest.TestCase):
 #include <array>
 #include <cassert>
 #include <cstdint>
-struct EpdGlyph {uint8_t width=16,height=1; int left=0,top=0;};
-struct EpdFontData {bool is2Bit=true,is4Bit=true; int ascender=0;};
+struct EpdGlyph {uint8_t width=16,height=1; int left=0,top=0; uint32_t dataLength=8;};
+struct EpdFontData {bool is2Bit=true,is4Bit=true; int ascender=0; void* vectorBitmapHandler=nullptr;};
 struct EpdFontFamily {
  enum Style {REGULAR}; EpdGlyph glyph; EpdFontData data;
  const EpdGlyph* getGlyph(uint32_t,Style)const{return &glyph;}

@@ -88,6 +88,9 @@ struct StorageMock {
    if (writeFails) return false;
    data[path].clear(); f.valid = true; f.bytes = &data[path]; return true;
  }
+ bool openFileForWrite(const char* module, const std::string& path, HalFile& f) {
+   return openFileForWrite(module, path.c_str(), f);
+ }
  bool rename(const char* from, const char* to) {
    if (!exists(from)) return false;
    data[to] = data[from]; data.erase(from); return true;
@@ -131,7 +134,7 @@ struct Popup {
 };
 constexpr StrId sleepCoverLabel() { return StrId::STR_SET_SLEEP_COVER; }
 struct ImageViewerActivity {
- std::string filePath; GfxRenderer renderer;
+ std::string filePath; std::string previewPath; GfxRenderer renderer;
  std::vector<std::string> siblingImages; int currentImageIndex = -1;
  bool imageReady = false, wallpaperPicker = false; Popup sleepCoverPopup;
  void finish() {}
