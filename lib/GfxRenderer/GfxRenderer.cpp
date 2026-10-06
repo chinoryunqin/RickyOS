@@ -1385,6 +1385,15 @@ void GfxRenderer::fillRectImpl(const int x, const int y, const int width, const 
   // the mirroring applies. Only this path slows down, and only during the 16-level pass;
   // every other render path keeps the byte-level fill below.
   if (grayscale16Buffer != nullptr) {
+    if constexpr (C == Color::LightGray || C == Color::DarkGray) {
+      // The 16-level frame has real grays: a smooth tone instead of the B/W dot pattern
+      // (and treating these as white made light-gray tracks vanish once a screen settled).
+      constexpr uint8_t gray = C == Color::LightGray ? 187 : 119;  // levels 11 and 7
+      for (int px = lx0; px < lx1; ++px) {
+        for (int py = ly0; py < ly1; ++py) drawGrayscale16Pixel(px, py, gray);
+      }
+      return;
+    }
     const bool black = (C == Color::Black);
     for (int py = ly0; py < ly1; ++py) {
       for (int px = lx0; px < lx1; ++px) {
