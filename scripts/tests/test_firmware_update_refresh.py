@@ -18,6 +18,8 @@ class FirmwareUpdateRefreshTest(unittest.TestCase):
         production = '\n'.join((
             method(theme, 'int BaseTheme::measureProgressBarHeight('),
             method(theme, 'int BaseTheme::drawProgressBar('),
+            # RickyOS: the OTA page's title helper (RickyOS Update vs Update).
+            method(ota, 'const char* updateTitle('),
             method(ota, 'void OtaUpdateActivity::render('),
             method(sd, 'void SdFirmwareUpdateActivity::render('),
             method(ota, 'void OtaUpdateActivity::runUpdateInstall('),
