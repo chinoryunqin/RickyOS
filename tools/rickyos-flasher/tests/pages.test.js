@@ -26,8 +26,8 @@ test('production pages label their device images and contain no prototype contro
   // The home hero is a product image made from a photo of a real device; say so.
   assert.match(home, /src="\.\/src\/assets\/launch\.jpg"/);
   assert.match(home, /据实拍照片制作/);
-  assert.match(install, /src="\.\/src\/assets\/home-frame\.png"/);
-  assert.match(install, /原生模拟器/);
+  assert.match(install, /src="\.\/src\/assets\/device\.jpg"/);
+  assert.match(install, /据实拍照片制作/);
   for (const html of [home, install])
     assert.doesNotMatch(html, /design-preview|concepts\.js|proposal-bar|查看方案 [AB]|预览检查后的界面/);
 });

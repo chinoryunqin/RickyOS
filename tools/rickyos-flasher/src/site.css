@@ -14,3 +14,4 @@
 @media(max-width:720px){.install-steps{padding-inline:18px;gap:21px}.install-steps li{font-size:10px;gap:5px}.b-console-bottom .logs{text-align:left;width:100%}.demo-notice a{display:block;margin:7px 0 0}.control-row{gap:13px}.control-row .button,.backup-controls .button{padding:12px 16px;gap:15px;font-size:11px}.home-release-note a{display:block;margin:8px 0 0}.brand-seal img{height:auto}.b-brand img{height:auto}}
 
 .a-photo img{display:block;width:100%;height:auto;border-radius:16px;box-shadow:0 18px 40px #17181b14}
+.b-photo{border:0;padding:0;border-radius:10px;overflow:hidden;box-shadow:0 10px 24px #17181b12}
