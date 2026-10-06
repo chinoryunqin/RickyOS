@@ -84,6 +84,7 @@ constexpr uint64_t BYTES_PER_TENTH_GB = 100000000ULL;
 enum class AboutRow : uint8_t {
   FirmwareName,
   FirmwareVersion,
+  License,
   DeviceModel,
   ChipModel,
   ChipTemperature,
@@ -159,6 +160,7 @@ class InxAboutActivity final : public Activity {
           static constexpr StrId LABELS[] = {
               StrId::STR_ABOUT_FIRMWARE_NAME,
               StrId::STR_ABOUT_FIRMWARE_VERSION,
+              StrId::STR_ABOUT_LICENSE,
               StrId::STR_ABOUT_DEVICE_MODEL,
               StrId::STR_ABOUT_CHIP_MODEL,
               StrId::STR_ABOUT_CHIP_TEMPERATURE,
@@ -250,6 +252,9 @@ class InxAboutActivity final : public Activity {
                  static_cast<unsigned long>(heapInfo.totalPsramBytes / 1024));
         return value;
 #endif
+      case AboutRow::License:
+        // MIT: the notice travels with the firmware (full text: LICENSE, and the install site).
+        return "MIT";
       case AboutRow::SdUsedTotal: {
         switch (storageLoadState) {
           case StorageLoadState::Loading:

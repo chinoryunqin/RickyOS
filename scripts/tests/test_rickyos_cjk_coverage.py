@@ -68,6 +68,15 @@ class RickyCjkCoverageTest(unittest.TestCase):
                            'notosans_cjk_common')
         self.assertFalse(any(a <= ord('亨') <= b for a, b in shared))
 
+    def test_every_chinese_ui_character_is_in_the_ui_subset(self):
+        # The 14-18 pt UI faces carry only the characters of the Chinese strings. A new
+        # string with one character outside them draws the whole label from a fallback
+        # face (it showed as slanted bold), so cn_i18n_chars.txt must cover every string.
+        subset = (SCRIPTS / 'cn_i18n_chars.txt').read_text(encoding='utf-8')
+        strings = (ROOT / 'lib/I18n/translations/chinese.yaml').read_text(encoding='utf-8')
+        missing = sorted({c for c in strings if 0x4E00 <= ord(c) <= 0x9FFF and c not in subset})
+        self.assertEqual(missing, [], 'regenerate with lib/EpdFont/scripts/build-cn-builtin-fonts.sh')
+
     def test_only_the_high_density_product_uses_the_extended_face(self):
         main = (ROOT / 'src/main.cpp').read_text(encoding='utf-8')
         block = main[main.index('#if defined(RICKYOS_PRODUCT) && defined(CROSSMUX_UI_PROFILE_HIGH_DPI)'):]
