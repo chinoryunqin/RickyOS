@@ -130,6 +130,8 @@ bool TtfEpdFont::load(const uint16_t pointSize, const bool twoBit, const size_t 
     // at a previous size would serve stale metrics — and their bitmaps get
     // overwritten as new-size glyphs refill the arena from offset 0.
     flushFace(f);
+    f.metricCps.clear();  // metrics are per size
+    f.metrics.clear();
     f.ligPairCount = 0;                  // re-resolved in initFace; stale pairs must not leak
     for (uint32_t& g : f.ligGid) g = 0;  // across a reload with new sources
   }
@@ -245,18 +247,17 @@ void TtfEpdFont::flushFace(Face& f) {
   f.glyphs.clear();
   f.cps.clear();
   f.slot.clear();
+  f.gids.clear();
   f.kernKeys.clear();
   f.kernVals.clear();
   f.used = 0;
 }
 
 void TtfEpdFont::clearCache() {
-  // Drop cached page glyphs on every inited face but keep the allocations: the
-  // vectors keep capacity (clear() does not free) and f.bmp keeps its buffer, so
-  // the next prewarm re-faults into buffers already sized to the book.
-  for (Face& f : faces_) {
-    if (f.inited) flushFace(f);
-  }
+  // Glyphs now persist across pages: records are metrics only, bitmaps are drawn on
+  // demand and the arena evicts itself when full (rasterizeInto). Dropping them every
+  // page made each page re-rasterize every character it shared with the last one.
+  // Memory pressure still frees everything through releaseResidentCaches().
 }
 
 void TtfEpdFont::releaseResidentCaches() {
@@ -270,6 +271,9 @@ void TtfEpdFont::releaseResidentCaches() {
     freeink::font::PsramVector<EpdGlyph>().swap(f.glyphs);
     freeink::font::PsramVector<uint32_t>().swap(f.cps);
     freeink::font::PsramVector<uint16_t>().swap(f.slot);
+    freeink::font::PsramVector<freeink::font::FtFont::GlyphId>().swap(f.gids);
+    freeink::font::PsramVector<uint32_t>().swap(f.metricCps);
+    freeink::font::PsramVector<GlyphMetricsEntry>().swap(f.metrics);
     freeink::font::PsramVector<uint64_t>().swap(f.kernKeys);
     freeink::font::PsramVector<int8_t>().swap(f.kernVals);
     // Keep the regular face's FreeType face live so coverage()/metrics still
@@ -299,67 +303,134 @@ const EpdGlyph* TtfEpdFont::faultGlyph(Face& f, const uint32_t cp) {
   if (gid == 0 && cp >= 0xFB00u && cp <= 0xFB04u) gid = f.ligGid[cp - 0xFB00u];
   if (gid == 0) return nullptr;
 
-  // Glyph-ID render at the exact fractional ppem. The metrics pass costs a
-  // second glyph load per MISS only (hits come from the cache) and yields the
-  // 26.6 advance, which the 12.4 EpdGlyph.advanceX preserves for the
-  // renderer's differential rounding — GlyphBitmap.advance is whole pixels.
+  // Layout only needs advances and boxes, so a miss records metrics and nothing else;
+  // the bitmap is rasterized the first time the glyph is drawn (rasterizeInto, via
+  // bitmapThunk). Rasterizing every glyph a chapter build measured made a CJK chapter
+  // take most of a minute, and filled the arena with glyphs no page ever showed.
+  // Metrics persist per face (metricsFor), across page flushes.
   const uint32_t size26_6 = f.owner->size26_6_;
-  freeink::font::FtFont::GlyphMetrics gm;
-  const bool haveMetrics = f.ft.metricsGlyph26_6(gid, size26_6, gm);
-  const freeink::font::GlyphBitmap* g = f.ft.rasterizeGlyph26_6(gid, size26_6);
-  uint32_t px = (g && g->pixels) ? static_cast<uint32_t>(g->width) * g->height : 0;
-  size_t bytes = px ? (f.fourBit ? (px + 1) / 2 : (f.twoBit ? (px + 3) / 4 : (px + 7) / 8)) : 0;
-  if (bytes > f.cap) {
-    bytes = 0;
-    px = 0;
-  }
-  if (f.glyphs.size() >= f.maxGlyphs || f.used + bytes > f.cap) flushFace(f);
+  const GlyphMetricsEntry* m = metricsFor(f, cp, gid, size26_6);
+  if (m == nullptr) return nullptr;
 
-  // All growth below is exact and heap-checked (see reserveChecked). On a
-  // failed grow, ask the memory manager to evict rebuildable caches (render
-  // glyph cache, other fonts' arenas — evictionLocked_ keeps THIS font's
-  // faces alive) and retry once. After that: a failed table grow is an
-  // uncached miss (caller skips the glyph this pass); a failed arena grow
-  // degrades to an advance-only glyph so layout survives.
+  if (f.glyphs.size() >= f.maxGlyphs) flushFace(f);
+
+  // All growth below is exact and heap-checked (see reserveChecked). On a failed
+  // grow, ask the memory manager to evict rebuildable caches (render glyph cache,
+  // other fonts' arenas -- evictionLocked_ keeps THIS font's faces alive) and retry
+  // once; then the miss is uncached (the caller skips the glyph this pass).
   static constexpr size_t kTableStep = 64;
   const auto growTables = [&]() {
     return reserveChecked(f.glyphs, f.glyphs.size() + 1, kTableStep, f.maxGlyphs) &&
            reserveChecked(f.cps, f.cps.size() + 1, kTableStep, f.maxGlyphs) &&
-           reserveChecked(f.slot, f.slot.size() + 1, kTableStep, f.maxGlyphs);
+           reserveChecked(f.slot, f.slot.size() + 1, kTableStep, f.maxGlyphs) &&
+           reserveChecked(f.gids, f.gids.size() + 1, kTableStep, f.maxGlyphs);
   };
-  const auto evictOthers = [&]() {
+  if (!growTables()) {
     evictionLocked_ = true;
     freeink::MemoryManager::instance().ensureFree(16 * 1024);
     evictionLocked_ = false;
-  };
-  if (!growTables()) {
-    evictOthers();
     if (!growTables()) return nullptr;
-  }
-  if (px && !reserveChecked(f.bmp, f.used + bytes, 4096, f.cap)) {
-    evictOthers();
-    if (!reserveChecked(f.bmp, f.used + bytes, 4096, f.cap)) {
-      bytes = 0;
-      px = 0;
-    }
   }
 
   EpdGlyph eg{};
-  const int32_t adv12_4 = haveMetrics ? (gm.advance26_6 + 2) >> 2 : (g ? g->advance << 4 : 0);
-  eg.advanceX = static_cast<uint16_t>(adv12_4 < 0 ? 0 : adv12_4);
-  if (px && g && g->pixels) {
-    // Grow the byte arena on demand toward the book's page high-water mark.
-    // flush above guarantees f.used + bytes <= f.cap, so this never exceeds the
-    // ceiling; capacity is retained across page turns (clearCache keeps it).
-    if (f.bmp.size() < f.used + bytes) f.bmp.resize(f.used + bytes, 0);
-    uint8_t* dst = f.bmp.data() + f.used;
-    for (size_t i = 0; i < bytes; ++i) dst[i] = 0;
-    for (uint32_t i = 0; i < px; ++i) {
-      const uint8_t a = g->pixels[i];
+  eg.advanceX = m->advance12_4;
+  eg.width = m->width;
+  eg.height = m->height;
+  eg.left = m->left;
+  eg.top = m->top;
+  eg.dataOffset = 0;
+  eg.dataLength = 0;  // not rasterized yet (or blank when width/height are 0)
+
+  f.glyphs.push_back(eg);
+  f.gids.push_back(m->gid);
+  const uint16_t newIdx = static_cast<uint16_t>(f.glyphs.size() - 1);
+  const auto it = std::lower_bound(f.cps.begin(), f.cps.end(), cp);
+  const size_t pos = static_cast<size_t>(it - f.cps.begin());
+  f.cps.insert(it, cp);
+  f.slot.insert(f.slot.begin() + pos, newIdx);
+  return &f.glyphs[newIdx];
+}
+
+const TtfEpdFont::GlyphMetricsEntry* TtfEpdFont::metricsFor(Face& f, const uint32_t cp,
+                                                            const freeink::font::FtFont::GlyphId gid,
+                                                            const uint32_t size26_6) {
+  const auto it = std::lower_bound(f.metricCps.begin(), f.metricCps.end(), cp);
+  const size_t pos = static_cast<size_t>(it - f.metricCps.begin());
+  if (it != f.metricCps.end() && *it == cp) return &f.metrics[pos];
+
+  GlyphMetricsEntry entry{};
+  entry.gid = gid;
+  freeink::font::FtFont::GlyphMetrics gm;
+  if (f.ft.metricsGlyph26_6(gid, size26_6, gm)) {
+    const int32_t adv12_4 = (gm.advance26_6 + 2) >> 2;
+    entry.advance12_4 = static_cast<uint16_t>(adv12_4 < 0 ? 0 : (adv12_4 > 0xFFFF ? 0xFFFF : adv12_4));
+    entry.width = static_cast<uint8_t>(gm.width > 255 ? 255 : gm.width);
+    entry.height = static_cast<uint8_t>(gm.height > 255 ? 255 : gm.height);
+    entry.left = gm.left;
+    entry.top = gm.top;
+  } else {
+    // No outline metrics (bitmap-only strike, odd glyph): take them from one raster.
+    const freeink::font::GlyphBitmap* g = f.ft.rasterizeGlyph26_6(gid, size26_6);
+    if (g == nullptr) return nullptr;
+    entry.advance12_4 = static_cast<uint16_t>(g->advance << 4);
+    entry.width = static_cast<uint8_t>(g->width > 255 ? 255 : g->width);
+    entry.height = static_cast<uint8_t>(g->height > 255 ? 255 : g->height);
+    entry.left = g->xoff;
+    entry.top = static_cast<int16_t>(-g->yoff);
+  }
+  // Bounded: past the cap a metric is used once and not kept (a pathological book).
+  static constexpr size_t kMaxMetrics = 16384;
+  if (f.metricCps.size() >= kMaxMetrics || !reserveChecked(f.metricCps, f.metricCps.size() + 1, 256, kMaxMetrics) ||
+      !reserveChecked(f.metrics, f.metrics.size() + 1, 256, kMaxMetrics)) {
+    f.scratchMetrics = entry;
+    return &f.scratchMetrics;
+  }
+  f.metricCps.insert(f.metricCps.begin() + pos, cp);
+  f.metrics.insert(f.metrics.begin() + pos, entry);
+  return &f.metrics[pos];
+}
+
+const uint8_t* TtfEpdFont::rasterizeInto(Face& f, EpdGlyph& glyph) {
+  const size_t index = static_cast<size_t>(&glyph - f.glyphs.data());
+  if (index >= f.glyphs.size() || index >= f.gids.size()) return nullptr;
+  const freeink::font::GlyphBitmap* g = f.ft.rasterizeGlyph26_6(f.gids[index], size26_6_);
+  if (g == nullptr || g->pixels == nullptr) return nullptr;
+  const uint32_t w = glyph.width;
+  const uint32_t h = glyph.height;
+  const uint32_t px = w * h;
+  const size_t bytes = f.fourBit ? (px + 1) / 2 : (f.twoBit ? (px + 3) / 4 : (px + 7) / 8);
+  if (bytes == 0 || bytes > f.cap) return nullptr;
+  if (f.used + bytes > f.cap) {
+    // Arena full: drop every bitmap but keep the glyph records (and the metrics), so
+    // nothing layout holds goes stale; glyphs re-rasterize as they are drawn again.
+    for (EpdGlyph& e : f.glyphs) e.dataLength = 0;
+    f.used = 0;
+  }
+  if (!reserveChecked(f.bmp, f.used + bytes, 4096, f.cap)) {
+    evictionLocked_ = true;
+    freeink::MemoryManager::instance().ensureFree(16 * 1024);
+    evictionLocked_ = false;
+    if (!reserveChecked(f.bmp, f.used + bytes, 4096, f.cap)) return nullptr;
+  }
+  if (f.bmp.size() < f.used + bytes) f.bmp.resize(f.used + bytes, 0);
+  uint8_t* dst = f.bmp.data() + f.used;
+  for (size_t i = 0; i < bytes; ++i) dst[i] = 0;
+  // Place the raster in the metrics box the layout used; FreeType's bitmap box matches
+  // it, and any difference is a clipped edge pixel, never a shifted glyph.
+  const int dx = g->xoff - glyph.left;
+  const int dy = glyph.top - (-g->yoff);
+  for (int ry = 0; ry < g->height; ++ry) {
+    const int ty = ry + dy;
+    if (ty < 0 || ty >= static_cast<int>(h)) continue;
+    for (int rx = 0; rx < g->width; ++rx) {
+      const int tx = rx + dx;
+      if (tx < 0 || tx >= static_cast<int>(w)) continue;
+      const uint8_t a = g->pixels[ry * g->width + rx];
+      if (a == 0) continue;
+      const uint32_t i = static_cast<uint32_t>(ty) * w + static_cast<uint32_t>(tx);
       if (f.fourBit) {
         // High nibble first; truncation preserves the original two-bit thresholds on fallback.
-        const uint8_t v = a >> 4;
-        dst[i >> 1] |= static_cast<uint8_t>(v << ((1 - (i & 1)) * 4));
+        dst[i >> 1] |= static_cast<uint8_t>((a >> 4) << ((1 - (i & 1)) * 4));
       } else if (f.twoBit) {
         const uint8_t v = a < 64 ? 0 : (a < 128 ? 1 : (a < 192 ? 2 : 3));
         dst[i >> 2] |= static_cast<uint8_t>(v << ((3 - (i & 3)) * 2));
@@ -367,28 +438,11 @@ const EpdGlyph* TtfEpdFont::faultGlyph(Face& f, const uint32_t cp) {
         dst[i >> 3] |= static_cast<uint8_t>(1u << (7 - (i & 7)));
       }
     }
-    eg.width = static_cast<uint8_t>(g->width);
-    eg.height = static_cast<uint8_t>(g->height);
-    eg.left = g->xoff;
-    // FreeInkFont's yoff is negative-above (top offset from baseline); CrossPoint's
-    // EpdGlyph.top is positive-above (renderer computes screen Y = cursorY - top,
-    // matching the .cpfont converter's top = FreeType bitmap_top). Flip the sign.
-    eg.top = static_cast<int16_t>(-g->yoff);
-    eg.dataOffset = static_cast<uint32_t>(f.used);
-    eg.dataLength = static_cast<uint16_t>(bytes);
-    f.used += bytes;
-  } else {
-    eg.dataOffset = static_cast<uint32_t>(f.used);
-    eg.dataLength = 0;
   }
-
-  f.glyphs.push_back(eg);
-  const uint16_t newIdx = static_cast<uint16_t>(f.glyphs.size() - 1);
-  const auto it = std::lower_bound(f.cps.begin(), f.cps.end(), cp);
-  const size_t pos = static_cast<size_t>(it - f.cps.begin());
-  f.cps.insert(it, cp);
-  f.slot.insert(f.slot.begin() + pos, newIdx);
-  return &f.glyphs[newIdx];
+  glyph.dataOffset = static_cast<uint32_t>(f.used);
+  glyph.dataLength = static_cast<uint16_t>(bytes);
+  f.used += bytes;
+  return dst;
 }
 
 int8_t TtfEpdFont::faultKern(Face& f, const uint32_t leftCp, const uint32_t rightCp) {
@@ -438,8 +492,13 @@ int8_t TtfEpdFont::kernThunk(void* ctx, const uint32_t leftCp, const uint32_t ri
   return f->owner->faultKern(*f, leftCp, rightCp);
 }
 const uint8_t* TtfEpdFont::bitmapThunk(void* ctx, const EpdGlyph* glyph) {
-  if (glyph == nullptr || glyph->dataLength == 0) return nullptr;
-  return static_cast<Face*>(ctx)->bmp.data() + glyph->dataOffset;
+  if (glyph == nullptr) return nullptr;
+  Face* f = static_cast<Face*>(ctx);
+  if (glyph->dataLength != 0) return f->bmp.data() + glyph->dataOffset;
+  if (glyph->width == 0 || glyph->height == 0) return nullptr;  // blank (space)
+  // First draw of a glyph layout measured: rasterize it now. The record lives in this
+  // face's table, which the renderer only reads, so updating its bitmap fields is safe.
+  return f->owner->rasterizeInto(*f, const_cast<EpdGlyph&>(*glyph));
 }
 bool TtfEpdFont::coverageThunk(void* ctx, const uint32_t codepoint) {
   // All styles share one file → coverage comes from the always-live regular face.

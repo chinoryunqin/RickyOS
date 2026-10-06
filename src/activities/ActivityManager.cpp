@@ -116,7 +116,10 @@ namespace {
 // keeps the 16-level state, so its gray edge pixels are driven back cleanly.
 constexpr uint32_t kGraySettleDelayMs = 1500;
 
-bool graySettleAllowed() { return SETTINGS.textAntiAliasing != 0 && SETTINGS.screenInverted == 0; }
+// Off for now: on device a settle occasionally left the panel out of step with the
+// driver (two screens superimposed until a full refresh), cause not yet found. The
+// anti-aliased drawing it uses stays in place for when it returns.
+bool graySettleAllowed() { return false; }
 }  // namespace
 #endif
 
