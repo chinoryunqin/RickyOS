@@ -23,6 +23,12 @@ class RickyClockDigitsTest(unittest.TestCase):
                                    check=True, cwd=ROOT).stdout
         self.assertEqual(header, formatted)
         self.assertEqual(set(glyphs), set('0123456789:'))
+        # The runs decode back to every pixel of every glyph.
+        for glyph in glyphs.values():
+            decoded = []
+            for byte in gen.runs(glyph['levels']):
+                decoded += [byte & 0x0F] * ((byte >> 4) + 1)
+            self.assertEqual(decoded, glyph['levels'])
         # The font ships with its licence (SIL OFL 1.1).
         self.assertIn('SIL Open Font License', (ROOT / 'scripts/fonts/Inter-LICENSE.txt').read_text())
 

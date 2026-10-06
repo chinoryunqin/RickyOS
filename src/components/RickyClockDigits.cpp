@@ -19,11 +19,6 @@ const ricky_clock_digits::Glyph* glyphFor(const char ch) {
 int cellWidth(const ricky_clock_digits::Glyph& glyph) {
   return glyph.ch == ':' ? glyph.advance : ricky_clock_digits::kCellWidth;
 }
-
-uint8_t coverageAt(const ricky_clock_digits::Glyph& glyph, const int x, const int y) {
-  const uint8_t packed = glyph.bits[y * ((glyph.width + 1) / 2) + x / 2];
-  return (x & 1) ? (packed & 0x0F) : (packed >> 4);
-}
 }  // namespace
 
 int capHeight() { return ricky_clock_digits::kCapHeight; }
@@ -41,13 +36,19 @@ void draw(GfxRenderer& renderer, int x, const int yTop, const char* text) {
     const auto* glyph = glyphFor(*c);
     if (!glyph) continue;
     const int originX = x + (cellWidth(*glyph) - glyph->advance) / 2 + glyph->left;
-    // Column order: in portrait a logical column is a panel row (see GfxRenderer).
-    for (int gx = 0; gx < glyph->width; ++gx) {
-      for (int gy = 0; gy < glyph->height; ++gy) {
-        const uint8_t ink = coverageAt(*glyph, gx, gy);
-        if (ink == 0) continue;
-        const int px = originX + gx;
-        const int py = yTop + gy;
+    // Runs of (length - 1) << 4 | coverage, row by row (see the generated header).
+    const int total = glyph->width * glyph->height;
+    int pixel = 0;
+    for (int i = 0; i < glyph->rleBytes && pixel < total; ++i) {
+      const int run = (glyph->rle[i] >> 4) + 1;
+      const int ink = glyph->rle[i] & 0x0F;
+      if (ink == 0) {
+        pixel += run;
+        continue;
+      }
+      for (int end = std::min(total, pixel + run); pixel < end; ++pixel) {
+        const int px = originX + pixel % glyph->width;
+        const int py = yTop + pixel / glyph->width;
         const int paper = renderer.grayscale16Level(px, py);
         const int level = paper - (paper * ink + 7) / 15;  // ink over the picture, toward black
         renderer.drawGrayscale16Pixel(px, py, static_cast<uint8_t>(level * 17));
