@@ -1,5 +1,7 @@
 """RickyOS Standby clock digits: generated header matches its generator and font."""
 import importlib.util
+import shutil
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -14,7 +16,12 @@ class RickyClockDigitsTest(unittest.TestCase):
         header = (ROOT / 'src/components/fonts/rickyClockDigits.h').read_text()
         cap = int(header.split('kCapHeight = ')[1].split(';')[0])
         cell, glyphs = gen.render(ROOT / 'scripts/fonts/InterDisplay-Light.ttf', cap)
-        self.assertEqual(header, gen.header(cap, cell, glyphs))
+        # CI formats every header, so compare against the formatted generator output.
+        clang_format = shutil.which('clang-format') or str(ROOT / '.venv/bin/clang-format')
+        formatted = subprocess.run([clang_format, '--assume-filename=rickyClockDigits.h'],
+                                   input=gen.header(cap, cell, glyphs), capture_output=True, text=True,
+                                   check=True, cwd=ROOT).stdout
+        self.assertEqual(header, formatted)
         self.assertEqual(set(glyphs), set('0123456789:'))
         # The font ships with its licence (SIL OFL 1.1).
         self.assertIn('SIL Open Font License', (ROOT / 'scripts/fonts/Inter-LICENSE.txt').read_text())

@@ -14,6 +14,7 @@
 #include "components/UiAppHelpers.h"
 #include "components/icons/inx_apps.h"
 #ifdef RICKYOS_PRODUCT
+#include "components/RickyAaIcons.h"
 #include "components/icons/rickyAppIcons.h"
 #endif
 #include "fontIds.h"
@@ -166,6 +167,7 @@ void drawRickyAppIcon(const GfxRenderer& renderer, const uint8_t* icon, const in
   } else {
     renderer.drawRoundedRect(tileX, tileY, kAppTileSize, kAppTileSize, kAppTileStroke, kAppTileRadius, true);
   }
+  if (RickyAaIcons::draw(renderer, icon, kRickyAppIconSize, kRickyAppIconSize, x, y, !selected)) return;
   constexpr int rowBytes = (kRickyAppIconSize + 7) / 8;
   for (int row = 0; row < kRickyAppIconSize; ++row) {
     for (int column = 0; column < kRickyAppIconSize; ++column) {

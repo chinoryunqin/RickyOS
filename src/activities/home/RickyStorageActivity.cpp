@@ -285,7 +285,7 @@ void RickyStorageActivity::buildScreen(UiScreen& screen) {
     RickyPageUi::card(target, rect, focus && selected == i);
     screen.frame().hit(rect, ACTION_ROW, i, fui::InputTouch);
     const int middle = rect.y + rect.height / 2;
-    RickyPageUi::pageIcon(target, rect.x + pad, middle, *icons[i]);
+    RickyPageUi::pageIcon(target, renderer, rect.x + pad, middle, *icons[i]);
     const int x = rect.x + pad + icons[i]->w + gap;
     const int width = rect.right() - x - pad;
     const int top = middle - (bodyHeight + smallHeight) / 2;
@@ -306,7 +306,7 @@ void RickyStorageActivity::buildScreen(UiScreen& screen) {
   RickyPageUi::card(target, transfer, focus && selected == 5);
   screen.frame().hit(transfer, ACTION_ROW, 5, fui::InputTouch);
   const int middle = transfer.y + transfer.height / 2;
-  RickyPageUi::pageIcon(target, transfer.x + pad, middle, icon_ricky_upload_40);
+  RickyPageUi::pageIcon(target, renderer, transfer.x + pad, middle, icon_ricky_upload_40);
   target.text(fui::Rect{static_cast<int16_t>(transfer.x + pad + icon_ricky_upload_40.w + gap),
                         static_cast<int16_t>(middle - bodyHeight / 2),
                         static_cast<int16_t>(transfer.width - pad * 2 - icon_ricky_upload_40.w - gap - 24),

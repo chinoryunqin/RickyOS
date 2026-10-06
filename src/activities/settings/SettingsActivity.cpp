@@ -1489,7 +1489,7 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
       RickyPageUi::card(target, rect, focus && selected == i);
       screen.frame().hit(rect, ACTION_ROW, i, fui::InputTouch);
       const int middle = rect.y + rect.height / 2;
-      RickyPageUi::pageIcon(target, rect.x + pad, middle, *icons[i]);
+      RickyPageUi::pageIcon(target, renderer, rect.x + pad, middle, *icons[i]);
       const int x = rect.x + pad + icons[i]->w + gap;
       target.text(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(middle - bodyHeight / 2),
                             static_cast<int16_t>(rect.right() - x - pad), static_cast<int16_t>(bodyHeight)},
