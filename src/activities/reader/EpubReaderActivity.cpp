@@ -325,6 +325,11 @@ void EpubReaderActivity::onExit() {
 #if FREEINK_DEVICE_EEGO_A4
   // EEGO uses a single-pass grayscale page; force a clean first frame after exit.
   renderer.requestNextFullRefresh();
+#elif FREEINK_DEVICE_READPICO && defined(RICKYOS_PRODUCT)
+  // The last page is 16-level; a fast B/W frame over it leaves its gray text behind,
+  // and the UI's later refreshes only drive what they change, so the residue stayed and
+  // built up. The first UI frame is a full GC16 clean.
+  renderer.requestNextFullRefresh();
 #endif
 }
 

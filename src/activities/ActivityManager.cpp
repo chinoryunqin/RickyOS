@@ -209,7 +209,13 @@ void ActivityManager::settleToGray(RenderLock&& lock, const uint32_t generation)
     return;
   }
 #if !defined(SIMULATOR)
-  display.setNextGray16Profile(1);
+  // The text-turn waveform only drives pixels it believes changed, so small errors in
+  // the panel's real state build up across fast refreshes and settles (old screens show
+  // through). Every few settles is a full GC16 clean instead.
+  static uint8_t settles = 0;
+  constexpr uint8_t kCleanEvery = 8;
+  settles = static_cast<uint8_t>((settles + 1) % kCleanEvery);
+  display.setNextGray16Profile(settles == 0 ? 2 : 1);
 #endif
   const bool committed = renderer.commitGrayscale16();
   LOG_DBG("ACT", "Gray settle: %s in %lu ms", committed ? "done" : "failed", millis() - started);
