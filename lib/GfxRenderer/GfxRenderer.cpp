@@ -2250,6 +2250,10 @@ void GfxRenderer::clearScreen(const uint8_t color) const {
     return;
   }
   display.clearScreen(color);
+  if (displayCapture_ && grayscale16Buffer) {
+    // A screen may redraw several times in one render; earlier passes must not show.
+    memset(grayscale16Buffer, color == 0x00 ? 0x00 : 0xFF, grayscale16FrameBytes());
+  }
 }
 
 void GfxRenderer::beginStripTarget(uint8_t* scratch, int stripY0, int stripRows) const {
@@ -2292,6 +2296,7 @@ void GfxRenderer::invertScreen() const {
 }
 
 void GfxRenderer::displayBuffer(HalDisplay::RefreshMode refreshMode, DisplayRefreshContext context) const {
+  if (displayCapture_) return;  // the capture's owner commits the 16-level frame
   auto elapsed = millis() - start_ms;
   LOG_DBG("GFX", "Time = %lu ms from clearScreen to displayBuffer", elapsed);
   HalDisplay::RefreshMode effectiveRefreshMode = refreshMode;
@@ -2308,6 +2313,7 @@ void GfxRenderer::displayBuffer(HalDisplay::RefreshMode refreshMode, DisplayRefr
 }
 
 void GfxRenderer::displayBufferAsync(const HalDisplay::RefreshMode refreshMode, DisplayRefreshContext context) const {
+  if (displayCapture_) return;
   HalDisplay::RefreshMode effectiveRefreshMode = refreshMode;
   if (nextRefreshOverridePending) {
     effectiveRefreshMode = nextRefreshOverride;

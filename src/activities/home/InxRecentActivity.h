@@ -1,5 +1,7 @@
 #pragma once
 
+#include <BoardConfig.h>
+
 #include <array>
 #include <cstdint>
 #include <string>
@@ -79,6 +81,11 @@ class InxRecentActivity final : public Activity {
   void drawCover(const Rect& content);
 
  public:
+#if defined(RICKYOS_PRODUCT) && FREEINK_DEVICE_READPICO
+  // render() redraws the whole home screen from state; a cover still to prepare queues
+  // its own update, which cancels the settle.
+  bool wantsGraySettle() const override { return true; }
+#endif
   explicit InxRecentActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
       : Activity("InxRecent", renderer, mappedInput) {}
 

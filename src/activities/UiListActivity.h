@@ -1,5 +1,7 @@
 #pragma once
 
+#include <BoardConfig.h>
+
 #include "activities/Activity.h"
 #include "components/UiAppHost.h"
 #include "util/ButtonNavigator.h"
@@ -16,6 +18,10 @@
 // should NOT derive from this — they use UiAppHost directly.
 class UiListActivity : public Activity, protected UiAppHost {
  public:
+#if defined(RICKYOS_PRODUCT) && FREEINK_DEVICE_READPICO
+  // Every list screen redraws itself whole from state (clearScreen, chrome, UI, footer).
+  bool wantsGraySettle() const override { return true; }
+#endif
   void onEnter() override;
   void loop() override;
   void render(RenderLock&&) override;

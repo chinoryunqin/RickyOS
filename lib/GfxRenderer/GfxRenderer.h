@@ -83,6 +83,9 @@ class GfxRenderer {
 
   HalDisplay& display;
   mutable uint8_t* grayscale16Buffer = nullptr;
+  // While capturing, a screen is redrawn into the 16-level frame for a later commit:
+  // display pushes are skipped and clearScreen() also clears that frame.
+  bool displayCapture_ = false;
   RenderMode renderMode;
   mutable bool absoluteGrayPlanes = false;
   Orientation orientation;
@@ -551,6 +554,8 @@ class GfxRenderer {
   // The 16-level value (0 = black .. 15 = white) at a logical pixel of the active frame;
   // 15 outside the frame or with none active. For blending over a picture.
   uint8_t grayscale16Level(int x, int y) const;
+  void setDisplayCapture(bool capture) { displayCapture_ = capture; }
+  bool isDisplayCapture() const { return displayCapture_; }
   // Render into a caller-owned 4bpp frame (e.g. a PSRAM page cache) instead of the
   // panel's; nothing is pushed. The B/W proxy still goes to the framebuffer, which
   // the caller saves and restores. End with endGrayscale16Offscreen().

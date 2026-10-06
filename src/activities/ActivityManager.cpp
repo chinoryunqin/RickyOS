@@ -106,10 +106,25 @@ void ActivityManager::renderTaskTrampoline(void* param) {
   self->renderTaskLoop();
 }
 
+#if defined(RICKYOS_PRODUCT) && FREEINK_DEVICE_READPICO
+namespace {
+// The UI draws in black and white so every touch gets the fast refresh (~230 ms), which
+// leaves curves and text edges stepped: a 300 ppi screen that looks like 200 ppi. Once
+// input has been quiet this long, the same screen is redrawn into the 16-level frame and
+// committed with the no-flash text-turn waveform, so a screen at rest looks like the
+// reader's anti-aliased text. The next touch goes back to the fast B/W refresh; the panel
+// keeps the 16-level state, so its gray edge pixels are driven back cleanly.
+constexpr uint32_t kGraySettleDelayMs = 1500;
+
+bool graySettleAllowed() { return SETTINGS.textAntiAliasing != 0 && SETTINGS.screenInverted == 0; }
+}  // namespace
+#endif
+
 void ActivityManager::renderTaskLoop() {
   auto waitTicks = portMAX_DELAY;
   auto idleDelayTicks = portMAX_DELAY;
   uint32_t idleGeneration = 0;
+  [[maybe_unused]] bool graySettlePending = false;
   while (true) {
     const bool idleArmed = waitTicks != portMAX_DELAY;
     const bool foreground = ulTaskNotifyTake(pdTRUE, waitTicks) != 0;
@@ -142,14 +157,27 @@ void ActivityManager::renderTaskLoop() {
       if (foreground) {
         // Some renderers release the lock, so read activity-owned metadata
         // before calling them. Input during the render also cancels its idle pass.
-        const auto delayMs = currentActivity->idleRenderDelayMs();
+        auto delayMs = currentActivity->idleRenderDelayMs();
+#if defined(RICKYOS_PRODUCT) && FREEINK_DEVICE_READPICO
+        graySettlePending = delayMs == 0 && currentActivity->wantsGraySettle() && graySettleAllowed();
+        if (graySettlePending) delayMs = kGraySettleDelayMs;
+#endif
         idleGeneration = idleRenderGeneration.load(std::memory_order_relaxed);
         display.setInverted(SETTINGS.screenInverted != 0);
         currentActivity->render(std::move(lock));
         idleDelayTicks = delayMs != 0 ? pdMS_TO_TICKS(delayMs) : portMAX_DELAY;
         waitTicks = idleDelayTicks;
       } else if (!idleRenderCancelled(idleGeneration)) {
+#if defined(RICKYOS_PRODUCT) && FREEINK_DEVICE_READPICO
+        if (graySettlePending) {
+          graySettlePending = false;
+          settleToGray(std::move(lock), idleGeneration);
+        } else {
+          currentActivity->renderIdle(idleGeneration);
+        }
+#else
         currentActivity->renderIdle(idleGeneration);
+#endif
       }
     }
     // An idle timeout must never acknowledge requestUpdateAndWait(): its
@@ -165,6 +193,28 @@ void ActivityManager::renderTaskLoop() {
     }
   }
 }
+
+#if defined(RICKYOS_PRODUCT) && FREEINK_DEVICE_READPICO
+void ActivityManager::settleToGray(RenderLock&& lock, const uint32_t generation) {
+  if (!renderer.beginGrayscale16()) return;
+  const unsigned long started = millis();
+  renderer.setDisplayCapture(true);
+  currentActivity->render(std::move(lock));
+  renderer.setDisplayCapture(false);
+  if (!renderer.isGrayscale16Active()) return;
+  if (idleRenderCancelled(generation)) {
+    // Input arrived while drawing: the B/W frame on the glass is still current.
+    renderer.cancelGrayscale16();
+    LOG_DBG("ACT", "Gray settle: cancelled by input");
+    return;
+  }
+#if !defined(SIMULATOR)
+  display.setNextGray16Profile(1);
+#endif
+  const bool committed = renderer.commitGrayscale16();
+  LOG_DBG("ACT", "Gray settle: %s in %lu ms", committed ? "done" : "failed", millis() - started);
+}
+#endif
 
 void ActivityManager::loop() {
   if (mappedInput.consumeSuppressedRelease()) {
