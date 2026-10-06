@@ -50,7 +50,7 @@ class RickyReaderGray16Test(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 patch.patch_text(text.replace(old, old.replace('bwProxy', 'proxy')), old, new)
         # Reader turns keep the rails up; long-lived frames still power down.
-        self.assertIn('const bool turnOff = g_gray16Profile == 0;', patch.NEW_COMMIT)
+        self.assertIn('const bool turnOff = g_gray16Profile == 0 || g_gray16Profile == 3;', patch.NEW_COMMIT)
 
     def test_jpeg_detection_for_native_images(self):
         header = (ROOT / 'lib/Epub/Epub/blocks/ImageBlock.h').read_text()
