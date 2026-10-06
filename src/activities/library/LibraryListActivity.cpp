@@ -834,20 +834,17 @@ bool LibraryListActivity::handleCustomInput() {
     return true;
   }
 
-#ifdef RICKYOS_PRODUCT
-  // The shelf pages four books at a time. The generic list scrolls by the rows the last
-  // page drew, which on a last page holding one book is one row; the shelf start rounds
-  // up to its page, so swiping back from there never left the last page.
-  const auto swipe = mappedInput.wasSwipe();
-  if (swipe == MappedInputManager::SwipeDir::Up || swipe == MappedInputManager::SwipeDir::Down) {
-    activeNav().requestScroll(swipe == MappedInputManager::SwipeDir::Up ? SHELF_CAPACITY : -SHELF_CAPACITY);
-    requestUpdate();
-    return true;
-  }
-#endif
-
   return false;
 }
+
+#ifdef RICKYOS_PRODUCT
+// The shelf pages four books at a time. The generic list scrolls by the rows the last
+// page drew, which on a last page holding one book is one row; the shelf start rounds
+// up to its page, so swiping back from there never left the last page. Scrolling stays
+// in UiListActivity::loop(), after the touch is routed: taking the swipe earlier left
+// the touched book pressed (drawn inverted) because its release never reached the UI.
+int LibraryListActivity::swipeScrollRows() { return SHELF_CAPACITY; }
+#endif
 
 bool LibraryListActivity::handleButtons() {
   const int count = listCount();

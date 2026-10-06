@@ -61,6 +61,9 @@ class LibraryListActivity final : public UiTabListActivity {
   void onTabAction(int index) override;
   void stepTab(int direction) override;
   bool handleCustomInput() override;
+#ifdef RICKYOS_PRODUCT
+  int swipeScrollRows() override;
+#endif
   bool handleButtons() override;
   void navigateButtons() override;
   // The FreeInkUI header owns both the title and search touch target.

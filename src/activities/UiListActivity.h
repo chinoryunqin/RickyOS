@@ -34,6 +34,10 @@ class UiListActivity : public Activity, protected UiAppHost {
   UiListActivity(const char* name, GfxRenderer& renderer, MappedInputManager& mappedInput,
                  bool wantsTouchLongPress = false, bool upstreamStyle = false);
 
+  // Rows one vertical swipe scrolls: the rows the last page drew, unless a layout pages
+  // differently (the library shelf moves four books at a time).
+  virtual int swipeScrollRows() { return activeNav().inputPageRows(); }
+
   // --- subclass contract -----------------------------------------------------
   // Current number of list rows (re-read every loop pass; may change).
   virtual int listCount() const = 0;

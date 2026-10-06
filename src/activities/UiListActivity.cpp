@@ -86,7 +86,8 @@ void UiListActivity::loop() {
   const auto swipe = mappedInput.wasSwipe();
   if (swipe == MappedInputManager::SwipeDir::Up || swipe == MappedInputManager::SwipeDir::Down) {
     auto& n = activeNav();
-    const int delta = swipe == MappedInputManager::SwipeDir::Up ? n.inputPageRows() : -n.inputPageRows();
+    const int rows = swipeScrollRows();
+    const int delta = swipe == MappedInputManager::SwipeDir::Up ? rows : -rows;
     LOG_DBG("LIST", "%s swipe delta=%d count=%d", name.c_str(), delta, listCount());
     n.requestScroll(delta);
     requestUpdate();
