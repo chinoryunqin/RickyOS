@@ -76,11 +76,12 @@ export function activeOffset(ota) {
   const seqs = [];
   for (const at of [0, 4096]) {
     const record = ota.subarray(at, at + 32);
-    if (record.every(b => b === 255)) continue;
     const view = new DataView(record.buffer, record.byteOffset, record.byteLength);
     const seq = view.getUint32(0, true), state = view.getUint32(24, true);
-    requireThat(seq > 0 && seq < 0xffffffff &&
-      view.getUint32(28, true) === otaCrc(record.subarray(0, 4)), '启动记录 CRC 或序号错误。');
+    // Like the ESP-IDF bootloader, a record with sequence 0/0xffffffff or a bad
+    // CRC is not a vote. Arduino's boot_app0.bin ships such a second record
+    // (sequence 0, CRC 0xffffffff), so devices never updated over the air have it.
+    if (!(seq > 0 && seq < 0xffffffff && view.getUint32(28, true) === otaCrc(record.subarray(0, 4)))) continue;
     requireThat(state === 2 || state === 0xffffffff, '启动槽待验证、失效或存在回滚状态，停止。');
     seqs.push(seq);
   }
@@ -116,9 +117,14 @@ export function checkRelease(release) {
 export function checkFullInstall(bundle) {
   const specs = [['bootloader', 0, 24, 0x8000], ['partitions', 0x8000, 3072, 4096],
     ['boot_app0', 0xe000, 8192, 8192]];
+  // Factory images are built from MindReset's open source, so devices need not
+  // share an app digest. Eligibility is the verified factory layout plus the
+  // Read_Pico app descriptor (inspectBackup) and a saved, re-verified full backup.
   requireThat(bundle?.approved === true && bundle.hardwareAccepted === true &&
     Array.isArray(bundle.segments) && bundle.segments.length === 3 &&
-    Array.isArray(bundle.factorySources) && bundle.factorySources.length > 0 && bundle.factorySources.length <= 32,
+    Array.isArray(bundle.factoryLayouts) && bundle.factoryLayouts.length > 0 &&
+    bundle.factoryLayouts.every(layout => layout === 'mindreset-factory-4m-v1') &&
+    [undefined, true, false].includes(bundle.otherSystems),
     '首次安装包尚未通过硬件验收，不能迁移原厂系统。');
   for (const [i, [role, offset, min, max]] of specs.entries()) {
     const item = bundle.segments[i];
@@ -129,11 +135,6 @@ export function checkFullInstall(bundle) {
       '首次安装组件的类型、位置、大小或摘要不合法。');
   }
   requireThat(new Set(bundle.segments.map(item => item.file)).size === 3, '安装组件文件不能重复。');
-  for (const source of bundle.factorySources) requireThat(source?.hardwareAccepted === true &&
-    typeof source.id === 'string' && /^[A-Za-z0-9._-]{1,80}$/.test(source.id) &&
-    source.layout === 'mindreset-factory-4m-v1' &&
-    ['tableSha256', 'bootloaderSha256', 'appSha256'].every(key => /^[a-f0-9]{64}$/.test(source[key])),
-    '原厂固件识别档案没有经过验收。');
 }
 export async function checkInstallAssets(assets, release) {
   checkRelease(release);
@@ -153,12 +154,15 @@ export async function checkInstallAssets(assets, release) {
 }
 export function checkPlanRelease(plan, release) {
   checkRelease(release);
-  requireThat(plan && ['upgrade', 'factory'].includes(plan.kind), '没有识别出可安装的设备。');
+  requireThat(plan && ['upgrade', 'factory', 'other'].includes(plan.kind), '没有识别出可安装的设备。');
+  if (plan.kind === 'other') {
+    requireThat(release.mode === 'auto-install' && release.fullInstall.otherSystems === true,
+      '该发行包不包含完整安装组件，不能替换当前系统。');
+  }
   if (plan.kind === 'factory') {
     requireThat(release.mode === 'auto-install', '该发行包不包含原厂首次安装组件。');
-    requireThat(release.fullInstall.factorySources.some(source => source.layout === plan.layout &&
-      source.tableSha256 === plan.tableSha256 && source.bootloaderSha256 === plan.bootloaderSha256 &&
-      source.appSha256 === plan.appSha256), '识别到原厂系统，但这个原厂版本尚未通过安装验收。请保存备份并联系 Ricky AI Studio。');
+    requireThat(release.fullInstall.factoryLayouts.includes(plan.layout),
+      '识别到原厂系统，但这种分区布局尚未通过安装验收。请保存备份并联系 Ricky AI Studio。');
   }
 }
 export async function checkFirmware(bytes, release) {
@@ -170,15 +174,47 @@ export async function checkFirmware(bytes, release) {
 export async function inspectBackup(bytes) {
   requireThat(bytes.length === FLASH_BYTES, '完整 Flash 备份必须为 16 MB。');
   const table = bytes.slice(0x8000, 0x9000), ota = bytes.slice(0xe000, 0x10000);
+  try { return await classifyBackup(bytes, table, ota); }
+  catch {
+    // Any other system (community firmware, a damaged install, an unknown
+    // layout) gets the complete install: every region RickyOS uses is rewritten.
+    return { kind: 'other', table, ota, offset: 0x10000 };
+  }
+}
+function checkFactoryApp(app) {
+  const view = new DataView(app.buffer, app.byteOffset);
+  const project = new TextDecoder().decode(app.subarray(80, 112)).split('\0')[0];
+  requireThat(app[0] === 0xe9 && app[1] >= 1 && app[1] <= 16 && view.getUint16(12, true) === 9 &&
+    view.getUint32(28, true) >= 256 && view.getUint32(32, true) === 0xabcd5432 && project === 'Read_Pico',
+    '没有识别到受支持的 Read Pico 原厂应用。');
+}
+// Without a backup, classify from the partition table, boot records and the
+// first 4 KiB of the app that boots. The user confirms the model; a RickyOS or
+// CrossMux layout gets the app-only update, the factory layout and anything
+// else the complete install.
+export async function inspectHeaders(table, ota, readAt) {
+  try {
+    if (table[66] === 0 && table[67] === 0) {
+      await checkFactoryPartitions(table);
+      checkFactoryApp(await readAt(0x10000, 4096));
+      return { kind: 'factory', layout: 'mindreset-factory-4m-v1', table, ota, offset: 0x10000 };
+    }
+    await checkPartitions(table);
+    const offset = activeOffset(ota), head = await readAt(offset, 4096);
+    requireThat(head[0] === 0xe9 && head[1] >= 1 && head[1] <= 16 &&
+      new DataView(head.buffer, head.byteOffset).getUint16(12, true) === 9, '不是有效的 ESP32-S3 应用镜像。');
+    return { kind: 'upgrade', table, ota, offset };
+  } catch {
+    return { kind: 'other', table, ota, offset: 0x10000 };
+  }
+}
+async function classifyBackup(bytes, table, ota) {
   // Classify by app subtype, then validate the entire table. A damaged upgrade
-  // must never fall through to the factory migration path.
+  // must never be treated as the factory system.
   if (table[66] === 0 && table[67] === 0) {
     await checkFactoryPartitions(table);
-    const app = bytes.subarray(0x10000, 0x410000), view = new DataView(app.buffer, app.byteOffset);
-    const project = new TextDecoder().decode(app.subarray(80, 112)).split('\0')[0];
-    requireThat(app[0] === 0xe9 && app[1] >= 1 && app[1] <= 16 && view.getUint16(12, true) === 9 &&
-      view.getUint32(28, true) >= 256 && view.getUint32(32, true) === 0xabcd5432 && project === 'Read_Pico',
-      '没有识别到受支持的 Read Pico 原厂应用。');
+    const app = bytes.subarray(0x10000, 0x410000);
+    checkFactoryApp(app);
     return { kind: 'factory', layout: 'mindreset-factory-4m-v1', table, ota, offset: 0x10000,
       tableSha256: await sha256(table), bootloaderSha256: await sha256(bytes.subarray(0, 0x8000)),
       appSha256: await sha256(app) };

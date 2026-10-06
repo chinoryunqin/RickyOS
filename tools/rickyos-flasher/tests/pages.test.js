@@ -47,5 +47,6 @@ test('installer is built as a separate entry and keeps release and risk gates vi
   assert.match(html, /id="model-confirm"/);
   assert.match(html, /id="write-confirm"/);
   assert.match(html, /正式安装包尚未开放/);
-  assert.match(html, /完整 Flash 备份也不含 SD 卡/);
+  assert.match(html, /网站不操作 SD 卡/);
+  assert.match(html, /id="backup-opt"/);
 });
