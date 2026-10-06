@@ -21,13 +21,15 @@ test('installer preserves every controller element and all stage indicators', as
   assert.match(html, /<ol class="install-steps"/);
   assert.doesNotMatch(html, /role="tab"|data-stage|data-show-finish|preview-next/);
 });
-test('production pages use real native screenshot and contain no prototype controls', async () => {
-  for (const file of ['index.html', 'install.html']) {
-    const html = await read(file);
-    assert.match(html, /src="\.\/src\/assets\/home-frame\.png"/);
-    assert.match(html, /原生模拟器/);
+test('production pages label their device images and contain no prototype controls', async () => {
+  const home = await read('index.html'), install = await read('install.html');
+  // The home hero is a product image made from a photo of a real device; say so.
+  assert.match(home, /src="\.\/src\/assets\/launch\.jpg"/);
+  assert.match(home, /据实拍照片制作/);
+  assert.match(install, /src="\.\/src\/assets\/home-frame\.png"/);
+  assert.match(install, /原生模拟器/);
+  for (const html of [home, install])
     assert.doesNotMatch(html, /design-preview|concepts\.js|proposal-bar|查看方案 [AB]|预览检查后的界面/);
-  }
 });
 test('all production page links are relative and license page is reachable', async () => {
   for (const file of ['index.html', 'install.html', 'licenses.html']) {

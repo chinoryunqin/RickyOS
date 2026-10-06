@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const required = ['index.html', 'install.html', 'licenses.html', 'releases.json', 'ota.json', 'third-party-licenses.txt'];
-const approvedAsset = /^(?:(?:site|install|rom|esp[a-z0-9]+(?:-rev[0-9]+)?)-[A-Za-z0-9_-]+\.js|site-[A-Za-z0-9_-]+\.css|(?:approved-logo|home-frame)-[A-Za-z0-9_-]+\.png)$/;
+const approvedAsset = /^(?:(?:site|install|rom|esp[a-z0-9]+(?:-rev[0-9]+)?)-[A-Za-z0-9_-]+\.js|site-[A-Za-z0-9_-]+\.css|(?:(?:approved-logo|home-frame)-[A-Za-z0-9_-]+\.png|launch-[A-Za-z0-9_-]+\.jpg))$/;
 
 export async function checkPreview(directory) {
   const root = resolve(directory);
