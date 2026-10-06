@@ -428,16 +428,19 @@ MappedInputManager::SwipeDir MappedInputManager::wasSwipe() const {
 // Edge classification (which swipe counts as an edge gesture) lives in the
 // SDK; only the MEANING of each edge — back, menu, home, light panel, and the
 // home-key remap — is decided here.
-bool MappedInputManager::wasEdgeSwipe(const freeink::ui::ScreenEdge edge) const {
+bool MappedInputManager::wasEdgeSwipe(const freeink::ui::ScreenEdge edge, const float edgeFrac) const {
   int sx = 0;
   int sy = 0;
   int ex = 0;
   int ey = 0;
   if (!decodeSwipe(sx, sy, ex, ey)) return false;
-  const bool hit = fui::edgeSwipe(edge, sx, sy, ex, ey, renderer.getScreenWidth(), renderer.getScreenHeight());
+  const bool hit =
+      fui::edgeSwipe(edge, sx, sy, ex, ey, renderer.getScreenWidth(), renderer.getScreenHeight(), edgeFrac);
   if (hit) rememberTouchHeldTime();
   return hit;
 }
+
+bool MappedInputManager::wasStrictLeftEdgeSwipe() const { return wasEdgeSwipe(fui::ScreenEdge::Left, 0.06f); }
 
 bool MappedInputManager::wasBackGesture() const {
   // Tap on the header back button (rect recorded by BaseTheme::drawHeader;

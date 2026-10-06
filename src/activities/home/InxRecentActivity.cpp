@@ -442,6 +442,19 @@ void InxRecentActivity::loop() {
 
   const int count = static_cast<int>(books->size());
   const auto swipe = mappedInput.wasSwipe();
+#ifdef RICKYOS_PRODUCT
+  if (rickyHome && swipe != MappedInputManager::SwipeDir::None) {
+    // A page holds RickyHomeLayout::PAGE_BOOKS books; moving the selection by one book
+    // changed the page only every third swipe, so most swipes did nothing visible.
+    const int page = RickyHomeLayout::PAGE_BOOKS;
+    const int pages = (count + page - 1) / page;
+    const int current = RickyHomeLayout::pageStart(selected) / page;
+    const bool forward = swipe == MappedInputManager::SwipeDir::Left || swipe == MappedInputManager::SwipeDir::Up;
+    selected = ((current + (forward ? 1 : pages - 1)) % pages) * page;
+    requestUpdate();
+    return;
+  }
+#endif
   if (mappedInput.wasReleased(MappedInputManager::Button::NavNext) || swipe == MappedInputManager::SwipeDir::Up ||
       swipe == MappedInputManager::SwipeDir::Left) {
     selected = (selected + 1) % count;
