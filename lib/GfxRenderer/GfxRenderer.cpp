@@ -747,7 +747,7 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
       }
     }
 #ifdef RICKYOS_PRODUCT
-    else if ((is2Bit || is4Bit) && renderer.isGrayscale16Active() && pixelState) {
+    else if ((is2Bit || is4Bit) && renderer.isGrayscale16Active()) {
       // 2-bit faces (downloaded .cpfont) and synthetic bold go straight into the 16-level
       // frame as well, so a page is rasterised once instead of once per B/W, LSB and MSB
       // plane. Coverage 0..3 spreads over the 16 levels (x5); 0 stays transparent.
@@ -768,7 +768,12 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
           const uint8_t coverage = syntheticBoldPixels == 0 ? current
                                                             : dilate2BitCoverage(current, previous1, previous2,
                                                                                  previous3, syntheticBoldPixels);
-          draw4BitGlyphPixel(renderer, screenX, screenY, static_cast<uint8_t>(coverage * 5));
+          if (pixelState) {
+            draw4BitGlyphPixel(renderer, screenX, screenY, static_cast<uint8_t>(coverage * 5));
+          } else if (coverage != 0) {
+            // White text on ink (a selected pill or tile): coverage lifts toward paper.
+            renderer.drawGrayscale16Pixel(screenX, screenY, static_cast<uint8_t>(coverage * 5 * 17));
+          }
           previous3 = previous2;
           previous2 = previous1;
           previous1 = current;
@@ -1193,6 +1198,11 @@ void GfxRenderer::drawRect(const int x, const int y, const int width, const int 
 
 void GfxRenderer::drawArc(const int maxRadius, const int cx, const int cy, const int xDir, const int yDir,
                           const int lineWidth, const bool state) const {
+  if (grayscale16Buffer && maxRadius > 0) {
+    antialiasedQuarter(maxRadius, cx, cy, xDir, yDir, std::max(1, std::min(lineWidth, maxRadius)),
+                       framebufferState(renderMode, state));
+    return;
+  }
   const int stroke = std::min(lineWidth, maxRadius);
   const int innerRadius = std::max(maxRadius - stroke, 0);
   const int outerRadius = maxRadius;
@@ -1577,6 +1587,12 @@ void GfxRenderer::maskRoundedRectOutsideCorners(const int x, const int y, const 
 template <Color color>
 void GfxRenderer::fillArc(const int maxRadius, const int cx, const int cy, const int xDir, const int yDir) const {
   if (maxRadius <= 0) return;
+  if constexpr (color == Color::Black || color == Color::White) {
+    if (grayscale16Buffer) {
+      antialiasedQuarter(maxRadius, cx, cy, xDir, yDir, 0, framebufferState(renderMode, color == Color::Black));
+      return;
+    }
+  }
 
   if constexpr (color == Color::Clear) {
     return;
@@ -1842,6 +1858,40 @@ bool GfxRenderer::commitGrayscale16() const {
 void GfxRenderer::cancelGrayscale16() const {
   if (grayscale16Buffer) cancelNativeGray(display);
   grayscale16Buffer = nullptr;
+}
+
+// One quarter of a rounded corner straight into the 16-level frame, with edge coverage
+// from a 4x4 sample grid blended over what is already there: the 1-bit quarter-circle
+// steps are what made rounded cards and pills look coarse at 300 ppi. Same geometry as
+// the 1-bit arcs (pixel centres within the radius), so layouts do not shift. stroke 0
+// fills the quarter disc.
+void GfxRenderer::antialiasedQuarter(const int radius, const int cx, const int cy, const int xDir, const int yDir,
+                                     const int stroke, const bool ink) const {
+  const float outer = static_cast<float>(radius) + 0.5f;
+  const float inner = stroke > 0 ? std::max(0.0f, static_cast<float>(radius - stroke) + 0.5f) : -1.0f;
+  const float outerSq = outer * outer;
+  const float innerSq = inner * inner;
+  const int inkLevel = ink ? 0 : 15;
+  for (int dx = 0; dx <= radius; ++dx) {  // columns: contiguous in panel memory in portrait
+    for (int dy = 0; dy <= radius; ++dy) {
+      int covered = 0;
+      for (int i = 0; i < 4; ++i) {
+        const float sx = static_cast<float>(dx) - 0.375f + 0.25f * static_cast<float>(i);
+        for (int j = 0; j < 4; ++j) {
+          const float sy = static_cast<float>(dy) - 0.375f + 0.25f * static_cast<float>(j);
+          const float d = sx * sx + sy * sy;
+          if (d <= outerSq && (inner < 0 || d >= innerSq)) ++covered;
+        }
+      }
+      if (covered == 0) continue;
+      const int x = cx + xDir * dx;
+      const int y = cy + yDir * dy;
+      const int paper = grayscale16Level(x, y);
+      const int delta = (inkLevel - paper) * covered;  // over 16 samples, rounded either way
+      const int level = paper + (delta >= 0 ? (delta + 8) / 16 : -((8 - delta) / 16));
+      drawGrayscale16Pixel(x, y, static_cast<uint8_t>(level * 17));
+    }
+  }
 }
 
 uint8_t GfxRenderer::grayscale16Level(const int x, const int y) const {

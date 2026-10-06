@@ -554,6 +554,7 @@ class GfxRenderer {
   // The 16-level value (0 = black .. 15 = white) at a logical pixel of the active frame;
   // 15 outside the frame or with none active. For blending over a picture.
   uint8_t grayscale16Level(int x, int y) const;
+  void antialiasedQuarter(int radius, int cx, int cy, int xDir, int yDir, int stroke, bool ink) const;
   void setDisplayCapture(bool capture) { displayCapture_ = capture; }
   bool isDisplayCapture() const { return displayCapture_; }
   // Render into a caller-owned 4bpp frame (e.g. a PSRAM page cache) instead of the
