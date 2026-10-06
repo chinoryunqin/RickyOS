@@ -33,6 +33,9 @@
 #include "components/RickyPageUi.h"
 #include "components/controls/button.h"
 #include "util/BookCoverLoader.h"
+#ifdef RICKYOS_PRODUCT
+#include "activities/home/RickyStorageActivity.h"
+#endif
 #endif
 
 namespace fui = freeink::ui;
@@ -464,6 +467,9 @@ void LibraryListActivity::promptDeleteBookByPath(const std::string& path, const 
         LOG_DBG("LIB", "deleting %s", path.c_str());
         clearBookCache(path);
         if (!Storage.remove(path.c_str())) LOG_ERR("LIB", "cannot delete %s", path.c_str());
+#ifdef RICKYOS_PRODUCT
+        RickyStorageActivity::invalidateScan();
+#endif
         if (RECENT_BOOKS.removeByPath(path)) RECENT_BOOKS.saveToFile();
         GUI.drawPopup(renderer, tr(STR_LIBRARY_REBUILDING));
         rebuildIndex();
@@ -827,6 +833,18 @@ bool LibraryListActivity::handleCustomInput() {
     lockNextBackRelease = false;
     return true;
   }
+
+#ifdef RICKYOS_PRODUCT
+  // The shelf pages four books at a time. The generic list scrolls by the rows the last
+  // page drew, which on a last page holding one book is one row; the shelf start rounds
+  // up to its page, so swiping back from there never left the last page.
+  const auto swipe = mappedInput.wasSwipe();
+  if (swipe == MappedInputManager::SwipeDir::Up || swipe == MappedInputManager::SwipeDir::Down) {
+    activeNav().requestScroll(swipe == MappedInputManager::SwipeDir::Up ? SHELF_CAPACITY : -SHELF_CAPACITY);
+    requestUpdate();
+    return true;
+  }
+#endif
 
   return false;
 }

@@ -2,9 +2,11 @@
 
 #include <cstdint>
 #include <memory>
+#include <string>
 
 #include "StandbyFace.h"
 #include "activities/Activity.h"
+#include "util/RickyStorageLayout.h"
 
 struct ActivityResult;
 
@@ -58,7 +60,7 @@ class StandbyActivity final : public Activity {
   void processFaceTick(bool waitForUpdate);
   bool tryLightSleep(uint32_t idleMs);
 #ifdef RICKYOS_PRODUCT
-  void openPicturePicker();
+  void openPicturePicker(const std::string& folder = RickyStorageLayout::IMAGES);
   bool drewFrame_ = false;  // B/W frames after the first refresh fast
 #endif
 

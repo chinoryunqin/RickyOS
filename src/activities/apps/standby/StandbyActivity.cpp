@@ -1,6 +1,7 @@
 #include "StandbyActivity.h"
 
 #include <Arduino.h>
+#include <FsHelpers.h>
 #include <HalClock.h>
 #include <I18n.h>
 #include <Logging.h>
@@ -718,8 +719,14 @@ void StandbyActivity::applyGrayscalePass(const Rect& viewport) {
 #ifdef RICKYOS_PRODUCT
 // Same flow as Settings → Power & Standby → Choose Standby Image: an image picker
 // in /images, then a preview whose Set action installs /sleep.bmp.
-void StandbyActivity::openPicturePicker() {
-  const auto reload = [this](const ActivityResult&) {
+void StandbyActivity::openPicturePicker(const std::string& folder) {
+  const auto reload = [this](const ActivityResult& result) {
+    // Back from the preview returns to the list it was opened from.
+    const auto* entry = std::get_if<FilePathResult>(&result.data);
+    if (result.isCancelled && entry) {
+      openPicturePicker(FsHelpers::extractFolderPath(entry->path));
+      return;
+    }
     if (currentFace_) currentFace_->onEnter();
     lastInputMs_ = millis();
     requestUpdate();
@@ -729,10 +736,10 @@ void StandbyActivity::openPicturePicker() {
         const auto* entry = std::get_if<FilePathResult>(&result.data);
         if (result.isCancelled || !entry ||
             !startActivityForResultWith<ImageViewerActivity>(reload, entry->path, true)) {
-          reload(result);
+          reload(ActivityResult{});
         }
       },
-      RickyStorageLayout::IMAGES, FileBrowserActivity::Mode::PickWallpaper);
+      folder, FileBrowserActivity::Mode::PickWallpaper);
   if (!opened) LOG_ERR("STANDBY", "Cannot open the picture picker");
 }
 #endif

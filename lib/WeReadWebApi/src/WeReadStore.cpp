@@ -534,6 +534,23 @@ ShelfSortResult promoteShelfBook(const char* bookId, const uint32_t timestamp) {
       }
     }
     if (selectedIndex == count) return ShelfSortResult::Ok;
+    if (selectedIndex == 0) {
+      // Reopening the book already at the top (the usual case) only moves its time:
+      // write that one record in place instead of rewriting the whole shelf, which
+      // took seconds on a large shelf every time a book opened.
+      source.close();
+      if (selected.readUpdateTime >= timestamp) return ShelfSortResult::Ok;
+      selected.readUpdateTime = timestamp;
+      HalFile shelf = Storage.open(kShelfPath, O_RDWR);
+      uint32_t checked = 0;
+      if (!shelf.isOpen() || !validateIndexHeader(shelf, kShelfMagic, sizeof(ShelfRecord), checked) ||
+          checked != count || !shelf.seek(sizeof(IndexHeader)) ||
+          shelf.write(&selected, sizeof(selected)) != sizeof(selected)) {
+        return ShelfSortResult::StorageError;
+      }
+      shelf.flush();
+      return ShelfSortResult::Ok;
+    }
     selected.readUpdateTime = std::max(selected.readUpdateTime, timestamp);
     if (!promoted.begin(kShelfPath, kShelfMagic, sizeof(ShelfRecord)) || !promoted.append(&selected)) {
       promoted.abort();

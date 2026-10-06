@@ -1,6 +1,7 @@
 #include "RickyStandbySettingsActivity.h"
 #ifdef RICKYOS_PRODUCT
 #include <Bitmap.h>
+#include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
 #include <I18n.h>
@@ -144,17 +145,25 @@ void RickyStandbySettingsActivity::buildScreen(UiScreen& screen) {
   }
 }
 
-void RickyStandbySettingsActivity::openPicturePicker() {
-  const auto reload = [this](const ActivityResult&) { requestUpdate(); };
+void RickyStandbySettingsActivity::openPicturePicker(const std::string& folder) {
+  // Back from the preview returns to the list it was opened from, not to this page.
+  const auto previewDone = [this](const ActivityResult& result) {
+    const auto* entry = std::get_if<FilePathResult>(&result.data);
+    if (result.isCancelled && entry) {
+      openPicturePicker(FsHelpers::extractFolderPath(entry->path));
+      return;
+    }
+    requestUpdate();
+  };
   if (!startActivityForResultWith<FileBrowserActivity>(
-          [this, reload](const ActivityResult& result) {
+          [this, previewDone](const ActivityResult& result) {
             const auto* entry = std::get_if<FilePathResult>(&result.data);
             if (result.isCancelled || !entry ||
-                !startActivityForResultWith<ImageViewerActivity>(reload, entry->path, true)) {
-              reload(result);
+                !startActivityForResultWith<ImageViewerActivity>(previewDone, entry->path, true)) {
+              requestUpdate();
             }
           },
-          RickyStorageLayout::IMAGES, FileBrowserActivity::Mode::PickWallpaper)) {
+          folder, FileBrowserActivity::Mode::PickWallpaper)) {
     LOG_ERR("STANDBY", "Cannot open the picture picker");
   }
 }

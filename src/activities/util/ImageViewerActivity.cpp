@@ -101,8 +101,8 @@ bool ImageViewerActivity::preparePreview() {
           Storage.openFileForWrite("IMAGE", IMAGE_PREVIEW_PATH, output)) {
 #ifdef RICKYOS_PRODUCT
         // Read Pico's panel shows 16 grays; keep the photo's full gray range.
-        prepared = JpegToBmpConverter::jpegFileToBmpStream(input, output, /*crop=*/false,
-                                                           JpegToBmpConverter::Output::Gray8);
+        prepared =
+            JpegToBmpConverter::jpegFileToBmpStream(input, output, /*crop=*/false, JpegToBmpConverter::Output::Gray8);
 #else
         prepared = JpegToBmpConverter::jpegFileToBmpStreamWithSize(input, output, renderer.getScreenWidth(),
                                                                    renderer.getScreenHeight(), /*crop=*/false);
@@ -118,7 +118,12 @@ bool ImageViewerActivity::preparePreview() {
 void ImageViewerActivity::onEnter() {
   Activity::onEnter();
   imageReady = false;
+#ifdef RICKYOS_PRODUCT
+  // Picking a wallpaper too: swipe to the next picture instead of backing out to pick it.
+  if (siblingImages.empty() && !filePath.empty()) {
+#else
   if (!wallpaperPicker && siblingImages.empty() && !filePath.empty()) {
+#endif
     loadSiblingImages();
   }
 
@@ -416,9 +421,14 @@ void ImageViewerActivity::loop() {
   };
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-    if (wallpaperPicker)
+    if (wallpaperPicker) {
+      // Nothing was set: the picker reopens its list, where the reader came from.
+      ActivityResult cancelled;
+      cancelled.isCancelled = true;
+      cancelled.data = FilePathResult{filePath};
+      setResult(std::move(cancelled));
       finish();
-    else
+    } else
       activityManager.goToFileBrowser(filePath);
     return;
   }

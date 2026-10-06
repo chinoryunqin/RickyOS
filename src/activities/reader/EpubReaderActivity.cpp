@@ -343,6 +343,13 @@ bool EpubReaderActivity::loadBook() {
     disableFastInitialRefresh();
     GUI.drawPopup(renderer, tr(STR_INDEXING));
   }
+#ifdef RICKYOS_PRODUCT
+  else if (SETTINGS.embeddedStyle != 0 && !Storage.exists((loadedEpub->getCachePath() + "/css_rules.cache").c_str())) {
+    // A book without its style cache parses every stylesheet once (seconds for books
+    // with hundreds of them): say so instead of looking frozen.
+    GUI.drawPopup(renderer, tr(STR_INDEXING));
+  }
+#endif
 
   bool loaded;
   {
@@ -1808,9 +1815,16 @@ void EpubReaderActivity::renderBook() {
         const int target = pendingPageJump.has_value() ? *pendingPageJump : (nextPageNumber < 0 ? 0 : nextPageNumber);
         const bool anchorJump = !pendingAnchor.empty();
 
-        if (section->isPartial() &&
-            (anchorJump ? section->getPageForAnchor(pendingAnchor).has_value()
-                        : target + PARTIAL_REBUILD_START_MARGIN < static_cast<int>(section->pageCount))) {
+#ifdef RICKYOS_PRODUCT
+        // Resuming a partial chapter re-parses it from the top: seconds in a long chapter.
+        // When the saved page is already cached, show it now; updateChapterBuild() extends
+        // the chapter in the background while the reader is on the page.
+        constexpr int kOpenMargin = 0;
+#else
+        constexpr int kOpenMargin = PARTIAL_REBUILD_START_MARGIN;
+#endif
+        if (section->isPartial() && (anchorJump ? section->getPageForAnchor(pendingAnchor).has_value()
+                                                : target + kOpenMargin < static_cast<int>(section->pageCount))) {
           LOG_DBG("ERS", "Partial covers target %d of %d; deferring extension build", target, section->pageCount);
         } else {
           const size_t spineBytes =

@@ -63,9 +63,15 @@ class RickyStorageLayoutTest(unittest.TestCase):
     def test_storage_counts_files_in_subfolders_and_font_families(self):
         page = (ROOT / 'src/activities/home/RickyStorageActivity.cpp').read_text()
         enter = body(page, 'void RickyStorageActivity::onEnter()')
-        self.assertIn('countFiles(RickyStorageLayout::BOOKS, Kind::Books)', enter)
         self.assertIn('sdFontSystem.registry().getFamilies().size()', enter)
-        self.assertIn('countFiles(RickyStorageLayout::IMAGES, Kind::Images)', enter)
+        # The card walk runs on its own task so the page never freezes on a full card.
+        self.assertNotIn('countFiles(', enter)
+        self.assertNotIn('Storage.getSpace', enter)
+        self.assertIn('startStorageScan()', enter)
+        scan = body(page, 'void scanStorageTask(void*)')
+        self.assertIn('Storage.getSpace(scan.total, scan.free)', scan)
+        self.assertIn('countFiles(RickyStorageLayout::BOOKS, Kind::Books)', scan)
+        self.assertIn('countFiles(RickyStorageLayout::IMAGES, Kind::Images)', scan)
         walk = body(page, 'int countFiles(')
         self.assertIn("if (name[0] == '.') continue;", walk)
         self.assertIn('countFiles(path + "/" + name, kind, depth + 1)', walk)

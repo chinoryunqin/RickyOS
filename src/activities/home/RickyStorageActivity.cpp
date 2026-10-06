@@ -3,10 +3,13 @@
 #include <FsHelpers.h>
 #include <HalStorage.h>
 #include <I18n.h>
+#include <Logging.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cstdio>
 #include <iterator>
+#include <mutex>
 #include <string>
 #include <string_view>
 
@@ -89,27 +92,95 @@ const char* RickyStorageActivity::folderFor(const int index) {
   return index >= 0 && index < 4 ? folders[index] : "/";
 }
 
+// The free-space query walks the whole FAT and the counts walk folders: seconds on a
+// full card. That ran in onEnter and froze the page, so it runs on its own task: the
+// page opens at once with the last numbers and fills in fresh ones when they land.
+// The last result outlives the page, so coming back shows numbers immediately.
+namespace {
+struct StorageScan {
+  bool measured = false;
+  uint64_t total = 0;
+  uint64_t free = 0;
+  std::array<int, 3> counts{-1, -1, -1};  // books, images, downloads
+};
+std::mutex scanMutex;
+StorageScan lastScan;  // guarded by scanMutex
+std::atomic<uint32_t> scansFinished{0};
+std::atomic<bool> scanRunning{false};
+std::atomic<bool> scanStale{true};
+uint32_t lastScanMs = 0;
+// A rescan on every visit would hold the card while the reader opens a book picked
+// right after; this is long enough for tab hopping, short enough to stay current.
+constexpr uint32_t kRescanAfterMs = 30 * 1000;
+
+void scanStorageTask(void*) {
+  StorageScan scan;
+  scan.measured = Storage.getSpace(scan.total, scan.free);
+  scan.counts[0] = countFiles(RickyStorageLayout::BOOKS, Kind::Books);
+  scan.counts[1] = countFiles(RickyStorageLayout::IMAGES, Kind::Images);
+  scan.counts[2] = countFiles(RickyStorageLayout::DOWNLOADS, Kind::AnyFile);
+  {
+    std::lock_guard<std::mutex> lock(scanMutex);
+    lastScan = scan;
+    lastScanMs = millis();
+  }
+  scansFinished.fetch_add(1);
+  scanRunning.store(false);
+  vTaskDelete(nullptr);
+}
+
+void startStorageScan() {
+  if (scanRunning.exchange(true)) return;
+  scanStale.store(false);
+  // countFiles recurses three folders deep with a 256-byte name buffer per level.
+  if (xTaskCreate(&scanStorageTask, "RickyStorageScan", 6144, nullptr, 1, nullptr) != 1) {  // pdPASS
+    LOG_ERR("STOR", "Cannot start the storage scan");
+    scanRunning.store(false);
+    scanStale.store(true);
+  }
+}
+}  // namespace
+
+void RickyStorageActivity::invalidateScan() { scanStale.store(true); }
+
+void RickyStorageActivity::applyLastScan() {
+  StorageScan scan;
+  {
+    std::lock_guard<std::mutex> lock(scanMutex);
+    scan = lastScan;
+  }
+  RenderLock lock(*this);
+  seenScans = scansFinished.load();
+  if (seenScans == 0) return;  // nothing measured yet this boot: keep the placeholders
+  space = scan.measured ? Space::Ready : Space::Unavailable;
+  sdTotalBytes = scan.total;
+  sdFreeBytes = scan.free;
+  counts[0] = scan.counts[0];
+  counts[2] = scan.counts[1];
+  counts[3] = scan.counts[2];
+}
+
 void RickyStorageActivity::onEnter() {
   UiListActivity::onEnter();
-  // Draw first: the free-space query scans the FAT and the counts list folders.
-  requestUpdateAndWait();
-  uint64_t total = 0, free = 0;
-  const bool measured = Storage.getSpace(total, free);
-  std::array<int, 4> measuredCounts{};
-  measuredCounts[0] = countFiles(RickyStorageLayout::BOOKS, Kind::Books);
   // Downloaded fonts live in /.fonts and imported ones in /fonts: count the families
-  // the font registry found in both, not the visible folder's entries.
-  measuredCounts[1] = static_cast<int>(sdFontSystem.registry().getFamilies().size());
-  measuredCounts[2] = countFiles(RickyStorageLayout::IMAGES, Kind::Images);
-  measuredCounts[3] = countFiles(RickyStorageLayout::DOWNLOADS, Kind::AnyFile);
+  // the font registry found in both, not the visible folder's entries. In memory, cheap.
+  counts[1] = static_cast<int>(sdFontSystem.registry().getFamilies().size());
+  applyLastScan();
+  uint32_t age;
   {
-    RenderLock lock(*this);
-    space = measured ? Space::Ready : Space::Unavailable;
-    sdTotalBytes = total;
-    sdFreeBytes = free;
-    counts = measuredCounts;
+    std::lock_guard<std::mutex> lock(scanMutex);
+    age = millis() - lastScanMs;
   }
+  if (scanStale.load() || scansFinished.load() == 0 || age > kRescanAfterMs) startStorageScan();
   requestUpdate();
+}
+
+void RickyStorageActivity::loop() {
+  if (scansFinished.load() != seenScans) {
+    applyLastScan();
+    requestUpdate();
+  }
+  UiListActivity::loop();
 }
 
 void RickyStorageActivity::buildScreen(UiScreen& screen) {
@@ -264,8 +335,13 @@ void RickyStorageActivity::activateIndex(int index) {
       return;
     }
     // Scoped: Back in the opened folder returns here instead of climbing to "/".
-    startActivityForResultWith<FileBrowserActivity>([](const ActivityResult&) {}, path,
-                                                    FileBrowserActivity::Mode::Books, /*scoped=*/index != 4);
+    // Files may have been deleted in there: count again on the way back.
+    startActivityForResultWith<FileBrowserActivity>(
+        [this](const ActivityResult&) {
+          invalidateScan();
+          startStorageScan();
+        },
+        path, FileBrowserActivity::Mode::Books, /*scoped=*/index != 4);
   }
 }
 #endif
