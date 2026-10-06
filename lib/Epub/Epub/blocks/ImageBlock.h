@@ -19,6 +19,13 @@ class ImageBlock final : public Block {
   ~ImageBlock() override = default;
 
   const std::string& getImagePath() const { return imagePath; }
+  static bool isJpegPath(const std::string& path) {
+    const auto dot = path.rfind('.');
+    if (dot == std::string::npos) return false;
+    std::string ext = path.substr(dot + 1);
+    for (auto& c : ext) c = static_cast<char>(c >= 'A' && c <= 'Z' ? c + 32 : c);
+    return ext == "jpg" || ext == "jpeg";
+  }
   int16_t getWidth() const { return width; }
   int16_t getHeight() const { return height; }
 

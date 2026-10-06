@@ -141,7 +141,8 @@ struct EpubReaderActivity {
   std::unique_ptr<Section> section=std::make_unique<Section>();
   static constexpr int kPageCacheSlots=2;
   memory::ByteBuffer pageCacheBase_[kPageCacheSlots],pageCacheLsb_[kPageCacheSlots],
-      pageCacheMsb_[kPageCacheSlots],pageCacheStash_[kPageCacheSlots];
+      pageCacheMsb_[kPageCacheSlots],pageCacheStash_[kPageCacheSlots],pageCache16_[kPageCacheSlots];
+  bool pageCacheIs16_[kPageCacheSlots]={};
   ReaderPageCache pageCache_[kPageCacheSlots];
   int pageCacheLiveSlot_=0;
   ReaderPageCacheKey renderedPageKey_;

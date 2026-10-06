@@ -109,6 +109,15 @@ class Page {
                        [](const std::unique_ptr<PageElement>& el) { return el->getTag() == TAG_PageImage; });
   }
 
+  // True when every image on the page is a JPEG, which can decode straight into the
+  // native 16-level frame (see ImageBlock::renderInternal).
+  bool imagesAreAllJpeg() const {
+    return std::all_of(elements.begin(), elements.end(), [](const std::unique_ptr<PageElement>& element) {
+      return element->getTag() != TAG_PageImage ||
+             ImageBlock::isJpegPath(static_cast<const PageImage&>(*element).getImageBlock().getImagePath());
+    });
+  }
+
   bool hasImagesNeedingDecode() const {
     return std::any_of(elements.begin(), elements.end(), [](const std::unique_ptr<PageElement>& element) {
       return element->getTag() == TAG_PageImage &&

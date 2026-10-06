@@ -544,6 +544,13 @@ class GfxRenderer {
   bool commitGrayscale16() const;
   void cancelGrayscale16() const;
   bool isGrayscale16Active() const { return grayscale16Buffer != nullptr; }
+  // Render into a caller-owned 4bpp frame (e.g. a PSRAM page cache) instead of the
+  // panel's; nothing is pushed. The B/W proxy still goes to the framebuffer, which
+  // the caller saves and restores. End with endGrayscale16Offscreen().
+  bool beginGrayscale16Offscreen(uint8_t* frame);
+  void endGrayscale16Offscreen() { grayscale16Buffer = nullptr; }
+  uint8_t* grayscale16Frame() const { return grayscale16Buffer; }
+  size_t grayscale16FrameBytes() const { return static_cast<size_t>(panelWidth / 2) * panelHeight; }
   void drawGrayscale16Pixel(int x, int y, uint8_t gray) const;
   // Copy a rectangle of the B/W proxy into the native 16-gray frame (ink -> black,
   // paper -> white), so text and shapes drawn with the normal B/W API can sit on a

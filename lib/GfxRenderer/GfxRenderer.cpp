@@ -743,7 +743,38 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
           draw4BitGlyphPixel(renderer, screenX, screenY, get4BitCoverage(bitmap, glyphY * width + glyphX));
         }
       }
-    } else if (is2Bit || is4Bit) {
+    }
+#ifdef RICKYOS_PRODUCT
+    else if ((is2Bit || is4Bit) && renderer.isGrayscale16Active() && pixelState) {
+      // 2-bit faces (downloaded .cpfont) and synthetic bold go straight into the 16-level
+      // frame as well, so a page is rasterised once instead of once per B/W, LSB and MSB
+      // plane. Coverage 0..3 spreads over the 16 levels (x5); 0 stays transparent.
+      for (int glyphY = 0; glyphY < height; glyphY++) {
+        const int outerCoord = outerBase + glyphY;
+        uint8_t previous1 = 0, previous2 = 0, previous3 = 0;
+        const int outputWidth = width + syntheticBoldPixels;
+        for (int glyphX = 0; glyphX < outputWidth; glyphX++) {
+          int screenX, screenY;
+          if constexpr (rotation == TextRotation::Rotated90CW) {
+            screenX = outerCoord;
+            screenY = innerBase - glyphX;
+          } else {
+            screenX = innerBase + glyphX;
+            screenY = outerCoord;
+          }
+          const uint8_t current = glyphX < width ? get2BitCoverage(bitmap, glyphY * width + glyphX, is4Bit) : 0;
+          const uint8_t coverage = syntheticBoldPixels == 0 ? current
+                                                            : dilate2BitCoverage(current, previous1, previous2,
+                                                                                 previous3, syntheticBoldPixels);
+          draw4BitGlyphPixel(renderer, screenX, screenY, static_cast<uint8_t>(coverage * 5));
+          previous3 = previous2;
+          previous2 = previous1;
+          previous1 = current;
+        }
+      }
+    }
+#endif
+    else if (is2Bit || is4Bit) {
       for (int glyphY = 0; glyphY < height; glyphY++) {
         const int outerCoord = outerBase + glyphY;
         if (syntheticBoldPixels == 0) {
@@ -1788,6 +1819,16 @@ bool GfxRenderer::beginGrayscale16() {
   return true;
 }
 
+bool GfxRenderer::beginGrayscale16Offscreen(uint8_t* frame) {
+  if (!frame || grayscale16Buffer || _stripActive || !frameBuffer || getGrayscaleLevels() != 16) return false;
+  memset(frame, 0xFF, grayscale16FrameBytes());  // level 15 = white, as the native begin clears
+  grayscale16Buffer = frame;
+  setRenderMode(BW);
+  // clearScreen() reaches the panel HAL on Read Pico; the framebuffer is scratch here.
+  memset(frameBuffer, 0xFF, getBufferSize());
+  return true;
+}
+
 bool GfxRenderer::commitGrayscale16() const {
   if (!grayscale16Buffer) return false;
   const bool committed = commitNativeGray(display);
@@ -1802,18 +1843,26 @@ void GfxRenderer::cancelGrayscale16() const {
 }
 
 void GfxRenderer::drawGrayscale16Pixel(const int x, const int y, const uint8_t gray) const {
-  if (!grayscale16Buffer || x < 0 || y < 0 || x >= getScreenWidth() || y >= getScreenHeight()) return;
+  // Hot path of every anti-aliased text page: one clip test, one rotation, then the
+  // B/W proxy bit and the 4-bit level written directly. Going through drawPixel()
+  // (which also mirrors into this buffer) cost three rotations and two nibble writes
+  // per glyph pixel and made the single 16-level render slower than three 1-bit passes.
+  if (!grayscale16Buffer || x < clipLeft_ || y < clipTop_ || x >= clipRight_ || y >= clipBottom_) return;
   int px, py;
   rotateCoordinates(orientation, x, y, &px, &py, panelWidth, panelHeight);
-  const size_t index = static_cast<size_t>(py) * (panelWidth / 2) + px / 2;
+  if (px < 0 || px >= panelWidth || py < 0 || py >= panelHeight) return;
   const uint8_t level = (static_cast<unsigned>(gray) + 8) / 17;
+  // B/W proxy for popups and later partial updates: level < 8 is ink, as drawPixel(x, y,
+  // level < 8) would write it.
+  const uint32_t byteIndex = static_cast<uint32_t>(py) * panelWidthBytes + (px / 8);
+  const uint8_t bit = 1u << (7 - (px % 8));
+  if (framebufferState(renderMode, level < 8)) {
+    frameBuffer[byteIndex] &= ~bit;
+  } else {
+    frameBuffer[byteIndex] |= bit;
+  }
+  const size_t index = static_cast<size_t>(py) * (panelWidth / 2) + px / 2;
   const unsigned shift = (px & 1) * 4;
-  // 顺序很重要：drawPixel() 现在也会镜像进这个缓冲（把普通 1 位绘制带进来），所以先把
-  // B/W 代理写掉，再把精确灰度覆盖上去 —— 反过来会把字形的中间调冲成纯黑或纯白。
-  // / Order matters: drawPixel() now mirrors into this buffer too (that is what carries
-  // plain 1-bit drawing such as the status bar), so write the B/W proxy first and overlay
-  // the precise level after it; the other order would flatten mid-tones.
-  drawPixel(x, y, level < 8);
   grayscale16Buffer[index] = (grayscale16Buffer[index] & ~(0x0Fu << shift)) | (level << shift);
 }
 

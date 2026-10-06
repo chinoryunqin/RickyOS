@@ -3,6 +3,7 @@
 
 #if FREEINK_DEVICE_READPICO
 #include <BoardReadPico.h>
+#include <EpdiyLcd.h>
 #include <Logging.h>
 #endif
 
@@ -224,6 +225,14 @@ uint16_t HalDisplay::getDisplayHeight() const { return einkDisplay.getDisplayHei
 uint8_t HalDisplay::getGrayscaleLevels() const { return einkDisplay.getGrayscaleLevels(); }
 uint8_t* HalDisplay::beginGrayscale16() { return einkDisplay.beginGrayscale16(); }
 bool HalDisplay::commitGrayscale16() { return einkDisplay.commitGrayscale16(); }
+
+void HalDisplay::setNextGray16Profile(const uint8_t profile) {
+#if FREEINK_DEVICE_READPICO && defined(RICKYOS_PRODUCT)
+  freeink::epdiyLcdSetGray16Profile(profile);  // added by scripts/patch_rickyos_epdiy.py
+#else
+  (void)profile;
+#endif
+}
 void HalDisplay::cancelGrayscale16() { einkDisplay.cancelGrayscale16(); }
 
 uint16_t HalDisplay::getDisplayWidthBytes() const { return einkDisplay.getDisplayWidthBytes(); }
