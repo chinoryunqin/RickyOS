@@ -2307,12 +2307,55 @@ void EpubReaderActivity::renderIdle(const uint32_t generation) {
   auto backward = layout;
   --backward.page;
   if (backward.page >= 0) build(1, backward);
+#if FREEINK_DEVICE_READPICO && defined(RICKYOS_PRODUCT)
+  if (forward.page >= static_cast<int>(section->pageCount) && !cancelled() && !pageCacheFailed_) {
+    prefetchNextChapter(layout, generation);
+  }
+#endif
 }
+
+#if FREEINK_DEVICE_READPICO && defined(RICKYOS_PRODUCT)
+// On a chapter's last page the forward slot is free: build the next chapter and render
+// its first page into it. Comics put one picture in each chapter, so without this every
+// turn decoded a JPEG in the foreground (~3.5 s); now it happens while the page is read.
+// Only small chapters: the build itself cannot be interrupted, so a long text chapter
+// would hold up the next input. Its section file is kept, so the turn loads it quickly.
+void EpubReaderActivity::prefetchNextChapter(const ReaderPageCacheKey& layout, const uint32_t generation) {
+  constexpr size_t kMaxPrefetchChapterBytes = 24 * 1024;
+  const int next = currentSpineIndex + 1;
+  if (!section || section->isPartial() || section->isBuilding() || next >= epub->getSpineItemsCount()) return;
+  const size_t bytes = epub->getCumulativeSpineItemSize(next) - epub->getCumulativeSpineItemSize(currentSpineIndex);
+  if (bytes > kMaxPrefetchChapterBytes) return;
+  if (ESP.getFreeHeap() < BACKGROUND_BUILD_MIN_FREE_HEAP || ESP.getMaxAllocHeap() < BACKGROUND_BUILD_MIN_MAX_ALLOC) {
+    LOG_DBG("ERS", "Next chapter prefetch: skip, low heap");
+    return;
+  }
+  auto key = layout;
+  key.spine = next;
+  key.page = 0;
+  key.sectionGeneration = sectionGeneration_ + 1;  // what the turn's new Section will carry
+  if (pageCache_[0].attempted(key)) return;
+  const auto started = millis();
+  auto nextSection = makeUniqueNoThrow<Section>(epub, next, renderer);
+  if (!nextSection) return;
+  if (!nextSection->loadSectionFile(key.spec) || nextSection->isPartial()) {
+    if (activityManager.idleRenderCancelled(generation)) return;
+    if (!nextSection->createSectionFile(key.spec)) {
+      LOG_DBG("ERS", "Next chapter prefetch: build failed (spine %d)", next);
+      return;
+    }
+  }
+  if (nextSection->pageCount == 0 || activityManager.idleRenderCancelled(generation)) return;
+  const bool ready = buildPageCacheSlot(0, key, generation, nextSection.get());
+  LOG_DBG("ERS", "Next chapter prefetch: spine %d ready=%d in %lums", next, ready, millis() - started);
+}
+#endif
 
 // Build one page into one slot. Returns true when the slot ends up holding a finished
 // page; every other exit leaves it Skipped and logs why. Runs only from renderIdle(),
 // on the render task while holding the render lock. Cancellation must be bounded.
-bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCacheKey& key, const uint32_t generation) {
+bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCacheKey& key, const uint32_t generation,
+                                            Section* source) {
   const auto cancelled = [&] { return activityManager.idleRenderCancelled(generation); };
   if (pageCache_[slot].attempted(key)) {
     LOG_DBG("ERS", "Page cache: slot %d skip, page %d already attempted (state=%d)", slot, key.page,
@@ -2322,7 +2365,7 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
   pageCache_[slot].key = key;
   pageCache_[slot].state = ReaderPageCache::State::Skipped;
 
-  auto page = section->loadPage(key.page);
+  auto page = (source ? source : section.get())->loadPage(key.page);
   if (!page) {
     LOG_ERR("ERS", "Page cache: slot %d, page %d failed to load", slot, key.page);
     return false;
@@ -2469,8 +2512,10 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
         element->render(renderer, key.spec.fontId, key.left, key.top);
       }
     }
+    // Rendered: keep it even if input arrived meanwhile. That input is usually the turn
+    // to this very page; on a comic the element above was a ~2 s JPEG decode, and
+    // throwing it away made the turn decode it all over again in the foreground.
     for (const auto& element : page->elements) {
-      if (cancelled()) return false;
       if (!key.guideLine || element->getTag() != TAG_PageLine) continue;
       const auto& line = static_cast<const PageLine&>(*element);
       if (line.getBlock()->isEmpty()) continue;
@@ -2481,7 +2526,6 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
         readingGuideLine::draw(renderer, key.left, guideY, renderer.getScreenWidth() - key.right - 1, key.guideStyle);
       }
     }
-    if (cancelled()) return false;
     memcpy(pageCacheBase_[slot].get(), live, bytes);
     pageCacheIs16_[slot] = true;
   } else

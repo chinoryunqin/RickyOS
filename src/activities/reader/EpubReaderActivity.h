@@ -91,7 +91,10 @@ class EpubReaderActivity final : public ReaderActivity {
   uint32_t idleRenderDelayMs() const override;
   void renderIdle(uint32_t generation) override;
   // Build one page into one cache slot; only called from renderIdle().
-  bool buildPageCacheSlot(int slot, const ReaderPageCacheKey& key, uint32_t generation);
+  bool buildPageCacheSlot(int slot, const ReaderPageCacheKey& key, uint32_t generation, Section* source = nullptr);
+#if FREEINK_DEVICE_READPICO && defined(RICKYOS_PRODUCT)
+  void prefetchNextChapter(const ReaderPageCacheKey& layout, uint32_t generation);
+#endif
   void freePageCache();
 #endif
 
