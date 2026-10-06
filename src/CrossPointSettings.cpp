@@ -278,8 +278,8 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   doc["rickyNickname"] = rickyNickname;
   doc["rickyAvatarPath"] = rickyAvatarPath;
   doc["rickyHomePhrase"] = rickyHomePhrase;
-  doc["rickyTapTurn"] = 1;        // the swipe-only default migration has run
-  doc["rickyStandbyKeyOff"] = 1;  // the Back-to-Standby shortcut was turned off once
+  doc["rickyTapTurn"] = 1;       // the swipe-only default migration has run
+  doc["rickyStandbyKeyOn"] = 1;  // the Back-key Standby shortcut was turned on once
 #endif
   // Dictionary folder name — uses dynamic getter/setter in SettingsList, save manually
   if (dictionaryName[0] != '\0') {
@@ -519,11 +519,11 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     }
     needsResave = true;
   }
-  // Older firmware shipped the Back-to-Standby shortcut on; on a touch screen it fired
-  // from a page-turn swipe and read as a reboot. Turn it off once; it stays in
-  // 电源与待机 for anyone who wants it.
-  if (doc["rickyStandbyKeyOff"].isNull()) {
-    standbyShortcutEnabled = 0;
+  // The Back key (the ring under the screen) opens Standby from Home by default. Only
+  // the key: touch Back gestures no longer do (ActivityManager::handleHomeStandbyInput),
+  // which is what made the shortcut misfire. Turned on once for existing settings.
+  if (doc["rickyStandbyKeyOn"].isNull()) {
+    standbyShortcutEnabled = 1;
     needsResave = true;
   }
 #endif

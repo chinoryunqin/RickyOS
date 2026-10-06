@@ -446,7 +446,12 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t inxTabPosition = BoardConfig::hasTouch() ? INX_TAB_BOTTOM : INX_TAB_TOP;
 #endif
   // Show and enable the Standby shortcut on the home screen.
+#ifdef RICKYOS_PRODUCT
+  // Back key (the ring under the screen) on Home opens Standby; touch gestures never do.
+  uint8_t standbyShortcutEnabled = 1;
+#else
   uint8_t standbyShortcutEnabled = 0;
+#endif
 #ifdef RICKYOS_PRODUCT
   // What the Standby wallpaper shows on top of the picture (STANDBY_OVERLAY).
   // Time redraws only its corner each minute with a partial refresh.
