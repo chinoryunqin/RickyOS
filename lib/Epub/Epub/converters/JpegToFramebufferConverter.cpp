@@ -223,6 +223,33 @@ int jpegDrawCallback(JPEGDRAW* pDraw) {
     if (caching) cw.writePixel(outX, level);
   };
 
+  // === Native 16-level, portrait: column order ===
+  // drawGrayscale16Pixel() rotates into panel memory, where a logical column is a panel
+  // row: walking columns keeps consecutive writes adjacent instead of one panel row
+  // apart (a PSRAM cache miss per pixel; ~2 s for a comic page). Same samples as the
+  // 1:1 and nearest-neighbor paths below.
+  if (ctx->config->output == DecodeOutput::NativeGrayscale16 && renderer.grayscale16PrefersColumns() &&
+      fineScaleFPX <= FP_ONE && fineScaleFPY <= FP_ONE && !ctx->config->bilinearScaling) {
+    constexpr int kMaxBlockRows = 64;  // a 16-row MCU band, downscaled
+    const int rows = dstYEnd - dstYStart;
+    if (rows > 0 && rows <= kMaxBlockRows) {
+      const uint8_t* srcRow[kMaxBlockRows];
+      for (int i = 0; i < rows; ++i) {
+        const int dstY = dstYStart + i;
+        const int sy = fineScaleFPY == FP_ONE ? dstY - blockY
+                                              : clampSampleIndex(((dstY * invScaleFPY) >> FP_SHIFT) - blockY, blockH);
+        srcRow[i] = &pixels[sy * stride];
+      }
+      for (int dstX = dstXStart; dstX < dstXEnd; dstX++) {
+        const int lx = fineScaleFPX == FP_ONE ? dstX - blockX
+                                              : clampSampleIndex(((dstX * invScaleFPX) >> FP_SHIFT) - blockX, validW);
+        const int outX = cfgX + dstX;
+        for (int i = 0; i < rows; ++i) renderer.drawGrayscale16Pixel(outX, cfgY + dstYStart + i, srcRow[i][lx]);
+      }
+      return 1;
+    }
+  }
+
   // === 1:1 fast path: no scaling math ===
   if (fineScaleFPX == FP_ONE && fineScaleFPY == FP_ONE) {
     for (int dstY = dstYStart; dstY < dstYEnd; dstY++) {
@@ -421,7 +448,32 @@ bool JpegToFramebufferConverter::decodeToFramebuffer(const std::string& imagePat
   ctx.screenWidth = renderer.getScreenWidth();
   ctx.screenHeight = renderer.getScreenHeight();
 
+#if defined(RICKYOS_PRODUCT) && !defined(SIMULATOR)
+  // The 16-level path decodes from PSRAM: one read of the file instead of hundreds of
+  // 2 KB card reads interleaved with the decode. Falls back to the file when short of memory.
+  memory::ByteBuffer ramJpeg;
+  size_t ramJpegSize = 0;
+  if (config.output == DecodeOutput::NativeGrayscale16) {
+    const unsigned long loadStart = millis();
+    HalFile file;
+    if (Storage.openFileForRead("JPG", imagePath, file)) {
+      ramJpegSize = file.fileSize();
+      constexpr size_t kMaxRamJpeg = 4 * 1024 * 1024;
+      if (ramJpegSize > 0 && ramJpegSize <= kMaxRamJpeg &&
+          memory::psramHasHeadroom(ramJpegSize, ramJpegSize, 256 * 1024)) {
+        ramJpeg = memory::makePsramByteBufferUninitializedNoThrow(ramJpegSize);
+        if (ramJpeg && file.read(ramJpeg.get(), ramJpegSize) != static_cast<int>(ramJpegSize)) ramJpeg.reset();
+      }
+      file.close();
+    }
+    if (ramJpeg)
+      LOG_DBG("JPG", "Loaded %u bytes to PSRAM in %lu ms", static_cast<unsigned>(ramJpegSize), millis() - loadStart);
+  }
+  int rc = ramJpeg ? jpeg->openRAM(ramJpeg.get(), static_cast<int>(ramJpegSize), jpegDrawCallback)
+                   : jpeg->open(imagePath.c_str(), jpegOpen, jpegClose, jpegRead, jpegSeek, jpegDrawCallback);
+#else
   int rc = jpeg->open(imagePath.c_str(), jpegOpen, jpegClose, jpegRead, jpegSeek, jpegDrawCallback);
+#endif
   if (rc != 1) {
     LOG_ERR("JPG", "Failed to open JPEG (err=%d): %s", jpeg->getLastError(), imagePath.c_str());
     return false;

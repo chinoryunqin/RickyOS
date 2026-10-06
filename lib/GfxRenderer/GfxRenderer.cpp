@@ -13,6 +13,8 @@
 #include <Utf8.h>
 
 #include <algorithm>
+#include <memory>
+#include <new>
 #include <string_view>
 
 #include "../Memory/Memory.h"
@@ -1913,6 +1915,22 @@ bool GfxRenderer::drawBitmapGrayscale16(const Bitmap& bitmap, const int x, const
   const int targetHeight = std::floor((sourceHeight - 1) * scale) + 1;
   uint8_t* row = bitmap.drawScratch.get();
   uint8_t* source = row + width;
+  // In portrait, writing a logical row strides a whole panel row per pixel (a PSRAM cache
+  // miss each): ~2.3 s for a full-screen picture. Collect a band of rows and write it
+  // column by column, where consecutive pixels are adjacent in panel memory.
+  constexpr int kBandRows = 32;
+  std::unique_ptr<uint8_t[]> band;
+  if (grayscale16PrefersColumns()) band.reset(new (std::nothrow) uint8_t[static_cast<size_t>(targetWidth) * kBandRows]);
+  int bandDestY[kBandRows];
+  int bandCount = 0;
+  const auto flushBand = [&] {
+    for (int destX = 0; destX < targetWidth; ++destX) {
+      for (int i = 0; i < bandCount; ++i) {
+        drawGrayscale16Pixel(x + destX, y + bandDestY[i], band[static_cast<size_t>(i) * targetWidth + destX]);
+      }
+    }
+    bandCount = 0;
+  };
   for (int fileY = 0; fileY < height; ++fileY) {
     if (bitmap.readNextRow(row, source, nullptr, Bitmap::RowOutput::Gray8) != BmpReaderError::Ok) return false;
     const int sourceY = bitmap.isTopDown() ? fileY : height - 1 - fileY;
@@ -1921,11 +1939,19 @@ bool GfxRenderer::drawBitmapGrayscale16(const Bitmap& bitmap, const int x, const
     const int destY = (relativeY * targetHeight + sourceHeight - 1) / sourceHeight;
     // Select one source row per destination row, independent of BMP row order.
     if (destY >= targetHeight || destY * sourceHeight / targetHeight != relativeY) continue;
+    if (band) {
+      uint8_t* out = &band[static_cast<size_t>(bandCount) * targetWidth];
+      for (int destX = 0; destX < targetWidth; ++destX) out[destX] = row[cropPixX + destX * sourceWidth / targetWidth];
+      bandDestY[bandCount++] = destY;
+      if (bandCount == kBandRows) flushBand();
+      continue;
+    }
     for (int destX = 0; destX < targetWidth; ++destX) {
       const int sourceX = cropPixX + destX * sourceWidth / targetWidth;
       drawGrayscale16Pixel(x + destX, y + destY, row[sourceX]);
     }
   }
+  if (band && bandCount > 0) flushBand();
   return true;
 }
 

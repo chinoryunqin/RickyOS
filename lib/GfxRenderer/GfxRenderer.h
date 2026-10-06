@@ -544,6 +544,10 @@ class GfxRenderer {
   bool commitGrayscale16() const;
   void cancelGrayscale16() const;
   bool isGrayscale16Active() const { return grayscale16Buffer != nullptr; }
+  // In portrait a logical row runs down a panel column, so consecutive x pixels are a
+  // whole panel row apart in memory (a PSRAM cache miss each). Bulk 16-level writers walk
+  // logical columns instead when this is true.
+  bool grayscale16PrefersColumns() const { return orientation == Portrait || orientation == PortraitInverted; }
   // Render into a caller-owned 4bpp frame (e.g. a PSRAM page cache) instead of the
   // panel's; nothing is pushed. The B/W proxy still goes to the framebuffer, which
   // the caller saves and restores. End with endGrayscale16Offscreen().
