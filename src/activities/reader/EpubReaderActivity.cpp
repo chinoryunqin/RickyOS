@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <functional>
 #include <iterator>
@@ -531,6 +532,37 @@ ReaderRenderSpec EpubReaderActivity::effectiveRenderSpec(const uint16_t width, c
   return spec;
 }
 
+#ifdef RICKYOS_PRODUCT
+namespace {
+// Readers cannot send serial logs, so a failed chapter leaves one line on the card they
+// can copy off: firmware, book, chapter, stage, cause and the heap at that moment.
+constexpr char kRickyErrorLogPath[] = "/rickyos-log.txt";
+constexpr size_t kRickyErrorLogMaxBytes = 32 * 1024;
+
+void appendRickyErrorLog(const std::string& bookPath, const int spine, const char* stage, const unsigned error) {
+  char line[96];
+  const int head = snprintf(
+      line, sizeof(line), "%s up=%lus spine=%d stage=%s error=%u free=%u min=%u max=%u book=", CROSSPOINT_VERSION,
+      static_cast<unsigned long>(millis() / 1000), spine, stage, error, static_cast<unsigned>(ESP.getFreeHeap()),
+      static_cast<unsigned>(ESP.getMinFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+  if (head <= 0) return;
+  std::string entry(line, std::min(static_cast<size_t>(head), sizeof(line) - 1));
+  entry += bookPath;
+  entry += '\n';
+  HalFile file = Storage.open(kRickyErrorLogPath, O_WRONLY | O_CREAT | O_APPEND);
+  if (file && file.isOpen() && file.fileSize() > kRickyErrorLogMaxBytes) {
+    file.close();  // keep the card tidy: start over rather than grow without bound
+    Storage.remove(kRickyErrorLogPath);
+    file = Storage.open(kRickyErrorLogPath, O_WRONLY | O_CREAT | O_APPEND);
+  }
+  if (!file || !file.isOpen()) return;
+  file.write(reinterpret_cast<const uint8_t*>(entry.data()), entry.size());
+  file.flush();
+  file.close();
+}
+}  // namespace
+#endif
+
 bool EpubReaderActivity::handleBuildFailure(const char* stage, const Section::BuildError error) {
   if (failedBuildSpine_ == currentSpineIndex) return false;
   bool retry = false;
@@ -566,6 +598,10 @@ bool EpubReaderActivity::handleBuildFailure(const char* stage, const Section::Bu
   buildHeapPaused = false;
   buildPopupPending = false;
   failedBuildSpine_ = retry ? -1 : currentSpineIndex;
+  failedBuildError_ = error;
+#ifdef RICKYOS_PRODUCT
+  appendRickyErrorLog(epub->getPath(), currentSpineIndex, stage, static_cast<unsigned>(error));
+#endif
   LOG_ERR("ERS", "Build failed: spine=%d stage=%s error=%u retryWithoutCss=%d (free=%u, min=%u, maxAlloc=%u)",
           currentSpineIndex, stage, static_cast<unsigned>(error), retry, static_cast<unsigned>(ESP.getFreeHeap()),
           static_cast<unsigned>(ESP.getMinFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
@@ -1644,6 +1680,22 @@ void EpubReaderActivity::renderBook() {
     renderer.clearScreen();
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+#ifdef RICKYOS_PRODUCT
+    // Say why, with a code readers can quote; the details are in /rickyos-log.txt.
+    switch (failedBuildError_) {
+      case Section::BuildError::OutOfMemory:
+        GUI.drawPopup(renderer, tr(STR_RICKY_INDEX_FAILED_MEMORY));
+        return;
+      case Section::BuildError::InvalidData:
+        GUI.drawPopup(renderer, tr(STR_RICKY_INDEX_FAILED_DATA));
+        return;
+      case Section::BuildError::Io:
+        GUI.drawPopup(renderer, tr(STR_RICKY_INDEX_FAILED_IO));
+        return;
+      default:
+        break;
+    }
+#endif
     GUI.drawPopup(renderer, tr(STR_INDEX_FAILED));
   };
 
@@ -1652,6 +1704,7 @@ void EpubReaderActivity::renderBook() {
     return;
   }
   failedBuildSpine_ = -1;
+  failedBuildError_ = Section::BuildError::None;
 
   if (currentSpineIndex < 0) currentSpineIndex = 0;
   if (currentSpineIndex > epub->getSpineItemsCount()) currentSpineIndex = epub->getSpineItemsCount();
@@ -3019,7 +3072,16 @@ void EpubReaderActivity::renderStatusBar() const {
 
 namespace {
 constexpr StrId kTextRowNames[] = {StrId::STR_FONT, StrId::STR_FONT_SIZE, StrId::STR_LINE_SPACING,
-                                   StrId::STR_PARA_ALIGNMENT, StrId::STR_FIRST_LINE_INDENT};
+                                   StrId::STR_PARA_ALIGNMENT, StrId::STR_FIRST_LINE_INDENT,
+#ifdef RICKYOS_PRODUCT
+                                   // Readers look for anti-aliasing next to the font, not three
+                                   // levels down in Settings.
+                                   StrId::STR_TEXT_AA
+#endif
+};
+#ifdef RICKYOS_PRODUCT
+constexpr int kTextRowAntiAliasing = 5;
+#endif
 constexpr StrId kSpacingIds[] = {StrId::STR_TIGHT, StrId::STR_NORMAL, StrId::STR_WIDE, StrId::STR_EXTRA_WIDE};
 constexpr StrId kAlignIds[] = {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId::STR_CENTER, StrId::STR_ALIGN_RIGHT,
                                StrId::STR_BOOK_S_STYLE};
@@ -3069,6 +3131,10 @@ std::string EpubReaderActivity::textRowValue(int row) const {
       return I18N.get(kAlignIds[SETTINGS.paragraphAlignment % CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT]);
     case 4:
       return I18N.get(kIndentIds[SETTINGS.firstLineIndent < std::size(kIndentIds) ? SETTINGS.firstLineIndent : 0]);
+#ifdef RICKYOS_PRODUCT
+    case kTextRowAntiAliasing:
+      return SETTINGS.textAntiAliasing ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
+#endif
     default:
       return "";
   }
@@ -3326,6 +3392,12 @@ void EpubReaderActivity::renderOverlay() {
     model.itemCount = kTextRowCount;
     model.rowText = [this](int i) { return textRowName(i); };
     model.rowValue = [this](int i) { return textRowValue(i); };
+#ifdef RICKYOS_PRODUCT
+    model.rowCheckboxContext = this;
+    model.rowCheckbox = [](void*, int i, freeink::ui::ListItem& item) {
+      if (i == kTextRowAntiAliasing) GUI.setCheckboxRow(item, SETTINGS.textAntiAliasing);
+    };
+#endif
   } else {
     model.panelTitle = tr(STR_TOOL_MORE);
     model.itemCount = static_cast<int>(moreItems.size());
@@ -3493,7 +3565,17 @@ void EpubReaderActivity::handleOverlayInput() {
           if (toolbarUi) toolbarUi->begin();  // the picker drew its own FUI screen
           requestUpdate();                    // re-render page + Text panel
         });
-      } else {
+      }
+#ifdef RICKYOS_PRODUCT
+      else if (panelIndex == kTextRowAntiAliasing) {
+        // Same layout either way: only the page's rendering changes, so no re-pagination.
+        SETTINGS.textAntiAliasing = SETTINGS.textAntiAliasing ? 0 : 1;
+        SETTINGS.saveToFile();
+        discardOverlayPage();
+        requestUpdate();
+      }
+#endif
+      else {
         // Enum rows open the Settings-style option picker.
         showTextRowPopup(panelIndex);
       }

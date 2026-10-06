@@ -17,6 +17,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <iterator>
 
 #include "AboutActivity.h"
 #include "AppVisibilitySettingsActivity.h"
@@ -335,6 +336,20 @@ void SettingsActivity::reorganizeRickySettings() {
                [](const SettingInfo& setting) { return setting.action == SettingAction::Bluetooth; });
   moveMatching(readerSettings, fontSettings,
                [](const SettingInfo& setting) { return setting.action == SettingAction::DownloadFonts; });
+  // How a page turns by touch is a reading choice; buried at the end of System, readers
+  // never found the tap option. Keep it next to the page-turn direction.
+  std::vector<SettingInfo> touchTurns;
+  moveMatching(controlsSettings, touchTurns, [](const SettingInfo& setting) {
+    return setting.valuePtr == &CrossPointSettings::touchReaderControls ||
+           setting.valuePtr == &CrossPointSettings::pageTurnGesture ||
+           setting.valuePtr == &CrossPointSettings::previousPageGesture ||
+           setting.valuePtr == &CrossPointSettings::showReaderMenu;
+  });
+  auto turnAt = std::find_if(readerSettings.begin(), readerSettings.end(), [](const SettingInfo& setting) {
+    return setting.valuePtr == &CrossPointSettings::pageTurnDirection;
+  });
+  turnAt = turnAt == readerSettings.end() ? readerSettings.begin() : turnAt + 1;
+  readerSettings.insert(turnAt, std::make_move_iterator(touchTurns.begin()), std::make_move_iterator(touchTurns.end()));
   systemSettings.reserve(systemSettings.size() + controlsSettings.size());
   moveMatching(controlsSettings, systemSettings, [](const SettingInfo&) { return true; });
   for (auto& setting : sleepSettings) {

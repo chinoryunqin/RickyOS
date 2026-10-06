@@ -514,8 +514,14 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Master reader-touch toggle on boards with a touch controller.
   uint8_t touchReaderControls = TOUCH_READER_ON;
   // Which gestures turn the page in each direction (PAGE_TURN_GESTURE).
+#ifdef RICKYOS_PRODUCT
+  // Tapping the side of the page turns it, as on every reader people come from.
+  uint8_t pageTurnGesture = TAP_AND_SWIPE;
+  uint8_t previousPageGesture = TAP_AND_SWIPE;
+#else
   uint8_t pageTurnGesture = SWIPE_ONLY;
   uint8_t previousPageGesture = SWIPE_ONLY;
+#endif
   // 翻页方向：左右对调阅读器的点击区与滑动方向，给左手握持的用户。0 = 正常，
   // 1 = 对调（点左边翻下一页、往右滑翻下一页）。
   //

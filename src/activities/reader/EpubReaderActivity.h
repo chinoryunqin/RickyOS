@@ -193,6 +193,7 @@ class EpubReaderActivity final : public ReaderActivity {
   bool stylesDisabledForSession_ = false;
   int renderedSpineIndex_ = -1;
   int failedBuildSpine_ = -1;
+  Section::BuildError failedBuildError_ = Section::BuildError::None;
   ReaderRenderSpec effectiveRenderSpec(uint16_t width, uint16_t height) const;
   bool handleBuildFailure(const char* stage, Section::BuildError error);
   bool buildHeapPaused = false;
