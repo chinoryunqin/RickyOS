@@ -234,3 +234,10 @@ test('without a backup the device is classified from headers and installs the sa
   await session.install(image(), await release(), () => {}, true);
   assert.equal(adapter.writes.length, 1); assert.equal(adapter.resets, 1);
 });
+test('reset holds EN low through RTS, then releases it with IO0 high', async () => {
+  const calls = [];
+  const adapter = new SerialAdapter(() => {});
+  adapter.transport = { setDTR: async v => calls.push(['DTR', v]), setRTS: async v => calls.push(['RTS', v]) };
+  await adapter.reset();
+  assert.deepEqual(calls, [['DTR', false], ['RTS', true], ['RTS', false]]);
+});
