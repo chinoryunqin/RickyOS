@@ -162,6 +162,14 @@ test('success writes only active app and resets after all checks', async () => {
     await assert.rejects(async () => session.install(image(), await release(), () => {}, true));
   }
 });
+test('a verified install whose restart request fails still succeeds, asking for a manual restart', async () => {
+  const { adapter, session } = await prepared(1);
+  adapter.reset = async () => { adapter.resets++; throw new Error('device left USB'); };
+  assert.equal(await session.install(image(), await release(), () => {}, true), false);
+  assert.equal(adapter.resets, 1); assert.equal(session.restarting, true);
+  const ok = await prepared(1);
+  assert.equal(await ok.session.install(image(), await release(), () => {}, true), true);
+});
 test('write interruption or bad digest prevents reset and re-use', async () => {
   for (const mode of ['write', 'verify', 'metadata']) {
     const { adapter, session } = await prepared();
