@@ -385,6 +385,7 @@ const char* SettingsActivity::rickySettingDescription(const SettingInfo& setting
   if (setting.valuePtr == &CrossPointSettings::refreshFrequency) return tr(STR_RICKY_HELP_REFRESH);
   if (setting.action == SettingAction::RestoreSystemSettings) return tr(STR_RICKY_HELP_RESET);
   if (setting.action == SettingAction::AppVisibility) return tr(STR_RICKY_HELP_APPS);
+  if (setting.action == SettingAction::RickyScreenRepair) return tr(STR_RICKY_HELP_SCREEN_REPAIR);
   return nullptr;
 }
 #endif
@@ -494,6 +495,7 @@ void SettingsActivity::rebuildSettingsLists() {
   // retain the upstream proxy and release-channel UI.
 #ifdef RICKYOS_PRODUCT
   systemSettings.push_back(SettingInfo::Action(StrId::STR_RICKYOS_FIRMWARE_UPDATE, SettingAction::CheckForUpdates));
+  systemSettings.push_back(SettingInfo::Action(StrId::STR_RICKY_SCREEN_REPAIR, SettingAction::RickyScreenRepair));
 #else
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CHECK_UPDATES, SettingAction::CheckForUpdates));
 #endif
@@ -1142,6 +1144,23 @@ void SettingsActivity::toggleCurrentSetting() {
         startActivityForResultWith<ClearCacheActivity>(resultHandler);
         break;
 #ifdef RICKYOS_PRODUCT
+      case SettingAction::RickyScreenRepair: {
+        // Residual charge in the film shows old screens through new ones. Full GC16
+        // black/white pairs are DC-balanced and drive every pixel through both
+        // extremes, which is the usual way to bring a stressed panel back.
+        constexpr int kCycles = 5;
+        RenderLock lock;
+        GUI.drawPopup(renderer, tr(STR_RICKY_SCREEN_REPAIRING));
+        for (int i = 0; i < kCycles; ++i) {
+          renderer.clearScreen(0x00);
+          renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+          renderer.clearScreen(0xFF);
+          renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+        }
+        renderer.requestNextFullRefresh();
+        requestUpdate();
+        break;
+      }
       case SettingAction::RickyProfile:
         startActivityForResultWith<RickyProfileActivity>(resultHandler);
         break;
