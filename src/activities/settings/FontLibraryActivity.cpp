@@ -26,6 +26,10 @@ void FontLibraryActivity::onEnter() {
   RenderLock lock(*this);
   UiListActivity::onEnter();
   closeRouting();
+  // Fonts also arrive without the font installer: the general file upload, a computer or
+  // USB. Re-scan /fonts and /.fonts on every visit (two small folders) so they show up
+  // here without a reboot.
+  sdFontSystem.markRegistryDirty();
   sdFontSystem.refreshIfDirty();
   familyIndex_ = -1;
   rebuildRows();

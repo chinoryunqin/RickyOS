@@ -108,6 +108,12 @@ bool isLibraryBookFile(const String& filename) {
   return FsHelpers::checkFileExtension(filename, ".epub") || FsHelpers::checkFileExtension(filename, ".txt") ||
          FsHelpers::checkFileExtension(filename, ".md") || FsHelpers::checkFileExtension(filename, ".xtc");
 }
+// A font sent through the plain file upload (not the font installer) still has to reach
+// the font list; the registry is otherwise re-scanned only at boot.
+bool isFontFile(const String& filename) {
+  return FsHelpers::checkFileExtension(filename, ".ttf") || FsHelpers::checkFileExtension(filename, ".otf") ||
+         FsHelpers::checkFileExtension(filename, ".ttc") || FsHelpers::checkFileExtension(filename, ".cpfont");
+}
 constexpr uint16_t UDP_PORTS[] = {54982, 48123, 39001, 44044, 59678};
 constexpr uint16_t LOCAL_UDP_PORT = 8134;
 constexpr size_t FILE_LIST_BATCH_CAPACITY = 1400;
@@ -1171,6 +1177,7 @@ void CrossPointWebServer::handleUpload(UploadState& state) const {
         filePath += state.fileName;
         clearBookCache(filePath.c_str());
         if (isLibraryBookFile(state.fileName)) library::markLibraryIndexDirty();
+        if (isFontFile(state.fileName)) sdFontSystem.markRegistryDirty();
       }
     }
     state.buffer.reset();
@@ -2895,6 +2902,7 @@ void CrossPointWebServer::onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* 
             LOG_DBG("WS", "Zero-byte upload complete: %s", filePath.c_str());
             clearBookCache(filePath.c_str());
             if (isLibraryBookFile(wsUploadFileName)) library::markLibraryIndexDirty();
+            if (isFontFile(wsUploadFileName)) sdFontSystem.markRegistryDirty();
             wsServer->sendTXT(num, "DONE");
             wsLastProgressSent = 0;
             break;
@@ -2965,6 +2973,7 @@ void CrossPointWebServer::onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* 
         filePath += wsUploadFileName;
         clearBookCache(filePath.c_str());
         if (isLibraryBookFile(wsUploadFileName)) library::markLibraryIndexDirty();
+        if (isFontFile(wsUploadFileName)) sdFontSystem.markRegistryDirty();
 
         wsServer->sendTXT(num, "DONE");
         wsLastProgressSent = 0;
