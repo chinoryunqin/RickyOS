@@ -160,6 +160,8 @@ class HalDisplay {
   // Read Pico: refresh profile for the next 16-level commit (0 = Half, 1 = text turn,
   // 2 = Full cleanup). One-shot; a no-op on other panels.
   void setNextGray16Profile(uint8_t profile);
+  // Power the panel rails down when no frame has been pushed for idleMs (Read Pico).
+  void railsOffIfIdle(uint32_t idleMs);
   void cancelGrayscale16();
   uint16_t getDisplayWidthBytes() const;
   uint32_t getBufferSize() const;

@@ -43,23 +43,71 @@ NEW_DECL = ('bool epdiyLcdCommitGrayscale16(const uint8_t* bwProxy);\n'
             '/// (0 = Half, 1 = text turn, 2 = Full, 3 = Full, rails off).\n'
             'void epdiyLcdSetGray16Profile(uint8_t profile);\n')
 
+# RICKYOS_RAILS_IDLE: text turns and fast frames leave the panel rails up so the next
+# frame starts at once, but the rails then stayed up for a whole reading session. With
+# high voltage held and nothing driven, charge builds in the film and old pages show
+# through new ones (two screens superimposed). The driver now records when rails were
+# left up, and the caller drops them after an idle interval.
+RAILS_MARK = 'RICKYOS_RAILS_IDLE'
+OLD_POWER = """  if (turnOff || !g_baselineKnown) epd_poweroff();
+  return g_baselineKnown;
+}
+"""
+NEW_POWER = """  // RICKYOS_RAILS_IDLE: remember rails left up and when, for epdiyLcdRailsOffIfIdle().
+  if (turnOff || !g_baselineKnown) {
+    epd_poweroff();
+    g_railsUp = false;
+  } else {
+    g_railsUp = true;
+  }
+  g_lastPushUs = esp_timer_get_time();
+  return g_baselineKnown;
+}
+"""
+OLD_POWER_STATE = 'bool g_baselineKnown = false;\n'
+NEW_POWER_STATE = ('bool g_baselineKnown = false;\n'
+                   'bool g_railsUp = false;       // RICKYOS_RAILS_IDLE\n'
+                   'int64_t g_lastPushUs = 0;     // RICKYOS_RAILS_IDLE\n')
+OLD_IDLE_FN = 'bool epdiyLcdReady() {'
+NEW_IDLE_FN = """// RICKYOS_RAILS_IDLE: drop rails left up by the last frame once no frame has followed
+// for idleMs. The caller serializes against frame pushes (render lock).
+void epdiyLcdRailsOffIfIdle(uint32_t idleMs) {
+  if (!g_railsUp || esp_timer_get_time() - g_lastPushUs < static_cast<int64_t>(idleMs) * 1000) return;
+  epd_poweroff();
+  g_railsUp = false;
+}
 
-def patch_text(source, old, new):
-    if MARK in source:
-        if new not in source:
-            raise RuntimeError('Incomplete RickyOS epdiy patch; inspect the SDK before building.')
+bool epdiyLcdReady() {"""
+OLD_TIMER_INCLUDE = '#include <esp_heap_caps.h>\n'
+NEW_TIMER_INCLUDE = '#include <esp_heap_caps.h>\n#include <esp_timer.h>  // RICKYOS_RAILS_IDLE\n'
+OLD_IDLE_DECL = 'bool epdiyLcdCommitGrayscale16(const uint8_t* bwProxy);\n'
+NEW_IDLE_DECL = ('bool epdiyLcdCommitGrayscale16(const uint8_t* bwProxy);\n'
+                 '/// RICKYOS_RAILS_IDLE: power the panel rails down after idleMs without a frame.\n'
+                 'void epdiyLcdRailsOffIfIdle(uint32_t idleMs);\n')
+
+
+def patch_text(source, old, new, mark=MARK):
+    if new in source:
         return source
     if source.count(old) != 1:
-        raise RuntimeError('SDK epdiy source changed; review the 16-level commit before building.')
+        raise RuntimeError('SDK epdiy source changed; review the RickyOS patch (%s) before building.' % mark)
     return source.replace(old, new)
 
 
 def apply(project_dir):
     base = Path(project_dir) / 'freeink-sdk/libs/display/EpdiyLcd'
-    for path, old, new in ((base / 'src/EpdiyLcd.cpp', OLD_COMMIT, NEW_COMMIT),
-                           (base / 'include/EpdiyLcd.h', OLD_DECL, NEW_DECL)):
+    edits = {
+        base / 'src/EpdiyLcd.cpp': ((OLD_COMMIT, NEW_COMMIT, MARK), (OLD_TIMER_INCLUDE, NEW_TIMER_INCLUDE, RAILS_MARK),
+                                   (OLD_POWER, NEW_POWER, RAILS_MARK),
+                                   (OLD_POWER_STATE, NEW_POWER_STATE, RAILS_MARK),
+                                   (OLD_IDLE_FN, NEW_IDLE_FN, RAILS_MARK)),
+        base / 'include/EpdiyLcd.h': ((OLD_DECL, NEW_DECL, MARK), (OLD_IDLE_DECL, NEW_IDLE_DECL, RAILS_MARK)),
+    }
+    for path, steps in edits.items():
         source = path.read_text()
-        patched = patch_text(source, old, new)
+        patched = source
+        for old, new, mark in steps:
+            patched = patch_text(patched, old, new, mark)
         if patched != source:
             path.write_text(patched)
 

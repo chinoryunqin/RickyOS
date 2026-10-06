@@ -621,7 +621,7 @@ static void renderCharScaled(const GfxRenderer& renderer, GfxRenderer::RenderMod
   const uint8_t* bitmap = renderer.getGlyphBitmap(fontData, glyph);
   if (!bitmap) return;
 
-  const int srcW = glyph->width;
+  const int srcW = glyph->width;  // read after the fetch: a vector glyph's box arrives with it
   const int srcH = glyph->height;
   const int dstW = (srcW + 1) / 2;  // ceil so odd-width glyphs aren't clipped
   const int dstH = (srcH + 1) / 2;
@@ -690,6 +690,9 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
     return;
   }
 
+  // A vector glyph may not have its box yet (TTF layout takes advances only); fetching
+  // its bitmap first fills the box in. No-op for every other font.
+  if (glyph->dataLength == 0 && fontData->vectorBitmapHandler) (void)renderer.getGlyphBitmap(fontData, glyph);
   const bool is2Bit = fontData->is2Bit;
   const bool is4Bit = fontData->is4Bit;
   const uint8_t width = glyph->width;

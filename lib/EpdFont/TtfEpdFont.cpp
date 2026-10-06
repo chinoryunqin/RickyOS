@@ -1,5 +1,7 @@
 #include "TtfEpdFont.h"
 
+#include <cstring>
+
 #if CROSSPOINT_VECTOR_FONTS
 
 #include <Logging.h>
@@ -137,6 +139,8 @@ bool TtfEpdFont::load(const uint16_t pointSize, const bool twoBit, const size_t 
   }
   initFace(faces_[0]);  // regular eagerly: validates the font + gives metrics
   if (!faces_[0].ready) return false;
+  hmtx_ = HorizontalMetrics{};
+  if (lazyMetrics_ && !loadHorizontalMetrics()) hmtx_ = HorizontalMetrics{};
   for (int i = 1; i < 4; ++i) setupFace(faces_[i]);  // handlers + placeholder metrics (regular's)
   loaded_ = true;
   return true;
@@ -338,7 +342,7 @@ const EpdGlyph* TtfEpdFont::faultGlyph(Face& f, const uint32_t cp) {
   eg.height = m->height;
   eg.left = m->left;
   eg.top = m->top;
-  eg.dataOffset = 0;
+  eg.dataOffset = m->boxPending ? kPendingBox : 0;
   eg.dataLength = 0;  // not rasterized yet (or blank when width/height are 0)
 
   f.glyphs.push_back(eg);
@@ -351,6 +355,74 @@ const EpdGlyph* TtfEpdFont::faultGlyph(Face& f, const uint32_t cp) {
   return &f.glyphs[newIdx];
 }
 
+bool TtfEpdFont::readSource(const Source& s, const uint32_t offset, uint8_t* out, const uint32_t count) const {
+  if (!s.present) return false;
+  if (!s.streamed) {
+    if (s.data == nullptr || offset > s.len || count > s.len - offset) return false;
+    memcpy(out, s.data + offset, count);
+    return true;
+  }
+  return s.read != nullptr && s.read(s.ctx, offset, out, count) == count;
+}
+
+// Reads unitsPerEm (head), numberOfHMetrics (hhea) and the advance column of hmtx from
+// the regular source. Variable fonts (fvar) are skipped: their advances move with the
+// axes. A collection (ttcf) uses its first face, as FreeType does.
+bool TtfEpdFont::loadHorizontalMetrics() {
+  const Source& s = sources_[Regular];
+  const auto be16 = [](const uint8_t* p) { return static_cast<uint32_t>(p[0] << 8 | p[1]); };
+  const auto be32 = [](const uint8_t* p) {
+    return static_cast<uint32_t>(p[0]) << 24 | static_cast<uint32_t>(p[1]) << 16 | static_cast<uint32_t>(p[2]) << 8 |
+           p[3];
+  };
+  uint8_t header[16];
+  if (!readSource(s, 0, header, sizeof(header))) return false;
+  uint32_t base = 0;
+  if (memcmp(header, "ttcf", 4) == 0) {
+    base = be32(header + 12);
+    if (!readSource(s, base, header, 12)) return false;
+  }
+  const uint32_t tables = be16(header + 4);
+  if (tables == 0 || tables > 64) return false;
+  uint32_t head = 0, hhea = 0, hmtx = 0, hmtxLen = 0;
+  for (uint32_t i = 0; i < tables; ++i) {
+    uint8_t record[16];
+    if (!readSource(s, base + 12 + i * 16, record, sizeof(record))) return false;
+    if (memcmp(record, "fvar", 4) == 0) return false;
+    if (memcmp(record, "head", 4) == 0) head = be32(record + 8);
+    if (memcmp(record, "hhea", 4) == 0) hhea = be32(record + 8);
+    if (memcmp(record, "hmtx", 4) == 0) {
+      hmtx = be32(record + 8);
+      hmtxLen = be32(record + 12);
+    }
+  }
+  if (head == 0 || hhea == 0 || hmtx == 0) return false;
+  uint8_t buf[2];
+  if (!readSource(s, head + 18, buf, 2)) return false;
+  hmtx_.unitsPerEm = static_cast<uint16_t>(be16(buf));
+  if (!readSource(s, hhea + 34, buf, 2)) return false;
+  const uint32_t count = be16(buf);
+  if (hmtx_.unitsPerEm == 0 || count == 0 || count * 4 > hmtxLen) return false;
+  if (!reserveChecked(hmtx_.advances, count, count, count)) return false;
+  hmtx_.advances.resize(count);
+  // longHorMetric = {uint16 advanceWidth, int16 lsb}; read in chunks, keep the advances.
+  uint8_t chunk[1024];
+  for (uint32_t done = 0; done < count;) {
+    const uint32_t n = std::min<uint32_t>(count - done, sizeof(chunk) / 4);
+    if (!readSource(s, hmtx + done * 4, chunk, n * 4)) return false;
+    for (uint32_t i = 0; i < n; ++i) hmtx_.advances[done + i] = static_cast<uint16_t>(be16(chunk + i * 4));
+    done += n;
+  }
+  hmtx_.ok = true;
+  LOG_DBG("TTF", "hmtx: %u advances, %u units/em", static_cast<unsigned>(count),
+          static_cast<unsigned>(hmtx_.unitsPerEm));
+  return true;
+}
+
+bool TtfEpdFont::usesHmtx(const Face& f) const {
+  return hmtx_.ok && &f == &faces_[Regular] && f.srcIndex == Regular && f.weight == 400 && !f.wantItalic;
+}
+
 const TtfEpdFont::GlyphMetricsEntry* TtfEpdFont::metricsFor(Face& f, const uint32_t cp,
                                                             const freeink::font::FtFont::GlyphId gid,
                                                             const uint32_t size26_6) {
@@ -361,7 +433,15 @@ const TtfEpdFont::GlyphMetricsEntry* TtfEpdFont::metricsFor(Face& f, const uint3
   GlyphMetricsEntry entry{};
   entry.gid = gid;
   freeink::font::FtFont::GlyphMetrics gm;
-  if (f.ft.metricsGlyph26_6(gid, size26_6, gm)) {
+  if (usesHmtx(f)) {
+    // The linear advance FreeType would report, straight from hmtx: no outline read.
+    const auto& advances = hmtx_.advances;
+    const uint32_t units = advances[gid < advances.size() ? gid : advances.size() - 1];
+    const uint32_t upm = hmtx_.unitsPerEm;
+    const uint32_t adv12_4 = (units * size26_6 + 2 * upm) / (4 * upm);
+    entry.advance12_4 = static_cast<uint16_t>(adv12_4 > 0xFFFF ? 0xFFFF : adv12_4);
+    entry.boxPending = true;
+  } else if (f.ft.metricsGlyph26_6(gid, size26_6, gm)) {
     const int32_t adv12_4 = (gm.advance26_6 + 2) >> 2;
     entry.advance12_4 = static_cast<uint16_t>(adv12_4 < 0 ? 0 : (adv12_4 > 0xFFFF ? 0xFFFF : adv12_4));
     entry.width = static_cast<uint8_t>(gm.width > 255 ? 255 : gm.width);
@@ -394,6 +474,19 @@ const uint8_t* TtfEpdFont::rasterizeInto(Face& f, EpdGlyph& glyph) {
   const size_t index = static_cast<size_t>(&glyph - f.glyphs.data());
   if (index >= f.glyphs.size() || index >= f.gids.size()) return nullptr;
   const freeink::font::GlyphBitmap* g = f.ft.rasterizeGlyph26_6(f.gids[index], size26_6_);
+  if (glyph.dataOffset == kPendingBox) {
+    // Advance came from hmtx; the raster supplies the box.
+    glyph.dataOffset = 0;
+    if (g == nullptr || g->pixels == nullptr || g->width == 0 || g->height == 0) {
+      glyph.width = 0;
+      glyph.height = 0;
+      return nullptr;  // blank glyph (space)
+    }
+    glyph.width = static_cast<uint8_t>(g->width > 255 ? 255 : g->width);
+    glyph.height = static_cast<uint8_t>(g->height > 255 ? 255 : g->height);
+    glyph.left = g->xoff;
+    glyph.top = static_cast<int16_t>(-g->yoff);
+  }
   if (g == nullptr || g->pixels == nullptr) return nullptr;
   const uint32_t w = glyph.width;
   const uint32_t h = glyph.height;
@@ -495,7 +588,7 @@ const uint8_t* TtfEpdFont::bitmapThunk(void* ctx, const EpdGlyph* glyph) {
   if (glyph == nullptr) return nullptr;
   Face* f = static_cast<Face*>(ctx);
   if (glyph->dataLength != 0) return f->bmp.data() + glyph->dataOffset;
-  if (glyph->width == 0 || glyph->height == 0) return nullptr;  // blank (space)
+  if ((glyph->width == 0 || glyph->height == 0) && glyph->dataOffset != kPendingBox) return nullptr;  // blank
   // First draw of a glyph layout measured: rasterize it now. The record lives in this
   // face's table, which the renderer only reads, so updating its bitmap fields is safe.
   return f->owner->rasterizeInto(*f, const_cast<EpdGlyph&>(*glyph));

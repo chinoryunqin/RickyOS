@@ -649,6 +649,8 @@ void SdCardFontSystem::loadTtfFamily(const SdCardFontFamilyInfo& family, GfxRend
     return;
   }
   addTtfSources(*ttf_);
+  // Reader text: widths from hmtx, outlines only for glyphs a page draws.
+  ttf_->setLazyMetrics(true);
   const bool ok = ttf_->load(size, /*twoBit=*/true, cacheBytes, maxGlyphs, fourBit);
   if (!ok) {
     // init failure is ambiguous (corrupt font vs. transient OOM inside

@@ -96,6 +96,11 @@ class TtfEpdFont {
   void releaseResidentCaches();
 
   // Optional batch pre-warm of the REGULAR face (other styles fault lazily).
+  // Reader faces: take layout advances from the font's hmtx table and leave each glyph's
+  // box to its first draw, so measuring a chapter reads no outlines (a 19 MB CJK TTF
+  // streamed from the card spent most of a minute loading outlines just for widths).
+  // Set before load(); applies to the plain regular face of a static font.
+  void setLazyMetrics(bool lazy) { lazyMetrics_ = lazy; }
   bool build(const char* utf8);
   bool addCoverage(const char* utf8);
 
@@ -111,6 +116,18 @@ class TtfEpdFont {
     unsigned long fileSize = 0;
   };
 
+  // Advance widths from the regular source's hmtx table (font units).
+  struct HorizontalMetrics {
+    freeink::font::PsramVector<uint16_t> advances;
+    uint16_t unitsPerEm = 0;
+    bool ok = false;
+  };
+  bool readSource(const Source& s, uint32_t offset, uint8_t* out, uint32_t count) const;
+  bool loadHorizontalMetrics();
+  bool lazyMetrics_ = false;
+  HorizontalMetrics hmtx_;
+  static constexpr uint32_t kPendingBox = 0xFFFFFFFFu;  // EpdGlyph.dataOffset: box set on first draw
+
   // Per-codepoint layout metrics, kept across page flushes (layout never rasterizes).
   struct GlyphMetricsEntry {
     freeink::font::FtFont::GlyphId gid = 0;
@@ -119,6 +136,7 @@ class TtfEpdFont {
     int16_t top = 0;
     uint8_t width = 0;
     uint8_t height = 0;
+    bool boxPending = false;  // advance from hmtx; the box comes with the first raster
   };
 
   struct Face {
@@ -163,6 +181,7 @@ class TtfEpdFont {
 
   const GlyphMetricsEntry* metricsFor(Face& f, uint32_t cp, freeink::font::FtFont::GlyphId gid, uint32_t size26_6);
   const uint8_t* rasterizeInto(Face& f, EpdGlyph& glyph);
+  bool usesHmtx(const Face& f) const;
   static const EpdGlyph* missThunk(void* ctx, uint32_t codepoint);
   static const uint8_t* bitmapThunk(void* ctx, const EpdGlyph* glyph);
   static bool coverageThunk(void* ctx, uint32_t codepoint);

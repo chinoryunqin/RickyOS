@@ -52,6 +52,21 @@ class RickyReaderGray16Test(unittest.TestCase):
         # Reader turns keep the rails up; long-lived frames still power down.
         self.assertIn('const bool turnOff = g_gray16Profile == 0 || g_gray16Profile == 3;', patch.NEW_COMMIT)
 
+    def test_rails_drop_after_frames_stop(self):
+        patch = load_patch()
+        cpp = pristine(ROOT / 'freeink-sdk/libs/display/EpdiyLcd/src/EpdiyLcd.cpp')
+        for old, new in ((patch.OLD_TIMER_INCLUDE, patch.NEW_TIMER_INCLUDE), (patch.OLD_POWER, patch.NEW_POWER),
+                         (patch.OLD_POWER_STATE, patch.NEW_POWER_STATE), (patch.OLD_IDLE_FN, patch.NEW_IDLE_FN)):
+            cpp = patch.patch_text(cpp, old, new, patch.RAILS_MARK)
+            self.assertEqual(patch.patch_text(cpp, old, new, patch.RAILS_MARK), cpp)  # re-runnable
+        self.assertIn('g_railsUp = true;', cpp)
+        self.assertIn('void epdiyLcdRailsOffIfIdle(uint32_t idleMs) {', cpp)
+        # Held-up rails let charge build in the film (old pages show through): the main
+        # loop drops them once frames stop, never during a push.
+        manager = (ROOT / 'src/activities/ActivityManager.cpp').read_text()
+        self.assertIn('RenderLock railsLock(RenderLock::Mode::Try);', manager)
+        self.assertIn('if (railsLock.ownsLock()) display.railsOffIfIdle(3000);', manager)
+
     def test_jpeg_detection_for_native_images(self):
         header = (ROOT / 'lib/Epub/Epub/blocks/ImageBlock.h').read_text()
         start = header.index('  static bool isJpegPath(')

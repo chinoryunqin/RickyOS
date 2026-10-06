@@ -233,6 +233,13 @@ void HalDisplay::setNextGray16Profile(const uint8_t profile) {
   (void)profile;
 #endif
 }
+void HalDisplay::railsOffIfIdle(const uint32_t idleMs) {
+#if FREEINK_DEVICE_READPICO && defined(RICKYOS_PRODUCT)
+  freeink::epdiyLcdRailsOffIfIdle(idleMs);  // added by scripts/patch_rickyos_epdiy.py
+#else
+  (void)idleMs;
+#endif
+}
 void HalDisplay::cancelGrayscale16() { einkDisplay.cancelGrayscale16(); }
 
 uint16_t HalDisplay::getDisplayWidthBytes() const { return einkDisplay.getDisplayWidthBytes(); }

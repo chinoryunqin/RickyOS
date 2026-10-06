@@ -226,6 +226,16 @@ void ActivityManager::settleToGray(RenderLock&& lock, const uint32_t generation)
 #endif
 
 void ActivityManager::loop() {
+#if defined(RICKYOS_PRODUCT) && FREEINK_DEVICE_READPICO && !defined(SIMULATOR)
+  {
+    // Page turns and UI frames leave the panel rails up so the next frame starts at once;
+    // held up while nothing is driven, they let charge build in the film until old pages
+    // show through new ones. Drop them once frames have stopped for a few seconds (the
+    // PMIC's own 500 ms off-hold falls in the idle time). Never during a frame push.
+    RenderLock railsLock(RenderLock::Mode::Try);
+    if (railsLock.ownsLock()) display.railsOffIfIdle(3000);
+  }
+#endif
   if (mappedInput.consumeSuppressedRelease()) {
     resetHomeStandbyInput();
     return;
