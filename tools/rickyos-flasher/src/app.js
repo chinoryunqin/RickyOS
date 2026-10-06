@@ -33,9 +33,9 @@ function step(name) {
     else element.removeAttribute('aria-current');
   }
   $('connect-symbol').hidden = name !== 'connect';
-  const headings = { connect: '用 USB 数据线连接设备。', backup: '先把备份留在电脑上。', install: '备份校验后，再开始安装。' };
+  const headings = { connect: '用 USB 数据线连接设备。', backup: '检查设备当前的系统。', install: '确认后开始安装。' };
   const descriptions = { connect: '在电脑 Chrome 或 Edge 中打开，关闭其他占用串口的窗口。',
-    backup: '完整读取 16 MB Flash，下载后重新选择已保存文件校验。',
+    backup: '读取分区和启动信息判断安装方式；需要的话可以先备份完整 Flash。',
     install: '确认安装说明，写入期间保持连接，不让电脑休眠。' };
   $('stage-heading').textContent = headings[name];
   $('stage-description').textContent = descriptions[name];
@@ -47,14 +47,16 @@ function installationBlock() {
 }
 function showPlan(kind) {
   $('install-path').textContent = kind === 'factory' ? '已识别原厂系统 · 自动准备首次安装' :
+    kind === 'other' ? '已识别其他系统 · 自动准备完整安装' :
     kind === 'upgrade' ? '已识别兼容系统 · 自动准备更新' : '自动检查当前系统';
   $('install-note').textContent = kind === 'factory' ?
     '首次安装会替换系统、启动组件和分区，清理原厂内部文件。原厂设置不保证沿用；网站不操作 SD 卡，请另行备份卡上的数据。' :
+    kind === 'other' ? '完整安装会替换当前系统、启动组件和分区，清理设备内部文件和设置。网站不操作 SD 卡，请另行备份卡上的数据。' :
     kind === 'upgrade' ? '只更新应用，不写启动加载器、分区表和启动记录，不操作 SD 卡。' :
-    '完成备份后会检查当前系统。已装有 CrossMux 或 RickyOS 的设备只更新应用；原厂系统的首次安装还在验收，暂未开放。请另行备份 SD 卡数据。';
-  $('write-confirm-text').textContent = kind === 'factory' ?
-    '完整 Flash 备份已保存并校验；SD 卡数据已另行备份。我确认首次安装会替换原厂系统并清理内部文件，写入期间不拔线、不让电脑休眠。' :
-    '完整备份已保存；我确认安装所选版本，写入期间不拔线、不让电脑休眠。';
+    '检查后自动选择安装方式：已装有 CrossMux 或 RickyOS 的设备只更新应用，原厂或其他系统完整安装。网站不操作 SD 卡。';
+  $('write-confirm-text').textContent = kind === 'factory' || kind === 'other' ?
+    '我确认安装会替换当前系统并清理设备内部文件，写入期间不拔线、不让电脑休眠。' :
+    '我确认安装所选版本，写入期间不拔线、不让电脑休眠。';
 }
 function updateControls() {
   $('connect').disabled = !connectionAllowed();
@@ -62,10 +64,10 @@ function updateControls() {
   $('disconnect').hidden = !session;
   $('disconnect').disabled = busy;
   $('backup').disabled = busy || Boolean(session?.writeStarted);
-  $('saved-backup').disabled = busy;
+  $('backup-opt').disabled = busy;
   $('write-confirm').disabled = busy;
   $('install-button').disabled = busy || (demo ? !session?.plan?.demo :
-    Boolean(session?.writeStarted) || !session?.savedBackupVerified || Boolean(installationBlock()) || !$('write-confirm').checked);
+    Boolean(session?.writeStarted) || !session?.ready || Boolean(installationBlock()) || !$('write-confirm').checked);
 }
 function connectionAllowed() {
   return canConnect({ demo, release, supported, hashReady,
@@ -79,7 +81,7 @@ async function operate(action) {
     await action();
   } catch (error) {
     const afterWrite = session?.writeStarted;
-    if (session) session.savedBackupVerified = false;
+    if (session) session.ready = false;
     result(`${error.name === 'NotFoundError' ? '未选择串口。' : error.message} ${afterWrite ?
       '写入可能已经开始。请保持 BOOT 模式，保存记录，不要拔线或重启。' : '没有执行 Flash 写入。'}`, true);
   } finally {
@@ -94,8 +96,7 @@ function download(bytes, name, type = 'application/octet-stream') {
 }
 function clearBackup() {
   if (backupUrl) URL.revokeObjectURL(backupUrl);
-  backupUrl = null; $('save-backup').hidden = true; $('saved-backup-control').hidden = true;
-  $('saved-backup').value = ''; $('write-confirm').checked = false;
+  backupUrl = null; $('save-backup').hidden = true; $('write-confirm').checked = false;
   $('final-controls').hidden = true;
   showPlan(null);
 }
@@ -122,7 +123,7 @@ async function loadReleases() {
     $('release-tag').textContent = release ? '正式版本可用' : '正式固件 · 待开放';
     if (release) {
       $('release-version').textContent = release.version;
-      $('release-description').textContent = '已通过发行检查。完整备份并校验保存文件后，才能安装。';
+      $('release-description').textContent = '已通过发行检查，连接设备即可安装。';
       if (!demo) $('connect').textContent = '连接并检查设备 →';
     } else if (!demo) {
       $('compatibility').textContent = '网站已开放预览。正式固件发布前，不连接设备、不读取备份、不执行刷写。';
@@ -137,6 +138,9 @@ async function loadReleases() {
 }
 $('model-confirm').addEventListener('change', updateControls);
 $('write-confirm').addEventListener('change', updateControls);
+$('backup-opt').addEventListener('change', () => {
+  if (!demo) $('backup').textContent = $('backup-opt').checked ? '备份并检查设备' : '检查设备';
+});
 $('connect').addEventListener('click', () => {
   if (!connectionAllowed()) return;
   // Request permission while the click's transient user activation is still live.
@@ -146,22 +150,23 @@ $('connect').addEventListener('click', () => {
   return operate(async () => {
   clearBackup();
   if (demo) {
-    session = { savedBackupVerified: false, plan: null };
+    session = { ready: false, plan: null };
     $('device-state').textContent = '演示设备';
-    $('backup').textContent = '演示：保存完整备份';
+    $('backup').textContent = '演示：检查设备';
     result('演示第 1 步：机型和容量检查通过。未连接真实串口。');
   } else {
     requireThat(release, '正式固件尚未发布，设备连接暂未开放。');
     requireThat(supported && hashReady && $('model-confirm').checked, '请先确认 Read Pico 机型和浏览器校验能力。');
     const port = await selectedPort;
-    adapter = new SerialAdapter(log);
+    // ?trace=1 logs raw serial traffic to the browser console for diagnosis.
+    adapter = new SerialAdapter(log, new URLSearchParams(location.search).has('trace'));
     try {
       await adapter.connect(port); session = new FlashSession(adapter);
     } catch (error) {
       await adapter.close().catch(() => {}); adapter = null; throw error;
     }
     $('device-state').textContent = '芯片检查通过';
-    result('ESP32-S3 / 16 MB 检查通过。完成备份后继续校验分区与应用机型。');
+    result('ESP32-S3 / 16 MB 检查通过。接下来检查设备当前的系统。');
   }
   $('backup-controls').hidden = false; step('backup');
   });
@@ -169,40 +174,40 @@ $('connect').addEventListener('click', () => {
 $('disconnect').addEventListener('click', () => operate(async () => {
   await adapter?.close(); adapter = null; session = null; clearBackup();
   $('backup-controls').hidden = true; $('progress-region').hidden = true;
-  $('device-state').textContent = '未连接'; step('connect'); result('已断开连接。再次安装需要重新备份。');
+  $('device-state').textContent = '未连接'; step('connect'); result('已断开连接。再次安装需要重新连接并检查设备。');
 }));
 $('backup').addEventListener('click', () => operate(async () => {
   clearBackup();
   if (demo) {
-    progress('演示 · 完整备份流程', 100, 100);
-    session.savedBackupVerified = true; session.plan = { demo: true, kind: 'factory' }; showPlan('factory');
+    progress('演示 · 检查设备', 100, 100);
+    session.ready = true; session.plan = { demo: true, kind: 'factory' }; showPlan('factory');
     $('final-controls').hidden = false; $('write-confirm').hidden = true;
     $('final-controls').querySelector('.check-row').hidden = true;
     $('install-button').textContent = '演示：安装与校验 →';
     $('install-button').disabled = false;
-    result('演示第 2 步：自动识别原厂系统，准备首次安装。真实流程会校验完整备份和原厂版本指纹，不需要先刷其他系统。这里没有读取任何设备数据。');
+    result('演示第 2 步：自动识别原厂系统，准备首次安装。真实流程会读取分区布局和应用机型，不需要先刷其他系统。这里没有读取任何设备数据。');
     step('install'); return;
   }
   requireThat(session, '请先连接设备。');
-  cancelled = false; $('cancel').hidden = false; $('cancel').disabled = false;
-  const backup = await session.backupFlash((done, total) => progress('读取完整 Flash 备份', done, total), () => cancelled);
-  backupUrl = URL.createObjectURL(new Blob([backup.bytes]));
-  $('save-backup').href = backupUrl;
-  $('save-backup').download = `RickyOS-ReadPico-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.bin`;
-  $('save-backup').hidden = false; $('saved-backup-control').hidden = false;
-  $('backup-help').textContent = `完整 16 MB 备份已通过设备摘要校验。SHA-256：${backup.sha256}`;
+  if ($('backup-opt').checked) {
+    cancelled = false; $('cancel').hidden = false; $('cancel').disabled = false;
+    const backup = await session.backupFlash((done, total) => progress('读取完整 Flash 备份', done, total), () => cancelled);
+    backupUrl = URL.createObjectURL(new Blob([backup.bytes]));
+    $('save-backup').href = backupUrl;
+    $('save-backup').download = `RickyOS-ReadPico-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.bin`;
+    $('save-backup').hidden = false; $('save-backup').click();
+    $('backup-help').textContent = `完整 16 MB 备份已下载，并通过设备摘要校验。SHA-256：${backup.sha256}`;
+  } else {
+    progress('检查分区与启动信息', 0, 1);
+    await session.inspectDevice();
+    progress('检查分区与启动信息', 1, 1);
+  }
   showPlan(session.plan?.kind);
-  result(backup.compatible ? '备份完成，已识别当前系统和分区。请点击保存，再选择刚保存的文件校验；安装还需通过发行包检查。' :
-    `备份完成，请保存文件。${session.compatibilityError} 备份成功不等于允许安装。`);
-}));
-$('cancel').addEventListener('click', () => { cancelled = true; $('cancel').disabled = true; });
-$('saved-backup').addEventListener('change', () => operate(async () => {
-  const file = $('saved-backup').files[0]; requireThat(file && file.size === FLASH_BYTES, '请选择刚保存的 16 MB 备份文件。');
-  await session.verifySavedBackup(new Uint8Array(await file.arrayBuffer()));
   $('final-controls').hidden = false; step('install');
   const blocked = installationBlock();
-  result(blocked ? `备份文件已保存并校验。${blocked}` : '备份文件已保存并校验。请阅读安装说明，确认下方选项后可安装。');
+  result(blocked ? `已识别当前系统。${blocked}` : '已识别当前系统。请阅读安装说明，确认下方选项后安装。');
 }));
+$('cancel').addEventListener('click', () => { cancelled = true; $('cancel').disabled = true; });
 $('install-button').addEventListener('click', () => operate(async () => {
   if (demo) {
     progress('演示 · 写入与摘要校验', 100, 100);
@@ -216,7 +221,7 @@ $('install-button').addEventListener('click', () => operate(async () => {
   const response = await fetch(`./${release.file}`, { cache: 'no-store' });
   requireThat(response.ok, '固件下载失败。');
   const bytes = new Uint8Array(await response.arrayBuffer());
-  const firstInstall = session.plan.kind === 'factory';
+  const firstInstall = session.plan.kind === 'factory' || session.plan.kind === 'other';
   const assets = [];
   if (firstInstall) for (const spec of release.fullInstall.segments) {
     const part = await fetch(`./${spec.file}`, { cache: 'no-store' });
@@ -226,7 +231,7 @@ $('install-button').addEventListener('click', () => operate(async () => {
   await session.install(bytes, release, (done, total) => progress(firstInstall ? '安装 RickyOS 与准备内部空间' : '写入应用分区', done, total), true,
     label => { $('operation').textContent = label; log(label); }, assets);
   progress('固件与启动信息校验完成', 100, 100);
-  result(firstInstall ? 'RickyOS 首次安装与完整 Flash 摘要校验通过，已请求重启。请确认 RickyOS 首页与 SD 卡文件。原厂内部文件已清理；SD 卡未操作，请保管好原厂备份。' :
+  result(firstInstall ? 'RickyOS 完整安装与 Flash 摘要校验通过，已请求重启。请确认 RickyOS 首页与 SD 卡文件。原系统的内部文件已清理；SD 卡未操作，请保管好刚才的完整备份。' :
     'RickyOS 已写入并通过设备摘要校验，已请求重启。请确认屏幕出现 RickyOS 首页。SD 卡、启动加载器、分区表和启动记录未作写入。');
   await adapter.close(); adapter = null; session = null; clearBackup();
   $('backup-controls').hidden = true; $('device-state').textContent = '已请求重启';

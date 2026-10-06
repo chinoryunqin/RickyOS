@@ -54,7 +54,7 @@ class FakeAdapter {
 }
 async function prepared(seq = 1) {
   const adapter = new FakeAdapter(await fixture(seq)), session = new FlashSession(adapter);
-  const backup = await session.backupFlash(() => {}); await session.verifySavedBackup(backup.bytes.slice());
+  const backup = await session.backupFlash(() => {});
   return { adapter, session };
 }
 test('security fails closed for unknown, encrypted, secure-boot and wrong chip/capacity', () => {
@@ -130,19 +130,12 @@ test('backup transport chunks bounded to 64 KiB; whole-device MD5 mandatory', as
   await assert.rejects(() => session.backupFlash(() => {}));
   assert.equal(session.backup, null);
 });
-test('unknown original layout still backs up but does not permit installation', async () => {
+test('another system needs a full-install release; an app-only release writes nothing', async () => {
   const adapter = new FakeAdapter(new Uint8Array(FLASH_BYTES)), session = new FlashSession(adapter);
   const backup = await session.backupFlash(() => {});
-  assert.equal(backup.compatible, false); assert.equal(session.plan, null);
-  await session.verifySavedBackup(backup.bytes);
+  assert.equal(backup.compatible, true); assert.equal(session.plan.kind, 'other');
   await assert.rejects(async () => session.install(image(), await release(), () => {}, true));
   assert.equal(adapter.writes.length, 0);
-});
-test('saved file must match this exact backup; failed recheck revokes permit', async () => {
-  const { session } = await prepared();
-  const wrong = session.backup.slice(); wrong[100] ^= 1;
-  await assert.rejects(() => session.verifySavedBackup(wrong));
-  assert.equal(session.savedBackupVerified, false);
 });
 test('explicit confirmation required; unpublished releases cannot erase/write', async () => {
   const { adapter, session } = await prepared(), published = await release();
@@ -181,7 +174,7 @@ test('write interruption or bad digest prevents reset and re-use', async () => {
     };
     await assert.rejects(async () => session.install(image(), await release(), () => {}, true));
     assert.equal(adapter.resets, 0); assert.equal(session.writeStarted, true);
-    assert.equal(session.savedBackupVerified, false);
+    assert.equal(session.ready, false);
   }
 });
 test('disconnect invalidates existing backup authorization', async () => {
@@ -200,10 +193,44 @@ test('serial read consumes final digest and rejects truncation/noise', async () 
   await assert.rejects(() => verifiedRead(loader, { read: async () => new Uint8Array(15) }, 0, bytes.length));
   await assert.rejects(() => verifiedRead(loader, transport, 0, bytes.length + 1));
 });
+test('a stalled read piece reconnects and is re-read; persistent stalls still fail', async () => {
+  const flash = new Uint8Array(65536).map((_, i) => i * 7);
+  const adapter = new SerialAdapter(() => {}); let pending = null, stalls = 1, reconnects = 0;
+  adapter.loader = { readFlash: async (at, size) => {
+    if (stalls-- > 0) throw new Error('No serial data received.');
+    pending = flash.slice(at, at + size); return pending;
+  } };
+  adapter.transport = { read: async () => Uint8Array.from(Buffer.from(await md5(pending), 'hex')) };
+  adapter.reconnect = async () => { reconnects++; };
+  assert.deepEqual(await adapter.read(0, flash.length), flash);
+  assert.equal(reconnects, 1);
+  stalls = Infinity;
+  await assert.rejects(() => adapter.read(0, flash.length));
+});
 test('adapter cannot request erase-all or alter flash header parameters', async () => {
   const adapter = new SerialAdapter(() => {}); let options;
   adapter.loader = { writeFlash: async value => { options = value; } };
   await adapter.write(image(), 0x10000, () => {});
   assert.equal(options.eraseAll, false); assert.equal(options.fileArray.length, 1);
   assert.equal(options.flashSize, 'keep'); assert.equal(options.flashMode, 'keep'); assert.equal(options.flashFreq, 'keep');
+});
+test('paced read asks for 448-byte packets, one unacknowledged, and acknowledges each', async () => {
+  const { pacedReadFlash } = await import('../src/serial.js');
+  const flash = new Uint8Array(5000).map((_, i) => i), acks = []; let request;
+  const int = n => Uint8Array.from([n & 255, (n >> 8) & 255, (n >> 16) & 255, (n >>> 24) & 255]);
+  const loader = { FLASH_READ_TIMEOUT: 10, ESP_READ_FLASH: 0xd, _intToByteArray: int,
+    _appendArray: (a, b) => Uint8Array.from([...a, ...b]), checkCommand: async (_n, _op, pkt) => { request = pkt; return 0; } };
+  let at = 0;
+  const transport = { read: async () => { const p = flash.slice(at, at + 448); at += p.length; return p; },
+    write: async bytes => acks.push(new DataView(bytes.buffer).getUint32(0, true)) };
+  assert.deepEqual(await pacedReadFlash(loader, transport, 0x2000, flash.length), flash);
+  assert.deepEqual([...request], [...int(0x2000), ...int(5000), ...int(448), ...int(1)]);
+  assert.deepEqual(acks, [448, 896, 1344, 1792, 2240, 2688, 3136, 3584, 4032, 4480, 4928, 5000]);
+});
+test('without a backup the device is classified from headers and installs the same way', async () => {
+  const { adapter: from } = await prepared();
+  const adapter = new FakeAdapter(from.bytes.slice()), session = new FlashSession(adapter);
+  assert.equal((await session.inspectDevice()).kind, 'upgrade'); assert.equal(session.backup, null);
+  await session.install(image(), await release(), () => {}, true);
+  assert.equal(adapter.writes.length, 1); assert.equal(adapter.resets, 1);
 });

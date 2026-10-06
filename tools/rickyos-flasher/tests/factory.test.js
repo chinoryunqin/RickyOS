@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { md5, sha256 } from 'hash-wasm';
-import { FLASH_BYTES, SLOT_BYTES, TAG, otaCrc, inspectBackup, checkFactoryPartitions,
+import { FLASH_BYTES, SLOT_BYTES, TAG, otaCrc, activeOffset, inspectBackup, checkFactoryPartitions,
   checkRelease, checkPlanRelease, checkInstallAssets } from '../src/policy.js';
 import { FlashSession } from '../src/session.js';
 
@@ -39,7 +39,7 @@ class Device {
 }
 async function prepared() {
   const adapter = new Device(await original()), session = new FlashSession(adapter);
-  const saved = await session.backupFlash(() => {}); await session.verifySavedBackup(saved.bytes.slice());
+  const saved = await session.backupFlash(() => {});
   const firmware = espHeader(new Uint8Array(4100));
   firmware.set(new TextEncoder().encode(`${TAG} RickyOS 1.6.5-rickyos-pico.13`), 24);
   const boot = espHeader(new Uint8Array(4100)), ota = new Uint8Array(8192).fill(255), view = new DataView(ota.buffer);
@@ -50,12 +50,20 @@ async function prepared() {
     chipId: 9, flashBytes: FLASH_BYTES, version: '1.6.5-rickyos-pico.13',
     bytes: firmware.length, sha256: await sha256(firmware), file: 'firmware/RickyOS-13.bin',
     fullInstall: { approved: true, hardwareAccepted: true,
-      factorySources: [{ id: 'test-only-not-a-real-device', hardwareAccepted: true, layout: plan.layout,
-        tableSha256: plan.tableSha256, bootloaderSha256: plan.bootloaderSha256, appSha256: plan.appSha256 }],
+      factoryLayouts: [plan.layout],
       segments: await Promise.all(assets.map(async (bytes, i) => ({ role: ['bootloader', 'partitions', 'boot_app0'][i],
         offset: [0, 0x8000, 0xe000][i], bytes: bytes.length, sha256: await sha256(bytes),
         file: `firmware/component-${i}.bin` }))) } };
   return { adapter, session, firmware, release, assets };
+}
+async function preparedOther() {
+  const item = await prepared();
+  // A community firmware with its own layout: nothing at 0x8000 parses.
+  const bytes = new Uint8Array(FLASH_BYTES).fill(0x5a);
+  item.adapter = new Device(bytes); item.session = new FlashSession(item.adapter);
+  const saved = await item.session.backupFlash(() => {});
+  item.release.fullInstall.otherSystems = true;
+  return item;
 }
 function install(item) {
   return item.session.install(item.firmware, item.release, () => {}, true, () => {}, item.assets);
@@ -65,7 +73,8 @@ test('factory is automatically identified by full layout and Read_Pico app descr
   assert.equal(plan.kind, 'factory'); assert.equal(plan.layout, 'mindreset-factory-4m-v1');
   assert.equal(plan.tableSha256, await sha256(bytes.subarray(0x8000, 0x9000)));
   for (const at of [0x10000, 0x1000c, 0x10020, 0x10050]) {
-    const bad = bytes.slice(); bad[at] ^= 1; await assert.rejects(() => inspectBackup(bad));
+    // Not the factory system any more: it is offered the complete install instead.
+    const bad = bytes.slice(); bad[at] ^= 1; assert.equal((await inspectBackup(bad)).kind, 'other');
   }
 });
 test('factory partition checks reject changed geometry, flags, extra entries and digest', async () => {
@@ -76,13 +85,15 @@ test('factory partition checks reject changed geometry, flags, extra entries and
   const old = factoryEntries.map(item => item.slice()); old[2][3] = 0x200000; old[3][2] = 0x210000;
   await assert.rejects(async () => checkFactoryPartitions(await table(old)));
 });
-test('first install requires accepted components and exact original image fingerprints', async () => {
+test('first install requires accepted components and an accepted factory layout', async () => {
   const item = await prepared(); checkRelease(item.release); checkPlanRelease(item.session.plan, item.release);
-  for (const key of ['tableSha256', 'bootloaderSha256', 'appSha256']) {
-    const bad = structuredClone(item.release); bad.fullInstall.factorySources[0][key] = '0'.repeat(64);
-    assert.throws(() => checkPlanRelease(item.session.plan, bad));
-  }
-  for (const patch of [{ approved: false }, { hardwareAccepted: false }, { segments: [] }, { factorySources: [] }]) {
+  // Any factory image on the accepted layout qualifies: builds of the open-source
+  // factory firmware differ per device, so its digest is not part of the gate.
+  const rebuilt = { ...item.session.plan, appSha256: '0'.repeat(64), bootloaderSha256: '1'.repeat(64) };
+  checkPlanRelease(rebuilt, item.release);
+  assert.throws(() => checkPlanRelease({ ...item.session.plan, layout: 'mindreset-factory-2m' }, item.release));
+  for (const patch of [{ approved: false }, { hardwareAccepted: false }, { segments: [] }, { factoryLayouts: [] },
+    { factoryLayouts: ['mindreset-factory-2m'] }, { factoryLayouts: undefined }]) {
     assert.throws(() => checkRelease({ ...item.release, fullInstall: { ...item.release.fullInstall, ...patch } }));
   }
   for (const patch of [{ offset: 0x9000 }, { bytes: 0x9000 }, { role: 'firmware' }, { file: '../boot.bin' }]) {
@@ -126,10 +137,10 @@ test('migration preserves NVS, clears stale internal data and commits partitions
   assert.equal(progress.at(-1)[0], progress.at(-1)[1]);
   await assert.rejects(() => install(item));
 });
-test('factory fingerprint mismatch, backup changes and absent confirmation cause zero writes', async () => {
-  for (const mode of ['source', 'live', 'confirmation']) {
+test('unaccepted layout, backup changes and absent confirmation cause zero writes', async () => {
+  for (const mode of ['layout', 'live', 'confirmation']) {
     const item = await prepared();
-    if (mode === 'source') item.release.fullInstall.factorySources[0].appSha256 = '0'.repeat(64);
+    if (mode === 'layout') item.release.fullInstall.factoryLayouts = ['mindreset-factory-2m'];
     if (mode === 'live') item.adapter.bytes[0x410000] ^= 1;
     await assert.rejects(() => item.session.install(item.firmware, item.release, () => {}, mode !== 'confirmation', () => {}, item.assets));
     assert.equal(item.adapter.writes.length, 0); assert.equal(item.adapter.resets, 0);
@@ -147,7 +158,7 @@ test('migration staging failure or disconnect never commits partitions or resets
     };
     await assert.rejects(() => install(item));
     assert.ok(!item.adapter.writes.some(([at]) => at === 0x8000)); assert.equal(item.adapter.resets, 0);
-    assert.equal(item.session.writeStarted, true); assert.equal(item.session.savedBackupVerified, false);
+    assert.equal(item.session.writeStarted, true); assert.equal(item.session.ready, false);
   }
 });
 test('partition commit failure and final flash corruption never trigger reset', async () => {
@@ -165,7 +176,7 @@ test('per-device NVS and internal files are not mistaken for factory firmware id
   const item = await prepared(), bytes = await original();
   bytes[0x9000] ^= 1; bytes[0x410000] ^= 1;
   const other = new FlashSession(new Device(bytes)), saved = await other.backupFlash(() => {});
-  await other.verifySavedBackup(saved.bytes.slice());
+ 
   checkPlanRelease(other.plan, item.release);
   assert.equal(other.plan.bootloaderSha256, item.session.plan.bootloaderSha256);
   assert.equal(other.plan.appSha256, item.session.plan.appSha256);
@@ -173,9 +184,45 @@ test('per-device NVS and internal files are not mistaken for factory firmware id
 test('the same unified release updates installed devices without touching boot or partitions', async () => {
   const item = await prepared(); await install(item);
   const bytes = item.adapter.bytes.slice(), adapter = new Device(bytes), session = new FlashSession(adapter);
-  const backup = await session.backupFlash(() => {}); await session.verifySavedBackup(backup.bytes.slice());
+  const backup = await session.backupFlash(() => {});
   checkPlanRelease(session.plan, item.release);
   await session.install(item.firmware, item.release, () => {}, true);
   assert.deepEqual(adapter.writes, [[0x10000, item.firmware.length]]);
   assert.equal(adapter.resets, 1);
+});
+test('another system gets the complete install, starting with empty NVS', async () => {
+  const item = await preparedOther();
+  assert.equal(item.session.plan.kind, 'other');
+  await install(item);
+  assert.deepEqual(item.adapter.writes.at(-1), [0x8000, 4096]); assert.equal(item.adapter.resets, 1);
+  assert.ok(item.adapter.bytes.subarray(0x9000, 0xe000).every(value => value === 255));
+  assert.deepEqual(item.adapter.bytes.subarray(0x10000, 0x10000 + item.firmware.length), item.firmware);
+  assert.ok(item.adapter.bytes.subarray(0x10000 + item.firmware.length).every(value => value === 255));
+  assert.equal((await inspectBackup(item.adapter.bytes)).kind, 'upgrade');
+});
+test('another system is refused without the release opting in, before any write', async () => {
+  for (const otherSystems of [undefined, false]) {
+    const item = await preparedOther(); item.release.fullInstall.otherSystems = otherSystems;
+    await assert.rejects(() => install(item)); assert.equal(item.adapter.writes.length, 0);
+  }
+});
+test('boot records are read like the ESP-IDF bootloader: invalid records do not vote', async () => {
+  // Arduino's boot_app0.bin: record 0 picks app0, record 1 has sequence 0 and CRC 0xffffffff.
+  const ota = new Uint8Array(8192).fill(255), view = new DataView(ota.buffer);
+  view.setUint32(0, 1, true); view.setUint32(28, otaCrc(ota.subarray(0, 4)), true);
+  view.setUint32(4096, 0, true);
+  assert.equal(activeOffset(ota), 0x10000);
+  const none = new Uint8Array(8192).fill(255); new DataView(none.buffer).setUint32(4096, 0, true);
+  assert.throws(() => activeOffset(none));
+});
+test('factory and other systems install without a backup, checking each write', async () => {
+  for (const make of [prepared, preparedOther]) {
+    const item = await make(), bytes = item.adapter.bytes.slice();
+    item.adapter = new Device(bytes); item.session = new FlashSession(item.adapter);
+    const plan = await item.session.inspectDevice();
+    assert.equal(plan.kind, make === prepared ? 'factory' : 'other');
+    await install(item);
+    assert.deepEqual(item.adapter.writes.at(-1), [0x8000, 4096]); assert.equal(item.adapter.resets, 1);
+    assert.equal((await inspectBackup(item.adapter.bytes)).kind, 'upgrade');
+  }
 });
