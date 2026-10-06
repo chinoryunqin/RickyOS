@@ -1844,6 +1844,15 @@ void GfxRenderer::cancelGrayscale16() const {
   grayscale16Buffer = nullptr;
 }
 
+uint8_t GfxRenderer::grayscale16Level(const int x, const int y) const {
+  if (!grayscale16Buffer) return 15;
+  int px, py;
+  rotateCoordinates(orientation, x, y, &px, &py, panelWidth, panelHeight);
+  if (px < 0 || px >= panelWidth || py < 0 || py >= panelHeight) return 15;
+  const size_t index = static_cast<size_t>(py) * (panelWidth / 2) + px / 2;
+  return (grayscale16Buffer[index] >> ((px & 1) * 4)) & 0x0F;
+}
+
 void GfxRenderer::drawGrayscale16Pixel(const int x, const int y, const uint8_t gray) const {
   // Hot path of every anti-aliased text page: one clip test, one rotation, then the
   // B/W proxy bit and the 4-bit level written directly. Going through drawPixel()

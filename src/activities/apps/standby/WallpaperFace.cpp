@@ -16,6 +16,7 @@
 
 #include "CrossPointSettings.h"
 #include "components/RickyBrandMark.h"
+#include "components/RickyClockDigits.h"
 #include "components/RickyPowerLayout.h"
 #include "components/UITheme.h"
 #include "components/UiHighDpiProfile.h"
@@ -103,6 +104,26 @@ void WallpaperFace::drawCorner(GfxRenderer& renderer, const Rect& viewport, cons
   snprintf(clock, sizeof(clock), "%02d:%02d", local.tm_hour, local.tm_min);
 
   const bool time = showsTime();
+  if (intoGray) {
+    // On the picture: a large light clock centred low on the screen over a soft fade to
+    // paper, the date under it. No box: a framed badge in the corner read as pasted on.
+    const int bottom = viewport.y + viewport.height;
+    const int dateHeight = renderer.getLineHeight(kDateFont);
+    const int digitsTop = bottom - 300;
+    const int dateTop = time ? digitsTop + RickyClockDigits::capHeight() + 30 : bottom - 150;
+    const int fadeTop = (time ? digitsTop : dateTop) - 220;
+    RickyClockDigits::fadeToPaper(renderer, viewport.x, fadeTop, viewport.width, fadeTop + 200, bottom, 15);
+    if (time) {
+      RickyClockDigits::draw(renderer, viewport.x + (viewport.width - RickyClockDigits::width(clock)) / 2, digitsTop,
+                             clock);
+    }
+    const int dateWidth = renderer.getTextWidth(kDateFont, date);
+    const int dateX = viewport.x + (viewport.width - dateWidth) / 2;
+    renderer.fillRect(dateX - 4, dateTop, dateWidth + 8, dateHeight, false);
+    renderer.drawText(kDateFont, dateX, dateTop, date, true);
+    renderer.copyBwToGrayscale16(dateX - 4, dateTop, dateWidth + 8, dateHeight, 0);
+    return;
+  }
   const int timeHeight = time ? renderer.getLineHeight(kTimeFont) : 0;
   const int dateHeight = renderer.getLineHeight(kDateFont);
   // Noto Sans digits are tabular, so "00:00" sizes every minute: a corner-only
