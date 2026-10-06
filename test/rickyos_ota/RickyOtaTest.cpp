@@ -32,7 +32,7 @@ bool networkError = false, cutDownload = false, missingPartition = false;
 uint16_t runningChip = 9;
 const std::string noUpdate =
     R"({"schema":1,"product":"RickyOS","board":"readpico","channel":"stable","status":"no_update"})";
-const std::string offeredVersion = "1.6.5-rickyos-pico.13";
+const std::string offeredVersion = "1.1.1";
 
 void reset() {
   response.clear();
@@ -179,13 +179,15 @@ int main() {
                           replace(good, "}", ",}"),
                           replace(noUpdate, "}", ",\"bytes\":4096}")})
     CHECK(!parses(bad));
-  CHECK(ricky_ota::newer("1.6.5-rickyos-pico.12-dev", offeredVersion));
-  CHECK(ricky_ota::newer("1.6.5-rickyos-pico.12-dev", "1.6.5-rickyos-pico.12"));
-  CHECK(ricky_ota::newer("1.6.5-rickyos-pico.9", "1.6.5-rickyos-pico.10"));
-  CHECK(!ricky_ota::newer("1.6.5-rickyos-pico.14", offeredVersion));
+  CHECK(ricky_ota::newer("1.1.0-dev", offeredVersion));
+  CHECK(ricky_ota::newer("1.1.0-dev", "1.1.0"));
+  CHECK(ricky_ota::newer("1.1.9", "1.1.10"));
+  CHECK(!ricky_ota::newer("1.2.0", offeredVersion));
   CHECK(!ricky_ota::newer(offeredVersion, offeredVersion));
   CHECK(!ricky_ota::newer("1.6.5-readpico-rc", offeredVersion));
-  CHECK(!ricky_ota::newer("1.6.5-rickyos-pico.12", offeredVersion + "-dev"));
+  CHECK(!ricky_ota::newer("1.1.0", offeredVersion + "-dev"));
+  // The pre-1.1.0 CrossMux-derived scheme is not a RickyOS version any more.
+  CHECK(!ricky_ota::newer("1.0.0", "1.6.5-rickyos-pico.13"));
   ricky_ota::StringScanner scanner("1.1.1-rickyos-pico.111");
   const std::string scanBytes = "noise1.1.1.1-rickyos-pico.111suffix";
   for (const auto c : scanBytes) scanner.feed(reinterpret_cast<const uint8_t*>(&c), 1);
@@ -255,7 +257,7 @@ int main() {
   CHECK(updater.installUpdate() == OtaUpdater::INTERNAL_UPDATE_ERROR);
   CHECK(switches == 0);
   reset();
-  response = offer("1.6.5-rickyos-pico.11");
+  response = offer("1.0.9");
   CHECK(updater.checkForUpdate(OtaUpdater::Channel::Stable) == OtaUpdater::OK);
   CHECK(!updater.isUpdateNewer());
   CHECK(updater.installUpdate() == OtaUpdater::UPDATE_OLDER_ERROR);

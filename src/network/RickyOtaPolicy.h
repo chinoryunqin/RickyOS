@@ -12,8 +12,10 @@ inline constexpr char MANIFEST_URL[] = "https://chinoryunqin.github.io/RickyOS-s
 inline constexpr size_t SLOT_BYTES = 0x640000;
 inline constexpr size_t RESERVE_BYTES = 512 * 1024;
 
+// RickyOS versions are major.minor.patch (e.g. 1.1.0); development builds add
+// "-dev" and may update to the release of the same number.
 struct Version {
-  std::array<uint32_t, 4> parts{};
+  std::array<uint32_t, 3> parts{};
   bool development = false;
 };
 
@@ -37,10 +39,6 @@ inline bool parseVersion(std::string_view text, Version& result, const bool allo
       text.remove_prefix(1);
     }
   }
-  constexpr std::string_view suffix = "-rickyos-pico.";
-  if (!text.starts_with(suffix)) return false;
-  text.remove_prefix(suffix.size());
-  if (!number(result.parts[3])) return false;
   if (allowDevelopment && text == "-dev") {
     result.development = true;
     return true;

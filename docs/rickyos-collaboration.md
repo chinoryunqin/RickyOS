@@ -207,6 +207,6 @@ SD 卡、取消和鉴权错误不重试；清单本身也按 jsDelivr → fastly
 - 网站 `RickyOS-site` gh-pages 发布同一镜像：`releases.json` 为 `app-upgrade`，
   网页安装只支持已装 CrossMux / RickyOS 的设备；原厂首次安装未验收，保持关闭。
   `ota.json` 返回 `update_available`，设备从 `-dev` 版可在线升级。
-- 之后的开发构建为 `1.6.5-rickyos-pico.13-dev`。下次发版：改版本号 → 构建 →
+- 这一版之后改用 RickyOS 自己的版本号，`.12` 记作 1.0.0。下次发版：改版本号 → 构建 →
   放入 `tools/rickyos-flasher/public/firmware/` 并更新 `releases.json` → `npm test`、
   `npm run build` → 把 `dist/` 推到 RickyOS-site 的 gh-pages。

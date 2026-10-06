@@ -41,13 +41,13 @@ async function prepared() {
   const adapter = new Device(await original()), session = new FlashSession(adapter);
   const saved = await session.backupFlash(() => {});
   const firmware = espHeader(new Uint8Array(4100));
-  firmware.set(new TextEncoder().encode(`${TAG} RickyOS 1.6.5-rickyos-pico.13`), 24);
+  firmware.set(new TextEncoder().encode(`${TAG} RickyOS 1.1.1`), 24);
   const boot = espHeader(new Uint8Array(4100)), ota = new Uint8Array(8192).fill(255), view = new DataView(ota.buffer);
   view.setUint32(0, 1, true); view.setUint32(28, otaCrc(ota.subarray(0, 4)), true);
   const assets = [boot, (await table(targetEntries)).slice(0, 3072), ota];
   const plan = session.plan;
   const release = { approved: true, hardwareAccepted: true, mode: 'auto-install', board: 'readpico',
-    chipId: 9, flashBytes: FLASH_BYTES, version: '1.6.5-rickyos-pico.13',
+    chipId: 9, flashBytes: FLASH_BYTES, version: '1.1.1',
     bytes: firmware.length, sha256: await sha256(firmware), file: 'firmware/RickyOS-13.bin',
     fullInstall: { approved: true, hardwareAccepted: true,
       factoryLayouts: [plan.layout],
