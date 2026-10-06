@@ -19,7 +19,7 @@ target_include_directories(RickyOtaTest PRIVATE
   ${REPO_ROOT}/lib/JsonParser
   ${REPO_ROOT}/freeink-sdk/libs/network/JsonSax/include
 )
-target_compile_definitions(RickyOtaTest PRIVATE RICKYOS_PRODUCT=1 CROSSPOINT_VERSION="1.6.5-rickyos-pico.12-dev")
+target_compile_definitions(RickyOtaTest PRIVATE RICKYOS_PRODUCT=1 CROSSPOINT_VERSION="1.1.0-dev")
 target_link_libraries(RickyOtaTest PRIVATE OpenSSL::Crypto)
 target_compile_options(RickyOtaTest PRIVATE -UNDEBUG)
 add_test(NAME RickyOtaTest COMMAND RickyOtaTest)
@@ -29,6 +29,6 @@ add_executable(HttpDownloaderTrustTest
   ${REPO_ROOT}/src/network/HttpDownloader.cpp
 )
 target_include_directories(HttpDownloaderTrustTest PRIVATE stubs ${REPO_ROOT})
-target_compile_definitions(HttpDownloaderTrustTest PRIVATE RICKYOS_PRODUCT=1 CROSSPOINT_VERSION="1.6.5-rickyos-pico.12-dev")
+target_compile_definitions(HttpDownloaderTrustTest PRIVATE RICKYOS_PRODUCT=1 CROSSPOINT_VERSION="1.1.0-dev")
 target_compile_options(HttpDownloaderTrustTest PRIVATE -UNDEBUG)
 add_test(NAME HttpDownloaderTrustTest COMMAND HttpDownloaderTrustTest)

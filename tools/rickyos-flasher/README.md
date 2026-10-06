@@ -62,14 +62,14 @@ RickyOS 1.6.5-rickyos-pico.12 成功。本网站暂不提供整片备份恢复�
   "schema": 1,
   "product": "RickyOS",
   "releases": [{
-    "version": "1.6.5-rickyos-pico.13",
+    "version": "1.1.1",
     "approved": true,
     "hardwareAccepted": true,
     "mode": "auto-install",
     "board": "readpico",
     "chipId": 9,
     "flashBytes": 16777216,
-    "file": "firmware/RickyOS-13.bin",
+    "file": "firmware/RickyOS-1.1.1.bin",
     "bytes": 0,
     "sha256": "填写实测镜像 SHA-256",
     "fullInstall": {

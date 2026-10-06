@@ -32,9 +32,10 @@ CrossMux Stable / Nightly 逻辑不变。设备设置入口为「RickyOS 更新�
 网页与设备使用同一二进制、版本、长度和 SHA-256。`approved` 与
 `hardwareAccepted` 必须都为真，不能以开发候选充当正式版本。
 
-版本格式为 `major.minor.patch-rickyos-pico.revision`，按四段无符号整数比较，
-拒绝降级或相同正式版本；同编号的已运行 `-dev` 版可以升级正式版。
-不接受未知版本格式或其他品牌的版本号。
+版本格式为 RickyOS 自己的 `major.minor.patch`（从 1.1.0 起，platformio.ini `[rickyos] version`），
+按三段无符号整数比较，拒绝降级或相同正式版本；同编号的已运行 `-dev` 版可以升级正式版。
+发布后 main 改为下一个修复号加 `-dev`（如 `1.1.1-dev`）。不接受未知版本格式或其他品牌的版本号。
+1.0.0 之前的 `1.6.5-rickyos-pico.12` 只认旧格式，收不到 1.1.0 的在线更新，需要用网站更新一次。
 
 ## 下载与写入边界
 

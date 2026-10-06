@@ -102,7 +102,7 @@ export function checkRelease(release) {
   requireThat(release?.approved === true && release.hardwareAccepted === true &&
     ['app-upgrade', 'auto-install'].includes(release.mode) && release.board === 'readpico' && release.chipId === 9 &&
     release.flashBytes === FLASH_BYTES && typeof release.version === 'string' &&
-    /^\d+\.\d+\.\d+-rickyos-pico\.\d+$/.test(release.version) &&
+    /^\d+\.\d+\.\d+$/.test(release.version) &&
     Number.isInteger(release.bytes) && release.bytes >= 24 && release.bytes % 4 === 0 &&
     Math.ceil(release.bytes / 4096) * 4096 <= SLOT_BYTES - RELEASE_RESERVE &&
     /^[a-f0-9]{64}$/.test(release.sha256) &&

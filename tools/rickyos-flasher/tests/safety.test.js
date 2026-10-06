@@ -6,7 +6,7 @@ import { FLASH_BYTES, SLOT_BYTES, TAG, otaCrc, activeOffset, checkSecurity,
 import { FlashSession } from '../src/session.js';
 import { verifiedRead, SerialAdapter } from '../src/serial.js';
 
-function image(version = '1.6.5-rickyos-pico.13') {
+function image(version = '1.1.1') {
   const bytes = new Uint8Array(4096); bytes[0] = 0xe9; bytes[1] = 1; bytes[12] = 9;
   bytes.set(new TextEncoder().encode(`${TAG} RickyOS ${version}`), 24);
   return bytes;
@@ -42,7 +42,7 @@ async function fixture(seq = 1) {
 }
 async function release(bytes = image()) {
   return { approved: true, hardwareAccepted: true, mode: 'app-upgrade', board: 'readpico',
-    chipId: 9, flashBytes: FLASH_BYTES, version: '1.6.5-rickyos-pico.13',
+    chipId: 9, flashBytes: FLASH_BYTES, version: '1.1.1',
     bytes: bytes.length, sha256: await sha256(bytes), file: 'firmware/RickyOS-13.bin' };
 }
 class FakeAdapter {
@@ -97,7 +97,7 @@ test('only approved hardware-accepted non-dev releases with 512 KiB reserve', as
   const good = await release(); checkRelease(good);
   for (const patch of [{ approved: false }, { hardwareAccepted: false }, { board: 'sticky' },
     { chipId: 5 }, { mode: 'full-install' }, { bytes: SLOT_BYTES }, { bytes: 4095 },
-    { version: '1.6.5-rickyos-pico.12-dev' }, { sha256: 'wrong' },
+    { version: '1.1.0-dev' }, { sha256: 'wrong' },
     { file: '../firmware.bin' }, { file: 'https://example.com/fw.bin' }]) {
     assert.throws(() => checkRelease({ ...good, ...patch }));
   }
@@ -105,7 +105,7 @@ test('only approved hardware-accepted non-dev releases with 512 KiB reserve', as
 test('firmware size, digest, brand and version checked', async () => {
   const good = await release(); await checkFirmware(image(), good);
   const bad = image(); bad[300] ^= 1; await assert.rejects(() => checkFirmware(bad, good));
-  const wrong = image('1.6.5-rickyos-pico.14');
+  const wrong = image('1.1.2');
   await assert.rejects(async () => checkFirmware(wrong, { ...good, sha256: await sha256(wrong) }));
 });
 test('full backup selects correct active slot and rejects truncated backup', async () => {
