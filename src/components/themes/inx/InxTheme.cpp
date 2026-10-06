@@ -1,5 +1,6 @@
-#include "InxTheme.h"
-
+#ifdef RICKYOS_PRODUCT
+#include "components/RickyAaIcons.h"
+#endif
 #include <GfxRenderer.h>
 #include <HalGPIO.h>
 
@@ -11,6 +12,7 @@
 #include "CrossPointSettings.h"
 #include "I18n.h"
 #include "InxItemLayout.h"
+#include "InxTheme.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
 #include "components/icons/inx_apps.h"
@@ -112,6 +114,9 @@ const uint8_t* iconForTab(const MainTab tab) {
 }
 
 void drawInxIcon(const GfxRenderer& renderer, const uint8_t* icon, const int x, const int y) {
+#ifdef RICKYOS_PRODUCT
+  if (RickyAaIcons::draw(renderer, icon, kIconSize, kIconSize, x, y, true)) return;
+#endif
   constexpr int rowBytes = (kIconSize + 7) / 8;
   for (int row = 0; row < kIconSize; ++row) {
     for (int column = 0; column < kIconSize; ++column) {
@@ -131,6 +136,7 @@ void drawSelectedInxIcon(const GfxRenderer& renderer, const uint8_t* icon, const
   const int pillX = iconX + (kIconSize - pillWidth) / 2;
   const int pillY = iconY + (kIconSize - kPillHeight) / 2;
   renderer.fillRoundedRect(pillX, pillY, pillWidth, kPillHeight, kPillHeight / 2, Color::Black);
+  if (RickyAaIcons::draw(renderer, icon, kIconSize, kIconSize, iconX, iconY, false)) return;
   constexpr int rowBytes = (kIconSize + 7) / 8;
   for (int row = 0; row < kIconSize; ++row) {
     for (int column = 0; column < kIconSize; ++column) {

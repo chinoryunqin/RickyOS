@@ -16,6 +16,7 @@ class RickyStorageActivity final : public UiListActivity {
  protected:
   int listCount() const override { return 6; }
   void onEnter() override;
+  void loop() override;
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
   void drawChrome() override;
@@ -30,5 +31,13 @@ class RickyStorageActivity final : public UiListActivity {
   uint64_t sdTotalBytes = 0;
   uint64_t sdFreeBytes = 0;
   std::array<int, 4> counts{-1, -1, -1, -1};  // books, fonts, images, downloads; -1 = unknown
+  uint32_t seenScans = 0;                     // background scans already applied to this page
+
+ public:
+  // Something changed the card (a delete, an import): count again on the next visit.
+  static void invalidateScan();
+
+ private:
+  void applyLastScan();
 };
 #endif

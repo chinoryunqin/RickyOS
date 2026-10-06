@@ -13,6 +13,8 @@
 #include <Utf8.h>
 
 #include <algorithm>
+#include <memory>
+#include <new>
 #include <string_view>
 
 #include "../Memory/Memory.h"
@@ -619,7 +621,7 @@ static void renderCharScaled(const GfxRenderer& renderer, GfxRenderer::RenderMod
   const uint8_t* bitmap = renderer.getGlyphBitmap(fontData, glyph);
   if (!bitmap) return;
 
-  const int srcW = glyph->width;
+  const int srcW = glyph->width;  // read after the fetch: a vector glyph's box arrives with it
   const int srcH = glyph->height;
   const int dstW = (srcW + 1) / 2;  // ceil so odd-width glyphs aren't clipped
   const int dstH = (srcH + 1) / 2;
@@ -688,6 +690,9 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
     return;
   }
 
+  // A vector glyph may not have its box yet (TTF layout takes advances only); fetching
+  // its bitmap first fills the box in. No-op for every other font.
+  if (glyph->dataLength == 0 && fontData->vectorBitmapHandler) (void)renderer.getGlyphBitmap(fontData, glyph);
   const bool is2Bit = fontData->is2Bit;
   const bool is4Bit = fontData->is4Bit;
   const uint8_t width = glyph->width;
@@ -743,7 +748,43 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
           draw4BitGlyphPixel(renderer, screenX, screenY, get4BitCoverage(bitmap, glyphY * width + glyphX));
         }
       }
-    } else if (is2Bit || is4Bit) {
+    }
+#ifdef RICKYOS_PRODUCT
+    else if ((is2Bit || is4Bit) && renderer.isGrayscale16Active()) {
+      // 2-bit faces (downloaded .cpfont) and synthetic bold go straight into the 16-level
+      // frame as well, so a page is rasterised once instead of once per B/W, LSB and MSB
+      // plane. Coverage 0..3 spreads over the 16 levels (x5); 0 stays transparent.
+      for (int glyphY = 0; glyphY < height; glyphY++) {
+        const int outerCoord = outerBase + glyphY;
+        uint8_t previous1 = 0, previous2 = 0, previous3 = 0;
+        const int outputWidth = width + syntheticBoldPixels;
+        for (int glyphX = 0; glyphX < outputWidth; glyphX++) {
+          int screenX, screenY;
+          if constexpr (rotation == TextRotation::Rotated90CW) {
+            screenX = outerCoord;
+            screenY = innerBase - glyphX;
+          } else {
+            screenX = innerBase + glyphX;
+            screenY = outerCoord;
+          }
+          const uint8_t current = glyphX < width ? get2BitCoverage(bitmap, glyphY * width + glyphX, is4Bit) : 0;
+          const uint8_t coverage = syntheticBoldPixels == 0 ? current
+                                                            : dilate2BitCoverage(current, previous1, previous2,
+                                                                                 previous3, syntheticBoldPixels);
+          if (pixelState) {
+            draw4BitGlyphPixel(renderer, screenX, screenY, static_cast<uint8_t>(coverage * 5));
+          } else if (coverage != 0) {
+            // White text on ink (a selected pill or tile): coverage lifts toward paper.
+            renderer.drawGrayscale16Pixel(screenX, screenY, static_cast<uint8_t>(coverage * 5 * 17));
+          }
+          previous3 = previous2;
+          previous2 = previous1;
+          previous1 = current;
+        }
+      }
+    }
+#endif
+    else if (is2Bit || is4Bit) {
       for (int glyphY = 0; glyphY < height; glyphY++) {
         const int outerCoord = outerBase + glyphY;
         if (syntheticBoldPixels == 0) {
@@ -1160,6 +1201,11 @@ void GfxRenderer::drawRect(const int x, const int y, const int width, const int 
 
 void GfxRenderer::drawArc(const int maxRadius, const int cx, const int cy, const int xDir, const int yDir,
                           const int lineWidth, const bool state) const {
+  if (grayscale16Buffer && maxRadius > 0) {
+    antialiasedQuarter(maxRadius, cx, cy, xDir, yDir, std::max(1, std::min(lineWidth, maxRadius)),
+                       framebufferState(renderMode, state));
+    return;
+  }
   const int stroke = std::min(lineWidth, maxRadius);
   const int innerRadius = std::max(maxRadius - stroke, 0);
   const int outerRadius = maxRadius;
@@ -1342,6 +1388,15 @@ void GfxRenderer::fillRectImpl(const int x, const int y, const int width, const 
   // the mirroring applies. Only this path slows down, and only during the 16-level pass;
   // every other render path keeps the byte-level fill below.
   if (grayscale16Buffer != nullptr) {
+    if constexpr (C == Color::LightGray || C == Color::DarkGray) {
+      // The 16-level frame has real grays: a smooth tone instead of the B/W dot pattern
+      // (and treating these as white made light-gray tracks vanish once a screen settled).
+      constexpr uint8_t gray = C == Color::LightGray ? 187 : 119;  // levels 11 and 7
+      for (int px = lx0; px < lx1; ++px) {
+        for (int py = ly0; py < ly1; ++py) drawGrayscale16Pixel(px, py, gray);
+      }
+      return;
+    }
     const bool black = (C == Color::Black);
     for (int py = ly0; py < ly1; ++py) {
       for (int px = lx0; px < lx1; ++px) {
@@ -1544,6 +1599,12 @@ void GfxRenderer::maskRoundedRectOutsideCorners(const int x, const int y, const 
 template <Color color>
 void GfxRenderer::fillArc(const int maxRadius, const int cx, const int cy, const int xDir, const int yDir) const {
   if (maxRadius <= 0) return;
+  if constexpr (color == Color::Black || color == Color::White) {
+    if (grayscale16Buffer) {
+      antialiasedQuarter(maxRadius, cx, cy, xDir, yDir, 0, framebufferState(renderMode, color == Color::Black));
+      return;
+    }
+  }
 
   if constexpr (color == Color::Clear) {
     return;
@@ -1788,6 +1849,16 @@ bool GfxRenderer::beginGrayscale16() {
   return true;
 }
 
+bool GfxRenderer::beginGrayscale16Offscreen(uint8_t* frame) {
+  if (!frame || grayscale16Buffer || _stripActive || !frameBuffer || getGrayscaleLevels() != 16) return false;
+  memset(frame, 0xFF, grayscale16FrameBytes());  // level 15 = white, as the native begin clears
+  grayscale16Buffer = frame;
+  setRenderMode(BW);
+  // clearScreen() reaches the panel HAL on Read Pico; the framebuffer is scratch here.
+  memset(frameBuffer, 0xFF, getBufferSize());
+  return true;
+}
+
 bool GfxRenderer::commitGrayscale16() const {
   if (!grayscale16Buffer) return false;
   const bool committed = commitNativeGray(display);
@@ -1801,19 +1872,70 @@ void GfxRenderer::cancelGrayscale16() const {
   grayscale16Buffer = nullptr;
 }
 
-void GfxRenderer::drawGrayscale16Pixel(const int x, const int y, const uint8_t gray) const {
-  if (!grayscale16Buffer || x < 0 || y < 0 || x >= getScreenWidth() || y >= getScreenHeight()) return;
+// One quarter of a rounded corner straight into the 16-level frame, with edge coverage
+// from a 4x4 sample grid blended over what is already there: the 1-bit quarter-circle
+// steps are what made rounded cards and pills look coarse at 300 ppi. Same geometry as
+// the 1-bit arcs (pixel centres within the radius), so layouts do not shift. stroke 0
+// fills the quarter disc.
+void GfxRenderer::antialiasedQuarter(const int radius, const int cx, const int cy, const int xDir, const int yDir,
+                                     const int stroke, const bool ink) const {
+  const float outer = static_cast<float>(radius) + 0.5f;
+  const float inner = stroke > 0 ? std::max(0.0f, static_cast<float>(radius - stroke) + 0.5f) : -1.0f;
+  const float outerSq = outer * outer;
+  const float innerSq = inner * inner;
+  const int inkLevel = ink ? 0 : 15;
+  for (int dx = 0; dx <= radius; ++dx) {  // columns: contiguous in panel memory in portrait
+    for (int dy = 0; dy <= radius; ++dy) {
+      int covered = 0;
+      for (int i = 0; i < 4; ++i) {
+        const float sx = static_cast<float>(dx) - 0.375f + 0.25f * static_cast<float>(i);
+        for (int j = 0; j < 4; ++j) {
+          const float sy = static_cast<float>(dy) - 0.375f + 0.25f * static_cast<float>(j);
+          const float d = sx * sx + sy * sy;
+          if (d <= outerSq && (inner < 0 || d >= innerSq)) ++covered;
+        }
+      }
+      if (covered == 0) continue;
+      const int x = cx + xDir * dx;
+      const int y = cy + yDir * dy;
+      const int paper = grayscale16Level(x, y);
+      const int delta = (inkLevel - paper) * covered;  // over 16 samples, rounded either way
+      const int level = paper + (delta >= 0 ? (delta + 8) / 16 : -((8 - delta) / 16));
+      drawGrayscale16Pixel(x, y, static_cast<uint8_t>(level * 17));
+    }
+  }
+}
+
+uint8_t GfxRenderer::grayscale16Level(const int x, const int y) const {
+  if (!grayscale16Buffer) return 15;
   int px, py;
   rotateCoordinates(orientation, x, y, &px, &py, panelWidth, panelHeight);
+  if (px < 0 || px >= panelWidth || py < 0 || py >= panelHeight) return 15;
   const size_t index = static_cast<size_t>(py) * (panelWidth / 2) + px / 2;
+  return (grayscale16Buffer[index] >> ((px & 1) * 4)) & 0x0F;
+}
+
+void GfxRenderer::drawGrayscale16Pixel(const int x, const int y, const uint8_t gray) const {
+  // Hot path of every anti-aliased text page: one clip test, one rotation, then the
+  // B/W proxy bit and the 4-bit level written directly. Going through drawPixel()
+  // (which also mirrors into this buffer) cost three rotations and two nibble writes
+  // per glyph pixel and made the single 16-level render slower than three 1-bit passes.
+  if (!grayscale16Buffer || x < clipLeft_ || y < clipTop_ || x >= clipRight_ || y >= clipBottom_) return;
+  int px, py;
+  rotateCoordinates(orientation, x, y, &px, &py, panelWidth, panelHeight);
+  if (px < 0 || px >= panelWidth || py < 0 || py >= panelHeight) return;
   const uint8_t level = (static_cast<unsigned>(gray) + 8) / 17;
+  // B/W proxy for popups and later partial updates: level < 8 is ink, as drawPixel(x, y,
+  // level < 8) would write it.
+  const uint32_t byteIndex = static_cast<uint32_t>(py) * panelWidthBytes + (px / 8);
+  const uint8_t bit = 1u << (7 - (px % 8));
+  if (framebufferState(renderMode, level < 8)) {
+    frameBuffer[byteIndex] &= ~bit;
+  } else {
+    frameBuffer[byteIndex] |= bit;
+  }
+  const size_t index = static_cast<size_t>(py) * (panelWidth / 2) + px / 2;
   const unsigned shift = (px & 1) * 4;
-  // 顺序很重要：drawPixel() 现在也会镜像进这个缓冲（把普通 1 位绘制带进来），所以先把
-  // B/W 代理写掉，再把精确灰度覆盖上去 —— 反过来会把字形的中间调冲成纯黑或纯白。
-  // / Order matters: drawPixel() now mirrors into this buffer too (that is what carries
-  // plain 1-bit drawing such as the status bar), so write the B/W proxy first and overlay
-  // the precise level after it; the other order would flatten mid-tones.
-  drawPixel(x, y, level < 8);
   grayscale16Buffer[index] = (grayscale16Buffer[index] & ~(0x0Fu << shift)) | (level << shift);
 }
 
@@ -1864,6 +1986,22 @@ bool GfxRenderer::drawBitmapGrayscale16(const Bitmap& bitmap, const int x, const
   const int targetHeight = std::floor((sourceHeight - 1) * scale) + 1;
   uint8_t* row = bitmap.drawScratch.get();
   uint8_t* source = row + width;
+  // In portrait, writing a logical row strides a whole panel row per pixel (a PSRAM cache
+  // miss each): ~2.3 s for a full-screen picture. Collect a band of rows and write it
+  // column by column, where consecutive pixels are adjacent in panel memory.
+  constexpr int kBandRows = 32;
+  std::unique_ptr<uint8_t[]> band;
+  if (grayscale16PrefersColumns()) band.reset(new (std::nothrow) uint8_t[static_cast<size_t>(targetWidth) * kBandRows]);
+  int bandDestY[kBandRows];
+  int bandCount = 0;
+  const auto flushBand = [&] {
+    for (int destX = 0; destX < targetWidth; ++destX) {
+      for (int i = 0; i < bandCount; ++i) {
+        drawGrayscale16Pixel(x + destX, y + bandDestY[i], band[static_cast<size_t>(i) * targetWidth + destX]);
+      }
+    }
+    bandCount = 0;
+  };
   for (int fileY = 0; fileY < height; ++fileY) {
     if (bitmap.readNextRow(row, source, nullptr, Bitmap::RowOutput::Gray8) != BmpReaderError::Ok) return false;
     const int sourceY = bitmap.isTopDown() ? fileY : height - 1 - fileY;
@@ -1872,11 +2010,19 @@ bool GfxRenderer::drawBitmapGrayscale16(const Bitmap& bitmap, const int x, const
     const int destY = (relativeY * targetHeight + sourceHeight - 1) / sourceHeight;
     // Select one source row per destination row, independent of BMP row order.
     if (destY >= targetHeight || destY * sourceHeight / targetHeight != relativeY) continue;
+    if (band) {
+      uint8_t* out = &band[static_cast<size_t>(bandCount) * targetWidth];
+      for (int destX = 0; destX < targetWidth; ++destX) out[destX] = row[cropPixX + destX * sourceWidth / targetWidth];
+      bandDestY[bandCount++] = destY;
+      if (bandCount == kBandRows) flushBand();
+      continue;
+    }
     for (int destX = 0; destX < targetWidth; ++destX) {
       const int sourceX = cropPixX + destX * sourceWidth / targetWidth;
       drawGrayscale16Pixel(x + destX, y + destY, row[sourceX]);
     }
   }
+  if (band && bandCount > 0) flushBand();
   return true;
 }
 
@@ -2166,6 +2312,10 @@ void GfxRenderer::clearScreen(const uint8_t color) const {
     return;
   }
   display.clearScreen(color);
+  if (displayCapture_ && grayscale16Buffer) {
+    // A screen may redraw several times in one render; earlier passes must not show.
+    memset(grayscale16Buffer, color == 0x00 ? 0x00 : 0xFF, grayscale16FrameBytes());
+  }
 }
 
 void GfxRenderer::beginStripTarget(uint8_t* scratch, int stripY0, int stripRows) const {
@@ -2208,6 +2358,7 @@ void GfxRenderer::invertScreen() const {
 }
 
 void GfxRenderer::displayBuffer(HalDisplay::RefreshMode refreshMode, DisplayRefreshContext context) const {
+  if (displayCapture_) return;  // the capture's owner commits the 16-level frame
   auto elapsed = millis() - start_ms;
   LOG_DBG("GFX", "Time = %lu ms from clearScreen to displayBuffer", elapsed);
   HalDisplay::RefreshMode effectiveRefreshMode = refreshMode;
@@ -2224,6 +2375,7 @@ void GfxRenderer::displayBuffer(HalDisplay::RefreshMode refreshMode, DisplayRefr
 }
 
 void GfxRenderer::displayBufferAsync(const HalDisplay::RefreshMode refreshMode, DisplayRefreshContext context) const {
+  if (displayCapture_) return;
   HalDisplay::RefreshMode effectiveRefreshMode = refreshMode;
   if (nextRefreshOverridePending) {
     effectiveRefreshMode = nextRefreshOverride;

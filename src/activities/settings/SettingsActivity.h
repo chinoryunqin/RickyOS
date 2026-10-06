@@ -39,6 +39,7 @@ enum class SettingAction {
 #ifdef RICKYOS_PRODUCT
   RickyProfile,
   RickyStandbyPage,
+  RickyScreenRepair,
 #endif
 };
 

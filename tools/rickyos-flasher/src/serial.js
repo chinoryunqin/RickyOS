@@ -98,6 +98,17 @@ export class SerialAdapter {
       flashSize: 'keep', flashMode: 'keep', flashFreq: 'keep', eraseAll: false,
       compress: true, reportProgress: (_index, done, total) => progress(done, total) });
   }
-  reset() { return this.loader.after('hard_reset'); }
+  // esptool-js 0.7.0's HardReset only releases RTS. After flashing RTS is already
+  // released, so nothing happened and the device stayed in the loader looking
+  // frozen. Do what esptool.py does: hold EN low through RTS, then release it,
+  // with DTR released so IO0 stays high and the app boots.
+  async reset() {
+    const t = this.transport;
+    await t.setDTR(false);
+    await t.setRTS(true);
+    await new Promise(resolve => setTimeout(resolve, 120));
+    await t.setRTS(false);
+    await new Promise(resolve => setTimeout(resolve, 60));
+  }
   async close() { if (this.transport) await this.transport.disconnect(); }
 }

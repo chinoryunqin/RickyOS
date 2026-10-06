@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <functional>
 #include <iterator>
@@ -324,6 +325,11 @@ void EpubReaderActivity::onExit() {
 #if FREEINK_DEVICE_EEGO_A4
   // EEGO uses a single-pass grayscale page; force a clean first frame after exit.
   renderer.requestNextFullRefresh();
+#elif FREEINK_DEVICE_READPICO && defined(RICKYOS_PRODUCT)
+  // The last page is 16-level; a fast B/W frame over it leaves its gray text behind,
+  // and the UI's later refreshes only drive what they change, so the residue stayed and
+  // built up. The first UI frame is a full GC16 clean.
+  renderer.requestNextFullRefresh();
 #endif
 }
 
@@ -342,6 +348,13 @@ bool EpubReaderActivity::loadBook() {
     disableFastInitialRefresh();
     GUI.drawPopup(renderer, tr(STR_INDEXING));
   }
+#ifdef RICKYOS_PRODUCT
+  else if (SETTINGS.embeddedStyle != 0 && !Storage.exists((loadedEpub->getCachePath() + "/css_rules.cache").c_str())) {
+    // A book without its style cache parses every stylesheet once (seconds for books
+    // with hundreds of them): say so instead of looking frozen.
+    GUI.drawPopup(renderer, tr(STR_INDEXING));
+  }
+#endif
 
   bool loaded;
   {
@@ -531,6 +544,37 @@ ReaderRenderSpec EpubReaderActivity::effectiveRenderSpec(const uint16_t width, c
   return spec;
 }
 
+#ifdef RICKYOS_PRODUCT
+namespace {
+// Readers cannot send serial logs, so a failed chapter leaves one line on the card they
+// can copy off: firmware, book, chapter, stage, cause and the heap at that moment.
+constexpr char kRickyErrorLogPath[] = "/rickyos-log.txt";
+constexpr size_t kRickyErrorLogMaxBytes = 32 * 1024;
+
+void appendRickyErrorLog(const std::string& bookPath, const int spine, const char* stage, const unsigned error) {
+  char line[96];
+  const int head = snprintf(
+      line, sizeof(line), "%s up=%lus spine=%d stage=%s error=%u free=%u min=%u max=%u book=", CROSSPOINT_VERSION,
+      static_cast<unsigned long>(millis() / 1000), spine, stage, error, static_cast<unsigned>(ESP.getFreeHeap()),
+      static_cast<unsigned>(ESP.getMinFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
+  if (head <= 0) return;
+  std::string entry(line, std::min(static_cast<size_t>(head), sizeof(line) - 1));
+  entry += bookPath;
+  entry += '\n';
+  HalFile file = Storage.open(kRickyErrorLogPath, O_WRONLY | O_CREAT | O_APPEND);
+  if (file && file.isOpen() && file.fileSize() > kRickyErrorLogMaxBytes) {
+    file.close();  // keep the card tidy: start over rather than grow without bound
+    Storage.remove(kRickyErrorLogPath);
+    file = Storage.open(kRickyErrorLogPath, O_WRONLY | O_CREAT | O_APPEND);
+  }
+  if (!file || !file.isOpen()) return;
+  file.write(reinterpret_cast<const uint8_t*>(entry.data()), entry.size());
+  file.flush();
+  file.close();
+}
+}  // namespace
+#endif
+
 bool EpubReaderActivity::handleBuildFailure(const char* stage, const Section::BuildError error) {
   if (failedBuildSpine_ == currentSpineIndex) return false;
   bool retry = false;
@@ -566,6 +610,10 @@ bool EpubReaderActivity::handleBuildFailure(const char* stage, const Section::Bu
   buildHeapPaused = false;
   buildPopupPending = false;
   failedBuildSpine_ = retry ? -1 : currentSpineIndex;
+  failedBuildError_ = error;
+#ifdef RICKYOS_PRODUCT
+  appendRickyErrorLog(epub->getPath(), currentSpineIndex, stage, static_cast<unsigned>(error));
+#endif
   LOG_ERR("ERS", "Build failed: spine=%d stage=%s error=%u retryWithoutCss=%d (free=%u, min=%u, maxAlloc=%u)",
           currentSpineIndex, stage, static_cast<unsigned>(error), retry, static_cast<unsigned>(ESP.getFreeHeap()),
           static_cast<unsigned>(ESP.getMinFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
@@ -1644,6 +1692,22 @@ void EpubReaderActivity::renderBook() {
     renderer.clearScreen();
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+#ifdef RICKYOS_PRODUCT
+    // Say why, with a code readers can quote; the details are in /rickyos-log.txt.
+    switch (failedBuildError_) {
+      case Section::BuildError::OutOfMemory:
+        GUI.drawPopup(renderer, tr(STR_RICKY_INDEX_FAILED_MEMORY));
+        return;
+      case Section::BuildError::InvalidData:
+        GUI.drawPopup(renderer, tr(STR_RICKY_INDEX_FAILED_DATA));
+        return;
+      case Section::BuildError::Io:
+        GUI.drawPopup(renderer, tr(STR_RICKY_INDEX_FAILED_IO));
+        return;
+      default:
+        break;
+    }
+#endif
     GUI.drawPopup(renderer, tr(STR_INDEX_FAILED));
   };
 
@@ -1652,6 +1716,7 @@ void EpubReaderActivity::renderBook() {
     return;
   }
   failedBuildSpine_ = -1;
+  failedBuildError_ = Section::BuildError::None;
 
   if (currentSpineIndex < 0) currentSpineIndex = 0;
   if (currentSpineIndex > epub->getSpineItemsCount()) currentSpineIndex = epub->getSpineItemsCount();
@@ -1755,9 +1820,16 @@ void EpubReaderActivity::renderBook() {
         const int target = pendingPageJump.has_value() ? *pendingPageJump : (nextPageNumber < 0 ? 0 : nextPageNumber);
         const bool anchorJump = !pendingAnchor.empty();
 
-        if (section->isPartial() &&
-            (anchorJump ? section->getPageForAnchor(pendingAnchor).has_value()
-                        : target + PARTIAL_REBUILD_START_MARGIN < static_cast<int>(section->pageCount))) {
+#ifdef RICKYOS_PRODUCT
+        // Resuming a partial chapter re-parses it from the top: seconds in a long chapter.
+        // When the saved page is already cached, show it now; updateChapterBuild() extends
+        // the chapter in the background while the reader is on the page.
+        constexpr int kOpenMargin = 0;
+#else
+        constexpr int kOpenMargin = PARTIAL_REBUILD_START_MARGIN;
+#endif
+        if (section->isPartial() && (anchorJump ? section->getPageForAnchor(pendingAnchor).has_value()
+                                                : target + kOpenMargin < static_cast<int>(section->pageCount))) {
           LOG_DBG("ERS", "Partial covers target %d of %d; deferring extension build", target, section->pageCount);
         } else {
           const size_t spineBytes =
@@ -2116,6 +2188,15 @@ void EpubReaderActivity::rememberCurrentContentOffset() {
 }
 
 #if FREEINK_DEVICE_READPICO
+#ifdef RICKYOS_PRODUCT
+// A page that renders on the native 16-level path: anti-aliased text with no images or
+// only JPEG ones (they decode straight into the frame). Must match use16LevelText.
+bool EpubReaderActivity::nativeGray16Page(const Page& page) const {
+  return SETTINGS.textAntiAliasing && !renderer.isInverted() && renderer.getGrayscaleLevels() == 16 &&
+         !SETTINGS.readingBackgroundEnabled && page.imagesAreAllJpeg();
+}
+#endif
+
 bool EpubReaderActivity::pageCacheEligible() const {
   // No !section->isBuilding() here, deliberately. The page cache renders ONE page --
   // the current one or the next -- and Section::loadPage() is written to serve exactly
@@ -2155,7 +2236,13 @@ ReaderPageCacheKey EpubReaderActivity::pageCacheKey(const int page, const int to
       .guideOffset = SETTINGS.readingGuideLineOffset};
 }
 
+#ifdef RICKYOS_PRODUCT
+// A 16-level page builds in ~270 ms, so start soon after the turn: at 400 ms readers
+// turning every second never found the next page ready. Input still cancels the build.
+uint32_t EpubReaderActivity::idleRenderDelayMs() const { return pageCacheFailed_ ? 0 : 120; }
+#else
 uint32_t EpubReaderActivity::idleRenderDelayMs() const { return pageCacheFailed_ ? 0 : 400; }
+#endif
 
 void EpubReaderActivity::freePageCache() {
   for (int slot = 0; slot < kPageCacheSlots; ++slot) {
@@ -2163,6 +2250,8 @@ void EpubReaderActivity::freePageCache() {
     pageCacheLsb_[slot].reset();
     pageCacheMsb_[slot].reset();
     pageCacheStash_[slot].reset();
+    pageCache16_[slot].reset();
+    pageCacheIs16_[slot] = false;
     pageCache_[slot].state = ReaderPageCache::State::Empty;
   }
 }
@@ -2223,12 +2312,55 @@ void EpubReaderActivity::renderIdle(const uint32_t generation) {
   auto backward = layout;
   --backward.page;
   if (backward.page >= 0) build(1, backward);
+#if FREEINK_DEVICE_READPICO && defined(RICKYOS_PRODUCT)
+  if (forward.page >= static_cast<int>(section->pageCount) && !cancelled() && !pageCacheFailed_) {
+    prefetchNextChapter(layout, generation);
+  }
+#endif
 }
+
+#if FREEINK_DEVICE_READPICO && defined(RICKYOS_PRODUCT)
+// On a chapter's last page the forward slot is free: build the next chapter and render
+// its first page into it. Comics put one picture in each chapter, so without this every
+// turn decoded a JPEG in the foreground (~3.5 s); now it happens while the page is read.
+// Only small chapters: the build itself cannot be interrupted, so a long text chapter
+// would hold up the next input. Its section file is kept, so the turn loads it quickly.
+void EpubReaderActivity::prefetchNextChapter(const ReaderPageCacheKey& layout, const uint32_t generation) {
+  constexpr size_t kMaxPrefetchChapterBytes = 24 * 1024;
+  const int next = currentSpineIndex + 1;
+  if (!section || section->isPartial() || section->isBuilding() || next >= epub->getSpineItemsCount()) return;
+  const size_t bytes = epub->getCumulativeSpineItemSize(next) - epub->getCumulativeSpineItemSize(currentSpineIndex);
+  if (bytes > kMaxPrefetchChapterBytes) return;
+  if (ESP.getFreeHeap() < BACKGROUND_BUILD_MIN_FREE_HEAP || ESP.getMaxAllocHeap() < BACKGROUND_BUILD_MIN_MAX_ALLOC) {
+    LOG_DBG("ERS", "Next chapter prefetch: skip, low heap");
+    return;
+  }
+  auto key = layout;
+  key.spine = next;
+  key.page = 0;
+  key.sectionGeneration = sectionGeneration_ + 1;  // what the turn's new Section will carry
+  if (pageCache_[0].attempted(key)) return;
+  const auto started = millis();
+  auto nextSection = makeUniqueNoThrow<Section>(epub, next, renderer);
+  if (!nextSection) return;
+  if (!nextSection->loadSectionFile(key.spec) || nextSection->isPartial()) {
+    if (activityManager.idleRenderCancelled(generation)) return;
+    if (!nextSection->createSectionFile(key.spec)) {
+      LOG_DBG("ERS", "Next chapter prefetch: build failed (spine %d)", next);
+      return;
+    }
+  }
+  if (nextSection->pageCount == 0 || activityManager.idleRenderCancelled(generation)) return;
+  const bool ready = buildPageCacheSlot(0, key, generation, nextSection.get());
+  LOG_DBG("ERS", "Next chapter prefetch: spine %d ready=%d in %lums", next, ready, millis() - started);
+}
+#endif
 
 // Build one page into one slot. Returns true when the slot ends up holding a finished
 // page; every other exit leaves it Skipped and logs why. Runs only from renderIdle(),
 // on the render task while holding the render lock. Cancellation must be bounded.
-bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCacheKey& key, const uint32_t generation) {
+bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCacheKey& key, const uint32_t generation,
+                                            Section* source) {
   const auto cancelled = [&] { return activityManager.idleRenderCancelled(generation); };
   if (pageCache_[slot].attempted(key)) {
     LOG_DBG("ERS", "Page cache: slot %d skip, page %d already attempted (state=%d)", slot, key.page,
@@ -2238,7 +2370,7 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
   pageCache_[slot].key = key;
   pageCache_[slot].state = ReaderPageCache::State::Skipped;
 
-  auto page = section->loadPage(key.page);
+  auto page = (source ? source : section.get())->loadPage(key.page);
   if (!page) {
     LOG_ERR("ERS", "Page cache: slot %d, page %d failed to load", slot, key.page);
     return false;
@@ -2247,7 +2379,12 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
     LOG_DBG("ERS", "Page cache: slot %d, page %d cancelled after the load", slot, key.page);
     return false;
   }
-  if (page->hasImages()) {
+#ifdef RICKYOS_PRODUCT
+  const bool native16 = nativeGray16Page(*page);
+#else
+  constexpr bool native16 = false;
+#endif
+  if (page->hasImages() && !native16) {
     if (slot != 0 || !page->hasImagesNeedingDecode()) return false;
     const size_t bytes = renderer.getBufferSize();
     if (!bytes) return false;
@@ -2295,6 +2432,19 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
       return false;
     }
   }
+#ifdef RICKYOS_PRODUCT
+  if (native16 && !pageCache16_[slot]) {
+    const size_t frameBytes = renderer.grayscale16FrameBytes();
+    if (memory::psramHasHeadroom(frameBytes, frameBytes, 64 * 1024)) {
+      pageCache16_[slot] = memory::makePsramByteBufferUninitializedNoThrow(frameBytes);
+    }
+    if (!pageCache16_[slot]) {
+      LOG_ERR("ERS", "Page cache: slot %d, no PSRAM for a 16-level page (%u B)", slot,
+              static_cast<unsigned>(frameBytes));
+      return false;
+    }
+  }
+#endif
   if (cancelled()) return false;
 
   uint8_t* const live = renderer.getFrameBuffer();
@@ -2351,10 +2501,49 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
     return !cancelled();
   };
 
-  if (!renderPlane(GfxRenderer::BW, pageCacheBase_[slot].get()) ||
-      !renderPlane(GfxRenderer::GRAYSCALE_LSB, pageCacheLsb_[slot].get()) ||
-      !renderPlane(GfxRenderer::GRAYSCALE_MSB, pageCacheMsb_[slot].get()) || cancelled())
+#ifdef RICKYOS_PRODUCT
+  if (native16) {
+    // One pass into the PSRAM 4bpp frame; the B/W proxy lands in the scratch framebuffer.
+    pageCacheIs16_[slot] = false;
+    if (!renderer.beginGrayscale16Offscreen(pageCache16_[slot].get())) return false;
+    struct EndOffscreen {
+      GfxRenderer& renderer;
+      ~EndOffscreen() { renderer.endGrayscale16Offscreen(); }
+    } endOffscreen{renderer};
+    {
+      GfxRenderer::SyntheticBoldScope syntheticBold(renderer, key.fakeBold);
+      for (const auto& element : page->elements) {
+        if (cancelled()) return false;
+        element->render(renderer, key.spec.fontId, key.left, key.top);
+      }
+    }
+    // Rendered: keep it even if input arrived meanwhile. That input is usually the turn
+    // to this very page; on a comic the element above was a ~2 s JPEG decode, and
+    // throwing it away made the turn decode it all over again in the foreground.
+    for (const auto& element : page->elements) {
+      if (!key.guideLine || element->getTag() != TAG_PageLine) continue;
+      const auto& line = static_cast<const PageLine&>(*element);
+      if (line.getBlock()->isEmpty()) continue;
+      const int lineHeight = renderer.getLineHeight(key.spec.fontId, key.spec.lineCompression) +
+                             line.getBlock()->getRubyShift(renderer.getFontAscenderSize(key.spec.fontId));
+      const int guideY = key.top + line.yPos + lineHeight + key.guideOffset;
+      if (readingGuideLine::fitsVertically(key.guideStyle, guideY, key.top, renderer.getScreenHeight() - key.bottom)) {
+        readingGuideLine::draw(renderer, key.left, guideY, renderer.getScreenWidth() - key.right - 1, key.guideStyle);
+      }
+    }
+    memcpy(pageCacheBase_[slot].get(), live, bytes);
+    pageCacheIs16_[slot] = true;
+  } else
+#endif
+      if (!renderPlane(GfxRenderer::BW, pageCacheBase_[slot].get()) ||
+          !renderPlane(GfxRenderer::GRAYSCALE_LSB, pageCacheLsb_[slot].get()) ||
+          !renderPlane(GfxRenderer::GRAYSCALE_MSB, pageCacheMsb_[slot].get()) || cancelled()) {
     return false;
+  } else {
+#ifdef RICKYOS_PRODUCT
+    pageCacheIs16_[slot] = false;
+#endif
+  }
 #ifdef ENABLE_CHINESE_VERSION
   pageCacheMissingCodepoint_[slot] = fcm ? fcm->consumeMissingChineseCodepoint() : 0;
 #endif
@@ -2380,7 +2569,14 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
 
   auto* fcm = renderer.getFontCacheManager();
   const bool pageHasImages = page->hasImages();
-  const bool pageHasImagesNeedingDecode = pageHasImages && page->hasImagesNeedingDecode();
+#ifdef RICKYOS_PRODUCT
+  // JPEGs on a 16-level page decode straight into the native frame, so the dithered
+  // .pxc cache this predecode builds would be thrown away (it doubled the decode time).
+  const bool nativeGrayImages = pageHasImages && nativeGray16Page(*page);
+#else
+  constexpr bool nativeGrayImages = false;
+#endif
+  const bool pageHasImagesNeedingDecode = pageHasImages && !nativeGrayImages && page->hasImagesNeedingDecode();
   if (pageHasImagesNeedingDecode) {
     // Lend the fixed framebuffer to the large JPEG/PNG decoder while it streams
     // the cold image into .pxc. Formal rendering happens after the loan ends.
@@ -2451,9 +2647,17 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   const bool grayscaleEnabled = !renderer.isInverted();
   const bool needsTextGrayscale = grayscaleEnabled && SETTINGS.textAntiAliasing;
   // Images write the BW buffer directly; keep them, backgrounds and faux bold on the existing path.
+#ifndef RICKYOS_PRODUCT
   const bool use16LevelText = needsTextGrayscale && !pageHasImages && renderer.getGrayscaleLevels() == 16 &&
                               sdFontSystem.readerFaceIsFourBit() && !SETTINGS.readingBackgroundEnabled &&
                               SETTINGS.fakeBold == 0;
+#else
+  // RickyOS: every text face (2-bit downloaded fonts too) and synthetic bold draw straight
+  // into the 16-level frame, and JPEG illustrations decode into it, so anti-aliased pages
+  // take the single-render path.
+  const bool use16LevelText = needsTextGrayscale && (!pageHasImages || page->imagesAreAllJpeg()) &&
+                              renderer.getGrayscaleLevels() == 16 && !SETTINGS.readingBackgroundEnabled;
+#endif
 #if FREEINK_DEVICE_EEGO_A4
   // A4 single-refresh design: displayGrayBuffer() replaces the B/W base on the
   // panel, so whatever the gray pass draws IS the final frame. With text AA
@@ -2539,7 +2743,10 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   if (SETTINGS.readingBackgroundEnabled && !readingBackground::load(renderer)) renderer.clearScreen();
   unsigned long cacheBaseMs = 0;
 #if FREEINK_DEVICE_READPICO
-  if (pageCacheHit) {
+  if (use16LevelText) {
+    // The 16-level pass below clears the frame and renders (or copies from the cache)
+    // the page, writing the B/W proxy as it goes, so a B/W render here is thrown away.
+  } else if (pageCacheHit) {
     const auto tBase = millis();
     // The cache is the finished page, cleared margins and all, so no clearScreen
     // is needed on this path.
@@ -2611,17 +2818,40 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
 
   if (use16LevelText) {
     // Native begin clears the frame, so render the complete page again.
+    const auto t16Begin = millis();
     if (renderer.beginGrayscale16()) {
-      renderPageWithGuideLines();
+      const auto t16Cleared = millis();
+#if FREEINK_DEVICE_READPICO && defined(RICKYOS_PRODUCT)
+      if (pageCacheHit && pageCacheIs16_[pageCacheLiveSlot_] && pageCache16_[pageCacheLiveSlot_]) {
+        memcpy(renderer.grayscale16Frame(), pageCache16_[pageCacheLiveSlot_].get(), renderer.grayscale16FrameBytes());
+        memcpy(renderer.getFrameBuffer(), pageCacheBase_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
+        LOG_DBG("ERS", "Page render: 16-level page-cache hit");
+      } else
+#endif
+      {
+        renderPageWithGuideLines();
+      }
+      const auto t16Page = millis();
       renderStatusBar();
+      LOG_DBG("ERS", "16-level timing: before=%lums begin=%lums page=%lums status=%lums", t16Begin - t0,
+              t16Cleared - t16Begin, t16Page - t16Cleared, millis() - t16Page);
       if (activityManager.isSwitchPending()) {
         renderer.cancelGrayscale16();
         return;
       }
+#if defined(RICKYOS_PRODUCT) && !defined(SIMULATOR)
+      // Ordinary turns use the held-diagonal text-turn table (unchanged pixels are not
+      // driven, so no flash); the page the refresh cycle marks as due cleans with GC16.
+      // (The simulator's HAL comes from an external package without this switch.)
+      const auto refresh = ReaderUtils::consumeRefreshMode(pagesUntilFullRefresh);
+      display.setNextGray16Profile(refresh == HalDisplay::FAST_REFRESH ? 1 : 2);
+#endif
       if (renderer.commitGrayscale16()) {
         const auto tEnd = millis();
         LOG_DBG("ERS", "Page render: 16-level text total=%lums", tEnd - t0);
+#if !defined(RICKYOS_PRODUCT) || defined(SIMULATOR)
         pagesUntilFullRefresh = 1;
+#endif
         return;
       }
       LOG_ERR("ERS", "16-level text commit failed; displaying B/W");
@@ -2905,7 +3135,16 @@ void EpubReaderActivity::renderStatusBar() const {
 
 namespace {
 constexpr StrId kTextRowNames[] = {StrId::STR_FONT, StrId::STR_FONT_SIZE, StrId::STR_LINE_SPACING,
-                                   StrId::STR_PARA_ALIGNMENT, StrId::STR_FIRST_LINE_INDENT};
+                                   StrId::STR_PARA_ALIGNMENT, StrId::STR_FIRST_LINE_INDENT,
+#ifdef RICKYOS_PRODUCT
+                                   // Readers look for anti-aliasing next to the font, not three
+                                   // levels down in Settings.
+                                   StrId::STR_TEXT_AA
+#endif
+};
+#ifdef RICKYOS_PRODUCT
+constexpr int kTextRowAntiAliasing = 5;
+#endif
 constexpr StrId kSpacingIds[] = {StrId::STR_TIGHT, StrId::STR_NORMAL, StrId::STR_WIDE, StrId::STR_EXTRA_WIDE};
 constexpr StrId kAlignIds[] = {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId::STR_CENTER, StrId::STR_ALIGN_RIGHT,
                                StrId::STR_BOOK_S_STYLE};
@@ -2955,6 +3194,10 @@ std::string EpubReaderActivity::textRowValue(int row) const {
       return I18N.get(kAlignIds[SETTINGS.paragraphAlignment % CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT]);
     case 4:
       return I18N.get(kIndentIds[SETTINGS.firstLineIndent < std::size(kIndentIds) ? SETTINGS.firstLineIndent : 0]);
+#ifdef RICKYOS_PRODUCT
+    case kTextRowAntiAliasing:
+      return SETTINGS.textAntiAliasing ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
+#endif
     default:
       return "";
   }
@@ -3212,6 +3455,12 @@ void EpubReaderActivity::renderOverlay() {
     model.itemCount = kTextRowCount;
     model.rowText = [this](int i) { return textRowName(i); };
     model.rowValue = [this](int i) { return textRowValue(i); };
+#ifdef RICKYOS_PRODUCT
+    model.rowCheckboxContext = this;
+    model.rowCheckbox = [](void*, int i, freeink::ui::ListItem& item) {
+      if (i == kTextRowAntiAliasing) GUI.setCheckboxRow(item, SETTINGS.textAntiAliasing);
+    };
+#endif
   } else {
     model.panelTitle = tr(STR_TOOL_MORE);
     model.itemCount = static_cast<int>(moreItems.size());
@@ -3379,7 +3628,17 @@ void EpubReaderActivity::handleOverlayInput() {
           if (toolbarUi) toolbarUi->begin();  // the picker drew its own FUI screen
           requestUpdate();                    // re-render page + Text panel
         });
-      } else {
+      }
+#ifdef RICKYOS_PRODUCT
+      else if (panelIndex == kTextRowAntiAliasing) {
+        // Same layout either way: only the page's rendering changes, so no re-pagination.
+        SETTINGS.textAntiAliasing = SETTINGS.textAntiAliasing ? 0 : 1;
+        SETTINGS.saveToFile();
+        discardOverlayPage();
+        requestUpdate();
+      }
+#endif
+      else {
         // Enum rows open the Settings-style option picker.
         showTextRowPopup(panelIndex);
       }

@@ -51,7 +51,8 @@ class RickyStorageLayoutTest(unittest.TestCase):
         self.assertIn('WEREAD_BOOK_FOLDERS[] = {"/WeRead"}', self.source)
         self.assertIn('WEREAD_MIGRATION_MARKER[] = "/.crosspoint/ricky-storage-layout-2"', self.source)
         migrate = body(self.source, 'int migrateLegacyBooks()')
-        self.assertIn('moveBooksOnce(MIGRATION_MARKER, LEGACY_BOOK_FOLDERS)', migrate)
+        # Folders other firmware owns (/book, /Pushed Books) stay put: the card may go back there.
+        self.assertNotIn('moveBooksOnce(MIGRATION_MARKER, LEGACY_BOOK_FOLDERS)', migrate)
         self.assertIn('moveBooksOnce(WEREAD_MIGRATION_MARKER, WEREAD_BOOK_FOLDERS)', migrate)
 
     def test_boot_moves_after_recents_and_statistics_load(self):
@@ -63,9 +64,15 @@ class RickyStorageLayoutTest(unittest.TestCase):
     def test_storage_counts_files_in_subfolders_and_font_families(self):
         page = (ROOT / 'src/activities/home/RickyStorageActivity.cpp').read_text()
         enter = body(page, 'void RickyStorageActivity::onEnter()')
-        self.assertIn('countFiles(RickyStorageLayout::BOOKS, Kind::Books)', enter)
         self.assertIn('sdFontSystem.registry().getFamilies().size()', enter)
-        self.assertIn('countFiles(RickyStorageLayout::IMAGES, Kind::Images)', enter)
+        # The card walk runs on its own task so the page never freezes on a full card.
+        self.assertNotIn('countFiles(', enter)
+        self.assertNotIn('Storage.getSpace', enter)
+        self.assertIn('startStorageScan()', enter)
+        scan = body(page, 'void scanStorageTask(void*)')
+        self.assertIn('Storage.getSpace(scan.total, scan.free)', scan)
+        self.assertIn('countFiles(RickyStorageLayout::BOOKS, Kind::Books)', scan)
+        self.assertIn('countFiles(RickyStorageLayout::IMAGES, Kind::Images)', scan)
         walk = body(page, 'int countFiles(')
         self.assertIn("if (name[0] == '.') continue;", walk)
         self.assertIn('countFiles(path + "/" + name, kind, depth + 1)', walk)

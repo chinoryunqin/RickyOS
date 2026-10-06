@@ -97,8 +97,14 @@ int moveBooksOnce(const char* marker, const char* const (&folders)[N]) {
 }  // namespace
 
 int migrateLegacyBooks() {
-  return moveBooksOnce(MIGRATION_MARKER, LEGACY_BOOK_FOLDERS) +
-         moveBooksOnce(WEREAD_MIGRATION_MARKER, WEREAD_BOOK_FOLDERS);
+  // Books other firmware keeps in its own folders (/book, /Pushed Books) stay put: the
+  // card may go back to that device, which would no longer find them. The library finds
+  // books wherever they are. Only WeRead's former export folder moves, because RickyOS
+  // itself wrote it and its shelf now points at /books. (Cards that already ran the
+  // legacy move keep its marker; nothing is moved back.)
+  (void)MIGRATION_MARKER;
+  (void)LEGACY_BOOK_FOLDERS;
+  return moveBooksOnce(WEREAD_MIGRATION_MARKER, WEREAD_BOOK_FOLDERS);
 }
 }  // namespace RickyStorageLayout
 #endif

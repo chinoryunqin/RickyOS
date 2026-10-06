@@ -14,6 +14,7 @@
 #include "components/UiAppHelpers.h"
 #include "components/icons/inx_apps.h"
 #ifdef RICKYOS_PRODUCT
+#include "components/RickyAaIcons.h"
 #include "components/icons/rickyAppIcons.h"
 #endif
 #include "fontIds.h"
@@ -149,15 +150,24 @@ const uint8_t* rickyAppIcon(const UIIcon icon) {
   }
 }
 
-// Selected app: an ink capsule with the icon knocked out, like the selected tab.
-constexpr int kAppPillWidth = 104;
-constexpr int kAppPillHeight = 72;
+// Every app sits on a rounded-square tile (the Settings cards' corner language) so the
+// grid reads as apps rather than loose glyphs; the selected one is filled with the icon
+// knocked out, like the selected tab.
+constexpr int kAppTileSize = 112;
+constexpr int kAppTileRadius = 28;
+constexpr int kAppTileStroke = 3;
+constexpr int kAppPillWidth = kAppTileSize;  // the tile's footprint in the cell layout
+constexpr int kAppPillHeight = kAppTileSize;
 
 void drawRickyAppIcon(const GfxRenderer& renderer, const uint8_t* icon, const int x, const int y, const bool selected) {
+  const int tileX = x + (kRickyAppIconSize - kAppTileSize) / 2;
+  const int tileY = y + (kRickyAppIconSize - kAppTileSize) / 2;
   if (selected) {
-    renderer.fillRoundedRect(x + (kRickyAppIconSize - kAppPillWidth) / 2, y + (kRickyAppIconSize - kAppPillHeight) / 2,
-                             kAppPillWidth, kAppPillHeight, kAppPillHeight / 2, Color::Black);
+    renderer.fillRoundedRect(tileX, tileY, kAppTileSize, kAppTileSize, kAppTileRadius, Color::Black);
+  } else {
+    renderer.drawRoundedRect(tileX, tileY, kAppTileSize, kAppTileSize, kAppTileStroke, kAppTileRadius, true);
   }
+  if (RickyAaIcons::draw(renderer, icon, kRickyAppIconSize, kRickyAppIconSize, x, y, !selected)) return;
   constexpr int rowBytes = (kRickyAppIconSize + 7) / 8;
   for (int row = 0; row < kRickyAppIconSize; ++row) {
     for (int column = 0; column < kRickyAppIconSize; ++column) {

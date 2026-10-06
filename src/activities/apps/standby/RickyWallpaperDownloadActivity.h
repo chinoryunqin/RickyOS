@@ -42,7 +42,7 @@ class RickyWallpaperDownloadActivity final : public Activity {
   std::string baseUrl_;
   std::vector<std::string> mirrors_;
   std::vector<std::string> hosts_;  // file hosts in try order
-  size_t preferredHost_ = 0;       // host that served the last picture
+  size_t preferredHost_ = 0;        // host that served the last picture
   size_t currentItem_ = 0;
   size_t bytesDone_ = 0;
   size_t bytesTotal_ = 0;

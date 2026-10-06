@@ -83,6 +83,9 @@ class GfxRenderer {
 
   HalDisplay& display;
   mutable uint8_t* grayscale16Buffer = nullptr;
+  // While capturing, a screen is redrawn into the 16-level frame for a later commit:
+  // display pushes are skipped and clearScreen() also clears that frame.
+  bool displayCapture_ = false;
   RenderMode renderMode;
   mutable bool absoluteGrayPlanes = false;
   Orientation orientation;
@@ -544,6 +547,23 @@ class GfxRenderer {
   bool commitGrayscale16() const;
   void cancelGrayscale16() const;
   bool isGrayscale16Active() const { return grayscale16Buffer != nullptr; }
+  // In portrait a logical row runs down a panel column, so consecutive x pixels are a
+  // whole panel row apart in memory (a PSRAM cache miss each). Bulk 16-level writers walk
+  // logical columns instead when this is true.
+  bool grayscale16PrefersColumns() const { return orientation == Portrait || orientation == PortraitInverted; }
+  // The 16-level value (0 = black .. 15 = white) at a logical pixel of the active frame;
+  // 15 outside the frame or with none active. For blending over a picture.
+  uint8_t grayscale16Level(int x, int y) const;
+  void antialiasedQuarter(int radius, int cx, int cy, int xDir, int yDir, int stroke, bool ink) const;
+  void setDisplayCapture(bool capture) { displayCapture_ = capture; }
+  bool isDisplayCapture() const { return displayCapture_; }
+  // Render into a caller-owned 4bpp frame (e.g. a PSRAM page cache) instead of the
+  // panel's; nothing is pushed. The B/W proxy still goes to the framebuffer, which
+  // the caller saves and restores. End with endGrayscale16Offscreen().
+  bool beginGrayscale16Offscreen(uint8_t* frame);
+  void endGrayscale16Offscreen() { grayscale16Buffer = nullptr; }
+  uint8_t* grayscale16Frame() const { return grayscale16Buffer; }
+  size_t grayscale16FrameBytes() const { return static_cast<size_t>(panelWidth / 2) * panelHeight; }
   void drawGrayscale16Pixel(int x, int y, uint8_t gray) const;
   // Copy a rectangle of the B/W proxy into the native 16-gray frame (ink -> black,
   // paper -> white), so text and shapes drawn with the normal B/W API can sit on a

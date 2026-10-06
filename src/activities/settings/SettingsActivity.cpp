@@ -17,6 +17,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <iterator>
 
 #include "AboutActivity.h"
 #include "AppVisibilitySettingsActivity.h"
@@ -83,6 +84,7 @@ constexpr uint64_t BYTES_PER_TENTH_GB = 100000000ULL;
 enum class AboutRow : uint8_t {
   FirmwareName,
   FirmwareVersion,
+  License,
   DeviceModel,
   ChipModel,
   ChipTemperature,
@@ -158,6 +160,7 @@ class InxAboutActivity final : public Activity {
           static constexpr StrId LABELS[] = {
               StrId::STR_ABOUT_FIRMWARE_NAME,
               StrId::STR_ABOUT_FIRMWARE_VERSION,
+              StrId::STR_ABOUT_LICENSE,
               StrId::STR_ABOUT_DEVICE_MODEL,
               StrId::STR_ABOUT_CHIP_MODEL,
               StrId::STR_ABOUT_CHIP_TEMPERATURE,
@@ -249,6 +252,9 @@ class InxAboutActivity final : public Activity {
                  static_cast<unsigned long>(heapInfo.totalPsramBytes / 1024));
         return value;
 #endif
+      case AboutRow::License:
+        // MIT: the notice travels with the firmware (full text: LICENSE, and the install site).
+        return "MIT";
       case AboutRow::SdUsedTotal: {
         switch (storageLoadState) {
           case StorageLoadState::Loading:
@@ -335,6 +341,20 @@ void SettingsActivity::reorganizeRickySettings() {
                [](const SettingInfo& setting) { return setting.action == SettingAction::Bluetooth; });
   moveMatching(readerSettings, fontSettings,
                [](const SettingInfo& setting) { return setting.action == SettingAction::DownloadFonts; });
+  // How a page turns by touch is a reading choice; buried at the end of System, readers
+  // never found the tap option. Keep it next to the page-turn direction.
+  std::vector<SettingInfo> touchTurns;
+  moveMatching(controlsSettings, touchTurns, [](const SettingInfo& setting) {
+    return setting.valuePtr == &CrossPointSettings::touchReaderControls ||
+           setting.valuePtr == &CrossPointSettings::pageTurnGesture ||
+           setting.valuePtr == &CrossPointSettings::previousPageGesture ||
+           setting.valuePtr == &CrossPointSettings::showReaderMenu;
+  });
+  auto turnAt = std::find_if(readerSettings.begin(), readerSettings.end(), [](const SettingInfo& setting) {
+    return setting.valuePtr == &CrossPointSettings::pageTurnDirection;
+  });
+  turnAt = turnAt == readerSettings.end() ? readerSettings.begin() : turnAt + 1;
+  readerSettings.insert(turnAt, std::make_move_iterator(touchTurns.begin()), std::make_move_iterator(touchTurns.end()));
   systemSettings.reserve(systemSettings.size() + controlsSettings.size());
   moveMatching(controlsSettings, systemSettings, [](const SettingInfo&) { return true; });
   for (auto& setting : sleepSettings) {
@@ -370,6 +390,7 @@ const char* SettingsActivity::rickySettingDescription(const SettingInfo& setting
   if (setting.valuePtr == &CrossPointSettings::refreshFrequency) return tr(STR_RICKY_HELP_REFRESH);
   if (setting.action == SettingAction::RestoreSystemSettings) return tr(STR_RICKY_HELP_RESET);
   if (setting.action == SettingAction::AppVisibility) return tr(STR_RICKY_HELP_APPS);
+  if (setting.action == SettingAction::RickyScreenRepair) return tr(STR_RICKY_HELP_SCREEN_REPAIR);
   return nullptr;
 }
 #endif
@@ -479,6 +500,7 @@ void SettingsActivity::rebuildSettingsLists() {
   // retain the upstream proxy and release-channel UI.
 #ifdef RICKYOS_PRODUCT
   systemSettings.push_back(SettingInfo::Action(StrId::STR_RICKYOS_FIRMWARE_UPDATE, SettingAction::CheckForUpdates));
+  systemSettings.push_back(SettingInfo::Action(StrId::STR_RICKY_SCREEN_REPAIR, SettingAction::RickyScreenRepair));
 #else
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CHECK_UPDATES, SettingAction::CheckForUpdates));
 #endif
@@ -1127,6 +1149,23 @@ void SettingsActivity::toggleCurrentSetting() {
         startActivityForResultWith<ClearCacheActivity>(resultHandler);
         break;
 #ifdef RICKYOS_PRODUCT
+      case SettingAction::RickyScreenRepair: {
+        // Residual charge in the film shows old screens through new ones. Full GC16
+        // black/white pairs are DC-balanced and drive every pixel through both
+        // extremes, which is the usual way to bring a stressed panel back.
+        constexpr int kCycles = 5;
+        RenderLock lock;
+        GUI.drawPopup(renderer, tr(STR_RICKY_SCREEN_REPAIRING));
+        for (int i = 0; i < kCycles; ++i) {
+          renderer.clearScreen(0x00);
+          renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+          renderer.clearScreen(0xFF);
+          renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+        }
+        renderer.requestNextFullRefresh();
+        requestUpdate();
+        break;
+      }
       case SettingAction::RickyProfile:
         startActivityForResultWith<RickyProfileActivity>(resultHandler);
         break;
@@ -1474,7 +1513,7 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
       RickyPageUi::card(target, rect, focus && selected == i);
       screen.frame().hit(rect, ACTION_ROW, i, fui::InputTouch);
       const int middle = rect.y + rect.height / 2;
-      RickyPageUi::pageIcon(target, rect.x + pad, middle, *icons[i]);
+      RickyPageUi::pageIcon(target, renderer, rect.x + pad, middle, *icons[i]);
       const int x = rect.x + pad + icons[i]->w + gap;
       target.text(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(middle - bodyHeight / 2),
                             static_cast<int16_t>(rect.right() - x - pad), static_cast<int16_t>(bodyHeight)},

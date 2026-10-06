@@ -501,10 +501,15 @@ enum { eIncrement };
 void xTaskNotify(int,int,int) {}
 struct { void clearTouchTapEvent() {} } gpio;
 struct RenderLock {
+  enum class Mode { Block,Try };
   static inline bool busy=false;
+  RenderLock() = default;
+  explicit RenderLock(Mode) {}
   static bool peek() { return busy; }
+  bool ownsLock() const { return false; }
   void unlock() {}
 };
+[[maybe_unused]] static struct { void railsOffIfIdle(uint32_t) {} } display;
 struct ActivityResult {};
 struct MappedInputManager {
   enum class Button { None,Back,Confirm,Left,Right,Up,Down };
@@ -519,6 +524,8 @@ struct MappedInputManager {
   bool wasScreenTapped(int& tx,int& ty) const { tx=x;ty=y;return tap; }
   bool wasScreenTouchDown(int& tx,int& ty) const { tx=x;ty=y;return down; }
   bool wasHomeGesture() const { return home; }
+  bool backGesture=false;  // last, so the designated initializers above keep their order
+  bool wasBackGesture() const { return backGesture; }
   bool wasLightPanelGesture() const { return light; }
   bool hasTouch() const { return true; }
   void resetHomeButtonInput() {}
@@ -672,6 +679,16 @@ int main() {
     ActivityManager gesture(theme);
     gesture.mappedInput={.held=true};gesture.resetHomeStandbyInput();
     gesture.tick({.pressed=true,.released=true,.held=true});assert(gesture.standbyCalls==1);
+
+#ifdef RICKYOS_PRODUCT
+    // RickyOS touch screens: the Back swipe turns Home pages and never opens Standby;
+    // the Back key (the ring under the screen) still does.
+    ActivityManager swipe(theme);
+    swipe.tick({.pressed=true,.released=true,.backGesture=true});assert(swipe.standbyCalls==0);
+    ActivityManager key(theme);
+    key.tick({.pressed=true,.held=true});
+    key.tick({.released=true});assert(key.standbyCalls==1);
+#endif
 
     // A held-key barrier cannot prevent touch opening a book or control center.
     for(bool releaseWithTap:{false,true}) {

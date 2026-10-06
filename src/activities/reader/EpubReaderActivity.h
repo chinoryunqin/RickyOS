@@ -68,6 +68,9 @@ class EpubReaderActivity final : public ReaderActivity {
   memory::ByteBuffer pageCacheLsb_[kPageCacheSlots];
   memory::ByteBuffer pageCacheMsb_[kPageCacheSlots];
   memory::ByteBuffer pageCacheStash_[kPageCacheSlots];
+  // RickyOS: a finished 16-level page (4bpp) for slots built on the native path.
+  memory::ByteBuffer pageCache16_[kPageCacheSlots];
+  bool pageCacheIs16_[kPageCacheSlots] = {};
   ReaderPageCache pageCache_[kPageCacheSlots];
   // Which slot the hit test matched, so the three plane copies in renderContents()
   // read the same slot the test looked at rather than assuming slot 0.
@@ -81,11 +84,17 @@ class EpubReaderActivity final : public ReaderActivity {
 #endif
 
   bool pageCacheEligible() const;
+#ifdef RICKYOS_PRODUCT
+  bool nativeGray16Page(const Page& page) const;
+#endif
   ReaderPageCacheKey pageCacheKey(int page, int top, int right, int bottom, int left) const;
   uint32_t idleRenderDelayMs() const override;
   void renderIdle(uint32_t generation) override;
   // Build one page into one cache slot; only called from renderIdle().
-  bool buildPageCacheSlot(int slot, const ReaderPageCacheKey& key, uint32_t generation);
+  bool buildPageCacheSlot(int slot, const ReaderPageCacheKey& key, uint32_t generation, Section* source = nullptr);
+#if FREEINK_DEVICE_READPICO && defined(RICKYOS_PRODUCT)
+  void prefetchNextChapter(const ReaderPageCacheKey& layout, uint32_t generation);
+#endif
   void freePageCache();
 #endif
 
@@ -187,6 +196,7 @@ class EpubReaderActivity final : public ReaderActivity {
   bool stylesDisabledForSession_ = false;
   int renderedSpineIndex_ = -1;
   int failedBuildSpine_ = -1;
+  Section::BuildError failedBuildError_ = Section::BuildError::None;
   ReaderRenderSpec effectiveRenderSpec(uint16_t width, uint16_t height) const;
   bool handleBuildFailure(const char* stage, Section::BuildError error);
   bool buildHeapPaused = false;

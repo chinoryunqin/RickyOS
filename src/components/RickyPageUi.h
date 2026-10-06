@@ -11,6 +11,7 @@
 
 #include "RickyPageLayout.h"
 #include "UiAppHost.h"
+#include "components/RickyAaIcons.h"
 
 namespace RickyPageUi {
 namespace fui = freeink::ui;
@@ -51,7 +52,10 @@ inline void card(fui::DrawTarget& target, fui::Rect rect, bool focused) {
 }
 
 // Pre-rendered Lucide icon (rickyPageIcons.h), optically centred on `centerY`.
-inline void pageIcon(fui::DrawTarget& target, int x, int centerY, const freeink::Icon& icon) {
+inline void pageIcon(fui::DrawTarget& target, const GfxRenderer& renderer, int x, int centerY,
+                     const freeink::Icon& icon) {
+  // Settled screens draw the anti-aliased twin; the B/W pass keeps the 1-bpp icon.
+  if (RickyAaIcons::draw(renderer, icon.bits, icon.w, icon.h, x, centerY - icon.opticalCenterY, true)) return;
   target.bitmap(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(centerY - icon.opticalCenterY),
                           static_cast<int16_t>(icon.w), static_cast<int16_t>(icon.h)},
                 fui::bitmapFromIcon(icon), fui::BitmapMode::Center);

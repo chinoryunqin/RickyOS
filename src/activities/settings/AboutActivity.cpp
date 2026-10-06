@@ -27,14 +27,15 @@ enum MenuItem {
   ITEM_RTC,
   ITEM_IMU,
   ITEM_MAC,
+  ITEM_LICENSE,
 };
 
 // Deliberately hardcoded English, exempt from the tr() rule: support reads
 // these screenshots across every device language, so the labels must be
 // identical on every unit.
 const char* const menuNames[AboutActivity::ITEM_COUNT] = {
-    "Device", "Firmware",          "Chip",        "Flash", "Display Controller", "Resolution", "Touch", "Frontlight",
-    "RTC",    "Tilt Sensor (IMU)", "MAC Address",
+    "Device", "Firmware",          "Chip",        "Flash",   "Display Controller", "Resolution", "Touch", "Frontlight",
+    "RTC",    "Tilt Sensor (IMU)", "MAC Address", "License",
 };
 
 // Chip part numbers, not user prose — deliberately untranslated.
@@ -115,6 +116,12 @@ void AboutActivity::onEnter() {
   esp_read_mac(mac, ESP_MAC_WIFI_STA);
   snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
   rowValues_[ITEM_MAC] = buf;
+  // MIT: the notice travels with the firmware (full text: LICENSE, and the install site).
+#ifdef RICKYOS_PRODUCT
+  rowValues_[ITEM_LICENSE] = "MIT (CrossMux, CrossPoint) · Inter font: SIL OFL 1.1";
+#else
+  rowValues_[ITEM_LICENSE] = "MIT";
+#endif
 }
 
 void AboutActivity::buildScreen(UiScreen& screen) {

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <BoardConfig.h>
+
 #include "activities/Activity.h"
 #include "components/UiAppHost.h"
 #include "util/ButtonNavigator.h"
@@ -16,6 +18,10 @@
 // should NOT derive from this — they use UiAppHost directly.
 class UiListActivity : public Activity, protected UiAppHost {
  public:
+#if defined(RICKYOS_PRODUCT) && FREEINK_DEVICE_READPICO
+  // Every list screen redraws itself whole from state (clearScreen, chrome, UI, footer).
+  bool wantsGraySettle() const override { return true; }
+#endif
   void onEnter() override;
   void loop() override;
   void render(RenderLock&&) override;
@@ -27,6 +33,10 @@ class UiListActivity : public Activity, protected UiAppHost {
 
   UiListActivity(const char* name, GfxRenderer& renderer, MappedInputManager& mappedInput,
                  bool wantsTouchLongPress = false, bool upstreamStyle = false);
+
+  // Rows one vertical swipe scrolls: the rows the last page drew, unless a layout pages
+  // differently (the library shelf moves four books at a time).
+  virtual int swipeScrollRows() { return activeNav().inputPageRows(); }
 
   // --- subclass contract -----------------------------------------------------
   // Current number of list rows (re-read every loop pass; may change).

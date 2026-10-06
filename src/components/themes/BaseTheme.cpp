@@ -32,6 +32,9 @@
 #include "components/icons/listIcons.h"
 #ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
 #include "components/icons/uiChromeIcons.h"
+#ifdef RICKYOS_PRODUCT
+#include "components/icons/rickyBatteryIcons.h"
+#endif
 #endif
 #include "fontIds.h"
 #include "images/Logo120.h"
@@ -185,7 +188,11 @@ void drawBluetoothStatusIcon(const GfxRenderer& renderer, const int x, const int
 void BaseTheme::drawBatteryOutline(const GfxRenderer& renderer, int x, int y, int battWidth, int rectHeight) {
 #ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
   if (battWidth == UiHighDpiProfile::batteryWidth && rectHeight == UiHighDpiProfile::batteryHeight) {
+#ifdef RICKYOS_PRODUCT
+    drawTransparentBitmap(renderer, ricky_battery_body_32x20, x, y, true);
+#else
     drawTransparentBitmap(renderer, icon_battery_32x20, x, y, true);
+#endif
     return;
   }
 #endif
@@ -227,10 +234,23 @@ void BaseTheme::fillBatteryIcon(const GfxRenderer& renderer, Rect rect, uint16_t
   const bool charging = gpio.isUsbConnected();
 #ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
   if (rect.width == UiHighDpiProfile::batteryWidth && rect.height == UiHighDpiProfile::batteryHeight) {
+#ifdef RICKYOS_PRODUCT
+    // The bar sits inside the body with a white gap all round (rickyBatteryIcons.h);
+    // any charge left shows at least a sliver.
+    constexpr int barWidth = 20;
+    const int level = std::min<int>(percentage, 100);
+    const int filledWidth = level <= 0 ? 0 : std::max(2, (level * barWidth + 50) / 100);
+    if (filledWidth > 0) renderer.fillRect(rect.x + 4, rect.y + 5, filledWidth, 10);
+    if (charging) {
+      drawTransparentBitmap(renderer, ricky_battery_bolt_halo_32x20, rect.x, rect.y, false);
+      drawTransparentBitmap(renderer, ricky_battery_bolt_32x20, rect.x, rect.y, true);
+    }
+#else
     constexpr int cavityWidth = 17;
     const int filledWidth = std::max(charging ? 14 : 0, std::min<int>(percentage, 100) * cavityWidth / 100);
     if (filledWidth > 0) renderer.fillRect(rect.x + 5, rect.y + 3, filledWidth, 14);
     if (charging) drawTransparentBitmap(renderer, icon_battery_charging_32x20, rect.x, rect.y, false);
+#endif
     return;
   }
 #endif

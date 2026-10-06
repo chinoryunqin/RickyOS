@@ -1,8 +1,11 @@
 #pragma once
 #ifdef RICKYOS_PRODUCT
 
+#include <string>
+
 #include "activities/UiListActivity.h"
 #include "components/OptionPopup.h"
+#include "util/RickyStorageLayout.h"
 
 // The Apps → Standby page: choose what the screen shows while the device sleeps
 // (the lock-screen mode, the picture, the default pictures to download) and what the
@@ -24,7 +27,7 @@ class RickyStandbySettingsActivity final : public UiListActivity {
 
  private:
   void drawPreview(const Rect& box) const;
-  void openPicturePicker();
+  void openPicturePicker(const std::string& folder = RickyStorageLayout::IMAGES);
 
   OptionPopup optionPopup;
 };

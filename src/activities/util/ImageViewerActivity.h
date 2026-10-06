@@ -25,6 +25,7 @@ class ImageViewerActivity final : public Activity {
   void showSleepCoverOptions();
 
   std::string filePath;
+  std::string previewPath;  // the converted BMP shown for a PNG/JPEG
   bool wallpaperPicker = false;
   bool imageReady = false;
   std::vector<std::string> siblingImages;

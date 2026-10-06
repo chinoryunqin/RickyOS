@@ -96,6 +96,11 @@ class TtfEpdFont {
   void releaseResidentCaches();
 
   // Optional batch pre-warm of the REGULAR face (other styles fault lazily).
+  // Reader faces: take layout advances from the font's hmtx table and leave each glyph's
+  // box to its first draw, so measuring a chapter reads no outlines (a 19 MB CJK TTF
+  // streamed from the card spent most of a minute loading outlines just for widths).
+  // Set before load(); applies to the plain regular face of a static font.
+  void setLazyMetrics(bool lazy) { lazyMetrics_ = lazy; }
   bool build(const char* utf8);
   bool addCoverage(const char* utf8);
 
@@ -109,6 +114,29 @@ class TtfEpdFont {
     freeink::font::FtFont::ReadFn read = nullptr;  // streamed form
     void* ctx = nullptr;
     unsigned long fileSize = 0;
+  };
+
+  // Advance widths from the regular source's hmtx table (font units).
+  struct HorizontalMetrics {
+    freeink::font::PsramVector<uint16_t> advances;
+    uint16_t unitsPerEm = 0;
+    bool ok = false;
+  };
+  bool readSource(const Source& s, uint32_t offset, uint8_t* out, uint32_t count) const;
+  bool loadHorizontalMetrics();
+  bool lazyMetrics_ = false;
+  HorizontalMetrics hmtx_;
+  static constexpr uint32_t kPendingBox = 0xFFFFFFFFu;  // EpdGlyph.dataOffset: box set on first draw
+
+  // Per-codepoint layout metrics, kept across page flushes (layout never rasterizes).
+  struct GlyphMetricsEntry {
+    freeink::font::FtFont::GlyphId gid = 0;
+    uint16_t advance12_4 = 0;
+    int16_t left = 0;
+    int16_t top = 0;
+    uint8_t width = 0;
+    uint8_t height = 0;
+    bool boxPending = false;  // advance from hmtx; the box comes with the first raster
   };
 
   struct Face {
@@ -137,6 +165,10 @@ class TtfEpdFont {
     freeink::font::PsramVector<EpdGlyph> glyphs;
     freeink::font::PsramVector<uint32_t> cps;
     freeink::font::PsramVector<uint16_t> slot;
+    freeink::font::PsramVector<freeink::font::FtFont::GlyphId> gids;  // per glyph record, for lazy raster
+    freeink::font::PsramVector<uint32_t> metricCps;                   // sorted; parallel to metrics
+    freeink::font::PsramVector<GlyphMetricsEntry> metrics;
+    GlyphMetricsEntry scratchMetrics;  // past the metrics cap
     // Kern pair cache ((left<<32)|right → 4.4 value), sorted by key. Kerning
     // resolves through FtFont (legacy 'kern' table, then the GPOS 'kern'
     // feature) once per pair, then serves from here — getKerning runs for
@@ -147,6 +179,9 @@ class TtfEpdFont {
     EpdFont font{&data};
   };
 
+  const GlyphMetricsEntry* metricsFor(Face& f, uint32_t cp, freeink::font::FtFont::GlyphId gid, uint32_t size26_6);
+  const uint8_t* rasterizeInto(Face& f, EpdGlyph& glyph);
+  bool usesHmtx(const Face& f) const;
   static const EpdGlyph* missThunk(void* ctx, uint32_t codepoint);
   static const uint8_t* bitmapThunk(void* ctx, const EpdGlyph* glyph);
   static bool coverageThunk(void* ctx, uint32_t codepoint);

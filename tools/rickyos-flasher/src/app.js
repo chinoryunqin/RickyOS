@@ -25,6 +25,33 @@ function progress(label, done, total) {
   $('operation').textContent = label; $('percent').textContent = `${percentage}%`;
   $('progress').value = percentage;
 }
+// Firmware is several MB from GitHub Pages; show the download instead of a frozen bar.
+async function fetchBytes(file, label, expected) {
+  const response = await fetch(`./${file}`, { cache: 'no-store' });
+  requireThat(response.ok, `${label}下载失败。`);
+  if (!response.body || !expected) return new Uint8Array(await response.arrayBuffer());
+  const reader = response.body.getReader(), chunks = [];
+  let received = 0;
+  progress(`下载${label}`, 0, expected);
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value); received += value.length;
+    progress(`下载${label}`, Math.min(received, expected), expected);
+  }
+  const bytes = new Uint8Array(received);
+  let at = 0;
+  for (const chunk of chunks) { bytes.set(chunk, at); at += chunk.length; }
+  return bytes;
+}
+function showDone(firstInstall, restarted) {
+  $('done-text').textContent = (restarted ?
+    'RickyOS 已写入并通过校验，设备正在重启。几秒后屏幕会出现 RickyOS 首页，之后可以拔下数据线。' :
+    'RickyOS 已写入并通过校验。请长按电源键几秒重启设备，屏幕会出现 RickyOS 首页。') +
+    (firstInstall ? '原系统的内部文件已清理，SD 卡未作改动。' : 'SD 卡未作改动。');
+  $('done-hint').hidden = !restarted;
+  $('done-dialog').showModal();
+}
 function step(name) {
   for (const item of ['connect', 'backup', 'install']) {
     const element = $('step-' + item);
@@ -217,30 +244,31 @@ $('install-button').addEventListener('click', () => operate(async () => {
   }
   requireThat(release && session && $('write-confirm').checked, '未满足安装条件。');
   checkPlanRelease(session.plan, release);
-  result('正在下载并校验固件。请勿拔线或让电脑休眠。');
-  const response = await fetch(`./${release.file}`, { cache: 'no-store' });
-  requireThat(response.ok, '固件下载失败。');
-  const bytes = new Uint8Array(await response.arrayBuffer());
+  result('正在下载固件。请勿拔线或让电脑休眠。');
+  const bytes = await fetchBytes(release.file, '固件', release.bytes);
   const firstInstall = session.plan.kind === 'factory' || session.plan.kind === 'other';
   const assets = [];
-  if (firstInstall) for (const spec of release.fullInstall.segments) {
-    const part = await fetch(`./${spec.file}`, { cache: 'no-store' });
-    requireThat(part.ok, `${spec.role} 组件下载失败。`);
-    assets.push(new Uint8Array(await part.arrayBuffer()));
-  }
-  await session.install(bytes, release, (done, total) => progress(firstInstall ? '安装 RickyOS 与准备内部空间' : '写入应用分区', done, total), true,
-    label => { $('operation').textContent = label; log(label); }, assets);
-  progress('固件与启动信息校验完成', 100, 100);
-  result(firstInstall ? 'RickyOS 完整安装与 Flash 摘要校验通过，已请求重启。请确认 RickyOS 首页与 SD 卡文件。原系统的内部文件已清理；SD 卡未操作，请保管好刚才的完整备份。' :
-    'RickyOS 已写入并通过设备摘要校验，已请求重启。请确认屏幕出现 RickyOS 首页。SD 卡、启动加载器、分区表和启动记录未作写入。');
-  await adapter.close(); adapter = null; session = null; clearBackup();
-  $('backup-controls').hidden = true; $('device-state').textContent = '已请求重启';
-  $('stage-heading').textContent = '校验通过，请确认设备出现 RickyOS 首页。';
+  if (firstInstall) for (const spec of release.fullInstall.segments)
+    assets.push(await fetchBytes(spec.file, `${spec.role} 组件`, spec.bytes));
+  result('正在写入设备，需要几分钟。请勿拔线或让电脑休眠。');
+  const restarted = await session.install(bytes, release,
+    (done, total) => progress(firstInstall ? '安装 RickyOS 与准备内部空间' : '写入应用分区', done, total), true,
+    label => { $('operation').textContent = label; $('result').textContent = label; log(label); }, assets);
+  progress('安装完成', 100, 100);
+  result(restarted ? 'RickyOS 安装完成并通过校验，设备正在重启。' :
+    'RickyOS 安装完成并通过校验。请长按电源键几秒重启设备。');
+  await adapter.close().catch(() => {}); adapter = null; session = null; clearBackup();
+  $('backup-controls').hidden = true; $('device-state').textContent = restarted ? '正在重启' : '请手动重启';
+  $('stage-heading').textContent = '安装完成，设备会出现 RickyOS 首页。';
+  showDone(firstInstall, restarted);
 }));
+$('done-close').addEventListener('click', () => $('done-dialog').close());
 $('save-log').addEventListener('click', () => download(logs.join('\n'), 'RickyOS-install-log.txt', 'text/plain;charset=utf-8'));
 addEventListener('beforeunload', event => { if (busy) { event.preventDefault(); event.returnValue = ''; } });
 if (navigator.serial) navigator.serial.addEventListener('disconnect', event => {
   if (event.target !== adapter?.transport?.device) return;
+  // The board leaves USB as it restarts after a verified install; that is not an error.
+  if (session?.restarting) return;
   session?.invalidate?.(); updateControls();
   if (session) result('设备连接已断开。安装资格已失效，请重新连接并备份。', true);
 });

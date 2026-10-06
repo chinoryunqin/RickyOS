@@ -141,7 +141,8 @@ struct EpubReaderActivity {
   std::unique_ptr<Section> section=std::make_unique<Section>();
   static constexpr int kPageCacheSlots=2;
   memory::ByteBuffer pageCacheBase_[kPageCacheSlots],pageCacheLsb_[kPageCacheSlots],
-      pageCacheMsb_[kPageCacheSlots],pageCacheStash_[kPageCacheSlots];
+      pageCacheMsb_[kPageCacheSlots],pageCacheStash_[kPageCacheSlots],pageCache16_[kPageCacheSlots];
+  bool pageCacheIs16_[kPageCacheSlots]={};
   ReaderPageCache pageCache_[kPageCacheSlots];
   int pageCacheLiveSlot_=0;
   ReaderPageCacheKey renderedPageKey_;
@@ -157,7 +158,7 @@ struct EpubReaderActivity {
   ReaderPageCacheKey pageCacheKey(int,int,int,int,int) const;
   void freePageCache();
   void renderIdle(uint32_t);
-  bool buildPageCacheSlot(int,const ReaderPageCacheKey&,uint32_t);
+  bool buildPageCacheSlot(int,const ReaderPageCacheKey&,uint32_t,Section* source=nullptr);
   EpubReaderActivity() {renderedPageKey_=pageCacheKey(section->currentPage,1,1,1,1);}
   uint32_t missingGlyph(bool pageCacheHit) {
     auto* fcm=renderer.getFontCacheManager();

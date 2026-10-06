@@ -278,6 +278,8 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   doc["rickyNickname"] = rickyNickname;
   doc["rickyAvatarPath"] = rickyAvatarPath;
   doc["rickyHomePhrase"] = rickyHomePhrase;
+  doc["rickyTapTurn"] = 1;       // the swipe-only default migration has run
+  doc["rickyStandbyKeyOn"] = 1;  // the Back-key Standby shortcut was turned on once
 #endif
   // Dictionary folder name — uses dynamic getter/setter in SettingsList, save manually
   if (dictionaryName[0] != '\0') {
@@ -508,6 +510,22 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     if (!saved.isNull() && (!saved.is<uint8_t>() || saved.as<uint8_t>() != layout.expected)) needsResave = true;
   }
   enforceProductLayout();
+  // 1.1.0 and earlier saved the old swipe-only default, so readers never found tap turns.
+  // Move that untouched default over once; any other choice is the reader's own.
+  if (doc["rickyTapTurn"].isNull()) {
+    if (pageTurnGesture == SWIPE_ONLY && previousPageGesture == SWIPE_ONLY) {
+      pageTurnGesture = TAP_AND_SWIPE;
+      previousPageGesture = TAP_AND_SWIPE;
+    }
+    needsResave = true;
+  }
+  // The Back key (the ring under the screen) opens Standby from Home by default. Only
+  // the key: touch Back gestures no longer do (ActivityManager::handleHomeStandbyInput),
+  // which is what made the shortcut misfire. Turned on once for existing settings.
+  if (doc["rickyStandbyKeyOn"].isNull()) {
+    standbyShortcutEnabled = 1;
+    needsResave = true;
+  }
 #endif
   sdFontFlashPreload =
       clamp(static_cast<uint8_t>(doc["sdFontFlashPreload"] | 0), static_cast<uint8_t>(2), static_cast<uint8_t>(0));

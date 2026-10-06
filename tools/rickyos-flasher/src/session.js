@@ -62,8 +62,7 @@ export class FlashSession {
     this.writeStarted = true; // Latch before erase/write; failures require a fresh session.
     this.ready = false;
     if (fullInstall) {
-      await this.installFactory(firmware, release, installAssets, backup, plan, progress, phase);
-      return;
+      return this.installFactory(firmware, release, installAssets, backup, plan, progress, phase);
     }
     await this.adapter.write(firmware, plan.offset, progress);
     phase('正在校验固件与启动信息，请保持连接');
@@ -73,7 +72,13 @@ export class FlashSession {
       equalBytes(await this.adapter.read(0xe000, 8192), plan.ota) && this.plan === plan,
       '启动元数据校验失败。保持连接，不要重启。');
     phase('校验通过，正在请求设备重启');
-    await this.adapter.reset();
+    return this.requestRestart();
+  }
+  // Everything is written and verified by now. The board leaves USB as it restarts, so
+  // a failed request is not an install failure: the user restarts it by hand instead.
+  async requestRestart() {
+    this.restarting = true;
+    try { await this.adapter.reset(); return true; } catch { return false; }
   }
   async installFactory(firmware, release, assets, backup, plan, progress, phase) {
     // Browser-only buffers and a reused 64 KiB erased-sector block; no
@@ -125,6 +130,6 @@ export class FlashSession {
         '完整安装摘要不一致，不要重启。');
     }
     phase('校验通过，正在请求设备重启');
-    await this.adapter.reset();
+    return this.requestRestart();
   }
 }

@@ -24,6 +24,46 @@ constexpr const char* TRANSPARENT_PREVIEW_PATH = "/.crosspoint/image_preview.tra
 constexpr const char* SLEEP_IMAGE_PATH = "/sleep.bmp";
 constexpr const char* SLEEP_IMAGE_PART_PATH = "/sleep.bmp.part";
 constexpr const char* SLEEP_IMAGE_BACKUP_PATH = "/sleep.bmp.bak";
+#ifdef RICKYOS_PRODUCT
+// Converted previews are kept: a PNG takes seconds to convert, and the same pictures
+// are opened again and again while choosing a wallpaper. Bounded by kPreviewCacheMax.
+constexpr const char* PREVIEW_CACHE_DIR = "/.crosspoint/previews";
+constexpr int kPreviewCacheMax = 16;
+
+std::string previewCachePath(const std::string& source) {
+  HalFile file;
+  uint32_t size = 0;
+  if (Storage.openFileForRead("IMAGE", source.c_str(), file)) {
+    size = static_cast<uint32_t>(file.fileSize());
+    file.close();
+  }
+  // FNV-1a over path and size: a replaced picture under the same name converts again.
+  uint32_t hash = 2166136261u;
+  const auto mix = [&hash](const uint8_t byte) { hash = (hash ^ byte) * 16777619u; };
+  for (const char c : source) mix(static_cast<uint8_t>(c));
+  for (int i = 0; i < 4; ++i) mix(static_cast<uint8_t>(size >> (i * 8)));
+  char name[48];
+  snprintf(name, sizeof(name), "%s/%08x.bmp", PREVIEW_CACHE_DIR, static_cast<unsigned>(hash));
+  return name;
+}
+
+void prunePreviewCache() {
+  HalFile dir = Storage.open(PREVIEW_CACHE_DIR);
+  if (!dir || !dir.isDirectory()) return;
+  std::vector<std::string> names;
+  char name[64];
+  for (HalFile entry = dir.openNextFile(); entry; entry = dir.openNextFile()) {
+    name[0] = '\0';
+    entry.getName(name, sizeof(name));
+    entry.close();
+    if (name[0] != '\0' && name[0] != '.') names.emplace_back(name);
+  }
+  dir.close();
+  if (static_cast<int>(names.size()) < kPreviewCacheMax) return;
+  // Simple and bounded: start the cache over rather than track ages.
+  for (const auto& entry : names) Storage.remove((std::string(PREVIEW_CACHE_DIR) + "/" + entry).c_str());
+}
+#endif
 
 constexpr StrId sleepCoverLabel() {
 #ifdef RICKYOS_PRODUCT
@@ -82,8 +122,19 @@ void ImageViewerActivity::loadSiblingImages() {
 bool ImageViewerActivity::isPng() const { return FsHelpers::hasPngExtension(filePath); }
 
 bool ImageViewerActivity::preparePreview() {
+#ifdef RICKYOS_PRODUCT
+  previewPath = previewCachePath(filePath);
+  if (Storage.exists(previewPath.c_str())) return true;
+  if (!Storage.ensureDirectoryExists(PREVIEW_CACHE_DIR)) return false;
+  prunePreviewCache();
+  // Written aside and renamed, so a conversion cut short is never taken for a preview.
+  const std::string outPath = previewPath + ".part";
+#else
+  previewPath = IMAGE_PREVIEW_PATH;
   if (!Storage.ensureDirectoryExists("/.crosspoint")) return false;
-  if (Storage.exists(IMAGE_PREVIEW_PATH) && !Storage.remove(IMAGE_PREVIEW_PATH)) return false;
+  const std::string outPath = previewPath;
+#endif
+  if (Storage.exists(outPath.c_str()) && !Storage.remove(outPath.c_str())) return false;
 
   bool prepared = false;
   {
@@ -91,18 +142,18 @@ bool ImageViewerActivity::preparePreview() {
     if (isPng()) {
 #ifdef RICKYOS_PRODUCT
       // Read Pico's panel shows 16 grays; keep them all instead of dithering to four.
-      prepared = PngToBmpConverter::pngFileToGray8BmpFile(filePath.c_str(), IMAGE_PREVIEW_PATH, true);
+      prepared = PngToBmpConverter::pngFileToGray8BmpFile(filePath.c_str(), outPath.c_str(), true);
 #else
-      prepared = PngToBmpConverter::pngFileToBmpFile(filePath.c_str(), IMAGE_PREVIEW_PATH, true);
+      prepared = PngToBmpConverter::pngFileToBmpFile(filePath.c_str(), outPath.c_str(), true);
 #endif
     } else {
       HalFile input, output;
       if (Storage.openFileForRead("IMAGE", filePath.c_str(), input) &&
-          Storage.openFileForWrite("IMAGE", IMAGE_PREVIEW_PATH, output)) {
+          Storage.openFileForWrite("IMAGE", outPath, output)) {
 #ifdef RICKYOS_PRODUCT
         // Read Pico's panel shows 16 grays; keep the photo's full gray range.
-        prepared = JpegToBmpConverter::jpegFileToBmpStream(input, output, /*crop=*/false,
-                                                           JpegToBmpConverter::Output::Gray8);
+        prepared =
+            JpegToBmpConverter::jpegFileToBmpStream(input, output, /*crop=*/false, JpegToBmpConverter::Output::Gray8);
 #else
         prepared = JpegToBmpConverter::jpegFileToBmpStreamWithSize(input, output, renderer.getScreenWidth(),
                                                                    renderer.getScreenHeight(), /*crop=*/false);
@@ -111,7 +162,10 @@ bool ImageViewerActivity::preparePreview() {
       }
     }
   }
-  if (!prepared) Storage.remove(IMAGE_PREVIEW_PATH);
+#ifdef RICKYOS_PRODUCT
+  prepared = prepared && Storage.rename(outPath.c_str(), previewPath.c_str());
+#endif
+  if (!prepared) Storage.remove(outPath.c_str());
   return prepared;
 }
 
@@ -125,16 +179,17 @@ void ImageViewerActivity::onEnter() {
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
 #ifdef RICKYOS_PRODUCT
-  // Read Pico's gray image path builds on a HALF base that does not clear the page
-  // underneath (the file list stayed visible through the picture): start from paper.
-  renderer.clearScreen();
-  renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+  // No blank page first: the loading popup stays over the list until the picture lands
+  // in one full refresh (a white screen for seconds read as a hang). The full GC16
+  // commit below clears what was underneath.
 #endif
   Rect popupRect = GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
   GUI.fillPopupProgress(renderer, popupRect, 20);  // Initial 20% progress
   const bool needsPreview = isPng() || FsHelpers::hasJpgExtension(filePath);
+  const unsigned long tPrep = millis();
   const bool prepared = !needsPreview || preparePreview();
-  const char* bitmapPath = needsPreview ? IMAGE_PREVIEW_PATH : filePath.c_str();
+  LOG_DBG("IMGV", "timing: preview %lu ms", millis() - tPrep);
+  const char* bitmapPath = needsPreview ? previewPath.c_str() : filePath.c_str();
   HalFile file;
   // 1. Open the file
   if (!prepared) {
@@ -181,8 +236,14 @@ void ImageViewerActivity::onEnter() {
 
       GUI.fillPopupProgress(renderer, popupRect, 50);
 
+#ifdef RICKYOS_PRODUCT
+      // The 16-level pass below draws the picture itself; a B/W pass first only cost time.
+      const bool native16 = bitmap.hasGreyscale() && renderer.getGrayscaleLevels() == 16;
+#else
+      constexpr bool native16 = false;
+#endif
       renderer.clearScreen();
-      if (!renderer.drawBitmap(bitmap, x, y, pageWidth, pageHeight, 0, 0)) {
+      if (!native16 && !renderer.drawBitmap(bitmap, x, y, pageWidth, pageHeight, 0, 0)) {
         renderer.clearScreen();
         renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, tr(STR_FILE_OPEN_FAILED));
         renderer.displayBuffer(HalDisplay::HALF_REFRESH);
@@ -199,14 +260,22 @@ void ImageViewerActivity::onEnter() {
       // also painted the Set button into its gray planes, turning it into a dark bar
       // with no readable label. Here the button is drawn in B/W and copied in.
       if (bitmap.hasGreyscale() && renderer.getGrayscaleLevels() == 16 && bitmap.rewindToData() == BmpReaderError::Ok) {
+        const unsigned long tGray = millis();
         bool shown =
             renderer.beginGrayscale16() && renderer.drawBitmapGrayscale16(bitmap, x, y, pageWidth, pageHeight, 0, 0);
+        LOG_DBG("IMGV", "timing: gray16 draw %lu ms", millis() - tGray);
+        const unsigned long tCommit = millis();
+#if !defined(SIMULATOR)
+        // A clean full refresh for a picture that stays up, then the rails go off.
+        if (shown) display.setNextGray16Profile(3);
+#endif
         if (shown && mappedInput.hasTouch()) {
           const Rect action = sleepCoverActionRect(renderer);
           GUI.drawActionButton(renderer, action, I18N.get(sleepCoverLabel()));
           renderer.copyBwToGrayscale16(action.x, action.y, action.width, action.height);
         }
         shown = shown && renderer.commitGrayscale16();
+        LOG_DBG("IMGV", "timing: gray16 commit %lu ms", millis() - tCommit);
         renderer.cancelGrayscale16();
         if (!shown) {
           LOG_ERR("BMP", "16-gray preview failed");
@@ -289,7 +358,9 @@ void ImageViewerActivity::onEnter() {
 void ImageViewerActivity::onExit() {
   Activity::onExit();
   imageReady = false;
+#ifndef RICKYOS_PRODUCT
   if (Storage.exists(IMAGE_PREVIEW_PATH)) Storage.remove(IMAGE_PREVIEW_PATH);
+#endif
   if (Storage.exists(TRANSPARENT_PREVIEW_PATH)) Storage.remove(TRANSPARENT_PREVIEW_PATH);
   renderer.clearScreen();
 #ifdef RICKYOS_PRODUCT
@@ -374,7 +445,7 @@ void ImageViewerActivity::showSleepCoverOptions() {
   if (!imageReady) return;
   if (!isPng()) {
     // Picking a wallpaper ends here: return to the page that asked, which shows the new picture.
-    if (doSetSleepCover(FsHelpers::hasJpgExtension(filePath) ? IMAGE_PREVIEW_PATH : filePath.c_str(), false) &&
+    if (doSetSleepCover(FsHelpers::hasJpgExtension(filePath) ? previewPath.c_str() : filePath.c_str(), false) &&
         wallpaperPicker)
       finish();
     return;
@@ -383,7 +454,7 @@ void ImageViewerActivity::showSleepCoverOptions() {
   static constexpr StrId options[] = {StrId::STR_NORMAL, StrId::STR_TRANSPARENT};
   static constexpr int optionCount = sizeof(options) / sizeof(options[0]);
   sleepCoverPopup.show(sleepCoverLabel(), options, optionCount, 0, [this](const int index) {
-    if (doSetSleepCover(index == 1 ? filePath.c_str() : IMAGE_PREVIEW_PATH, index == 1) && wallpaperPicker) finish();
+    if (doSetSleepCover(index == 1 ? filePath.c_str() : previewPath.c_str(), index == 1) && wallpaperPicker) finish();
   });
   requestUpdate();
 }
@@ -416,9 +487,14 @@ void ImageViewerActivity::loop() {
   };
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-    if (wallpaperPicker)
+    if (wallpaperPicker) {
+      // Nothing was set: the picker reopens its list, where the reader came from.
+      ActivityResult cancelled;
+      cancelled.isCancelled = true;
+      cancelled.data = FilePathResult{filePath};
+      setResult(std::move(cancelled));
       finish();
-    else
+    } else
       activityManager.goToFileBrowser(filePath);
     return;
   }

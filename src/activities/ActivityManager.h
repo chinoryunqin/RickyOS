@@ -68,6 +68,9 @@ class ActivityManager {
   TaskHandle_t renderTaskHandle = nullptr;
   static void renderTaskTrampoline(void* param);
   [[noreturn]] virtual void renderTaskLoop();
+#if defined(RICKYOS_PRODUCT) && FREEINK_DEVICE_READPICO
+  void settleToGray(RenderLock&& lock, uint32_t generation);
+#endif
 
   // Set by requestUpdateAndWait(); read and cleared by the render task after render completes.
   // Note: only one waiting task is supported at a time
