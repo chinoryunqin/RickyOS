@@ -495,6 +495,11 @@ void walk(WalkState& st, const std::string& path, const int depth) {
 
     if (st.nameBuf[0] == '\0' || isProtectedEntry(st.nameBuf)) continue;
     const std::string name(st.nameBuf);
+#ifdef RICKYOS_PRODUCT
+    // RickyOS's own font and picture folders never hold books; with large font
+    // families and wallpaper sets they were most of what a rebuild walked.
+    if (isDir && depth == 0 && (name == "fonts" || name == "images")) continue;
+#endif
 
     if (isDir) {
       const size_t resumePosition = dir.position();
