@@ -99,8 +99,6 @@ class MappedInputManager {
   // Back = left-to-right swipe anchored at the left edge. Public so swipe-mode
   // page turns (reader) can exclude it from a plain SwipeDir::Right.
   bool wasBackGesture() const;
-  // A rightward swipe that starts at the very left edge (a few percent of the width).
-  bool wasStrictLeftEdgeSwipe() const;
   // Home-key boards use a short Home-key tap to exit; their bottom-edge swipe
   // is intentionally unused. Other boards retain the bottom-edge Home gesture.
   // The reader menu remains on its existing top-edge gesture and middle tap.
@@ -156,8 +154,7 @@ class MappedInputManager {
   void pollBle() const;
   // SDK edge classification (fui::edgeSwipe) + the shared decode/held-time
   // bookkeeping; the wrappers below give each edge its board meaning.
-  // edgeFrac < 0: the SDK default zone (a quarter of the width for the side edges).
-  bool wasEdgeSwipe(freeink::ui::ScreenEdge edge, float edgeFrac = -1.0f) const;
+  bool wasEdgeSwipe(freeink::ui::ScreenEdge edge) const;
   bool wasTopEdgeDownSwipe() const;
   bool wasBottomEdgeUpSwipe() const;
   bool wasHeaderTapBack() const;

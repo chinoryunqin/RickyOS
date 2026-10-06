@@ -396,12 +396,11 @@ bool ActivityManager::handleHomeStandbyInput() {
   const bool pressed = mappedInput.wasPressed(MappedInputManager::Button::Back);
   const bool released = mappedInput.wasReleased(MappedInputManager::Button::Back);
 #ifdef RICKYOS_PRODUCT
-  // Touch Back is a rightward swipe from the left quarter of the screen. On Home that
-  // quarter holds the left book of 最近翻过, so turning its page opened Standby, whose
-  // brand screen looks like a reboot. Standby takes a swipe from the very edge only;
-  // anything else stays a page turn for Home itself.
-  if (pressed && released && !mappedInput.wasStrictLeftEdgeSwipe() &&
-      mappedInput.wasSwipe() != MappedInputManager::SwipeDir::None) {
+  // Standby is never a touch gesture on Home: a rightward swipe from the left quarter
+  // of the screen counts as Back, and turning the 最近翻过 page from its left book put
+  // the device into Standby, whose brand screen reads as a reboot. Standby stays on
+  // its own entries (Apps -> Standby, the physical keys).
+  if (mappedInput.hasTouch() && mappedInput.wasBackGesture()) {
     resetHomeStandbyInput();
     return false;
   }

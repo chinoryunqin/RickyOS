@@ -278,7 +278,8 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   doc["rickyNickname"] = rickyNickname;
   doc["rickyAvatarPath"] = rickyAvatarPath;
   doc["rickyHomePhrase"] = rickyHomePhrase;
-  doc["rickyTapTurn"] = 1;  // the swipe-only default migration has run
+  doc["rickyTapTurn"] = 1;        // the swipe-only default migration has run
+  doc["rickyStandbyKeyOff"] = 1;  // the Back-to-Standby shortcut was turned off once
 #endif
   // Dictionary folder name — uses dynamic getter/setter in SettingsList, save manually
   if (dictionaryName[0] != '\0') {
@@ -516,6 +517,13 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
       pageTurnGesture = TAP_AND_SWIPE;
       previousPageGesture = TAP_AND_SWIPE;
     }
+    needsResave = true;
+  }
+  // Older firmware shipped the Back-to-Standby shortcut on; on a touch screen it fired
+  // from a page-turn swipe and read as a reboot. Turn it off once; it stays in
+  // 电源与待机 for anyone who wants it.
+  if (doc["rickyStandbyKeyOff"].isNull()) {
+    standbyShortcutEnabled = 0;
     needsResave = true;
   }
 #endif
