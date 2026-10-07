@@ -112,8 +112,9 @@ inline bool draw(const GfxRenderer&,const uint8_t*,int,int,int,int,bool) { retur
 }
 ''' + pill + method(source, 'const uint8_t* iconForTab(') + method(source, 'void drawInxIcon(') + method(source, 'void drawSelectedInxIcon(') + r'''
 int main() {
-  const uint8_t* expected[]={ricky_nav_home_SIZE,ricky_nav_library_SIZE,ricky_nav_storage_SIZE,
-                            ricky_nav_apps_SIZE,ricky_nav_settings_SIZE};
+  // Apps sits in the middle: it is opened more often than Storage.
+  const uint8_t* expected[]={ricky_nav_home_SIZE,ricky_nav_library_SIZE,ricky_nav_apps_SIZE,
+                            ricky_nav_storage_SIZE,ricky_nav_settings_SIZE};
   assert(iconForTab(MainTab::None)==nullptr);
   assert(iconForTab(static_cast<MainTab>(255))==nullptr);
   constexpr int ox=30,oy=30;
