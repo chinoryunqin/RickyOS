@@ -19,7 +19,7 @@ class FontLibraryActivity final : public UiListActivity {
   void render(RenderLock&&) override;
 
  private:
-  static constexpr int ROOT_ACTIONS = 3;
+  static constexpr int ROOT_ACTIONS = 2;  // download, import guide; Text settings lives in Reading
   std::array<freeink::ui::ListItem, SdCardFontRegistry::MAX_SD_FAMILIES + ROOT_ACTIONS> rows_{};
   int rowCount_ = 0;
   int familyIndex_ = -1;

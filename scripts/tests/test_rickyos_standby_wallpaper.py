@@ -88,7 +88,7 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
             for key in ('STR_RICKY_STANDBY_INFO', 'STR_RICKY_STANDBY_INFO_NONE', 'STR_RICKY_STANDBY_INFO_DATE',
                         'STR_RICKY_STANDBY_INFO_TIME', 'STR_RICKY_STANDBY_EMPTY'):
                 self.assertRegex(strings, rf'(?m)^{key}: "')
-        self.assertIn('setting.valuePtr == &CrossPointSettings::standbyOverlay',
+        self.assertIn('field == &CrossPointSettings::standbyOverlay',
                       (ROOT / 'src/activities/settings/SettingsActivity.cpp').read_text())
 
 
@@ -137,8 +137,8 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
     def test_power_settings_link_to_the_standby_page_instead_of_repeating_it(self):
         settings = (ROOT / 'src/activities/settings/SettingsActivity.cpp').read_text()
         reorganize = body(settings, 'void SettingsActivity::reorganizeRickySettings()')
-        moved = reorganize[reorganize.index('moveMatching(displaySettings, onStandbyPage'):]
-        moved = moved[:moved.index('});')]
+        moved = reorganize[reorganize.index('const auto elsewhere'):]
+        moved = moved[:moved.index('for (auto* list')]
         self.assertIn('&CrossPointSettings::sleepScreen', moved)
         self.assertIn('&CrossPointSettings::standbyOverlay', moved)
         self.assertIn('SettingInfo::Action(StrId::STR_STANDBY_TITLE, SettingAction::RickyStandbyPage)', reorganize)
@@ -180,8 +180,8 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
             product = source.split(f'const bool {name} = SETTINGS.sleepScreen', 1)[1].split('#else', 1)[0]
             self.assertNotIn('quickResumeSleepScreen', product, path)
         settings = (ROOT / 'src/activities/settings/SettingsActivity.cpp').read_text()
-        hidden = settings[settings.index('moveMatching(displaySettings, onStandbyPage'):]
-        self.assertIn('&CrossPointSettings::quickResumeSleepScreen', hidden[:hidden.index('});')])
+        hidden = settings[settings.index('const auto elsewhere'):]
+        self.assertIn('&CrossPointSettings::quickResumeSleepScreen', hidden[:hidden.index('for (auto* list')])
 
 
 if __name__ == '__main__':

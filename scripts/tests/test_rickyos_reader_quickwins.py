@@ -23,21 +23,28 @@ class RickyQuickWinsTest(unittest.TestCase):
         self.assertIn('needsResave = true;', migration)
         self.assertIn('doc["rickyTapTurn"] = 1;', source)
 
-    def test_every_touch_gesture_lives_on_the_gestures_page(self):
+    def test_every_touch_gesture_and_key_lives_on_its_own_page(self):
         source = read('src/activities/settings/SettingsActivity.cpp')
-        start = source.index('const auto isGesture = [](const SettingInfo& setting) {')
-        block = source[start:source.index('SettingAction::RickyGestures));', start)]
+        start = source.index('const auto elsewhere = [coverMode](const SettingInfo& setting) {')
+        block = source[start:source.index('for (auto* list', start)]
         for field in ('touchReaderControls', 'pageTurnGesture', 'previousPageGesture', 'showReaderMenu',
-                      'pageTurnDirection'):
+                      'pageTurnDirection', 'sideButtonLayout', 'longPressButtonBehavior', 'standbyShortcutEnabled',
+                      'shortPwrBtn', 'longPressMenuFunction'):
             self.assertIn(f'&CrossPointSettings::{field}', block)
-        self.assertIn('readerSettings.erase(', block)
-        self.assertIn('systemSettings.insert(systemSettings.begin(),', block)
-        self.assertIn('startActivityForResultWith<RickyGestureSettingsActivity>', source)
-        page = read('src/activities/settings/RickyGestureSettingsActivity.cpp')
+        for action in ('SdFirmwareUpdate', 'Plugins'):
+            self.assertIn(f'SettingAction::{action}', block)
+        self.assertIn('SettingAction::RickyGestures', source)
+        self.assertIn('SettingAction::RickyKeys', source)
+        self.assertIn('RickyOptionLists::gestures()', source)
+        self.assertIn('RickyOptionLists::keys()', source)
+        page = read('src/activities/settings/RickyOptionListActivity.cpp')
         for field in ('rickyGestureBack', 'rickyGestureHome', 'rickyGestureControl', 'rickyGestureStatus',
                       'touchReaderControls', 'pageTurnGesture', 'previousPageGesture', 'pageTurnDirection',
-                      'showReaderMenu'):
-            self.assertIn(f'SETTINGS.{field}', page)
+                      'showReaderMenu', 'sideButtonLayout', 'longPressButtonBehavior', 'standbyShortcutEnabled',
+                      'shortPwrBtn'):
+            self.assertIn(f'&SETTINGS.{field}', page)
+        # Profile is the card on top of Settings, not a second row in System.
+        self.assertNotIn('SettingInfo::Action(StrId::STR_RICKY_PROFILE', source)
 
     def test_global_gestures_follow_their_switches(self):
         settings = read('src/CrossPointSettings.cpp')

@@ -109,9 +109,10 @@ int main() {
             self.assertNotIn('STR_RICKY_STORAGE_' + key, storage)
         self.assertNotIn('auto intro = screen.takeTop', storage)
         self.assertIn('STR_RICKY_FOLDER_MISSING', storage)
-        # The SD card summary opens the whole card; transfer stays an explicit action.
+        # The SD card summary opens the whole card; file transfer lives in Apps and the
+        # control center, not on the Storage page.
         self.assertIn('screen.frame().hit(summary, ACTION_ROW, 4', storage)
-        self.assertIn('STR_RICKY_UPLOAD_FILES', storage)
+        self.assertNotIn('STR_RICKY_UPLOAD_FILES', storage)
         profile = method((ROOT / 'src/activities/settings/RickyProfileActivity.cpp').read_text(),
                          'void RickyProfileActivity::buildScreen(')
         self.assertNotIn('HINT', profile)
@@ -280,7 +281,7 @@ int main() {
     def test_storage_does_not_create_or_reorganize_user_directories(self):
         source = (ROOT / 'src/activities/home/RickyStorageActivity.cpp').read_text()
         for key in ('STR_RICKY_DOWNLOADS','STR_RICKY_IMAGES','STR_FONT', 'STR_RICKY_BOOK_FILES',
-                    'STR_RICKY_STORAGE_SPACE','STR_RICKY_UPLOAD_FILES'):
+                    'STR_RICKY_STORAGE_SPACE'):
             self.assertIn(key, source)
         # The page only creates the four fixed folders; it never renames or deletes.
         for mutation in ('Storage.rename', 'Storage.remove', 'Storage.rmdir'):

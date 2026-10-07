@@ -232,8 +232,7 @@ void RickyStorageActivity::buildScreen(UiScreen& screen) {
   const int ring = bodyHeight + smallHeight + gap * 3;
   const int summaryHeight = ring + pad * 2;
   const int cellHeight = std::max(48, bodyHeight + smallHeight) + pad * 2;
-  const int rowHeight = std::max(48, bodyHeight) + pad * 2;
-  const int needed = summaryHeight + cellHeight * gridRows + rowHeight + gap * (gridRows + 1);
+  const int needed = summaryHeight + cellHeight * gridRows + gap * gridRows;
   const int section = gap + std::clamp((screen.body().height - needed) / 4, 0, gap * 2);
 
   // SD card: usage ring, free / total, opens the whole card in the file browser.
@@ -278,7 +277,7 @@ void RickyStorageActivity::buildScreen(UiScreen& screen) {
                           StrId::STR_RICKY_DOWNLOADS};
   const freeink::Icon* icons[] = {&icon_ricky_books_40, &icon_ricky_fonts_40, &icon_ricky_images_40,
                                   &icon_ricky_downloads_40};
-  const auto grid = screen.takeTop(cellHeight * gridRows + gap * (gridRows - 1), section);
+  const auto grid = screen.takeTop(cellHeight * gridRows + gap * (gridRows - 1), 0);
   for (int i = 0; i < 4; ++i) {
     const auto rect =
         RickyPageUi::uiRect(RickyPageLayout::cell(Rect{grid.x, grid.y, grid.width, grid.height}, i, 4, gap, columns));
@@ -300,28 +299,12 @@ void RickyStorageActivity::buildScreen(UiScreen& screen) {
                           static_cast<int16_t>(smallHeight)},
                 text, small);
   }
-
-  // Transfer is an action, not a folder: a full-width card with a chevron.
-  const auto transfer = screen.takeTop(rowHeight, 0);
-  RickyPageUi::card(target, transfer, focus && selected == 5);
-  screen.frame().hit(transfer, ACTION_ROW, 5, fui::InputTouch);
-  const int middle = transfer.y + transfer.height / 2;
-  RickyPageUi::pageIcon(target, renderer, transfer.x + pad, middle, icon_ricky_upload_40);
-  target.text(fui::Rect{static_cast<int16_t>(transfer.x + pad + icon_ricky_upload_40.w + gap),
-                        static_cast<int16_t>(middle - bodyHeight / 2),
-                        static_cast<int16_t>(transfer.width - pad * 2 - icon_ricky_upload_40.w - gap - 24),
-                        static_cast<int16_t>(bodyHeight)},
-              tr(STR_RICKY_UPLOAD_FILES), label);
-  RickyPageUi::chevron(target,
-                       fui::Rect{static_cast<int16_t>(transfer.right() - 24 - pad), transfer.y, 24, transfer.height});
 }
 
 void RickyStorageActivity::activateIndex(int index) {
   app.clearTapFlash();
   folderMissing = false;
-  if (index == 5) {
-    activityManager.goToFileTransfer();
-  } else if (index == 1) {
+  if (index == 1) {
     // Fonts are families managed in Font Management, most of them downloaded into
     // the hidden /.fonts: the visible /fonts folder would look empty.
     startActivityForResultWith<FontLibraryActivity>([this](const ActivityResult&) { requestUpdate(); });

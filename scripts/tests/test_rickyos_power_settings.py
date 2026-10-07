@@ -90,12 +90,14 @@ int main() {
         self.assertNotIn("delay(", transition)
         self.assertNotIn("while (", transition)
 
-    def test_sleep_enum_labels_remain_indexed_by_persisted_values(self):
+    def test_settings_lists_move_rows_without_copies(self):
         source = (ROOT / "src/activities/settings/SettingsActivity.cpp").read_text()
-        for value in ("DARK", "LIGHT", "CUSTOM", "COVER", "COVER_CUSTOM", "BLANK", "QUICK_RESUME", "TRANSPARENT"):
-            self.assertIn("values[CrossPointSettings::" + value + "]", source)
+        # The sleep-screen mode is chosen on the Standby page (labels indexed by the
+        # persisted value there); Settings only links to it.
+        page = (ROOT / "src/activities/apps/standby/RickyStandbySettingsActivity.cpp").read_text()
+        self.assertIn("static_assert(std::size(kModes) == std::size(kModeLabels));", page)
         self.assertIn("std::move(*it)", source)
-        self.assertIn("swap(sleepSettings)", source)
+        self.assertIn("swap(librarySettings)", source)
         self.assertIn("swap(connectionSettings)", source)
         self.assertNotIn("STR_RICKY_HELP_OTA", source)
         self.assertIn("props.rowGap = std::max<int16_t>(6", source)

@@ -14,7 +14,7 @@ class RickyStorageActivity final : public UiListActivity {
   }
 
  protected:
-  int listCount() const override { return 6; }
+  int listCount() const override { return 5; }
   void onEnter() override;
   void loop() override;
   void buildScreen(UiScreen& screen) override;
