@@ -10,6 +10,9 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/BookCacheUtils.h"
+#ifdef RICKYOS_PRODUCT
+#include "activities/home/RickyStorageActivity.h"
+#endif
 
 void ClearCacheActivity::onEnter() {
   Activity::onEnter();
@@ -208,6 +211,9 @@ void ClearCacheActivity::clearCache() {
     }
   }
   root.close();
+#ifdef RICKYOS_PRODUCT
+  RickyStorageActivity::invalidateScan();  // files may have arrived or left
+#endif
 
   LOG_DBG("CLEAR_CACHE", "Cache cleared: %d removed, %d failed", clearedCount, failedCount);
 

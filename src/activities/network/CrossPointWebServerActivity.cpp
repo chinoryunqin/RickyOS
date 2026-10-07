@@ -25,6 +25,9 @@
 #include "util/PluginEvents.h"
 #include "util/QrUtils.h"
 #include "util/TaskWatchdog.h"
+#ifdef RICKYOS_PRODUCT
+#include "activities/home/RickyStorageActivity.h"
+#endif
 
 namespace {
 // AP Mode configuration
@@ -115,6 +118,9 @@ void CrossPointWebServerActivity::onEnter() {
 
 void CrossPointWebServerActivity::onExit() {
   Activity::onExit();
+#ifdef RICKYOS_PRODUCT
+  RickyStorageActivity::invalidateScan();  // files may have arrived or left
+#endif
   NetworkStartup::logMemory("CrossPointWebServerActivity exit begin");
 
   LOG_DBG("WEBACT", "Free heap at onExit start: %d bytes", ESP.getFreeHeap());

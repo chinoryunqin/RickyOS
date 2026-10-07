@@ -24,6 +24,9 @@
 #include "fontIds.h"
 #include "util/BookCacheUtils.h"
 #include "util/FileEditUtils.h"
+#ifdef RICKYOS_PRODUCT
+#include "activities/home/RickyStorageActivity.h"
+#endif
 
 namespace fui = freeink::ui;
 
@@ -558,6 +561,9 @@ bool FileBrowserActivity::relocatePathData(const std::string& oldPath, const std
 void FileBrowserActivity::finishEdit(const std::string& returnPath, const int fallbackIndex,
                                      const std::string& selectedEntry) {
   RenderLock lock(*this);
+#ifdef RICKYOS_PRODUCT
+  RickyStorageActivity::invalidateScan();  // files may have arrived or left
+#endif
   basepath = returnPath;
   loadFiles();
   if (!selectedEntry.empty()) {
