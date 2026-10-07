@@ -205,6 +205,27 @@ uint32_t EpdFont::applyLigatures(uint32_t cp, const char*& text) const {
   return cp;
 }
 
+namespace {
+// Look-alike stand-ins for punctuation that many faces lack. Chinese books set the
+// ellipsis as U+22EF (midline), which neither the built-in faces nor most TTFs carry;
+// it drew as boxes. The stand-ins are not themselves in this table, so one step ends it.
+uint32_t lookAlike(const uint32_t cp) {
+  switch (cp) {
+    case 0x22EF:      // ⋯ midline horizontal ellipsis
+      return 0x2026;  // …
+    case 0x2015:      // ― horizontal bar
+    case 0x2E3A:      // ⸺ two-em dash
+    case 0x2E3B:      // ⸻ three-em dash
+      return 0x2014;  // —
+    case 0x2027:      // ‧ hyphenation point
+    case 0x30FB:      // ・ katakana middle dot
+      return 0x00B7;  // ·
+    default:
+      return 0;
+  }
+}
+}  // namespace
+
 const EpdGlyph* EpdFont::getGlyph(const uint32_t cp) const { return getGlyph(cp, nullptr); }
 
 const EpdGlyph* EpdFont::getGlyph(const uint32_t cp, bool* const usedReplacement) const {
@@ -235,6 +256,11 @@ const EpdGlyph* EpdFont::getGlyph(const uint32_t cp, bool* const usedReplacement
     if (loaded) return loaded;
   }
 
+  // A look-alike the face does have is not a missing glyph: no box, no font prompt.
+  if (const uint32_t alt = lookAlike(cp)) {
+    if (const EpdGlyph* glyph = getGlyph(alt, nullptr)) return glyph;
+  }
+
   if (usedReplacement) *usedReplacement = true;
   return nullptr;
 }
@@ -251,8 +277,8 @@ bool EpdFont::hasCodepoint(const uint32_t cp) const {
 
   // Interval table miss. SD card fonts only keep the current page's glyphs in
   // their interval table — ask their full RAM-resident coverage index instead.
-  if (data->coverageHandler) {
-    return data->coverageHandler(data->glyphMissCtx, cp);
-  }
-  return false;
+  if (data->coverageHandler && data->coverageHandler(data->glyphMissCtx, cp)) return true;
+  // Covered through a look-alike (see getGlyph), so font fallback keeps this face.
+  const uint32_t alt = lookAlike(cp);
+  return alt != 0 && hasCodepoint(alt);
 }
