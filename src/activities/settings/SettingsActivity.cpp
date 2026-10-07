@@ -1155,6 +1155,11 @@ void SettingsActivity::toggleCurrentSetting() {
         // extremes, which is the usual way to bring a stressed panel back.
         constexpr int kCycles = 5;
         RenderLock lock;
+#if !defined(SIMULATOR)
+        // A scan path that drifted out of step draws every frame with a shifted copy and
+        // survives full refreshes; rebuilding it first is what a reboot used to fix.
+        display.restartPanel();
+#endif
         GUI.drawPopup(renderer, tr(STR_RICKY_SCREEN_REPAIRING));
         for (int i = 0; i < kCycles; ++i) {
           renderer.clearScreen(0x00);
