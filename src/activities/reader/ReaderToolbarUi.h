@@ -24,7 +24,16 @@ class MappedInputManager;
 // clears the screen: the page stays visible around the chrome.
 class ReaderToolbarUi : public UiAppHost {
  public:
-  enum class Event { None = 0, Dismiss = 1, Tool = 2, PrevChapter = 3, NextChapter = 4, Scrub = 5, Row = 6 };
+  enum class Event {
+    None = 0,
+    Dismiss = 1,
+    Tool = 2,
+    PrevChapter = 3,
+    NextChapter = 4,
+    Scrub = 5,
+    Row = 6,
+    Segment = 7,  // a tap on a title segment; value = segment index
+  };
 
   struct Model {
     bool panel = false;  // false = toolbar, true = a Contents/Text/More panel
@@ -34,6 +43,14 @@ class ReaderToolbarUi : public UiAppHost {
     int progressPermille = 0;        // 0..1000 book progress (scrub handle)
     // Panel
     const char* panelTitle = nullptr;
+    // Two switchable titles (Contents | Bookmarks) in place of panelTitle when
+    // both are set; the active one is bold and underlined.
+    const char* segmentLabels[2] = {nullptr, nullptr};
+    int activeSegment = 0;
+    // Size the sheet for at least this many rows even when the list is
+    // shorter: segments pass the longer list so switching does not move the
+    // title and switcher.
+    int minRows = 0;
     int itemCount = 0;
     int selectedIndex = -1;  // row the buttons' cursor sits on; -1 = none shown
     std::function<std::string(int)> rowText;
@@ -49,7 +66,7 @@ class ReaderToolbarUi : public UiAppHost {
 
   struct Routed {
     Event event = Event::None;
-    int value = 0;        // Tool: tool index; Row: row index
+    int value = 0;        // Tool: tool index; Row: row index; Segment: segment index
     int permille = -1;    // Scrub: 0..1000 along the track
     bool routed = false;  // the gate was open and a touch frame was routed
     int x = 0;            // touch position of the routed frame (logical px)

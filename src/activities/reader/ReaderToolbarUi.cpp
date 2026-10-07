@@ -26,6 +26,9 @@ constexpr fui::ActionId ACTION_PREV = 3;     // scrub row: previous chapter
 constexpr fui::ActionId ACTION_NEXT = 4;     // scrub row: next chapter
 constexpr fui::ActionId ACTION_SCRUB = 5;    // progress track: dragPermille along the book
 constexpr fui::ActionId ACTION_ROW = 6;      // panel list row, value = row index
+// The app holds six handlers, all taken above: title segments ride ACTION_TOOL
+// with values from here up and come back out as Event::Segment.
+constexpr int16_t kSegmentToolBase = 16;
 
 // Scrub row: two small round-cornered chapter buttons flanking a thin progress
 // track with a round knob -- the reading page's chrome is light, so the
@@ -88,6 +91,10 @@ void ReaderToolbarUi::onAction(const fui::ActionEvent& event, void* user) {
   out.value = event.value;
   out.permille = event.dragPermille;
   if (event.action >= ACTION_DISMISS && event.action <= ACTION_ROW) out.event = static_cast<Event>(event.action);
+  if (out.event == Event::Tool && event.value >= kSegmentToolBase) {
+    out.event = Event::Segment;
+    out.value = event.value - kSegmentToolBase;
+  }
   if (out.event == Event::Scrub && event.dragPermille < 0) out.event = Event::None;
   // A handled action repaints through the reader's own fast path, not through
   // app.invalidate(): the page underneath is the reader's to draw.
@@ -265,7 +272,8 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
       static_cast<int16_t>((safe.height * (landscape ? kLandscapePanelHeightPercent : kPanelHeightMaxPercent)) / 100);
   int sheetRows = (target - chrome + rowGap) / rowStride;
   if (static_cast<int16_t>(chrome + (sheetRows + 1) * rowStride - rowGap) <= cap) ++sheetRows;
-  if (model_.itemCount > 0 && sheetRows > model_.itemCount) sheetRows = model_.itemCount;
+  const int fitRows = std::max(model_.itemCount, model_.minRows);
+  if (fitRows > 0 && sheetRows > fitRows) sheetRows = fitRows;
   if (sheetRows < 1) sheetRows = 1;
   screen.sheet(sheetProps, static_cast<int16_t>(chrome + sheetRows * rowStride - rowGap));
   // No blanket side inset: Screen::list() draws in the content band, and the
@@ -278,7 +286,31 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
     titleStyle.bold = true;
     const fui::Rect line =
         screen.takeTop(titleH, tokens.spaceMd).inset(fui::Insets{0, tokens.spaceLg, 0, tokens.spaceLg});
-    screen.target().text(line, model_.panelTitle, titleStyle);
+    if (model_.segmentLabels[0] && model_.segmentLabels[1]) {
+      // Contents | Bookmarks: each title is its own tap target, padded to a
+      // finger's width; the active one is bold with a bar under it.
+      const int16_t gap = static_cast<int16_t>(tokens.spaceLg * 2);
+      int16_t x = line.x;
+      for (int i = 0; i < 2; ++i) {
+        fui::TextStyle style = tokens.titleText;
+        style.bold = i == model_.activeSegment;
+        const int16_t w = screen.target().measureText(style.font, model_.segmentLabels[i], style).width;
+        const fui::Rect label{x, line.y, w, line.height};
+        screen.target().text(label, model_.segmentLabels[i], style);
+        if (style.bold) {
+          screen.target().fill(fui::Rect{x, static_cast<int16_t>(line.bottom() + 2), w, 3},
+                               fui::Paint::solid(fui::Color::Black));
+        }
+        const int16_t pad = static_cast<int16_t>(gap / 2);
+        screen.frame().hit(
+            fui::Rect{static_cast<int16_t>(x - pad), static_cast<int16_t>(line.y - tokens.spaceMd),
+                      static_cast<int16_t>(w + gap), static_cast<int16_t>(line.height + tokens.spaceMd * 2)},
+            ACTION_TOOL, static_cast<int16_t>(kSegmentToolBase + i), fui::InputTouch);
+        x = static_cast<int16_t>(x + w + gap);
+      }
+    } else {
+      screen.target().text(line, model_.panelTitle, titleStyle);
+    }
     // Filled in below once the viewport is known; reserve the rect now.
     pageIndicatorRect_ = line;
   }

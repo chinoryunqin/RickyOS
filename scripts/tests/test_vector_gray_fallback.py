@@ -13,6 +13,7 @@ class VectorGrayFallbackTest(unittest.TestCase):
         helpers = ''.join(method(source, name) for name in (
             'static void drawGlyphPixel(', 'constexpr uint8_t dilate2BitCoverage(',
             'static uint8_t get4BitCoverage(', 'static uint8_t get2BitCoverage(',
+            'static uint8_t weigh4BitCoverage(', 'static uint8_t weighted2BitCoverage(',
             'static void draw2BitGlyphPixel(', 'static void draw4BitGlyphPixel('))
         run_cpp(r'''
 #include <array>
@@ -37,6 +38,7 @@ struct GfxRenderer {
  bool grayPlanesAreAbsolute()const{return false;}
  bool glyphIntersectsStrip(int,int,int,int)const{return true;}
  bool isGrayscale16Active()const{return native;}
+ const uint8_t* textCoverageCurve()const{return nullptr;}
  const uint8_t* getGlyphBitmap(const EpdFontData*,const EpdGlyph*)const{return packed.data();}
  void drawPixel(int x,int y,bool state)const{assert(x==0||y==0);pixels[x+y]=state;}
  void drawGrayscale16Pixel(int x,int y,uint8_t gray)const{grays[x+y]=gray;}

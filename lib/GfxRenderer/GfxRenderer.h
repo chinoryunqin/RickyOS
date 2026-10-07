@@ -91,6 +91,7 @@ class GfxRenderer {
   Orientation orientation;
   bool fadingFix;
   mutable uint8_t syntheticBoldPixels = 0;
+  mutable const uint8_t* textCoverageCurve_ = nullptr;  // 16 entries; null = coverage as drawn
   uint8_t* frameBuffer = nullptr;
   uint16_t panelWidth = HalDisplay::DISPLAY_WIDTH;
   uint16_t panelHeight = HalDisplay::DISPLAY_HEIGHT;
@@ -409,6 +410,25 @@ class GfxRenderer {
   // Text
   // Page-local guard for synthetic bold. Restores the previous renderer state
   // so EPUB content cannot leak the effect into status bars or other UI.
+  // Text stroke weight: while in scope, every anti-aliased glyph pixel's 0..15 coverage
+  // goes through `curve` (16 entries, 0 -> 0, 15 -> 15). Lifting the edge coverage reads
+  // as a heavier stroke, lowering it as a lighter one; layout is untouched.
+  class TextWeightScope {
+   public:
+    TextWeightScope(const GfxRenderer& renderer, const uint8_t* curve)
+        : renderer_(renderer), previous_(renderer.textCoverageCurve_) {
+      renderer_.textCoverageCurve_ = curve;
+    }
+    ~TextWeightScope() { renderer_.textCoverageCurve_ = previous_; }
+    TextWeightScope(const TextWeightScope&) = delete;
+    TextWeightScope& operator=(const TextWeightScope&) = delete;
+
+   private:
+    const GfxRenderer& renderer_;
+    const uint8_t* previous_;
+  };
+  const uint8_t* textCoverageCurve() const { return textCoverageCurve_; }
+
   class SyntheticBoldScope {
    public:
     SyntheticBoldScope(const GfxRenderer& renderer, const uint8_t pixels)

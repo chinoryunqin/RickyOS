@@ -282,6 +282,7 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   doc["rickyGestureHome"] = rickyGestureHome;
   doc["rickyGestureControl"] = rickyGestureControl;
   doc["rickyGestureStatus"] = rickyGestureStatus;
+  doc["rickyTextWeight"] = rickyTextWeight;
   doc["rickyTapTurn"] = 1;       // the swipe-only default migration has run
   doc["rickyStandbyKeyOn"] = 1;  // the Back-key Standby shortcut was turned on once
 #endif
@@ -505,6 +506,8 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   rickyGestureHome = (doc["rickyGestureHome"] | 0) ? 1 : 0;
   rickyGestureControl = (doc["rickyGestureControl"] | 1) ? 1 : 0;
   rickyGestureStatus = (doc["rickyGestureStatus"] | 1) ? 1 : 0;
+  rickyTextWeight = doc["rickyTextWeight"] | static_cast<uint8_t>(RICKY_TEXT_WEIGHT_STANDARD);
+  if (rickyTextWeight >= RICKY_TEXT_WEIGHT_COUNT) rickyTextWeight = RICKY_TEXT_WEIGHT_STANDARD;
   // Old backups/direct JSON edits must not select a different product layout.
   struct FixedLayout {
     const char* key;

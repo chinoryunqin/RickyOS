@@ -556,6 +556,20 @@ static uint8_t get2BitCoverage(const uint8_t* bitmap, const int pixelPosition, c
   return (byte >> ((3 - (pixelPosition & 3)) * 2)) & 0x3;
 }
 
+// Coverage after the text-weight curve (TextWeightScope), on the 0..15 scale and on the
+// 0..3 scale the 2-bit paths use. A 2-bit sample is spread to 0/5/10/15 first.
+static uint8_t weigh4BitCoverage(const uint8_t* curve, const uint8_t coverage) {
+  return curve ? curve[coverage & 0xF] : coverage;
+}
+
+static uint8_t weighted2BitCoverage(const uint8_t* curve, const uint8_t* bitmap, const int pixelPosition,
+                                    const bool fourBit) {
+  if (!curve) return get2BitCoverage(bitmap, pixelPosition, fourBit);
+  const uint8_t coverage = fourBit ? get4BitCoverage(bitmap, pixelPosition)
+                                   : static_cast<uint8_t>(get2BitCoverage(bitmap, pixelPosition) * 5);
+  return static_cast<uint8_t>((curve[coverage] + 2) / 5);
+}
+
 // 把 4 位覆盖度写进 16 级灰度缓冲。drawGrayscale16Pixel() 的 gray 是 0 = 黑、255 = 白，
 // 而覆盖度是 0 = 全透明、15 = 满墨，所以要取反。
 //
@@ -719,6 +733,7 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
 
   const uint8_t* bitmap = renderer.getGlyphBitmap(fontData, glyph);
   if (bitmap == nullptr) return;
+  const uint8_t* const curve = renderer.textCoverageCurve();
 
   if (bitmap != nullptr) {
     // For Normal:  outer loop advances screenY, inner loop advances screenX
@@ -745,7 +760,8 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
             screenX = innerBase + glyphX;
             screenY = outerCoord;
           }
-          draw4BitGlyphPixel(renderer, screenX, screenY, get4BitCoverage(bitmap, glyphY * width + glyphX));
+          draw4BitGlyphPixel(renderer, screenX, screenY,
+                             weigh4BitCoverage(curve, get4BitCoverage(bitmap, glyphY * width + glyphX)));
         }
       }
     }
@@ -767,7 +783,8 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
             screenX = innerBase + glyphX;
             screenY = outerCoord;
           }
-          const uint8_t current = glyphX < width ? get2BitCoverage(bitmap, glyphY * width + glyphX, is4Bit) : 0;
+          const uint8_t current =
+              glyphX < width ? weighted2BitCoverage(curve, bitmap, glyphY * width + glyphX, is4Bit) : 0;
           const uint8_t coverage = syntheticBoldPixels == 0 ? current
                                                             : dilate2BitCoverage(current, previous1, previous2,
                                                                                  previous3, syntheticBoldPixels);
@@ -798,7 +815,7 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
               screenY = outerCoord;
             }
             draw2BitGlyphPixel(renderer, renderMode, screenX, screenY, pixelState,
-                               get2BitCoverage(bitmap, glyphY * width + glyphX, is4Bit));
+                               weighted2BitCoverage(curve, bitmap, glyphY * width + glyphX, is4Bit));
           }
           continue;
         }
@@ -817,7 +834,7 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
             screenY = outerCoord;
           }
 
-          const uint8_t current = glyphX < width ? get2BitCoverage(bitmap, glyphY * width + glyphX, is4Bit)
+          const uint8_t current = glyphX < width ? weighted2BitCoverage(curve, bitmap, glyphY * width + glyphX, is4Bit)
                                                  : 0;  // White tail extends the edge.
           const uint8_t coverage = dilate2BitCoverage(current, previous1, previous2, previous3, syntheticBoldPixels);
           draw2BitGlyphPixel(renderer, renderMode, screenX, screenY, pixelState, coverage);

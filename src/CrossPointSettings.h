@@ -489,6 +489,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t rickyGestureHome = 0;     // swipe up from the bottom: Home
   uint8_t rickyGestureControl = 1;  // swipe down from the top: control center
   uint8_t rickyGestureStatus = 1;   // tap the status bar: control center
+  // Body-text stroke weight in the reader: 0 thinnest .. 2 the font as drawn .. 4 boldest.
+  enum RICKY_TEXT_WEIGHT { RICKY_TEXT_WEIGHT_STANDARD = 2, RICKY_TEXT_WEIGHT_COUNT = 5 };
+  uint8_t rickyTextWeight = RICKY_TEXT_WEIGHT_STANDARD;
 #endif
   // Prefer the internal Flash cache for the selected SD reader font.
   uint8_t sdFontFlashPreload = 0;
