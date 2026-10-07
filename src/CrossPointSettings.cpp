@@ -278,6 +278,10 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   doc["rickyNickname"] = rickyNickname;
   doc["rickyAvatarPath"] = rickyAvatarPath;
   doc["rickyHomePhrase"] = rickyHomePhrase;
+  doc["rickyGestureBack"] = rickyGestureBack;
+  doc["rickyGestureHome"] = rickyGestureHome;
+  doc["rickyGestureControl"] = rickyGestureControl;
+  doc["rickyGestureStatus"] = rickyGestureStatus;
   doc["rickyTapTurn"] = 1;       // the swipe-only default migration has run
   doc["rickyStandbyKeyOn"] = 1;  // the Back-key Standby shortcut was turned on once
 #endif
@@ -496,6 +500,11 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   copyToField(rickyAvatarPath, doc["rickyAvatarPath"] | "", sizeof(rickyAvatarPath));
   copyToField(rickyHomePhrase, doc["rickyHomePhrase"] | "", sizeof(rickyHomePhrase));
   rickyHomePhrase[utf8SafeTruncateBuffer(rickyHomePhrase, strlen(rickyHomePhrase))] = '\0';
+  // Missing keys take the defaults: Home swipe starts off for everyone, as agreed.
+  rickyGestureBack = (doc["rickyGestureBack"] | 1) ? 1 : 0;
+  rickyGestureHome = (doc["rickyGestureHome"] | 0) ? 1 : 0;
+  rickyGestureControl = (doc["rickyGestureControl"] | 1) ? 1 : 0;
+  rickyGestureStatus = (doc["rickyGestureStatus"] | 1) ? 1 : 0;
   // Old backups/direct JSON edits must not select a different product layout.
   struct FixedLayout {
     const char* key;

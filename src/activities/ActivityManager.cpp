@@ -268,7 +268,12 @@ void ActivityManager::loop() {
 
     // Touch users can also open the global control center from the status bar.
     bool statusBarTap = false;
-    if (mappedInput.hasTouch()) {
+#ifdef RICKYOS_PRODUCT
+    const bool statusTapOpensPanel = SETTINGS.rickyGestureStatus != 0;  // Settings -> Gestures
+#else
+    constexpr bool statusTapOpensPanel = true;
+#endif
+    if (mappedInput.hasTouch() && statusTapOpensPanel) {
       int tx = 0;
       int ty = 0;
       if (currentActivity->usesMainTabBar()) {
@@ -283,7 +288,9 @@ void ActivityManager::loop() {
     }
     if (currentActivity->name != "FrontlightPanel" && (statusBarTap || mappedInput.wasLightPanelGesture())) {
       resetHomeStandbyInput();
-      auto panel = makeUniqueNoThrow<FrontlightPanelActivity>(renderer, mappedInput);
+      // Over a book the panel adds its reading controls.
+      const bool overReader = currentActivity->name == "EpubReader" || currentActivity->name == "XtcReader";
+      auto panel = makeUniqueNoThrow<FrontlightPanelActivity>(renderer, mappedInput, overReader);
       if (!panel) {
         LOG_ERR("ACT", "OOM: frontlight panel (%u bytes)", static_cast<unsigned>(sizeof(FrontlightPanelActivity)));
         return;

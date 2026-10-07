@@ -16,7 +16,7 @@ class RickyPageIconTest(unittest.TestCase):
     def test_header_holds_every_page_icon_at_40_px(self):
         text = HEADER.read_text()
         aliases = re.findall(r"\['(\w+)', '[\w-]+'\]", SCRIPT.read_text())
-        self.assertEqual(len(aliases), 12)
+        self.assertEqual(len(aliases), 19)  # 12 page icons + 7 control-center actions
         for alias in aliases:
             body = re.search(rf'icon_ricky_{alias}_40_bits\[\] = \{{([^}}]+)\}}', text).group(1)
             data = bytes(int(value, 16) for value in re.findall(r'0x([0-9A-F]{2})', body))

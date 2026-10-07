@@ -40,6 +40,7 @@ enum class SettingAction {
   RickyProfile,
   RickyStandbyPage,
   RickyScreenRepair,
+  RickyGestures,
 #endif
 };
 

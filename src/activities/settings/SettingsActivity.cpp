@@ -66,6 +66,7 @@
 #include "util/SystemSettingsReset.h"
 #ifdef RICKYOS_PRODUCT
 #include "activities/apps/standby/RickyStandbySettingsActivity.h"
+#include "activities/settings/RickyGestureSettingsActivity.h"
 #include "util/RickyStorageLayout.h"
 #endif
 
@@ -341,22 +342,22 @@ void SettingsActivity::reorganizeRickySettings() {
                [](const SettingInfo& setting) { return setting.action == SettingAction::Bluetooth; });
   moveMatching(readerSettings, fontSettings,
                [](const SettingInfo& setting) { return setting.action == SettingAction::DownloadFonts; });
-  // How a page turns by touch is a reading choice; buried at the end of System, readers
-  // never found the tap option. Keep it next to the page-turn direction.
-  std::vector<SettingInfo> touchTurns;
-  moveMatching(controlsSettings, touchTurns, [](const SettingInfo& setting) {
+  // Every touch gesture lives on one Gestures page (RickyGestureSettingsActivity),
+  // opened from the top of System; the page-turn and reader-menu rows leave Reading.
+  const auto isGesture = [](const SettingInfo& setting) {
     return setting.valuePtr == &CrossPointSettings::touchReaderControls ||
            setting.valuePtr == &CrossPointSettings::pageTurnGesture ||
            setting.valuePtr == &CrossPointSettings::previousPageGesture ||
-           setting.valuePtr == &CrossPointSettings::showReaderMenu;
-  });
-  auto turnAt = std::find_if(readerSettings.begin(), readerSettings.end(), [](const SettingInfo& setting) {
-    return setting.valuePtr == &CrossPointSettings::pageTurnDirection;
-  });
-  turnAt = turnAt == readerSettings.end() ? readerSettings.begin() : turnAt + 1;
-  readerSettings.insert(turnAt, std::make_move_iterator(touchTurns.begin()), std::make_move_iterator(touchTurns.end()));
-  systemSettings.reserve(systemSettings.size() + controlsSettings.size());
+           setting.valuePtr == &CrossPointSettings::showReaderMenu ||
+           setting.valuePtr == &CrossPointSettings::pageTurnDirection;
+  };
+  controlsSettings.erase(std::remove_if(controlsSettings.begin(), controlsSettings.end(), isGesture),
+                         controlsSettings.end());
+  readerSettings.erase(std::remove_if(readerSettings.begin(), readerSettings.end(), isGesture), readerSettings.end());
+  systemSettings.reserve(systemSettings.size() + controlsSettings.size() + 1);
   moveMatching(controlsSettings, systemSettings, [](const SettingInfo&) { return true; });
+  systemSettings.insert(systemSettings.begin(),
+                        SettingInfo::Action(StrId::STR_RICKY_GESTURES, SettingAction::RickyGestures));
   for (auto& setting : sleepSettings) {
     if (setting.valuePtr == &CrossPointSettings::sleepScreen) {
       setting.nameId = StrId::STR_RICKY_LOCK_SCREEN;
@@ -1149,6 +1150,9 @@ void SettingsActivity::toggleCurrentSetting() {
         startActivityForResultWith<ClearCacheActivity>(resultHandler);
         break;
 #ifdef RICKYOS_PRODUCT
+      case SettingAction::RickyGestures:
+        startActivityForResultWith<RickyGestureSettingsActivity>(resultHandler);
+        break;
       case SettingAction::RickyScreenRepair: {
         // Residual charge in the film shows old screens through new ones. Full GC16
         // black/white pairs are DC-balanced and drive every pixel through both

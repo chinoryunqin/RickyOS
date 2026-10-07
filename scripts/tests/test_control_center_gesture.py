@@ -50,7 +50,7 @@ struct Input {
   bool wasLightPanelGesture() { return light && topSwipe; }
   bool wasMenuGesture() { return topSwipe; }
 };
-struct FrontlightPanelActivity { FrontlightPanelActivity(int, Input&) {} };
+struct FrontlightPanelActivity { FrontlightPanelActivity(int, Input&, bool = false) {} };
 bool failAllocation = false;
 template<class T, class... Args> std::unique_ptr<T> makeUniqueNoThrow(Args&&... args) {
   return failAllocation ? nullptr : std::make_unique<T>(std::forward<Args>(args)...);

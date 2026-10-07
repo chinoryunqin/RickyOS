@@ -23,14 +23,35 @@ class RickyQuickWinsTest(unittest.TestCase):
         self.assertIn('needsResave = true;', migration)
         self.assertIn('doc["rickyTapTurn"] = 1;', source)
 
-    def test_touch_turn_settings_live_in_reader_next_to_direction(self):
+    def test_every_touch_gesture_lives_on_the_gestures_page(self):
         source = read('src/activities/settings/SettingsActivity.cpp')
-        start = source.index('std::vector<SettingInfo> touchTurns;')
-        block = source[start:source.index('systemSettings.reserve', start)]
-        for field in ('touchReaderControls', 'pageTurnGesture', 'previousPageGesture', 'showReaderMenu'):
+        start = source.index('const auto isGesture = [](const SettingInfo& setting) {')
+        block = source[start:source.index('SettingAction::RickyGestures));', start)]
+        for field in ('touchReaderControls', 'pageTurnGesture', 'previousPageGesture', 'showReaderMenu',
+                      'pageTurnDirection'):
             self.assertIn(f'&CrossPointSettings::{field}', block)
-        self.assertIn('&CrossPointSettings::pageTurnDirection', block)
-        self.assertLess(start, source.index('moveMatching(controlsSettings, systemSettings'))
+        self.assertIn('readerSettings.erase(', block)
+        self.assertIn('systemSettings.insert(systemSettings.begin(),', block)
+        self.assertIn('startActivityForResultWith<RickyGestureSettingsActivity>', source)
+        page = read('src/activities/settings/RickyGestureSettingsActivity.cpp')
+        for field in ('rickyGestureBack', 'rickyGestureHome', 'rickyGestureControl', 'rickyGestureStatus',
+                      'touchReaderControls', 'pageTurnGesture', 'previousPageGesture', 'pageTurnDirection',
+                      'showReaderMenu'):
+            self.assertIn(f'SETTINGS.{field}', page)
+
+    def test_global_gestures_follow_their_switches(self):
+        settings = read('src/CrossPointSettings.cpp')
+        # Swiping up from the bottom to go Home starts off, for new and existing settings.
+        self.assertIn('rickyGestureHome = (doc["rickyGestureHome"] | 0) ? 1 : 0;', settings)
+        self.assertIn('uint8_t rickyGestureHome = 0;', read('src/CrossPointSettings.h'))
+        mapped = read('src/MappedInputManager.cpp')
+        home = mapped[mapped.index('bool MappedInputManager::wasHomeGesture() const {'):]
+        self.assertLess(home.index('if (!SETTINGS.rickyGestureHome) return false;'), home.index('wasBottomEdgeUpSwipe()'))
+        self.assertIn('if (!SETTINGS.rickyGestureBack) return false;', mapped)
+        self.assertIn('if (!SETTINGS.rickyGestureControl) return false;', mapped)
+        menu = mapped[mapped.index('bool MappedInputManager::wasReaderMenuSwipeUp() const {'):]
+        self.assertIn('if (!SETTINGS.rickyGestureHome) return wasBottomEdgeUpSwipe();', menu[:400])
+        self.assertIn('SETTINGS.rickyGestureStatus', read('src/activities/ActivityManager.cpp'))
 
     def test_text_panel_toggles_anti_aliasing_without_repagination(self):
         source = read('src/activities/reader/EpubReaderActivity.cpp')

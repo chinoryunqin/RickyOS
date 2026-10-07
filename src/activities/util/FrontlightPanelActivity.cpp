@@ -2,6 +2,7 @@
 
 #include <FreeInkUIIcon.h>
 #include <GfxRenderer.h>
+#include <HalClock.h>
 #include <HalDisplay.h>
 #include <HalFrontlight.h>
 #include <HalGPIO.h>
@@ -17,6 +18,14 @@
 #include "components/UIThemeTokens.h"
 #include "components/icons/customListIcons.h"
 #include "components/icons/listIcons.h"
+#ifdef RICKYOS_PRODUCT
+#include "ReadingStatsStore.h"
+#include "activities/ActivityManager.h"
+#include "activities/apps/standby/StandbyActivity.h"
+#include "components/RickyPageUi.h"
+#include "components/icons/rickyPageIcons.h"
+#include "util/TimeUtils.h"
+#endif
 
 namespace fui = freeink::ui;
 
@@ -54,8 +63,15 @@ uint8_t percentFromPermille(const int16_t permille) {
 }
 }  // namespace
 
-FrontlightPanelActivity::FrontlightPanelActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-    : Activity("FrontlightPanel", renderer, mappedInput), UiAppHost(renderer, true) {}
+FrontlightPanelActivity::FrontlightPanelActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
+                                                 const bool overReader)
+    : Activity("FrontlightPanel", renderer, mappedInput), UiAppHost(renderer, true) {
+#ifdef RICKYOS_PRODUCT
+  this->overReader = overReader;
+#else
+  (void)overReader;
+#endif
+}
 
 void FrontlightPanelActivity::onEnter() {
   Activity::onEnter();
@@ -81,6 +97,16 @@ void FrontlightPanelActivity::onEnter() {
   }
 
   resetUi();
+  // The host app holds six handlers (UiAppHost); RickyOS boards have no frontlight
+  // and route every control through the tile action.
+#ifdef RICKYOS_PRODUCT
+  if (!Frontlight.present()) {
+    app.on(ACTION_TILE, &FrontlightPanelActivity::onTileEvent, this);
+    app.setScreen(&FrontlightPanelActivity::panelScreen, this);
+    requestUpdate();
+    return;
+  }
+#endif
   app.on(ACTION_BRIGHTNESS, &FrontlightPanelActivity::onBrightnessEvent, this);
   app.on(ACTION_WARMTH, &FrontlightPanelActivity::onWarmthEvent, this);
   app.on(ACTION_TOGGLE, &FrontlightPanelActivity::onToggleEvent, this);
@@ -153,6 +179,10 @@ void FrontlightPanelActivity::onTileEvent(const fui::ActionEvent& event, void* u
 }
 
 void FrontlightPanelActivity::runTile(const int idx) {
+#ifdef RICKYOS_PRODUCT
+  runRickyTile(static_cast<Tile>(idx));
+  return;
+#endif
   switch (idx) {
     case 0:  // Night mode (inverted output polarity, applied to the whole UI)
       SETTINGS.screenInverted = SETTINGS.screenInverted ? 0 : 1;
@@ -280,6 +310,9 @@ void FrontlightPanelActivity::loop() {
 }
 
 int FrontlightPanelActivity::computePanelBottom() const {
+#ifdef RICKYOS_PRODUCT
+  if (!Frontlight.present()) return rickyPanelHeight();
+#endif
   const auto tokens = uiThemeTokens(uiTarget, true);
   const auto& metrics = uiThemeMetrics(true);
   const int16_t lineHeight = uiTarget.lineHeight(tokens.smallText.font);
@@ -345,6 +378,10 @@ void FrontlightPanelActivity::addSliderRow(UiScreen& screen, const char* label, 
 }
 
 void FrontlightPanelActivity::buildPanelScreen(UiScreen& screen) {
+#ifdef RICKYOS_PRODUCT
+  buildRickyPanel(screen);
+  return;
+#endif
   const auto& theme = screen.theme();
 
   // Sheet chrome first: the card body, the 2px rule along its bottom edge, and
@@ -416,6 +453,193 @@ void FrontlightPanelActivity::buildPanelScreen(UiScreen& screen) {
     screen.tileGrid(gridProps);
   }
 }
+
+#ifdef RICKYOS_PRODUCT
+namespace {
+// Round actions: a circle per column, the label under it.
+constexpr int16_t kActionDiameter = 96;
+constexpr int16_t kActionLabelGap = 10;
+constexpr int kActionColumns = 4;
+// Clean-refresh choices in REFRESH_FREQUENCY order (pages between clean refreshes; 0 = never).
+constexpr int kRefreshPages[] = {1, 5, 10, 15, 30, 0};
+}  // namespace
+
+void FrontlightPanelActivity::runRickyTile(const Tile tile) {
+  switch (tile) {
+    case Tile::Night:
+      SETTINGS.screenInverted = SETTINGS.screenInverted ? 0 : 1;
+      SETTINGS.saveToFile();
+      cleanRefreshPending = true;
+      requestUpdate();
+      break;
+    case Tile::Refresh:
+      renderer.promoteNextRefresh(HalDisplay::FULL_REFRESH);
+      close();
+      break;
+    case Tile::Standby:
+      // Standby goes on top of the panel, so waking returns to whatever the panel
+      // opened over (a book stays open); the panel then closes itself.
+      startActivityForResultWith<StandbyActivity>([this](const ActivityResult&) { close(); });
+      break;
+    case Tile::Transfer:
+      activityManager.goToFileTransfer();
+      break;
+    case Tile::Orientation:
+      SETTINGS.orientation = static_cast<uint8_t>((SETTINGS.orientation + 1) % 4);
+      SETTINGS.saveToFile();
+      requestUpdate();
+      break;
+    case Tile::Clean:
+      cycleCleanRefresh();
+      break;
+  }
+}
+
+void FrontlightPanelActivity::cycleCleanRefresh() {
+  const int count = static_cast<int>(std::size(kRefreshPages));
+  SETTINGS.refreshFrequency = static_cast<uint8_t>((std::min<int>(SETTINGS.refreshFrequency, count - 1) + 1) % count);
+  SETTINGS.saveToFile();
+  requestUpdate();
+}
+
+// Mirrors buildRickyPanel() band by band so the sheet is sized before it is drawn.
+int FrontlightPanelActivity::rickyPanelHeight() const {
+  const auto tokens = uiThemeTokens(uiTarget, true);
+  const auto& metrics = uiThemeMetrics(true);
+  const int small = uiTarget.lineHeight(tokens.smallText.font);
+  const int title = uiTarget.lineHeight(tokens.titleText.font);
+  const int actionRow = kActionDiameter + kActionLabelGap + small;
+  int y = tokens.spaceMd + std::max<int>(metrics.batteryHeight, title) + tokens.spaceXs;  // clock and battery
+  y += small;                                                                             // date line
+  if (mappedInput.hasTouch()) {
+    y += 2 * tokens.spaceLg + actionRow;
+    if (overReader) y += 2 * tokens.spaceLg + small + tokens.spaceMd + actionRow;
+  }
+  y += tokens.spaceLg + kGrabberHeight + tokens.spaceLg + tokens.spaceMd;  // grabber band
+  return y;
+}
+
+void FrontlightPanelActivity::roundActionRow(UiScreen& screen, const RoundAction* actions, const int count) {
+  const auto& theme = screen.theme();
+  auto& target = screen.target();
+  auto label = theme.smallText;
+  label.maxLines = 1;
+  label.align = fui::TextAlign::Center;
+  const int16_t labelHeight = target.lineHeight(theme.smallText.font);
+  const auto row = screen.takeTop(static_cast<int16_t>(kActionDiameter + kActionLabelGap + labelHeight), 0);
+  const int16_t column = static_cast<int16_t>(row.width / kActionColumns);
+  for (int i = 0; i < count; ++i) {
+    const RoundAction& action = actions[i];
+    const fui::Rect cell{static_cast<int16_t>(row.x + i * column), row.y, column, row.height};
+    const fui::Rect circle{static_cast<int16_t>(cell.x + (column - kActionDiameter) / 2), cell.y, kActionDiameter,
+                           kActionDiameter};
+    constexpr uint8_t radius = kActionDiameter / 2;
+    // On = a filled disc with the icon knocked out in white; off = a hairline ring.
+    if (action.on) {
+      target.fill(circle, fui::Paint::solid(fui::Color::Black), radius);
+    } else {
+      target.fill(circle, fui::Paint::solid(fui::Color::White), radius);
+      target.stroke(circle, fui::Paint::solid(fui::Color::Black), 2, radius);
+    }
+    const freeink::Icon& icon = *action.icon;
+    target.bitmap(fui::Rect{static_cast<int16_t>(circle.x + (kActionDiameter - icon.w) / 2),
+                            static_cast<int16_t>(circle.y + kActionDiameter / 2 - icon.opticalCenterY),
+                            static_cast<int16_t>(icon.w), static_cast<int16_t>(icon.h)},
+                  fui::bitmapFromIcon(icon), fui::BitmapMode::Center,
+                  fui::Paint::solid(action.on ? fui::Color::White : fui::Color::Black));
+    target.text(fui::Rect{cell.x, static_cast<int16_t>(circle.bottom() + kActionLabelGap), cell.width, labelHeight},
+                action.label, label);
+    // The whole column (disc and label) is the touch target.
+    screen.frame().hit(cell, ACTION_TILE, static_cast<int16_t>(action.tile), fui::InputTouch);
+  }
+}
+
+void FrontlightPanelActivity::buildRickyPanel(UiScreen& screen) {
+  const auto& theme = screen.theme();
+  fui::SheetProps sheetProps;
+  sheetProps.grabberMargin = theme.spaceLg;
+  sheetProps.grabberInset = static_cast<int16_t>(theme.spaceLg + theme.spaceMd);
+  screen.sheet(sheetProps, static_cast<int16_t>(panelBottom));
+  screen.insetContent(fui::Insets{0, theme.spaceLg, 0, theme.spaceLg});
+  auto& target = screen.target();
+  RickyPageUi::Bold bold(renderer, 1);
+  auto small = theme.smallText;
+  small.maxLines = 1;
+  const int16_t smallHeight = target.lineHeight(theme.smallText.font);
+
+  // Clock on the left of the status band, battery on the right where Home draws it.
+  const auto& metrics = uiThemeMetrics(true);
+  screen.spacer(theme.spaceMd);
+  const auto band = screen.takeTop(
+      std::max<int16_t>(static_cast<int16_t>(metrics.batteryHeight), target.lineHeight(theme.titleText.font)),
+      theme.spaceXs);
+  GUI.drawHeaderWithStyle(
+      renderer, Rect{0, metrics.topPadding, renderer.getScreenWidth(), metrics.homeTopPadding - metrics.topPadding},
+      nullptr, nullptr, true, true);
+  std::tm local{};
+  const bool haveTime = halClock.localTime(local);
+  if (!haveTime || !TimeUtils::formatCurrentTime(timeText, sizeof(timeText), SETTINGS.clockFormat == 1)) {
+    snprintf(timeText, sizeof(timeText), "--:--");
+  }
+  auto clock = theme.titleText;
+  clock.bold = true;
+  clock.maxLines = 1;
+  target.text(fui::Rect{band.x, band.y, static_cast<int16_t>(band.width / 2), band.height}, timeText, clock);
+  char date[40] = {};
+  if (haveTime) {
+    static constexpr StrId weekdays[] = {
+        StrId::STR_CAL_WEEKDAY_SUN, StrId::STR_CAL_WEEKDAY_MON, StrId::STR_CAL_WEEKDAY_TUE, StrId::STR_CAL_WEEKDAY_WED,
+        StrId::STR_CAL_WEEKDAY_THU, StrId::STR_CAL_WEEKDAY_FRI, StrId::STR_CAL_WEEKDAY_SAT};
+    snprintf(date, sizeof(date), tr(STR_RICKY_HOME_DATE), static_cast<unsigned>(local.tm_mon + 1),
+             static_cast<unsigned>(local.tm_mday), I18N.get(weekdays[std::clamp(local.tm_wday, 0, 6)]));
+  }
+  char today[40];
+  snprintf(today, sizeof(today), tr(STR_RICKY_HOME_TODAY),
+           static_cast<unsigned>(READING_STATS.getTodayReadingMs() / 60000));
+  snprintf(infoText, sizeof(infoText), haveTime ? "%s · %s" : "%s%s", date, today);
+  target.text(screen.takeTop(smallHeight, 0), infoText, small);
+
+  // Round actions are touch targets; a buttons-only board keeps just the clock.
+  if (!mappedInput.hasTouch()) return;
+  const auto rule = [&] {
+    screen.spacer(theme.spaceLg);
+    const auto line = screen.takeTop(1, 0);
+    target.fill(line, fui::Paint::solid(fui::Color::Black));
+    screen.spacer(theme.spaceLg);
+  };
+
+  rule();
+  const bool night = SETTINGS.screenInverted != 0;
+  const RoundAction common[] = {
+      {Tile::Night, &icon_ricky_night_40, tr(STR_NIGHT_MODE), night},
+      {Tile::Refresh, &icon_ricky_refresh_40, tr(STR_FORCE_REFRESH), false},
+      {Tile::Standby, &icon_ricky_standby_40, tr(STR_RICKY_STANDBY_NOW), false},
+      {Tile::Transfer, &icon_ricky_transfer_40, tr(STR_FILE_TRANSFER), false},
+  };
+  roundActionRow(screen, common, static_cast<int>(std::size(common)));
+
+  if (!overReader) return;
+  // Reading: only over a book, where each of these changes the page underneath.
+  rule();
+  target.text(screen.takeTop(smallHeight, theme.spaceMd), tr(STR_RICKY_CC_READING), small);
+  static constexpr StrId kOrientNames[4] = {StrId::STR_PORTRAIT, StrId::STR_LANDSCAPE_CW,
+                                            StrId::STR_ORIENTATION_INVERTED, StrId::STR_LANDSCAPE_CCW};
+  const uint8_t orientation = SETTINGS.orientation % 4;
+  const bool portrait = orientation == 0 || orientation == 2;
+  const int refreshIndex = std::min<int>(SETTINGS.refreshFrequency, static_cast<int>(std::size(kRefreshPages)) - 1);
+  if (kRefreshPages[refreshIndex] == 0) {
+    snprintf(refreshText, sizeof(refreshText), "%s", tr(STR_RICKY_CC_FULL_REFRESH_OFF));
+  } else {
+    snprintf(refreshText, sizeof(refreshText), tr(STR_RICKY_CC_FULL_REFRESH), kRefreshPages[refreshIndex]);
+  }
+  const RoundAction reading[] = {
+      {Tile::Orientation, portrait ? &icon_ricky_portrait_40 : &icon_ricky_landscape_40,
+       I18N.get(kOrientNames[orientation]), false},
+      {Tile::Clean, &icon_ricky_clean_40, refreshText, false},
+  };
+  roundActionRow(screen, reading, static_cast<int>(std::size(reading)));
+}
+#endif
 
 void FrontlightPanelActivity::render(RenderLock&&) {
   panelBottom = computePanelBottom();

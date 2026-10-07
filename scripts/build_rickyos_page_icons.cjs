@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** Lucide SVGs (freeink-sdk submodule) -> 40 px 1-bpp freeink::Icon resources for
- * the RickyOS storage and settings pages.
+ * the RickyOS storage and settings pages and the control center.
  * Developer-only dependency: sharp 0.35.4 (librsvg 2.62.91).
  * Run: NODE_PATH=/path/to/node_modules node scripts/build_rickyos_page_icons.cjs [--out header.h]
  * Lucide's 2 px stroke is thinned to 1.75 (about 2.9 px at 40 px): lighter on
@@ -21,6 +21,9 @@ const ICONS = [
   ['storage', 'hard-drive'], ['books', 'book-open'], ['fonts', 'a-large-small'], ['images', 'image'],
   ['downloads', 'download'], ['folder', 'folder-open'], ['upload', 'upload'], ['display', 'sun-moon'],
   ['reader', 'book-open-text'], ['network', 'wifi'], ['power', 'battery-medium'], ['system', 'settings-2'],
+  // Control center actions.
+  ['night', 'moon'], ['refresh', 'refresh-cw'], ['standby', 'power'], ['transfer', 'arrow-up-down'],
+  ['portrait', 'rectangle-vertical'], ['landscape', 'rectangle-horizontal'], ['clean', 'sparkles'],
 ];
 
 let output = path.join(root, 'src/components/icons/rickyPageIcons.h');

@@ -457,6 +457,9 @@ bool MappedInputManager::wasBackGesture() const {
   // Back = left-to-right swipe starting near the left edge. Edge-anchored so that
   // mid-screen horizontal swipes stay available to activities that consume
   // SwipeDir::Left/Right (e.g. percent selection, image viewer).
+#ifdef RICKYOS_PRODUCT
+  if (!SETTINGS.rickyGestureBack) return false;
+#endif
   return wasEdgeSwipe(fui::ScreenEdge::Left);
 }
 
@@ -484,14 +487,27 @@ bool MappedInputManager::wasBottomEdgeUpSwipe() const { return wasEdgeSwipe(fui:
 
 bool MappedInputManager::wasMenuGesture() const { return wasTopEdgeDownSwipe(); }
 
-bool MappedInputManager::wasReaderMenuSwipeUp() const { return gpio.hasHomeKey() && wasBottomEdgeUpSwipe(); }
+bool MappedInputManager::wasReaderMenuSwipeUp() const {
+#ifdef RICKYOS_PRODUCT
+  // With the Home swipe off, the bottom edge is free for the reader menu.
+  if (!SETTINGS.rickyGestureHome) return wasBottomEdgeUpSwipe();
+#endif
+  return gpio.hasHomeKey() && wasBottomEdgeUpSwipe();
+}
 
 bool MappedInputManager::wasHomeGesture() const {
-  return gpio.hasHomeKey() ? homeAction == HomeButtonAction::Home : wasBottomEdgeUpSwipe();
+  if (gpio.hasHomeKey()) return homeAction == HomeButtonAction::Home;
+#ifdef RICKYOS_PRODUCT
+  if (!SETTINGS.rickyGestureHome) return false;
+#endif
+  return wasBottomEdgeUpSwipe();
 }
 
 bool MappedInputManager::wasLightPanelGesture() const {
   // The control center also serves touch boards without a frontlight.
+#ifdef RICKYOS_PRODUCT
+  if (!SETTINGS.rickyGestureControl) return false;
+#endif
   return hasTouch() && wasTopEdgeDownSwipe();
 }
 
