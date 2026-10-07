@@ -51,10 +51,9 @@ void FontLibraryActivity::rebuildRows() {
   const auto& families = sdFontSystem.registry().getFamilies();
   if (familyIndex_ >= static_cast<int>(families.size())) familyIndex_ = -1;
   if (familyIndex_ < 0) {
-    rows_[0].label = tr(STR_TEXT_SETTINGS);
-    rows_[1].label = tr(STR_RICKY_FONT_ONLINE);
-    rows_[2].label = tr(STR_RICKY_FONT_IMPORT);
-    rows_[2].subtitle = tr(STR_RICKY_FONT_IMPORT_TYPES);
+    rows_[0].label = tr(STR_RICKY_FONT_ONLINE);
+    rows_[1].label = tr(STR_RICKY_FONT_IMPORT);
+    rows_[1].subtitle = tr(STR_RICKY_FONT_IMPORT_TYPES);
     rowCount_ = ROOT_ACTIONS + std::min<int>(families.size(), SdCardFontRegistry::MAX_SD_FAMILIES);
     for (int i = ROOT_ACTIONS; i < rowCount_; ++i) {
       const auto& family = families[i - ROOT_ACTIONS];
@@ -174,12 +173,10 @@ void FontLibraryActivity::activateIndex(const int index) {
     else
       confirmDelete();
   } else if (index == 0) {
-    openTextSettings(false);
-  } else if (index == 1) {
     if (!startActivityForResultWith<FontDownloadActivity>([this](const ActivityResult&) { refreshAfterChild(); })) {
       showInfo(StrId::STR_MEMORY_ERROR);
     }
-  } else if (index == 2) {
+  } else if (index == 1) {
     showInfo(StrId::STR_RICKY_FONT_IMPORT_GUIDE);
   } else {
     RenderLock lock(*this);

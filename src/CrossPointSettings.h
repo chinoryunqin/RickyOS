@@ -482,6 +482,16 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   char rickyNickname[49] = "";
   char rickyAvatarPath[96] = "";
   char rickyHomePhrase[97] = "";  // Empty uses the localized default; at most 96 UTF-8 bytes.
+  // Settings -> System -> Gestures: the touch gestures that act everywhere. Swiping up
+  // from the bottom to go Home is off by default: on this device it sat right on the
+  // last lines of a page and on the tab bar, so readers left books by accident.
+  uint8_t rickyGestureBack = 1;     // swipe right from the left side: Back
+  uint8_t rickyGestureHome = 0;     // swipe up from the bottom: Home
+  uint8_t rickyGestureControl = 1;  // swipe down from the top: control center
+  uint8_t rickyGestureStatus = 1;   // tap the status bar: control center
+  // Body-text stroke weight in the reader: 0 thinnest .. 2 the font as drawn .. 4 boldest.
+  enum RICKY_TEXT_WEIGHT { RICKY_TEXT_WEIGHT_STANDARD = 2, RICKY_TEXT_WEIGHT_COUNT = 5 };
+  uint8_t rickyTextWeight = RICKY_TEXT_WEIGHT_STANDARD;
 #endif
   // Prefer the internal Flash cache for the selected SD reader font.
   uint8_t sdFontFlashPreload = 0;

@@ -1435,9 +1435,11 @@ void FontDownloadActivity::render(RenderLock&&) {
       const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
       GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
     } else if (state_ == ERROR) {
-      renderer.drawCenteredText(UI_10_FONT_ID, centerY - lineHeight, (purpose_ != Purpose::ReaderAutoInstall && operation_ == DownloadOperation::None
-                                                  ? tr(STR_RICKY_FONT_CATALOG_FAILED) : tr(STR_FONT_INSTALL_FAILED)), true,
-                                EpdFontFamily::BOLD);
+      renderer.drawCenteredText(UI_10_FONT_ID, centerY - lineHeight,
+                                (purpose_ != Purpose::ReaderAutoInstall && operation_ == DownloadOperation::None
+                                     ? tr(STR_RICKY_FONT_CATALOG_FAILED)
+                                     : tr(STR_FONT_INSTALL_FAILED)),
+                                true, EpdFontFamily::BOLD);
       if (!errorMessage_.empty()) {
         renderer.drawCenteredText(UI_10_FONT_ID, centerY + metrics.verticalSpacing, errorMessage_.c_str());
       }
@@ -1528,9 +1530,11 @@ void FontDownloadActivity::render(RenderLock&&) {
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   } else if (state_ == ERROR) {
-    renderer.drawCenteredText(UI_10_FONT_ID, centerY - lineHeight, (purpose_ != Purpose::ReaderAutoInstall && operation_ == DownloadOperation::None
-                                                  ? tr(STR_RICKY_FONT_CATALOG_FAILED) : tr(STR_FONT_INSTALL_FAILED)), true,
-                              EpdFontFamily::BOLD);
+    renderer.drawCenteredText(UI_10_FONT_ID, centerY - lineHeight,
+                              (purpose_ != Purpose::ReaderAutoInstall && operation_ == DownloadOperation::None
+                                   ? tr(STR_RICKY_FONT_CATALOG_FAILED)
+                                   : tr(STR_FONT_INSTALL_FAILED)),
+                              true, EpdFontFamily::BOLD);
     const char* detail = purpose_ == Purpose::ReaderAutoInstall ? automaticErrorText() : errorMessage_.c_str();
     if (detail[0] != '\0') {
       renderer.drawCenteredText(UI_10_FONT_ID, centerY + metrics.verticalSpacing, detail);

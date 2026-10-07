@@ -558,12 +558,12 @@ std::unique_ptr<Activity> page(const char* theme) {
   return p;
 }
 struct FrontlightPanelActivity : Activity {
-  FrontlightPanelActivity(int,MappedInputManager&) { home=false;name="FrontlightPanel"; }
+  FrontlightPanelActivity(int,MappedInputManager&,bool=false) { home=false;name="FrontlightPanel"; }
 };
 template<class T,class... Args> auto makeUniqueNoThrow(Args&&... args) {
   return std::make_unique<T>(std::forward<Args>(args)...);
 }
-struct { bool standbyShortcutEnabled=true; } SETTINGS;
+struct { bool standbyShortcutEnabled=true; int rickyGestureStatus=1; } SETTINGS;
 struct ActivityManager {
 ''' + header[state_start:state_end] + r'''
   enum class PendingAction { None,Push,Pop,Replace };

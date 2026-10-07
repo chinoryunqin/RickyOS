@@ -68,6 +68,25 @@ class RickyCjkCoverageTest(unittest.TestCase):
                            'notosans_cjk_common')
         self.assertFalse(any(a <= ord('亨') <= b for a, b in shared))
 
+    def test_missing_punctuation_draws_as_a_look_alike(self):
+        # Chinese books set the ellipsis as U+22EF, which no built-in face (and few TTFs)
+        # carries: it drew as boxes. Glyph lookup falls back to a look-alike that the
+        # built-in faces do carry.
+        source = (ROOT / 'lib/EpdFont/EpdFont.cpp').read_text(encoding='utf-8')
+        table = source[source.index('uint32_t lookAlike(const uint32_t cp) {'):]
+        table = table[:table.index('\n}\n')]
+        for missing, stand_in in ((0x22EF, 0x2026), (0x2E3A, 0x2014), (0x2E3B, 0x2014), (0x30FB, 0x00B7)):
+            case = table.index('case 0x%04X:' % missing)
+            self.assertEqual(int(table[table.index('return 0x', case) + 9:][:4], 16), stand_in, hex(missing))
+        lookup = source[source.index('const EpdGlyph* EpdFont::getGlyph(const uint32_t cp, bool* const usedReplacement)'):]
+        self.assertLess(lookup.index('lookAlike(cp)'), lookup.index('*usedReplacement = true;'))
+        self.assertIn('return alt != 0 && hasCodepoint(alt);', source)
+        header = (FONTS / 'notosans_cjk_12_rickyos.h').read_text(encoding='utf-8')
+        intervals = re.search(r'Intervals\[\] = \{(.*?)\n\};', header, re.S).group(1)
+        spans = [(int(a, 16), int(b, 16)) for a, b in re.findall(r'\{\s*(0x[0-9A-Fa-f]+),\s*(0x[0-9A-Fa-f]+),', intervals)]
+        for stand_in in (0x2026, 0x2014, 0x00B7):
+            self.assertTrue(any(a <= stand_in <= b for a, b in spans), hex(stand_in))
+
     def test_every_chinese_ui_character_is_in_the_ui_subset(self):
         # The 14-18 pt UI faces carry only the characters of the Chinese strings. A new
         # string with one character outside them draws the whole label from a fallback

@@ -68,11 +68,21 @@ const char* hintLabel(const char* label) {
 
 const uint8_t* iconForTab(const MainTab tab) {
 #ifdef RICKYOS_PRODUCT
-  static constexpr const uint8_t* icons[] = {ricky_nav_home_40, ricky_nav_library_40, ricky_nav_storage_40,
-                                             ricky_nav_apps_40, ricky_nav_settings_40};
-  static_assert(sizeof(icons) / sizeof(icons[0]) == MainTabs::values.size());
-  const int index = MainTabs::indexOf(tab);
-  return index < 0 ? nullptr : icons[index];
+  // By tab, not by position: MainTabs::values sets the order.
+  switch (tab) {
+    case MainTab::Recent:
+      return ricky_nav_home_40;
+    case MainTab::Library:
+      return ricky_nav_library_40;
+    case MainTab::Apps:
+      return ricky_nav_apps_40;
+    case MainTab::StorageFiles:
+      return ricky_nav_storage_40;
+    case MainTab::Settings:
+      return ricky_nav_settings_40;
+    default:
+      return nullptr;
+  }
 #else
   switch (tab) {
     case MainTab::Recent:
@@ -501,9 +511,20 @@ void InxTheme::drawMainTabBar(const GfxRenderer& renderer, const Rect rect, cons
   // Rows are laid out for the capsule so it never touches the separator or labels.
   auto rows = RickyPageLayout::navigationRows(rect, kPillHeight, renderer.getLineHeight(SMALL_FONT_ID));
   rows.iconY += (kPillHeight - kIconSize) / 2;
-  static constexpr StrId labels[] = {StrId::STR_RICKY_NAV_HOME, StrId::STR_LIBRARY, StrId::STR_RICKY_STORAGE,
-                                     StrId::STR_APPS_TITLE, StrId::STR_SETTINGS_TITLE};
-  static_assert(std::size(labels) == MainTabs::values.size());
+  const auto labelFor = [](const MainTab tab) {
+    switch (tab) {
+      case MainTab::Recent:
+        return StrId::STR_RICKY_NAV_HOME;
+      case MainTab::Library:
+        return StrId::STR_LIBRARY;
+      case MainTab::Apps:
+        return StrId::STR_APPS_TITLE;
+      case MainTab::StorageFiles:
+        return StrId::STR_RICKY_STORAGE;
+      default:
+        return StrId::STR_SETTINGS_TITLE;
+    }
+  };
   for (size_t i = 0; i < MainTabs::values.size(); ++i) {
     const MainTab tab = MainTabs::values[i];
     const auto bounds = MainTabs::tabBounds(static_cast<int>(i), rect.width);
@@ -519,7 +540,7 @@ void InxTheme::drawMainTabBar(const GfxRenderer& renderer, const Rect rect, cons
     }
     // Labels stay regular: the capsule marks the tab, and the embedded CJK face has
     // no bold to switch to.
-    const char* label = I18N.get(labels[i]);
+    const char* label = I18N.get(labelFor(tab));
     const int textX = left + std::max(0, (width - renderer.getTextWidth(SMALL_FONT_ID, label)) / 2);
     renderer.drawText(SMALL_FONT_ID, textX, rows.labelY, label, true);
   }

@@ -87,6 +87,33 @@ bool xteinkClassPanel() {
 }
 
 constexpr int PAGE_TURN_RATES[] = {1, 1, 3, 6, 12};
+
+// Body-text weight (RickyOS 字重): a curve over the 0..15 glyph coverage. Index 2 is the
+// font as drawn; the others are gamma 2.0 / 1.4 (lighter edges, thinner strokes), 0.45
+// (darker edges) and 0.65 on a one-pixel spread (readerTextWeightSpread). Layout never changes.
+uint8_t readerTextWeight() {
+#ifdef RICKYOS_PRODUCT
+  return SETTINGS.rickyTextWeight;
+#else
+  return 2;
+#endif
+}
+
+const uint8_t* readerTextWeightCurve(const uint8_t weight) {
+  static constexpr uint8_t kCurves[5][16] = {
+      {0, 0, 0, 1, 1, 2, 2, 3, 4, 5, 7, 8, 10, 11, 13, 15},
+      {0, 0, 1, 2, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 14, 15},
+      {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
+      {0, 4, 6, 7, 8, 9, 10, 11, 11, 12, 12, 13, 14, 14, 15, 15},
+      {0, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 12, 13, 14, 14, 15},
+  };
+  return weight < std::size(kCurves) && weight != 2 ? kCurves[weight] : nullptr;
+}
+
+// Edges alone stop short of a heavy stroke (a stroke's core is already full ink), so the
+// heaviest step also grows every stroke by a pixel (ink +54% over the font as drawn, against
+// +19% for the edges alone). A half-pixel spread read as a shadow, not as weight.
+uint8_t readerTextWeightSpread(const uint8_t weight) { return weight == 4 ? 2 : 0; }
 constexpr size_t initialBookmarkCacheCapacity = 16;
 constexpr float bookmarkProgressEpsilon = 0.0001f;
 
@@ -1125,6 +1152,56 @@ void EpubReaderActivity::jumpToPercent(const int percent) {
   jumpToFraction(static_cast<float>(clampPercent(percent)) / 100.0f);
 }
 
+// Move to a position picked elsewhere (a bookmark, a sync): the exact text offset when
+// the source has one, else the page hints, else the saved xpath/percentage.
+void EpubReaderActivity::applyProgressChange(const ProgressChangeResult& sync) {
+  if (sync.hasVisibleTextOffset && sync.spineIndex >= 0 && sync.spineIndex < epub->getSpineItemsCount()) {
+    RenderLock lock;
+    clearDeferredReposition();
+    if (section && currentSpineIndex == sync.spineIndex) {
+      const auto page = section->getPageForVisibleTextOffset(sync.visibleTextOffset);
+      section->currentPage = page.value_or(std::max(0, sync.page));
+    } else {
+      currentSpineIndex = sync.spineIndex;
+      pendingOffsetJump = sync.visibleTextOffset;
+      nextPageNumber = std::max(0, sync.page);
+      section.reset();
+    }
+    requestUpdate();
+    return;
+  }
+
+  int targetSpineIndex = sync.spineIndex;
+  int targetPage = sync.page;
+  const int activeTotalPages = section ? section->estimatedTotalPages() : 0;
+  const bool cachedPageMatchesActiveSection = section && sync.totalPages > 0 && currentSpineIndex == sync.spineIndex &&
+                                              sync.page >= 0 && sync.page < sync.totalPages &&
+                                              activeTotalPages == sync.totalPages;
+
+  if (!cachedPageMatchesActiveSection && sync.hasSavedProgress) {
+    const int totalPages = section ? section->estimatedTotalPages() : cachedChapterTotalPageCount;
+    CrossPointPosition fallback =
+        ProgressMapper::toCrossPoint(epub, {sync.xpath, sync.percentage}, renderer, currentSpineIndex, totalPages);
+    targetSpineIndex = fallback.spineIndex;
+    targetPage = fallback.pageNumber;
+  }
+
+  RenderLock lock;
+  clearDeferredReposition();
+
+  if (currentSpineIndex != targetSpineIndex) {
+    currentSpineIndex = targetSpineIndex;
+    nextPageNumber = targetPage;
+    section.reset();
+  } else if (section && section->currentPage != targetPage) {
+    const int clampedTargetPage = std::max(0, targetPage);
+    section->currentPage = clampedTargetPage;
+  } else if (!section) {
+    nextPageNumber = targetPage;
+  }
+  requestUpdate();
+}
+
 void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action) {
   auto progressChangeResultHandler = [this](const ActivityResult& result) {
     READING_STATS.resumeSession();
@@ -1132,53 +1209,7 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
     if (result.isCancelled) {
       openReaderMenu();
     } else {
-      const auto& sync = std::get<ProgressChangeResult>(result.data);
-
-      if (sync.hasVisibleTextOffset && sync.spineIndex >= 0 && sync.spineIndex < epub->getSpineItemsCount()) {
-        RenderLock lock;
-        clearDeferredReposition();
-        if (section && currentSpineIndex == sync.spineIndex) {
-          const auto page = section->getPageForVisibleTextOffset(sync.visibleTextOffset);
-          section->currentPage = page.value_or(std::max(0, sync.page));
-        } else {
-          currentSpineIndex = sync.spineIndex;
-          pendingOffsetJump = sync.visibleTextOffset;
-          nextPageNumber = std::max(0, sync.page);
-          section.reset();
-        }
-        requestUpdate();
-        return;
-      }
-
-      int targetSpineIndex = sync.spineIndex;
-      int targetPage = sync.page;
-      const int activeTotalPages = section ? section->estimatedTotalPages() : 0;
-      const bool cachedPageMatchesActiveSection = section && sync.totalPages > 0 &&
-                                                  currentSpineIndex == sync.spineIndex && sync.page >= 0 &&
-                                                  sync.page < sync.totalPages && activeTotalPages == sync.totalPages;
-
-      if (!cachedPageMatchesActiveSection && sync.hasSavedProgress) {
-        const int totalPages = section ? section->estimatedTotalPages() : cachedChapterTotalPageCount;
-        CrossPointPosition fallback =
-            ProgressMapper::toCrossPoint(epub, {sync.xpath, sync.percentage}, renderer, currentSpineIndex, totalPages);
-        targetSpineIndex = fallback.spineIndex;
-        targetPage = fallback.pageNumber;
-      }
-
-      RenderLock lock;
-      clearDeferredReposition();
-
-      if (currentSpineIndex != targetSpineIndex) {
-        currentSpineIndex = targetSpineIndex;
-        nextPageNumber = targetPage;
-        section.reset();
-      } else if (section && section->currentPage != targetPage) {
-        const int clampedTargetPage = std::max(0, targetPage);
-        section->currentPage = clampedTargetPage;
-      } else if (!section) {
-        nextPageNumber = targetPage;
-      }
-      requestUpdate();
+      applyProgressChange(std::get<ProgressChangeResult>(result.data));
     }
   };
 
@@ -2228,6 +2259,7 @@ ReaderPageCacheKey EpubReaderActivity::pageCacheKey(const int page, const int to
       .left = left,
       .orientation = SETTINGS.orientation,
       .fakeBold = SETTINGS.fakeBold,
+      .textWeight = readerTextWeight(),
       .antiAliasing = SETTINGS.textAntiAliasing != 0,
       .inverted = renderer.isInverted(),
       .background = SETTINGS.readingBackgroundEnabled != 0,
@@ -2479,6 +2511,8 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
     // clearScreen() reaches the HAL on Read Pico; this is scratch only.
     memset(live, mode == GfxRenderer::BW ? 0xFF : 0x00, bytes);
     GfxRenderer::SyntheticBoldScope syntheticBold(renderer, key.fakeBold);
+    GfxRenderer::TextWeightScope textWeight(renderer, readerTextWeightCurve(key.textWeight),
+                                            readerTextWeightSpread(key.textWeight));
     for (const auto& element : page->elements) {
       if (cancelled()) return false;
       element->render(renderer, key.spec.fontId, key.left, key.top);
@@ -2512,6 +2546,8 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
     } endOffscreen{renderer};
     {
       GfxRenderer::SyntheticBoldScope syntheticBold(renderer, key.fakeBold);
+      GfxRenderer::TextWeightScope textWeight(renderer, readerTextWeightCurve(key.textWeight),
+                                              readerTextWeightSpread(key.textWeight));
       for (const auto& element : page->elements) {
         if (cancelled()) return false;
         element->render(renderer, key.spec.fontId, key.left, key.top);
@@ -2560,6 +2596,8 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   const int fontId = SETTINGS.getReaderFontId();
   const auto renderPage = [&] {
     GfxRenderer::SyntheticBoldScope syntheticBold(renderer, SETTINGS.fakeBold);
+    GfxRenderer::TextWeightScope textWeight(renderer, readerTextWeightCurve(readerTextWeight()),
+                                            readerTextWeightSpread(readerTextWeight()));
     page->render(renderer, fontId, orientedMarginLeft, orientedMarginTop);
   };
 
@@ -3134,16 +3172,35 @@ void EpubReaderActivity::renderStatusBar() const {
 // ---------------------------------------------------------------------------
 
 namespace {
-constexpr StrId kTextRowNames[] = {StrId::STR_FONT, StrId::STR_FONT_SIZE, StrId::STR_LINE_SPACING,
-                                   StrId::STR_PARA_ALIGNMENT, StrId::STR_FIRST_LINE_INDENT,
+// Text panel rows. RickyOS adds stroke weight beside the size and anti-aliasing
+// at the end: readers look for them next to the font, not three levels down in Settings.
+constexpr int kTextRowFont = 0;
+constexpr int kTextRowSize = 1;
 #ifdef RICKYOS_PRODUCT
-                                   // Readers look for anti-aliasing next to the font, not three
-                                   // levels down in Settings.
+constexpr int kTextRowWeight = 2;
+constexpr int kTextRowFirstLayout = 3;
+#else
+constexpr int kTextRowFirstLayout = 2;
+#endif
+constexpr int kTextRowSpacing = kTextRowFirstLayout;
+constexpr int kTextRowAlignment = kTextRowFirstLayout + 1;
+constexpr int kTextRowIndent = kTextRowFirstLayout + 2;
+constexpr StrId kTextRowNames[] = {StrId::STR_FONT,         StrId::STR_FONT_SIZE,
+#ifdef RICKYOS_PRODUCT
+                                   StrId::STR_RICKY_WEIGHT,
+#endif
+                                   StrId::STR_LINE_SPACING, StrId::STR_PARA_ALIGNMENT, StrId::STR_FIRST_LINE_INDENT,
+#ifdef RICKYOS_PRODUCT
                                    StrId::STR_TEXT_AA
 #endif
 };
 #ifdef RICKYOS_PRODUCT
-constexpr int kTextRowAntiAliasing = 5;
+constexpr int kTextRowAntiAliasing = kTextRowIndent + 1;
+// Body-text weight (readerTextWeightCurve); the middle step is the font as drawn.
+constexpr StrId kWeightIds[] = {StrId::STR_RICKY_WEIGHT_THINNEST, StrId::STR_RICKY_WEIGHT_THIN,
+                                StrId::STR_FAKE_BOLD_STANDARD, StrId::STR_RICKY_WEIGHT_BOLD,
+                                StrId::STR_RICKY_WEIGHT_BOLDEST};
+static_assert(std::size(kWeightIds) == CrossPointSettings::RICKY_TEXT_WEIGHT_COUNT, "weight labels");
 #endif
 constexpr StrId kSpacingIds[] = {StrId::STR_TIGHT, StrId::STR_NORMAL, StrId::STR_WIDE, StrId::STR_EXTRA_WIDE};
 constexpr StrId kAlignIds[] = {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId::STR_CENTER, StrId::STR_ALIGN_RIGHT,
@@ -3183,20 +3240,22 @@ std::string EpubReaderActivity::textRowName(int row) const {
 std::string EpubReaderActivity::textRowValue(int row) const {
   static constexpr StrId kFamily[] = {StrId::STR_NOTO_SERIF, StrId::STR_NOTO_SANS};
   switch (row) {
-    case 0:
+    case kTextRowFont:
       if (SETTINGS.sdFontFamilyName[0] != '\0') return SETTINGS.sdFontFamilyName;
       return I18N.get(kFamily[SETTINGS.fontFamily % CrossPointSettings::FONT_FAMILY_COUNT]);
-    case 1:
+    case kTextRowSize:
       return std::to_string(SETTINGS.fontPointSize) + " pt";
-    case 2:
+    case kTextRowSpacing:
       return I18N.get(kSpacingIds[SETTINGS.lineSpacing % CrossPointSettings::LINE_COMPRESSION_COUNT]);
-    case 3:
+    case kTextRowAlignment:
       return I18N.get(kAlignIds[SETTINGS.paragraphAlignment % CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT]);
-    case 4:
+    case kTextRowIndent:
       return I18N.get(kIndentIds[SETTINGS.firstLineIndent < std::size(kIndentIds) ? SETTINGS.firstLineIndent : 0]);
 #ifdef RICKYOS_PRODUCT
     case kTextRowAntiAliasing:
       return SETTINGS.textAntiAliasing ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
+    case kTextRowWeight:
+      return I18N.get(kWeightIds[SETTINGS.rickyTextWeight % std::size(kWeightIds)]);
 #endif
     default:
       return "";
@@ -3215,7 +3274,7 @@ void EpubReaderActivity::applyTextSettingLive() {
 // selection applies immediately to the page under the sheet.
 void EpubReaderActivity::showTextRowPopup(const int row) {
   switch (row) {
-    case 1: {
+    case kTextRowSize: {
       // The point sizes the active family actually ships.
       const auto sizes = readerFontPointSizes(&sdFontSystem.registry(), SETTINGS.sdFontFamilyName);
       if (sizes.empty()) return;
@@ -3236,27 +3295,39 @@ void EpubReaderActivity::showTextRowPopup(const int row) {
       });
       break;
     }
-    case 2:
+    case kTextRowSpacing:
       overlayPopup.show(StrId::STR_LINE_SPACING, kSpacingIds, static_cast<int>(std::size(kSpacingIds)),
                         SETTINGS.lineSpacing % CrossPointSettings::LINE_COMPRESSION_COUNT, [this](int idx) {
                           SETTINGS.lineSpacing = static_cast<uint8_t>(idx);
                           applyTextSettingLive();
                         });
       break;
-    case 3:
+    case kTextRowAlignment:
       overlayPopup.show(StrId::STR_PARA_ALIGNMENT, kAlignIds, static_cast<int>(std::size(kAlignIds)),
                         SETTINGS.paragraphAlignment % CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT, [this](int idx) {
                           SETTINGS.paragraphAlignment = static_cast<uint8_t>(idx);
                           applyTextSettingLive();
                         });
       break;
-    case 4:
+    case kTextRowIndent:
       overlayPopup.show(StrId::STR_FIRST_LINE_INDENT, kIndentIds, static_cast<int>(std::size(kIndentIds)),
                         SETTINGS.firstLineIndent, [this](int idx) {
                           SETTINGS.firstLineIndent = static_cast<uint8_t>(idx);
                           applyTextSettingLive();
                         });
       break;
+#ifdef RICKYOS_PRODUCT
+    case kTextRowWeight:
+      overlayPopup.show(StrId::STR_RICKY_WEIGHT, kWeightIds, static_cast<int>(std::size(kWeightIds)),
+                        SETTINGS.rickyTextWeight % std::size(kWeightIds), [this](int idx) {
+                          SETTINGS.rickyTextWeight = static_cast<uint8_t>(idx);
+                          // Weight is drawn, not laid out: redraw the page, no re-pagination.
+                          SETTINGS.saveToFile();
+                          discardOverlayPage();
+                          requestUpdate();
+                        });
+      break;
+#endif
     default:
       return;
   }
@@ -3315,6 +3386,10 @@ void EpubReaderActivity::openOverlay(Overlay target) {
       // Fresh viewport opening on the current chapter, cursor shown or not.
       toolbarUi->nav().reset(panelIndex);
       toolbarUi->nav().top = panelIndex;
+      break;
+    case Overlay::Bookmarks:
+      panelIndex = 0;
+      toolbarUi->nav().reset();
       break;
     case Overlay::Text:
       static_assert(sizeof(SETTINGS.sdFontFamilyName) == 32);
@@ -3442,6 +3517,14 @@ void EpubReaderActivity::renderOverlay() {
   // Tap-first: the cursor is only drawn once a button has moved it, so a
   // tapped row does not stay inverted after its action.
   model.selectedIndex = panelCursorShown ? panelIndex : -1;
+#ifdef RICKYOS_PRODUCT
+  if (overlay == Overlay::Contents || overlay == Overlay::Bookmarks) {
+    model.segmentLabels[0] = tr(STR_TOOL_CONTENTS);
+    model.segmentLabels[1] = tr(STR_BOOKMARKS);
+    model.activeSegment = overlay == Overlay::Bookmarks ? 1 : 0;
+    model.minRows = std::max(epub->getTocItemsCount(), bookmarkRowCount());
+  }
+#endif
   if (overlay == Overlay::Contents) {
     model.panelTitle = tr(STR_TOOL_CONTENTS);
     model.itemCount = epub->getTocItemsCount();
@@ -3450,6 +3533,11 @@ void EpubReaderActivity::renderOverlay() {
       const int depth = item.level > 1 ? (item.level - 1) * 2 : 0;
       return std::string(depth, ' ') + item.title;
     };
+  } else if (overlay == Overlay::Bookmarks) {
+    model.panelTitle = tr(STR_BOOKMARKS);
+    model.itemCount = bookmarkRowCount();
+    model.rowText = [this](int i) { return bookmarkRowName(i); };
+    model.rowValue = [this](int i) { return bookmarkRowValue(i); };
   } else if (overlay == Overlay::Text) {
     model.panelTitle = tr(STR_TOOL_TEXT);
     model.itemCount = kTextRowCount;
@@ -3593,9 +3681,10 @@ void EpubReaderActivity::handleOverlayInput() {
   }
 
   // --- Panels (Contents / Text / More) ---
-  const int count = overlay == Overlay::Contents ? epub->getTocItemsCount()
-                    : overlay == Overlay::Text   ? kTextRowCount
-                                                 : static_cast<int>(moreItems.size());
+  const int count = overlay == Overlay::Contents    ? epub->getTocItemsCount()
+                    : overlay == Overlay::Bookmarks ? bookmarkRowCount()
+                    : overlay == Overlay::Text      ? kTextRowCount
+                                                    : static_cast<int>(moreItems.size());
   const int pageRows = std::max(1, toolbarUi->visibleRows());
 
   // Activate the highlighted row: change a value / jump to a chapter / run an
@@ -3603,7 +3692,7 @@ void EpubReaderActivity::handleOverlayInput() {
   const auto activateRow = [this, count, &fastRedraw] {
     if (panelIndex < 0 || panelIndex >= count) return;
     if (overlay == Overlay::Text) {
-      if (panelIndex == 0) {
+      if (panelIndex == kTextRowFont) {
         // Full font picker (built-in + SD fonts, live preview) -- the same
         // screen Settings uses; a popup cannot scroll a long font list.
         overlay = Overlay::None;
@@ -3655,6 +3744,8 @@ void EpubReaderActivity::handleOverlayInput() {
       overlay = Overlay::None;
       discardOverlayPage();
       requestUpdate();
+    } else if (overlay == Overlay::Bookmarks) {
+      activateBookmarkRow(panelIndex);
     } else if (overlay == Overlay::More) {
       activateMoreRow(panelIndex);
     }
@@ -3707,6 +3798,12 @@ void EpubReaderActivity::handleOverlayInput() {
         focusedTool = routed.value;
         openOverlay(target);
       }
+      return;
+    }
+    case ReaderToolbarUi::Event::Segment: {
+      // Contents | Bookmarks titles: the same sheet, another list.
+      const Overlay target = routed.value == 1 ? Overlay::Bookmarks : Overlay::Contents;
+      if (target != overlay) openOverlay(target);
       return;
     }
     case ReaderToolbarUi::Event::Row:
@@ -3927,9 +4024,85 @@ void EpubReaderActivity::buildMoreActions() {
   EpubReaderMenuActivity::buildMenuItems(moreItems, !currentPageFootnotes.empty(), !cachedBookmarks.empty());
   moreItems.erase(std::remove_if(moreItems.begin(), moreItems.end(),
                                  [](const auto& item) {
+#ifdef RICKYOS_PRODUCT
+                                   // Bookmarks live beside the contents (Contents | Bookmarks).
+                                   if (item.action == MA::BOOKMARKS || item.action == MA::TOGGLE_BOOKMARK) return true;
+#endif
                                    return item.action == MA::SELECT_CHAPTER || item.action == MA::TEXT_SETTINGS;
                                  }),
                   moreItems.end());
+}
+
+int EpubReaderActivity::bookmarkRowCount() const {
+  const int saved = static_cast<int>(cachedBookmarks.size());
+  return 1 + saved + (saved > 0 ? 1 : 0);
+}
+
+std::string EpubReaderActivity::bookmarkRowName(const int row) const {
+  const int saved = static_cast<int>(cachedBookmarks.size());
+  if (row == 0) return currentPageBookmarked ? tr(STR_RICKY_BOOKMARK_REMOVE) : tr(STR_RICKY_BOOKMARK_ADD);
+  if (row >= 1 && row <= saved) {
+    const auto& bookmark = cachedBookmarks[row - 1];
+    if (!bookmark.name.empty()) return bookmark.name;
+    // Re-sanitized for bookmarks saved before CJK summaries dropped their spaces.
+    return bookmark.summary.empty() ? std::string(tr(STR_UNNAMED))
+                                    : BookmarkUtil::sanitizeBookmarkSummary(bookmark.summary);
+  }
+  return row == saved + 1 ? tr(STR_RICKY_BOOKMARK_MANAGE) : "";
+}
+
+std::string EpubReaderActivity::bookmarkRowValue(const int row) const {
+  if (row < 1 || row > static_cast<int>(cachedBookmarks.size())) return "";
+  const float percentage = std::clamp(cachedBookmarks[row - 1].percentage, 0.0f, 1.0f);
+  return std::to_string(static_cast<int>(percentage * 100.0f + 0.5f)) + "%";
+}
+
+void EpubReaderActivity::activateBookmarkRow(const int row) {
+  const int saved = static_cast<int>(cachedBookmarks.size());
+  if (row == 0) {
+    // Toggle this page; the panel stays open and its first row flips. The stored
+    // page lacks the new status-bar mark, so let renderBook() redraw under it.
+    addBookmark();
+    discardOverlayPage();
+    requestUpdate();
+    return;
+  }
+  // Leaving the panel for the page (a jump) or the full list (rename / delete).
+  overlay = Overlay::None;
+  overlayPopup.dismiss();
+  discardOverlayPage();
+  {
+    RenderLock lock;
+    settleOverlayRefresh();
+  }
+  if (row <= saved) {
+    const auto& bookmark = cachedBookmarks[row - 1];
+    ProgressChangeResult jump;
+    jump.xpath = bookmark.xpath;
+    jump.percentage = bookmark.percentage;
+    jump.hasSavedProgress = true;
+    jump.hasVisibleTextOffset = bookmark.hasVisibleTextOffset;
+    jump.visibleTextOffset = bookmark.visibleTextOffset;
+    jump.spineIndex = bookmark.computedSpineIndex;
+    if (bookmark.computedChapterPageCount > 0 && bookmark.computedChapterProgress < bookmark.computedChapterPageCount &&
+        bookmark.computedSpineIndex < epub->getSpineItemsCount()) {
+      jump.page = bookmark.computedChapterProgress;
+      jump.totalPages = bookmark.computedChapterPageCount;
+    }
+    applyProgressChange(jump);
+    return;
+  }
+  startActivityForResultWith<EpubReaderBookmarksActivity>(
+      [this](const ActivityResult& result) {
+        loadCachedBookmarks();
+        updateBookmarkFlag();
+        if (result.isCancelled) {
+          requestUpdate();
+          return;
+        }
+        applyProgressChange(std::get<ProgressChangeResult>(result.data));
+      },
+      epub, epub->getPath());
 }
 
 std::string EpubReaderActivity::moreRowName(int row) const {

@@ -240,6 +240,13 @@ void HalDisplay::railsOffIfIdle(const uint32_t idleMs) {
   (void)idleMs;
 #endif
 }
+bool HalDisplay::restartPanel() {
+#if FREEINK_DEVICE_READPICO && defined(RICKYOS_PRODUCT)
+  return freeink::epdiyLcdRestart();  // added by scripts/patch_rickyos_epdiy.py
+#else
+  return false;
+#endif
+}
 void HalDisplay::cancelGrayscale16() { einkDisplay.cancelGrayscale16(); }
 
 uint16_t HalDisplay::getDisplayWidthBytes() const { return einkDisplay.getDisplayWidthBytes(); }

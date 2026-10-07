@@ -66,6 +66,7 @@
 #include "util/SystemSettingsReset.h"
 #ifdef RICKYOS_PRODUCT
 #include "activities/apps/standby/RickyStandbySettingsActivity.h"
+#include "activities/settings/RickyOptionListActivity.h"
 #include "util/RickyStorageLayout.h"
 #endif
 
@@ -300,7 +301,7 @@ void SettingsActivity::reorganizeRickySettings() {
   // These bounded vectors live only with this Activity and are released with
   // the other lists before a memory-hungry child. Moves retain all enum values,
   // persistence keys, accessors and action handlers without cloning settings.
-  sleepSettings.reserve(10);
+  librarySettings.reserve(6);
   connectionSettings.reserve(8);
   fontSettings.reserve(1);  // One moved action, not another copy of font catalog/enum data.
   const auto moveMatching = [](std::vector<SettingInfo>& source, std::vector<SettingInfo>& destination,
@@ -314,67 +315,70 @@ void SettingsActivity::reorganizeRickySettings() {
       }
     }
   };
-  // What the sleeping screen shows (mode, picture, defaults, Standby info) lives on
-  // the Apps → Standby page; this page links there instead of repeating it.
-  std::vector<SettingInfo> onStandbyPage;
-  moveMatching(displaySettings, onStandbyPage, [](const SettingInfo& setting) {
-    return setting.valuePtr == &CrossPointSettings::sleepScreen ||
-           setting.valuePtr == &CrossPointSettings::standbyOverlay ||
-           setting.valuePtr == &CrossPointSettings::quickResumeSleepScreen;  // folded into the screen mode
-  });
-  moveMatching(displaySettings, sleepSettings, [](const SettingInfo& setting) {
-    return setting.valuePtr == &CrossPointSettings::sleepScreenCoverMode ||
-           setting.valuePtr == &CrossPointSettings::sleepScreenCoverFilter ||
-           setting.valuePtr == &CrossPointSettings::standbyShortcutEnabled;
-  });
-  moveMatching(systemSettings, sleepSettings,
+  const auto removeMatching = [](std::vector<SettingInfo>& list, const auto& matches) {
+    list.erase(std::remove_if(list.begin(), list.end(), matches), list.end());
+  };
+
+  // Rows that live on their own pages or do nothing on this device leave the lists:
+  // - the sleeping screen's mode, picture and Standby info are on the Standby page;
+  // - every touch gesture is on the Gestures page, every key on the Keys page;
+  // - Read Pico has no Confirm key for the long-press function, and plugins / SD
+  //   firmware update are not part of RickyOS (Profile is the card on top of Settings).
+  const bool coverMode =
+      SETTINGS.sleepScreen == CrossPointSettings::COVER || SETTINGS.sleepScreen == CrossPointSettings::COVER_CUSTOM;
+  const auto elsewhere = [coverMode](const SettingInfo& setting) {
+    const auto field = setting.valuePtr;
+    if (field == &CrossPointSettings::sleepScreen || field == &CrossPointSettings::standbyOverlay ||
+        field == &CrossPointSettings::quickResumeSleepScreen) {
+      return true;
+    }
+    // Cover fit and filter only matter while the sleeping screen shows a book cover.
+    if (!coverMode &&
+        (field == &CrossPointSettings::sleepScreenCoverMode || field == &CrossPointSettings::sleepScreenCoverFilter)) {
+      return true;
+    }
+    return field == &CrossPointSettings::touchReaderControls || field == &CrossPointSettings::pageTurnGesture ||
+           field == &CrossPointSettings::previousPageGesture || field == &CrossPointSettings::showReaderMenu ||
+           field == &CrossPointSettings::pageTurnDirection || field == &CrossPointSettings::sideButtonLayout ||
+           field == &CrossPointSettings::longPressButtonBehavior ||
+           field == &CrossPointSettings::standbyShortcutEnabled || field == &CrossPointSettings::shortPwrBtn ||
+           field == &CrossPointSettings::pwrBtnFootnoteBack || field == &CrossPointSettings::longPressMenuFunction ||
+           setting.action == SettingAction::SdFirmwareUpdate || setting.action == SettingAction::Plugins;
+  };
+  for (auto* list : {&displaySettings, &readerSettings, &controlsSettings, &systemSettings}) {
+    removeMatching(*list, elsewhere);
+  }
+
+  // Display & Standby: the Standby page first, the sleep timeout with the display rows.
+  moveMatching(systemSettings, displaySettings,
                [](const SettingInfo& setting) { return setting.valuePtr == &CrossPointSettings::sleepTimeoutMinutes; });
-  moveMatching(controlsSettings, sleepSettings,
-               [](const SettingInfo& setting) { return setting.valuePtr == &CrossPointSettings::shortPwrBtn; });
-  sleepSettings.insert(sleepSettings.begin(),
-                       SettingInfo::Action(StrId::STR_STANDBY_TITLE, SettingAction::RickyStandbyPage));
+  displaySettings.insert(displaySettings.begin(),
+                         SettingInfo::Action(StrId::STR_STANDBY_TITLE, SettingAction::RickyStandbyPage));
+  // Network & Sync.
   moveMatching(systemSettings, connectionSettings, [](const SettingInfo& setting) {
     return setting.action == SettingAction::Network || setting.action == SettingAction::KOReaderSync ||
            setting.action == SettingAction::OPDSBrowser;
   });
   moveMatching(controlsSettings, connectionSettings,
                [](const SettingInfo& setting) { return setting.action == SettingAction::Bluetooth; });
+  // Fonts.
   moveMatching(readerSettings, fontSettings,
                [](const SettingInfo& setting) { return setting.action == SettingAction::DownloadFonts; });
-  // How a page turns by touch is a reading choice; buried at the end of System, readers
-  // never found the tap option. Keep it next to the page-turn direction.
-  std::vector<SettingInfo> touchTurns;
-  moveMatching(controlsSettings, touchTurns, [](const SettingInfo& setting) {
-    return setting.valuePtr == &CrossPointSettings::touchReaderControls ||
-           setting.valuePtr == &CrossPointSettings::pageTurnGesture ||
-           setting.valuePtr == &CrossPointSettings::previousPageGesture ||
-           setting.valuePtr == &CrossPointSettings::showReaderMenu;
+  // Library & Files: how books are listed and found, and the reading cache.
+  moveMatching(systemSettings, librarySettings, [](const SettingInfo& setting) {
+    return setting.valuePtr == &CrossPointSettings::libraryUseMetadata ||
+           setting.valuePtr == &CrossPointSettings::removeReadBooksFromRecents ||
+           setting.valuePtr == &CrossPointSettings::moveFinishedToReadFolder ||
+           setting.valuePtr == &CrossPointSettings::showHiddenFiles || setting.action == SettingAction::ClearCache;
   });
-  auto turnAt = std::find_if(readerSettings.begin(), readerSettings.end(), [](const SettingInfo& setting) {
-    return setting.valuePtr == &CrossPointSettings::pageTurnDirection;
-  });
-  turnAt = turnAt == readerSettings.end() ? readerSettings.begin() : turnAt + 1;
-  readerSettings.insert(turnAt, std::make_move_iterator(touchTurns.begin()), std::make_move_iterator(touchTurns.end()));
-  systemSettings.reserve(systemSettings.size() + controlsSettings.size());
+  // System: Gestures and Keys first, then what is left.
+  systemSettings.reserve(systemSettings.size() + controlsSettings.size() + 2);
   moveMatching(controlsSettings, systemSettings, [](const SettingInfo&) { return true; });
-  for (auto& setting : sleepSettings) {
-    if (setting.valuePtr == &CrossPointSettings::sleepScreen) {
-      setting.nameId = StrId::STR_RICKY_LOCK_SCREEN;
-      auto& values = setting.enumValues;
-      values[CrossPointSettings::DARK] = StrId::STR_RICKY_SLEEP_DARK;
-      values[CrossPointSettings::LIGHT] = StrId::STR_RICKY_SLEEP_LIGHT;
-      values[CrossPointSettings::CUSTOM] = StrId::STR_RICKY_SLEEP_CUSTOM;
-      values[CrossPointSettings::COVER] = StrId::STR_RICKY_SLEEP_COVER;
-      values[CrossPointSettings::COVER_CUSTOM] = StrId::STR_RICKY_SLEEP_COVER_CUSTOM;
-      values[CrossPointSettings::BLANK] = StrId::STR_RICKY_SLEEP_BLANK;
-      values[CrossPointSettings::QUICK_RESUME] = StrId::STR_RICKY_SLEEP_QUICK;
-      values[CrossPointSettings::TRANSPARENT] = StrId::STR_RICKY_SLEEP_OVERLAY;
-    } else if (setting.valuePtr == &CrossPointSettings::quickResumeSleepScreen) {
-      setting.nameId = StrId::STR_RICKY_KEEP_PAGE_TIMEOUT;
-    } else if (setting.valuePtr == &CrossPointSettings::standbyShortcutEnabled) {
-      // Not to be confused with the Standby page row above it.
-      setting.nameId = StrId::STR_RICKY_STANDBY_SHORTCUT;
-    } else if (setting.valuePtr == &CrossPointSettings::sleepScreenCoverMode) {
+  systemSettings.insert(systemSettings.begin(), SettingInfo::Action(StrId::STR_RICKY_KEYS, SettingAction::RickyKeys));
+  systemSettings.insert(systemSettings.begin(),
+                        SettingInfo::Action(StrId::STR_RICKY_GESTURES, SettingAction::RickyGestures));
+  for (auto& setting : displaySettings) {
+    if (setting.valuePtr == &CrossPointSettings::sleepScreenCoverMode) {
       setting.nameId = StrId::STR_RICKY_COVER_FIT;
     } else if (setting.valuePtr == &CrossPointSettings::sleepScreenCoverFilter) {
       setting.nameId = StrId::STR_RICKY_COVER_FILTER;
@@ -409,7 +413,7 @@ void SettingsActivity::rebuildSettingsLists() {
   controlsSettings.clear();
   systemSettings.clear();
 #ifdef RICKYOS_PRODUCT
-  sleepSettings.clear();
+  librarySettings.clear();
   connectionSettings.clear();
   fontSettings.clear();
 #endif
@@ -524,8 +528,6 @@ void SettingsActivity::rebuildSettingsLists() {
   readerSettings.push_back(SettingInfo::Action(StrId::STR_READING_STATS, SettingAction::ReadingStatsSettings));
 
 #ifdef RICKYOS_PRODUCT
-  systemSettings.insert(systemSettings.begin(),
-                        SettingInfo::Action(StrId::STR_RICKY_PROFILE, SettingAction::RickyProfile));
   reorganizeRickySettings();
   currentSettings = &settingsForCategory(selectedCategoryIndex);
 #else
@@ -911,7 +913,7 @@ const std::vector<SettingInfo>& SettingsActivity::settingsForCategory(const int 
     case 3:
       return fontSettings;
     case 4:
-      return sleepSettings;
+      return librarySettings;
     case 5:
 #else
       return controlsSettings;
@@ -926,7 +928,7 @@ std::array<int, SettingsActivity::categoryCount> SettingsActivity::accordionSett
   return {static_cast<int>(displaySettings.size()),    static_cast<int>(readerSettings.size()),
 #ifdef RICKYOS_PRODUCT
           static_cast<int>(connectionSettings.size()), static_cast<int>(fontSettings.size()),
-          static_cast<int>(sleepSettings.size()),
+          static_cast<int>(librarySettings.size()),
 #else
           static_cast<int>(controlsSettings.size()),
 #endif
@@ -1149,12 +1151,23 @@ void SettingsActivity::toggleCurrentSetting() {
         startActivityForResultWith<ClearCacheActivity>(resultHandler);
         break;
 #ifdef RICKYOS_PRODUCT
+      case SettingAction::RickyGestures:
+        startActivityForResultWith<RickyOptionListActivity>(resultHandler, RickyOptionLists::gestures());
+        break;
+      case SettingAction::RickyKeys:
+        startActivityForResultWith<RickyOptionListActivity>(resultHandler, RickyOptionLists::keys());
+        break;
       case SettingAction::RickyScreenRepair: {
         // Residual charge in the film shows old screens through new ones. Full GC16
         // black/white pairs are DC-balanced and drive every pixel through both
         // extremes, which is the usual way to bring a stressed panel back.
         constexpr int kCycles = 5;
         RenderLock lock;
+#if !defined(SIMULATOR)
+        // A scan path that drifted out of step draws every frame with a shifted copy and
+        // survives full refreshes; rebuilding it first is what a reboot used to fix.
+        display.restartPanel();
+#endif
         GUI.drawPopup(renderer, tr(STR_RICKY_SCREEN_REPAIRING));
         for (int i = 0; i < kCycles; ++i) {
           renderer.clearScreen(0x00);
@@ -1331,7 +1344,7 @@ void SettingsActivity::releaseListsForMemoryHungryChild() {
   std::vector<SettingInfo>().swap(controlsSettings);
   std::vector<SettingInfo>().swap(systemSettings);
 #ifdef RICKYOS_PRODUCT
-  std::vector<SettingInfo>().swap(sleepSettings);
+  std::vector<SettingInfo>().swap(librarySettings);
   std::vector<SettingInfo>().swap(connectionSettings);
   std::vector<SettingInfo>().swap(fontSettings);
 #endif
@@ -1502,7 +1515,7 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
     const int selected = RickyPageUi::syncNav(nav, categoryCount);
     const bool focus = showMainTabContentSelection();
     const freeink::Icon* icons[] = {&icon_ricky_display_40, &icon_ricky_reader_40, &icon_ricky_network_40,
-                                    &icon_ricky_fonts_40,   &icon_ricky_power_40,  &icon_ricky_system_40};
+                                    &icon_ricky_fonts_40,   &icon_ricky_folder_40, &icon_ricky_system_40};
     static_assert(sizeof(icons) / sizeof(icons[0]) == categoryCount);
     const auto grid = screen.takeTop(cellHeight * rows + gap * (rows - 1), 0);
     auto label = theme.bodyText;

@@ -44,6 +44,9 @@ struct Manager {
   bool isSwitchPending() const {return switching;}
   bool idleRenderCancelled(uint32_t) const {return cancelled || switching;}
 } activityManager;
+uint8_t readerTextWeight() {return 2;}
+const uint8_t* readerTextWeightCurve(uint8_t) {return nullptr;}
+uint8_t readerTextWeightSpread(uint8_t) {return 0;}
 struct Settings {
   uint8_t textAntiAliasing=1, readingBackgroundEnabled=0, orientation=0, fakeBold=0;
   uint8_t readingGuideLineEnabled=0, readingGuideLineStyle=0;
@@ -91,6 +94,7 @@ struct GfxRenderer {
   int getFontAscenderSize(int) const {return 1;}
   struct FrameBufferLoan {explicit FrameBufferLoan(GfxRenderer&) {}};
   struct SyntheticBoldScope {SyntheticBoldScope(GfxRenderer&,uint8_t) {}};
+  struct TextWeightScope {TextWeightScope(GfxRenderer&,const uint8_t*,uint8_t=0) {}};
 };
 constexpr int TAG_PageLine=1;
 int renders=0, cancelAt=0;
@@ -210,7 +214,7 @@ int main() {
 #define CHANGE(field,value) changed=key; changed.field=value; assert(!r.pageCache_[0].ready(changed))
     CHANGE(top,2); CHANGE(right,2); CHANGE(bottom,2); CHANGE(left,2);
     CHANGE(page,0); CHANGE(spine,0); CHANGE(sectionGeneration,2); CHANGE(renderEpoch,2);
-    CHANGE(orientation,1); CHANGE(fakeBold,1); CHANGE(antiAliasing,false); CHANGE(inverted,true);
+    CHANGE(orientation,1); CHANGE(fakeBold,1); CHANGE(textWeight,0); CHANGE(antiAliasing,false); CHANGE(inverted,true);
     CHANGE(background,true); CHANGE(guideLine,true); CHANGE(guideStyle,1); CHANGE(guideOffset,1);
     CHANGE(spec.fontId,2); CHANGE(spec.lineCompression,2); CHANGE(spec.extraParagraphSpacing,1);
     CHANGE(spec.firstLineIndent,2); CHANGE(spec.characterSpacing,1); CHANGE(spec.wordSpacingPercent,120);

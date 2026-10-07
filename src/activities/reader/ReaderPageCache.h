@@ -18,6 +18,7 @@ struct ReaderPageCacheKey {
   int left = 0;
   uint8_t orientation = 0;
   uint8_t fakeBold = 0;
+  uint8_t textWeight = 2;  // RickyOS body-text weight; 2 = the font as drawn
   bool antiAliasing = false;
   bool inverted = false;
   bool background = false;

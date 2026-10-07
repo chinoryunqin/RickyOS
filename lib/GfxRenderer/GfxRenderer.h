@@ -91,6 +91,8 @@ class GfxRenderer {
   Orientation orientation;
   bool fadingFix;
   mutable uint8_t syntheticBoldPixels = 0;
+  mutable const uint8_t* textCoverageCurve_ = nullptr;  // 16 entries; null = coverage as drawn
+  mutable uint8_t textSpread_ = 0;                      // 0 none, 1 half a pixel, 2 a pixel (TextWeightScope)
   uint8_t* frameBuffer = nullptr;
   uint16_t panelWidth = HalDisplay::DISPLAY_WIDTH;
   uint16_t panelHeight = HalDisplay::DISPLAY_HEIGHT;
@@ -409,6 +411,33 @@ class GfxRenderer {
   // Text
   // Page-local guard for synthetic bold. Restores the previous renderer state
   // so EPUB content cannot leak the effect into status bars or other UI.
+  // Text stroke weight: while in scope, every anti-aliased glyph pixel's 0..15 coverage
+  // goes through `curve` (16 entries, 0 -> 0, 15 -> 15). Lifting the edge coverage reads
+  // as a heavier stroke, lowering it as a lighter one. `spread` grows every stroke right
+  // and down by half a pixel (1) or a pixel (2) in coverage space, for weights past what
+  // the edges alone can give. Layout is untouched either way.
+  class TextWeightScope {
+   public:
+    TextWeightScope(const GfxRenderer& renderer, const uint8_t* curve, const uint8_t spread = 0)
+        : renderer_(renderer), previousCurve_(renderer.textCoverageCurve_), previousSpread_(renderer.textSpread_) {
+      renderer_.textCoverageCurve_ = curve;
+      renderer_.textSpread_ = spread <= 2 ? spread : 2;
+    }
+    ~TextWeightScope() {
+      renderer_.textCoverageCurve_ = previousCurve_;
+      renderer_.textSpread_ = previousSpread_;
+    }
+    TextWeightScope(const TextWeightScope&) = delete;
+    TextWeightScope& operator=(const TextWeightScope&) = delete;
+
+   private:
+    const GfxRenderer& renderer_;
+    const uint8_t* previousCurve_;
+    uint8_t previousSpread_;
+  };
+  const uint8_t* textCoverageCurve() const { return textCoverageCurve_; }
+  uint8_t textSpread() const { return textSpread_; }
+
   class SyntheticBoldScope {
    public:
     SyntheticBoldScope(const GfxRenderer& renderer, const uint8_t pixels)

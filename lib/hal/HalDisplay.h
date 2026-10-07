@@ -162,6 +162,8 @@ class HalDisplay {
   void setNextGray16Profile(uint8_t profile);
   // Power the panel rails down when no frame has been pushed for idleMs (Read Pico).
   void railsOffIfIdle(uint32_t idleMs);
+  // Rebuild the panel scan path in place (Screen repair); the next frame is a full refresh.
+  bool restartPanel();
   void cancelGrayscale16();
   uint16_t getDisplayWidthBytes() const;
   uint32_t getBufferSize() const;

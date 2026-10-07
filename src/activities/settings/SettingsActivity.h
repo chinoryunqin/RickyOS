@@ -40,6 +40,8 @@ enum class SettingAction {
   RickyProfile,
   RickyStandbyPage,
   RickyScreenRepair,
+  RickyGestures,
+  RickyKeys,
 #endif
 };
 
@@ -224,7 +226,7 @@ class SettingsActivity final : public UiTabListActivity {
   void openRickyCategory(int index);
   void backToRickyCategories();
   // Move existing entries into these on rebuild; never clone the settings.
-  std::vector<SettingInfo> sleepSettings;
+  std::vector<SettingInfo> librarySettings;
   std::vector<SettingInfo> connectionSettings;
   std::vector<SettingInfo> fontSettings;
   void reorganizeRickySettings();
@@ -254,7 +256,7 @@ class SettingsActivity final : public UiTabListActivity {
   static constexpr int categoryCount = 6;
   static constexpr StrId categoryNames[categoryCount] = {StrId::STR_RICKY_CAT_DISPLAY,    StrId::STR_RICKY_CAT_READER,
                                                          StrId::STR_RICKY_CAT_CONNECTION, StrId::STR_RICKY_CAT_FONTS,
-                                                         StrId::STR_RICKY_CAT_SLEEP,      StrId::STR_RICKY_CAT_SYSTEM};
+                                                         StrId::STR_RICKY_CAT_LIBRARY,    StrId::STR_RICKY_CAT_SYSTEM};
   static constexpr StrId categoryDescriptions[categoryCount] = {
       StrId::STR_RICKY_DESC_DISPLAY,      StrId::STR_RICKY_DESC_READER, StrId::STR_RICKY_DESC_CONNECTION,
       StrId::STR_RICKY_FONT_IMPORT_TYPES, StrId::STR_RICKY_DESC_SLEEP,  StrId::STR_RICKY_DESC_SYSTEM};

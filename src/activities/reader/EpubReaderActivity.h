@@ -114,7 +114,8 @@ class EpubReaderActivity final : public ReaderActivity {
   // Toolbar reader menu (SETTINGS.readerMenuStyle == READER_MENU_TOOLBAR): drawn
   // over the page instead of pushing the full-screen list menu. Select opens the
   // Toolbar; its tools open the Contents/Text/More bottom-sheet panels.
-  enum class Overlay { None, Toolbar, Contents, Text, More };
+  // Bookmarks shares tool 0 with Contents: the two are segments of one panel.
+  enum class Overlay { None, Toolbar, Contents, Bookmarks, Text, More };
   Overlay overlay = Overlay::None;
   int focusedTool = 0;  // toolbar tool focus: 0=Contents, 1=Text, 2=More
   int panelIndex = 0;   // selected row within the active panel
@@ -259,6 +260,12 @@ class EpubReaderActivity final : public ReaderActivity {
   void loadCachedBookmarks();
   void addBookmark();
   void updateBookmarkFlag();
+  void applyProgressChange(const ProgressChangeResult& sync);
+  // Bookmarks panel rows: [add/remove this page] [each bookmark] [manage...].
+  int bookmarkRowCount() const;
+  std::string bookmarkRowName(int row) const;
+  std::string bookmarkRowValue(int row) const;
+  void activateBookmarkRow(int row);
 
   void navigateToHref(const std::string& href, bool savePosition = false);
   void restoreSavedPosition();
