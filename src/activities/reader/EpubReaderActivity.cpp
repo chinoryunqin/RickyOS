@@ -89,8 +89,8 @@ bool xteinkClassPanel() {
 constexpr int PAGE_TURN_RATES[] = {1, 1, 3, 6, 12};
 
 // Body-text weight (RickyOS 字重): a curve over the 0..15 glyph coverage. Index 2 is the
-// font as drawn; the others are gamma 2.0 / 1.4 (lighter edges, thinner strokes) and
-// 0.65 / 0.45 (darker edges, heavier strokes). Layout never changes.
+// font as drawn; the others are gamma 2.0 / 1.4 (lighter edges, thinner strokes), 0.45
+// (darker edges) and 0.65 on a one-pixel spread (readerTextWeightSpread). Layout never changes.
 uint8_t readerTextWeight() {
 #ifdef RICKYOS_PRODUCT
   return SETTINGS.rickyTextWeight;
@@ -104,11 +104,16 @@ const uint8_t* readerTextWeightCurve(const uint8_t weight) {
       {0, 0, 0, 1, 1, 2, 2, 3, 4, 5, 7, 8, 10, 11, 13, 15},
       {0, 0, 1, 2, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 14, 15},
       {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
-      {0, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 12, 13, 14, 14, 15},
       {0, 4, 6, 7, 8, 9, 10, 11, 11, 12, 12, 13, 14, 14, 15, 15},
+      {0, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 12, 13, 14, 14, 15},
   };
   return weight < std::size(kCurves) && weight != 2 ? kCurves[weight] : nullptr;
 }
+
+// Edges alone stop short of a heavy stroke (a stroke's core is already full ink), so the
+// heaviest step also grows every stroke by a pixel (ink +54% over the font as drawn, against
+// +19% for the edges alone). A half-pixel spread read as a shadow, not as weight.
+uint8_t readerTextWeightSpread(const uint8_t weight) { return weight == 4 ? 2 : 0; }
 constexpr size_t initialBookmarkCacheCapacity = 16;
 constexpr float bookmarkProgressEpsilon = 0.0001f;
 
@@ -2506,7 +2511,8 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
     // clearScreen() reaches the HAL on Read Pico; this is scratch only.
     memset(live, mode == GfxRenderer::BW ? 0xFF : 0x00, bytes);
     GfxRenderer::SyntheticBoldScope syntheticBold(renderer, key.fakeBold);
-    GfxRenderer::TextWeightScope textWeight(renderer, readerTextWeightCurve(key.textWeight));
+    GfxRenderer::TextWeightScope textWeight(renderer, readerTextWeightCurve(key.textWeight),
+                                            readerTextWeightSpread(key.textWeight));
     for (const auto& element : page->elements) {
       if (cancelled()) return false;
       element->render(renderer, key.spec.fontId, key.left, key.top);
@@ -2540,7 +2546,8 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
     } endOffscreen{renderer};
     {
       GfxRenderer::SyntheticBoldScope syntheticBold(renderer, key.fakeBold);
-      GfxRenderer::TextWeightScope textWeight(renderer, readerTextWeightCurve(key.textWeight));
+      GfxRenderer::TextWeightScope textWeight(renderer, readerTextWeightCurve(key.textWeight),
+                                              readerTextWeightSpread(key.textWeight));
       for (const auto& element : page->elements) {
         if (cancelled()) return false;
         element->render(renderer, key.spec.fontId, key.left, key.top);
@@ -2589,7 +2596,8 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   const int fontId = SETTINGS.getReaderFontId();
   const auto renderPage = [&] {
     GfxRenderer::SyntheticBoldScope syntheticBold(renderer, SETTINGS.fakeBold);
-    GfxRenderer::TextWeightScope textWeight(renderer, readerTextWeightCurve(readerTextWeight()));
+    GfxRenderer::TextWeightScope textWeight(renderer, readerTextWeightCurve(readerTextWeight()),
+                                            readerTextWeightSpread(readerTextWeight()));
     page->render(renderer, fontId, orientedMarginLeft, orientedMarginTop);
   };
 

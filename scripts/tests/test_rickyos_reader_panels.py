@@ -52,6 +52,8 @@ class RickyReaderPanelsTest(unittest.TestCase):
         # fakeBold only fakes bold-styled runs; the weight scope reaches every glyph of the page,
         # and the page cache keys on it so a change redraws.
         self.assertEqual(reader.count('GfxRenderer::TextWeightScope textWeight(renderer, readerTextWeightCurve('), 3)
+        self.assertEqual(reader.count('readerTextWeightSpread(key.textWeight)'), 2)
+        self.assertEqual(reader.count('readerTextWeightSpread(readerTextWeight())'), 1)
         self.assertIn('.textWeight = readerTextWeight(),', reader)
         self.assertIn('uint8_t textWeight = 2;', (ROOT / 'src/activities/reader/ReaderPageCache.h').read_text())
         for key, text in (('STR_RICKY_WEIGHT', '字重'), ('STR_RICKY_WEIGHT_THINNEST', '最细'),
@@ -60,7 +62,8 @@ class RickyReaderPanelsTest(unittest.TestCase):
 
     def test_weight_curves_keep_paper_and_ink_and_order_the_steps(self):
         reader = READER.read_text()
-        curves = method(reader, 'const uint8_t* readerTextWeightCurve(')
+        curves = method(reader, 'const uint8_t* readerTextWeightCurve(') + '\n' + method(
+            reader, 'uint8_t readerTextWeightSpread(')
         renderer = (ROOT / 'lib/GfxRenderer/GfxRenderer.cpp').read_text()
         weighted = method(renderer, 'static uint8_t weighted2BitCoverage(')
         program = r'''
@@ -84,15 +87,18 @@ int main() {
   }
   for (int i = 1; i < 15; ++i) {
     assert(readerTextWeightCurve(0)[i] <= readerTextWeightCurve(1)[i] && readerTextWeightCurve(1)[i] <= i);
-    assert(readerTextWeightCurve(3)[i] >= i && readerTextWeightCurve(4)[i] >= readerTextWeightCurve(3)[i]);
+    assert(readerTextWeightCurve(3)[i] >= i && readerTextWeightCurve(4)[i] >= i);
   }
+  // Only the heaviest step spreads strokes; the others shape edges alone.
+  for (int w = 0; w < 4; ++w) assert(readerTextWeightSpread(w) == 0);
+  assert(readerTextWeightSpread(4) == 2);
   // A 4-bit edge pixel of coverage 6 reads as 2-bit 1 as drawn, 2 when heavier, 0 when thinnest.
   const uint8_t edge[] = {0x60};
   assert(weighted2BitCoverage(nullptr, edge, 0, true) == 1);
-  assert(weighted2BitCoverage(readerTextWeightCurve(4), edge, 0, true) == 2);
+  assert(weighted2BitCoverage(readerTextWeightCurve(3), edge, 0, true) == 2);
   assert(weighted2BitCoverage(readerTextWeightCurve(0), edge, 0, true) == 0);
   const uint8_t two[] = {0x40};  // 2-bit pixel 1 (gray)
-  assert(weighted2BitCoverage(readerTextWeightCurve(4), two, 0, false) == 2);
+  assert(weighted2BitCoverage(readerTextWeightCurve(3), two, 0, false) == 2);
 }
 '''
         run_cpp(program)

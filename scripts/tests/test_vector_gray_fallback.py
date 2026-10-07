@@ -39,6 +39,8 @@ struct GfxRenderer {
  bool glyphIntersectsStrip(int,int,int,int)const{return true;}
  bool isGrayscale16Active()const{return native;}
  const uint8_t* textCoverageCurve()const{return nullptr;}
+ uint8_t spread=0;
+ uint8_t textSpread()const{return spread;}
  const uint8_t* getGlyphBitmap(const EpdFontData*,const EpdGlyph*)const{return packed.data();}
  void drawPixel(int x,int y,bool state)const{assert(x==0||y==0);pixels[x+y]=state;}
  void drawGrayscale16Pixel(int x,int y,uint8_t gray)const{grays[x+y]=gray;}
@@ -70,6 +72,15 @@ int main(){
   renderCharImpl(a,GfxRenderer::BW,font,65,0,0,ink,EpdFontFamily::REGULAR,bold);
   renderCharImpl(b,GfxRenderer::BW,font,65,0,0,ink,EpdFontFamily::REGULAR,bold);
   assert(a.pixels==b.pixels);
+ }
+ // Text weight spread: one full-ink pixel grows right and down by a pixel (spread 2) or
+ // by half-strength coverage (spread 1); the original pixel keeps full ink.
+ for(uint8_t spread:{uint8_t(1),uint8_t(2)}){
+  EpdFontFamily one; one.glyph.width=1; one.glyph.height=1;
+  GfxRenderer grown; grown.native=true; grown.spread=spread; grown.packed={0xf0};
+  renderCharImpl(grown,GfxRenderer::BW,one,65,0,0,true,EpdFontFamily::REGULAR);
+  const int edge=spread==2?0:(15-7)*17;
+  assert(grown.grays[0]==0&&grown.grays[1]==edge&&grown.grays[2]==edge&&grown.grays[3]==-1);
  }
  // Original reported sample must be 1010 in BW, with no 2bpp reinterpretation.
  GfxRenderer sample;sample.packed={0xf0,0xf0};font.glyph.width=4;

@@ -46,6 +46,7 @@ struct Manager {
 } activityManager;
 uint8_t readerTextWeight() {return 2;}
 const uint8_t* readerTextWeightCurve(uint8_t) {return nullptr;}
+uint8_t readerTextWeightSpread(uint8_t) {return 0;}
 struct Settings {
   uint8_t textAntiAliasing=1, readingBackgroundEnabled=0, orientation=0, fakeBold=0;
   uint8_t readingGuideLineEnabled=0, readingGuideLineStyle=0;
@@ -93,7 +94,7 @@ struct GfxRenderer {
   int getFontAscenderSize(int) const {return 1;}
   struct FrameBufferLoan {explicit FrameBufferLoan(GfxRenderer&) {}};
   struct SyntheticBoldScope {SyntheticBoldScope(GfxRenderer&,uint8_t) {}};
-  struct TextWeightScope {TextWeightScope(GfxRenderer&,const uint8_t*) {}};
+  struct TextWeightScope {TextWeightScope(GfxRenderer&,const uint8_t*,uint8_t=0) {}};
 };
 constexpr int TAG_PageLine=1;
 int renders=0, cancelAt=0;

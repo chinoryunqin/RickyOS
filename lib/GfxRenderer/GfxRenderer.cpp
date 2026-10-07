@@ -726,7 +726,9 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
   } else {
     const int gx0 = cursorX + left;
     const int gy0 = cursorY - top;
-    if (!renderer.glyphIntersectsStrip(gx0, gy0, gx0 + width - 1 + syntheticBoldPixels, gy0 + height - 1)) {
+    const int grow = renderer.textSpread() != 0 ? 1 : 0;  // a spread stroke reaches one pixel further
+    if (!renderer.glyphIntersectsStrip(gx0, gy0, gx0 + width - 1 + syntheticBoldPixels + grow,
+                                       gy0 + height - 1 + grow)) {
       return;
     }
   }
@@ -747,7 +749,42 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
       innerBase = cursorX + left;  // screenX = innerBase + glyphX
     }
 
-    if (is4Bit && renderer.isGrayscale16Active() && pixelState && syntheticBoldPixels == 0) {
+    const uint8_t spread = renderer.textSpread();
+    if (spread != 0 && (is2Bit || is4Bit) && syntheticBoldPixels == 0) {
+      // Text weight past the font's own (TextWeightScope): each pixel also takes its left,
+      // upper and upper-left neighbours' coverage (halved for a half-pixel spread), so every
+      // stroke grows right and down while the 16 gray levels of its edges survive.
+      const auto at = [&](const int x, const int y) -> uint8_t {
+        if (x < 0 || y < 0 || x >= width || y >= height) return 0;
+        const int position = y * width + x;
+        return is4Bit ? get4BitCoverage(bitmap, position) : static_cast<uint8_t>(get2BitCoverage(bitmap, position) * 5);
+      };
+      const bool native16 = renderer.isGrayscale16Active();
+      for (int glyphY = 0; glyphY <= height; glyphY++) {
+        const int outerCoord = outerBase + glyphY;
+        for (int glyphX = 0; glyphX <= width; glyphX++) {
+          uint8_t neighbour = std::max({at(glyphX - 1, glyphY), at(glyphX, glyphY - 1), at(glyphX - 1, glyphY - 1)});
+          if (spread == 1) neighbour = static_cast<uint8_t>(neighbour / 2);
+          const uint8_t coverage = weigh4BitCoverage(curve, std::max(at(glyphX, glyphY), neighbour));
+          if (coverage == 0) continue;
+          int screenX, screenY;
+          if constexpr (rotation == TextRotation::Rotated90CW) {
+            screenX = outerCoord;
+            screenY = innerBase - glyphX;
+          } else {
+            screenX = innerBase + glyphX;
+            screenY = outerCoord;
+          }
+          if (!native16) {
+            draw2BitGlyphPixel(renderer, renderMode, screenX, screenY, pixelState, static_cast<uint8_t>(coverage >> 2));
+          } else if (pixelState) {
+            draw4BitGlyphPixel(renderer, screenX, screenY, coverage);
+          } else {
+            renderer.drawGrayscale16Pixel(screenX, screenY, static_cast<uint8_t>(coverage * 17));
+          }
+        }
+      }
+    } else if (is4Bit && renderer.isGrayscale16Active() && pixelState && syntheticBoldPixels == 0) {
       // Native coverage is used only for unmodified black glyphs.
       for (int glyphY = 0; glyphY < height; glyphY++) {
         const int outerCoord = outerBase + glyphY;
