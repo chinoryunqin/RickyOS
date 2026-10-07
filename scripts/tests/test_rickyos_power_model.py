@@ -17,11 +17,16 @@ class RickyPowerModelTest(unittest.TestCase):
         self.assertIn('constexpr unsigned long RICKY_POWER_OFF_HOLD_MS = 2000;', main)
         block = main[main.index('// Side key: a short press toggles Standby'):]
         block = block[:block.index('#endif')]
-        self.assertIn('gpio.getPowerButtonHeldTime() >= RICKY_POWER_OFF_HOLD_MS', block)
+        self.assertIn('now - pressedAt >= RICKY_POWER_OFF_HOLD_MS', block)
         self.assertLess(block.index('enterDeepSleep();'), block.index('activityManager.openStandby();'))
         self.assertIn('activityManager.closeStandby();', block)
-        # The press that woke the device never toggles Standby.
-        self.assertIn('powerReleasedSinceWake', block)
+        # A failed PMU poll reads as released: only a release lasting 200 ms counts, so a
+        # hold is never split into short presses (measured on the device: it toggled Standby).
+        self.assertIn('constexpr unsigned long kSideKeyReleaseMs = 200;', block)
+        self.assertIn('now - lastDownAt >= kSideKeyReleaseMs', block)
+        # The press that powered the device on never toggles Standby or powers off.
+        self.assertIn('wakePressPending', block)
+        self.assertIn('!wakePressPending && !holdHandled', block)
         # The generic hold-to-sleep path is off for RickyOS.
         self.assertIn('if (!kRickyPowerModel && !x4ProAwaitingClickWindow', main)
 

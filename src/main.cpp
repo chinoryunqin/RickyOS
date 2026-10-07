@@ -1300,21 +1300,47 @@ void loop() {
 
 #ifdef RICKYOS_PRODUCT
   // Side key: a short press toggles Standby, a hold powers off (the same hold turns
-  // the device back on). The press that woke the device never counts.
-  if (powerReleasedSinceWake && millis() >= allowSleepAt && !gpio.isPressed(HalGPIO::BTN_DOWN)) {
-    if (gpio.isPressed(HalGPIO::BTN_POWER) && gpio.getPowerButtonHeldTime() >= RICKY_POWER_OFF_HOLD_MS) {
-      LOG_DBG("MAIN", "Side key held %lums, powering off", gpio.getPowerButtonHeldTime());
-      enterDeepSleep();
-      return;
-    }
-    if (gpio.wasReleased(HalGPIO::BTN_POWER) && gpio.getPowerButtonHeldTime() < RICKY_POWER_OFF_HOLD_MS) {
-      lastActivityTime = millis();
-      if (activityManager.standbyShowing()) {
-        activityManager.closeStandby();
-      } else {
-        activityManager.openStandby();
+  // the device back on). The PMU reports the key over the I2C bus it shares with
+  // touch, and a failed poll reads as released: a release only counts after the key
+  // has read up for kSideKeyReleaseMs, so a hold is not split into short presses.
+  // The press that powered the device on is ignored until it is really let go.
+  {
+    constexpr unsigned long kSideKeyReleaseMs = 200;
+    static bool keyDown = false;
+    static bool holdHandled = false;
+    static bool wakePressPending = true;  // the key may still be held from power-on
+    static unsigned long pressedAt = 0;
+    static unsigned long lastDownAt = 0;
+    const unsigned long now = millis();
+    const bool rawDown = gpio.isPressed(HalGPIO::BTN_POWER) && !gpio.isPressed(HalGPIO::BTN_DOWN);
+    if (rawDown) {
+      if (!keyDown) {
+        keyDown = true;
+        pressedAt = now;
+        holdHandled = false;
       }
-      return;
+      lastDownAt = now;
+      if (!wakePressPending && !holdHandled && now >= allowSleepAt && now - pressedAt >= RICKY_POWER_OFF_HOLD_MS) {
+        holdHandled = true;
+        LOG_DBG("MAIN", "Side key held %lums, powering off", now - pressedAt);
+        enterDeepSleep();
+        return;
+      }
+    } else if (keyDown && now - lastDownAt >= kSideKeyReleaseMs) {
+      keyDown = false;
+      const bool wakePress = wakePressPending;
+      wakePressPending = false;
+      if (!wakePress && !holdHandled && now >= allowSleepAt) {
+        lastActivityTime = now;
+        if (activityManager.standbyShowing()) {
+          activityManager.closeStandby();
+        } else {
+          activityManager.openStandby();
+        }
+        return;
+      }
+    } else if (!keyDown) {
+      wakePressPending = false;  // booted without the key held
     }
   }
 #endif
