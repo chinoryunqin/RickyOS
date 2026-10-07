@@ -21,6 +21,7 @@
 
 #include "CrossPointSettings.h"
 #include "NetworkStartup.h"
+#include "ReadingStatsStore.h"
 #include "activities/ActivityResult.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "util/PaginationDots.h"
@@ -30,6 +31,7 @@
 #endif
 #include "SloppyClockFace.h"
 #ifdef RICKYOS_PRODUCT
+#include "CalendarClockFace.h"
 #include "RickyWallpaperDownloadActivity.h"
 #include "WallpaperFace.h"
 #include "activities/home/FileBrowserActivity.h"
@@ -61,8 +63,14 @@ struct FaceEntry {
 };
 constexpr FaceEntry kFaces[] = {
 #ifdef RICKYOS_PRODUCT
-    // RickyOS Standby is the user's own picture; the stock clock faces are not offered.
-    {[]() -> std::unique_ptr<StandbyFace> { return makeUniqueNoThrow<WallpaperFace>(); },
+    // RickyOS Standby is the user's own picture or the desk calendar clock
+    // (rickyStandbyFace); the stock clock faces are not offered.
+    {[]() -> std::unique_ptr<StandbyFace> {
+       if (SETTINGS.rickyStandbyFace == CrossPointSettings::RICKY_STANDBY_CALENDAR) {
+         return makeUniqueNoThrow<CalendarClockFace>();
+       }
+       return makeUniqueNoThrow<WallpaperFace>();
+     },
      [](int, int) { return true; }},
 #else
     {[]() -> std::unique_ptr<StandbyFace> { return makeUniqueNoThrow<SloppyClockFace>(); },
@@ -126,6 +134,15 @@ void drawFaceDots(const GfxRenderer& renderer, int sw, int sh, uint8_t total, ui
 
 void StandbyActivity::onEnter() {
   Activity::onEnter();
+#ifdef RICKYOS_PRODUCT
+  // The calendar clock stands on its side, the keys under the screen to the left: the
+  // portrait bottom is the panel's right edge, which LandscapeClockwise puts at x = 0
+  // (the reader's 横屏（顺时针）). Only Standby turns; the orientation is restored on exit.
+  savedOrientation_ = renderer.getOrientation();
+  if (SETTINGS.rickyStandbyFace == CrossPointSettings::RICKY_STANDBY_CALENDAR) {
+    renderer.setOrientation(GfxRenderer::Orientation::LandscapeClockwise);
+  }
+#endif
   LOG_DBG("STANDBY", "onEnter free heap=%u", static_cast<unsigned>(ESP.getFreeHeap()));
   // Always default to face 0 (Sloppy Clock). If face 0 is somehow unavailable
   // (currently impossible), fall back to the first available index.
@@ -150,6 +167,9 @@ void StandbyActivity::onEnter() {
   mode_ = DisplayMode::Normal;
 #endif
   lastInputMs_ = millis();
+#ifdef RICKYOS_PRODUCT
+  enteredMs_ = millis();
+#endif
   // A face without a clock or date never needs the WiFi sync (nor its prompt).
   if (!TimeUtils::isClockValid() && SETTINGS.clockAutoSync && currentFace_->wantsClock()) {
     syncState_ = SyncState::Delayed;
@@ -178,6 +198,9 @@ void StandbyActivity::onExit() {
   // refreshes differentially against that proxy, so pixels it thinks unchanged would
   // keep the picture's grays under the new page; a full refresh clears them.
   renderer.requestNextRefresh(HalDisplay::FULL_REFRESH);
+  renderer.setOrientation(savedOrientation_);
+  // Time in Standby is not reading time: the book under it starts its gap afresh.
+  READING_STATS.resumeSession();
 #endif
   LOG_DBG("STANDBY", "onExit free heap=%u", static_cast<unsigned>(ESP.getFreeHeap()));
   Activity::onExit();
@@ -493,6 +516,12 @@ void StandbyActivity::loop() {
     lastInputMs_ = millis();
   }
   pumpTimeSync();
+  // Standby left alone long enough powers off (Settings -> Display & Standby).
+  const unsigned long powerOffMs = SETTINGS.getStandbyPowerOffMs();
+  if (powerOffMs > 0 && millis() - enteredMs_ >= powerOffMs) {
+    activityManager.requestPowerOff();
+    return;
+  }
   if (tryLightSleep(millis() - lastInputMs_)) return;
   processFaceTick(false);
   return;

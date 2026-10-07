@@ -2,6 +2,7 @@
 #include "RickyClockDigits.h"
 
 #include <GfxRenderer.h>
+#include <Memory.h>
 
 #include <algorithm>
 
@@ -55,6 +56,49 @@ void draw(GfxRenderer& renderer, int x, const int yTop, const char* text) {
       }
     }
     x += cellWidth(*glyph);
+  }
+}
+
+int widthBw(const char* text, const int scalePercent) { return width(text) * scalePercent / 100; }
+
+int capHeightBw(const int scalePercent) { return capHeight() * scalePercent / 100; }
+
+void drawBw(GfxRenderer& renderer, int x, const int yTop, const char* text, const int scalePercent) {
+  for (const char* c = text; *c; ++c) {
+    const auto* glyph = glyphFor(*c);
+    if (!glyph) continue;
+    const int w = glyph->width;
+    const int h = glyph->height;
+    // Unpack the runs once per glyph (a digit is ~10 KB of coverage).
+    auto coverage = makeUniqueNoThrow<uint8_t[]>(static_cast<size_t>(w) * h);
+    if (!coverage) return;
+    int pixel = 0;
+    for (int i = 0; i < glyph->rleBytes && pixel < w * h; ++i) {
+      const int run = (glyph->rle[i] >> 4) + 1;
+      const uint8_t ink = glyph->rle[i] & 0x0F;
+      for (int end = std::min(w * h, pixel + run); pixel < end; ++pixel) coverage[pixel] = ink;
+    }
+    const auto at = [&](const int gx, const int gy) -> int {
+      return gx < 0 || gy < 0 || gx >= w || gy >= h ? 0 : coverage[gy * w + gx];
+    };
+    const int originX = x + ((cellWidth(*glyph) - glyph->advance) / 2 + glyph->left) * scalePercent / 100;
+    const int outW = w * scalePercent / 100;
+    const int outH = h * scalePercent / 100;
+    for (int oy = 0; oy < outH; ++oy) {
+      // Source position in 1/256 pixel, sampled at the output pixel's centre.
+      const int sy = ((oy * 2 + 1) * 100 * 128) / scalePercent - 128;
+      const int y0 = sy >> 8, fy = sy & 255;
+      for (int ox = 0; ox < outW; ++ox) {
+        const int sx = ((ox * 2 + 1) * 100 * 128) / scalePercent - 128;
+        const int x0 = sx >> 8, fx = sx & 255;
+        const int top = at(x0, y0) * (256 - fx) + at(x0 + 1, y0) * fx;
+        const int bottom = at(x0, y0 + 1) * (256 - fx) + at(x0 + 1, y0 + 1) * fx;
+        const int value = top * (256 - fy) + bottom * fy;  // coverage * 65536
+        // Below half coverage: the Light digits read a touch heavier in pure B/W.
+        if (value >= 5 * 65536) renderer.drawPixel(originX + ox, yTop + oy, true);
+      }
+    }
+    x += cellWidth(*glyph) * scalePercent / 100;
   }
 }
 

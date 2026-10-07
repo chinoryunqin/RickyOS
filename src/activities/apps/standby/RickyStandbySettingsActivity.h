@@ -15,7 +15,7 @@ class RickyStandbySettingsActivity final : public UiListActivity {
   RickyStandbySettingsActivity(GfxRenderer& renderer, MappedInputManager& input)
       : UiListActivity("RickyStandbySettings", renderer, input) {}
 
-  enum Row : int { ScreenMode, ChoosePicture, DownloadPictures, StandbyInfo, StandbyNow, RowCount };
+  enum Row : int { ScreenMode, ChoosePicture, DownloadPictures, StandbyStyle, StandbyInfo, StandbyNow, RowCount };
 
  protected:
   int listCount() const override { return RowCount; }

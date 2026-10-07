@@ -39,6 +39,8 @@ static_assert(std::size(kModes) == CrossPointSettings::SLEEP_SCREEN_MODE_COUNT);
 constexpr StrId kInfoLabels[] = {StrId::STR_RICKY_STANDBY_INFO_NONE, StrId::STR_RICKY_STANDBY_INFO_DATE,
                                  StrId::STR_RICKY_STANDBY_INFO_TIME};
 static_assert(std::size(kInfoLabels) == CrossPointSettings::STANDBY_OVERLAY_COUNT);
+constexpr StrId kStyleLabels[] = {StrId::STR_RICKY_STANDBY_STYLE_PICTURE, StrId::STR_RICKY_STANDBY_STYLE_CALENDAR};
+static_assert(std::size(kStyleLabels) == CrossPointSettings::RICKY_STANDBY_FACE_COUNT);
 
 int modeIndex() {
   for (size_t i = 0; i < std::size(kModes); ++i)
@@ -118,9 +120,9 @@ void RickyStandbySettingsActivity::buildScreen(UiScreen& screen) {
   auto value = theme.smallText;
   value.maxLines = 1;
   value.align = fui::TextAlign::Right;
-  const StrId labels[RowCount] = {StrId::STR_RICKY_STANDBY_SCREEN, StrId::STR_RICKY_SELECT_WALLPAPER,
-                                  StrId::STR_RICKY_WALLPAPER_DOWNLOAD, StrId::STR_RICKY_STANDBY_INFO,
-                                  StrId::STR_RICKY_STANDBY_NOW};
+  const StrId labels[RowCount] = {StrId::STR_RICKY_STANDBY_SCREEN,     StrId::STR_RICKY_SELECT_WALLPAPER,
+                                  StrId::STR_RICKY_WALLPAPER_DOWNLOAD, StrId::STR_RICKY_STANDBY_STYLE,
+                                  StrId::STR_RICKY_STANDBY_INFO,       StrId::STR_RICKY_STANDBY_NOW};
   for (int i = 0; i < RowCount; ++i) {
     const auto row = screen.takeTop(rowHeight, i + 1 < RowCount ? gap : 0);
     RickyPageUi::card(target, row, focus && selected == i);
@@ -131,7 +133,9 @@ void RickyStandbySettingsActivity::buildScreen(UiScreen& screen) {
     target.text(fui::Rect{static_cast<int16_t>(textX), static_cast<int16_t>(middle - bodyHeight / 2),
                           static_cast<int16_t>(row.width / 2), static_cast<int16_t>(bodyHeight)},
                 I18N.get(labels[i]), label);
-    const char* current = i == ScreenMode    ? I18N.get(kModeLabels[modeIndex()])
+    const char* current = i == ScreenMode ? I18N.get(kModeLabels[modeIndex()])
+                          : i == StandbyStyle
+                              ? I18N.get(kStyleLabels[SETTINGS.rickyStandbyFace % std::size(kStyleLabels)])
                           : i == StandbyInfo ? I18N.get(kInfoLabels[std::min<int>(SETTINGS.standbyOverlay, 2)])
                                              : nullptr;
     if (current) {
@@ -187,6 +191,13 @@ void RickyStandbySettingsActivity::activateIndex(const int index) {
       // Restarts to Home when it leaves after using the network, like the font downloader.
       startActivityForResultWith<RickyWallpaperDownloadActivity>([this](const ActivityResult&) { requestUpdate(); });
       return;
+    case StandbyStyle:
+      optionPopup.show(StrId::STR_RICKY_STANDBY_STYLE, kStyleLabels, static_cast<int>(std::size(kStyleLabels)),
+                       SETTINGS.rickyStandbyFace % std::size(kStyleLabels), [](const int chosen) {
+                         SETTINGS.rickyStandbyFace = static_cast<uint8_t>(chosen);
+                         SETTINGS.saveToFile();
+                       });
+      break;
     case StandbyInfo:
       optionPopup.show(StrId::STR_RICKY_STANDBY_INFO, kInfoLabels, static_cast<int>(std::size(kInfoLabels)),
                        std::min<int>(SETTINGS.standbyOverlay, 2), [](const int chosen) {

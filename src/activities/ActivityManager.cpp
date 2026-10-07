@@ -780,6 +780,25 @@ void ActivityManager::goToAirPage() { replaceActivityWith<AirPageActivity>(); }
 #endif
 
 void ActivityManager::goToStandby() { replaceActivityWith<StandbyActivity>(); }
+
+#ifdef RICKYOS_PRODUCT
+bool ActivityManager::standbyShowing() const { return currentActivity && currentActivity->name == "Standby"; }
+
+void ActivityManager::openStandby() {
+  if (standbyShowing() || isSwitchPending()) return;
+  auto standby = makeUniqueNoThrow<StandbyActivity>(renderer, mappedInput);
+  if (!standby) {
+    LOG_ERR("ACT", "OOM: standby");
+    return;
+  }
+  pushActivity(std::move(standby));
+}
+
+void ActivityManager::closeStandby() {
+  if (!standbyShowing() || isSwitchPending()) return;
+  popActivity();  // back to the page under it; Home when Standby was the only one
+}
+#endif
 #ifdef RICKYOS_PRODUCT
 void ActivityManager::goToStandbySettings() { replaceActivityWith<RickyStandbySettingsActivity>(); }
 #endif

@@ -40,9 +40,10 @@ class RickyQuickWinsTest(unittest.TestCase):
         page = read('src/activities/settings/RickyOptionListActivity.cpp')
         for field in ('rickyGestureBack', 'rickyGestureHome', 'rickyGestureControl', 'rickyGestureStatus',
                       'touchReaderControls', 'pageTurnGesture', 'previousPageGesture', 'pageTurnDirection',
-                      'showReaderMenu', 'sideButtonLayout', 'longPressButtonBehavior', 'standbyShortcutEnabled',
-                      'shortPwrBtn'):
+                      'showReaderMenu', 'sideButtonLayout', 'longPressButtonBehavior', 'standbyShortcutEnabled'):
             self.assertIn(f'&SETTINGS.{field}', page)
+        # The side key is fixed: a short press is Standby, a hold is power-off (main.cpp).
+        self.assertNotIn('&SETTINGS.shortPwrBtn', page)
         # Profile is the card on top of Settings, not a second row in System.
         self.assertNotIn('SettingInfo::Action(StrId::STR_RICKY_PROFILE', source)
 

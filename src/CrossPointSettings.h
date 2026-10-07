@@ -462,6 +462,17 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     STANDBY_OVERLAY_COUNT
   };
   uint8_t standbyOverlay = STANDBY_OVERLAY_NONE;
+  // Standby face: the picture (with standbyOverlay), or the landscape desk calendar clock.
+  enum RICKY_STANDBY_FACE : uint8_t { RICKY_STANDBY_PICTURE = 0, RICKY_STANDBY_CALENDAR, RICKY_STANDBY_FACE_COUNT };
+  uint8_t rickyStandbyFace = RICKY_STANDBY_PICTURE;
+  // Standby that has run this long powers off (index into RICKY_AUTO_OFF_HOURS; 0 = never).
+  static constexpr uint8_t RICKY_AUTO_OFF_HOURS[] = {0, 1, 3, 6, 12, 24};
+  static constexpr uint8_t RICKY_AUTO_OFF_COUNT = 6;
+  uint8_t rickyAutoOffIndex = 3;  // 6 hours
+  unsigned long getStandbyPowerOffMs() const {
+    const uint8_t hours = RICKY_AUTO_OFF_HOURS[rickyAutoOffIndex < RICKY_AUTO_OFF_COUNT ? rickyAutoOffIndex : 0];
+    return static_cast<unsigned long>(hours) * 3600UL * 1000UL;
+  }
 #endif
   // Sunlight fading compensation
   uint8_t fadingFix = 0;

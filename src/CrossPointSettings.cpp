@@ -283,6 +283,8 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   doc["rickyGestureControl"] = rickyGestureControl;
   doc["rickyGestureStatus"] = rickyGestureStatus;
   doc["rickyTextWeight"] = rickyTextWeight;
+  doc["rickyStandbyFace"] = rickyStandbyFace;
+  doc["rickyAutoOffIndex"] = rickyAutoOffIndex;
   doc["rickyTapTurn"] = 1;       // the swipe-only default migration has run
   doc["rickyStandbyKeyOn"] = 1;  // the Back-key Standby shortcut was turned on once
 #endif
@@ -508,6 +510,10 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   rickyGestureStatus = (doc["rickyGestureStatus"] | 1) ? 1 : 0;
   rickyTextWeight = doc["rickyTextWeight"] | static_cast<uint8_t>(RICKY_TEXT_WEIGHT_STANDARD);
   if (rickyTextWeight >= RICKY_TEXT_WEIGHT_COUNT) rickyTextWeight = RICKY_TEXT_WEIGHT_STANDARD;
+  rickyStandbyFace = doc["rickyStandbyFace"] | static_cast<uint8_t>(RICKY_STANDBY_PICTURE);
+  if (rickyStandbyFace >= RICKY_STANDBY_FACE_COUNT) rickyStandbyFace = RICKY_STANDBY_PICTURE;
+  rickyAutoOffIndex = doc["rickyAutoOffIndex"] | static_cast<uint8_t>(3);
+  if (rickyAutoOffIndex >= RICKY_AUTO_OFF_COUNT) rickyAutoOffIndex = 3;
   // Old backups/direct JSON edits must not select a different product layout.
   struct FixedLayout {
     const char* key;
@@ -522,6 +528,9 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     if (!saved.isNull() && (!saved.is<uint8_t>() || saved.as<uint8_t>() != layout.expected)) needsResave = true;
   }
   enforceProductLayout();
+  // The side key's short press is Standby and its hold is power-off (main.cpp): no other
+  // short-press action, and power-on needs the key held, not a tap.
+  shortPwrBtn = IGNORE;
   // 1.1.0 and earlier saved the old swipe-only default, so readers never found tap turns.
   // Move that untouched default over once; any other choice is the reader's own.
   if (doc["rickyTapTurn"].isNull()) {

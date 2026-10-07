@@ -22,8 +22,6 @@ constexpr StrId kSideKeyLabels[] = {StrId::STR_PREV_NEXT, StrId::STR_NEXT_PREV, 
                                     StrId::STR_NEXT_NEXT, StrId::STR_PREV_PREV};
 constexpr StrId kLongPressLabels[] = {StrId::STR_LONG_PRESS_BEHAVIOR_OFF, StrId::STR_LONG_PRESS_BEHAVIOR_SKIP,
                                       StrId::STR_LONG_PRESS_BEHAVIOR_ORIENTATION};
-constexpr StrId kPowerLabels[] = {StrId::STR_IGNORE,        StrId::STR_SLEEP,     StrId::STR_PAGE_TURN,
-                                  StrId::STR_FORCE_REFRESH, StrId::STR_FOOTNOTES, StrId::STR_CONFIRM};
 
 template <size_t N>
 constexpr uint8_t countOf(const StrId (&)[N]) {
@@ -56,7 +54,6 @@ const RickyOptionList& keys() {
       {StrId::STR_RICKY_KEYS_LONG_PRESS, &SETTINGS.longPressButtonBehavior, kLongPressLabels,
        countOf(kLongPressLabels)},
       {StrId::STR_RICKY_KEYS_STANDBY, &SETTINGS.standbyShortcutEnabled},
-      {StrId::STR_SHORT_PWR_BTN, &SETTINGS.shortPwrBtn, kPowerLabels, countOf(kPowerLabels)},
   };
   static const RickyOptionList list{StrId::STR_RICKY_KEYS, rows, static_cast<int>(std::size(rows))};
   return list;

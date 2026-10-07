@@ -352,6 +352,18 @@ void SettingsActivity::reorganizeRickySettings() {
   // Display & Standby: the Standby page first, the sleep timeout with the display rows.
   moveMatching(systemSettings, displaySettings,
                [](const SettingInfo& setting) { return setting.valuePtr == &CrossPointSettings::sleepTimeoutMinutes; });
+  // Idle time now opens Standby (main.cpp); Standby left alone powers off after its own time.
+  for (auto it = displaySettings.begin(); it != displaySettings.end(); ++it) {
+    if (it->valuePtr != &CrossPointSettings::sleepTimeoutMinutes) continue;
+    it->nameId = StrId::STR_RICKY_AUTO_STANDBY;
+    displaySettings.insert(
+        std::next(it),
+        SettingInfo::Enum(StrId::STR_RICKY_AUTO_OFF, &CrossPointSettings::rickyAutoOffIndex,
+                          {StrId::STR_RICKY_NEVER, StrId::STR_RICKY_HOURS_1, StrId::STR_RICKY_HOURS_3,
+                           StrId::STR_RICKY_HOURS_6, StrId::STR_RICKY_HOURS_12, StrId::STR_RICKY_HOURS_24},
+                          "rickyAutoOffIndex", StrId::STR_CAT_DISPLAY));
+    break;
+  }
   displaySettings.insert(displaySettings.begin(),
                          SettingInfo::Action(StrId::STR_STANDBY_TITLE, SettingAction::RickyStandbyPage));
   // Network & Sync.
@@ -390,6 +402,7 @@ const char* SettingsActivity::rickySettingDescription(const SettingInfo& setting
   if (setting.valuePtr == &CrossPointSettings::sleepScreen) return tr(STR_RICKY_HELP_LOCK);
   if (setting.valuePtr == &CrossPointSettings::quickResumeSleepScreen) return tr(STR_RICKY_HELP_KEEP_PAGE);
   if (setting.valuePtr == &CrossPointSettings::sleepTimeoutMinutes) return tr(STR_RICKY_HELP_TIMEOUT);
+  if (setting.valuePtr == &CrossPointSettings::rickyAutoOffIndex) return tr(STR_RICKY_HELP_AUTO_OFF);
   if (setting.valuePtr == &CrossPointSettings::shortPwrBtn) return tr(STR_RICKY_HELP_POWER);
   if (setting.valuePtr == &CrossPointSettings::refreshFrequency) return tr(STR_RICKY_HELP_REFRESH);
   if (setting.action == SettingAction::RestoreSystemSettings) return tr(STR_RICKY_HELP_RESET);
