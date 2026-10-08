@@ -108,11 +108,23 @@ export function checkRelease(release) {
     /^[a-f0-9]{64}$/.test(release.sha256) &&
     /^firmware\/[A-Za-z0-9._-]+\.bin$/.test(release.file),
     '这份固件尚未通过正式发行检查，安装入口保持关闭。');
+  checkNotes(release.notes);
   if (release.mode === 'auto-install') {
     checkFullInstall(release.fullInstall);
     requireThat(!release.fullInstall.segments.some(item => item.file === release.file), '应用和启动组件不能使用同一个文件。');
   } else requireThat(release.fullInstall === undefined, '仅更新应用的旧格式不能附带未经校验的首次安装组件。');
   return release;
+}
+// What's new, shown on the device before it updates (ota-notes.txt). Each note is one
+// line in a fixed device buffer: at most 8 notes of 96 UTF-8 bytes.
+export const NOTE_COUNT_MAX = 8;
+export const NOTE_BYTES_MAX = 96;
+export function checkNotes(notes) {
+  if (notes === undefined) return;
+  requireThat(Array.isArray(notes) && notes.length <= NOTE_COUNT_MAX && notes.every(note =>
+    typeof note === 'string' && note.trim() === note && note.length > 0 && !/[\u0000-\u001f]/.test(note) &&
+    new TextEncoder().encode(note).length <= NOTE_BYTES_MAX),
+  `更新说明最多 ${NOTE_COUNT_MAX} 条，每条一行、不超过 ${NOTE_BYTES_MAX} 字节（约 32 个汉字）。`);
 }
 export function checkFullInstall(bundle) {
   const specs = [['bootloader', 0, 24, 0x8000], ['partitions', 0x8000, 3072, 4096],

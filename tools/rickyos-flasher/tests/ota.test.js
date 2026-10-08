@@ -32,3 +32,16 @@ test('OTA generation respects device fixed-buffer limits and refuses multiple of
   assert.throws(() => otaManifest(catalog({...accepted, file:`firmware/${'a'.repeat(150)}.bin`})));
   assert.throws(() => otaManifest({...catalog(), releases:[accepted, accepted]}));
 });
+test('notes travel in their own file, never as an ota.json key old devices refuse', async () => {
+  const { otaNotes } = await import('../scripts/build-ota.js');
+  const notes = ['待机新增日历时钟', '短按侧键待机，长按关机'];
+  const offer = { ...accepted, notes };
+  assert.ok(!('notes' in otaManifest(catalog(offer))));
+  assert.equal(otaNotes(catalog(offer)), '1.1.1\n待机新增日历时钟\n短按侧键待机，长按关机\n');
+  assert.equal(otaNotes(catalog(accepted)), '1.1.1\n');
+  assert.equal(otaNotes(catalog()), '');
+  for (const bad of [Array(9).fill('a'), ['一'.repeat(33)], ['two\nlines'], [' padded'], [''], 'text']) {
+    assert.throws(() => otaNotes(catalog({ ...accepted, notes: bad })));
+  }
+  assert.doesNotThrow(() => otaNotes(catalog({ ...accepted, notes: ['一'.repeat(32)] })));
+});

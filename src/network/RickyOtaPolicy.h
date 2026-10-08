@@ -9,6 +9,7 @@
 namespace ricky_ota {
 inline constexpr char SITE_BASE[] = "https://chinoryunqin.github.io/RickyOS-site/";
 inline constexpr char MANIFEST_URL[] = "https://chinoryunqin.github.io/RickyOS-site/ota.json";
+inline constexpr char NOTES_URL[] = "https://chinoryunqin.github.io/RickyOS-site/ota-notes.txt";
 inline constexpr size_t SLOT_BYTES = 0x640000;
 inline constexpr size_t RESERVE_BYTES = 512 * 1024;
 
