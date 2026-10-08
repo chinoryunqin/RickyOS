@@ -86,6 +86,11 @@ class RickyPowerModelTest(unittest.TestCase):
         self.assertIn('activityManager.closeStandby();', quick)
         main = read('src/main.cpp')
         self.assertIn('if (standbyWasShowing && !standbyShowingNow) lastActivityTime = millis();', main)
+    def test_standby_ignores_edge_swipes(self):
+        manager = read('src/activities/ActivityManager.cpp')
+        self.assertIn('const bool atRest = standbyShowing();', manager)
+        self.assertIn('if (!atRest && !currentActivity->isHomeActivity() && mappedInput.wasHomeGesture()) {', manager)
+        self.assertIn('if (!atRest && currentActivity->name != "FrontlightPanel"', manager)
 
 if __name__ == '__main__':
     unittest.main()
