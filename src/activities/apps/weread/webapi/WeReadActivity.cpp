@@ -8,6 +8,7 @@
 #include <Logging.h>
 #include <Memory.h>
 #include <Utf8.h>
+#include <WeReadHttpClient.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
 
@@ -635,6 +636,26 @@ void WeReadActivity::resetShelfCoverLoading() {
   shelfCoverPageStart_ = -1;
   shelfCoverCursor_ = 0;
   shelfCoverStopped_ = false;
+  shelfQuietSince_ = millis();
+  coverInterrupted_ = false;
+}
+
+// Runs inside a cover download (WeReadHttpClient::AbortScope), where the loop cannot
+// read input. Any key or touch abandons the download; Back and Home are remembered,
+// since this read consumed them before the loop could see them.
+bool WeReadActivity::coverAbortProbe(void* context) {
+  auto* self = static_cast<WeReadActivity*>(context);
+  auto& input = self->mappedInput;
+  input.update(true);
+  if (input.wasReleased(MappedInputManager::Button::Back)) self->pendingBack_ = true;
+  if (input.wasHomeGesture()) self->pendingHome_ = true;
+  int x = 0;
+  int y = 0;
+  if (input.wasAnyPressed() || input.wasAnyReleased() || input.isScreenTouchHeld(x, y) ||
+      input.wasScreenTapped(x, y) || input.wasSwipe() != MappedInputManager::SwipeDir::None) {
+    self->coverInterrupted_ = true;
+  }
+  return self->coverInterrupted_;
 }
 
 void WeReadActivity::requestDownloadUpdate() {
@@ -802,7 +823,22 @@ void WeReadActivity::advanceShelfCovers() {
   }
 
   if (operation_.active()) {
-    switch (stepOperation()) {
+    WeReadClient::Operation::Event event;
+    {
+      WeReadHttpClient::AbortScope abortOnInput(&WeReadActivity::coverAbortProbe, this);
+      event = stepOperation();
+    }
+    if (coverInterrupted_) {
+      // Drop the half-fetched cover; this page's covers resume once the shelf is quiet.
+      coverInterrupted_ = false;
+      operation_.cancel();
+      (void)operation_.step();
+      operation_.reset();
+      shelfQuietSince_ = millis();
+      LOG_DBG("WR", "Shelf cover download abandoned for input");
+      return;
+    }
+    switch (event) {
       case WeReadClient::Operation::Event::None:
       case WeReadClient::Operation::Event::DetailReady:
         return;
@@ -835,6 +871,8 @@ void WeReadActivity::advanceShelfCovers() {
       ++shelfCoverCursor_;
       continue;
     }
+    // The shelf draws at once; downloads wait until it has been left alone.
+    if (millis() - shelfQuietSince_ < kShelfCoverQuietMs) return;  // the loop asks again
     if (!operation_.begin(WeReadClient::Operation::Kind::Detail, &book)) {
       operation_.reset();
       shelfCoverStopped_ = true;
@@ -1624,10 +1662,25 @@ void WeReadActivity::handleManageInput() {
 }
 
 void WeReadActivity::handleMainInput() {
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  if (pendingHome_) {
+    pendingHome_ = pendingBack_ = false;
+    resetShelfCoverLoading();
+    activityManager.goHome();
+    return;
+  }
+  if (pendingBack_ || mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    pendingBack_ = false;
     resetShelfCoverLoading();
     activityManager.goToApps();
     return;
+  }
+  {
+    int x = 0;
+    int y = 0;
+    if (mappedInput.wasAnyPressed() || mappedInput.wasAnyReleased() || mappedInput.isScreenTouchHeld(x, y) ||
+        mappedInput.wasSwipe() != MappedInputManager::SwipeDir::None) {
+      shelfQuietSince_ = millis();
+    }
   }
 
   const auto& metrics = UITheme::getInstance().getMetrics();

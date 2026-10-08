@@ -69,6 +69,23 @@ class Session {
   uint32_t reusedRequests_ = 0;
 };
 
+// While one is in scope, requests on this task ask it, every few milliseconds while
+// they wait on the network, whether to give up; true ends the request as Aborted.
+// For background work the reader should not have to wait out (shelf covers): the
+// probe can look at input and let a key press or touch cut the transfer short.
+using AbortProbe = bool (*)(void* context);
+class AbortScope {
+ public:
+  AbortScope(AbortProbe probe, void* context);
+  ~AbortScope();
+  AbortScope(const AbortScope&) = delete;
+  AbortScope& operator=(const AbortScope&) = delete;
+
+ private:
+  AbortProbe previousProbe_;
+  void* previousContext_;
+};
+
 bool parseHttpsUrl(const char* url, HttpsUrlView& view);
 bool extractHttpsHost(const char* url, char* host, size_t hostSize);
 bool networkReady();
