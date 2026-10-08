@@ -98,18 +98,19 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
         self.assertIn('&ActivityManager::goToStandbySettings', product)
         page = (ROOT / 'src/activities/apps/standby/RickyStandbySettingsActivity.cpp').read_text()
         activate = body(page, 'void RickyStandbySettingsActivity::activateIndex(')
-        self.assertIn('SETTINGS.sleepScreen = kModes[chosen];', activate)
+        self.assertIn('SETTINGS.rickyStandbyFace = kStyles[chosen];', activate)
+        self.assertIn('SETTINGS.rickyPowerOffScreen = static_cast<uint8_t>(chosen);', activate)
         self.assertIn('SETTINGS.standbyOverlay = static_cast<uint8_t>(chosen);', activate)
         self.assertIn('openPicturePicker();', activate)
         self.assertIn('startActivityForResultWith<RickyWallpaperDownloadActivity>', activate)
         self.assertIn('startActivityForResultWith<StandbyActivity>', activate)
-        self.assertIn('static_assert(std::size(kModes) == CrossPointSettings::SLEEP_SCREEN_MODE_COUNT);', page)
+        self.assertIn('static_assert(std::size(kStyles) == Settings::RICKY_STANDBY_FACE_COUNT);', page)
         # Full-screen Standby returns to whichever page opened it.
         loop = body(self.activity, 'void StandbyActivity::loop()')
         self.assertIn('finish();', loop.split('#else', 1)[0])
         for language in ('chinese', 'english'):
             strings = (ROOT / f'lib/I18n/translations/{language}.yaml').read_text()
-            self.assertRegex(strings, r'(?m)^STR_RICKY_STANDBY_SCREEN: "')
+            self.assertRegex(strings, r'(?m)^STR_RICKY_POWER_OFF_SCREEN: "')
             self.assertRegex(strings, r'(?m)^STR_RICKY_STANDBY_NOW: "')
 
 
@@ -141,7 +142,7 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
         moved = moved[:moved.index('for (auto* list')]
         self.assertIn('&CrossPointSettings::sleepScreen', moved)
         self.assertIn('&CrossPointSettings::standbyOverlay', moved)
-        self.assertIn('SettingInfo::Action(StrId::STR_STANDBY_TITLE, SettingAction::RickyStandbyPage)', reorganize)
+        self.assertIn('SettingInfo::Action(StrId::STR_RICKY_POWER_PAGE_TITLE, SettingAction::RickyStandbyPage)', reorganize)
         self.assertNotIn('RickySleepWallpaper', settings)
         self.assertNotIn('RickyWallpaperDownload', settings)
 
@@ -174,10 +175,11 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
     def test_sleep_follows_the_standby_screen_mode_only(self):
         # The separate keep-page switch could stay on after the mode changed on the
         # Standby page and override the chosen picture on automatic sleep.
-        for path, name in (('src/main.cpp', 'isQuickResumeSleep'),
-                           ('src/activities/boot_sleep/SleepActivity.cpp', 'renderQuickResume')):
+        for path, start in (('src/main.cpp', 'const bool isQuickResumeSleep = SETTINGS.rickySleepScreenMode()'),
+                            ('src/activities/boot_sleep/SleepActivity.cpp',
+                             'const bool renderQuickResume = sleepScreenMode()')):
             source = (ROOT / path).read_text()
-            product = source.split(f'const bool {name} = SETTINGS.sleepScreen', 1)[1].split('#else', 1)[0]
+            product = source.split(start, 1)[1].split('#else', 1)[0]
             self.assertNotIn('quickResumeSleepScreen', product, path)
         settings = (ROOT / 'src/activities/settings/SettingsActivity.cpp').read_text()
         hidden = settings[settings.index('const auto elsewhere'):]

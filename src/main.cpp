@@ -478,9 +478,9 @@ void enterDeepSleep(bool fromTimeout = false) {
   trustedtime::note();
 
 #ifdef RICKYOS_PRODUCT
-  // One source of truth: the Standby page's screen mode. The separate "keep the page on
+  // One source of truth: the Standby & power-off page. The separate "keep the page on
   // automatic sleep" switch could stay on after the mode changed and override it.
-  const bool isQuickResumeSleep = SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::QUICK_RESUME;
+  const bool isQuickResumeSleep = SETTINGS.rickySleepScreenMode() == CrossPointSettings::SLEEP_SCREEN_MODE::QUICK_RESUME;
 #else
   const bool isQuickResumeSleep =
       SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::QUICK_RESUME ||

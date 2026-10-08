@@ -124,6 +124,25 @@ bool isValidPngHeader(HalFile& file) {
          supportedBitDepth && supportedColorType && compression == 0 && filter == 0 && interlace == 0;
 }
 
+// RickyOS derives the power-off screen from its Standby and power-off choices.
+uint8_t sleepScreenMode() {
+#ifdef RICKYOS_PRODUCT
+  return SETTINGS.rickySleepScreenMode();
+#else
+  return SETTINGS.sleepScreen;
+#endif
+}
+
+// The picture or cover Standby showed stays on after power-off; a small label says the
+// device is off, so it is not mistaken for Standby (which a short press would leave).
+bool marksPowerOff() {
+#ifdef RICKYOS_PRODUCT
+  return SETTINGS.rickyPowerOffScreen == CrossPointSettings::RICKY_POWER_OFF_SAME;
+#else
+  return false;
+#endif
+}
+
 BitmapPlacement calculateBitmapPlacement(const int bitmapWidth, const int bitmapHeight, const GfxRenderer& renderer) {
   BitmapPlacement placement;
   const auto pageWidth = renderer.getScreenWidth();
@@ -505,15 +524,15 @@ void SleepActivity::onEnter() {
 #ifdef RICKYOS_PRODUCT
   // One source of truth: the Standby page's screen mode. The separate "keep the page on
   // automatic sleep" switch could stay on after the mode changed and override it.
-  const bool renderQuickResume = SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::QUICK_RESUME;
+  const bool renderQuickResume = sleepScreenMode() == CrossPointSettings::SLEEP_SCREEN_MODE::QUICK_RESUME;
 #else
   const bool renderQuickResume =
-      SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::QUICK_RESUME ||
+      sleepScreenMode() == CrossPointSettings::SLEEP_SCREEN_MODE::QUICK_RESUME ||
       (fromTimeout &&
        SETTINGS.quickResumeSleepScreen == CrossPointSettings::QUICK_RESUME_SLEEP_SCREEN::QUICK_RESUME_AFTER_TIMEOUT);
 #endif
   const bool preservesCurrentFrame =
-      renderQuickResume || SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::TRANSPARENT;
+      renderQuickResume || sleepScreenMode() == CrossPointSettings::SLEEP_SCREEN_MODE::TRANSPARENT;
   if (display.isInverted() && preservesCurrentFrame) renderer.invertScreen();
 
   if (renderQuickResume) {
@@ -531,7 +550,7 @@ void SleepActivity::onEnter() {
   // night-mode reader render.
   display.setInverted(false);
 
-  if (SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::TRANSPARENT) {
+  if (sleepScreenMode() == CrossPointSettings::SLEEP_SCREEN_MODE::TRANSPARENT) {
     // Transparent mode retains the current framebuffer. Materialize any
     // output-level inversion first so the retained content keeps its visible
     // polarity after the display driver returns to normal.
@@ -548,14 +567,14 @@ void SleepActivity::onEnter() {
   }
 
 #ifdef RICKYOS_PRODUCT
-  const bool defaultScene = SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::LIGHT ||
-                            SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::DARK;
+  const bool defaultScene = sleepScreenMode() == CrossPointSettings::SLEEP_SCREEN_MODE::LIGHT ||
+                            sleepScreenMode() == CrossPointSettings::SLEEP_SCREEN_MODE::DARK;
   if (defaultScene) {
     // Automatic timeout needs only the retained final frame. Manual power-off
     // gets one closing pose; quick resume/custom/cover/transparent stay intact.
     if (!fromTimeout) {
       GUI.drawRickyPowerScreen(renderer, true, true);
-      if (SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::DARK) renderer.invertScreen();
+      if (sleepScreenMode() == CrossPointSettings::SLEEP_SCREEN_MODE::DARK) renderer.invertScreen();
       renderer.displayBuffer(HalDisplay::FAST_REFRESH);
     }
   } else
@@ -608,7 +627,7 @@ void SleepActivity::onEnter() {
   renderer.displayBuffer(HalDisplay::FULL_REFRESH);
 #endif
 
-  switch (SETTINGS.sleepScreen) {
+  switch (sleepScreenMode()) {
     case (CrossPointSettings::SLEEP_SCREEN_MODE::BLANK):
       return renderBlankSleepScreen();
     case (CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM):
@@ -616,6 +635,10 @@ void SleepActivity::onEnter() {
     case (CrossPointSettings::SLEEP_SCREEN_MODE::COVER):
       return renderCoverSleepScreen();
     case (CrossPointSettings::SLEEP_SCREEN_MODE::COVER_CUSTOM):
+#ifdef RICKYOS_PRODUCT
+      // Like the Standby cover: the book being read wherever power-off came from.
+      return renderCoverSleepScreen();
+#endif
       if (APP_STATE.lastSleepFromReader) {
         return renderCoverSleepScreen();
       } else {
@@ -685,7 +708,7 @@ void SleepActivity::renderDefaultSleepScreen() const {
 #endif
 
   // Make sleep screen dark unless light is selected in settings
-  if (SETTINGS.sleepScreen != CrossPointSettings::SLEEP_SCREEN_MODE::LIGHT) {
+  if (sleepScreenMode() != CrossPointSettings::SLEEP_SCREEN_MODE::LIGHT) {
     renderer.invertScreen();
   }
 
@@ -712,9 +735,15 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const bool pre
 
   if (nativeCustomImage && !preserveBackground && renderer.getGrayscaleLevels() == 16 &&
       SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER) {
-    const bool displayed = renderer.beginGrayscale16() &&
-                           renderer.drawBitmapGrayscale16(bitmap, x, y, pageWidth, pageHeight, cropX, cropY) &&
-                           renderer.commitGrayscale16();
+    bool displayed =
+        renderer.beginGrayscale16() && renderer.drawBitmapGrayscale16(bitmap, x, y, pageWidth, pageHeight, cropX, cropY);
+#ifdef RICKYOS_PRODUCT
+    if (displayed && marksPowerOff()) {
+      const Rect badge = GUI.drawRickyStandbyIndicator(renderer, true);
+      renderer.copyBwToGrayscale16(badge.x, badge.y, badge.width, badge.height, 0);
+    }
+#endif
+    displayed = displayed && renderer.commitGrayscale16();
     renderer.cancelGrayscale16();
     if (!displayed) {
       LOG_ERR("SLP", "Native grayscale sleep image failed");
@@ -732,6 +761,9 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const bool pre
       SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::INVERTED_BLACK_AND_WHITE) {
     renderer.invertScreen();
   }
+#ifdef RICKYOS_PRODUCT
+  if (!preserveBackground && marksPowerOff()) GUI.drawRickyStandbyIndicator(renderer, true);
+#endif
 
   const bool absolute = hasGreyscale && renderer.grayscaleCapabilities(sleepGrayscaleMode(renderer)).supported();
   if (absolute) {
@@ -875,7 +907,7 @@ void SleepActivity::renderTransparentCustomSleepScreen() const {
 
 void SleepActivity::renderCoverSleepScreen() const {
   void (SleepActivity::*renderNoCoverSleepScreen)() const;
-  switch (SETTINGS.sleepScreen) {
+  switch (sleepScreenMode()) {
     case (CrossPointSettings::SLEEP_SCREEN_MODE::COVER_CUSTOM):
       renderNoCoverSleepScreen = &SleepActivity::renderCustomSleepScreen;
       break;
@@ -947,7 +979,8 @@ void SleepActivity::renderLastScreenSleepScreen() const {
 #ifdef RICKYOS_PRODUCT
   const auto previousOrientation = renderer.getOrientation();
   if (APP_STATE.lastSleepFromReader) ReaderUtils::applyOrientation(renderer, SETTINGS.orientation);
-  GUI.drawRickyStandbyIndicator(renderer);
+  // Standby keeps the page with its own "Standby" label; once off, the page says so.
+  GUI.drawRickyStandbyIndicator(renderer, true);
   renderer.setOrientation(previousOrientation);
 #else
   const auto pageHeight = renderer.getScreenHeight();

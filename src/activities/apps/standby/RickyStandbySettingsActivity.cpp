@@ -9,6 +9,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <functional>
 #include <utility>
 
 #include "CrossPointSettings.h"
@@ -23,53 +25,186 @@
 
 namespace {
 namespace fui = freeink::ui;
+using Settings = CrossPointSettings;
 constexpr char kPicture[] = "/sleep.bmp";
 
-// Lock-screen modes in the order people pick them; the picture first.
-constexpr uint8_t kModes[] = {CrossPointSettings::CUSTOM,       CrossPointSettings::COVER,
-                              CrossPointSettings::COVER_CUSTOM, CrossPointSettings::QUICK_RESUME,
-                              CrossPointSettings::LIGHT,        CrossPointSettings::DARK,
-                              CrossPointSettings::BLANK,        CrossPointSettings::TRANSPARENT};
-constexpr StrId kModeLabels[] = {StrId::STR_RICKY_SLEEP_CUSTOM,       StrId::STR_RICKY_SLEEP_COVER,
-                                 StrId::STR_RICKY_SLEEP_COVER_CUSTOM, StrId::STR_RICKY_SLEEP_QUICK,
-                                 StrId::STR_RICKY_SLEEP_LIGHT,        StrId::STR_RICKY_SLEEP_DARK,
-                                 StrId::STR_RICKY_SLEEP_BLANK,        StrId::STR_RICKY_SLEEP_OVERLAY};
-static_assert(std::size(kModes) == std::size(kModeLabels));
-static_assert(std::size(kModes) == CrossPointSettings::SLEEP_SCREEN_MODE_COUNT);
+// Standby styles in the order people pick them; stored values differ (RICKY_STANDBY_FACE).
+constexpr uint8_t kStyles[] = {Settings::RICKY_STANDBY_PICTURE, Settings::RICKY_STANDBY_COVER,
+                               Settings::RICKY_STANDBY_CALENDAR, Settings::RICKY_STANDBY_KEEP_PAGE};
+constexpr StrId kStyleLabels[] = {StrId::STR_RICKY_STANDBY_STYLE_PICTURE, StrId::STR_RICKY_STANDBY_STYLE_COVER,
+                                  StrId::STR_RICKY_STANDBY_STYLE_CALENDAR, StrId::STR_RICKY_STANDBY_STYLE_KEEP};
+static_assert(std::size(kStyles) == Settings::RICKY_STANDBY_FACE_COUNT);
+static_assert(std::size(kStyleLabels) == std::size(kStyles));
+constexpr StrId kFitLabels[] = {StrId::STR_RICKY_PICTURE_FIT_WHOLE, StrId::STR_RICKY_PICTURE_FIT_FILL};
+static_assert(std::size(kFitLabels) == Settings::SLEEP_SCREEN_COVER_MODE_COUNT);
+constexpr StrId kFilterLabels[] = {StrId::STR_NONE_OPT, StrId::STR_RICKY_PICTURE_FILTER_CONTRAST,
+                                   StrId::STR_RICKY_PICTURE_FILTER_INVERT};
+static_assert(std::size(kFilterLabels) == Settings::SLEEP_SCREEN_COVER_FILTER_COUNT);
 constexpr StrId kInfoLabels[] = {StrId::STR_RICKY_STANDBY_INFO_NONE, StrId::STR_RICKY_STANDBY_INFO_DATE,
                                  StrId::STR_RICKY_STANDBY_INFO_TIME};
-static_assert(std::size(kInfoLabels) == CrossPointSettings::STANDBY_OVERLAY_COUNT);
-constexpr StrId kStyleLabels[] = {StrId::STR_RICKY_STANDBY_STYLE_PICTURE, StrId::STR_RICKY_STANDBY_STYLE_CALENDAR};
-static_assert(std::size(kStyleLabels) == CrossPointSettings::RICKY_STANDBY_FACE_COUNT);
+static_assert(std::size(kInfoLabels) == Settings::STANDBY_OVERLAY_COUNT);
+// Minutes before Standby; SLEEP_TIMEOUT_NEVER_MINUTES means never.
+constexpr uint8_t kStandbyMinutes[] = {1, 3, 5, 10, 15, 30, Settings::SLEEP_TIMEOUT_NEVER_MINUTES};
+constexpr StrId kStandbyMinuteLabels[] = {StrId::STR_RICKY_MINUTES_1,  StrId::STR_RICKY_MINUTES_3,
+                                          StrId::STR_RICKY_MINUTES_5,  StrId::STR_RICKY_MINUTES_10,
+                                          StrId::STR_RICKY_MINUTES_15, StrId::STR_RICKY_MINUTES_30,
+                                          StrId::STR_RICKY_NEVER};
+static_assert(std::size(kStandbyMinuteLabels) == std::size(kStandbyMinutes));
+constexpr StrId kAutoOffLabels[] = {StrId::STR_RICKY_NEVER,   StrId::STR_RICKY_HOURS_1,  StrId::STR_RICKY_HOURS_3,
+                                    StrId::STR_RICKY_HOURS_6, StrId::STR_RICKY_HOURS_12, StrId::STR_RICKY_HOURS_24};
+static_assert(std::size(kAutoOffLabels) == Settings::RICKY_AUTO_OFF_COUNT);
+constexpr StrId kPowerOffLabels[] = {StrId::STR_RICKY_POWER_OFF_SAME, StrId::STR_RICKY_SLEEP_LIGHT,
+                                     StrId::STR_RICKY_SLEEP_BLANK};
+static_assert(std::size(kPowerOffLabels) == Settings::RICKY_POWER_OFF_SCREEN_COUNT);
 
-int modeIndex() {
-  for (size_t i = 0; i < std::size(kModes); ++i)
-    if (kModes[i] == SETTINGS.sleepScreen) return static_cast<int>(i);
+constexpr StrId kRowLabels[] = {StrId::STR_RICKY_STANDBY_STYLE,  StrId::STR_RICKY_SELECT_WALLPAPER,
+                                StrId::STR_RICKY_WALLPAPER_DOWNLOAD, StrId::STR_RICKY_PICTURE_FIT,
+                                StrId::STR_RICKY_PICTURE_FILTER, StrId::STR_RICKY_STANDBY_INFO,
+                                StrId::STR_RICKY_AUTO_STANDBY,   StrId::STR_RICKY_STANDBY_NOW,
+                                StrId::STR_RICKY_POWER_OFF_SCREEN, StrId::STR_RICKY_AUTO_OFF};
+static_assert(std::size(kRowLabels) == RickyStandbySettingsActivity::RowKinds);
+
+int styleIndex() {
+  for (size_t i = 0; i < std::size(kStyles); ++i)
+    if (kStyles[i] == SETTINGS.rickyStandbyFace) return static_cast<int>(i);
   return 0;
+}
+
+int standbyMinutesIndex() {
+  for (size_t i = 0; i < std::size(kStandbyMinutes); ++i)
+    if (kStandbyMinutes[i] == SETTINGS.sleepTimeoutMinutes) return static_cast<int>(i);
+  return -1;
+}
+
+// The picture and the cover sit on the screen with the same fit, filter and corner.
+bool showsPicture() {
+  return SETTINGS.rickyStandbyFace == Settings::RICKY_STANDBY_PICTURE ||
+         SETTINGS.rickyStandbyFace == Settings::RICKY_STANDBY_COVER;
+}
+
+template <size_t N>
+void showOption(OptionPopup& popup, const StrId title, const StrId (&labels)[N], const int current,
+                std::function<void(int)> apply) {
+  popup.show(title, labels, static_cast<int>(N), current, [apply = std::move(apply)](const int chosen) {
+    apply(chosen);
+    SETTINGS.saveToFile();
+  });
 }
 }  // namespace
 
-const char* RickyStandbySettingsActivity::headerTitle() const { return tr(STR_STANDBY_TITLE); }
+void RickyStandbySettingsActivity::onEnter() {
+  rebuildRows();
+  UiTabListActivity::onEnter();
+}
+
+const char* RickyStandbySettingsActivity::headerTitle() const { return tr(STR_RICKY_POWER_PAGE_TITLE); }
+
+const char* RickyStandbySettingsActivity::tabLabel(const int index) const {
+  return index == PowerOffTab ? tr(STR_RICKY_TAB_POWER_OFF) : tr(STR_RICKY_TAB_STANDBY);
+}
+
+void RickyStandbySettingsActivity::rebuildRows() {
+  rowCount_ = 0;
+  auto add = [this](const Row row) { rows_[rowCount_++] = row; };
+  if (tab_ == PowerOffTab) {
+    add(PowerOffScreen);
+    add(AutoPowerOff);
+    return;
+  }
+  add(Style);
+  if (SETTINGS.rickyStandbyFace == Settings::RICKY_STANDBY_PICTURE) {
+    add(ChoosePicture);
+    add(DownloadPictures);
+  }
+  if (showsPicture()) {
+    add(PictureFit);
+    add(PictureFilter);
+    add(StandbyInfo);
+  }
+  add(AutoStandby);
+  add(StandbyNow);
+}
+
+void RickyStandbySettingsActivity::onTabAction(const int index) {
+  if (optionPopup.isActive() || index < 0 || index >= TabCount) return;
+  if (tab_ != index) {
+    tab_ = index;
+    rebuildRows();
+    auto& n = activeNav();
+    n.selected = 0;  // tab taps land with the tab bar focused
+    n.followOnBuild = true;
+    requestUpdate();
+  }
+  app.clearTapFlash();
+}
+
+void RickyStandbySettingsActivity::stepTab(const int direction) {
+  onTabAction((tab_ + (direction < 0 ? TabCount - 1 : 1)) % TabCount);
+}
 
 bool RickyStandbySettingsActivity::handleCustomInput() {
-  return optionPopup.handleInput(mappedInput, [this] { requestUpdate(); });
+  return optionPopup.handleInput(mappedInput, [this] {
+    rebuildRows();  // a new style shows different rows
+    requestUpdate();
+  });
+}
+
+bool RickyStandbySettingsActivity::handleButtons() {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    finish();
+    return true;
+  }
+  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    if (ringPos() == 0) {
+      stepTab(1);
+    } else {
+      activateIndex(ringPos() - 1);
+    }
+    return true;
+  }
+  return false;
 }
 
 void RickyStandbySettingsActivity::render(RenderLock&& lock) {
   if (optionPopup.processRender(renderer, mappedInput)) return;
-  UiListActivity::render(std::move(lock));
+  UiTabListActivity::render(std::move(lock));
 }
 
-// A small 9:16 picture of what the sleeping screen shows.
-void RickyStandbySettingsActivity::drawPreview(const Rect& box) const {
-  const bool picture = SETTINGS.sleepScreen == CrossPointSettings::CUSTOM ||
-                       SETTINGS.sleepScreen == CrossPointSettings::COVER_CUSTOM ||
-                       SETTINGS.sleepScreen == CrossPointSettings::TRANSPARENT;
-  if (SETTINGS.sleepScreen == CrossPointSettings::DARK) {
-    renderer.fillRoundedRect(box.x, box.y, box.width, box.height, 10, Color::Black);
-    return;
+const char* RickyStandbySettingsActivity::rowValue(const Row row) const {
+  switch (row) {
+    case Style:
+      return I18N.get(kStyleLabels[styleIndex()]);
+    case PictureFit:
+      return I18N.get(kFitLabels[std::min<int>(SETTINGS.sleepScreenCoverMode, std::size(kFitLabels) - 1)]);
+    case PictureFilter:
+      return I18N.get(kFilterLabels[std::min<int>(SETTINGS.sleepScreenCoverFilter, std::size(kFilterLabels) - 1)]);
+    case StandbyInfo:
+      return I18N.get(kInfoLabels[std::min<int>(SETTINGS.standbyOverlay, std::size(kInfoLabels) - 1)]);
+    case AutoStandby: {
+      const int preset = standbyMinutesIndex();
+      if (preset >= 0) return I18N.get(kStandbyMinuteLabels[preset]);
+      // A value set before the presets (any minute from 1 to 30).
+      auto* self = const_cast<RickyStandbySettingsActivity*>(this);
+      snprintf(self->minutes_, sizeof(minutes_), tr(STR_RICKY_MINUTES_N),
+               static_cast<unsigned>(SETTINGS.sleepTimeoutMinutes));
+      return minutes_;
+    }
+    case PowerOffScreen:
+      return I18N.get(
+          kPowerOffLabels[std::min<int>(SETTINGS.rickyPowerOffScreen, std::size(kPowerOffLabels) - 1)]);
+    case AutoPowerOff:
+      return I18N.get(kAutoOffLabels[std::min<int>(SETTINGS.rickyAutoOffIndex, std::size(kAutoOffLabels) - 1)]);
+    default:
+      return nullptr;
   }
+}
+
+// A small 9:16 picture of what the screen shows in Standby, or once powered off.
+void RickyStandbySettingsActivity::drawPreview(const Rect& box) const {
   renderer.drawRoundedRect(box.x, box.y, box.width, box.height, 2, 10, true);
+  const bool off = tab_ == PowerOffTab;
+  const bool sameAsStandby = !off || SETTINGS.rickyPowerOffScreen == Settings::RICKY_POWER_OFF_SAME;
+  const bool picture = sameAsStandby && SETTINGS.rickyStandbyFace == Settings::RICKY_STANDBY_PICTURE;
   if (picture) {
     HalFile file;
     if (Storage.openFileForRead("STANDBY", kPicture, file)) {
@@ -87,8 +222,10 @@ void RickyStandbySettingsActivity::drawPreview(const Rect& box) const {
       }
     }
   }
-  // No picture to show: name the mode (or the missing picture) inside the frame.
-  const char* label = picture ? tr(STR_RICKY_STANDBY_EMPTY) : I18N.get(kModeLabels[modeIndex()]);
+  // Nothing to draw small: name what the screen shows inside the frame.
+  const char* label = picture         ? tr(STR_RICKY_STANDBY_EMPTY)
+                      : sameAsStandby ? I18N.get(kStyleLabels[styleIndex()])
+                                      : I18N.get(kPowerOffLabels[std::min<int>(SETTINGS.rickyPowerOffScreen, 2)]);
   const int lineHeight = renderer.getLineHeight(SMALL_FONT_ID);
   UITheme::drawCenteredText(renderer, box, SMALL_FONT_ID, box.y + (box.height - lineHeight) / 2, label);
 }
@@ -98,17 +235,21 @@ void RickyStandbySettingsActivity::buildScreen(UiScreen& screen) {
   screen.setContentMarginFromScreen(
       fui::Insets{static_cast<int16_t>(bounds.y), 0,
                   static_cast<int16_t>(renderer.getScreenHeight() - bounds.y - bounds.height), 0});
+  buildTabBar(screen);
   const auto& theme = screen.theme();
   auto& target = screen.target();
   screen.insetContent(fui::Insets{static_cast<int16_t>(theme.spaceLg), theme.spaceLg, theme.spaceSm, theme.spaceLg});
   const int gap = std::max<int>(12, theme.spaceSm);
   const int bodyHeight = target.lineHeight(theme.bodyText.font);
-  const int selected = RickyPageUi::syncNav(nav, listCount());
+  // Ring position 0 is the tab bar; rows follow.
+  const int selected = RickyPageUi::syncNav(activeNav(), rowCount_ + 1) - 1;
   const bool focus = showMainTabContentSelection();
   RickyPageUi::Bold bold(renderer, 1);
 
-  const int rowHeight = bodyHeight + gap * 2;
-  const int rowsHeight = rowHeight * RowCount + gap * (RowCount - 1);
+  // Rows shrink a little when the Standby tab lists all of them, so the preview keeps room.
+  const int rowGap = rowCount_ > 6 ? gap * 3 / 4 : gap;
+  const int rowHeight = bodyHeight + rowGap * 2;
+  const int rowsHeight = rowHeight * rowCount_ + rowGap * (rowCount_ - 1);
   const int previewHeight = std::clamp(static_cast<int>(screen.body().height) - rowsHeight - gap * 3, 160, 560);
   const auto previewBlock = screen.takeTop(previewHeight, gap * 2);
   const int previewWidth = previewHeight * 9 / 16;
@@ -120,11 +261,9 @@ void RickyStandbySettingsActivity::buildScreen(UiScreen& screen) {
   auto value = theme.smallText;
   value.maxLines = 1;
   value.align = fui::TextAlign::Right;
-  const StrId labels[RowCount] = {StrId::STR_RICKY_STANDBY_SCREEN,     StrId::STR_RICKY_SELECT_WALLPAPER,
-                                  StrId::STR_RICKY_WALLPAPER_DOWNLOAD, StrId::STR_RICKY_STANDBY_STYLE,
-                                  StrId::STR_RICKY_STANDBY_INFO,       StrId::STR_RICKY_STANDBY_NOW};
-  for (int i = 0; i < RowCount; ++i) {
-    const auto row = screen.takeTop(rowHeight, i + 1 < RowCount ? gap : 0);
+  const int smallHeight = target.lineHeight(theme.smallText.font);
+  for (int i = 0; i < rowCount_; ++i) {
+    const auto row = screen.takeTop(rowHeight, i + 1 < rowCount_ ? rowGap : 0);
     RickyPageUi::card(target, row, focus && selected == i);
     screen.frame().hit(row, ACTION_ROW, i, fui::InputTouch);
     const int middle = row.y + row.height / 2;
@@ -132,14 +271,8 @@ void RickyStandbySettingsActivity::buildScreen(UiScreen& screen) {
     const int chevronX = row.right() - 24 - gap;
     target.text(fui::Rect{static_cast<int16_t>(textX), static_cast<int16_t>(middle - bodyHeight / 2),
                           static_cast<int16_t>(row.width / 2), static_cast<int16_t>(bodyHeight)},
-                I18N.get(labels[i]), label);
-    const char* current = i == ScreenMode ? I18N.get(kModeLabels[modeIndex()])
-                          : i == StandbyStyle
-                              ? I18N.get(kStyleLabels[SETTINGS.rickyStandbyFace % std::size(kStyleLabels)])
-                          : i == StandbyInfo ? I18N.get(kInfoLabels[std::min<int>(SETTINGS.standbyOverlay, 2)])
-                                             : nullptr;
-    if (current) {
-      const int smallHeight = target.lineHeight(theme.smallText.font);
+                I18N.get(kRowLabels[rows_[i]]), label);
+    if (const char* current = rowValue(rows_[i])) {
       target.text(
           fui::Rect{static_cast<int16_t>(row.x + row.width / 2), static_cast<int16_t>(middle - smallHeight / 2),
                     static_cast<int16_t>(chevronX - gap - row.x - row.width / 2), static_cast<int16_t>(smallHeight)},
@@ -173,16 +306,13 @@ void RickyStandbySettingsActivity::openPicturePicker(const std::string& folder) 
 }
 
 void RickyStandbySettingsActivity::activateIndex(const int index) {
-  if (index < 0 || index >= listCount() || optionPopup.isActive()) return;
+  if (index < 0 || index >= rowCount_ || optionPopup.isActive()) return;
   app.clearTapFlash();
-  nav.selected = index;
-  switch (index) {
-    case ScreenMode:
-      optionPopup.show(StrId::STR_RICKY_STANDBY_SCREEN, kModeLabels, static_cast<int>(std::size(kModeLabels)),
-                       modeIndex(), [](const int chosen) {
-                         SETTINGS.sleepScreen = kModes[chosen];
-                         SETTINGS.saveToFile();
-                       });
+  activeNav().selected = index + 1;
+  switch (rows_[index]) {
+    case Style:
+      showOption(optionPopup, StrId::STR_RICKY_STANDBY_STYLE, kStyleLabels, styleIndex(),
+                 [](const int chosen) { SETTINGS.rickyStandbyFace = kStyles[chosen]; });
       break;
     case ChoosePicture:
       openPicturePicker();
@@ -191,23 +321,35 @@ void RickyStandbySettingsActivity::activateIndex(const int index) {
       // Restarts to Home when it leaves after using the network, like the font downloader.
       startActivityForResultWith<RickyWallpaperDownloadActivity>([this](const ActivityResult&) { requestUpdate(); });
       return;
-    case StandbyStyle:
-      optionPopup.show(StrId::STR_RICKY_STANDBY_STYLE, kStyleLabels, static_cast<int>(std::size(kStyleLabels)),
-                       SETTINGS.rickyStandbyFace % std::size(kStyleLabels), [](const int chosen) {
-                         SETTINGS.rickyStandbyFace = static_cast<uint8_t>(chosen);
-                         SETTINGS.saveToFile();
-                       });
+    case PictureFit:
+      showOption(optionPopup, StrId::STR_RICKY_PICTURE_FIT, kFitLabels, SETTINGS.sleepScreenCoverMode,
+                 [](const int chosen) { SETTINGS.sleepScreenCoverMode = static_cast<uint8_t>(chosen); });
+      break;
+    case PictureFilter:
+      showOption(optionPopup, StrId::STR_RICKY_PICTURE_FILTER, kFilterLabels, SETTINGS.sleepScreenCoverFilter,
+                 [](const int chosen) { SETTINGS.sleepScreenCoverFilter = static_cast<uint8_t>(chosen); });
       break;
     case StandbyInfo:
-      optionPopup.show(StrId::STR_RICKY_STANDBY_INFO, kInfoLabels, static_cast<int>(std::size(kInfoLabels)),
-                       std::min<int>(SETTINGS.standbyOverlay, 2), [](const int chosen) {
-                         SETTINGS.standbyOverlay = static_cast<uint8_t>(chosen);
-                         SETTINGS.saveToFile();
-                       });
+      showOption(optionPopup, StrId::STR_RICKY_STANDBY_INFO, kInfoLabels, std::min<int>(SETTINGS.standbyOverlay, 2),
+                 [](const int chosen) { SETTINGS.standbyOverlay = static_cast<uint8_t>(chosen); });
+      break;
+    case AutoStandby:
+      showOption(optionPopup, StrId::STR_RICKY_AUTO_STANDBY, kStandbyMinuteLabels,
+                 std::max(0, standbyMinutesIndex()),
+                 [](const int chosen) { SETTINGS.sleepTimeoutMinutes = kStandbyMinutes[chosen]; });
       break;
     case StandbyNow:
       startActivityForResultWith<StandbyActivity>([this](const ActivityResult&) { requestUpdate(); });
       return;
+    case PowerOffScreen:
+      showOption(optionPopup, StrId::STR_RICKY_POWER_OFF_SCREEN, kPowerOffLabels,
+                 std::min<int>(SETTINGS.rickyPowerOffScreen, 2),
+                 [](const int chosen) { SETTINGS.rickyPowerOffScreen = static_cast<uint8_t>(chosen); });
+      break;
+    case AutoPowerOff:
+      showOption(optionPopup, StrId::STR_RICKY_AUTO_OFF, kAutoOffLabels, SETTINGS.rickyAutoOffIndex,
+                 [](const int chosen) { SETTINGS.rickyAutoOffIndex = static_cast<uint8_t>(chosen); });
+      break;
     default:
       return;
   }

@@ -355,7 +355,9 @@ class BaseTheme {
 #ifdef RICKYOS_PRODUCT
   static void drawRickyPowerScreen(const GfxRenderer& renderer, bool sleeping, bool transition,
                                    const char* version = nullptr, uint8_t reveal = 3);
-  static void drawRickyStandbyIndicator(const GfxRenderer& renderer);
+  // A small framed label in the bottom-right corner over whatever the screen shows
+  // ("Standby", or "Off" on the power-off screen); returns where it drew.
+  static Rect drawRickyStandbyIndicator(const GfxRenderer& renderer, bool poweredOff = false);
 #endif
   // Also draws the wall clock opposite the battery when the user enabled
   // SETTINGS.clockShowInHeader and system time is valid. On touch boards a

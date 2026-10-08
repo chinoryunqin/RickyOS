@@ -285,6 +285,7 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   doc["rickyTextWeight"] = rickyTextWeight;
   doc["rickyStandbyFace"] = rickyStandbyFace;
   doc["rickyAutoOffIndex"] = rickyAutoOffIndex;
+  doc["rickyPowerOffScreen"] = rickyPowerOffScreen;
   doc["rickyTapTurn"] = 1;       // the swipe-only default migration has run
   doc["rickyStandbyKeyOn"] = 1;  // the Back-key Standby shortcut was turned on once
 #endif
@@ -514,6 +515,35 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   if (rickyStandbyFace >= RICKY_STANDBY_FACE_COUNT) rickyStandbyFace = RICKY_STANDBY_PICTURE;
   rickyAutoOffIndex = doc["rickyAutoOffIndex"] | static_cast<uint8_t>(3);
   if (rickyAutoOffIndex >= RICKY_AUTO_OFF_COUNT) rickyAutoOffIndex = 3;
+  if (doc["rickyPowerOffScreen"].isNull()) {
+    // Before 1.1.3 the device powered off whenever it was left, so the sleep screen was
+    // what people saw every day. That choice now belongs to Standby, which is what
+    // leaving the device does; power-off keeps showing the same thing.
+    rickyPowerOffScreen = RICKY_POWER_OFF_SAME;
+    switch (sleepScreen) {
+      case COVER:
+      case COVER_CUSTOM:
+        if (rickyStandbyFace == RICKY_STANDBY_PICTURE) rickyStandbyFace = RICKY_STANDBY_COVER;
+        break;
+      case QUICK_RESUME:
+      case TRANSPARENT:
+        if (rickyStandbyFace == RICKY_STANDBY_PICTURE) rickyStandbyFace = RICKY_STANDBY_KEEP_PAGE;
+        break;
+      case BLANK:
+        rickyPowerOffScreen = RICKY_POWER_OFF_BLANK;
+        break;
+      case LIGHT:
+      case DARK:
+        rickyPowerOffScreen = RICKY_POWER_OFF_DEFAULT;
+        break;
+      default:  // CUSTOM: the picture, as Standby already shows
+        break;
+    }
+    needsResave = true;
+  } else {
+    rickyPowerOffScreen = doc["rickyPowerOffScreen"] | static_cast<uint8_t>(RICKY_POWER_OFF_DEFAULT);
+    if (rickyPowerOffScreen >= RICKY_POWER_OFF_SCREEN_COUNT) rickyPowerOffScreen = RICKY_POWER_OFF_DEFAULT;
+  }
   // Old backups/direct JSON edits must not select a different product layout.
   struct FixedLayout {
     const char* key;
@@ -842,6 +872,25 @@ unsigned long CrossPointSettings::getSleepTimeoutMs() const {
       std::clamp(sleepTimeoutMinutes, MIN_SLEEP_TIMEOUT_MINUTES, static_cast<uint8_t>(SLEEP_TIMEOUT_NEVER_MINUTES - 1));
   return static_cast<unsigned long>(minutes) * 60UL * 1000UL;
 }
+
+#ifdef RICKYOS_PRODUCT
+uint8_t CrossPointSettings::rickySleepScreenMode() const {
+  if (rickyPowerOffScreen == RICKY_POWER_OFF_BLANK) return BLANK;
+  if (rickyPowerOffScreen == RICKY_POWER_OFF_SAME) {
+    switch (rickyStandbyFace) {
+      case RICKY_STANDBY_PICTURE:
+        return CUSTOM;
+      case RICKY_STANDBY_COVER:
+        return COVER_CUSTOM;  // the book being read, else the picture, as Standby
+      case RICKY_STANDBY_KEEP_PAGE:
+        return QUICK_RESUME;
+      default:
+        break;  // the calendar would show a clock that no longer runs
+    }
+  }
+  return sleepScreen == DARK ? DARK : LIGHT;
+}
+#endif
 
 uint64_t CrossPointSettings::getDailyGoalMs() const {
   switch (dailyGoalTarget) {

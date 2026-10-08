@@ -320,21 +320,16 @@ void SettingsActivity::reorganizeRickySettings() {
   };
 
   // Rows that live on their own pages or do nothing on this device leave the lists:
-  // - the sleeping screen's mode, picture and Standby info are on the Standby page;
+  // - the Standby & power-off page has what Standby and power-off show, the picture's
+  //   fit and filter, when Standby starts and when it powers off;
   // - every touch gesture is on the Gestures page, every key on the Keys page;
   // - Read Pico has no Confirm key for the long-press function, and plugins / SD
   //   firmware update are not part of RickyOS (Profile is the card on top of Settings).
-  const bool coverMode =
-      SETTINGS.sleepScreen == CrossPointSettings::COVER || SETTINGS.sleepScreen == CrossPointSettings::COVER_CUSTOM;
-  const auto elsewhere = [coverMode](const SettingInfo& setting) {
+  const auto elsewhere = [](const SettingInfo& setting) {
     const auto field = setting.valuePtr;
     if (field == &CrossPointSettings::sleepScreen || field == &CrossPointSettings::standbyOverlay ||
-        field == &CrossPointSettings::quickResumeSleepScreen) {
-      return true;
-    }
-    // Cover fit and filter only matter while the sleeping screen shows a book cover.
-    if (!coverMode &&
-        (field == &CrossPointSettings::sleepScreenCoverMode || field == &CrossPointSettings::sleepScreenCoverFilter)) {
+        field == &CrossPointSettings::quickResumeSleepScreen || field == &CrossPointSettings::sleepScreenCoverMode ||
+        field == &CrossPointSettings::sleepScreenCoverFilter || field == &CrossPointSettings::sleepTimeoutMinutes) {
       return true;
     }
     return field == &CrossPointSettings::touchReaderControls || field == &CrossPointSettings::pageTurnGesture ||
@@ -349,23 +344,9 @@ void SettingsActivity::reorganizeRickySettings() {
     removeMatching(*list, elsewhere);
   }
 
-  // Display & Standby: the Standby page first, the sleep timeout with the display rows.
-  moveMatching(systemSettings, displaySettings,
-               [](const SettingInfo& setting) { return setting.valuePtr == &CrossPointSettings::sleepTimeoutMinutes; });
-  // Idle time now opens Standby (main.cpp); Standby left alone powers off after its own time.
-  for (auto it = displaySettings.begin(); it != displaySettings.end(); ++it) {
-    if (it->valuePtr != &CrossPointSettings::sleepTimeoutMinutes) continue;
-    it->nameId = StrId::STR_RICKY_AUTO_STANDBY;
-    displaySettings.insert(
-        std::next(it),
-        SettingInfo::Enum(StrId::STR_RICKY_AUTO_OFF, &CrossPointSettings::rickyAutoOffIndex,
-                          {StrId::STR_RICKY_NEVER, StrId::STR_RICKY_HOURS_1, StrId::STR_RICKY_HOURS_3,
-                           StrId::STR_RICKY_HOURS_6, StrId::STR_RICKY_HOURS_12, StrId::STR_RICKY_HOURS_24},
-                          "rickyAutoOffIndex", StrId::STR_CAT_DISPLAY));
-    break;
-  }
+  // Display & Standby: the Standby & power-off page first.
   displaySettings.insert(displaySettings.begin(),
-                         SettingInfo::Action(StrId::STR_STANDBY_TITLE, SettingAction::RickyStandbyPage));
+                         SettingInfo::Action(StrId::STR_RICKY_POWER_PAGE_TITLE, SettingAction::RickyStandbyPage));
   // Network & Sync.
   moveMatching(systemSettings, connectionSettings, [](const SettingInfo& setting) {
     return setting.action == SettingAction::Network || setting.action == SettingAction::KOReaderSync ||

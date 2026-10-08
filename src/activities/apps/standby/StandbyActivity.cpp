@@ -32,6 +32,7 @@
 #include "SloppyClockFace.h"
 #ifdef RICKYOS_PRODUCT
 #include "CalendarClockFace.h"
+#include "KeepPageFace.h"
 #include "RickyWallpaperDownloadActivity.h"
 #include "WallpaperFace.h"
 #include "activities/home/FileBrowserActivity.h"
@@ -63,13 +64,17 @@ struct FaceEntry {
 };
 constexpr FaceEntry kFaces[] = {
 #ifdef RICKYOS_PRODUCT
-    // RickyOS Standby is the user's own picture or the desk calendar clock
-    // (rickyStandbyFace); the stock clock faces are not offered.
+    // RickyOS Standby is the picture or the book's cover, the desk calendar clock, or
+    // the page left as it was (rickyStandbyFace); the stock clock faces are not offered.
     {[]() -> std::unique_ptr<StandbyFace> {
-       if (SETTINGS.rickyStandbyFace == CrossPointSettings::RICKY_STANDBY_CALENDAR) {
-         return makeUniqueNoThrow<CalendarClockFace>();
+       switch (SETTINGS.rickyStandbyFace) {
+         case CrossPointSettings::RICKY_STANDBY_CALENDAR:
+           return makeUniqueNoThrow<CalendarClockFace>();
+         case CrossPointSettings::RICKY_STANDBY_KEEP_PAGE:
+           return makeUniqueNoThrow<KeepPageFace>();
+         default:
+           return makeUniqueNoThrow<WallpaperFace>();  // the picture, or the cover
        }
-       return makeUniqueNoThrow<WallpaperFace>();
      },
      [](int, int) { return true; }},
 #else

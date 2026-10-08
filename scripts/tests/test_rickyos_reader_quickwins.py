@@ -25,7 +25,7 @@ class RickyQuickWinsTest(unittest.TestCase):
 
     def test_every_touch_gesture_and_key_lives_on_its_own_page(self):
         source = read('src/activities/settings/SettingsActivity.cpp')
-        start = source.index('const auto elsewhere = [coverMode](const SettingInfo& setting) {')
+        start = source.index('const auto elsewhere = [](const SettingInfo& setting) {')
         block = source[start:source.index('for (auto* list', start)]
         for field in ('touchReaderControls', 'pageTurnGesture', 'previousPageGesture', 'showReaderMenu',
                       'pageTurnDirection', 'sideButtonLayout', 'longPressButtonBehavior', 'standbyShortcutEnabled',

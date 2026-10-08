@@ -53,9 +53,13 @@ class RickyPowerModelTest(unittest.TestCase):
         load = read('src/CrossPointSettings.cpp')
         load = load[load.index('enforceProductLayout();\n'):]
         self.assertIn('shortPwrBtn = IGNORE;', load[:400])
-        page = read('src/activities/settings/SettingsActivity.cpp')
-        self.assertIn('it->nameId = StrId::STR_RICKY_AUTO_STANDBY;', page)
-        self.assertIn('&CrossPointSettings::rickyAutoOffIndex', page)
+        # When Standby starts and when it powers off sit on the Standby & power-off page.
+        page = read('src/activities/apps/standby/RickyStandbySettingsActivity.cpp')
+        self.assertIn('SETTINGS.sleepTimeoutMinutes = kStandbyMinutes[chosen];', page)
+        self.assertIn('SETTINGS.rickyAutoOffIndex = static_cast<uint8_t>(chosen);', page)
+        settings = read('src/activities/settings/SettingsActivity.cpp')
+        hidden = settings[settings.index('const auto elsewhere'):]
+        self.assertIn('&CrossPointSettings::sleepTimeoutMinutes', hidden[:hidden.index('for (auto* list')])
 
     def test_side_key_wakes_standby_light_sleep(self):
         # The PMU holds its interrupt while key events are queued; unacknowledged, a

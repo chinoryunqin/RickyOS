@@ -14,7 +14,12 @@
 #include <cmath>
 #include <cstdio>
 
+#include <Epub.h>
+#include <FsHelpers.h>
+#include <Xtc.h>
+
 #include "CrossPointSettings.h"
+#include "CrossPointState.h"
 #include "components/RickyBrandMark.h"
 #include "components/RickyClockDigits.h"
 #include "components/RickyPowerLayout.h"
@@ -23,7 +28,7 @@
 #include "fontIds.h"
 
 namespace {
-// Same file the Settings picker installs and the sleep screen shows.
+// Same file the Settings picker installs and the power-off screen shows.
 constexpr char kPicture[] = "/sleep.bmp";
 constexpr int kCornerMargin = 28;
 constexpr int kCornerPadding = 20;
@@ -34,29 +39,74 @@ constexpr int kDateFont = UI_10_FONT_ID;
 bool showsTime() { return SETTINGS.standbyOverlay == CrossPointSettings::STANDBY_OVERLAY_TIME; }
 bool showsCorner() { return SETTINGS.standbyOverlay != CrossPointSettings::STANDBY_OVERLAY_NONE; }
 
-// Fit the picture inside the screen, centered; smaller pictures are not enlarged.
-void placeBitmap(const Bitmap& bitmap, const int screenWidth, const int screenHeight, int& x, int& y) {
+bool filtered() {
+  return SETTINGS.sleepScreenCoverFilter != CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER;
+}
+
+struct Placement {
+  int x = 0;
+  int y = 0;
+  float cropX = 0;
+  float cropY = 0;
+};
+
+// Centered; a larger picture fits the screen, or fills it with the overflow cropped
+// (SleepActivity's calculateBitmapPlacement, so power-off shows it the same way).
+// Smaller pictures are not enlarged.
+Placement placeBitmap(const Bitmap& bitmap, const int screenWidth, const int screenHeight) {
+  Placement placement;
   const int width = bitmap.getWidth();
   const int height = bitmap.getHeight();
-  if (width > screenWidth || height > screenHeight) {
-    const float ratio = static_cast<float>(width) / static_cast<float>(height);
-    const float screenRatio = static_cast<float>(screenWidth) / static_cast<float>(screenHeight);
-    if (ratio > screenRatio) {
-      x = 0;
-      y = static_cast<int>(std::lround((screenHeight - screenWidth / ratio) / 2));
-    } else {
-      x = static_cast<int>(std::lround((screenWidth - screenHeight * ratio) / 2));
-      y = 0;
-    }
-  } else {
-    x = (screenWidth - width) / 2;
-    y = (screenHeight - height) / 2;
+  if (width <= screenWidth && height <= screenHeight) {
+    placement.x = (screenWidth - width) / 2;
+    placement.y = (screenHeight - height) / 2;
+    return placement;
   }
+  const bool fill = SETTINGS.sleepScreenCoverMode == CrossPointSettings::SLEEP_SCREEN_COVER_MODE::CROP;
+  float ratio = static_cast<float>(width) / static_cast<float>(height);
+  const float screenRatio = static_cast<float>(screenWidth) / static_cast<float>(screenHeight);
+  if (ratio > screenRatio) {
+    if (fill) {
+      placement.cropX = 1.0f - screenRatio / ratio;
+      ratio = (1.0f - placement.cropX) * static_cast<float>(width) / static_cast<float>(height);
+    }
+    placement.y = static_cast<int>(std::lround((screenHeight - screenWidth / ratio) / 2));
+  } else {
+    if (fill) {
+      placement.cropY = 1.0f - ratio / screenRatio;
+      ratio = static_cast<float>(width) / ((1.0f - placement.cropY) * static_cast<float>(height));
+    }
+    placement.x = static_cast<int>(std::lround((screenWidth - screenHeight * ratio) / 2));
+  }
+  return placement;
+}
+
+// The cover of the book being read as a BMP (made once, then kept with the book's
+// cache, as the power-off cover is), or "" when there is no book or no cover.
+std::string currentCoverBmp() {
+  const std::string& book = APP_STATE.openEpubPath;
+  if (book.empty()) return {};
+  const bool cropped = SETTINGS.sleepScreenCoverMode == CrossPointSettings::SLEEP_SCREEN_COVER_MODE::CROP;
+  if (FsHelpers::hasXtcExtension(book)) {
+    Xtc xtc(book, "/.crosspoint");
+    if (!xtc.load() || !xtc.generateCoverBmp()) return {};
+    return xtc.getCoverBmpPath();
+  }
+  if (FsHelpers::hasReflowableBookExtension(book)) {
+    Epub epub(book, "/.crosspoint");
+    if (!epub.load(true, true) || !epub.generateCoverBmp(cropped)) return {};
+    return epub.getCoverBmpPath(cropped);
+  }
+  return {};
 }
 }  // namespace
 
 void WallpaperFace::onEnter() {
-  hasPicture_ = Storage.exists(kPicture);
+  path_.clear();
+  if (SETTINGS.rickyStandbyFace == CrossPointSettings::RICKY_STANDBY_COVER) path_ = currentCoverBmp();
+  // No book (or no cover): the picture, as the power-off cover falls back to it.
+  if (path_.empty() || !Storage.exists(path_.c_str())) path_ = kPicture;
+  hasPicture_ = Storage.exists(path_.c_str());
   lastMinute_ = -1;
   lastDay_ = -1;
 }
@@ -154,9 +204,10 @@ bool WallpaperFace::renderNative(GfxRenderer& renderer, const Rect& viewport) {
   // Every update redraws the whole 16-gray frame. This panel has no partial
   // refresh: a B/W refresh after a 16-gray frame drives every gray pixel to black
   // or white, which collapsed the picture after the first minute.
-  if (renderer.getGrayscaleLevels() != 16) return false;
+  // A filter is a B/W look: render() draws it.
+  if (renderer.getGrayscaleLevels() != 16 || filtered()) return false;
   HalFile file;
-  if (!Storage.openFileForRead("STANDBY", kPicture, file)) {
+  if (!Storage.openFileForRead("STANDBY", path_, file)) {
     hasPicture_ = false;
     return false;
   }
@@ -168,10 +219,9 @@ bool WallpaperFace::renderNative(GfxRenderer& renderer, const Rect& viewport) {
   }
   const int screenWidth = renderer.getScreenWidth();
   const int screenHeight = renderer.getScreenHeight();
-  int x = 0, y = 0;
-  placeBitmap(bitmap, screenWidth, screenHeight, x, y);
-  bool shown =
-      renderer.beginGrayscale16() && renderer.drawBitmapGrayscale16(bitmap, x, y, screenWidth, screenHeight, 0, 0);
+  const Placement at = placeBitmap(bitmap, screenWidth, screenHeight);
+  bool shown = renderer.beginGrayscale16() &&
+               renderer.drawBitmapGrayscale16(bitmap, at.x, at.y, screenWidth, screenHeight, at.cropX, at.cropY);
   if (shown) {
     drawCorner(renderer, viewport, true);
     shown = renderer.commitGrayscale16();
@@ -213,12 +263,14 @@ void WallpaperFace::render(GfxRenderer& renderer, const Rect& viewport) {
     return;
   }
   HalFile file;
-  if (!Storage.openFileForRead("STANDBY", kPicture, file)) return;
+  if (!Storage.openFileForRead("STANDBY", path_, file)) return;
   Bitmap bitmap(file, true);
   if (bitmap.parseHeaders() != BmpReaderError::Ok) return;
-  int x = 0, y = 0;
-  placeBitmap(bitmap, renderer.getScreenWidth(), renderer.getScreenHeight(), x, y);
-  renderer.drawBitmap(bitmap, x, y, renderer.getScreenWidth(), renderer.getScreenHeight(), 0, 0);
+  const Placement at = placeBitmap(bitmap, renderer.getScreenWidth(), renderer.getScreenHeight());
+  renderer.drawBitmap(bitmap, at.x, at.y, renderer.getScreenWidth(), renderer.getScreenHeight(), at.cropX, at.cropY);
+  if (SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::INVERTED_BLACK_AND_WHITE) {
+    renderer.invertScreen();
+  }
   drawCorner(renderer, viewport, false);
   std::tm local{};
   if (halClock.localTime(local)) {
