@@ -86,16 +86,16 @@ int main() {
         for mode in ("QUICK_RESUME", "TRANSPARENT", "BLANK", "CUSTOM", "COVER", "COVER_CUSTOM"):
             self.assertIn("SLEEP_SCREEN_MODE::" + mode, source)
         start = source.index("const bool defaultScene")
-        transition = source[start:source.index("switch (SETTINGS.sleepScreen)", start)]
+        transition = source[start:source.index("switch (sleepScreenMode())", start)]
         self.assertNotIn("delay(", transition)
         self.assertNotIn("while (", transition)
 
     def test_settings_lists_move_rows_without_copies(self):
         source = (ROOT / "src/activities/settings/SettingsActivity.cpp").read_text()
-        # The sleep-screen mode is chosen on the Standby page (labels indexed by the
-        # persisted value there); Settings only links to it.
+        # Standby and power-off screens are chosen on their own page (labels in display
+        # order, stored values mapped there); Settings only links to it.
         page = (ROOT / "src/activities/apps/standby/RickyStandbySettingsActivity.cpp").read_text()
-        self.assertIn("static_assert(std::size(kModes) == std::size(kModeLabels));", page)
+        self.assertIn("static_assert(std::size(kStyleLabels) == std::size(kStyles));", page)
         self.assertIn("std::move(*it)", source)
         self.assertIn("swap(librarySettings)", source)
         self.assertIn("swap(connectionSettings)", source)

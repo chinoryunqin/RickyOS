@@ -19,8 +19,19 @@ export function otaManifest(catalog) {
     hardwareAccepted: release.hardwareAccepted, chipId: release.chipId, flashBytes: release.flashBytes };
 }
 
+// What's new for the offered version, fetched separately: ota.json keeps the exact keys
+// devices from 1.1.2 accept (their parser refuses unknown ones). The first line names
+// the version, so notes never show against a different offer.
+export function otaNotes(catalog) {
+  const release = catalog.releases?.[0];
+  if (!release) return '';
+  checkRelease(release);
+  return [release.version, ...(release.notes ?? [])].join('\n') + '\n';
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const root = resolve(import.meta.dirname, '..');
   const catalog = JSON.parse(await readFile(resolve(root, 'public/releases.json'), 'utf8'));
   await writeFile(resolve(root, 'dist/ota.json'), JSON.stringify(otaManifest(catalog), null, 2) + '\n');
+  await writeFile(resolve(root, 'dist/ota-notes.txt'), otaNotes(catalog));
 }

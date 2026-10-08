@@ -87,6 +87,13 @@ static unsigned long lastX4ProPowerClickAt = 0;
 
 namespace {
 constexpr unsigned long X4PRO_POWER_DOUBLE_CLICK_MS = 500;
+#ifdef RICKYOS_PRODUCT
+// Side key held this long powers off; anything shorter toggles Standby.
+constexpr unsigned long RICKY_POWER_OFF_HOLD_MS = 2000;
+constexpr bool kRickyPowerModel = true;
+#else
+constexpr bool kRickyPowerModel = false;
+#endif
 constexpr unsigned long X4PRO_POWER_CLICK_MAX_HOLD_MS = 300;
 #if CROSSPOINT_CAP_SOUND_FEEDBACK
 static_assert(CrossPointSettings::SOUND_FEEDBACK_OFF == static_cast<uint8_t>(SoundFeedback::Level::Off));
@@ -471,9 +478,9 @@ void enterDeepSleep(bool fromTimeout = false) {
   trustedtime::note();
 
 #ifdef RICKYOS_PRODUCT
-  // One source of truth: the Standby page's screen mode. The separate "keep the page on
+  // One source of truth: the Standby & power-off page. The separate "keep the page on
   // automatic sleep" switch could stay on after the mode changed and override it.
-  const bool isQuickResumeSleep = SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::QUICK_RESUME;
+  const bool isQuickResumeSleep = SETTINGS.rickySleepScreenMode() == CrossPointSettings::SLEEP_SCREEN_MODE::QUICK_RESUME;
 #else
   const bool isQuickResumeSleep =
       SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::QUICK_RESUME ||
@@ -1184,6 +1191,14 @@ void loop() {
     lastActivityTime = millis();         // Reset inactivity timer
     powerManager.setPowerSaving(false);  // Restore normal CPU frequency on user activity
   }
+#ifdef RICKYOS_PRODUCT
+  // Standby closes itself on a key press that woke its light sleep, which this loop
+  // never saw as input: leaving Standby is activity, or idle would reopen it at once.
+  static bool standbyWasShowing = false;
+  const bool standbyShowingNow = activityManager.standbyShowing();
+  if (standbyWasShowing && !standbyShowingNow) lastActivityTime = millis();
+  standbyWasShowing = standbyShowingNow;
+#endif
   // preventAutoSleep() is intentionally NOT folded into the activity check above:
   // it only short-circuits the deep-sleep timer below, not the inactivity clock
   // that drives auto-downclock. Standby (a clock face) wants deep sleep blocked
@@ -1251,6 +1266,24 @@ void loop() {
     return;
   }
 
+#ifdef RICKYOS_PRODUCT
+  // RickyOS power model: Standby keeps the device on (the page under it stays in
+  // memory, the clock light-sleeps between minutes); power-off is the PMU cut, whose
+  // only way back is holding the side key. Standby asks for the power-off itself
+  // once it has run for the auto power-off time.
+  if (activityManager.consumePowerOffRequest()) {
+    LOG_DBG("SLP", "Standby ran its auto power-off time");
+    enterDeepSleep(true);
+    return;
+  }
+  const unsigned long sleepTimeoutMs = SETTINGS.getSleepTimeoutMs();
+  if (sleepTimeoutMs > 0 && !activityManager.preventAutoSleep() && millis() - lastActivityTime >= sleepTimeoutMs) {
+    LOG_DBG("SLP", "Auto-standby after %lu ms of inactivity", sleepTimeoutMs);
+    activityManager.openStandby();
+    lastActivityTime = millis();
+    return;
+  }
+#else
   const unsigned long sleepTimeoutMs = SETTINGS.getSleepTimeoutMs();
   if (sleepTimeoutMs > 0 && !activityManager.preventAutoSleep() && millis() - lastActivityTime >= sleepTimeoutMs) {
     LOG_DBG("SLP", "Auto-sleep triggered after %lu ms of inactivity", sleepTimeoutMs);
@@ -1258,6 +1291,7 @@ void loop() {
     // This should never be hit as `enterDeepSleep` calls esp_deep_sleep_start
     return;
   }
+#endif
 
   // A hold that woke the device must be released before it can count as a new
   // in-app long press. Otherwise a user who keeps holding after wake would put
@@ -1272,7 +1306,53 @@ void loop() {
                                         SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP &&
                                         gpio.getPowerButtonHeldTime() <= X4PRO_POWER_CLICK_MAX_HOLD_MS;
 
-  if (!x4ProAwaitingClickWindow && powerReleasedSinceWake && millis() >= allowSleepAt &&
+#ifdef RICKYOS_PRODUCT
+  // Side key: a short press toggles Standby, a hold powers off (the same hold turns
+  // the device back on). The PMU reports the key over the I2C bus it shares with
+  // touch, and a failed poll reads as released: a release only counts after the key
+  // has read up for kSideKeyReleaseMs, so a hold is not split into short presses.
+  // The press that powered the device on is ignored until it is really let go.
+  {
+    constexpr unsigned long kSideKeyReleaseMs = 200;
+    static bool keyDown = false;
+    static bool holdHandled = false;
+    static bool wakePressPending = true;  // the key may still be held from power-on
+    static unsigned long pressedAt = 0;
+    static unsigned long lastDownAt = 0;
+    const unsigned long now = millis();
+    const bool rawDown = gpio.isPressed(HalGPIO::BTN_POWER) && !gpio.isPressed(HalGPIO::BTN_DOWN);
+    if (rawDown) {
+      if (!keyDown) {
+        keyDown = true;
+        pressedAt = now;
+        holdHandled = false;
+      }
+      lastDownAt = now;
+      if (!wakePressPending && !holdHandled && now >= allowSleepAt && now - pressedAt >= RICKY_POWER_OFF_HOLD_MS) {
+        holdHandled = true;
+        LOG_DBG("MAIN", "Side key held %lums, powering off", now - pressedAt);
+        enterDeepSleep();
+        return;
+      }
+    } else if (keyDown && now - lastDownAt >= kSideKeyReleaseMs) {
+      keyDown = false;
+      const bool wakePress = wakePressPending;
+      wakePressPending = false;
+      if (!wakePress && !holdHandled && now >= allowSleepAt) {
+        lastActivityTime = now;
+        if (activityManager.standbyShowing()) {
+          activityManager.closeStandby();
+        } else {
+          activityManager.openStandby();
+        }
+        return;
+      }
+    } else if (!keyDown) {
+      wakePressPending = false;  // booted without the key held
+    }
+  }
+#endif
+  if (!kRickyPowerModel && !x4ProAwaitingClickWindow && powerReleasedSinceWake && millis() >= allowSleepAt &&
       gpio.isPressed(HalGPIO::BTN_POWER) && gpio.getPowerButtonHeldTime() > SETTINGS.getPowerButtonDuration()) {
     // If the screenshot combination is potentially being pressed, don't sleep
     if (gpio.isPressed(HalGPIO::BTN_DOWN)) {

@@ -171,6 +171,19 @@ class ActivityManager {
 #endif
   void goToStandby();
 #ifdef RICKYOS_PRODUCT
+  // Side key / inactivity: Standby over whatever is open, popping back to it on close.
+  void openStandby();
+  void closeStandby();
+  bool standbyShowing() const;
+  // Standby asks main to power off once it has run its auto power-off time.
+  void requestPowerOff() { powerOffRequested = true; }
+  bool consumePowerOffRequest() {
+    const bool requested = powerOffRequested;
+    powerOffRequested = false;
+    return requested;
+  }
+#endif
+#ifdef RICKYOS_PRODUCT
   // Apps → Standby: choose what the sleeping screen shows; full-screen Standby is a row there.
   void goToStandbySettings();
 #endif
@@ -209,6 +222,9 @@ class ActivityManager {
   // Trigger a render and block until it completes.
   // Must NOT be called from the render task or while holding a RenderLock.
   void requestUpdateAndWait();
+#ifdef RICKYOS_PRODUCT
+  bool powerOffRequested = false;
+#endif
 };
 
 extern ActivityManager activityManager;  // singleton, to be defined in main.cpp

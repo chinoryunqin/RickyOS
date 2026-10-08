@@ -65,7 +65,6 @@
 #include "util/ReadingBackground.h"
 #include "util/SystemSettingsReset.h"
 #ifdef RICKYOS_PRODUCT
-#include "activities/apps/standby/RickyStandbySettingsActivity.h"
 #include "activities/settings/RickyOptionListActivity.h"
 #include "util/RickyStorageLayout.h"
 #endif
@@ -320,21 +319,16 @@ void SettingsActivity::reorganizeRickySettings() {
   };
 
   // Rows that live on their own pages or do nothing on this device leave the lists:
-  // - the sleeping screen's mode, picture and Standby info are on the Standby page;
+  // - the Standby & power-off page has what Standby and power-off show, the picture's
+  //   fit and filter, when Standby starts and when it powers off;
   // - every touch gesture is on the Gestures page, every key on the Keys page;
   // - Read Pico has no Confirm key for the long-press function, and plugins / SD
   //   firmware update are not part of RickyOS (Profile is the card on top of Settings).
-  const bool coverMode =
-      SETTINGS.sleepScreen == CrossPointSettings::COVER || SETTINGS.sleepScreen == CrossPointSettings::COVER_CUSTOM;
-  const auto elsewhere = [coverMode](const SettingInfo& setting) {
+  const auto elsewhere = [](const SettingInfo& setting) {
     const auto field = setting.valuePtr;
     if (field == &CrossPointSettings::sleepScreen || field == &CrossPointSettings::standbyOverlay ||
-        field == &CrossPointSettings::quickResumeSleepScreen) {
-      return true;
-    }
-    // Cover fit and filter only matter while the sleeping screen shows a book cover.
-    if (!coverMode &&
-        (field == &CrossPointSettings::sleepScreenCoverMode || field == &CrossPointSettings::sleepScreenCoverFilter)) {
+        field == &CrossPointSettings::quickResumeSleepScreen || field == &CrossPointSettings::sleepScreenCoverMode ||
+        field == &CrossPointSettings::sleepScreenCoverFilter || field == &CrossPointSettings::sleepTimeoutMinutes) {
       return true;
     }
     return field == &CrossPointSettings::touchReaderControls || field == &CrossPointSettings::pageTurnGesture ||
@@ -349,11 +343,7 @@ void SettingsActivity::reorganizeRickySettings() {
     removeMatching(*list, elsewhere);
   }
 
-  // Display & Standby: the Standby page first, the sleep timeout with the display rows.
-  moveMatching(systemSettings, displaySettings,
-               [](const SettingInfo& setting) { return setting.valuePtr == &CrossPointSettings::sleepTimeoutMinutes; });
-  displaySettings.insert(displaySettings.begin(),
-                         SettingInfo::Action(StrId::STR_STANDBY_TITLE, SettingAction::RickyStandbyPage));
+  // Standby & power-off lives in Apps (one entry); Display keeps the display rows.
   // Network & Sync.
   moveMatching(systemSettings, connectionSettings, [](const SettingInfo& setting) {
     return setting.action == SettingAction::Network || setting.action == SettingAction::KOReaderSync ||
@@ -390,6 +380,7 @@ const char* SettingsActivity::rickySettingDescription(const SettingInfo& setting
   if (setting.valuePtr == &CrossPointSettings::sleepScreen) return tr(STR_RICKY_HELP_LOCK);
   if (setting.valuePtr == &CrossPointSettings::quickResumeSleepScreen) return tr(STR_RICKY_HELP_KEEP_PAGE);
   if (setting.valuePtr == &CrossPointSettings::sleepTimeoutMinutes) return tr(STR_RICKY_HELP_TIMEOUT);
+  if (setting.valuePtr == &CrossPointSettings::rickyAutoOffIndex) return tr(STR_RICKY_HELP_AUTO_OFF);
   if (setting.valuePtr == &CrossPointSettings::shortPwrBtn) return tr(STR_RICKY_HELP_POWER);
   if (setting.valuePtr == &CrossPointSettings::refreshFrequency) return tr(STR_RICKY_HELP_REFRESH);
   if (setting.action == SettingAction::RestoreSystemSettings) return tr(STR_RICKY_HELP_RESET);
@@ -1181,16 +1172,6 @@ void SettingsActivity::toggleCurrentSetting() {
       }
       case SettingAction::RickyProfile:
         startActivityForResultWith<RickyProfileActivity>(resultHandler);
-        break;
-      case SettingAction::RickyStandbyPage:
-        releaseListsForMemoryHungryChild();
-        if (!startActivityForResultWith<RickyStandbySettingsActivity>([this](const ActivityResult&) {
-              rebuildSettingsLists();
-              requestUpdate();
-            })) {
-          rebuildSettingsLists();
-          requestUpdate();
-        }
         break;
 #endif
       case SettingAction::RestoreSystemSettings:

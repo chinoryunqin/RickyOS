@@ -22,7 +22,7 @@ const ICONS = [
   ['downloads', 'download'], ['folder', 'folder-open'], ['upload', 'upload'], ['display', 'sun-moon'],
   ['reader', 'book-open-text'], ['network', 'wifi'], ['power', 'battery-medium'], ['system', 'settings-2'],
   // Control center actions.
-  ['night', 'moon'], ['refresh', 'refresh-cw'], ['standby', 'power'], ['transfer', 'arrow-up-down'],
+  ['night', 'contrast'], ['refresh', 'refresh-cw'], ['standby', 'moon'], ['transfer', 'arrow-up-down'],
   ['portrait', 'rectangle-vertical'], ['landscape', 'rectangle-horizontal'], ['clean', 'sparkles'],
 ];
 

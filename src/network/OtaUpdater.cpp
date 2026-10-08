@@ -23,6 +23,7 @@
 #include <mbedtls/sha256.h>
 
 #include "RickyOtaManifest.h"
+#include "RickyOtaNotes.h"
 #include "RickyOtaTrust.h"
 #else
 #include "CrossMuxEndpoints.h"
@@ -105,6 +106,14 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate(const Channel requestedCh
   expectedSha = manifest.getSha();
   updateAvailable = true;
   LOG_INF("OTA", "RickyOS stable offer: %s (%zu bytes)", latestVersion.c_str(), otaSize);
+  // What's new: optional and separate, so the offer never waits on or fails for it.
+  RickyOtaNotes<ReleaseJsonParser::RELEASE_NOTE_SIZE> notes(releaseNotes, latestVersion);
+  if (HttpDownloader::fetchVerifiedUrl(
+          ricky_ota::NOTES_URL, [&notes](const uint8_t* data, size_t len) { return notes.feed(data, len); },
+          ricky_ota::ROOT_CA)) {
+    releaseNoteCount = notes.count();
+  }
+  LOG_INF("OTA", "Release notes: %zu", releaseNoteCount);
   return OK;
 #else
   channel = requestedChannel;

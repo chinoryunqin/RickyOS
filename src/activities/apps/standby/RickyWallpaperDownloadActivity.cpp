@@ -275,6 +275,7 @@ void RickyWallpaperDownloadActivity::installFirstIfUnset() {
   }
   if (installed) {
     SETTINGS.sleepScreen = CrossPointSettings::CUSTOM;
+    SETTINGS.rickyStandbyFace = CrossPointSettings::RICKY_STANDBY_PICTURE;  // show what was just installed
     SETTINGS.saveToFile();
   } else {
     LOG_ERR("WPDL", "Could not install %s", first.c_str());

@@ -423,8 +423,16 @@ bool ImageViewerActivity::doSetSleepCover(const char* sourcePath, const bool tra
     const uint8_t previousMode = SETTINGS.sleepScreen;
     SETTINGS.sleepScreen = transparent ? CrossPointSettings::SLEEP_SCREEN_MODE::TRANSPARENT
                                        : CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM;
+#ifdef RICKYOS_PRODUCT
+    // The picture just set is what Standby shows.
+    const uint8_t previousFace = SETTINGS.rickyStandbyFace;
+    if (!transparent) SETTINGS.rickyStandbyFace = CrossPointSettings::RICKY_STANDBY_PICTURE;
+#endif
     if (!SETTINGS.saveToFile()) {
       SETTINGS.sleepScreen = previousMode;
+#ifdef RICKYOS_PRODUCT
+      SETTINGS.rickyStandbyFace = previousFace;
+#endif
       (void)SETTINGS.saveToFile();
       Storage.remove(SLEEP_IMAGE_PATH);
       if (Storage.exists(SLEEP_IMAGE_BACKUP_PATH)) {

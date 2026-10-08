@@ -462,6 +462,36 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     STANDBY_OVERLAY_COUNT
   };
   uint8_t standbyOverlay = STANDBY_OVERLAY_NONE;
+  // Standby face: the picture or the book being read (both with standbyOverlay), the
+  // landscape desk calendar clock, or the page left as it was. Stored values; the
+  // Standby page lists them in its own order.
+  enum RICKY_STANDBY_FACE : uint8_t {
+    RICKY_STANDBY_PICTURE = 0,
+    RICKY_STANDBY_CALENDAR,
+    RICKY_STANDBY_COVER,
+    RICKY_STANDBY_KEEP_PAGE,
+    RICKY_STANDBY_FACE_COUNT
+  };
+  uint8_t rickyStandbyFace = RICKY_STANDBY_PICTURE;
+  // What stays on the screen once the device is off: what Standby showed, the RickyOS
+  // rest screen, or nothing. Replaces choosing among the sleepScreen modes directly.
+  enum RICKY_POWER_OFF_SCREEN : uint8_t {
+    RICKY_POWER_OFF_SAME = 0,
+    RICKY_POWER_OFF_DEFAULT,
+    RICKY_POWER_OFF_BLANK,
+    RICKY_POWER_OFF_SCREEN_COUNT
+  };
+  uint8_t rickyPowerOffScreen = RICKY_POWER_OFF_DEFAULT;
+  // The sleepScreen mode the power-off screen draws with (SleepActivity).
+  uint8_t rickySleepScreenMode() const;
+  // Standby that has run this long powers off (index into RICKY_AUTO_OFF_HOURS; 0 = never).
+  static constexpr uint8_t RICKY_AUTO_OFF_HOURS[] = {0, 1, 3, 6, 12, 24};
+  static constexpr uint8_t RICKY_AUTO_OFF_COUNT = 6;
+  uint8_t rickyAutoOffIndex = 3;  // 6 hours
+  unsigned long getStandbyPowerOffMs() const {
+    const uint8_t hours = RICKY_AUTO_OFF_HOURS[rickyAutoOffIndex < RICKY_AUTO_OFF_COUNT ? rickyAutoOffIndex : 0];
+    return static_cast<unsigned long>(hours) * 3600UL * 1000UL;
+  }
 #endif
   // Sunlight fading compensation
   uint8_t fadingFix = 0;

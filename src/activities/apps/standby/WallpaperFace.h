@@ -2,12 +2,16 @@
 #ifdef RICKYOS_PRODUCT
 
 #include <cstdint>
+#include <string>
 
 #include "StandbyFace.h"
 
 // RickyOS Standby: the user's own picture (chosen on the Apps → Standby page, stored
-// as /sleep.bmp) in native 16-gray, or the RickyOS rest screen until one is chosen,
-// with an optional date or time-and-date corner (CrossPointSettings::standbyOverlay).
+// as /sleep.bmp) or the cover of the book being read, in native 16-gray, or the
+// RickyOS rest screen until there is one, with an optional date or time-and-date
+// corner (CrossPointSettings::standbyOverlay). Fit or fill and the filter are the
+// power-off screen's (sleepScreenCoverMode, sleepScreenCoverFilter), which shows the
+// same picture.
 //
 // Each update (the first draw, then every minute for the time or every day for the
 // date) redraws the whole picture through the 16-gray frame with the corner on top:
@@ -25,6 +29,7 @@ class WallpaperFace final : public StandbyFace {
  private:
   void drawCorner(GfxRenderer& renderer, const Rect& viewport, bool intoGray) const;
 
+  std::string path_;  // the picture or the cover BMP
   bool hasPicture_ = false;
   int32_t lastMinute_ = -1;  // local minute of day last drawn, -1 before the first draw
   int32_t lastDay_ = -1;     // local day of year last drawn

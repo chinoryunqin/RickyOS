@@ -67,7 +67,8 @@ constexpr AppEntry kAppEntries[] = {
     {AppId::Woodfish, StrId::STR_WOODFISH_TITLE, UIIcon::Woodfish, &ActivityManager::goToWoodfish},
 #endif
 #ifdef RICKYOS_PRODUCT
-    {AppId::Standby, StrId::STR_STANDBY_TITLE, UIIcon::Standby, &ActivityManager::goToStandbySettings},
+    // The one entry for Standby & power off (not repeated in Settings).
+    {AppId::Standby, StrId::STR_RICKY_POWER_PAGE_TITLE, UIIcon::Standby, &ActivityManager::goToStandbySettings},
 #else
     {AppId::Standby, StrId::STR_STANDBY_TITLE, UIIcon::Standby, &ActivityManager::goToStandby},
 #endif

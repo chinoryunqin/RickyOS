@@ -257,7 +257,14 @@ void ActivityManager::loop() {
       resetHomeStandbyInput();
       return;
     }
-    if (!currentActivity->isHomeActivity() && mappedInput.wasHomeGesture()) {
+#ifdef RICKYOS_PRODUCT
+    // Standby is the screen at rest: only the side key (or Back) leaves it. Edge swipes
+    // must not pull the control center or Home over it.
+    const bool atRest = standbyShowing();
+#else
+    constexpr bool atRest = false;
+#endif
+    if (!atRest && !currentActivity->isHomeActivity() && mappedInput.wasHomeGesture()) {
       resetHomeStandbyInput();
       if (currentActivity->handleHomeGesture()) {
         return;
@@ -286,7 +293,7 @@ void ActivityManager::loop() {
             mappedInput.wasScreenTapped(tx, ty) && ty >= 0 && ty < 44 && !HeaderBackTapTarget::contains(tx, ty);
       }
     }
-    if (currentActivity->name != "FrontlightPanel" && (statusBarTap || mappedInput.wasLightPanelGesture())) {
+    if (!atRest && currentActivity->name != "FrontlightPanel" && (statusBarTap || mappedInput.wasLightPanelGesture())) {
       resetHomeStandbyInput();
       // Over a book the panel adds its reading controls.
       const bool overReader = currentActivity->name == "EpubReader" || currentActivity->name == "XtcReader";
@@ -780,6 +787,25 @@ void ActivityManager::goToAirPage() { replaceActivityWith<AirPageActivity>(); }
 #endif
 
 void ActivityManager::goToStandby() { replaceActivityWith<StandbyActivity>(); }
+
+#ifdef RICKYOS_PRODUCT
+bool ActivityManager::standbyShowing() const { return currentActivity && currentActivity->name == "Standby"; }
+
+void ActivityManager::openStandby() {
+  if (standbyShowing() || isSwitchPending()) return;
+  auto standby = makeUniqueNoThrow<StandbyActivity>(renderer, mappedInput);
+  if (!standby) {
+    LOG_ERR("ACT", "OOM: standby");
+    return;
+  }
+  pushActivity(std::move(standby));
+}
+
+void ActivityManager::closeStandby() {
+  if (!standbyShowing() || isSwitchPending()) return;
+  popActivity();  // back to the page under it; Home when Standby was the only one
+}
+#endif
 #ifdef RICKYOS_PRODUCT
 void ActivityManager::goToStandbySettings() { replaceActivityWith<RickyStandbySettingsActivity>(); }
 #endif

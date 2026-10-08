@@ -67,6 +67,14 @@ StandbyRetention standbyRetention() {
 // is logged here; a returned hook means the PMU never cut the rail, and the SDK
 // then idles instead of sleeping.
 void readPicoHostShutdown() {
+#ifdef RICKYOS_PRODUCT
+  // RickyOS power-off is the real off (the reference firmware's APP_SLEEP_OFF): the
+  // side key has to be held about a second to turn it back on. Soft sleep woke on a
+  // short press, which RickyOS uses for Standby.
+  if (BoardReadPico::pmuPowerOff()) return;
+  LOG_ERR("PWR", "PMU power-off handoff failed; trying soft sleep");
+  if (BoardReadPico::pmuSoftSleep()) return;
+#else
   // The sleep-screen path: HOST_SOFT_SLEEP asks the PMU to drop the host EN rail
   // (same endpoint as the reference firmware's APP_SLEEP_DEEP). It only accepts
   // the request from RUNNING, which it re-establishes internally.
@@ -74,6 +82,7 @@ void readPicoHostShutdown() {
 
   LOG_ERR("PWR", "PMU soft-sleep handoff failed; requesting a full power-off");
   if (BoardReadPico::pmuPowerOff()) return;
+#endif
 
   // Nothing else can turn this board off, and there is no wake source to arm, so
   // report it and let the SDK idle rather than entering a wake-less deep sleep.
@@ -111,6 +120,13 @@ HalPowerManager::LightSleepWakeReason lightSleepReadPico(const uint32_t seconds)
   // Release a pending assertion first: the expander's INT# is open-drain and NOT
   // latched, and reading its Input register is what releases it (fca9555.h).
   // Leaving a stale low on the line would end the sleep immediately.
+#ifdef RICKYOS_PRODUCT
+  // Presses so far were already read as key levels; drop their PMU events so its
+  // interrupt line releases and the next press changes INT# again. Left queued,
+  // the full FIFO holds that line and no press can end the sleep.
+  bool keyDown = false;
+  (void)BoardReadPico::takePmuKeyPress(keyDown);
+#endif
   BoardReadPico::clearIoeInt();
 
   if (!freeink::PowerManager::armLightSleepWakeupLevels(kIoeIntMask, 0)) {
@@ -138,6 +154,18 @@ HalPowerManager::LightSleepWakeReason lightSleepReadPico(const uint32_t seconds)
     return LightSleepWakeReason::Failed;
   }
 
+#ifdef RICKYOS_PRODUCT
+  // The PMU's key event is authoritative, whatever ended the sleep: a press can
+  // also land just before a timer wake (read_pico main/sleep.c does the same).
+  if (BoardReadPico::takePmuKeyPress(keyDown)) {
+    return keyDown ? LightSleepWakeReason::PowerButtonHeld : LightSleepWakeReason::PowerButton;
+  }
+  if (cause == ESP_SLEEP_WAKEUP_GPIO) {
+    // Another expander input (card detect, charger): stay awake a while, as before.
+    LOG_INF("PWR", "Light sleep ended by an expander input, not the key");
+    return LightSleepWakeReason::Failed;
+  }
+#endif
   switch (cause) {
     case ESP_SLEEP_WAKEUP_TIMER:
       return LightSleepWakeReason::Timer;

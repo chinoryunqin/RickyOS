@@ -38,15 +38,15 @@ int main(){BootActivity boot;boot.renderSplash();assert(boot.renderer.paints==1)
 
     def test_badge_only_changes_its_small_safe_rectangle(self):
         badge = method((ROOT / 'src/components/themes/BaseTheme.cpp').read_text(),
-                       'void BaseTheme::drawRickyStandbyIndicator(')
+                       'Rect BaseTheme::drawRickyStandbyIndicator(')
         program = r'''
 #include <algorithm>
 #include <cassert>
 #include <vector>
 #include <cstring>
 #include "components/Rect.h"
-constexpr int SMALL_FONT_ID=0,STR_RICKY_STANDBY=0;
-const char* tr(int){return "Standby";}
+constexpr int SMALL_FONT_ID=0,STR_RICKY_STANDBY=0,STR_RICKY_POWERED_OFF=1;
+const char* tr(int id){return id?"Off":"Standby";}
 struct GfxRenderer {
  Rect safe;int screenWidth,screenHeight;
  mutable std::vector<int> pixels;
@@ -70,7 +70,7 @@ struct UITheme {
    assert(!strcmp(label,"Standby")&&lines==1&&rect.x==r.badge.x&&rect.y==r.badge.y);
  }
 };
-struct BaseTheme{static void drawRickyStandbyIndicator(const GfxRenderer&);};
+struct BaseTheme{static Rect drawRickyStandbyIndicator(const GfxRenderer&,bool=false);};
 ''' + badge + r'''
 int main(){
  for(Rect safe : {Rect{32,32,620,1152},Rect{32,32,1152,620},Rect{12,20,456,760},Rect{20,12,760,456}}){
@@ -108,7 +108,7 @@ struct GfxRenderer{
 struct State{bool lastSleepFromReader=true;} APP_STATE;
 struct Settings{int orientation=0;} SETTINGS;
 struct ReaderUtils{static void applyOrientation(GfxRenderer& r,int o){r.setOrientation(o);}};
-struct Theme{int calls=0,lastOrientation=-1;void drawRickyStandbyIndicator(GfxRenderer& r){++calls;lastOrientation=r.orientation;}} GUI;
+struct Theme{int calls=0,lastOrientation=-1;void drawRickyStandbyIndicator(GfxRenderer& r,bool off){assert(off);++calls;lastOrientation=r.orientation;}} GUI;
 struct Gpio{bool x3=false;bool deviceIsX3()const{return x3;}} gpio;
 struct SleepActivity{GfxRenderer& renderer;void renderLastScreenSleepScreen()const;};
 ''' + draw + r'''
@@ -124,10 +124,9 @@ int main(){
         run_cpp(program, defines=('RICKYOS_PRODUCT',))
 
     def test_wallpaper_picker_preview_cancel_and_decode_guard(self):
-        # Picking lives on the Apps → Standby page; Settings links there.
+        # Picking lives on the Apps → Standby & power off page, its one entry.
         settings = (ROOT / 'src/activities/settings/SettingsActivity.cpp').read_text()
-        self.assertIn('SettingAction::RickyStandbyPage', settings)
-        self.assertIn('startActivityForResultWith<RickyStandbySettingsActivity>', settings)
+        self.assertNotIn('RickyStandbySettingsActivity', settings)
         page = (ROOT / 'src/activities/apps/standby/RickyStandbySettingsActivity.cpp').read_text()
         self.assertIn('FileBrowserActivity::Mode::PickWallpaper', page)
         self.assertIn('startActivityForResultWith<ImageViewerActivity>(previewDone, entry->path, true)', page)
