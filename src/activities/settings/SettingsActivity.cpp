@@ -65,7 +65,6 @@
 #include "util/ReadingBackground.h"
 #include "util/SystemSettingsReset.h"
 #ifdef RICKYOS_PRODUCT
-#include "activities/apps/standby/RickyStandbySettingsActivity.h"
 #include "activities/settings/RickyOptionListActivity.h"
 #include "util/RickyStorageLayout.h"
 #endif
@@ -344,9 +343,7 @@ void SettingsActivity::reorganizeRickySettings() {
     removeMatching(*list, elsewhere);
   }
 
-  // Display & Standby: the Standby & power-off page first.
-  displaySettings.insert(displaySettings.begin(),
-                         SettingInfo::Action(StrId::STR_RICKY_POWER_PAGE_TITLE, SettingAction::RickyStandbyPage));
+  // Standby & power-off lives in Apps (one entry); Display keeps the display rows.
   // Network & Sync.
   moveMatching(systemSettings, connectionSettings, [](const SettingInfo& setting) {
     return setting.action == SettingAction::Network || setting.action == SettingAction::KOReaderSync ||
@@ -1175,16 +1172,6 @@ void SettingsActivity::toggleCurrentSetting() {
       }
       case SettingAction::RickyProfile:
         startActivityForResultWith<RickyProfileActivity>(resultHandler);
-        break;
-      case SettingAction::RickyStandbyPage:
-        releaseListsForMemoryHungryChild();
-        if (!startActivityForResultWith<RickyStandbySettingsActivity>([this](const ActivityResult&) {
-              rebuildSettingsLists();
-              requestUpdate();
-            })) {
-          rebuildSettingsLists();
-          requestUpdate();
-        }
         break;
 #endif
       case SettingAction::RestoreSystemSettings:

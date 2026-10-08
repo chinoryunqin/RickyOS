@@ -67,6 +67,14 @@ StandbyRetention standbyRetention() {
 // is logged here; a returned hook means the PMU never cut the rail, and the SDK
 // then idles instead of sleeping.
 void readPicoHostShutdown() {
+#ifdef RICKYOS_PRODUCT
+  // RickyOS power-off is the real off (the reference firmware's APP_SLEEP_OFF): the
+  // side key has to be held about a second to turn it back on. Soft sleep woke on a
+  // short press, which RickyOS uses for Standby.
+  if (BoardReadPico::pmuPowerOff()) return;
+  LOG_ERR("PWR", "PMU power-off handoff failed; trying soft sleep");
+  if (BoardReadPico::pmuSoftSleep()) return;
+#else
   // The sleep-screen path: HOST_SOFT_SLEEP asks the PMU to drop the host EN rail
   // (same endpoint as the reference firmware's APP_SLEEP_DEEP). It only accepts
   // the request from RUNNING, which it re-establishes internally.
@@ -74,6 +82,7 @@ void readPicoHostShutdown() {
 
   LOG_ERR("PWR", "PMU soft-sleep handoff failed; requesting a full power-off");
   if (BoardReadPico::pmuPowerOff()) return;
+#endif
 
   // Nothing else can turn this board off, and there is no wake source to arm, so
   // report it and let the SDK idle rather than entering a wake-less deep sleep.

@@ -94,7 +94,7 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
 
     def test_apps_entry_opens_the_settings_page_not_standby(self):
         menu = (ROOT / 'src/activities/apps/AppsMenuActivity.cpp').read_text()
-        product = menu.split('#ifdef RICKYOS_PRODUCT\n    {AppId::Standby', 1)[1].split('#else', 1)[0]
+        product = menu.split('#ifdef RICKYOS_PRODUCT\n    // The one entry for Standby', 1)[1].split('#else', 1)[0]
         self.assertIn('&ActivityManager::goToStandbySettings', product)
         page = (ROOT / 'src/activities/apps/standby/RickyStandbySettingsActivity.cpp').read_text()
         activate = body(page, 'void RickyStandbySettingsActivity::activateIndex(')
@@ -135,14 +135,14 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
         self.assertIn('imageReady = shown;', native)
 
 
-    def test_power_settings_link_to_the_standby_page_instead_of_repeating_it(self):
+    def test_settings_neither_repeat_nor_link_the_standby_page(self):
         settings = (ROOT / 'src/activities/settings/SettingsActivity.cpp').read_text()
         reorganize = body(settings, 'void SettingsActivity::reorganizeRickySettings()')
         moved = reorganize[reorganize.index('const auto elsewhere'):]
         moved = moved[:moved.index('for (auto* list')]
         self.assertIn('&CrossPointSettings::sleepScreen', moved)
         self.assertIn('&CrossPointSettings::standbyOverlay', moved)
-        self.assertIn('SettingInfo::Action(StrId::STR_RICKY_POWER_PAGE_TITLE, SettingAction::RickyStandbyPage)', reorganize)
+        self.assertNotIn('RickyStandbyPage', settings)  # Apps has the one entry
         self.assertNotIn('RickySleepWallpaper', settings)
         self.assertNotIn('RickyWallpaperDownload', settings)
 

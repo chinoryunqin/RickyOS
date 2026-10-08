@@ -124,10 +124,9 @@ int main(){
         run_cpp(program, defines=('RICKYOS_PRODUCT',))
 
     def test_wallpaper_picker_preview_cancel_and_decode_guard(self):
-        # Picking lives on the Apps → Standby page; Settings links there.
+        # Picking lives on the Apps → Standby & power off page, its one entry.
         settings = (ROOT / 'src/activities/settings/SettingsActivity.cpp').read_text()
-        self.assertIn('SettingAction::RickyStandbyPage', settings)
-        self.assertIn('startActivityForResultWith<RickyStandbySettingsActivity>', settings)
+        self.assertNotIn('RickyStandbySettingsActivity', settings)
         page = (ROOT / 'src/activities/apps/standby/RickyStandbySettingsActivity.cpp').read_text()
         self.assertIn('FileBrowserActivity::Mode::PickWallpaper', page)
         self.assertIn('startActivityForResultWith<ImageViewerActivity>(previewDone, entry->path, true)', page)
