@@ -188,7 +188,7 @@ void clearLibraryIndexDirty() {
 
 bool isBookName(const std::string& name) {
   return FsHelpers::checkFileExtension(name, ".epub") || FsHelpers::checkFileExtension(name, ".txt") ||
-         FsHelpers::checkFileExtension(name, ".md") || FsHelpers::checkFileExtension(name, ".xtc");
+         FsHelpers::checkFileExtension(name, ".md");
 }
 
 // Hidden entries (including macOS AppleDouble sidecars) and system folders such

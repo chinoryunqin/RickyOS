@@ -15,7 +15,6 @@
 
 #include <Epub.h>
 #include <FsHelpers.h>
-#include <Xtc.h>
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
@@ -86,11 +85,6 @@ std::string currentCoverBmp() {
   const std::string& book = APP_STATE.openEpubPath;
   if (book.empty()) return {};
   const bool cropped = SETTINGS.sleepScreenCoverMode == CrossPointSettings::SLEEP_SCREEN_COVER_MODE::CROP;
-  if (FsHelpers::hasXtcExtension(book)) {
-    Xtc xtc(book, "/.crosspoint");
-    if (!xtc.load() || !xtc.generateCoverBmp()) return {};
-    return xtc.getCoverBmpPath();
-  }
   if (FsHelpers::hasReflowableBookExtension(book)) {
     Epub epub(book, "/.crosspoint");
     if (!epub.load(true, true) || !epub.generateCoverBmp(cropped)) return {};

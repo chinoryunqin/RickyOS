@@ -8,7 +8,6 @@
 
 #include "CrossPointSettings.h"
 #include "InxItemLayout.h"
-#include "OpdsServerStore.h"
 #include "components/SubpageLayout.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
@@ -33,7 +32,6 @@ struct AppEntry {
 
 constexpr AppEntry kAppEntries[] = {
     {AppId::FileTransfer, StrId::STR_FILE_TRANSFER, UIIcon::Transfer, &ActivityManager::goToFileTransfer},
-    {AppId::OpdsBrowser, StrId::STR_OPDS_BROWSER, UIIcon::Opds, &ActivityManager::goToBrowser},
     {AppId::WeRead, StrId::STR_WEREAD_TITLE, UIIcon::WeRead, &ActivityManager::goToWeRead},
     {AppId::ReadingStats, StrId::STR_READING_STATS, UIIcon::ReadingStats, &ActivityManager::goToRickyReadingStats},
     {AppId::Gomoku, StrId::STR_GOMOKU_TITLE, UIIcon::Gomoku, &ActivityManager::goToGomoku},
@@ -64,12 +62,6 @@ constexpr int appIndexForVisibleIndex(const uint32_t hiddenMask, const int visib
   return -1;
 }
 
-constexpr uint32_t effectiveHiddenMask(const uint32_t hiddenMask, const bool hasOpdsServers) {
-  uint32_t effective = hiddenMask;
-  if (!hasOpdsServers) effective |= appBit(AppId::OpdsBrowser);
-  return effective;
-}
-
 constexpr bool appIdsAreUnique() {
   for (int i = 0; i < kAppCount; ++i) {
     for (int j = i + 1; j < kAppCount; ++j) {
@@ -85,10 +77,6 @@ static_assert(appIdsAreUnique(), "stable app IDs must not be reused");
 static_assert(visibleAppCount(0) == kAppCount, "a zero mask must show every compiled app");
 static_assert(visibleAppCount(UINT32_MAX) == 0, "a full mask must hide every compiled app");
 static_assert(visibleAppCount(appBit(AppId::Gomoku)) == kAppCount - 1, "the mask must hide compiled Gomoku");
-static_assert(visibleAppCount(effectiveHiddenMask(0, false)) == kAppCount - 1,
-              "OPDS must be hidden when no server is configured");
-static_assert(visibleAppCount(effectiveHiddenMask(0, true)) == kAppCount,
-              "all apps must be available regardless of language");
 static_assert(appIndexForVisibleIndex(appBit(kAppEntries[1].id), 1) == 2,
               "visible indices must skip a hidden middle app");
 
@@ -101,8 +89,6 @@ const uint8_t* rickyAppIcon(const UIIcon icon) {
   switch (icon) {
     case UIIcon::Transfer:
       return ricky_app_transfer_56;
-    case UIIcon::Opds:
-      return ricky_app_opds_56;
     case UIIcon::WeRead:
       return ricky_app_weread_56;
     case UIIcon::ReadingStats:
@@ -169,7 +155,7 @@ bool AppsMenuActivity::setAppVisible(const int appIndex, const bool visible) {
 }
 
 int AppsMenuActivity::getVisibleAppCount() {
-  return visibleAppCount(effectiveHiddenMask(SETTINGS.hiddenAppsMask, OPDS_STORE.hasServers()));
+  return visibleAppCount(SETTINGS.hiddenAppsMask);
 }
 
 void AppsMenuActivity::selectMainTabContentEdge(const MainTabContentEdge edge) {
@@ -178,7 +164,7 @@ void AppsMenuActivity::selectMainTabContentEdge(const MainTabContentEdge edge) {
 }
 
 int AppsMenuActivity::getAppIndexForVisibleIndex(const int visibleIndex) {
-  return appIndexForVisibleIndex(effectiveHiddenMask(SETTINGS.hiddenAppsMask, OPDS_STORE.hasServers()), visibleIndex);
+  return appIndexForVisibleIndex(SETTINGS.hiddenAppsMask, visibleIndex);
 }
 
 void AppsMenuActivity::onEnter() {

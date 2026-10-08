@@ -16,7 +16,7 @@ class FileBrowserImagesTest(unittest.TestCase):
         helpers = '\n'.join(method(fs, name) for name in (
             'bool checkFileExtension(', 'bool hasJpgExtension(', 'bool hasPngExtension(',
             'bool hasBmpExtension(', 'bool hasImageExtension(', 'bool hasEpubExtension(',
-            'bool hasXtcExtension(', 'bool hasTxtExtension(', 'bool hasMarkdownExtension(',
+            'bool hasTxtExtension(', 'bool hasMarkdownExtension(',
             'bool naturalLess(', 'void sortFileList(', 'std::string extractFolderPath(',
             'bool isProtectedPathComponent(', 'bool isSameOrDescendantPath('))
         methods = '\n'.join((

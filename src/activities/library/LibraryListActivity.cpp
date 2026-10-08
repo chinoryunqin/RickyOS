@@ -1146,7 +1146,6 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
       const char* format = FsHelpers::hasEpubExtension(path)       ? "EPUB"
                            : FsHelpers::hasTxtExtension(path)      ? "TXT"
                            : FsHelpers::hasMarkdownExtension(path) ? "MD"
-                           : FsHelpers::hasXtcExtension(path)      ? "XTC"
                                                                    : "";
       const auto* stats = READING_STATS.findMatchingBookForPath(path);
       if (stats)

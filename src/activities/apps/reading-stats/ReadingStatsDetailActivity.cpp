@@ -7,7 +7,6 @@
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Txt.h>
-#include <Xtc.h>
 
 #include <algorithm>
 #include <cstdlib>
@@ -166,9 +165,6 @@ std::string findFastCoverPath(const ReadingBookStats& book) {
   if (FsHelpers::hasEpubExtension(book.path)) {
     Epub epub(book.path, "/.crosspoint");
     resolved = resolveStoredCoverPath(epub.getCoverBmpPath());
-  } else if (FsHelpers::hasXtcExtension(book.path)) {
-    Xtc xtc(book.path, "/.crosspoint");
-    resolved = resolveStoredCoverPath(xtc.getCoverBmpPath());
   } else if (FsHelpers::hasTxtExtension(book.path) || FsHelpers::hasMarkdownExtension(book.path)) {
     Txt txt(book.path, "/.crosspoint");
     resolved = resolveStoredCoverPath(txt.getCoverBmpPath());

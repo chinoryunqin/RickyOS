@@ -35,7 +35,6 @@
 #include "CrossPointState.h"
 #include "KOReaderCredentialStore.h"
 #include "MappedInputManager.h"
-#include "OpdsServerStore.h"
 #include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
@@ -51,7 +50,6 @@
 #include "fontIds.h"
 #include "platform/UsbSerialJtagHandoff.h"
 #include "util/ButtonNavigator.h"
-#include "util/PluginEvents.h"
 #include "util/ScreenshotUtil.h"
 #include "util/Timezones.h"
 #include "util/UserGuide.h"
@@ -386,62 +384,6 @@ static bool loadSleepFrameBuffer() {
   return true;
 }
 
-// Plugin-event delivery on the way into deep sleep. sleep.enter is delivered
-// now — over the live connection, or by bringing WiFi up when a plugin
-// subscribes (e.g. fetching a fresh /sleep.bmp so THIS sleep shows it — the
-// drain runs before goToSleep() renders the sleep screen). The connect path
-// is bounded (join deadline + drain event budget), skipped on low battery,
-// and sleep is never blocked on the network: a failed join or delivery just
-// sleeps with the previous image and the queued events retry on the next
-// drain (at-least-once). The caller's WiFi shutdown tears the radio down
-// either way. Deferrable events already queued (reader.exit) ride along in
-// the same drain.
-static void deliverSleepPluginEvents(const bool preserveFrame = false) {
-  // Activity-owned state must be queued before sleep.enter and before this
-  // same-sleep drain. The hook is idempotent with ordinary activity teardown.
-  activityManager.prepareForSleep();
-
-  // Sleeping straight out of a book is the common flow, but the reader's own
-  // reader.exit only fires later, inside goToSleep() — after this drain. Carry
-  // the book and progress on sleep.enter itself so a sync handler bound to it
-  // pushes current progress on THIS connection, not the next one.
-  pluginevents::Var vars[2];
-  size_t varCount = 0;
-  char percent[8];
-  const ScreenshotInfo info = activityManager.getScreenshotInfo();
-  if (info.readerType != ScreenshotInfo::ReaderType::None && !APP_STATE.openEpubPath.empty()) {
-    snprintf(percent, sizeof(percent), "%d", info.progressPercent);
-    vars[varCount++] = {"book", APP_STATE.openEpubPath.c_str()};
-    vars[varCount++] = {"percent", percent};
-  }
-  pluginevents::emit(pluginevents::Event::SleepEnter, vars, varCount);
-  if (WiFi.status() == WL_CONNECTED) {
-    pluginevents::drain(preserveFrame ? nullptr : &renderer);
-    return;
-  }
-  // Any connect-flagged queued event justifies the join, not only
-  // sleep.enter: reader.session is queued while reading and delivered on this
-  // same sleep, and a progress-sync plugin usually subscribes to it alone.
-  if (!pluginevents::wantsConnectAny()) return;
-  if (powerManager.getBatteryPercentage() < 20) return;
-  const auto cred = WIFI_STORE.findCredential(WIFI_STORE.getLastConnectedSsid());
-  if (!cred) return;
-
-  if (!preserveFrame) GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(cred->ssid.c_str(), cred->password.c_str());
-  const unsigned long joinDeadline = millis() + 10000;
-  while (WiFi.status() != WL_CONNECTED && millis() < joinDeadline) {
-    delay(100);
-  }
-  if (WiFi.status() == WL_CONNECTED) {
-    trustedtime::startSync();  // snap the clock floor while the network is up
-    pluginevents::drain(preserveFrame ? nullptr : &renderer);
-  } else {
-    LOG_DBG("MAIN", "Sleep-event WiFi join timed out; deferring delivery");
-  }
-}
-
 // Enter deep sleep mode
 void enterDeepSleep(bool fromTimeout = false) {
   bleinput::stop();
@@ -455,8 +397,8 @@ void enterDeepSleep(bool fromTimeout = false) {
   // One source of truth: the Standby & power-off page. The separate "keep the page on
   // automatic sleep" switch could stay on after the mode changed and override it.
   const bool isQuickResumeSleep = SETTINGS.rickySleepScreenMode() == CrossPointSettings::SLEEP_SCREEN_MODE::QUICK_RESUME;
-  // Network progress/toasts must not replace any part of a retained reading page.
-  deliverSleepPluginEvents(isQuickResumeSleep);
+  // Activity-owned state (reading progress, session) is saved before the sleep screen.
+  activityManager.prepareForSleep();
   // Every sleep mode leaves a complete retained frame on the e-ink panel. Keep
   // it visible until the first useful reader or home paint replaces it.
   APP_STATE.showBootScreen = false;
@@ -817,10 +759,8 @@ void setup() {
   ACHIEVEMENTS.loadFromFile();
   I18N.setLanguage(static_cast<Language>(SETTINGS.language));
   KOREADER_STORE.loadFromFile();
-  OPDS_STORE.loadFromFile();
   UITheme::getInstance().reload();
   ButtonNavigator::setMappedInputManager(mappedInputManager);
-  pluginevents::refreshSubscriptions();
   // Restore the monotonic clock floor before anything reads time() (event
   // timestamps, loan-expiry checks).
   trustedtime::init();

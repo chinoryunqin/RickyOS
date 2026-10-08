@@ -12,7 +12,6 @@
 #include <algorithm>
 
 #include "CrossPointSettings.h"
-#include "OpdsServerStore.h"
 #include "apps/AppsMenuActivity.h"
 #include "apps/calculator/CalculatorActivity.h"
 #include "components/SubpageLayout.h"
@@ -23,20 +22,16 @@
 #include "apps/standby/RickyStandbySettingsActivity.h"
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
-#include "browser/OpdsBookBrowserActivity.h"
 #include "components/HeaderBackTapTarget.h"
 #include "home/CrashActivity.h"
 #include "home/FileBrowserActivity.h"
 #include "home/RickyStorageActivity.h"
-#include "home/HomeActivity.h"
 #include "home/InxRecentActivity.h"
 #include "home/RecentBooksActivity.h"
 #include "library/LibraryListActivity.h"
 #include "network/CrossPointWebServerActivity.h"
 #include "network/UsbDriveActivity.h"
-#include "plugins/PluginCatalogActivity.h"
 #include "reader/ReaderActivity.h"
-#include "settings/OpdsServerListActivity.h"
 #include "settings/SettingsActivity.h"
 #include "util/FrontlightPanelActivity.h"
 #include "util/FullScreenMessageActivity.h"
@@ -260,7 +255,7 @@ void ActivityManager::loop() {
     if (!atRest && currentActivity->name != "FrontlightPanel" && (statusBarTap || mappedInput.wasLightPanelGesture())) {
       resetHomeStandbyInput();
       // Over a book the panel adds its reading controls.
-      const bool overReader = currentActivity->name == "EpubReader" || currentActivity->name == "XtcReader";
+      const bool overReader = currentActivity->name == "EpubReader";
       auto panel = makeUniqueNoThrow<FrontlightPanelActivity>(renderer, mappedInput, overReader);
       if (!panel) {
         LOG_ERR("ACT", "OOM: frontlight panel (%u bytes)", static_cast<unsigned>(sizeof(FrontlightPanelActivity)));
@@ -623,20 +618,6 @@ void ActivityManager::goToLibrary() {
   replaceActivity(std::move(activity));
 }
 
-void ActivityManager::goToBrowser() {
-  const auto& servers = OPDS_STORE.getServers();
-  // Skip the server picker when there's only one server configured
-  if (servers.size() == 1) {
-    replaceActivityWith<OpdsBookBrowserActivity>(servers[0]);
-  } else {
-    replaceActivityWith<OpdsServerListActivity>(true);
-  }
-}
-
-void ActivityManager::goToPlugins(bool showOpds) {
-  replaceActivityWith<PluginCatalogActivity>(showOpds, /*rootMode=*/true);
-}
-
 void ActivityManager::goToReader(std::string path, const bool allowFastInitialRefresh) {
   if (path.empty()) {
     goToFileBrowser("/");
@@ -666,31 +647,15 @@ void ActivityManager::goToFullScreenMessage(std::string message, EpdFontFamily::
   replaceActivityWith<FullScreenMessageActivity>(std::move(message), style);
 }
 
-void ActivityManager::goHome(HomeMenuItem initialMenuItem) {
+void ActivityManager::goHome(HomeMenuItem) {
   if (!CrossPointSettings::requiresOnboarding(SETTINGS.onboardingVersion)) {
     UserGuide::installIfPending(static_cast<Language>(SETTINGS.language) == Language::ZH_CN);
   }
-  if (SETTINGS.uiTheme == CrossPointSettings::UI_THEME::INX) {
-    mainTabFocus = MainTabFocus::Tabs;
-    mainTabEntryReleasePending = false;
-    goToInxRecent();
-    return;
-  }
-  if (initialMenuItem == HomeMenuItem::NONE && currentActivity) {
-    const auto& activityName = currentActivity->name;
-    if (activityName == "FileBrowser") {
-      initialMenuItem = HomeMenuItem::FILE_BROWSER;
-    } else if (activityName == "Library") {
-      initialMenuItem = HomeMenuItem::LIBRARY;
-    } else if (activityName == "OpdsBookBrowser") {
-      initialMenuItem = HomeMenuItem::OPDS_BROWSER;
-    } else if (activityName == "CrossPointWebServer") {
-      initialMenuItem = HomeMenuItem::FILE_TRANSFER;
-    } else if (activityName == "Settings") {
-      initialMenuItem = HomeMenuItem::SETTINGS_MENU;
-    }
-  }
-  replaceActivityWith<HomeActivity>(initialMenuItem);
+  // The theme is pinned to INX (CrossPointSettings::enforceProductLayout): Home is the
+  // main-tab Recent page.
+  mainTabFocus = MainTabFocus::Tabs;
+  mainTabEntryReleasePending = false;
+  goToInxRecent();
 }
 void ActivityManager::goToCrashReport() { replaceActivityWith<CrashActivity>(); }
 

@@ -25,7 +25,6 @@ const char* formatOf(const std::string& path) {
   return FsHelpers::hasEpubExtension(path)       ? "EPUB"
          : FsHelpers::hasTxtExtension(path)      ? "TXT"
          : FsHelpers::hasMarkdownExtension(path) ? "MD"
-         : FsHelpers::hasXtcExtension(path)      ? "XTC"
                                                  : nullptr;
 }
 }  // namespace

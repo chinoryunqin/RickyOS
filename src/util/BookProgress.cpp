@@ -5,7 +5,6 @@
 #include <HalStorage.h>
 #include <Logging.h>
 #include <Memory.h>
-#include <Xtc.h>
 
 #include <algorithm>
 
@@ -37,21 +36,6 @@ int loadBookProgress(const std::string& path) {
     if (spine > epub->getSpineItemsCount()) return -1;
     const float fraction = total > 0 && page != UINT16_MAX ? std::clamp(float(page) / total, 0.0f, 1.0f) : 0;
     return std::clamp(static_cast<int>(epub->calculateProgress(spine, fraction) * 100 + 0.5f), 0, 100);
-  }
-  if (FsHelpers::hasXtcExtension(path)) {
-    auto xtc = makeUniqueNoThrow<Xtc>(path, "/.crosspoint");
-    if (!xtc) {
-      LOG_ERR("HOME", "OOM: XTC progress metadata");
-      return -1;
-    }
-    if (!xtc->load()) return -1;
-    HalFile file;
-    if (!Storage.openFileForRead("HOME", xtc->getCachePath() + "/progress.bin", file) || file.read(data, 4) != 4)
-      return -1;
-    const uint32_t page = readLe32(data);
-    if (xtc->getPageCount() == 0) return -1;
-    if (page >= xtc->getPageCount()) return 100;
-    return xtc->calculateProgress(page);
   }
   return -1;
 }

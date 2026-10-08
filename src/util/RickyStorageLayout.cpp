@@ -18,7 +18,7 @@ constexpr const char* LEGACY_BOOK_FOLDERS[] = {"/book", "/Pushed Books"};
 // its own marker lets devices that already ran the first move pick these up.
 constexpr char WEREAD_MIGRATION_MARKER[] = "/.crosspoint/ricky-storage-layout-2";
 constexpr const char* WEREAD_BOOK_FOLDERS[] = {"/WeRead"};
-constexpr const char* BOOK_EXTENSIONS[] = {".epub", ".txt", ".md", ".xtc", ".xtch", ".pdf", ".azw3", ".mobi", ".fb2"};
+constexpr const char* BOOK_EXTENSIONS[] = {".epub", ".txt", ".md", ".pdf", ".azw3", ".mobi", ".fb2"};
 
 bool isBookFile(const std::string& name) {
   for (const char* extension : BOOK_EXTENSIONS) {

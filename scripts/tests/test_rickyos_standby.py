@@ -148,12 +148,12 @@ int main(){
         self.assertIn('Storage.rename(SLEEP_IMAGE_BACKUP_PATH, SLEEP_IMAGE_PATH)', install)
 
     def test_sleep_network_toasts_do_not_damage_retained_page(self):
+        # No plugin delivery on the way into sleep any more: nothing joins Wi-Fi or
+        # draws a toast over the retained page; activity state is still saved first.
         source = (ROOT / 'src/main.cpp').read_text()
-        drain = method(source, 'static void deliverSleepPluginEvents(')
-        self.assertEqual(drain.count('pluginevents::drain(preserveFrame ? nullptr : &renderer)'), 2)
-        self.assertIn('if (!preserveFrame) GUI.drawPopup', drain)
+        self.assertNotIn('pluginevents', source)
         enter = method(source, 'void enterDeepSleep(')
-        self.assertIn('deliverSleepPluginEvents(isQuickResumeSleep)', enter)
+        self.assertIn('activityManager.prepareForSleep();', enter)
 
 
 if __name__ == '__main__':

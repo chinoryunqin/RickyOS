@@ -32,10 +32,11 @@ int main() {
   using appVisibility::appBit;
   constexpr AppId removed[] = {AppId::Sudoku, AppId::Sokoban, AppId::ChineseChess,
                              AppId::Minesweeper, AppId::Game2048, AppId::UglyAvatar,
-                             AppId::Buddy, AppId::PixelSwitch, AppId::Woodfish, AppId::AirPage};
+                             AppId::Buddy, AppId::PixelSwitch, AppId::Woodfish, AppId::AirPage,
+                             AppId::OpdsBrowser};  // OPDS left in 1.2
   constexpr AppId tools[] = {AppId::Gomoku, AppId::Calculator,
                              AppId::FileTransfer, AppId::ReadingStats,
-                             AppId::Standby, AppId::OpdsBrowser};
+                             AppId::Standby};
   for (auto id : tools) {
     bool found=false;
     for (auto entry : kAppEntries) found |= entry.id == id;
@@ -56,7 +57,7 @@ int main() {
   }
 #ifdef RICKYOS_PRODUCT
 #ifdef ENABLE_CHINESE_VERSION
-  static_assert(kAppCount == 7);
+  static_assert(kAppCount == 6);  // transfer, WeRead, stats, Gomoku, calculator, Screensaver
 #else
   static_assert(kAppCount == 6);
 #endif
@@ -67,7 +68,7 @@ int main() {
   static_assert(kAppCount == 15);
 #endif
 #endif
-  constexpr AppId expected[] = {AppId::FileTransfer, AppId::OpdsBrowser,
+  constexpr AppId expected[] = {AppId::FileTransfer,
 #ifdef ENABLE_CHINESE_VERSION
     AppId::WeRead,
 #endif

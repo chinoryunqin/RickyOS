@@ -31,7 +31,7 @@ class RickyQuickWinsTest(unittest.TestCase):
                       'pageTurnDirection', 'sideButtonLayout', 'longPressButtonBehavior', 'standbyShortcutEnabled',
                       'shortPwrBtn', 'longPressMenuFunction'):
             self.assertIn(f'&CrossPointSettings::{field}', block)
-        for action in ('SdFirmwareUpdate', 'Plugins'):
+        for action in ('SdFirmwareUpdate',):
             self.assertIn(f'SettingAction::{action}', block)
         self.assertIn('SettingAction::RickyGestures', source)
         self.assertIn('SettingAction::RickyKeys', source)

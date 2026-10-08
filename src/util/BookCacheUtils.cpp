@@ -4,7 +4,6 @@
 #include <FsHelpers.h>
 #include <Logging.h>
 #include <Txt.h>
-#include <Xtc.h>
 
 #include "CrossPointState.h"
 #include "ReadingStatsStore.h"
@@ -43,8 +42,6 @@ bool clearBookCache(const std::string& path) {
   bool cleared = true;
   if (FsHelpers::hasReflowableBookExtension(path)) {
     cleared = Epub(path, "/.crosspoint").clearCache();
-  } else if (FsHelpers::hasXtcExtension(path)) {
-    cleared = Xtc(path, "/.crosspoint").clearCache();
   } else if (FsHelpers::hasTxtExtension(path) || FsHelpers::hasMarkdownExtension(path)) {
     cleared = Epub(path, "/.crosspoint").clearCache();
   } else {
@@ -57,7 +54,6 @@ bool clearBookCache(const std::string& path) {
 
 std::string bookCachePath(const std::string& path) {
   if (FsHelpers::hasReflowableBookExtension(path)) return Epub(path, "/.crosspoint").getCachePath();
-  if (FsHelpers::hasXtcExtension(path)) return Xtc(path, "/.crosspoint").getCachePath();
   if (FsHelpers::hasTxtExtension(path) || FsHelpers::hasMarkdownExtension(path)) {
     return Epub(path, "/.crosspoint").getCachePath();
   }

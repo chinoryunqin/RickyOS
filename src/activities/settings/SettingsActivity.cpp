@@ -40,7 +40,6 @@
 #include "KeyboardLayoutsActivity.h"
 #include "LanguageSelectActivity.h"
 #include "MappedInputManager.h"
-#include "OpdsServerListActivity.h"
 #include "OtaUpdateActivity.h"
 #include "ReadingStatsSettingsActivity.h"
 #include "SdCardFontSystem.h"
@@ -51,7 +50,6 @@
 #include "TextSettingsActivity.h"
 #include "activities/home/FileBrowserActivity.h"
 #include "activities/network/WifiSelectionActivity.h"
-#include "activities/plugins/PluginCatalogActivity.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "activities/util/IntervalSelectionActivity.h"
 #include "components/SubpageLayout.h"
@@ -328,7 +326,7 @@ void SettingsActivity::reorganizeRickySettings() {
            field == &CrossPointSettings::longPressButtonBehavior ||
            field == &CrossPointSettings::standbyShortcutEnabled || field == &CrossPointSettings::shortPwrBtn ||
            field == &CrossPointSettings::pwrBtnFootnoteBack || field == &CrossPointSettings::longPressMenuFunction ||
-           setting.action == SettingAction::SdFirmwareUpdate || setting.action == SettingAction::Plugins;
+           setting.action == SettingAction::SdFirmwareUpdate;
   };
   for (auto* list : {&displaySettings, &readerSettings, &controlsSettings, &systemSettings}) {
     removeMatching(*list, elsewhere);
@@ -337,8 +335,7 @@ void SettingsActivity::reorganizeRickySettings() {
   // Standby & power-off lives in Apps (one entry); Display keeps the display rows.
   // Network & Sync.
   moveMatching(systemSettings, connectionSettings, [](const SettingInfo& setting) {
-    return setting.action == SettingAction::Network || setting.action == SettingAction::KOReaderSync ||
-           setting.action == SettingAction::OPDSBrowser;
+    return setting.action == SettingAction::Network || setting.action == SettingAction::KOReaderSync;
   });
   moveMatching(controlsSettings, connectionSettings,
                [](const SettingInfo& setting) { return setting.action == SettingAction::Bluetooth; });
@@ -459,7 +456,6 @@ void SettingsActivity::rebuildSettingsLists() {
   }
   systemSettings.push_back(SettingInfo::Action(StrId::STR_WIFI_NETWORKS, SettingAction::Network));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_KOREADER_SYNC, SettingAction::KOReaderSync));
-  systemSettings.push_back(SettingInfo::Action(StrId::STR_OPDS_SERVERS, SettingAction::OPDSBrowser));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CLEAR_READING_CACHE, SettingAction::ClearCache));
   systemSettings.push_back(
       SettingInfo::Action(StrId::STR_RESTORE_SYSTEM_SETTINGS, SettingAction::RestoreSystemSettings));
@@ -468,7 +464,6 @@ void SettingsActivity::rebuildSettingsLists() {
   systemSettings.push_back(SettingInfo::Action(StrId::STR_RICKYOS_FIRMWARE_UPDATE, SettingAction::CheckForUpdates));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_RICKY_SCREEN_REPAIR, SettingAction::RickyScreenRepair));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_SD_FIRMWARE_UPDATE, SettingAction::SdFirmwareUpdate));
-  systemSettings.push_back(SettingInfo::Action(StrId::STR_PLUGINS, SettingAction::Plugins));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_KEYBOARD_LAYOUTS, SettingAction::KeyboardLayouts));
   if (usesAccordion()) {
     systemSettings.push_back(SettingInfo::Action(StrId::STR_LANGUAGE, SettingAction::Language));
@@ -909,9 +904,6 @@ void SettingsActivity::toggleCurrentSetting() {
       case SettingAction::KOReaderSync:
         startActivityForResultWith<KOReaderSettingsActivity>(resultHandler);
         break;
-      case SettingAction::OPDSBrowser:
-        startActivityForResultWith<OpdsServerListActivity>(resultHandler);
-        break;
       case SettingAction::Network: {
         auto activity = makeUniqueNoThrow<WifiSelectionActivity>(renderer, mappedInput, false);
         if (!activity) {
@@ -1019,9 +1011,6 @@ void SettingsActivity::toggleCurrentSetting() {
           startActivityForResultWith<InxAboutActivity>(resultHandler);
         else
           startActivityForResultWith<AboutActivity>(resultHandler);
-        break;
-      case SettingAction::Plugins:
-        startActivityForResultWith<PluginCatalogActivity>(resultHandler);
         break;
       case SettingAction::KeyboardLayouts:
         if (auto activity = makeUniqueNoThrow<KeyboardLayoutsActivity>(renderer, mappedInput)) {

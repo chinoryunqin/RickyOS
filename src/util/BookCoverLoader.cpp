@@ -6,7 +6,6 @@
 #include <HalStorage.h>
 #include <Logging.h>
 #include <Txt.h>
-#include <Xtc.h>
 
 namespace BookCoverLoader {
 namespace {
@@ -62,15 +61,6 @@ std::string ensureThumbnail(const std::string& bookPath, const int height, bool*
     });
   }
 
-  if (FsHelpers::hasXtcExtension(bookPath)) {
-    Xtc xtc(bookPath, "/.crosspoint");
-    const std::string path = xtc.getThumbBmpPath(height);
-    return ensureCachedCover(path, false, generated, [&]() {
-      if (!xtc.load()) return false;
-      xtc.setupCacheDir();
-      return xtc.generateThumbBmp(height);
-    });
-  }
 
   return "";
 }
@@ -93,17 +83,6 @@ std::string ensureFullCover(const std::string& bookPath, std::string* title, std
     });
   }
 
-  if (FsHelpers::hasXtcExtension(bookPath)) {
-    Xtc xtc(bookPath, "/.crosspoint");
-    const std::string path = xtc.getCoverBmpPath();
-    return ensureCachedCover(path, false, generated, [&]() {
-      if (!xtc.load()) return false;
-      xtc.setupCacheDir();
-      if (title) *title = xtc.getTitle();
-      if (author) *author = xtc.getAuthor();
-      return xtc.generateCoverBmp();
-    });
-  }
 
   if (FsHelpers::hasTxtExtension(bookPath) || FsHelpers::hasMarkdownExtension(bookPath)) {
     Txt txt(bookPath, "/.crosspoint");
