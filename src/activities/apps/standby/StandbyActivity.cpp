@@ -463,9 +463,18 @@ bool StandbyActivity::tryLightSleep(const uint32_t idleMs) {
       processFaceTick(true);
       return true;
     case HalPowerManager::LightSleepWakeReason::PowerButton:
+#ifdef RICKYOS_PRODUCT
+      // A short press, already over before main.cpp's key poll could see it: leave
+      // Standby, as that press does while awake.
+      lastInputMs_ = millis();
+      activityManager.closeStandby();
+      return true;
+#endif
+    case HalPowerManager::LightSleepWakeReason::PowerButtonHeld:
 #ifndef RICKYOS_PRODUCT
       mode_ = DisplayMode::Normal;
 #endif
+      // Still down: main.cpp finishes it (release = leave Standby, hold = power off).
       lastInputMs_ = millis();
       requestUpdate();
       return true;

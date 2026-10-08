@@ -111,6 +111,13 @@ HalPowerManager::LightSleepWakeReason lightSleepReadPico(const uint32_t seconds)
   // Release a pending assertion first: the expander's INT# is open-drain and NOT
   // latched, and reading its Input register is what releases it (fca9555.h).
   // Leaving a stale low on the line would end the sleep immediately.
+#ifdef RICKYOS_PRODUCT
+  // Presses so far were already read as key levels; drop their PMU events so its
+  // interrupt line releases and the next press changes INT# again. Left queued,
+  // the full FIFO holds that line and no press can end the sleep.
+  bool keyDown = false;
+  (void)BoardReadPico::takePmuKeyPress(keyDown);
+#endif
   BoardReadPico::clearIoeInt();
 
   if (!freeink::PowerManager::armLightSleepWakeupLevels(kIoeIntMask, 0)) {
@@ -138,6 +145,18 @@ HalPowerManager::LightSleepWakeReason lightSleepReadPico(const uint32_t seconds)
     return LightSleepWakeReason::Failed;
   }
 
+#ifdef RICKYOS_PRODUCT
+  // The PMU's key event is authoritative, whatever ended the sleep: a press can
+  // also land just before a timer wake (read_pico main/sleep.c does the same).
+  if (BoardReadPico::takePmuKeyPress(keyDown)) {
+    return keyDown ? LightSleepWakeReason::PowerButtonHeld : LightSleepWakeReason::PowerButton;
+  }
+  if (cause == ESP_SLEEP_WAKEUP_GPIO) {
+    // Another expander input (card detect, charger): stay awake a while, as before.
+    LOG_INF("PWR", "Light sleep ended by an expander input, not the key");
+    return LightSleepWakeReason::Failed;
+  }
+#endif
   switch (cause) {
     case ESP_SLEEP_WAKEUP_TIMER:
       return LightSleepWakeReason::Timer;

@@ -1191,6 +1191,14 @@ void loop() {
     lastActivityTime = millis();         // Reset inactivity timer
     powerManager.setPowerSaving(false);  // Restore normal CPU frequency on user activity
   }
+#ifdef RICKYOS_PRODUCT
+  // Standby closes itself on a key press that woke its light sleep, which this loop
+  // never saw as input: leaving Standby is activity, or idle would reopen it at once.
+  static bool standbyWasShowing = false;
+  const bool standbyShowingNow = activityManager.standbyShowing();
+  if (standbyWasShowing && !standbyShowingNow) lastActivityTime = millis();
+  standbyWasShowing = standbyShowingNow;
+#endif
   // preventAutoSleep() is intentionally NOT folded into the activity check above:
   // it only short-circuits the deep-sleep timer below, not the inactivity clock
   // that drives auto-downclock. Standby (a clock face) wants deep sleep blocked

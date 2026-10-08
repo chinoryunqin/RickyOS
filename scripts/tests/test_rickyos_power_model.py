@@ -57,6 +57,31 @@ class RickyPowerModelTest(unittest.TestCase):
         self.assertIn('it->nameId = StrId::STR_RICKY_AUTO_STANDBY;', page)
         self.assertIn('&CrossPointSettings::rickyAutoOffIndex', page)
 
+    def test_side_key_wakes_standby_light_sleep(self):
+        # The PMU holds its interrupt while key events are queued; unacknowledged, a
+        # full FIFO meant no press could end Standby's light sleep (device: only a
+        # hold worked once Standby had slept). Drain before and after every sleep.
+        import sys
+        sys.path.insert(0, str(ROOT / 'scripts'))
+        import patch_rickyos_pmu_keys as patch
+        self.assertIn('pre:scripts/patch_rickyos_pmu_keys.py', read('platformio.ini'))
+        board = read('freeink-sdk/libs/hardware/BoardReadPico/src/BoardReadPico.cpp')
+        header = read('freeink-sdk/libs/hardware/BoardReadPico/include/BoardReadPico.h')
+        for source, old, new in ((header, patch.OLD_DECL, patch.NEW_DECL), (board, patch.OLD_DEF, patch.NEW_DEF)):
+            patched = patch.patch_text(source, old, new)
+            self.assertIn(new, patched)
+            self.assertEqual(patched, patch.patch_text(patched, old, new))
+        self.assertIn('if (!pmuEventAck(id)) break;', patch.NEW_DEF)
+        hal = read('lib/hal/HalPowerManager.cpp')
+        sleep = hal[hal.index('HalPowerManager::LightSleepWakeReason lightSleepReadPico('):]
+        self.assertLess(sleep.index('takePmuKeyPress(keyDown);'), sleep.index('esp_light_sleep_start()'))
+        self.assertLess(sleep.index('esp_light_sleep_start()'), sleep.index('if (BoardReadPico::takePmuKeyPress(keyDown))'))
+        standby = method(read('src/activities/apps/standby/StandbyActivity.cpp'),
+                         'bool StandbyActivity::tryLightSleep(')
+        quick = standby[standby.index('LightSleepWakeReason::PowerButton:'):standby.index('LightSleepWakeReason::PowerButtonHeld:')]
+        self.assertIn('activityManager.closeStandby();', quick)
+        main = read('src/main.cpp')
+        self.assertIn('if (standbyWasShowing && !standbyShowingNow) lastActivityTime = millis();', main)
 
 if __name__ == '__main__':
     unittest.main()
