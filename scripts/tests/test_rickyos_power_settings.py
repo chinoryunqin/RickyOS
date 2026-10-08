@@ -11,10 +11,7 @@ class RickyPowerSettingsTest(unittest.TestCase):
     def test_product_settings_do_not_synthetically_thicken_whole_list(self):
         source = (ROOT / "src/activities/settings/SettingsActivity.cpp").read_text()
         screen = source.split("void SettingsActivity::buildScreen(", 1)[1]
-        branch = screen.split("#ifdef RICKYOS_PRODUCT", 1)[1].split("#endif", 1)[0]
-        product, upstream = branch.split("#else", 1)
-        self.assertIn("constexpr bool boldChineseCategories = false", product)
-        self.assertIn("I18N.getLanguage() == Language::ZH_CN", upstream)
+        self.assertIn("constexpr bool boldChineseCategories = false", screen)
         self.assertIn("if (category) item.state = fui::StateEmphasized", source)
 
     def test_power_and_six_category_geometry(self):
@@ -69,15 +66,6 @@ int main() {
         self.assertIn("formatCurrentTime", status)
         self.assertIn("drawBatteryRight", status)
 
-    def test_category_rows_have_no_redundant_action_label(self):
-        source = (ROOT / "src/activities/settings/SettingsActivity.cpp").read_text()
-        screen = source.split("void SettingsActivity::buildScreen(", 1)[1]
-        self.assertIn('rowValues_[i] = row.isCategory() ? "" : settingValueText', screen)
-        self.assertNotIn("STR_RICKY_EXPAND", screen)
-        self.assertNotIn("STR_RICKY_COLLAPSE", screen)
-        self.assertIn("rowValues_[i].empty() ? nullptr", screen)
-        self.assertIn("toggleAccordionCategory(row.category)", source)
-
     def test_sleep_transition_is_bounded_and_other_modes_survive(self):
         source = (ROOT / "src/activities/boot_sleep/SleepActivity.cpp").read_text()
         self.assertIn("if (!fromTimeout)", source)
@@ -100,7 +88,7 @@ int main() {
         self.assertIn("swap(librarySettings)", source)
         self.assertIn("swap(connectionSettings)", source)
         self.assertNotIn("STR_RICKY_HELP_OTA", source)
-        self.assertIn("props.rowGap = std::max<int16_t>(6", source)
+        self.assertIn("productProps.rowGap = std::max<int16_t>(6", source)
 
 
 if __name__ == "__main__":

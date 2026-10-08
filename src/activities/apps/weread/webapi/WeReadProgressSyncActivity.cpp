@@ -1,6 +1,5 @@
 #include "WeReadProgressSyncActivity.h"
 
-#ifdef ENABLE_CHINESE_VERSION
 
 #include <Epub.h>
 #include <FontCacheManager.h>
@@ -507,4 +506,3 @@ void WeReadProgressSyncActivity::render(RenderLock&&) {
   renderer.displayBuffer(fullRefreshPending_.exchange(false) ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH);
 }
 
-#endif

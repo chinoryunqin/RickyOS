@@ -1,5 +1,4 @@
 #pragma once
-#ifdef RICKYOS_PRODUCT
 #include "activities/UiListActivity.h"
 
 class RickyProfileActivity final : public UiListActivity {
@@ -18,4 +17,3 @@ class RickyProfileActivity final : public UiListActivity {
   bool waitForConfirmRelease = false;
   bool failed = false;
 };
-#endif

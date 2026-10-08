@@ -1,6 +1,5 @@
 #include "FontLibraryActivity.h"
 
-#ifdef RICKYOS_PRODUCT
 #include <GfxRenderer.h>
 #include <I18n.h>
 #include <Logging.h>
@@ -210,4 +209,3 @@ void FontLibraryActivity::render(RenderLock&& lock) {
   if (popup_.processRender(renderer, mappedInput)) return;
   UiListActivity::render(std::move(lock));
 }
-#endif

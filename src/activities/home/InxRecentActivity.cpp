@@ -15,9 +15,7 @@
 #include "ReadingStatsStore.h"
 #include "components/SubpageLayout.h"
 #include "components/UITheme.h"
-#ifdef RICKYOS_PRODUCT
 #include "components/RickyHomeLayout.h"
-#endif
 #include "components/icons/cover.h"
 #include "components/themes/inx/InxTheme.h"
 #include "fontIds.h"
@@ -32,14 +30,10 @@ constexpr int kProgressHeight = 6;
 const char* titleOf(const RecentBook& book) { return book.title.empty() ? book.path.c_str() : book.title.c_str(); }
 
 bool drawRecentCover(const GfxRenderer& renderer, const Bitmap& bitmap, const Rect& bounds) {
-#ifdef RICKYOS_PRODUCT
   const auto fit = RickyHomeLayout::fitBitmap(bitmap.getWidth(), bitmap.getHeight(), bounds.width, bounds.height);
   if (fit.width <= 0 || fit.height <= 0) return false;
   return renderer.drawBitmap(bitmap, bounds.x + (bounds.width - fit.width) / 2,
                              bounds.y + (bounds.height - fit.height) / 2, fit.width, fit.height);
-#else
-  return renderer.drawBitmapCropToFill(bitmap, bounds.x, bounds.y, bounds.width, bounds.height);
-#endif
 }
 
 void drawMiniProgress(const GfxRenderer& renderer, const Rect rect, const uint8_t percent) {
@@ -146,7 +140,6 @@ void InxRecentActivity::onEnter() {
   thumbnailHeight = 0;
   targetCoverStates.fill(CoverCacheState::Unchecked);
   fallbackCoverStates.fill(CoverCacheState::Unchecked);
-#ifdef RICKYOS_PRODUCT
   if (layout() == InxRecentLayout::Flow) {
     // One optional host per live home; interaction tables/props cannot live on
     // the render stack. Borrow recents and the existing bounded cover cache.
@@ -164,7 +157,6 @@ void InxRecentActivity::onEnter() {
       LOG_ERR("RICKY", "OOM: home host; retaining original home layout");
     }
   }
-#endif
 #if defined(BOARD_HAS_PSRAM) && !defined(SIMULATOR) && !defined(CROSSPOINT_EMULATED)
   clearCoverCaches();
 #endif
@@ -172,10 +164,8 @@ void InxRecentActivity::onEnter() {
 }
 
 void InxRecentActivity::onExit() {
-#ifdef RICKYOS_PRODUCT
   if (rickyHome) rickyHome->closeRouting();
   rickyHome.reset();
-#endif
   books = nullptr;
   bookStats.fill(nullptr);
   targetCoverStates.fill(CoverCacheState::Unchecked);
@@ -389,7 +379,6 @@ int InxRecentActivity::indexFromPoint(const int x, const int y) const {
 }
 
 void InxRecentActivity::loop() {
-#ifdef RICKYOS_PRODUCT
   if (rickyHome) {
     const int action = rickyHome->selectedAction(mappedInput);
     if (action == RickyHomeUi::LIBRARY) {
@@ -406,7 +395,6 @@ void InxRecentActivity::loop() {
       return;
     }
   }
-#endif
   if (!books || books->empty()) return;
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
@@ -416,11 +404,9 @@ void InxRecentActivity::loop() {
 
   int x = 0;
   int y = 0;
-#ifdef RICKYOS_PRODUCT
   if (rickyHome) {
     // Already routed above, including the profile on an empty home.
   } else
-#endif
   {
     if (mappedInput.wasScreenTouchDown(x, y)) {
       const int touched = indexFromPoint(x, y);
@@ -442,7 +428,6 @@ void InxRecentActivity::loop() {
 
   const int count = static_cast<int>(books->size());
   const auto swipe = mappedInput.wasSwipe();
-#ifdef RICKYOS_PRODUCT
   if (rickyHome && swipe != MappedInputManager::SwipeDir::None) {
     // A page holds RickyHomeLayout::PAGE_BOOKS books; moving the selection by one book
     // changed the page only every third swipe, so most swipes did nothing visible.
@@ -454,7 +439,6 @@ void InxRecentActivity::loop() {
     requestUpdate();
     return;
   }
-#endif
   if (mappedInput.wasReleased(MappedInputManager::Button::NavNext) || swipe == MappedInputManager::SwipeDir::Up ||
       swipe == MappedInputManager::SwipeDir::Left) {
     selected = (selected + 1) % count;
@@ -621,7 +605,6 @@ void InxRecentActivity::render(RenderLock&&) {
 
   if (content.width > 0 && content.height > 0) {
     const GfxRenderer::ClipScope clip(renderer, content.x, content.y, content.width, content.height);
-#ifdef RICKYOS_PRODUCT
     if (rickyHome) {
       const int start = RickyHomeLayout::pageStart(selected);
       const int inset = UiHighDpiProfile::contentPadding;
@@ -629,13 +612,11 @@ void InxRecentActivity::render(RenderLock&&) {
       rickyHome->configure(bounds, selected, showMainTabContentSelection(), progressOf(statsAt(start)));
       rickyHome->renderUi();
     } else
-#endif
         if (!books || books->empty()) {
       UITheme::drawCenteredWrappedText(renderer, content, UI_12_FONT_ID, tr(STR_NO_RECENT_BOOKS), 2);
     } else {
       switch (layout()) {
         case InxRecentLayout::Flow:
-#ifdef RICKYOS_PRODUCT
           if (rickyHome) {
             const int start = RickyHomeLayout::pageStart(selected);
             const int inset = UiHighDpiProfile::contentPadding;
@@ -643,7 +624,6 @@ void InxRecentActivity::render(RenderLock&&) {
             rickyHome->configure(bounds, selected, showMainTabContentSelection(), progressOf(statsAt(start)));
             rickyHome->renderUi();
           } else
-#endif
             drawFlow(content);
           break;
         case InxRecentLayout::Grid:

@@ -1,5 +1,4 @@
 #include "RickyReadingStatsActivity.h"
-#ifdef RICKYOS_PRODUCT
 #include <GfxRenderer.h>
 #include <I18n.h>
 
@@ -269,4 +268,3 @@ void RickyReadingStatsActivity::buildScreen(UiScreen& screen) {
   target.text(rect(factCard.x + pad, factY, factCard.width - pad * 2, bodyHeight * (twoLines ? 2 : 1)),
               factText.c_str(), fact);
 }
-#endif

@@ -1,4 +1,3 @@
-#ifdef RICKYOS_PRODUCT
 #include "KeepPageFace.h"
 
 #include <GfxRenderer.h>
@@ -13,4 +12,3 @@ bool KeepPageFace::renderNative(GfxRenderer& renderer, const Rect&) {
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
   return true;
 }
-#endif

@@ -1,6 +1,4 @@
-#ifdef RICKYOS_PRODUCT
 #include "components/RickyAaIcons.h"
-#endif
 #include <GfxRenderer.h>
 #include <HalGPIO.h>
 
@@ -16,27 +14,17 @@
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
 #include "components/icons/inx_apps.h"
-#ifdef RICKYOS_PRODUCT
 #include "components/RickyPageLayout.h"
 #include "components/icons/rickyNavigationIcons.h"
-#elif defined(CROSSMUX_UI_PROFILE_HIGH_DPI)
-#include "components/icons/uiChromeIcons.h"
-#else
-#include "components/icons/inx_tabs.h"
-#endif
 #include "fontIds.h"
 #include "util/TimeUtils.h"
 
 namespace {
-#ifdef RICKYOS_PRODUCT
 // The product tab bar: 40 px icons drawn with ~2.5 px round strokes over small labels;
 // the selected tab reverses its icon inside an ink capsule.
 constexpr int kIconSize = 40;
 constexpr int kPillWidth = 80;
 constexpr int kPillHeight = 50;
-#else
-constexpr int kIconSize = UiHighDpiProfile::enabled ? UiHighDpiProfile::navigationIconSize : 38;
-#endif
 constexpr int kUnderlineHeight = 5;
 constexpr int kRowHeight = InxMenuGeometry::rowHeight;
 constexpr int kRowPadding = UiHighDpiProfile::enabled ? UiHighDpiProfile::contentPadding : 20;
@@ -67,7 +55,6 @@ const char* hintLabel(const char* label) {
 }
 
 const uint8_t* iconForTab(const MainTab tab) {
-#ifdef RICKYOS_PRODUCT
   // By tab, not by position: MainTabs::values sets the order.
   switch (tab) {
     case MainTab::Recent:
@@ -83,50 +70,10 @@ const uint8_t* iconForTab(const MainTab tab) {
     default:
       return nullptr;
   }
-#else
-  switch (tab) {
-    case MainTab::Recent:
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
-      return icon_tab_recent_56.bits;
-#else
-      return InxRecentTabIcon;
-#endif
-    case MainTab::Library:
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
-      return icon_tab_library_56.bits;
-#else
-      return InxLibraryTabIcon;
-#endif
-    case MainTab::Settings:
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
-      return icon_tab_settings_56.bits;
-#else
-      return InxSettingsTabIcon;
-#endif
-    case MainTab::Statistics:
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
-      return icon_tab_statistics_56.bits;
-#else
-      return InxStatisticsTabIcon;
-#endif
-    case MainTab::Apps:
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
-      return icon_tab_apps_56.bits;
-#else
-      return InxAppsTabIcon;
-#endif
-    case MainTab::StorageFiles:
-    case MainTab::None:
-      return nullptr;
-  }
-  return nullptr;
-#endif
 }
 
 void drawInxIcon(const GfxRenderer& renderer, const uint8_t* icon, const int x, const int y) {
-#ifdef RICKYOS_PRODUCT
   if (RickyAaIcons::draw(renderer, icon, kIconSize, kIconSize, x, y, true)) return;
-#endif
   constexpr int rowBytes = (kIconSize + 7) / 8;
   for (int row = 0; row < kIconSize; ++row) {
     for (int column = 0; column < kIconSize; ++column) {
@@ -136,7 +83,6 @@ void drawInxIcon(const GfxRenderer& renderer, const uint8_t* icon, const int x, 
   }
 }
 
-#ifdef RICKYOS_PRODUCT
 // Selected tab: an ink capsule with the icon knocked out in paper white. Pure
 // 1-bit, so it stays crisp under the fast refresh the tab bar uses.
 // `maxWidth` is the tab cell; a narrow screen shrinks the capsule, never below the icon.
@@ -155,7 +101,6 @@ void drawSelectedInxIcon(const GfxRenderer& renderer, const uint8_t* icon, const
     }
   }
 }
-#endif
 
 void drawDottedSeparator(const GfxRenderer& renderer, const int x, const int y, const int width) {
   for (int px = x; px < x + width; px += 3) renderer.drawPixel(px, y, true);
@@ -164,14 +109,12 @@ void drawDottedSeparator(const GfxRenderer& renderer, const int x, const int y, 
 
 void InxTheme::drawHeader(const GfxRenderer& renderer, const Rect rect, const char* title, const char* subtitle,
                           const bool backButton) const {
-#ifdef RICKYOS_PRODUCT
   // Product-wide hierarchical navigation: pushed touch pages need the same
   // visible Back target and title reserve as the shared FreeInkUI header.
   if (backButton && gpio.hasTouch()) {
     BaseTheme::drawHeader(renderer, rect, title, subtitle, true);
     return;
   }
-#endif
   (void)backButton;
   constexpr int titleFont = UiHighDpiProfile::enabled ? UI_12_FONT_ID : NOTOSERIF_12_FONT_ID;
   renderer.fillRect(rect.x, rect.y, rect.width, rect.height, false);
@@ -504,7 +447,6 @@ void InxTheme::drawOptionPopup(const GfxRenderer& renderer, const char* title, c
 
 void InxTheme::drawMainTabBar(const GfxRenderer& renderer, const Rect rect, const MainTab selected) const {
   renderer.fillRect(rect.x, rect.y, rect.width, rect.height, false);
-#ifdef RICKYOS_PRODUCT
   const bool tabsAtBottom = SETTINGS.inxTabPosition == CrossPointSettings::INX_TAB_BOTTOM;
   const int separatorY = tabsAtBottom ? rect.y : rect.y + rect.height - 1;
   renderer.fillRect(rect.x, separatorY, rect.width, 1, true);
@@ -544,29 +486,6 @@ void InxTheme::drawMainTabBar(const GfxRenderer& renderer, const Rect rect, cons
     const int textX = left + std::max(0, (width - renderer.getTextWidth(SMALL_FONT_ID, label)) / 2);
     renderer.drawText(SMALL_FONT_ID, textX, rows.labelY, label, true);
   }
-#else
-  constexpr int bottomIconInset = UiHighDpiProfile::enabled ? 18 : 6;
-  const bool tabsAtBottom = SETTINGS.inxTabPosition == CrossPointSettings::INX_TAB_BOTTOM;
-  const int iconY =
-      rect.y + std::max(0, tabsAtBottom ? rect.height - kIconSize - bottomIconInset : (rect.height - kIconSize) / 2);
-  const int indicatorY = tabsAtBottom ? rect.y : rect.y + rect.height - kUnderlineHeight;
-
-  for (size_t i = 0; i < MainTabs::values.size(); ++i) {
-    const MainTab tab = MainTabs::values[i];
-    const auto bounds = MainTabs::tabBounds(static_cast<int>(i), rect.width);
-    const int left = rect.x + bounds.left;
-    const int right = rect.x + bounds.right;
-    const int iconX = left + (right - left - kIconSize) / 2;
-    if (const uint8_t* icon = iconForTab(tab)) drawInxIcon(renderer, icon, iconX, iconY);
-    if (tab == selected) {
-      renderer.fillRect(iconX, indicatorY, kIconSize, kUnderlineHeight);
-    }
-  }
-
-  if (!tabsAtBottom) {
-    renderer.drawLine(rect.x, rect.y + rect.height - 1, rect.x + rect.width - 1, rect.y + rect.height - 1, true);
-  }
-#endif
 }
 
 void InxTheme::drawMainTabStatusBar(const GfxRenderer& renderer, const Rect rect) const {

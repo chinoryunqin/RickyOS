@@ -1,4 +1,3 @@
-#ifdef RICKYOS_PRODUCT
 #include "RickyClockDigits.h"
 
 #include <GfxRenderer.h>
@@ -122,4 +121,3 @@ void fadeToPaper(GfxRenderer& renderer, const int left, const int top, const int
 }
 
 }  // namespace RickyClockDigits
-#endif

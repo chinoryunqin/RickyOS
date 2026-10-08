@@ -322,7 +322,6 @@ int GfxRenderer::resolveTextFontId(const int fontId, const char* text, const Epd
   const auto fontIt = fontMap.find(effectiveFontId);
   if (fontIt == fontMap.end()) return effectiveFontId;
   const EpdFontFamily& primary = fontIt->second;
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
   // UI subsets can cover only part of a filename. Choose one face for the
   // complete run, following the existing CJK subset -> common CJK -> RTL chain.
   // Eight IDs bound the registered UI/SD chain; duplicate IDs also break cycles.
@@ -361,23 +360,6 @@ int GfxRenderer::resolveTextFontId(const int fontId, const char* text, const Epd
     }
   }
   return bestFontId;
-#else
-  for (const int fallbackFontId : fbIt->second) {
-    if (fallbackFontId == 0) continue;
-    const auto fallbackIt = fontMap.find(fallbackFontId);
-    if (fallbackIt == fontMap.end()) continue;
-    const EpdFontFamily& fallback = fallbackIt->second;
-    const char* cursor = text;
-    uint32_t cp;
-    while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&cursor)))) {
-      const bool eligible = effectiveFontId != fontId || cp >= 0x80;
-      if (eligible && !primary.hasCodepoint(cp, style) && fallback.hasCodepoint(cp, style)) {
-        return fallbackFontId;
-      }
-    }
-  }
-  return effectiveFontId;
-#endif
 }
 
 void GfxRenderer::prewarmFallbackText(const int fontId, const TextGetter getter, const void* ctx,
@@ -802,7 +784,6 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
         }
       }
     }
-#ifdef RICKYOS_PRODUCT
     else if ((is2Bit || is4Bit) && renderer.isGrayscale16Active()) {
       // 2-bit faces (downloaded .cpfont) and synthetic bold go straight into the 16-level
       // frame as well, so a page is rasterised once instead of once per B/W, LSB and MSB
@@ -837,7 +818,6 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
         }
       }
     }
-#endif
     else if (is2Bit || is4Bit) {
       for (int glyphY = 0; glyphY < height; glyphY++) {
         const int outerCoord = outerBase + glyphY;
@@ -1015,15 +995,10 @@ int GfxRenderer::getTextWidth(const int fontId, const char* text, const EpdFontF
 
   // Measure with the same font drawText would render with (see resolveTextFontId)
   // so wrapping, truncation and centering of CJK strings stay consistent.
-#ifndef CROSSMUX_UI_PROFILE_HIGH_DPI
-  const int resolvedFontId = resolveTextFontId(fontId, text, style);
-#endif
 
   std::string visual;
   const char* renderedText = resolveVisualText(text, visual, baseDir);
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
   const int resolvedFontId = resolveTextFontId(fontId, renderedText, style);
-#endif
   const auto fontIt = fontMap.find(resolvedFontId);
   if (fontIt == fontMap.end()) {
     LOG_ERR("GFX", "Font %d not found", resolvedFontId);
@@ -1060,15 +1035,10 @@ void GfxRenderer::drawText(const int fontId, const int x, const int y, const cha
 
   // Route CJK-bearing strings to the fallback font when the requested font
   // lacks the glyphs (e.g. Chinese book titles drawn with a Latin UI font).
-#ifndef CROSSMUX_UI_PROFILE_HIGH_DPI
-  const int resolvedFontId = resolveTextFontId(fontId, text, renderStyle);
-#endif
 
   std::string visual;
   const char* renderedText = resolveVisualText(text, visual, baseDir);
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
   const int resolvedFontId = resolveTextFontId(fontId, renderedText, renderStyle);
-#endif
 
   int yPos = y + getFontAscenderSize(resolvedFontId);
   if (resolvedFontId != fontId) yPos += (getLineHeight(fontId) - getLineHeight(resolvedFontId)) / 2;
@@ -1117,20 +1087,14 @@ void GfxRenderer::drawText(const int fontId, const int x, const int y, const cha
       continue;
     }
 
-#ifdef ENABLE_CHINESE_VERSION
     const uint32_t sourceCp = cp;
-#endif
     cp = font.applyLigatures(cp, textCursor, renderStyle);
 
-#ifdef ENABLE_CHINESE_VERSION
     bool usedReplacement = false;
     const EpdGlyph* glyph = font.getGlyph(cp, renderStyle, &usedReplacement);
     if (usedReplacement && fontCacheManager_) {
       fontCacheManager_->reportMissingChineseCodepoint(resolvedFontId, sourceCp);
     }
-#else
-    const EpdGlyph* glyph = font.getGlyph(cp, renderStyle);
-#endif
 
     const bool missing = glyph == nullptr;
     if (prevCp != 0) {
@@ -2819,9 +2783,6 @@ int GfxRenderer::getKerning(int fontId, const uint32_t leftCp, const uint32_t ri
 int GfxRenderer::getTextAdvanceX(int fontId, const char* text, EpdFontFamily::Style style, const int8_t tracking,
                                  const BidiUtils::BidiBaseDir baseDir, const TextMeasureMode mode) const {
   // Match the font drawText would use for CJK-bearing strings (see resolveTextFontId).
-#ifndef CROSSMUX_UI_PROFILE_HIGH_DPI
-  const int resolvedFontId = resolveTextFontId(fontId, text, style);
-#endif
   // Measure the exact codepoint stream drawText renders: bidi-reordered and
   // Arabic-shaped (contextual presentation forms, Lam-Alef collapse).
   // Measuring the raw logical text counts the Alef a ligature absorbs and
@@ -2830,9 +2791,7 @@ int GfxRenderer::getTextAdvanceX(int fontId, const char* text, EpdFontFamily::St
   // right margin.
   std::string visual;
   text = resolveVisualText(text, visual, baseDir);
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
   const int resolvedFontId = resolveTextFontId(fontId, text, style);
-#endif
 
   // Advance table fast-path for SD card fonts during layout.
   // No kerning/ligature lookup — consistent with previous metadataOnly behavior
@@ -3007,20 +2966,14 @@ void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y
       continue;
     }
 
-#ifdef ENABLE_CHINESE_VERSION
     const uint32_t sourceCp = cp;
-#endif
     cp = font.applyLigatures(cp, text, style);
 
-#ifdef ENABLE_CHINESE_VERSION
     bool usedReplacement = false;
     const EpdGlyph* glyph = font.getGlyph(cp, style, &usedReplacement);
     if (usedReplacement && fontCacheManager_) {
       fontCacheManager_->reportMissingChineseCodepoint(resolvedFontId, sourceCp);
     }
-#else
-    const EpdGlyph* glyph = font.getGlyph(cp, style);
-#endif
 
     const bool missing = glyph == nullptr;
     if (prevCp != 0) {

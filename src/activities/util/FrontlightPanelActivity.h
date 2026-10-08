@@ -40,7 +40,6 @@ class FrontlightPanelActivity final : public Activity, private UiAppHost {
   // Quick-setting tiles, in grid order (2 columns): night mode, refresh,
   // orientation, touch. Fixed set — shown on touch boards, absent elsewhere.
   static constexpr int kTileCount = 4;
-#ifdef RICKYOS_PRODUCT
   // RickyOS: a clock header, a row of round actions that work anywhere, and a
   // reading row (orientation, clean-refresh interval) only over a book, so no
   // control is shown where it has nothing to change.
@@ -60,7 +59,6 @@ class FrontlightPanelActivity final : public Activity, private UiAppHost {
   int rickyPanelHeight() const;
   void buildRickyPanel(UiScreen& screen);
   void roundActionRow(UiScreen& screen, const RoundAction* actions, int count);
-#endif
 
   // fui::SliderRowProps and fui::TileGridProps embed a 324-byte fui::StyleSet,
   // so the props the render path fills in live here instead of on the stack

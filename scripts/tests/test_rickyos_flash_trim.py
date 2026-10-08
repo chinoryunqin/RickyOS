@@ -92,7 +92,7 @@ class RickyFlashTrimHyphenationTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='ricky-hyphenation-') as directory:
             program = Path(directory) / 'registry.cpp'
             program.write_text(HYPHENATION_PROGRAM)
-            for english_only in (False, True):
+            for english_only in (True,):  # RickyOS builds English-only Liang hyphenation
                 with self.subTest(english_only=english_only):
                     binary = Path(directory) / f'registry-{english_only}'
                     flags = ['-DHYPHENATION_ENGLISH_ONLY'] if english_only else []

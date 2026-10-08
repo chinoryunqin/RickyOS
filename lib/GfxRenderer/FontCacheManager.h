@@ -34,10 +34,8 @@ class FontCacheManager {
   // Scan-mode API: called by GfxRenderer::drawText() during scan pass
   bool isScanning() const;
   void recordText(const char* text, int fontId, EpdFontFamily::Style style);
-#ifdef ENABLE_CHINESE_VERSION
   void reportMissingChineseCodepoint(int fontId, uint32_t codepoint);
   uint32_t consumeMissingChineseCodepoint();
-#endif
 
   // The FontDecompressor pointer, needed by GfxRenderer::getGlyphBitmap()
   FontDecompressor* getDecompressor() const { return fontDecompressor_; }
@@ -85,7 +83,5 @@ class FontCacheManager {
   uint16_t scanCodepointCount_ = 0;
   uint8_t scanFontCount_ = 0;
   bool scanOverflowWarned_ = false;
-#ifdef ENABLE_CHINESE_VERSION
   uint32_t missingChineseCodepoint_ = 0;
-#endif
 };

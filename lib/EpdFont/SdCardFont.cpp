@@ -1802,7 +1802,6 @@ int SdCardFont::buildAdvanceTablePacked(const char* const* segments, const size_
   if (includeHyphen)
     sd_card_font_algorithms::insertSortedUnique('-', codepoints.get(), cpCount, MAX_UNIQUE_CODEPOINTS + 3);
 
-#ifdef ENABLE_CHINESE_VERSION
   // Inject the Han column-reference ideograph "我" (U+6211). ParsedText sizes every
   // CJK column from getTextAdvanceX("我") (see cjkReferenceAdvance), but "我" is often
   // absent from the page text, so it misses the persistent advance cache and forces an
@@ -1813,7 +1812,6 @@ int SdCardFont::buildAdvanceTablePacked(const char* const* segments, const size_
   // is identical to what getAdvanceOrLoad would read, so layout geometry is unchanged.
   static constexpr uint32_t CJK_REFERENCE_CP = 0x6211;  // 我
   sd_card_font_algorithms::insertSortedUnique(CJK_REFERENCE_CP, codepoints.get(), cpCount, MAX_UNIQUE_CODEPOINTS + 3);
-#endif
 
   if (hitCap) {
     LOG_DBG("SDCF", "Advance cache collection cap (%u) hit; remaining glyphs load on demand", MAX_UNIQUE_CODEPOINTS);

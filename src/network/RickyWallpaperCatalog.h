@@ -1,5 +1,4 @@
 #pragma once
-#ifdef RICKYOS_PRODUCT
 
 #include <algorithm>
 #include <cstdint>
@@ -53,4 +52,3 @@ static_assert(releaseOf("https://github.com/x/y/releases/download/v1.0.0/") == 0
 static_assert(releaseOf("https://example.com/plain/") == 0);
 
 }  // namespace RickyWallpaperCatalog
-#endif

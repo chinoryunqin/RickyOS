@@ -55,6 +55,7 @@ bool failAllocation = false;
 template<class T, class... Args> std::unique_ptr<T> makeUniqueNoThrow(Args&&... args) {
   return failAllocation ? nullptr : std::make_unique<T>(std::forward<Args>(args)...);
 }
+struct { int rickyGestureStatus = 1; } SETTINGS;
 struct ActivityManager {
   enum class PendingAction { None, Push };
   std::atomic<PendingAction> pendingAction{PendingAction::None};
@@ -63,6 +64,7 @@ struct ActivityManager {
   Input mappedInput;
   int renderer = 0, renderTaskHandle = 0, pushes = 0;
   bool handleMainTabInput() { return false; }
+  bool standbyShowing() const { return currentActivity && currentActivity->name == "Standby"; }
   bool handleHomeStandbyInput() { return false; }
   void resetHomeStandbyInput() {}
   void goHome() { assert(false); }
@@ -101,7 +103,7 @@ int main() {
   for (const char* name : {"InxRecent", "FileBrowser", "AppsMenu", "Settings", "ReadingStats"}) {
     for (int x : {2, 3, 476, 477})
       for (int y : {8, 9, 36, 37, 40, 41, 42, 43, 46, 47, 52, 53}) {
-        const bool opens = x >= 3 && x < 477 && y >= 9 && y < 37;
+        const bool opens = x >= 3 && x < 477 && y >= 9 && y < 9 + MainTabs::statusBarHeight;
         check({.name = name, .mainTabs = true},
               {.topSwipe = false, .tap = true, .tapX = x, .tapY = y}, opens, !opens);
       }

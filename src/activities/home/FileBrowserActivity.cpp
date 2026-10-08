@@ -24,9 +24,7 @@
 #include "fontIds.h"
 #include "util/BookCacheUtils.h"
 #include "util/FileEditUtils.h"
-#ifdef RICKYOS_PRODUCT
 #include "activities/home/RickyStorageActivity.h"
-#endif
 
 namespace fui = freeink::ui;
 
@@ -100,15 +98,7 @@ void FileBrowserActivity::loadFiles() {
       std::string_view filename{fileNameBuffer.get()};
       switch (mode) {
         case Mode::Books:
-#ifdef RICKYOS_PRODUCT
           files.emplace_back(filename);
-#else
-          if (FsHelpers::hasEpubExtension(filename) || FsHelpers::hasXtcExtension(filename) ||
-              FsHelpers::hasTxtExtension(filename) || FsHelpers::hasMarkdownExtension(filename) ||
-              FsHelpers::hasImageExtension(filename)) {
-            files.emplace_back(filename);
-          }
-#endif
           break;
         case Mode::PickFirmware:
           if (FsHelpers::checkFileExtension(filename, ".bin")) files.emplace_back(filename);
@@ -561,9 +551,7 @@ bool FileBrowserActivity::relocatePathData(const std::string& oldPath, const std
 void FileBrowserActivity::finishEdit(const std::string& returnPath, const int fallbackIndex,
                                      const std::string& selectedEntry) {
   RenderLock lock(*this);
-#ifdef RICKYOS_PRODUCT
   RickyStorageActivity::invalidateScan();  // files may have arrived or left
-#endif
   basepath = returnPath;
   loadFiles();
   if (!selectedEntry.empty()) {
@@ -655,7 +643,6 @@ void FileBrowserActivity::activateSelected() {
   } else {
     const std::string fullPath = basepath + entry;
     lock.unlock();
-#ifdef RICKYOS_PRODUCT
     if (!FsHelpers::hasEpubExtension(fullPath) && !FsHelpers::hasXtcExtension(fullPath) &&
         !FsHelpers::hasTxtExtension(fullPath) && !FsHelpers::hasMarkdownExtension(fullPath) &&
         !FsHelpers::hasBmpExtension(fullPath) && !FsHelpers::hasPngExtension(fullPath) &&
@@ -663,7 +650,6 @@ void FileBrowserActivity::activateSelected() {
       showNotice(StrId::STR_RICKY_NO_PREVIEW);
       return;
     }
-#endif
     onSelectBook(fullPath);
   }
 }
@@ -747,13 +733,9 @@ bool FileBrowserActivity::handleButtons() {
         setResult(std::move(res));
         finish();
       } else {
-#ifdef RICKYOS_PRODUCT
         // RickyOS file browsing is a child of Storage. Finish the child instead
         // of replacing the entire activity stack with Home.
         finish();
-#else
-        onGoHome();
-#endif
       }
     }
     return true;

@@ -59,12 +59,10 @@ class StandbyActivity final : public Activity {
   void completeTimeSync();
   void processFaceTick(bool waitForUpdate);
   bool tryLightSleep(uint32_t idleMs);
-#ifdef RICKYOS_PRODUCT
   void openPicturePicker(const std::string& folder = RickyStorageLayout::IMAGES);
   bool drewFrame_ = false;  // B/W frames after the first refresh fast
   GfxRenderer::Orientation savedOrientation_ = GfxRenderer::Orientation::Portrait;  // restored on exit
   unsigned long enteredMs_ = 0;                                                     // for the auto power-off
-#endif
 
   // Layer a 4-level grayscale refresh on top of the BW image just committed by
   // displayBuffer(): re-render the LSB then MSB planes and composite via the

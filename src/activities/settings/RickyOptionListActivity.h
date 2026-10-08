@@ -1,5 +1,4 @@
 #pragma once
-#ifdef RICKYOS_PRODUCT
 
 #include <I18n.h>
 
@@ -52,4 +51,3 @@ class RickyOptionListActivity final : public UiListActivity {
   OptionPopup optionPopup;
 };
 
-#endif

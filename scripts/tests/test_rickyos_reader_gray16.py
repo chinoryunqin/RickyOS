@@ -26,8 +26,8 @@ def pristine(path):
 class RickyReaderGray16Test(unittest.TestCase):
     def test_rickyos_takes_the_16_level_path_for_every_face_bold_and_jpeg_pages(self):
         source = READER.read_text()
-        start = source.index('#else\n  // RickyOS: every text face')
-        rule = source[start:source.index('#endif', start)]
+        start = source.index('  // RickyOS: every text face')
+        rule = source[start:source.index('const bool needsAnyGrayscale', start)]
         self.assertIn('page->imagesAreAllJpeg()', rule)
         self.assertNotIn('fakeBold', rule)
         self.assertNotIn('readerFaceIsFourBit', rule)
@@ -118,8 +118,8 @@ class RickyReaderGray16Test(unittest.TestCase):
 
     def test_glyph_native_branch_is_rickyos_only(self):
         source = (ROOT / 'lib/GfxRenderer/GfxRenderer.cpp').read_text()
-        start = source.index('#ifdef RICKYOS_PRODUCT\n    else if ((is2Bit || is4Bit) && renderer.isGrayscale16Active()')
-        branch = source[start:source.index('#endif', start)]
+        start = source.index('    else if ((is2Bit || is4Bit) && renderer.isGrayscale16Active()')
+        branch = source[start:source.index('    else if (is2Bit || is4Bit) {', start)]
         self.assertIn('dilate2BitCoverage', branch)
         self.assertIn('draw4BitGlyphPixel(renderer, screenX, screenY, static_cast<uint8_t>(coverage * 5))', branch)
 

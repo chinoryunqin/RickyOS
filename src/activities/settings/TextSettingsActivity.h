@@ -87,9 +87,7 @@ class TextSettingsActivity final : public UiTabListActivity {
   void showPreloadFailure(SdCardFontCache::Result result);
   void completeExit();
   const SdCardFontFileInfo* fontFileForFamily(int listIndex, uint8_t pointSize) const;
-#ifdef ENABLE_CHINESE_VERSION
   void maybeOfferCompleteChineseFont();
-#endif
   // Repopulates sizes_ (and currentSizeIndex_) from the active family's
   // installed point sizes. Call after any family change.
   void rebuildSizeList();

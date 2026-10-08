@@ -1,4 +1,3 @@
-#ifdef RICKYOS_PRODUCT
 #include "RickyAaIcons.h"
 
 #include <GfxRenderer.h>
@@ -46,4 +45,3 @@ bool draw(const GfxRenderer& renderer, const uint8_t* bits, const int width, con
   return true;
 }
 }  // namespace RickyAaIcons
-#endif

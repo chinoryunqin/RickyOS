@@ -28,14 +28,12 @@
 #include "CrossPointSettings.h"
 #include "DictionaryDownloadActivity.h"
 #include "FontDownloadActivity.h"
-#ifdef RICKYOS_PRODUCT
 #include "FontLibraryActivity.h"
 #include "RickyProfileActivity.h"
 #include "activities/util/ImageViewerActivity.h"
 #include "components/RickyPageUi.h"
 #include "components/RickyProfile.h"
 #include "components/icons/rickyPageIcons.h"
-#endif
 #include "HomeButtonSettingsActivity.h"
 #include "InxItemLayout.h"
 #include "KOReaderSettingsActivity.h"
@@ -64,20 +62,14 @@
 #include "util/ButtonNavigator.h"
 #include "util/ReadingBackground.h"
 #include "util/SystemSettingsReset.h"
-#ifdef RICKYOS_PRODUCT
 #include "activities/settings/RickyOptionListActivity.h"
 #include "util/RickyStorageLayout.h"
-#endif
 
 namespace fui = freeink::ui;
 
 namespace {
 // Image pickers open where RickyOS keeps pictures; other builds start at the root.
-#ifdef RICKYOS_PRODUCT
 constexpr const char* kImagePickerStart = RickyStorageLayout::IMAGES;
-#else
-constexpr const char* kImagePickerStart = "/";
-#endif
 constexpr StrId OK_OPTION[] = {StrId::STR_OK_BUTTON};
 constexpr uint64_t BYTES_PER_TENTH_GB = 100000000ULL;
 
@@ -295,7 +287,6 @@ class InxAboutActivity final : public Activity {
 SettingsActivity::SettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
     : UiTabListActivity("Settings", renderer, mappedInput) {}
 
-#ifdef RICKYOS_PRODUCT
 void SettingsActivity::reorganizeRickySettings() {
   // These bounded vectors live only with this Activity and are released with
   // the other lists before a memory-hungry child. Moves retain all enum values,
@@ -388,7 +379,6 @@ const char* SettingsActivity::rickySettingDescription(const SettingInfo& setting
   if (setting.action == SettingAction::RickyScreenRepair) return tr(STR_RICKY_HELP_SCREEN_REPAIR);
   return nullptr;
 }
-#endif
 
 void SettingsActivity::selectMainTabContentEdge(const MainTabContentEdge edge) {
   if (usesAccordion()) {
@@ -403,11 +393,9 @@ void SettingsActivity::rebuildSettingsLists() {
   readerSettings.clear();
   controlsSettings.clear();
   systemSettings.clear();
-#ifdef RICKYOS_PRODUCT
   librarySettings.clear();
   connectionSettings.clear();
   fontSettings.clear();
-#endif
 
   // Pick up any fonts uploaded/deleted over the web server since the last
   // reader activity ran — otherwise the font-family picker shows stale list.
@@ -475,30 +463,10 @@ void SettingsActivity::rebuildSettingsLists() {
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CLEAR_READING_CACHE, SettingAction::ClearCache));
   systemSettings.push_back(
       SettingInfo::Action(StrId::STR_RESTORE_SYSTEM_SETTINGS, SettingAction::RestoreSystemSettings));
-#if FREEINK_DEVICE_MURPHY_M4 && !defined(SIMULATOR)
-  systemSettings.push_back(
-      SettingInfo::DynamicEnum(
-          StrId::STR_M4_HARDWARE_BATCH, {StrId::STR_M4_BATCH_1, StrId::STR_M4_BATCH_2},
-          [] { return gpio.murphyM4Batch() == freeink::MurphyM4Batch::First ? 0 : 1; },
-          [this](const uint8_t value) {
-            const auto batch = value == 0 ? freeink::MurphyM4Batch::First : freeink::MurphyM4Batch::Second;
-            if (gpio.saveMurphyM4Batch(batch)) {
-              silentRestart();
-              return;
-            }
-            optionPopup.show(StrId::STR_FAILED_LOWER, OK_OPTION, static_cast<int>(std::size(OK_OPTION)), 0, [](int) {});
-            requestUpdate();
-          })
-          .withManagedEnumPicker());
-#endif
   // The product uses only its owned, accepted stable channel. Other targets
   // retain the upstream proxy and release-channel UI.
-#ifdef RICKYOS_PRODUCT
   systemSettings.push_back(SettingInfo::Action(StrId::STR_RICKYOS_FIRMWARE_UPDATE, SettingAction::CheckForUpdates));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_RICKY_SCREEN_REPAIR, SettingAction::RickyScreenRepair));
-#else
-  systemSettings.push_back(SettingInfo::Action(StrId::STR_CHECK_UPDATES, SettingAction::CheckForUpdates));
-#endif
   systemSettings.push_back(SettingInfo::Action(StrId::STR_SD_FIRMWARE_UPDATE, SettingAction::SdFirmwareUpdate));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_PLUGINS, SettingAction::Plugins));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_KEYBOARD_LAYOUTS, SettingAction::KeyboardLayouts));
@@ -518,26 +486,8 @@ void SettingsActivity::rebuildSettingsLists() {
   readerSettings.push_back(SettingInfo::Action(StrId::STR_CUSTOMISE_STATUS_BAR, SettingAction::CustomiseStatusBar));
   readerSettings.push_back(SettingInfo::Action(StrId::STR_READING_STATS, SettingAction::ReadingStatsSettings));
 
-#ifdef RICKYOS_PRODUCT
   reorganizeRickySettings();
   currentSettings = &settingsForCategory(selectedCategoryIndex);
-#else
-  // Update currentSettings pointer and count for the active category
-  switch (selectedCategoryIndex) {
-    case 0:
-      currentSettings = &displaySettings;
-      break;
-    case 1:
-      currentSettings = &readerSettings;
-      break;
-    case 2:
-      currentSettings = &controlsSettings;
-      break;
-    case 3:
-      currentSettings = &systemSettings;
-      break;
-  }
-#endif
   settingsCount = static_cast<int>(currentSettings->size());
   rebuildRowItems();
 }
@@ -550,7 +500,6 @@ void SettingsActivity::onEnter() {
   // from the base's per-tab nav reset)
   selectedCategoryIndex = 0;
   expandedCategories = 0;
-#ifdef RICKYOS_PRODUCT
   categoryRoot_ = true;
   categoryNav_.reset();
   app.on(
@@ -561,7 +510,6 @@ void SettingsActivity::onEnter() {
         self.startActivityForResultWith<RickyProfileActivity>([](const ActivityResult&) {});
       },
       this);
-#endif
   dictionariesLoaded = !usesAccordion();
   preserveQuickResumeTimeoutOn =
       SETTINGS.quickResumeSleepScreen == CrossPointSettings::QUICK_RESUME_SLEEP_SCREEN::QUICK_RESUME_AFTER_TIMEOUT;
@@ -573,24 +521,7 @@ void SettingsActivity::onEnter() {
 
 void SettingsActivity::selectCategory(const int categoryIndex) {
   selectedCategoryIndex = categoryIndex;
-#ifdef RICKYOS_PRODUCT
   currentSettings = &settingsForCategory(selectedCategoryIndex);
-#else
-  switch (selectedCategoryIndex) {
-    case 0:
-      currentSettings = &displaySettings;
-      break;
-    case 1:
-      currentSettings = &readerSettings;
-      break;
-    case 2:
-      currentSettings = &controlsSettings;
-      break;
-    case 3:
-      currentSettings = &systemSettings;
-      break;
-  }
-#endif
   settingsCount = static_cast<int>(currentSettings->size());
   activeNav().top = 0;  // category switches start the list at the top (no per-tab memory here)
   rebuildRowItems();
@@ -601,7 +532,6 @@ void SettingsActivity::selectCategory(const int categoryIndex) {
 // list changes, never from buildScreen(), which only refreshes rowValues_
 // content and rowItems_[].value pointers in place.
 void SettingsActivity::rebuildRowItems() {
-#ifdef RICKYOS_PRODUCT
   const size_t count = static_cast<size_t>(listCount());
   rowValues_.resize(count);
   rowItems_.clear();
@@ -614,41 +544,16 @@ void SettingsActivity::rebuildRowItems() {
     rowItems_.push_back(item);
   }
   return;
-#endif
-  if (usesAccordion()) {
-    rebuildAccordionRows();
-    return;
-  }
-  const auto& settings = *currentSettings;
-  rowValues_.assign(settings.size(), std::string());
-  rowItems_.clear();
-  rowItems_.reserve(settings.size());
-  for (size_t i = 0; i < settings.size(); i++) {
-    fui::ListItem item;
-    item.label = I18N.get(settings[i].nameId);
-    item.actionValue = static_cast<int16_t>(i);
-    rowItems_.push_back(item);
-  }
 }
 
 int SettingsActivity::listCount() const {
-#ifdef RICKYOS_PRODUCT
   return categoryRoot_ ? categoryCount : settingsCount;
-#else
-  return usesAccordion() ? InxAccordionGeometry::visibleCount(accordionSettingCounts(), expandedCategories)
-                         : settingsCount;
-#endif
 }
 
 freeink::ui::ListNav& SettingsActivity::activeNav() {
-#ifdef RICKYOS_PRODUCT
   return nav;
-#else
-  return usesAccordion() ? nav : UiTabListActivity::activeNav();
-#endif
 }
 
-#ifdef RICKYOS_PRODUCT
 void SettingsActivity::openRickyCategory(const int index) {
   if (index < 0 || index >= categoryCount) return;
   RenderLock lock(*this);
@@ -673,7 +578,6 @@ void SettingsActivity::backToRickyCategories() {
   rebuildRowItems();
   requestUpdate();
 }
-#endif
 
 void SettingsActivity::rebuildAccordionRows() {
   const auto counts = accordionSettingCounts();
@@ -689,10 +593,8 @@ void SettingsActivity::rebuildAccordionRows() {
                                  : std::string("  ") + I18N.get(settingsForCategory(row.category)[row.setting].nameId);
     fui::ListItem item;
     item.label = rowLabels_[index].c_str();
-#ifdef RICKYOS_PRODUCT
     item.subtitle = category ? I18N.get(categoryDescriptions[row.category])
                              : rickySettingDescription(settingsForCategory(row.category)[row.setting]);
-#endif
     item.actionValue = static_cast<int16_t>(index);
     if (category) item.state = fui::StateEmphasized;
     rowItems_.push_back(item);
@@ -710,7 +612,6 @@ void SettingsActivity::onTabAction(const int index) {
 
 void SettingsActivity::activateIndex(const int index) {
   if (optionPopup.isActive()) return;
-#ifdef RICKYOS_PRODUCT
   if (index < 0 || index >= listCount()) return;
   app.clearTapFlash();
   if (categoryRoot_) {
@@ -732,42 +633,11 @@ void SettingsActivity::activateIndex(const int index) {
     toggleCurrentSetting();
     requestUpdate();
   }
-  return;
-#endif
-  if (usesAccordion()) {
-    const auto row = InxAccordionGeometry::rowAt(accordionSettingCounts(), expandedCategories, index);
-    if (row.isCategory())
-      toggleAccordionCategory(row.category);
-    else
-      toggleAccordionSetting(row.category, row.setting);
-    app.clearTapFlash();
-    return;
-  }
-  (void)index;  // toggleCurrentSetting reads the ring position
-  // Most rows repaint a different surface (popup, sub-activity, new value);
-  // a lingering tap flash would gray an unrelated element.
-  app.clearTapFlash();
-  toggleCurrentSetting();
-  // Tap-first: a tapped row is not a cursor position. Leaving it focused
-  // (inverted) after the tap meant the row stayed black once its sub-screen or
-  // popup closed, and Back then had to clear that focus before a second Back
-  // left Settings. Hand the focus back to the tab band; the viewport stays put.
-  if (mappedInput.hasTouch()) {
-    activeNav().selected = 0;
-  }
 }
 
 void SettingsActivity::onRowAction(const fui::ActionEvent& event) {
-#ifdef RICKYOS_PRODUCT
   UiListActivity::onRowAction(event);
   return;
-#endif
-  if (!usesAccordion()) {
-    UiTabListActivity::onRowAction(event);
-    return;
-  }
-  nav.selected = event.value;
-  activateIndex(event.value);
 }
 
 void SettingsActivity::onExit() {
@@ -816,7 +686,6 @@ void SettingsActivity::stepTab(const int direction) {
 }
 
 bool SettingsActivity::handleButtons() {
-#ifdef RICKYOS_PRODUCT
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     activateIndex(nav.selected);
     return true;
@@ -831,65 +700,10 @@ bool SettingsActivity::handleButtons() {
     return true;
   }
   return false;
-#else
-  if (usesAccordion()) {
-    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-      activateIndex(nav.selected);
-      return true;
-    }
-    if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-      if (expandedCategories != 0) {
-        const auto row = InxAccordionGeometry::rowAt(accordionSettingCounts(), expandedCategories, nav.selected);
-        const uint8_t mask = row.category >= 0 ? static_cast<uint8_t>(uint8_t{1} << row.category) : 0;
-        expandedCategories =
-            (mask != 0 && (expandedCategories & mask) != 0) ? static_cast<uint8_t>(expandedCategories & ~mask) : 0;
-        rebuildAccordionRows();
-        nav.selected = std::min<int>(nav.selected, listCount() - 1);
-        nav.follow(listCount());
-        requestUpdate();
-      }
-#ifdef RICKYOS_PRODUCT
-      else if (!UITheme::getInstance().hasMainTabs()) {
-        // RickyOS keeps the same grouped settings in legacy themes too.
-        SETTINGS.saveToFile();
-        onGoHome();
-      }
-#endif
-      return true;
-    }
-    return false;
-  }
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-    if (ringPos() == 0) {
-      stepTab(1);
-    } else {
-      toggleCurrentSetting();
-      requestUpdate();
-    }
-    return true;
-  }
-
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-    if (ringPos() > 0) {
-      activeNav().selected = 0;
-      requestUpdate();
-    } else {
-      SETTINGS.saveToFile();
-      onGoHome();
-    }
-    return true;
-  }
-
-  return false;
-#endif
 }
 
 bool SettingsActivity::usesAccordion() const {
-#ifdef RICKYOS_PRODUCT
   return true;
-#else
-  return UITheme::getInstance().hasMainTabs();
-#endif
 }
 
 const std::vector<SettingInfo>& SettingsActivity::settingsForCategory(const int categoryIndex) const {
@@ -899,17 +713,12 @@ const std::vector<SettingInfo>& SettingsActivity::settingsForCategory(const int 
     case 1:
       return readerSettings;
     case 2:
-#ifdef RICKYOS_PRODUCT
       return connectionSettings;
     case 3:
       return fontSettings;
     case 4:
       return librarySettings;
     case 5:
-#else
-      return controlsSettings;
-    case 3:
-#endif
       return systemSettings;
   }
   return displaySettings;
@@ -917,12 +726,8 @@ const std::vector<SettingInfo>& SettingsActivity::settingsForCategory(const int 
 
 std::array<int, SettingsActivity::categoryCount> SettingsActivity::accordionSettingCounts() const {
   return {static_cast<int>(displaySettings.size()),    static_cast<int>(readerSettings.size()),
-#ifdef RICKYOS_PRODUCT
           static_cast<int>(connectionSettings.size()), static_cast<int>(fontSettings.size()),
           static_cast<int>(librarySettings.size()),
-#else
-          static_cast<int>(controlsSettings.size()),
-#endif
           static_cast<int>(systemSettings.size())};
 }
 
@@ -933,12 +738,8 @@ void SettingsActivity::toggleAccordionCategory(const int categoryIndex) {
     dictionariesLoaded = true;
     rebuildSettingsLists();
   }
-#ifdef RICKYOS_PRODUCT
   // One open group at a time keeps the small-screen list understandable.
   expandedCategories = (expandedCategories & mask) ? 0 : mask;
-#else
-  expandedCategories ^= mask;
-#endif
   rebuildAccordionRows();
   nav.selected = InxAccordionGeometry::categoryRow(accordionSettingCounts(), expandedCategories, categoryIndex);
   nav.follow(listCount());
@@ -992,11 +793,9 @@ void SettingsActivity::toggleCurrentSetting() {
     const uint8_t currentValue = SETTINGS.*(setting.valuePtr);
     const auto enumLabels = setting.enumLabels();
     bool showPicker = enumLabels.size() > 2;
-#ifdef RICKYOS_PRODUCT
     const bool switchLabels =
         enumLabels.size() == 2 && enumLabels[0] == StrId::STR_STATE_OFF && enumLabels[1] == StrId::STR_STATE_ON;
     showPicker = enumLabels.size() > 1 && !switchLabels;
-#endif
     if (showPicker) {
       const auto valuePtr = setting.valuePtr;
       optionPopup.show(
@@ -1025,12 +824,10 @@ void SettingsActivity::toggleCurrentSetting() {
                                     : static_cast<uint8_t>(setting.enumStringValues.size());
     const uint8_t cur = setting.valueGetter();
     bool showPicker = totalValues > 2 || setting.managedEnumPicker;
-#ifdef RICKYOS_PRODUCT
     const auto enumLabels = setting.enumLabels();
     const bool switchLabels =
         enumLabels.size() == 2 && enumLabels[0] == StrId::STR_STATE_OFF && enumLabels[1] == StrId::STR_STATE_ON;
     showPicker = showPicker || (totalValues > 1 && !switchLabels);
-#endif
     if (showPicker) {
       const auto valueSetter = setting.valueSetter;
       const bool managedPicker = setting.managedEnumPicker;
@@ -1141,7 +938,6 @@ void SettingsActivity::toggleCurrentSetting() {
       case SettingAction::ClearCache:
         startActivityForResultWith<ClearCacheActivity>(resultHandler);
         break;
-#ifdef RICKYOS_PRODUCT
       case SettingAction::RickyGestures:
         startActivityForResultWith<RickyOptionListActivity>(resultHandler, RickyOptionLists::gestures());
         break;
@@ -1173,7 +969,6 @@ void SettingsActivity::toggleCurrentSetting() {
       case SettingAction::RickyProfile:
         startActivityForResultWith<RickyProfileActivity>(resultHandler);
         break;
-#endif
       case SettingAction::RestoreSystemSettings:
         confirmRestoreSystemSettings();
         break;
@@ -1185,11 +980,7 @@ void SettingsActivity::toggleCurrentSetting() {
         break;
       case SettingAction::DownloadFonts:
         releaseListsForMemoryHungryChild();
-#ifdef RICKYOS_PRODUCT
         if (!startActivityForResultWith<FontLibraryActivity>(resultHandler)) {
-#else
-        if (!startActivityForResultWith<FontDownloadActivity>(resultHandler)) {
-#endif
           rebuildSettingsLists();
           requestUpdate();
         }
@@ -1254,11 +1045,7 @@ void SettingsActivity::toggleCurrentSetting() {
     applyUiSettingChange(changedValuePtr);
   } else {
     rebuildSettingsLists();
-#ifdef RICKYOS_PRODUCT
     activeNav().selected = std::clamp(selectedSetting, 0, std::max(0, settingsCount - 1));
-#else
-    activeNav().selected = std::min(ringPos(), settingsCount);
-#endif
   }
 }
 
@@ -1324,11 +1111,9 @@ void SettingsActivity::releaseListsForMemoryHungryChild() {
   std::vector<SettingInfo>().swap(readerSettings);
   std::vector<SettingInfo>().swap(controlsSettings);
   std::vector<SettingInfo>().swap(systemSettings);
-#ifdef RICKYOS_PRODUCT
   std::vector<SettingInfo>().swap(librarySettings);
   std::vector<SettingInfo>().swap(connectionSettings);
   std::vector<SettingInfo>().swap(fontSettings);
-#endif
   settingsCount = 0;
 }
 
@@ -1456,19 +1241,14 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
     }
   };
   const auto& metrics = UITheme::getInstance().getMetrics();
-#ifdef RICKYOS_PRODUCT
   // Do not thicken every glyph in the list (including small help text).
   // Category emphasis uses the list's font style; reading bold stays independent.
   constexpr bool boldChineseCategories = false;
-#else
-  const bool boldChineseCategories = usesAccordion() && I18N.getLanguage() == Language::ZH_CN;
-#endif
   const Rect content = pageContentRect();
   screen.setContentMarginFromScreen(fui::Insets{
       static_cast<int16_t>(content.y), static_cast<int16_t>(renderer.getScreenWidth() - content.x - content.width),
       static_cast<int16_t>(renderer.getScreenHeight() - content.y - content.height), static_cast<int16_t>(content.x)});
 
-#ifdef RICKYOS_PRODUCT
   if (categoryRoot_) {
     const auto& theme = screen.theme();
     auto& target = screen.target();
@@ -1537,83 +1317,6 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
   GfxRenderer::SyntheticBoldScope productBold(renderer, CrossPointSettings::SYNTHETIC_BOLD_OFF);
   screen.list(productProps);
   return;
-#endif
-  if (usesAccordion()) {
-    const auto counts = accordionSettingCounts();
-    for (int i = 0; i < listCount(); ++i) {
-      const auto row = InxAccordionGeometry::rowAt(counts, expandedCategories, i);
-#ifdef RICKYOS_PRODUCT
-      // The whole category row is already interactive; no redundant command label.
-      rowValues_[i] = row.isCategory() ? "" : settingValueText(settingsForCategory(row.category)[row.setting]);
-#else
-      rowValues_[i] = row.isCategory() ? ((expandedCategories & (uint8_t{1} << row.category)) != 0 ? "-" : "+")
-                                       : settingValueText(settingsForCategory(row.category)[row.setting]);
-#endif
-      rowItems_[i].value = rowValues_[i].empty() ? nullptr : rowValues_[i].c_str();
-      rowItems_[i].toggle = false;
-      if (!row.isCategory()) applyCheckbox(settingsForCategory(row.category)[row.setting], rowItems_[i]);
-    }
-    fui::ListProps props;
-    props.items = rowItems_.data();
-    props.count = static_cast<uint16_t>(rowItems_.size());
-    props.action = ACTION_ROW;
-    props.inputMask = fui::InputTouch;
-    props.labelText = screen.theme().bodyText;
-    props.valueText = screen.theme().bodyText;
-#ifdef RICKYOS_PRODUCT
-    props.labelText.maxLines = 2;
-    props.subtitleText = screen.theme().smallText;
-    props.subtitleText.maxLines = 2;
-    props.rowGap = std::max<int16_t>(6, screen.theme().listRowGap);
-#endif
-    syncListViewport(screen, props);
-    if (!showMainTabContentSelection()) props.selectedIndex = -1;
-    if (boldChineseCategories) {
-      props.labelText.bold = false;
-      props.valueText.bold = false;
-    }
-    GfxRenderer::SyntheticBoldScope syntheticBold(renderer, boldChineseCategories
-                                                                ? CrossPointSettings::SYNTHETIC_BOLD_STANDARD
-                                                                : CrossPointSettings::SYNTHETIC_BOLD_OFF);
-    screen.list(props);
-    return;
-  }
-
-  {
-    GfxRenderer::SyntheticBoldScope syntheticBold(renderer, boldChineseCategories
-                                                                ? CrossPointSettings::SYNTHETIC_BOLD_STANDARD
-                                                                : CrossPointSettings::SYNTHETIC_BOLD_OFF);
-    buildTabBar(screen, boldChineseCategories);
-  }
-
-  // rowItems_ (label/actionValue) was built by rebuildRowItems() when the
-  // category was last selected/rebuilt; only the live value text needs
-  // refreshing here, by assigning into the existing rowValues_ strings (no
-  // vector growth) rather than building a new items/values vector on every
-  // render.
-  const auto& settings = *currentSettings;
-  for (size_t i = 0; i < settings.size(); i++) {
-    rowValues_[i] = settingValueText(settings[i]);
-    rowItems_[i].value = rowValues_[i].empty() ? nullptr : rowValues_[i].c_str();
-    rowItems_[i].toggle = false;
-    applyCheckbox(settings[i], rowItems_[i]);
-  }
-
-  fui::ListProps props;
-  props.items = rowItems_.data();
-  props.count = static_cast<uint16_t>(rowItems_.size());
-  props.action = ACTION_ROW;
-  props.inputMask = fui::InputTouch;  // physical buttons stay in loop()
-  props.valueInset = 8;               // air between the value and the row edge
-  // Titles match the value's font size (smallText) so both sides of a row
-  // read as one unit; labels that still don't fit wrap onto a second line.
-  // maxLines=2 also marks the style explicitly set (an all-default smallText
-  // fails textStyleUnset and the list would substitute bodyText back); the
-  // common fits-on-one-line case takes the renderer's fast path anyway.
-  props.labelText = screen.theme().smallText;
-  props.labelText.maxLines = 2;
-  syncTabListViewport(screen, props);
-  screen.list(props);
 }
 
 void SettingsActivity::drawChrome() {
@@ -1625,33 +1328,14 @@ void SettingsActivity::drawChrome() {
   // Version rides in the header's trailing label slot: the footer position
   // conflicts with button hints on non-touch devices.
   drawPageHeader(Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight},
-#ifdef RICKYOS_PRODUCT
                  categoryRoot_ ? tr(STR_SETTINGS_TITLE) : I18N.get(categoryNames[selectedCategoryIndex]),
                  categoryRoot_ ? CROSSPOINT_VERSION : nullptr);
-#else
-                 tr(STR_SETTINGS_TITLE), CROSSPOINT_VERSION);
-#endif
 }
 
 void SettingsActivity::drawFooter() {
-#ifdef RICKYOS_PRODUCT
   const auto productLabels = mainTabButtonLabels(tr(STR_BACK), tr(STR_SELECT), listCount() > 1);
   GUI.drawButtonHints(renderer, productLabels.btn1, productLabels.btn2, productLabels.btn3, productLabels.btn4);
   return;
-#endif
-  if (usesAccordion()) {
-    const auto labels = mainTabButtonLabels(tr(STR_BACK), tr(STR_TOGGLE), listCount() > 1);
-    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-    return;
-  }
-  const int ring = ringPos();
-  const auto confirmLabel =
-      (ring == 0) ? I18N.get(categoryNames[(selectedCategoryIndex + 1) % categoryCount])
-                  : (ring > 0 && (*currentSettings)[ring - 1].nameId == StrId::STR_TIME_TO_SLEEP ? tr(STR_SELECT)
-                                                                                                 : tr(STR_TOGGLE));
-
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirmLabel, tr(STR_DIR_UP), tr(STR_DIR_DOWN));
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 }
 
 void SettingsActivity::render(RenderLock&& lock) {

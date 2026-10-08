@@ -46,7 +46,6 @@ bool isStrictUtf8(const uint8_t* data, const size_t length, const bool finalChun
   return true;
 }
 
-#ifdef ENABLE_CHINESE_VERSION
 #include "GbkToUnicodeTable.inc"
 
 uint16_t gbkToUnicode(const uint8_t lead, const uint8_t trail) {
@@ -92,7 +91,6 @@ size_t appendUtf8(const uint32_t codepoint, uint8_t* output) {
   output[2] = static_cast<uint8_t>(0x80 | (codepoint & 0x3F));
   return 3;
 }
-#endif
 
 }  // namespace
 
@@ -104,22 +102,12 @@ bool isSupported(const Encoding encoding) {
     case Encoding::Utf8:
       return true;
     case Encoding::Gbk:
-#ifdef ENABLE_CHINESE_VERSION
       return true;
-#else
-      return false;
-#endif
   }
   return false;
 }
 
 Encoding detect(const uint8_t* data, const size_t length, const bool finalChunk) {
-#ifndef ENABLE_CHINESE_VERSION
-  (void)data;
-  (void)length;
-  (void)finalChunk;
-  return Encoding::Utf8;
-#else
   bool hasCompleteUtf8 = false;
   if (isStrictUtf8(data, length, finalChunk, hasCompleteUtf8)) {
     return hasCompleteUtf8 ? Encoding::Utf8 : Encoding::Unknown;
@@ -129,16 +117,9 @@ Encoding detect(const uint8_t* data, const size_t length, const bool finalChunk)
     return hasCompleteGbk ? Encoding::Gbk : Encoding::Unknown;
   }
   return Encoding::Utf8;
-#endif
 }
 
 TranscodeResult transcodeGbkInPlace(uint8_t* buffer, size_t rawLength, const size_t capacity, const bool finalChunk) {
-#ifndef ENABLE_CHINESE_VERSION
-  (void)buffer;
-  (void)capacity;
-  (void)finalChunk;
-  return {0, 0};
-#else
   if (!buffer || rawLength == 0 || rawLength >= capacity) return {0, 0};
 
   size_t utf8Length = 0;
@@ -191,7 +172,6 @@ TranscodeResult transcodeGbkInPlace(uint8_t* buffer, size_t rawLength, const siz
   std::memmove(buffer, buffer + sourceLength, utf8Length);
   buffer[utf8Length] = '\0';
   return {sourceLength, utf8Length};
-#endif
 }
 
 size_t gbkSourceLength(const uint8_t* utf8, const size_t utf8Length) {

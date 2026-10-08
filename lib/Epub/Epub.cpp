@@ -327,7 +327,7 @@ CssParser::ParseResult Epub::parseCssFiles(const CssParser::CacheStatus existing
   // Larger files risk memory exhaustion on ESP32
   constexpr size_t MAX_CSS_FILE_SIZE = 128 * 1024;  // 128KB
   // Minimum heap required before attempting CSS parsing
-#if defined(RICKYOS_PRODUCT) && defined(BOARD_HAS_PSRAM)
+#if defined(BOARD_HAS_PSRAM)
   // RickyOS sends every allocation over 256 bytes to PSRAM, so parsing draws far less
   // internal heap than on the no-PSRAM boards this gate was sized for. At 64 KB a
   // book with hundreds of stylesheets never parsed and retried on every open (~1 s).

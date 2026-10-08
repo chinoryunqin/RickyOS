@@ -1,5 +1,4 @@
 #include "RickyStandbySettingsActivity.h"
-#ifdef RICKYOS_PRODUCT
 #include <Bitmap.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
@@ -355,4 +354,3 @@ void RickyStandbySettingsActivity::activateIndex(const int index) {
   }
   requestUpdate();
 }
-#endif

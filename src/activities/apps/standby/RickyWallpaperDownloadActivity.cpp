@@ -1,4 +1,3 @@
-#ifdef RICKYOS_PRODUCT
 #include "RickyWallpaperDownloadActivity.h"
 
 #include <ArduinoJson.h>
@@ -330,4 +329,3 @@ void RickyWallpaperDownloadActivity::render(RenderLock&&) {
   }
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 }
-#endif

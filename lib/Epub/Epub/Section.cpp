@@ -50,11 +50,7 @@ namespace {
 //   72 / 73 - missing glyphs reserve space for a visible outline placeholder
 //   74 / 75 - character and word spacing in the render spec and cached text
 //   76 / 77 - independent Western paragraph indentation width
-#ifdef ENABLE_CHINESE_VERSION
 constexpr uint8_t SECTION_FILE_VERSION = 77;
-#else
-constexpr uint8_t SECTION_FILE_VERSION = 76;
-#endif
 // Written into the version field while a build is in progress; patched to
 // SECTION_FILE_VERSION only when the build is finalized. An abandoned /
 // crash-interrupted .bin therefore carries version 0, which loadSectionFile rejects

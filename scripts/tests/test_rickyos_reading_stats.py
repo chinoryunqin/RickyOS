@@ -20,8 +20,8 @@ def body(source, signature):
 class RickyReadingStatsTest(unittest.TestCase):
     def test_apps_entry_opens_the_single_page(self):
         menu = (ROOT / 'src/activities/apps/AppsMenuActivity.cpp').read_text()
-        product = menu.split('#ifdef RICKYOS_PRODUCT\n    {AppId::ReadingStats', 1)[1].split('#else', 1)[0]
-        self.assertIn('&ActivityManager::goToRickyReadingStats', product)
+        self.assertIn('{AppId::ReadingStats, StrId::STR_READING_STATS, UIIcon::ReadingStats, '
+                      '&ActivityManager::goToRickyReadingStats}', menu)
         header = (ROOT / 'src/activities/apps/reading-stats/RickyReadingStatsActivity.h').read_text()
         self.assertIn('int listCount() const override { return 0; }', header)  # nothing to drill into
 

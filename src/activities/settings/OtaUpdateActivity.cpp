@@ -29,18 +29,11 @@ namespace fui = freeink::ui;
 
 enum ReadyRow {
   CHECK_UPDATES_ROW,
-#ifndef RICKYOS_PRODUCT
-  NIGHTLY_ROW,
-#endif
   READY_ROW_COUNT,
 };
 
 const char* updateTitle() {
-#ifdef RICKYOS_PRODUCT
   return tr(STR_RICKYOS_FIRMWARE_UPDATE);
-#else
-  return tr(STR_UPDATE);
-#endif
 }
 
 constexpr uint8_t RELEASE_NOTE_MAX_LINES = 4;
@@ -99,7 +92,6 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
   requestUpdateAndWait();
 
 #ifdef SIMULATOR
-#ifdef RICKYOS_PRODUCT
   {
     RenderLock lock(*this);
     state = State::NoUpdate;
@@ -107,10 +99,6 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
   requestUpdate();
   return;
 #else
-  updater.loadSimulatorReleaseNotes();
-#endif
-#else
-#ifdef RICKYOS_PRODUCT
   // Certificate validation needs a sane UTC clock. Sync once before TLS, not
   // concurrently with the handshake; never bypass certificate validity.
   if (!halClock.hasValidTime() && !halClock.syncNow()) {
@@ -120,7 +108,6 @@ void OtaUpdateActivity::onWifiSelectionComplete(const bool success) {
     requestUpdate();
     return;
   }
-#endif
   // The checking screen can reload fonts after WiFi startup cleanup, so release them again immediately before TLS.
   NetworkStartup::prepare(renderer);
   LOG_INF("OTA", "TLS preflight (manifest): free=%u, maxAlloc=%u", static_cast<unsigned>(ESP.getFreeHeap()),
@@ -171,11 +158,7 @@ void OtaUpdateActivity::onEnter() {
   app.on(ACTION_INSTALL_UPDATE, &OtaUpdateActivity::onInstallUpdate, this);
   app.setScreen(&OtaUpdateActivity::updateScreen, this);
   state = State::Ready;
-#ifdef RICKYOS_PRODUCT
   selectedChannel = OtaUpdater::Channel::Stable;
-#else
-  selectedChannel = SETTINGS.otaNightlyEnabled ? OtaUpdater::Channel::Nightly : OtaUpdater::Channel::Stable;
-#endif
   selectedReadyRow = CHECK_UPDATES_ROW;
   waitForConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
   requestUpdate();
@@ -186,15 +169,6 @@ void OtaUpdateActivity::activateReadyRow() {
     case CHECK_UPDATES_ROW:
       beginWifiSelection();
       break;
-#ifndef RICKYOS_PRODUCT
-    case NIGHTLY_ROW:
-      selectedChannel =
-          selectedChannel == OtaUpdater::Channel::Stable ? OtaUpdater::Channel::Nightly : OtaUpdater::Channel::Stable;
-      SETTINGS.otaNightlyEnabled = selectedChannel == OtaUpdater::Channel::Nightly;
-      SETTINGS.saveToFile();
-      requestUpdate();
-      break;
-#endif
     case READY_ROW_COUNT:
       break;
   }
@@ -502,37 +476,17 @@ void OtaUpdateActivity::render(RenderLock&&) {
       GUI.drawList(
           renderer, readyList, READY_ROW_COUNT, selectedReadyRow,
           [](const int index) {
-#ifdef RICKYOS_PRODUCT
             (void)index;
             return std::string(tr(STR_CHECK_UPDATES));
-#else
-            return std::string(index == CHECK_UPDATES_ROW ? tr(STR_CHECK_UPDATES) : tr(STR_UPDATE_NIGHTLY));
-#endif
           },
           nullptr, nullptr,
           [this](const int index) {
-#ifdef RICKYOS_PRODUCT
             (void)index;
             return std::string();
-#else
-            if (index != NIGHTLY_ROW) return std::string();
-            return selectedChannel == OtaUpdater::Channel::Nightly ? std::string(tr(STR_STATE_ON))
-                                                                   : std::string(tr(STR_STATE_OFF));
-#endif
           },
           true);
-#ifdef RICKYOS_PRODUCT
       renderer.drawText(UI_10_FONT_ID, readyList.x, readyList.y + readyList.height + relatedGap,
                         tr(STR_RICKYOS_OTA_SOURCE));
-#else
-      if (selectedChannel == OtaUpdater::Channel::Nightly) {
-        const int warningTop = readyList.y + readyList.height + relatedGap;
-        renderer.drawText(SMALL_FONT_ID, safeArea.x + metrics.contentSidePadding, warningTop, tr(STR_NIGHTLY_WARNING));
-        renderer.drawText(SMALL_FONT_ID, safeArea.x + metrics.contentSidePadding,
-                          warningTop + renderer.getLineHeight(SMALL_FONT_ID) + relatedGap,
-                          tr(STR_NIGHTLY_LOCKED_WARNING));
-      }
-#endif
 
       const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
       GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);

@@ -23,48 +23,21 @@
 #include "components/SelectionCursorPolicy.h"
 #include "components/themes/BaseTheme.h"
 #include "components/themes/inx/InxTheme.h"
-#ifndef RICKYOS_PRODUCT
-#include "components/CoverGridHomeUi.h"
-#include "components/themes/lyra/Lyra3CoversTheme.h"
-#include "components/themes/lyra/LyraCarouselTheme.h"
-#include "components/themes/lyra/LyraTheme.h"
-#include "components/themes/roundedraff/RoundedRaffTheme.h"
-#endif
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
 #include <builtinFonts/notosans_14_bold.h>
 #include <builtinFonts/notosans_14_regular.h>
 #include <builtinFonts/notosans_16_bold.h>
 #include <builtinFonts/notosans_16_regular.h>
-#endif
 
 // The registered families keep these stable addresses across theme changes.
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
 EpdFont ui10RegularFont(&notosans_14_regular);
 EpdFont ui10BoldFont(&notosans_14_bold);
 EpdFont ui12RegularFont(&notosans_16_regular);
 EpdFont ui12BoldFont(&notosans_16_bold);
-#else
-EpdFont ui10RegularFont(&ubuntu_10_regular);
-EpdFont ui10BoldFont(&ubuntu_10_bold);
-EpdFont ui12RegularFont(&ubuntu_12_regular);
-EpdFont ui12BoldFont(&ubuntu_12_bold);
-#endif
 
 extern EpdFont offlineReaderFont;
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
 EpdFont ui18RegularFont(&notosans_16_regular);
 EpdFont ui18BoldFont(&notosans_16_bold);
 EpdFontFamily control18FontFamily(&ui12RegularFont, &ui12BoldFont);
-#else
-EpdFont ui18RegularFont(&notosans_18_regular);
-EpdFont ui18BoldFont(&notosans_18_bold);
-
-// Fixed control faces share the existing bitmap data; theme reload never mutates them.
-static EpdFont control18RegularFont(&notosans_18_regular);
-static EpdFont control18BoldFont(&notosans_18_bold);
-EpdFontFamily control18FontFamily(&control18RegularFont, &control18BoldFont);
-
-#endif
 
 UITheme UITheme::instance;
 
@@ -74,109 +47,33 @@ UITheme::UITheme() {
 }
 
 void UITheme::reload() {
-#ifdef RICKYOS_PRODUCT
   SETTINGS.enforceProductLayout();
-#endif
   const bool inx = SETTINGS.uiTheme == CrossPointSettings::INX;
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
   (void)inx;
   ui18RegularFont.data = &notosans_16_regular;
   ui18BoldFont.data = &notosans_16_bold;
-#else
-  ui18RegularFont.data = inx ? offlineReaderFont.data : &notosans_18_regular;
-  ui18BoldFont.data = inx ? offlineReaderFont.data : &notosans_18_bold;
-#endif
   auto themeType = static_cast<CrossPointSettings::UI_THEME>(SETTINGS.uiTheme);
   setTheme(themeType);
 }
 
 bool UITheme::supportsCoverGrid() {
-#ifdef RICKYOS_PRODUCT
   return false;
-#else
-  return HalMemory::getPsramHeap().totalBytes > 0;
-#endif
 }
 
 bool UITheme::hasCoverGridHome() {
-#ifdef RICKYOS_PRODUCT
   return false;
-#else
-  return SETTINGS.uiTheme == CrossPointSettings::COVER_GRID && supportsCoverGrid();
-#endif
 }
 
 void UITheme::drawCoverGridHome(CoverGridHomeUi& home) {
-#ifdef RICKYOS_PRODUCT
   (void)home;
-#else
-  home.renderUi();
-#endif
 }
 
 void UITheme::setTheme(CrossPointSettings::UI_THEME type) {
-#ifdef RICKYOS_PRODUCT
   (void)type;
   SETTINGS.enforceProductLayout();
   currentTheme = &fixedTheme;
   currentMetrics = &InxMetrics::values;
   currentType = CrossPointSettings::INX;
-#else
-  std::unique_ptr<BaseTheme> nextTheme;
-  const ThemeMetrics* nextMetrics = &BaseMetrics::values;
-  if (type == CrossPointSettings::COVER_GRID && !supportsCoverGrid()) type = CrossPointSettings::LYRA;
-
-  switch (type) {
-    case CrossPointSettings::UI_THEME::CLASSIC:
-      LOG_DBG("UI", "Using Classic theme");
-      nextTheme = makeUniqueNoThrow<BaseTheme>();
-      break;
-    case CrossPointSettings::UI_THEME::COVER_GRID:
-    case CrossPointSettings::UI_THEME::LYRA:
-      LOG_DBG("UI", "Using Lyra theme");
-      nextTheme = makeUniqueNoThrow<LyraTheme>();
-      nextMetrics = &LyraMetrics::values;
-      break;
-    case CrossPointSettings::UI_THEME::ROUNDEDRAFF:
-      LOG_DBG("UI", "Using RoundedRaff theme");
-      nextTheme = makeUniqueNoThrow<RoundedRaffTheme>();
-      nextMetrics = &RoundedRaffMetrics::values;
-      break;
-    case CrossPointSettings::UI_THEME::LYRA_3_COVERS:
-      LOG_DBG("UI", "Using Lyra 3 Covers theme");
-      nextTheme = makeUniqueNoThrow<Lyra3CoversTheme>();
-      nextMetrics = &Lyra3CoversMetrics::values;
-      break;
-    case CrossPointSettings::UI_THEME::LYRA_CAROUSEL:
-      LOG_DBG("UI", "Using Lyra Carousel theme");
-      nextTheme = makeUniqueNoThrow<LyraCarouselTheme>();
-      nextMetrics = &LyraCarouselMetrics::values;
-      break;
-    case CrossPointSettings::UI_THEME::INX:
-      LOG_DBG("UI", "Using INX theme");
-      nextTheme = makeUniqueNoThrow<InxTheme>();
-      nextMetrics = &InxMetrics::values;
-      break;
-    default:
-      LOG_ERR("UI", "Unknown theme %d, falling back to Classic", static_cast<int>(type));
-      nextTheme = makeUniqueNoThrow<BaseTheme>();
-      type = CrossPointSettings::UI_THEME::CLASSIC;
-      break;
-  }
-
-  if (!nextTheme) {
-    LOG_ERR("UI", "OOM creating theme %d; using static Classic fallback", static_cast<int>(type));
-    ownedTheme.reset();
-    currentTheme = &fallbackTheme;
-    currentMetrics = &BaseMetrics::values;
-    currentType = CrossPointSettings::UI_THEME::CLASSIC;
-  } else {
-    ownedTheme = std::move(nextTheme);
-    currentTheme = ownedTheme.get();
-    currentMetrics = nextMetrics;
-    currentType = type;
-  }
-#endif
   metricsValid = false;
 }
 

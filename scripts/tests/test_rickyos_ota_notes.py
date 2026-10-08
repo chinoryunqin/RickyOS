@@ -43,8 +43,8 @@ int main() {
 
     def test_offer_fetches_notes_without_depending_on_them(self):
         source = (ROOT / 'src/network/OtaUpdater.cpp').read_text()
-        product = source[source.index('#ifdef RICKYOS_PRODUCT\n  (void)requestedChannel;'):]
-        product = product[:product.index('#else')]
+        product = source[source.index('  (void)requestedChannel;'):]
+        product = product[:product.index('\n}\n')]
         self.assertLess(product.index('updateAvailable = true;'), product.index('ricky_ota::NOTES_URL'))
         self.assertIn('releaseNoteCount = notes.count();', product)
         manifest = (ROOT / 'src/network/RickyOtaManifest.h').read_text()

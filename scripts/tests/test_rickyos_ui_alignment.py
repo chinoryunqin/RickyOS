@@ -66,11 +66,6 @@ int main() {
  }
 }
 ''', include_dirs=(ROOT / 'src',), defines=('RICKYOS_PRODUCT', 'CROSSMUX_UI_PROFILE_HIGH_DPI'))
-        # Stock icon-only bar remains outside the product branch.
-        draw = method(source, 'void InxTheme::drawMainTabBar(')
-        stock = draw.split('#else', 1)[1]
-        self.assertNotIn('renderer.drawText', stock)
-        self.assertIn('renderer.fillRect(iconX, indicatorY', stock)
 
     def test_advertised_chrome_has_underlines_not_black_filter_buttons(self):
         source = (ROOT / 'src/activities/library/LibraryListActivity.cpp').read_text()
@@ -273,8 +268,6 @@ int main() {
         self.assertIn('readingFilter == 2 && started', filtering)
         self.assertIn('started && !stats->completed', filtering)
         enter = method(source, 'void LibraryListActivity::onEnter(')
-        stock_registration = enter[enter.index('#ifndef RICKYOS_PRODUCT'):enter.index('#endif')]
-        self.assertIn('app.on(ACTION_REBUILD', stock_registration)
         self.assertIn('ACTION_SHELF_OPTIONS', enter)
         self.assertIn('self.optionPopup.show', enter)
 

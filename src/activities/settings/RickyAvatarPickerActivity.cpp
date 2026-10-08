@@ -1,5 +1,4 @@
 #include "RickyAvatarPickerActivity.h"
-#ifdef RICKYOS_PRODUCT
 #include <I18n.h>
 
 #include <algorithm>
@@ -111,4 +110,3 @@ void RickyAvatarPickerActivity::activateIndex(const int index) {
   else
     finish();
 }
-#endif

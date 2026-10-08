@@ -1,5 +1,4 @@
 #include "RickyProfileActivity.h"
-#ifdef RICKYOS_PRODUCT
 #include <I18n.h>
 #include <Utf8.h>
 
@@ -139,4 +138,3 @@ void RickyProfileActivity::activateIndex(int index) {
     requestUpdate();
   }
 }
-#endif

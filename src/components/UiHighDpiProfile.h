@@ -3,11 +3,7 @@
 // UI preset calibrated for roughly 300-PPI displays; targets opt in explicitly.
 // Panel dimensions, bezel insets and hardware capabilities remain board-owned.
 namespace UiHighDpiProfile {
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
 inline constexpr bool enabled = true;
-#else
-inline constexpr bool enabled = false;
-#endif
 // Distinct bitmap revisions invalidate sections laid out with the legacy faces.
 inline constexpr int reader12FontId = 0x4738000C;
 inline constexpr int contentPadding = 32;

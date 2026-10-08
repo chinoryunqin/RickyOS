@@ -1,7 +1,5 @@
 #include "CrossPointSettings.h"
-#ifdef RICKYOS_PRODUCT
 #include <Utf8.h>
-#endif
 
 #include <BoardConfig.h>
 #include <HalStorage.h>
@@ -205,7 +203,6 @@ uint8_t CrossPointSettings::sleepTimeoutEnumToMinutes(const uint8_t legacyValue)
   }
 }
 
-#ifdef RICKYOS_PRODUCT
 void CrossPointSettings::enforceProductLayout() {
   uiTheme = INX;
   inxRecentLayout = static_cast<uint8_t>(InxRecentLayout::Flow);
@@ -213,7 +210,6 @@ void CrossPointSettings::enforceProductLayout() {
   inxAppsLayout = static_cast<uint8_t>(InxItemLayout::Icons);
   inxTabPosition = INX_TAB_BOTTOM;
 }
-#endif
 
 void CrossPointSettings::toJson(JsonDocument& doc) const {
   const CrossPointSettings& s = *this;
@@ -268,7 +264,6 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
     doc["sdFontFamilyName"] = sdFontFamilyName;
   }
   doc["sdFontFlashPreload"] = sdFontFlashPreload;
-#ifdef RICKYOS_PRODUCT
   // Keep a fixed legacy-compatible value without exposing a mutable menu/API row.
   doc["uiTheme"] = static_cast<uint8_t>(INX);
   doc["inxRecentLayout"] = static_cast<uint8_t>(InxRecentLayout::Flow);
@@ -288,7 +283,6 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   doc["rickyPowerOffScreen"] = rickyPowerOffScreen;
   doc["rickyTapTurn"] = 1;       // the swipe-only default migration has run
   doc["rickyStandbyKeyOn"] = 1;  // the Back-key Standby shortcut was turned on once
-#endif
   // Dictionary folder name — uses dynamic getter/setter in SettingsList, save manually
   if (dictionaryName[0] != '\0') {
     doc["dictionaryName"] = dictionaryName;
@@ -495,7 +489,6 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   const char* sfn = doc["sdFontFamilyName"] | "";
   strncpy(sdFontFamilyName, sfn, sizeof(sdFontFamilyName) - 1);
   sdFontFamilyName[sizeof(sdFontFamilyName) - 1] = '\0';
-#ifdef RICKYOS_PRODUCT
   uiTheme = INX;
   if (!doc["uiTheme"].isNull() && (!doc["uiTheme"].is<uint8_t>() || doc["uiTheme"].as<uint8_t>() != INX)) {
     needsResave = true;
@@ -577,7 +570,6 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     standbyShortcutEnabled = 1;
     needsResave = true;
   }
-#endif
   sdFontFlashPreload =
       clamp(static_cast<uint8_t>(doc["sdFontFlashPreload"] | 0), static_cast<uint8_t>(2), static_cast<uint8_t>(0));
   if (storedFontFamily == LEGACY_OPENDYSLEXIC && sdFontFamilyName[0] == '\0') {
@@ -756,12 +748,8 @@ bool CrossPointSettings::loadFromBinaryFile() {
   longPressButtonBehavior = validated(17, longPressButtonBehavior, LONG_PRESS_BUTTON_BEHAVIOR_COUNT);
   hyphenationEnabled = value(18, hyphenationEnabled);
   sleepScreenCoverFilter = validated(19, sleepScreenCoverFilter, SLEEP_SCREEN_COVER_FILTER_COUNT);
-#ifdef RICKYOS_PRODUCT
   uiTheme = INX;
   enforceProductLayout();
-#else
-  uiTheme = value(20, uiTheme);
-#endif
   frontButtonBack = validated(21, frontButtonBack, FRONT_BUTTON_HARDWARE_COUNT);
   frontButtonConfirm = validated(22, frontButtonConfirm, FRONT_BUTTON_HARDWARE_COUNT);
   frontButtonLeft = validated(23, frontButtonLeft, FRONT_BUTTON_HARDWARE_COUNT);
@@ -873,7 +861,6 @@ unsigned long CrossPointSettings::getSleepTimeoutMs() const {
   return static_cast<unsigned long>(minutes) * 60UL * 1000UL;
 }
 
-#ifdef RICKYOS_PRODUCT
 uint8_t CrossPointSettings::rickySleepScreenMode() const {
   if (rickyPowerOffScreen == RICKY_POWER_OFF_BLANK) return BLANK;
   if (rickyPowerOffScreen == RICKY_POWER_OFF_SAME) {
@@ -890,7 +877,6 @@ uint8_t CrossPointSettings::rickySleepScreenMode() const {
   }
   return sleepScreen == DARK ? DARK : LIGHT;
 }
-#endif
 
 uint64_t CrossPointSettings::getDailyGoalMs() const {
   switch (dailyGoalTarget) {
@@ -930,10 +916,6 @@ void CrossPointSettings::clearSdFontFamily() {
   sdFontFamilyName[0] = '\0';
   sdFontFlashPreload = 0;
   fontFamily = NOTOSANS;
-#ifndef CROSSMUX_UI_PROFILE_HIGH_DPI
-  fontPointSize =
-      snapToNearestPointSize(BUILTIN_READER_POINT_SIZES, std::size(BUILTIN_READER_POINT_SIZES), fontPointSize);
-#endif
   saveToFile();
 }
 

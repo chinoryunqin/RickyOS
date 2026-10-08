@@ -64,9 +64,7 @@ static_assert(!shouldRefreshDownloadProgress(0, 9));
 static_assert(shouldRefreshDownloadProgress(0, 10));
 static_assert(!shouldRefreshDownloadProgress(90, 100));  // The verified final frame is drawn synchronously.
 
-#ifdef ENABLE_CHINESE_VERSION
 std::atomic<bool> chineseFontPromptShownThisBoot{false};
-#endif
 
 bool parseManifestPointSize(const char* familyName, const char* fileName, uint8_t& pointSize) {
   const size_t familyLength = strlen(familyName);
@@ -98,7 +96,6 @@ FontDownloadActivity::FontDownloadActivity(GfxRenderer& renderer, MappedInputMan
       startMode_(startMode),
       fontInstaller_(sdFontSystem.registry()) {}
 
-#ifdef ENABLE_CHINESE_VERSION
 bool FontDownloadActivity::wasChineseFontPromptShownThisBoot() {
   return chineseFontPromptShownThisBoot.load(std::memory_order_relaxed);
 }
@@ -106,7 +103,6 @@ bool FontDownloadActivity::wasChineseFontPromptShownThisBoot() {
 void FontDownloadActivity::suppressChineseFontPromptThisBoot() {
   chineseFontPromptShownThisBoot.store(true, std::memory_order_relaxed);
 }
-#endif
 
 void FontDownloadActivity::activateIndex(const int index) {
   switch (state_) {
@@ -157,9 +153,7 @@ void FontDownloadActivity::onEnter() {
   app.on(ACTION_RETRY_DOWNLOAD, &FontDownloadActivity::onRetryDownload, this);
   if (purpose_ == Purpose::ReaderAutoInstall) targetPointSize_ = SETTINGS.fontPointSize;
   if (startMode_ == StartMode::ResumeFontLoadError) {
-#ifdef ENABLE_CHINESE_VERSION
     suppressChineseFontPromptThisBoot();
-#endif
     state_ = ERROR;
     operation_ = DownloadOperation::None;
     automaticError_ = AutomaticError::FontLoad;
@@ -172,9 +166,7 @@ void FontDownloadActivity::onEnter() {
                                                                 ConfirmationActivity::BodyPlacement::PopupTitle);
     if (!confirmation) {
       LOG_ERR("FONT", "OOM allocating ConfirmationActivity (%zu bytes)", sizeof(ConfirmationActivity));
-#ifdef ENABLE_CHINESE_VERSION
       chineseFontPromptShownThisBoot.store(true, std::memory_order_relaxed);
-#endif
       if (purpose_ == Purpose::ReaderAutoInstall) {
         finishAutomaticFlow(ExitRoute::ReaderSuppressPrompt);
       } else {
@@ -182,9 +174,7 @@ void FontDownloadActivity::onEnter() {
       }
       return;
     }
-#ifdef ENABLE_CHINESE_VERSION
     chineseFontPromptShownThisBoot.store(true, std::memory_order_relaxed);
-#endif
     startActivityForResult(std::move(confirmation), [this](const ActivityResult& result) {
       if (result.isCancelled) {
         if (purpose_ == Purpose::ReaderAutoInstall) {
@@ -365,11 +355,7 @@ bool FontDownloadActivity::fetchAndParseManifest() {
     if (auto* fcm = renderer.getFontCacheManager()) fcm->releaseSdFontCaches();
   }
   if (!HttpDownloader::hasMemoryForTls()) {
-#ifdef RICKYOS_PRODUCT
     errorMessage_ = tr(STR_RICKY_FONT_NETWORK_MEMORY);
-#else
-    errorMessage_ = tr(STR_MEMORY_ERROR);
-#endif
     return false;
   }
   char manifestUrl[160];
@@ -382,14 +368,12 @@ bool FontDownloadActivity::fetchAndParseManifest() {
     return false;
   }
   const char* manifestUrls[3] = {manifestUrl, nullptr, nullptr};
-#ifdef RICKYOS_PRODUCT
   // RickyOS lists its own catalog; the reader's automatic NotoSansSC install stays on CrossMux.
   if (purpose_ != Purpose::ReaderAutoInstall) {
     static_assert(RickyFontCatalog::MANIFEST_COUNT == 3);
     for (int attempt = 0; attempt < RickyFontCatalog::MANIFEST_COUNT; ++attempt)
       manifestUrls[attempt] = RickyFontCatalog::manifestFor(SETTINGS.contentProfile, attempt);
   }
-#endif
   NetworkStartup::logMemory("font manifest request");
   auto result = HttpDownloader::HTTP_ERROR;
   for (const char* url : manifestUrls) {

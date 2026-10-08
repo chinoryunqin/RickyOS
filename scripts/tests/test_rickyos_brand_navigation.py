@@ -49,7 +49,7 @@ int main() {
     def test_settings_product_paths_bypass_accordion(self):
         source = (ROOT/"src/activities/settings/SettingsActivity.cpp").read_text()
         activate = method(source, "void SettingsActivity::activateIndex(")
-        product = activate.split("#ifdef RICKYOS_PRODUCT", 1)[1].split("#endif", 1)[0]
+        product = activate
         self.assertIn("openRickyCategory(index)", product)
         self.assertNotIn("toggleAccordionCategory", product)
         back = method(source, "bool SettingsActivity::handleButtons(")
@@ -61,7 +61,7 @@ int main() {
         self.assertIn("nav = categoryNav_", parent)
         self.assertIn("categoryRoot_ = true", parent)
         screen = method(source, "void SettingsActivity::buildScreen(")
-        product = screen.split("#ifdef RICKYOS_PRODUCT", 2)[2].split("#endif", 1)[0]
+        product = screen
         self.assertIn("screen.list(productProps)", product)
         self.assertNotIn("toggleAccordionCategory", product)
 

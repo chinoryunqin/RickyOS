@@ -25,20 +25,10 @@ void BootActivity::onEnter() {
 }
 
 void BootActivity::renderSplash() {
-#ifdef RICKYOS_PRODUCT
   // One complete static mark; wake and PostOta keep their separate lifecycle.
   GUI.drawRickyPowerScreen(renderer, false, false);
   renderer.displayBuffer(HalDisplay::FULL_REFRESH);
   return;
-#endif
-  GUI.drawSplash(renderer, tr(STR_BOOTING), CROSSPOINT_VERSION);
-#if FREEINK_DEVICE_EEGO_A4
-  // A4: the panel is being powered on for the first time here, and a FAST
-  // refresh on a freshly powered panel doesn't establish the frame (observed:
-  // splash never appears). Force the first paint to a full waveform.
-  renderer.requestNextFullRefresh();
-#endif
-  renderer.displayBuffer();
 }
 
 void BootActivity::runPostOta() {

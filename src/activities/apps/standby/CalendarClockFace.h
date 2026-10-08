@@ -1,5 +1,4 @@
 #pragma once
-#ifdef RICKYOS_PRODUCT
 
 #include <cstdint>
 
@@ -24,4 +23,3 @@ class CalendarClockFace final : public StandbyFace {
   int32_t lastMinute_ = -1;  // local minute of day last drawn
 };
 
-#endif

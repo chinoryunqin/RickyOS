@@ -75,44 +75,11 @@ int main() {
 ''', defines=('RICKYOS_PRODUCT', 'CROSSMUX_UI_PROFILE_HIGH_DPI'))
 
     def test_mutable_theme_row_removed_from_shared_settings_catalog_only_for_product(self):
+        # RickyOS pins INX: the shared settings catalog offers no theme or layout rows.
         source = (ROOT / 'src/SettingsList.h').read_text()
-        values = method(source, 'inline std::vector<StrId> homeThemeValues(')
-        start = source.index('#ifndef RICKYOS_PRODUCT\n        SettingInfo::Enum(StrId::STR_UI_THEME')
-        entry = source[start:source.index('#endif', start) + len('#endif')]
-        labels = sorted(set(re.findall(r'StrId::(\w+)', values + entry)) - {'STR_UI_THEME', 'STR_CAT_DISPLAY'})
-        program = r'''
-#include <cassert>
-#include <cstdint>
-#include <vector>
-#include <iterator>
-#include <cstring>
-enum class StrId {STR_UI_THEME,STR_CAT_DISPLAY,LABELS};
-struct CrossPointSettings {uint8_t uiTheme=5,inxRecentLayout=0,inxLibraryLayout=0,inxAppsLayout=0,inxTabPosition=1;};
-struct UITheme {static bool supportsCoverGrid(){return true;}};
-struct SettingInfo {
- const char* key;
- static SettingInfo Enum(StrId,uint8_t CrossPointSettings::*,std::vector<StrId>,const char* k,StrId){return {k};}
-};
-#ifndef RICKYOS_PRODUCT
-VALUES
-#endif
-int main() {
- const std::vector<SettingInfo> catalog={
-ENTRY
- };
-#ifdef RICKYOS_PRODUCT
- assert(catalog.empty());
-#else
- const char* expected[]={"uiTheme","inxRecentLayout","inxLibraryLayout","inxAppsLayout","inxTabPosition"};
- assert(catalog.size()==5);
- for(unsigned i=0;i<5;++i) assert(std::strcmp(catalog[i].key,expected[i])==0);
- assert(homeThemeValues().size()==7);
-#endif
-}
-'''.replace('LABELS', ','.join(labels)).replace('VALUES', values).replace('ENTRY', entry)
-        for defines in ((), ('RICKYOS_PRODUCT',)):
-            run_cpp(program, defines=defines)
-
+        self.assertNotIn('SettingInfo::Enum(StrId::STR_UI_THEME', source)
+        for key in ('"uiTheme"', '"inxRecentLayout"', '"inxLibraryLayout"', '"inxAppsLayout"', '"inxTabPosition"'):
+            self.assertNotIn(key, source)
     def test_legacy_json_theme_is_normalized_and_resaved_without_resetting_other_preferences(self):
         source = (ROOT / 'src/CrossPointSettings.cpp').read_text()
         loading = method(source, 'bool CrossPointSettings::fromJson(')
@@ -144,7 +111,7 @@ int main() {
         saving = method(source, 'void CrossPointSettings::toJson(')
         self.assertIn('doc["uiTheme"] = static_cast<uint8_t>(INX)', saving)
         legacy = method(source, 'bool CrossPointSettings::loadFromBinaryFile(')
-        self.assertIn('#ifdef RICKYOS_PRODUCT\n  uiTheme = INX;\n  enforceProductLayout();\n#else\n  uiTheme = value(20, uiTheme);', legacy)
+        self.assertIn('  uiTheme = INX;\n  enforceProductLayout();\n', legacy)
         self.assertIn('doc["rickyHomePhrase"] = rickyHomePhrase', saving)
 
     def test_all_layout_json_values_are_pinned_and_other_preferences_untouched(self):
@@ -205,12 +172,9 @@ int main() {
 '''.replace('MIGRATION', migration).replace('SAVE', save).replace('NORMALIZE', method(source, 'void CrossPointSettings::enforceProductLayout('))
         run_cpp(program)
         catalog = (ROOT / 'src/SettingsList.h').read_text()
-        guarded = catalog[catalog.index('#ifndef RICKYOS_PRODUCT\n        SettingInfo::Enum(StrId::STR_UI_THEME'):]
-        guarded = guarded[:guarded.index('#endif')]
+        # Pinned layouts are never offered as settings rows.
         for key in ('inxRecentLayout', 'inxLibraryLayout', 'inxAppsLayout', 'inxTabPosition'):
-            self.assertIn('"' + key + '"', guarded)
-        self.assertNotIn('fontSize', guarded)
-        self.assertNotIn('fontFamily', guarded)
+            self.assertNotIn('"' + key + '"', catalog)
 
     def test_only_standalone_alternative_sources_are_excluded_in_product(self):
         config = configparser.ConfigParser(interpolation=None)
@@ -224,9 +188,6 @@ int main() {
             self.assertNotIn('-<' + path + '>', excludes)
         for env in ('env:rickyos_readpico', 'env:simulator_rickyos'):
             self.assertIn('${rickyos_app_profile.build_src_filter}', config[env]['build_src_filter'])
-
-    def test_stock_theme_capability_saved_ids_and_oom_fallback_unchanged(self):
-        subprocess.run([sys.executable, str(ROOT / 'test/inx_navigation/test_cover_grid.py')], check=True)
 
 
 if __name__ == '__main__':

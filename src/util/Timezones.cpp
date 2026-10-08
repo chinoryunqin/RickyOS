@@ -121,13 +121,9 @@ constexpr TimezoneInfo TABLE[] = {
 };
 constexpr size_t TABLE_COUNT = sizeof(TABLE) / sizeof(TABLE[0]);
 constexpr uint8_t UTC_INDEX = 17;
-#ifdef RICKYOS_PRODUCT
 // RickyOS ships for mainland China: an unset zone means China Standard Time (UTC+8).
 constexpr uint8_t DEFAULT_INDEX = 36;
 static_assert(TABLE[DEFAULT_INDEX].stdOffsetQ == 32, "default zone must be UTC+8");
-#else
-constexpr uint8_t DEFAULT_INDEX = UTC_INDEX;
-#endif
 static_assert(TABLE[UTC_INDEX].stdOffsetQ == 0, "UTC_INDEX must point at the UTC entry");
 static_assert(TABLE_COUNT < 255, "255 is the 'never chosen' sentinel in clockTimezone");
 

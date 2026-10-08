@@ -23,11 +23,10 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
 
     def test_product_offers_only_the_wallpaper_face(self):
         table = self.activity.split('constexpr FaceEntry kFaces[] = {', 1)[1].split('\n};', 1)[0]
-        product, stock = table.split('#else', 1)
+        product = table
         self.assertIn('makeUniqueNoThrow<WallpaperFace>()', product)
         self.assertNotIn('SloppyClockFace', product)
         self.assertNotIn('ChineseCalendarFace', product)
-        self.assertIn('makeUniqueNoThrow<SloppyClockFace>()', stock)
 
     def test_picture_is_the_settings_wallpaper_in_native_16_gray(self):
         self.assertIn('constexpr char kPicture[] = "/sleep.bmp";', self.face)
@@ -54,7 +53,7 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
     def test_image_preview_starts_and_ends_on_a_full_refresh(self):
         viewer = (ROOT / 'src/activities/util/ImageViewerActivity.cpp').read_text()
         enter = body(viewer, 'void ImageViewerActivity::onEnter()')
-        product = enter.split('#ifdef RICKYOS_PRODUCT', 1)[1].split('#endif', 1)[0]
+        product = enter[enter.index('// No blank page first'):enter.index('const bool needsPreview')]
         # No blank page before the loading popup (a white screen read as a hang); the
         # picture itself lands in one clean full GC16 refresh.
         self.assertNotIn('displayBuffer', product)
@@ -94,8 +93,8 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
 
     def test_apps_entry_opens_the_settings_page_not_standby(self):
         menu = (ROOT / 'src/activities/apps/AppsMenuActivity.cpp').read_text()
-        product = menu.split('#ifdef RICKYOS_PRODUCT\n    // The one entry for Standby', 1)[1].split('#else', 1)[0]
-        self.assertIn('&ActivityManager::goToStandbySettings', product)
+        self.assertIn('{AppId::Standby, StrId::STR_RICKY_POWER_PAGE_TITLE, UIIcon::Standby, '
+                      '&ActivityManager::goToStandbySettings}', menu)
         page = (ROOT / 'src/activities/apps/standby/RickyStandbySettingsActivity.cpp').read_text()
         activate = body(page, 'void RickyStandbySettingsActivity::activateIndex(')
         self.assertIn('SETTINGS.rickyStandbyFace = kStyles[chosen];', activate)
@@ -149,9 +148,8 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
     def test_library_search_stays_shut_without_chinese_input(self):
         library = (ROOT / 'src/activities/library/LibraryListActivity.cpp').read_text()
         search = body(library, 'void LibraryListActivity::openSearch()')
-        product = search.split('#ifdef RICKYOS_PRODUCT', 1)[1].split('#endif', 1)[0]
-        self.assertIn('return;', product)
-        self.assertIn('constexpr bool canSearch = false;', library)
+        self.assertIn('return;', search)
+        self.assertNotIn('STR_SEARCH', body(library, 'void LibraryListActivity::drawFooter()'))
 
 
     def test_without_a_picture_standby_shows_the_rest_screen(self):
@@ -166,7 +164,7 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
 
     def test_unset_timezone_is_china_standard_time(self):
         zones = (ROOT / 'src/util/Timezones.cpp').read_text()
-        product = zones.split('#ifdef RICKYOS_PRODUCT', 1)[1].split('#else', 1)[0]
+        product = zones
         self.assertIn('constexpr uint8_t DEFAULT_INDEX = 36;', product)
         self.assertIn('static_assert(TABLE[DEFAULT_INDEX].stdOffsetQ == 32', product)
         self.assertIn('return DEFAULT_INDEX;', body(zones, 'uint8_t activeIndex()'))

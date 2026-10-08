@@ -1,5 +1,4 @@
 #pragma once
-#ifdef RICKYOS_PRODUCT
 
 #include "CrossPointSettings.h"
 
@@ -31,4 +30,3 @@ static_assert(manifestFor(CrossPointSettings::ContentProfile::Global, 0) == GITH
 static_assert(manifestFor(CrossPointSettings::ContentProfile::Global, 2) == FASTLY_MANIFEST);
 
 }  // namespace RickyFontCatalog
-#endif

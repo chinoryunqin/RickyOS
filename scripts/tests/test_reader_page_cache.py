@@ -95,6 +95,10 @@ struct GfxRenderer {
   struct FrameBufferLoan {explicit FrameBufferLoan(GfxRenderer&) {}};
   struct SyntheticBoldScope {SyntheticBoldScope(GfxRenderer&,uint8_t) {}};
   struct TextWeightScope {TextWeightScope(GfxRenderer&,const uint8_t*,uint8_t=0) {}};
+  // The 16-level page cache is not exercised here: nativeGray16Page() says no.
+  size_t grayscale16FrameBytes() const {return 0;}
+  bool beginGrayscale16Offscreen(uint8_t*) {return false;}
+  void endGrayscale16Offscreen() {}
 };
 constexpr int TAG_PageLine=1;
 int renders=0, cancelAt=0;
@@ -141,6 +145,7 @@ struct Section {
   }
 };
 struct EpubReaderActivity {
+  bool nativeGray16Page(const Page&) const {return false;}
   GfxRenderer renderer;
   std::unique_ptr<Section> section=std::make_unique<Section>();
   static constexpr int kPageCacheSlots=2;

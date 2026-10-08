@@ -1,5 +1,4 @@
 #pragma once
-#ifdef RICKYOS_PRODUCT
 
 #include "StandbyFace.h"
 
@@ -16,4 +15,3 @@ class KeepPageFace final : public StandbyFace {
   bool wantsClock() const override { return false; }
 };
 
-#endif

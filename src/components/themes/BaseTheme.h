@@ -163,10 +163,8 @@ enum UIIcon {
   Sudoku,
   Sokoban,
   Gomoku,
-#ifdef ENABLE_CHINESE_VERSION
   ChineseChess,
   WeRead,
-#endif
   Minesweeper,
   Avatar,
   Standby,
@@ -293,11 +291,7 @@ constexpr ThemeMetrics values = {.batteryWidth = 15,
 
 class BaseTheme {
  public:
-#if defined(ENABLE_CHINESE_VERSION) || defined(CROSSMUX_UI_PROFILE_HIGH_DPI)
   static constexpr int STATUS_NUMERIC_FONT_ID = -858375107;
-#else
-  static constexpr int STATUS_NUMERIC_FONT_ID = SMALL_FONT_ID;
-#endif
 
   virtual ~BaseTheme() = default;
 
@@ -352,13 +346,11 @@ class BaseTheme {
   virtual void drawMainTabBar(const GfxRenderer& renderer, Rect rect, MainTab selected) const;
   virtual void drawMainTabStatusBar(const GfxRenderer& renderer, Rect rect) const;
   static void drawSplash(const GfxRenderer& renderer, const char* status, const char* version = nullptr);
-#ifdef RICKYOS_PRODUCT
   static void drawRickyPowerScreen(const GfxRenderer& renderer, bool sleeping, bool transition,
                                    const char* version = nullptr, uint8_t reveal = 3);
   // A small framed label in the bottom-right corner over whatever the screen shows
   // ("Standby", or "Off" on the power-off screen); returns where it drew.
   static Rect drawRickyStandbyIndicator(const GfxRenderer& renderer, bool poweredOff = false);
-#endif
   // Also draws the wall clock opposite the battery when the user enabled
   // SETTINGS.clockShowInHeader and system time is valid. On touch boards a
   // tappable back button leads the band (see HeaderBackTapTarget); root

@@ -114,8 +114,8 @@ int main() {
         with tempfile.TemporaryDirectory(prefix='ricky-app-profile-') as directory:
             cpp = Path(directory) / 'catalog.cpp'
             cpp.write_text(program)
-            for product in (False, True):
-                for chinese in (False, True):
+            for product in (True,):  # RickyOS is the only product: Chinese, its own catalog
+                for chinese in (True,):
                     with self.subTest(product=product, chinese=chinese):
                         binary = Path(directory) / f'catalog-{product}-{chinese}'
                         flags = (['-DRICKYOS_PRODUCT=1'] if product else [])

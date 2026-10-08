@@ -156,32 +156,6 @@ int main() {
                 defines = ('RICKYOS_PRODUCT', 'CROSSMUX_UI_PROFILE_HIGH_DPI') if high_dpi else ('RICKYOS_PRODUCT',)
                 run_cpp(program.replace('SIZE', str(size)), include_dirs=(ROOT / 'src',), defines=defines)
 
-    def test_non_product_routing_keeps_upstream_assets(self):
-        source = SOURCE.read_text()
-        program = r'''
-#include <cassert>
-#include "activities/MainTab.h"
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
-#include "components/icons/uiChromeIcons.h"
-#else
-#include "components/icons/inx_tabs.h"
-#endif
-''' + method(source, 'const uint8_t* iconForTab(') + r'''
-int main() {
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
-  const uint8_t* expected[]={icon_tab_recent_56.bits,icon_tab_library_56.bits,icon_tab_apps_56.bits,
-                            icon_tab_settings_56.bits,icon_tab_statistics_56.bits};
-#else
-  const uint8_t* expected[]={InxRecentTabIcon,InxLibraryTabIcon,InxAppsTabIcon,
-                            InxSettingsTabIcon,InxStatisticsTabIcon};
-#endif
-  for(unsigned i=0;i<MainTabs::values.size();++i) assert(iconForTab(MainTabs::values[i])==expected[i]);
-  assert(iconForTab(MainTab::None)==nullptr);
-}
-'''
-        for defines in ((), ('CROSSMUX_UI_PROFILE_HIGH_DPI',)):
-            run_cpp(program, include_dirs=(ROOT / 'src', ROOT / 'freeink-sdk/libs/assets/Icons/include'), defines=defines)
-
     def test_resource_switch_does_not_change_navigation_geometry_or_allocate(self):
         source = SOURCE.read_text()
         for signature in ('const uint8_t* iconForTab(', 'void drawInxIcon(', 'void drawSelectedInxIcon('):
@@ -191,11 +165,7 @@ int main() {
                 self.assertNotIn(allocation, body)
         draw = method(source, 'void InxTheme::drawMainTabBar(')
         self.assertIn('MainTabs::tabBounds', draw)
-        self.assertIn('rect.height - kIconSize - bottomIconInset', draw)
-        self.assertIn('renderer.fillRect(iconX, indicatorY, kIconSize, kUnderlineHeight)', draw)
-        stock = draw.split('#else', 1)[1]
-        self.assertNotIn('drawText', stock)
-        product = draw.split('#else', 1)[0]
+        product = draw
         self.assertIn('renderer.fillRect(rect.x, separatorY, rect.width, 1, true)', product)
         self.assertIn('navigationRows(rect, kPillHeight', product)
         self.assertEqual(product.count('renderer.drawText'), 1)  # one pass, no fake-bold overdraw

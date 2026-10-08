@@ -1,5 +1,4 @@
 #include "RickyOptionListActivity.h"
-#ifdef RICKYOS_PRODUCT
 #include <GfxRenderer.h>
 
 #include <algorithm>
@@ -138,4 +137,3 @@ void RickyOptionListActivity::activateIndex(const int index) {
   });
   requestUpdate();
 }
-#endif

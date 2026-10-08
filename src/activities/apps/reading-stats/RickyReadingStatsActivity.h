@@ -1,5 +1,4 @@
 #pragma once
-#ifdef RICKYOS_PRODUCT
 
 #include <cstdint>
 
@@ -20,4 +19,3 @@ class RickyReadingStatsActivity final : public UiListActivity {
   void activateIndex(int) override {}
 };
 
-#endif

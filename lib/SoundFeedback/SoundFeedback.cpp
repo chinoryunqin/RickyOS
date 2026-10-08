@@ -61,11 +61,7 @@ bool parsePcmWav(const uint8_t* wav, const size_t length, WavPcmView& view) {
 namespace SoundFeedback {
 namespace {
 
-#if FREEINK_DEVICE_WAVESHARE_EPAPER_397
-constexpr const Calibration& ACTIVE_CALIBRATION = WAVESHARE_397_CALIBRATION;
-#else
 #error "CROSSPOINT_CAP_SOUND_FEEDBACK requires a board calibration"
-#endif
 
 constexpr uint32_t FEEDBACK_SAMPLE_RATE = 16000;
 constexpr uint8_t FEEDBACK_CHANNELS = 1;

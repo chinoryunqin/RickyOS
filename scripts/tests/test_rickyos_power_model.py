@@ -33,7 +33,7 @@ class RickyPowerModelTest(unittest.TestCase):
     def test_idle_opens_standby_and_standby_powers_off_after_its_time(self):
         main = read('src/main.cpp')
         idle = main[main.index('// RickyOS power model:'):]
-        idle = idle[:idle.index('#else')]
+        idle = idle[:idle.index('static bool powerReleasedSinceWake')]
         self.assertIn('activityManager.openStandby();', idle)
         self.assertNotIn('enterDeepSleep(true);\n    // This', idle)
         self.assertLess(idle.index('consumePowerOffRequest()'), idle.index('openStandby()'))

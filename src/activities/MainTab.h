@@ -21,17 +21,11 @@ struct MainTabLayout {
 namespace MainTabs {
 inline constexpr int controlGap = UiHighDpiProfile::enabled ? UiHighDpiProfile::controlGap : 6;
 inline constexpr int statusBarHeight = UiHighDpiProfile::enabled ? UiHighDpiProfile::statusHeight : 28;
-#ifdef RICKYOS_PRODUCT
 // Brand navigation includes a separator, icon, label and breathing room.
 inline constexpr int bottomBarHeight = UiHighDpiProfile::enabled ? 116 : 86;
 // Apps sits in the middle: it is opened more often than Storage.
 inline constexpr std::array<MainTab, 5> values = {MainTab::Recent, MainTab::Library, MainTab::Apps,
                                                   MainTab::StorageFiles, MainTab::Settings};
-#else
-inline constexpr int bottomBarHeight = UiHighDpiProfile::enabled ? UiHighDpiProfile::navigationHeight : 56;
-inline constexpr std::array<MainTab, 5> values = {MainTab::Recent, MainTab::Library, MainTab::Apps, MainTab::Settings,
-                                                  MainTab::Statistics};
-#endif
 
 constexpr int indexOf(const MainTab tab) {
   const auto found = std::find(values.begin(), values.end(), tab);

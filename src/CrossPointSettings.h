@@ -438,21 +438,12 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t inxRecentLayout = static_cast<uint8_t>(InxRecentLayout::Flow);
   uint8_t inxLibraryLayout = static_cast<uint8_t>(InxItemLayout::Icons);
   uint8_t inxAppsLayout = static_cast<uint8_t>(InxItemLayout::Icons);
-#ifdef RICKYOS_PRODUCT
   uint8_t inxTabPosition = INX_TAB_BOTTOM;
   // Keep compatible field/enum IDs, but product loading/theme reload fixes them.
   void enforceProductLayout();
-#else
-  uint8_t inxTabPosition = BoardConfig::hasTouch() ? INX_TAB_BOTTOM : INX_TAB_TOP;
-#endif
   // Show and enable the Standby shortcut on the home screen.
-#ifdef RICKYOS_PRODUCT
   // Back key (the ring under the screen) on Home opens Standby; touch gestures never do.
   uint8_t standbyShortcutEnabled = 1;
-#else
-  uint8_t standbyShortcutEnabled = 0;
-#endif
-#ifdef RICKYOS_PRODUCT
   // What the Standby wallpaper shows on top of the picture (STANDBY_OVERLAY).
   // Time redraws only its corner each minute with a partial refresh.
   enum STANDBY_OVERLAY : uint8_t {
@@ -492,7 +483,6 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     const uint8_t hours = RICKY_AUTO_OFF_HOURS[rickyAutoOffIndex < RICKY_AUTO_OFF_COUNT ? rickyAutoOffIndex : 0];
     return static_cast<unsigned long>(hours) * 3600UL * 1000UL;
   }
-#endif
   // Sunlight fading compensation
   uint8_t fadingFix = 0;
   // Power button return from footnotes (1 = enabled, 0 = disabled)
@@ -507,7 +497,6 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t imageScaling = IMAGE_SCALING_NEAREST;
   // SD card font family name (empty = use built-in fontFamily)
   char sdFontFamilyName[32] = "";
-#ifdef RICKYOS_PRODUCT
   // Bounded personal profile, additive JSON keys; never changes reader caches.
   char rickyNickname[49] = "";
   char rickyAvatarPath[96] = "";
@@ -522,7 +511,6 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Body-text stroke weight in the reader: 0 thinnest .. 2 the font as drawn .. 4 boldest.
   enum RICKY_TEXT_WEIGHT { RICKY_TEXT_WEIGHT_STANDARD = 2, RICKY_TEXT_WEIGHT_COUNT = 5 };
   uint8_t rickyTextWeight = RICKY_TEXT_WEIGHT_STANDARD;
-#endif
   // Prefer the internal Flash cache for the selected SD reader font.
   uint8_t sdFontFlashPreload = 0;
   // Dictionary folder name under /dictionaries (empty = no dictionary)
@@ -559,14 +547,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Master reader-touch toggle on boards with a touch controller.
   uint8_t touchReaderControls = TOUCH_READER_ON;
   // Which gestures turn the page in each direction (PAGE_TURN_GESTURE).
-#ifdef RICKYOS_PRODUCT
   // Tapping the side of the page turns it, as on every reader people come from.
   uint8_t pageTurnGesture = TAP_AND_SWIPE;
   uint8_t previousPageGesture = TAP_AND_SWIPE;
-#else
-  uint8_t pageTurnGesture = SWIPE_ONLY;
-  uint8_t previousPageGesture = SWIPE_ONLY;
-#endif
   // 翻页方向：左右对调阅读器的点击区与滑动方向，给左手握持的用户。0 = 正常，
   // 1 = 对调（点左边翻下一页、往右滑翻下一页）。
   //

@@ -25,7 +25,6 @@
 #include "components/icons/search32.h"
 #include "fontIds.h"
 #include "util/BookCacheUtils.h"
-#ifdef RICKYOS_PRODUCT
 #include <Bitmap.h>
 #include <FsHelpers.h>
 
@@ -33,10 +32,7 @@
 #include "components/RickyPageUi.h"
 #include "components/controls/button.h"
 #include "util/BookCoverLoader.h"
-#ifdef RICKYOS_PRODUCT
 #include "activities/home/RickyStorageActivity.h"
-#endif
-#endif
 
 namespace fui = freeink::ui;
 
@@ -93,13 +89,7 @@ void LibraryListActivity::onEnter() {
   RenderLock lock(*this);
   UiTabListActivity::onEnter();
   app.on(ACTION_SEARCH, &LibraryListActivity::searchActionTrampoline, this);
-#ifndef RICKYOS_PRODUCT
-  // The product reaches rebuild through More. Keep its six-handler budget:
-  // row, sort tab, search, back, reading filter and shelf options.
-  app.on(ACTION_REBUILD, &LibraryListActivity::rebuildActionTrampoline, this);
-#endif
   app.on(ACTION_BACK, &LibraryListActivity::backActionTrampoline, this);
-#ifdef RICKYOS_PRODUCT
   app.on(
       ACTION_READING_FILTER,
       [](const fui::ActionEvent& event, void* user) {
@@ -143,7 +133,6 @@ void LibraryListActivity::onEnter() {
         self.requestUpdate();
       },
       this);
-#endif
 
   // Recent is backed by the resident store. Prune before opening the index so
   // its persistence write never overlaps the long-lived index reader.
@@ -208,17 +197,13 @@ int LibraryListActivity::selectedEntry() const {
 // list the reader narrowed down on purpose, and the ascending toggle asks for
 // oldest-first, which pinned fresh reads would contradict.
 int LibraryListActivity::pinnedCount() const {
-#ifdef RICKYOS_PRODUCT
   if (readingFilter != 0) return 0;
-#endif
   if (activeTabIndex != RECENT_TAB || !query.empty() || !isDescending(sortOrder)) return 0;
   return pinnedTotal;
 }
 
 void LibraryListActivity::resolvePinned() {
-#ifdef RICKYOS_PRODUCT
   shelfStart = -1;
-#endif
   const auto& books = RECENT_BOOKS.getBooks();
   pinnedTotal = static_cast<uint8_t>(std::min<size_t>(books.size(), RecentBooksStore::MAX_RECENT_BOOKS));
   for (int i = 0; i < pinnedTotal; i++) pinnedAscRows[i] = 0xFFFF;
@@ -467,9 +452,7 @@ void LibraryListActivity::promptDeleteBookByPath(const std::string& path, const 
         LOG_DBG("LIB", "deleting %s", path.c_str());
         clearBookCache(path);
         if (!Storage.remove(path.c_str())) LOG_ERR("LIB", "cannot delete %s", path.c_str());
-#ifdef RICKYOS_PRODUCT
         RickyStorageActivity::invalidateScan();
-#endif
         if (RECENT_BOOKS.removeByPath(path)) RECENT_BOOKS.saveToFile();
         GUI.drawPopup(renderer, tr(STR_LIBRARY_REBUILDING));
         rebuildIndex();
@@ -487,38 +470,9 @@ void LibraryListActivity::promptDeleteBookByPath(const std::string& path, const 
 }
 
 void LibraryListActivity::openSearch() {
-#ifdef RICKYOS_PRODUCT
   // No Chinese input method yet, so a search keyboard could not type most titles:
   // every way into Search (the Previous key on the tab strip included) stays shut.
   return;
-#endif
-  app.clearTapFlash();
-  // No key filtering here on purpose. Greying out the letters that lead nowhere
-  // was built, tested on device and removed: a letter you can see but cannot
-  // reach reads as a broken keyboard, and the eye keeps returning to it.
-  auto keyboard = makeUniqueNoThrow<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_LIBRARY_SEARCH), query, 48,
-                                                           InputType::Text);
-  if (!keyboard) {
-    LOG_ERR("LIB", "OOM: search keyboard");
-    return;
-  }
-  startActivityForResult(std::move(keyboard), [this](const ActivityResult& result) {
-    swallowHeldReleases();
-    if (result.isCancelled) return;
-    query = std::get<KeyboardResult>(result.data).text;
-    applyFilter();
-    auto& nav = activeNav();
-    if (!query.empty() && filteredCount == 0 && !degraded) {
-      // Up from the tab bar reopens Search even with no results.
-      nav.selected = 0;
-    } else {
-      // A non-empty result belongs to the list: land on
-      // its first surviving row, not on the strip.
-      nav.selected = 1;
-    }
-    nav.top = 0;
-    requestUpdate();
-  });
 }
 
 void LibraryListActivity::stepTab(const int direction) {
@@ -562,9 +516,7 @@ fui::TabIndicator LibraryListActivity::tabIndicator(const int index) const {
 }
 
 int LibraryListActivity::bookRowCount() const {
-#ifdef RICKYOS_PRODUCT
   if (readingFilter != 0) return filteredCount;
-#endif
   if (!query.empty()) return static_cast<int>(filteredCount);
   // Pinned books already in the index are skipped below the pins, not doubled;
   // pinned books the index missed still show, so the difference stays split.
@@ -580,9 +532,7 @@ int LibraryListActivity::listCount() const { return groupsCollapsed ? static_cas
 // not reach this; the rest walk past the pinned books' own sort rows.
 int LibraryListActivity::rowFor(const int entry) const {
   if (!query.empty()
-#ifdef RICKYOS_PRODUCT
       || readingFilter != 0
-#endif
   ) {
     if (entry < 0 || entry >= static_cast<int>(filteredCount) || !filtered) return 0;
     return filtered[entry];
@@ -597,11 +547,7 @@ int LibraryListActivity::rowFor(const int entry) const {
 }
 
 bool LibraryListActivity::groupable() const {
-#ifdef RICKYOS_PRODUCT
   return false;  // RickyOS shelves navigate into books, never fold/unfold groups.
-#else
-  return !degraded && !isRecentSort(sortOrder) && bookRowCount() > 0;
-#endif
 }
 
 uint32_t LibraryListActivity::titleInitialFor(const int entry) {
@@ -690,9 +636,7 @@ void LibraryListActivity::restoreExpandedList() {
 // array is allocated once with the exact upper bound and fails back to an
 // explicit message rather than letting vector growth abort the firmware.
 void LibraryListActivity::applyFilter() {
-#ifdef RICKYOS_PRODUCT
   shelfStart = -1;
-#endif
   groupsCollapsed = false;
   groupCount = 0;
   filtered.reset();
@@ -702,9 +646,7 @@ void LibraryListActivity::applyFilter() {
   // reader can see what narrowed the list without reopening the keyboard.
   headerSearchTitle = query.empty() ? std::string() : "“" + query + "”";
   if (query.empty()
-#ifdef RICKYOS_PRODUCT
       && readingFilter == 0
-#endif
   )
     return;
 
@@ -725,7 +667,6 @@ void LibraryListActivity::applyFilter() {
     const uint16_t ordinal = index.ordinalForRow(sortOrder, static_cast<uint16_t>(row));
     library::ClixRecord record{};
     if (ordinal == 0xFFFF || !index.readRecord(ordinal, record)) continue;
-#ifdef RICKYOS_PRODUCT
     if (readingFilter != 0) {
       std::string path;
       if (!index.readPath(record, path)) continue;
@@ -738,7 +679,6 @@ void LibraryListActivity::applyFilter() {
       matches[matchCount++] = static_cast<uint16_t>(row);
       continue;
     }
-#endif
     if (library::matchesQuery(std::string_view(record.fold, record.foldLen), needle)) {
       matches[matchCount++] = static_cast<uint16_t>(row);
       continue;
@@ -837,14 +777,12 @@ bool LibraryListActivity::handleCustomInput() {
   return false;
 }
 
-#ifdef RICKYOS_PRODUCT
 // The shelf pages four books at a time. The generic list scrolls by the rows the last
 // page drew, which on a last page holding one book is one row; the shelf start rounds
 // up to its page, so swiping back from there never left the last page. Scrolling stays
 // in UiListActivity::loop(), after the touch is routed: taking the swipe earlier left
 // the touched book pressed (drawn inverted) because its release never reached the UI.
 int LibraryListActivity::swipeScrollRows() { return SHELF_CAPACITY; }
-#endif
 
 bool LibraryListActivity::handleButtons() {
   const int count = listCount();
@@ -1078,33 +1016,10 @@ void LibraryListActivity::buildHeader(UiScreen& screen) {
 }
 
 void LibraryListActivity::buildScreen(UiScreen& screen) {
-#ifdef RICKYOS_PRODUCT
   buildRickyShelf(screen);
   return;
-#endif
-  const auto& metrics = UITheme::getInstance().getMetrics();
-  // The position readout owns the line above the hints; rows must not overlap
-  // it.
-  const int16_t readoutReserved = static_cast<int16_t>(renderer.getLineHeight(SMALL_FONT_ID) + metrics.verticalSpacing);
-  buildHeader(screen);
-  screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
-                                                static_cast<int16_t>(metrics.buttonHintsHeight + readoutReserved), 0});
-
-  if (!degraded) buildTabBar(screen);
-  if (bookRowCount() == 0) {
-    const char* message = tr(STR_LIBRARY_NO_RESULTS);
-    if (filterFailed) {
-      message = tr(STR_LIBRARY_SEARCH_UNAVAILABLE);
-    } else if (query.empty()) {
-      message = tr(STR_LIBRARY_EMPTY);
-    }
-    screen.centeredText(message);
-    return;
-  }
-  buildRows(screen);
 }
 
-#ifdef RICKYOS_PRODUCT
 bool LibraryListActivity::entryPath(int entry, std::string& path) {
   if (entry < 0 || entry >= bookRowCount()) return false;
   if (entry < pinnedCount()) {
@@ -1315,7 +1230,6 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
   if (multiplePages) screen.target().text(positionRect, position, style);
   GUI.drawSideScrollBar(renderer, Rect{body.x, body.y, body.width, body.height}, count, start, SHELF_CAPACITY);
 }
-#endif
 
 // "12/69 books" at the bottom right: which book is selected, out of how many.
 //
@@ -1369,23 +1283,7 @@ void LibraryListActivity::render(RenderLock&& lock) {
 }
 
 void LibraryListActivity::drawFooter() {
-#ifdef RICKYOS_PRODUCT
   const auto productLabels = mainTabButtonLabels(tr(STR_BACK), tr(STR_OPEN), listCount() > 1);
   GUI.drawButtonHints(renderer, productLabels.btn1, productLabels.btn2, productLabels.btn3, productLabels.btn4);
   return;
-#endif
-  drawPositionReadout();
-  drawHoldHelp();
-
-  const bool backGoesHome = tabsFocused() && !groupsCollapsed && query.empty();
-  const char* backLabel = backGoesHome ? tr(STR_HOME) : tr(STR_BACK);
-  const char* confirmLabel = groupsCollapsed ? tr(STR_SELECT) : tr(STR_OPEN);
-#ifdef RICKYOS_PRODUCT
-  constexpr bool canSearch = false;  // see openSearch()
-#else
-  const bool canSearch = tabsFocused() && !degraded;
-#endif
-  const auto labels = mappedInput.mapLabels(backLabel, tabsFocused() ? tr(STR_TOGGLE) : confirmLabel,
-                                            canSearch ? tr(STR_SEARCH) : tr(STR_DIR_UP), tr(STR_DIR_DOWN));
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 }

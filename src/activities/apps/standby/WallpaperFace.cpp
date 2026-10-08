@@ -1,4 +1,3 @@
-#ifdef RICKYOS_PRODUCT
 #include "WallpaperFace.h"
 
 #include <Bitmap.h>
@@ -278,4 +277,3 @@ void WallpaperFace::render(GfxRenderer& renderer, const Rect& viewport) {
     lastDay_ = local.tm_yday;
   }
 }
-#endif

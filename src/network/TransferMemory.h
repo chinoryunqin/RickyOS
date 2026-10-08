@@ -7,7 +7,7 @@
 
 namespace transferMemory {
 
-#if defined(RICKYOS_PRODUCT) && FREEINK_DEVICE_READPICO
+#if FREEINK_DEVICE_READPICO
 inline constexpr bool guarded = true;
 #else
 inline constexpr bool guarded = false;
@@ -35,7 +35,7 @@ inline void logSnapshot(const char* phase) {
 
 inline memory::ByteBuffer allocateBuffer(const size_t bytes) {
   if (bytes == 0) return {};
-#if defined(RICKYOS_PRODUCT) && FREEINK_DEVICE_READPICO && !defined(SIMULATOR)
+#if FREEINK_DEVICE_READPICO && !defined(SIMULATOR)
   if (HalMemory::getPsramHeap().totalBytes > 0) {
     // Upload/list bytes are sequential task-context data, never DMA/ISR storage.
     // Keep the existing capacities and lifetime; only change their heap domain.

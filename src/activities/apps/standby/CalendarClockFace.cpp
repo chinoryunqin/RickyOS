@@ -1,4 +1,3 @@
-#ifdef RICKYOS_PRODUCT
 #include "CalendarClockFace.h"
 
 #include <GfxRenderer.h>
@@ -192,4 +191,3 @@ void CalendarClockFace::drawCalendar(GfxRenderer& renderer, const Rect& area) co
     }
   }
 }
-#endif

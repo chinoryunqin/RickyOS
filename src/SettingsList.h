@@ -25,13 +25,9 @@
 // built-in rows are visible in this firmware.
 inline SettingInfo buildFontFamilySetting(const SdCardFontRegistry* registry) {
   std::vector<StrId> enumValues;
-#ifdef ENABLE_CHINESE_VERSION
   if (!registry || !registry->findFamily(SdCardFontSystem::COMPLETE_CHINESE_NOTO_SANS_FAMILY)) {
     enumValues.push_back(StrId::STR_NOTO_SANS);
   }
-#else
-  enumValues = {StrId::STR_NOTO_SERIF, StrId::STR_NOTO_SANS};
-#endif
   const int builtinOptionCount = static_cast<int>(enumValues.size());
 
   SettingInfo s;
@@ -76,20 +72,12 @@ inline SettingInfo buildFontFamilySetting(const SdCardFontRegistry* registry) {
       }
       // SD font name not found in registry — fall through to built-in
     }
-#ifdef ENABLE_CHINESE_VERSION
     return 0;
-#else
-    return SETTINGS.fontFamily < CrossPointSettings::BUILTIN_FONT_COUNT ? SETTINGS.fontFamily : 0;
-#endif
   };
 
   s.valueSetter = [registry, builtinOptionCount](uint8_t v) {
     if (v < builtinOptionCount) {
-#ifdef ENABLE_CHINESE_VERSION
       SETTINGS.fontFamily = CrossPointSettings::NOTOSANS;
-#else
-      SETTINGS.fontFamily = v;
-#endif
       SETTINGS.sdFontFamilyName[0] = '\0';
       SETTINGS.sdFontFlashPreload = 0;
     } else if (registry) {
@@ -197,16 +185,6 @@ inline std::vector<StrId> buildLongPressMenuValues() {
   return {VALUES, VALUES + count};
 }
 
-#ifndef RICKYOS_PRODUCT
-inline std::vector<StrId> homeThemeValues() {
-  static constexpr StrId VALUES[] = {StrId::STR_THEME_CLASSIC,       StrId::STR_THEME_LYRA,
-                                     StrId::STR_THEME_LYRA_EXTENDED, StrId::STR_THEME_ROUNDEDRAFF,
-                                     StrId::STR_THEME_LYRA_CAROUSEL, StrId::STR_THEME_INX,
-                                     StrId::STR_THEME_COVER_GRID};
-  const size_t count = UITheme::supportsCoverGrid() ? std::size(VALUES) : std::size(VALUES) - 1;
-  return {VALUES, VALUES + count};
-}
-#endif
 
 // Shared settings list used by both the device settings UI and the web settings API.
 // Each entry has a key (for JSON API) and category (for grouping).
@@ -244,12 +222,10 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
                           StrId::STR_CAT_DISPLAY),
         SettingInfo::Toggle(StrId::STR_STANDBY_TITLE, &CrossPointSettings::standbyShortcutEnabled,
                             "standbyShortcutEnabled", StrId::STR_CAT_DISPLAY),
-#ifdef RICKYOS_PRODUCT
         SettingInfo::Enum(StrId::STR_RICKY_STANDBY_INFO, &CrossPointSettings::standbyOverlay,
                           {StrId::STR_RICKY_STANDBY_INFO_NONE, StrId::STR_RICKY_STANDBY_INFO_DATE,
                            StrId::STR_RICKY_STANDBY_INFO_TIME},
                           "standbyOverlay", StrId::STR_CAT_DISPLAY),
-#endif
         SettingInfo::Enum(StrId::STR_HIDE_BATTERY, &CrossPointSettings::hideBatteryPercentage,
                           {StrId::STR_NEVER, StrId::STR_IN_READER, StrId::STR_ALWAYS}, "hideBatteryPercentage",
                           StrId::STR_CAT_DISPLAY),
@@ -257,21 +233,6 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
                           {StrId::STR_PAGES_1, StrId::STR_PAGES_5, StrId::STR_PAGES_10, StrId::STR_PAGES_15,
                            StrId::STR_PAGES_30, StrId::STR_NEVER},
                           "refreshFrequency", StrId::STR_CAT_DISPLAY),
-#ifndef RICKYOS_PRODUCT
-        SettingInfo::Enum(StrId::STR_UI_THEME, &CrossPointSettings::uiTheme, homeThemeValues(), "uiTheme",
-                          StrId::STR_CAT_DISPLAY),
-        SettingInfo::Enum(StrId::STR_INX_RECENT_LAYOUT, &CrossPointSettings::inxRecentLayout,
-                          {StrId::STR_LAYOUT_FLOW, StrId::STR_LAYOUT_GRID, StrId::STR_LAYOUT_LIST,
-                           StrId::STR_LAYOUT_ICONS, StrId::STR_COVER},
-                          "inxRecentLayout", StrId::STR_CAT_DISPLAY),
-        SettingInfo::Enum(StrId::STR_INX_LIBRARY_LAYOUT, &CrossPointSettings::inxLibraryLayout,
-                          {StrId::STR_LAYOUT_ICONS, StrId::STR_LAYOUT_LIST}, "inxLibraryLayout",
-                          StrId::STR_CAT_DISPLAY),
-        SettingInfo::Enum(StrId::STR_INX_APPS_LAYOUT, &CrossPointSettings::inxAppsLayout,
-                          {StrId::STR_LAYOUT_ICONS, StrId::STR_LAYOUT_LIST}, "inxAppsLayout", StrId::STR_CAT_DISPLAY),
-        SettingInfo::Enum(StrId::STR_INX_TAB_POSITION, &CrossPointSettings::inxTabPosition,
-                          {StrId::STR_TOP, StrId::STR_BOTTOM}, "inxTabPosition", StrId::STR_CAT_DISPLAY),
-#endif
         SettingInfo::Toggle(StrId::STR_SUNLIGHT_FADING_FIX, &CrossPointSettings::fadingFix, "fadingFix",
                             StrId::STR_CAT_DISPLAY),
         SettingInfo::Toggle(StrId::STR_SHOW_BUTTON_HINTS, &CrossPointSettings::showButtonHints, "showButtonHints",

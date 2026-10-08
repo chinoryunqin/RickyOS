@@ -13,10 +13,8 @@
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
 #include "components/icons/inx_apps.h"
-#ifdef RICKYOS_PRODUCT
 #include "components/RickyAaIcons.h"
 #include "components/icons/rickyAppIcons.h"
-#endif
 #include "fontIds.h"
 
 namespace fui = freeink::ui;
@@ -36,42 +34,12 @@ struct AppEntry {
 constexpr AppEntry kAppEntries[] = {
     {AppId::FileTransfer, StrId::STR_FILE_TRANSFER, UIIcon::Transfer, &ActivityManager::goToFileTransfer},
     {AppId::OpdsBrowser, StrId::STR_OPDS_BROWSER, UIIcon::Opds, &ActivityManager::goToBrowser},
-#ifdef ENABLE_CHINESE_VERSION
     {AppId::WeRead, StrId::STR_WEREAD_TITLE, UIIcon::WeRead, &ActivityManager::goToWeRead},
-#endif
-#ifndef RICKYOS_PRODUCT
-    {AppId::AirPage, StrId::STR_AIRPAGE_TITLE, UIIcon::AirPage, &ActivityManager::goToAirPage},
-#endif
-#ifdef RICKYOS_PRODUCT
     {AppId::ReadingStats, StrId::STR_READING_STATS, UIIcon::ReadingStats, &ActivityManager::goToRickyReadingStats},
-#else
-    {AppId::ReadingStats, StrId::STR_READING_STATS, UIIcon::ReadingStats, &ActivityManager::goToReadingStatsMenu},
-#endif
-#ifndef RICKYOS_PRODUCT
-    {AppId::Sudoku, StrId::STR_SUDOKU_TITLE, UIIcon::Sudoku, &ActivityManager::goToSudoku},
-#endif
     {AppId::Gomoku, StrId::STR_GOMOKU_TITLE, UIIcon::Gomoku, &ActivityManager::goToGomoku},
-#ifndef RICKYOS_PRODUCT
-    {AppId::Sokoban, StrId::STR_SOKOBAN_TITLE, UIIcon::Sokoban, &ActivityManager::goToSokoban},
-#ifdef ENABLE_CHINESE_VERSION
-    {AppId::ChineseChess, StrId::STR_CHINESE_CHESS_TITLE, UIIcon::ChineseChess, &ActivityManager::goToChineseChess},
-#endif
-    {AppId::Minesweeper, StrId::STR_MINESWEEPER_TITLE, UIIcon::Minesweeper, &ActivityManager::goToMinesweeper},
-    {AppId::Game2048, StrId::STR_2048_TITLE, UIIcon::Game2048, &ActivityManager::goToGame2048},
-    {AppId::UglyAvatar, StrId::STR_UGLY_AVATAR, UIIcon::Avatar, &ActivityManager::goToUglyAvatar},
-    {AppId::Buddy, StrId::STR_BUDDY_TITLE, UIIcon::Buddy, &ActivityManager::goToBuddy},
-    {AppId::PixelSwitch, StrId::STR_PIXEL_SWITCH_TITLE, UIIcon::PixelSwitch, &ActivityManager::goToPixelSwitch},
-#endif
     {AppId::Calculator, StrId::STR_CALCULATOR_TITLE, UIIcon::Calculator, &ActivityManager::goToCalculator},
-#ifndef RICKYOS_PRODUCT
-    {AppId::Woodfish, StrId::STR_WOODFISH_TITLE, UIIcon::Woodfish, &ActivityManager::goToWoodfish},
-#endif
-#ifdef RICKYOS_PRODUCT
     // The one entry for Standby & power off (not repeated in Settings).
     {AppId::Standby, StrId::STR_RICKY_POWER_PAGE_TITLE, UIIcon::Standby, &ActivityManager::goToStandbySettings},
-#else
-    {AppId::Standby, StrId::STR_STANDBY_TITLE, UIIcon::Standby, &ActivityManager::goToStandby},
-#endif
 };
 
 constexpr int kAppCount = static_cast<int>(sizeof(kAppEntries) / sizeof(kAppEntries[0]));
@@ -126,7 +94,6 @@ static_assert(appIndexForVisibleIndex(appBit(kAppEntries[1].id), 1) == 2,
 
 }  // namespace
 
-#ifdef RICKYOS_PRODUCT
 namespace {
 // The product grid draws its own 56 px line icons (same system as the tab bar)
 // at native size; the stock 32 px pixel icons are only doubled, which looks coarse.
@@ -178,7 +145,6 @@ void drawRickyAppIcon(const GfxRenderer& renderer, const uint8_t* icon, const in
   }
 }
 }  // namespace
-#endif
 
 int AppsMenuActivity::getAppCount() { return kAppCount; }
 
@@ -315,7 +281,6 @@ void AppsMenuActivity::drawIconGrid(const Rect& rect, const int visibleCount, co
     const std::string label =
         renderer.truncatedText(UI_10_FONT_ID, I18N.get(kAppEntries[appIndex].titleId), std::max(1, cell.width - 8));
     const int labelX = cell.x + (cell.width - renderer.getTextWidth(UI_10_FONT_ID, label.c_str())) / 2;
-#ifdef RICKYOS_PRODUCT
     if (const uint8_t* icon = rickyAppIcon(kAppEntries[appIndex].icon)) {
       // Lay out the capsule's height so a selected tile never crowds its label.
       constexpr int labelGap = 12;
@@ -326,7 +291,6 @@ void AppsMenuActivity::drawIconGrid(const Rect& rect, const int visibleCount, co
       renderer.drawText(UI_10_FONT_ID, labelX, blockTop + kAppPillHeight + labelGap, label.c_str(), true);
       continue;
     }
-#endif
     const int iconScale = cell.height >= InxAppIcons::size * 2 + lineHeight + 18 ? 2 : 1;
     const int iconSize = InxAppIcons::size * iconScale;
     if (isSelected) renderer.fillRect(cell.x, cell.y, cell.width, cell.height, true);

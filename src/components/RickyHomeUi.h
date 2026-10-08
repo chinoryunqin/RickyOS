@@ -1,6 +1,5 @@
 #pragma once
 
-#ifdef RICKYOS_PRODUCT
 #include <cstdint>
 
 #include "RecentBooksStore.h"
@@ -46,4 +45,3 @@ class RickyHomeUi final : public UiAppHost {
   freeink::ui::BookCardProps card;
   freeink::ui::CoverGridProps grid;
 };
-#endif

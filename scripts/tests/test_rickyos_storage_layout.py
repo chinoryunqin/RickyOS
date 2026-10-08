@@ -54,7 +54,7 @@ class RickyStorageLayoutTest(unittest.TestCase):
         # WeRead finds its books by exact path, so the export folder and the move
         # target must agree; a separate marker reaches devices past the first move.
         store = (ROOT / 'lib/WeReadWebApi/src/WeReadStore.h').read_text()
-        self.assertRegex(store, r'#ifdef RICKYOS_PRODUCT\s*constexpr const char\* kExportDir = "/books";')
+        self.assertIn('constexpr const char* kExportDir = "/books";', store)
         path = body((ROOT / 'lib/WeReadWebApi/src/WeReadStore.cpp').read_text(), 'std::string finalBookPath(const BookRecord& book)')
         self.assertIn('std::string(kExportDir) + "/"', path)
         self.assertIn('Storage.ensureDirectoryExists(WeReadStore::kExportDir)',

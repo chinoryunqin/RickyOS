@@ -1,5 +1,4 @@
 #pragma once
-#ifdef RICKYOS_PRODUCT
 
 // RickyOS keeps user files in four fixed SD folders. The Storage page opens
 // them, pickers start in them, and downloads land in them.
@@ -19,4 +18,3 @@ void ensureFolders();
 // Returns the number of books moved.
 int migrateLegacyBooks();
 }  // namespace RickyStorageLayout
-#endif

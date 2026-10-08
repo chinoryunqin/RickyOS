@@ -1,6 +1,5 @@
 #include "WeReadXhtmlCodec.h"
 
-#if defined(ENABLE_CHINESE_VERSION) || defined(CROSSPOINT_EMULATED)
 
 #include <algorithm>
 #include <array>
@@ -680,4 +679,3 @@ bool nativeToVisibleOffset(const std::string& path, const uint32_t nativeOffset,
 
 }  // namespace WeReadXhtmlCodec
 
-#endif

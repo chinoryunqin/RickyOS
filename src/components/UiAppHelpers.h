@@ -13,10 +13,8 @@
 #include "components/icons/customListIcons.h"
 #include "components/icons/inx_apps.h"
 #include "components/icons/listIcons.h"
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
 #include "components/icons/listIcons48.h"
 #include "components/icons/uiChromeIcons.h"
-#endif
 
 // Shared glue for activities hosting a FreeInkApp: the font-bound render
 // target and the touch snapshot FreeInkApp routing consumes.
@@ -90,7 +88,6 @@ inline freeink::ui::GfxRendererTarget makeUiTarget(const GfxRenderer& renderer, 
 // the legacy drawIcon assets use a different bit layout). Two crisp sizes:
 // 24 for single-line rows, 32 for label+subtitle rows.
 inline freeink::ui::BitmapRef listIconFor(const UIIcon icon, const int size = 24) {
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
   if (size >= 48 || UiHighDpiProfile::enabled) {
     switch (icon) {
       case UIIcon::Settings:
@@ -121,7 +118,6 @@ inline freeink::ui::BitmapRef listIconFor(const UIIcon icon, const int size = 24
         break;
     }
   }
-#endif
   if (size >= 32) {
     switch (icon) {
       case UIIcon::Folder:

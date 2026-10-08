@@ -1,5 +1,4 @@
 #include "RickyHomePhraseActivity.h"
-#ifdef RICKYOS_PRODUCT
 #include <I18n.h>
 
 #include <algorithm>
@@ -68,4 +67,3 @@ void RickyHomePhraseActivity::activateIndex(int index) {
     requestUpdate();
   }
 }
-#endif

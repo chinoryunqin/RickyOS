@@ -53,94 +53,6 @@ class UiChromeIconTest(unittest.TestCase):
                 subprocess.run(command, check=True)
                 self.assertEqual(first, output.read_bytes())
 
-    def test_tab_pixels_use_target_bitmap_without_resampling(self):
-        source = (ROOT / 'src/components/themes/inx/InxTheme.cpp').read_text()
-        run_cpp(r'''
-#include <cassert>
-#include <initializer_list>
-#include "Icon.h"
-#include "components/icons/uiChromeIcons.h"
-struct GfxRenderer {
- mutable bool pixels[56][56]{};
- void drawPixel(int x,int y,bool ink) const { assert(x>=0 && x<56 && y>=0 && y<56); pixels[y][x]=ink; }
-};
-constexpr int kIconSize=56;
-''' + method(source, 'void drawInxIcon(') + r'''
-int main() {
- for (auto bits : {icon_tab_recent_56.bits,icon_tab_library_56.bits,
-                   icon_tab_settings_56.bits,icon_tab_statistics_56.bits,
-                   icon_tab_apps_56.bits}) {
-   GfxRenderer r; drawInxIcon(r,bits,0,0);
-   for (int y=0;y<56;++y) for(int x=0;x<56;++x)
-     assert(r.pixels[y][x]==((bits[y*7+x/8]&(0x80U>>(x%8)))==0));
- }
-}
-''', include_dirs=(ROOT / 'src', ROOT / 'freeink-sdk/libs/assets/Icons/include'),
-                defines=('CROSSMUX_UI_PROFILE_HIGH_DPI',))
-
-    def test_battery_fill_charge_bounds_and_orientation(self):
-        source = (ROOT / 'src/components/themes/BaseTheme.cpp').read_text()
-        run_cpp(r'''
-#include <algorithm>
-#include <cassert>
-#include <initializer_list>
-#include <cstdint>
-#include "Icon.h"
-#include "components/icons/uiChromeIcons.h"
-struct Rect {int x,y,width,height;};
-struct { bool charging=false; bool isUsbConnected() const {return charging;} } gpio;
-struct GfxRenderer {
- mutable bool pixels[32][32]{}; int orientation=0;
- void drawPixel(int x,int y,bool black=true) const {
-   assert(x>=0 && x<32 && y>=0 && y<20);
-   int px=x,py=y;
-   switch(orientation) {
-     case 1: px=31-y;py=x;break;
-     case 2: px=31-x;py=31-y;break;
-     case 3: px=y;py=31-x;break;
-   }
-   pixels[py][px]=black;
- }
- bool pixel(int x,int y) const {
-   switch(orientation) {
-     case 1:return pixels[x][31-y];
-     case 2:return pixels[31-y][31-x];
-     case 3:return pixels[31-x][y];
-   }
-   return pixels[y][x];
- }
- void fillRect(int x,int y,int w,int h) const {for(int row=y;row<y+h;++row) for(int col=x;col<x+w;++col) drawPixel(col,row);}
- void drawLine(int,int,int,int,bool=true) const {assert(false);}
-};
-struct BaseTheme {
- static void drawBatteryOutline(const GfxRenderer&,int,int,int,int);
- static void drawBatteryLightningBolt(const GfxRenderer&,int,int);
- void fillBatteryIcon(const GfxRenderer&,Rect,uint16_t) const;
-};
-''' + method(source, 'void drawTransparentBitmap(')
-            + method(source, 'void BaseTheme::drawBatteryOutline(')
-            + method(source, 'void BaseTheme::drawBatteryLightningBolt(')
-            + method(source, 'void BaseTheme::fillBatteryIcon(') + r'''
-int main() {
- for (int orientation=0;orientation<4;++orientation) for(bool charging : {false,true})
- for(uint16_t percent : {0,50,100,150}) {
-   GfxRenderer r; r.orientation=orientation; gpio.charging=charging;
-   BaseTheme::drawBatteryOutline(r,0,0,32,20);
-   BaseTheme{}.fillBatteryIcon(r,{0,0,32,20},percent);
-   int width=std::max(charging?14:0,std::min<int>(percent,100)*17/100);
-   for(int y=0;y<20;++y) for(int x=0;x<32;++x) {
-     auto mask=0x80U>>(x%8); auto index=y*4+x/8;
-     bool outline=(icon_battery_32x20.bits[index]&mask)==0;
-     bool fill=x>=5 && x<5+width && y>=3 && y<17;
-     bool bolt=charging && (icon_battery_charging_32x20.bits[index]&mask)==0;
-     assert(!bolt || fill); assert(!outline || !bolt);
-     assert(r.pixel(x,y)==((outline || fill) && !bolt));
-   }
- }
-}
-''', include_dirs=(ROOT / 'src', ROOT / 'freeink-sdk/libs/assets/Icons/include'),
-                defines=('CROSSMUX_UI_PROFILE_HIGH_DPI',))
-
     def test_footer_descenders_and_estimate_fit_the_status_line(self):
         faces = {}
         directory = ROOT / 'lib/EpdFont/builtinFonts'
@@ -277,7 +189,7 @@ int main() {
         reader_source = (ROOT / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
         render = method(reader_source, 'void EpubReaderActivity::renderBook(')
         start = render.index('  int orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft;')
-        end = render.index('#if FREEINK_DEVICE_EEGO_A4', start)
+        end = render.index('  const uint16_t viewportWidth', start)
         program = r'''
 #include <algorithm>
 #include <cassert>

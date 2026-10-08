@@ -11,10 +11,8 @@
 #include "RecentBooksStore.h"
 #include "activities/Activity.h"
 
-#ifdef RICKYOS_PRODUCT
 #include "Memory.h"
 #include "components/RickyHomeUi.h"
-#endif
 
 #if defined(BOARD_HAS_PSRAM) && !defined(SIMULATOR) && !defined(CROSSPOINT_EMULATED)
 #include <cstddef>
@@ -54,9 +52,7 @@ class InxRecentActivity final : public Activity {
 #endif
   int selected = 0;
   int thumbnailHeight = 0;
-#ifdef RICKYOS_PRODUCT
   std::unique_ptr<RickyHomeUi> rickyHome;
-#endif
 
   InxRecentLayout layout() const;
   Rect contentRect() const;
@@ -81,7 +77,7 @@ class InxRecentActivity final : public Activity {
   void drawCover(const Rect& content);
 
  public:
-#if defined(RICKYOS_PRODUCT) && FREEINK_DEVICE_READPICO
+#if FREEINK_DEVICE_READPICO
   // render() redraws the whole home screen from state; a cover still to prepare queues
   // its own update, which cancels the settle.
   bool wantsGraySettle() const override { return true; }

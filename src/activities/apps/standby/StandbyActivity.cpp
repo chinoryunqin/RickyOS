@@ -26,11 +26,8 @@
 #include "activities/network/WifiSelectionActivity.h"
 #include "util/PaginationDots.h"
 #include "util/TimeUtils.h"
-#ifdef ENABLE_CHINESE_VERSION
 #include "ChineseCalendarFace.h"
-#endif
 #include "SloppyClockFace.h"
-#ifdef RICKYOS_PRODUCT
 #include "CalendarClockFace.h"
 #include "KeepPageFace.h"
 #include "RickyWallpaperDownloadActivity.h"
@@ -38,7 +35,6 @@
 #include "activities/home/FileBrowserActivity.h"
 #include "activities/util/ImageViewerActivity.h"
 #include "util/RickyStorageLayout.h"
-#endif
 #include "StandbyTime.h"
 #include "WifiCredentialStore.h"
 #include "components/UITheme.h"
@@ -63,7 +59,6 @@ struct FaceEntry {
   bool (*isAvailable)(int sw, int sh);
 };
 constexpr FaceEntry kFaces[] = {
-#ifdef RICKYOS_PRODUCT
     // RickyOS Standby is the picture or the book's cover, the desk calendar clock, or
     // the page left as it was (rickyStandbyFace); the stock clock faces are not offered.
     {[]() -> std::unique_ptr<StandbyFace> {
@@ -77,14 +72,6 @@ constexpr FaceEntry kFaces[] = {
        }
      },
      [](int, int) { return true; }},
-#else
-    {[]() -> std::unique_ptr<StandbyFace> { return makeUniqueNoThrow<SloppyClockFace>(); },
-     [](int, int) { return true; }},
-#ifdef ENABLE_CHINESE_VERSION
-    {[]() -> std::unique_ptr<StandbyFace> { return makeUniqueNoThrow<ChineseCalendarFace>(); },
-     [](int sw, int sh) { return sh > sw; }},  // portrait only
-#endif
-#endif
 };
 constexpr uint8_t kFaceCount = static_cast<uint8_t>(sizeof(kFaces) / sizeof(kFaces[0]));
 
@@ -139,7 +126,6 @@ void drawFaceDots(const GfxRenderer& renderer, int sw, int sh, uint8_t total, ui
 
 void StandbyActivity::onEnter() {
   Activity::onEnter();
-#ifdef RICKYOS_PRODUCT
   // The calendar clock stands on its side, the keys under the screen to the left: the
   // portrait bottom is the panel's right edge, which LandscapeClockwise puts at x = 0
   // (the reader's 横屏（顺时针）). Only Standby turns; the orientation is restored on exit.
@@ -147,7 +133,6 @@ void StandbyActivity::onEnter() {
   if (SETTINGS.rickyStandbyFace == CrossPointSettings::RICKY_STANDBY_CALENDAR) {
     renderer.setOrientation(GfxRenderer::Orientation::LandscapeClockwise);
   }
-#endif
   LOG_DBG("STANDBY", "onEnter free heap=%u", static_cast<unsigned>(ESP.getFreeHeap()));
   // Always default to face 0 (Sloppy Clock). If face 0 is somehow unavailable
   // (currently impossible), fall back to the first available index.
@@ -164,17 +149,11 @@ void StandbyActivity::onEnter() {
     return;
   }
   currentFace_->onEnter();
-#ifdef RICKYOS_PRODUCT
   // The picture is the whole screen from the start: no title, battery or face dots.
   mode_ = DisplayMode::Immersive;
   drewFrame_ = false;
-#else
-  mode_ = DisplayMode::Normal;
-#endif
   lastInputMs_ = millis();
-#ifdef RICKYOS_PRODUCT
   enteredMs_ = millis();
-#endif
   // A face without a clock or date never needs the WiFi sync (nor its prompt).
   if (!TimeUtils::isClockValid() && SETTINGS.clockAutoSync && currentFace_->wantsClock()) {
     syncState_ = SyncState::Delayed;
@@ -198,7 +177,6 @@ void StandbyActivity::onExit() {
     currentFace_->onExit();
     currentFace_.reset();
   }
-#ifdef RICKYOS_PRODUCT
   // The panel holds a 16-gray picture the B/W proxy only approximates. The next page
   // refreshes differentially against that proxy, so pixels it thinks unchanged would
   // keep the picture's grays under the new page; a full refresh clears them.
@@ -206,7 +184,6 @@ void StandbyActivity::onExit() {
   renderer.setOrientation(savedOrientation_);
   // Time in Standby is not reading time: the book under it starts its gap afresh.
   READING_STATS.resumeSession();
-#endif
   LOG_DBG("STANDBY", "onExit free heap=%u", static_cast<unsigned>(ESP.getFreeHeap()));
   Activity::onExit();
 }
@@ -468,17 +445,12 @@ bool StandbyActivity::tryLightSleep(const uint32_t idleMs) {
       processFaceTick(true);
       return true;
     case HalPowerManager::LightSleepWakeReason::PowerButton:
-#ifdef RICKYOS_PRODUCT
       // A short press, already over before main.cpp's key poll could see it: leave
       // Standby, as that press does while awake.
       lastInputMs_ = millis();
       activityManager.closeStandby();
       return true;
-#endif
     case HalPowerManager::LightSleepWakeReason::PowerButtonHeld:
-#ifndef RICKYOS_PRODUCT
-      mode_ = DisplayMode::Normal;
-#endif
       // Still down: main.cpp finishes it (release = leave Standby, hold = power off).
       lastInputMs_ = millis();
       requestUpdate();
@@ -495,16 +467,11 @@ bool StandbyActivity::tryLightSleep(const uint32_t idleMs) {
 
 void StandbyActivity::loop() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-#ifdef RICKYOS_PRODUCT
     // Back to the page that opened it (the Standby settings page, or Home).
     finish();
-#else
-    activityManager.goHome();
-#endif
     return;
   }
 
-#ifdef RICKYOS_PRODUCT
   // One picture, always full screen: no face switching, paging or inverse. A tap
   // or Confirm only matters while there is no picture yet.
   int tapX = 0;
@@ -539,118 +506,10 @@ void StandbyActivity::loop() {
   if (tryLightSleep(millis() - lastInputMs_)) return;
   processFaceTick(false);
   return;
-#endif
-
-  const auto swipe = mappedInput.wasSwipe();
-  if (swipe != MappedInputManager::SwipeDir::None) {
-    lastInputMs_ = millis();
-    if (mode_ == DisplayMode::Immersive) {
-      mode_ = DisplayMode::Normal;
-      requestUpdate();
-      return;
-    }
-    if (swipe == MappedInputManager::SwipeDir::Left) {
-      switchFace(1);
-    } else if (swipe == MappedInputManager::SwipeDir::Right) {
-      switchFace(-1);
-    } else if (currentFace_) {
-      if (swipe == MappedInputManager::SwipeDir::Up) {
-        currentFace_->onPageNext();
-      } else {
-        currentFace_->onPagePrev();
-      }
-      requestUpdate();
-    }
-    return;
-  }
-
-  int touchX = 0;
-  int touchY = 0;
-  if (mappedInput.wasScreenTapped(touchX, touchY)) {
-    lastInputMs_ = millis();
-    if (mode_ == DisplayMode::Immersive) {
-      mode_ = DisplayMode::Normal;
-    } else {
-      inverseMode_ = !inverseMode_;
-    }
-    requestUpdate();
-    return;
-  }
-
-  // Up/Down: page navigation, dispatched to the current face.
-  //   - SloppyClock: each press rerolls the style (treated as a shake).
-  //   - ChineseCalendar: Up = previous day, Down = next day.
-  // Pressing either button from Immersive wakes back to Normal first.
-  const bool upPressed = mappedInput.wasReleased(MappedInputManager::Button::Up);
-  const bool downPressed = mappedInput.wasReleased(MappedInputManager::Button::Down);
-  if (upPressed || downPressed) {
-    lastInputMs_ = millis();
-    if (mode_ == DisplayMode::Immersive) {
-      mode_ = DisplayMode::Normal;
-      requestUpdate();
-    } else if (currentFace_) {
-      if (upPressed) {
-        currentFace_->onPagePrev();
-      } else {
-        currentFace_->onPageNext();
-      }
-      requestUpdate();
-    }
-    return;
-  }
-
-  // Left/Right: cycle through faces. With only one face installed this is a
-  // silent no-op (the keystroke is consumed but nothing visible changes).
-  if (mappedInput.wasReleased(MappedInputManager::Button::Left) ||
-      mappedInput.wasReleased(MappedInputManager::Button::Right)) {
-    lastInputMs_ = millis();
-    if (mode_ == DisplayMode::Immersive) {
-      mode_ = DisplayMode::Normal;
-      requestUpdate();
-      return;
-    }
-    const int8_t delta = mappedInput.wasReleased(MappedInputManager::Button::Right) ? +1 : -1;
-    switchFace(delta);
-    return;
-  }
-
-  // Power short-press: dedicated wake from Immersive back to Normal. Long-
-  // press is handled by main.cpp's global shutdown path.
-  if (mappedInput.wasReleased(MappedInputManager::Button::Power)) {
-    lastInputMs_ = millis();
-    if (mode_ == DisplayMode::Immersive) {
-      mode_ = DisplayMode::Normal;
-      requestUpdate();
-    }
-    return;
-  }
-
-  // Confirm toggles inverse (black background / white content) regardless of
-  // Normal vs. Immersive.
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-    lastInputMs_ = millis();
-    inverseMode_ = !inverseMode_;
-    requestUpdate();
-    return;
-  }
-
-  pumpTimeSync();
-
-  const uint32_t idle = millis() - lastInputMs_;
-  if (mode_ == DisplayMode::Normal && idle >= 5000u) {
-    mode_ = DisplayMode::Immersive;
-    requestUpdate();
-    return;
-  }
-
-  if (tryLightSleep(idle)) return;
-
-  processFaceTick(false);
 }
 
 void StandbyActivity::render(RenderLock&&) {
   if (!currentFace_) return;
-#ifdef RICKYOS_PRODUCT
   {
     int top = 0, right = 0, bottom = 0, left = 0;
     renderer.getOrientedViewableTRBL(&top, &right, &bottom, &left);
@@ -666,7 +525,6 @@ void StandbyActivity::render(RenderLock&&) {
     drewFrame_ = true;
     return;
   }
-#endif
 
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int sw = renderer.getScreenWidth();
@@ -759,7 +617,6 @@ void StandbyActivity::applyGrayscalePass(const Rect& viewport) {
   renderer.restoreBwBuffer();
 }
 
-#ifdef RICKYOS_PRODUCT
 // Same flow as Settings → Power & Standby → Choose Standby Image: an image picker
 // in /images, then a preview whose Set action installs /sleep.bmp.
 void StandbyActivity::openPicturePicker(const std::string& folder) {
@@ -785,4 +642,3 @@ void StandbyActivity::openPicturePicker(const std::string& folder) {
       folder, FileBrowserActivity::Mode::PickWallpaper);
   if (!opened) LOG_ERR("STANDBY", "Cannot open the picture picker");
 }
-#endif

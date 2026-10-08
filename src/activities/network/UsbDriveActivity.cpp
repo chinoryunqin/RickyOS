@@ -10,9 +10,7 @@
 #include "MappedInputManager.h"
 #include "SilentRestart.h"
 #include "components/UITheme.h"
-#ifdef RICKYOS_PRODUCT
 #include "activities/home/RickyStorageActivity.h"
-#endif
 
 namespace fui = freeink::ui;
 
@@ -42,9 +40,7 @@ void UsbDriveActivity::onEnter() {
 
 void UsbDriveActivity::onExit() {
   if (!restartRequested) Storage.endUsbDrive();
-#ifdef RICKYOS_PRODUCT
   RickyStorageActivity::invalidateScan();  // files may have arrived or left
-#endif
   Activity::onExit();
 }
 

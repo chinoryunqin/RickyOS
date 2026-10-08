@@ -46,13 +46,8 @@ class GfxRenderer {
   // framebuffer plane. Keep every 2-bit renderer on this single table.
   static constexpr TwoBitPixel mapTwoBitPixel(const RenderMode mode, const uint8_t value) {
     if (mode == BW) return {value < 3, true};
-#if FREEINK_DEVICE_EEGO_A4
-    if (mode == GRAYSCALE_MSB) return {value == 0 || value == 1, true};
-    return {value == 0 || value == 2, true};
-#else
     if (mode == GRAYSCALE_MSB) return {value == 1 || value == 2, false};
     return {value == 1, false};
-#endif
   }
 
   static constexpr TwoBitPixel mapTwoBitGlyphCoverage(const RenderMode mode, const uint8_t coverage) {
@@ -61,12 +56,8 @@ class GfxRenderer {
   }
 
   static constexpr bool framebufferState(const RenderMode mode, const bool state) {
-#if FREEINK_DEVICE_EEGO_A4
-    return mode == BW ? state : !state;
-#else
     (void)mode;
     return state;
-#endif
   }
 
   // Logical screen orientation from the perspective of callers
@@ -616,18 +607,9 @@ class GfxRenderer {
                           size_t bufSize) const;
 };
 
-#if FREEINK_DEVICE_EEGO_A4
-static_assert(GfxRenderer::mapTwoBitPixel(GfxRenderer::GRAYSCALE_MSB, 0).draw);
-static_assert(GfxRenderer::mapTwoBitPixel(GfxRenderer::GRAYSCALE_MSB, 1).draw);
-static_assert(!GfxRenderer::mapTwoBitPixel(GfxRenderer::GRAYSCALE_MSB, 2).draw);
-static_assert(GfxRenderer::mapTwoBitPixel(GfxRenderer::GRAYSCALE_LSB, 0).draw);
-static_assert(!GfxRenderer::mapTwoBitPixel(GfxRenderer::GRAYSCALE_LSB, 1).draw);
-static_assert(GfxRenderer::mapTwoBitPixel(GfxRenderer::GRAYSCALE_LSB, 2).draw);
-#else
 static_assert(!GfxRenderer::mapTwoBitPixel(GfxRenderer::GRAYSCALE_MSB, 0).draw);
 static_assert(GfxRenderer::mapTwoBitPixel(GfxRenderer::GRAYSCALE_MSB, 1).draw);
 static_assert(GfxRenderer::mapTwoBitPixel(GfxRenderer::GRAYSCALE_MSB, 2).draw);
 static_assert(!GfxRenderer::mapTwoBitPixel(GfxRenderer::GRAYSCALE_LSB, 0).draw);
 static_assert(GfxRenderer::mapTwoBitPixel(GfxRenderer::GRAYSCALE_LSB, 1).draw);
 static_assert(!GfxRenderer::mapTwoBitPixel(GfxRenderer::GRAYSCALE_LSB, 2).draw);
-#endif

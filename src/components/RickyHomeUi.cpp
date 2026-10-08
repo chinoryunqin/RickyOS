@@ -1,6 +1,5 @@
 #include "RickyHomeUi.h"
 
-#ifdef RICKYOS_PRODUCT
 #include <FsHelpers.h>
 #include <HalClock.h>
 #include <I18n.h>
@@ -430,4 +429,3 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
     screen.frame().hit(cell, OPEN_BOOK, index, fui::InputTouch);
   }
 }
-#endif

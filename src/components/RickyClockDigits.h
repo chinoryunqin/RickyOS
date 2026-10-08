@@ -1,5 +1,4 @@
 #pragma once
-#ifdef RICKYOS_PRODUCT
 
 class GfxRenderer;
 
@@ -24,4 +23,3 @@ void drawBw(GfxRenderer& renderer, int x, int yTop, const char* text, int scaleP
 void fadeToPaper(GfxRenderer& renderer, int left, int top, int width, int fullAt, int bottom, int strength);
 
 }  // namespace RickyClockDigits
-#endif

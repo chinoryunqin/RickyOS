@@ -15,9 +15,7 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/TaskWatchdog.h"
-#ifdef RICKYOS_PRODUCT
 #include "activities/home/RickyStorageActivity.h"
-#endif
 
 namespace {
 constexpr const char* HOSTNAME = "crosspoint";
@@ -58,9 +56,7 @@ void CalibreConnectActivity::onEnter() {
 
 void CalibreConnectActivity::onExit() {
   Activity::onExit();
-#ifdef RICKYOS_PRODUCT
   RickyStorageActivity::invalidateScan();  // files may have arrived or left
-#endif
 
   MDNS.end();
 

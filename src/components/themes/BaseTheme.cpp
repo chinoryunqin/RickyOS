@@ -16,10 +16,8 @@
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
 #include "components/HeaderBackTapTarget.h"
-#ifdef RICKYOS_PRODUCT
 #include "components/RickyBrandMark.h"
 #include "components/RickyPowerLayout.h"
-#endif
 #include "components/UIScale.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
@@ -30,12 +28,8 @@
 #include "components/icons/customListIcons.h"
 #include "components/icons/headerIcons.h"
 #include "components/icons/listIcons.h"
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
 #include "components/icons/uiChromeIcons.h"
-#ifdef RICKYOS_PRODUCT
 #include "components/icons/rickyBatteryIcons.h"
-#endif
-#endif
 #include "fontIds.h"
 #include "images/Logo120.h"
 #include "util/TimeUtils.h"
@@ -48,37 +42,10 @@ void BaseTheme::drawSplash(const GfxRenderer& renderer, const char* status, cons
   const int pageWidth = renderer.getScreenWidth();
   const int pageHeight = renderer.getScreenHeight();
   renderer.clearScreen();
-#ifdef RICKYOS_PRODUCT
   drawRickyPowerScreen(renderer, false, false, version);
   return;
-#endif
-  if (UiHighDpiProfile::enabled) {
-    const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer);
-    const int titleHeight = renderer.getLineHeight(UI_12_FONT_ID);
-    const int statusHeight = renderer.getLineHeight(UI_10_FONT_ID);
-    const int logoGap = UiHighDpiProfile::controlGap * 2;
-    const int textGap = UiHighDpiProfile::controlGap;
-    const int blockHeight = 120 + logoGap + titleHeight + textGap + statusHeight;
-    const int logoY = safe.y + (safe.height - blockHeight) / 2;
-    const int titleY = logoY + 120 + logoGap;
-    renderer.drawImage(Logo120, safe.x + (safe.width - 120) / 2, logoY, 120, 120);
-    UITheme::drawCenteredText(renderer, safe, UI_12_FONT_ID, titleY, tr(STR_CROSSPOINT), true, EpdFontFamily::BOLD);
-    UITheme::drawCenteredText(renderer, safe, UI_10_FONT_ID, titleY + titleHeight + textGap, status);
-    if (version) {
-      const int versionY =
-          safe.y + safe.height - UiHighDpiProfile::contentPadding - renderer.getLineHeight(SMALL_FONT_ID);
-      UITheme::drawCenteredText(renderer, safe, SMALL_FONT_ID, versionY, version);
-    }
-    return;
-  }
-
-  renderer.drawImage(Logo120, (pageWidth - 120) / 2, (pageHeight - 120) / 2, 120, 120);
-  renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2 + 70, tr(STR_CROSSPOINT), true, EpdFontFamily::BOLD);
-  renderer.drawCenteredText(SMALL_FONT_ID, pageHeight / 2 + 95, status);
-  if (version) renderer.drawCenteredText(SMALL_FONT_ID, pageHeight - 30, version);
 }
 
-#ifdef RICKYOS_PRODUCT
 void BaseTheme::drawRickyPowerScreen(const GfxRenderer& renderer, const bool sleeping, const bool transition,
                                      const char* version, const uint8_t reveal) {
   renderer.clearScreen();
@@ -122,7 +89,6 @@ Rect BaseTheme::drawRickyStandbyIndicator(const GfxRenderer& renderer, const boo
   UITheme::drawCenteredWrappedText(renderer, badge, SMALL_FONT_ID, label, 1);
   return badge;
 }
-#endif
 
 void BaseTheme::setCheckboxRow(freeink::ui::ListItem& item, const bool checked) {
   item.toggle = true;
@@ -142,7 +108,6 @@ constexpr int bookmarkStatusIconTopCrop = 2;
 constexpr int bluetoothStatusIconWidth = UiHighDpiProfile::enabled ? UiHighDpiProfile::readerStatusIconSize : 16;
 constexpr int bluetoothStatusIconHeight = UiHighDpiProfile::enabled ? UiHighDpiProfile::readerStatusIconSize : 16;
 
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
 // Plot only ink pixels; the white bits are transparent. No render-time buffers.
 void drawTransparentBitmap(const GfxRenderer& renderer, const freeink::Icon& icon, const int x, const int y,
                            const bool black) {
@@ -154,50 +119,22 @@ void drawTransparentBitmap(const GfxRenderer& renderer, const freeink::Icon& ico
     }
   }
 }
-#endif
 
 void drawBookmarkStatusIcon(const GfxRenderer& renderer, const int x, const int y) {
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
   drawTransparentBitmap(renderer, icon_reader_bookmark_24, x, y, true);
-#else
-  constexpr int bytesPerRow = bookmarkStatusIconWidth / 8;
-  for (int row = 0; row < bookmarkStatusIconHeight; ++row) {
-    for (int col = 0; col < bookmarkStatusIconWidth; ++col) {
-      const uint8_t byte = BookmarkStatusIcon[(row + bookmarkStatusIconTopCrop) * bytesPerRow + col / 8];
-      const uint8_t mask = 1U << (7 - (col % 8));
-      renderer.drawPixel(x + col, y + row, (byte & mask) != 0);
-    }
-  }
-#endif
 }
 
 void drawBluetoothStatusIcon(const GfxRenderer& renderer, const int x, const int y) {
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
   drawTransparentBitmap(renderer, icon_reader_bluetooth_24, x, y, true);
-#else
-  constexpr int bytesPerRow = bluetoothStatusIconWidth / 8;
-  for (int row = 0; row < bluetoothStatusIconHeight; ++row) {
-    for (int col = 0; col < bluetoothStatusIconWidth; ++col) {
-      const uint8_t byte = BluetoothStatusIcon[row * bytesPerRow + col / 8];
-      renderer.drawPixel(x + col, y + row, (byte & (1U << (7 - col % 8))) == 0);
-    }
-  }
-#endif
 }
 
 }  // namespace
 
 void BaseTheme::drawBatteryOutline(const GfxRenderer& renderer, int x, int y, int battWidth, int rectHeight) {
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
   if (battWidth == UiHighDpiProfile::batteryWidth && rectHeight == UiHighDpiProfile::batteryHeight) {
-#ifdef RICKYOS_PRODUCT
     drawTransparentBitmap(renderer, ricky_battery_body_32x20, x, y, true);
-#else
-    drawTransparentBitmap(renderer, icon_battery_32x20, x, y, true);
-#endif
     return;
   }
-#endif
   // Top line
   renderer.drawLine(x + 1, y, x + battWidth - 3, y);
   // Bottom line
@@ -234,9 +171,7 @@ void BaseTheme::drawBatteryLightningBolt(const GfxRenderer& renderer, int boltX,
 
 void BaseTheme::fillBatteryIcon(const GfxRenderer& renderer, Rect rect, uint16_t percentage) const {
   const bool charging = gpio.isUsbConnected();
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
   if (rect.width == UiHighDpiProfile::batteryWidth && rect.height == UiHighDpiProfile::batteryHeight) {
-#ifdef RICKYOS_PRODUCT
     // The bar sits inside the body with a white gap all round (rickyBatteryIcons.h);
     // any charge left shows at least a sliver.
     constexpr int barWidth = 20;
@@ -247,15 +182,8 @@ void BaseTheme::fillBatteryIcon(const GfxRenderer& renderer, Rect rect, uint16_t
       drawTransparentBitmap(renderer, ricky_battery_bolt_halo_32x20, rect.x, rect.y, false);
       drawTransparentBitmap(renderer, ricky_battery_bolt_32x20, rect.x, rect.y, true);
     }
-#else
-    constexpr int cavityWidth = 17;
-    const int filledWidth = std::max(charging ? 14 : 0, std::min<int>(percentage, 100) * cavityWidth / 100);
-    if (filledWidth > 0) renderer.fillRect(rect.x + 5, rect.y + 3, filledWidth, 14);
-    if (charging) drawTransparentBitmap(renderer, icon_battery_charging_32x20, rect.x, rect.y, false);
-#endif
     return;
   }
-#endif
 
   const int maxFillWidth = rect.width - 5;
   const int fillHeight = rect.height - 4;
@@ -1174,17 +1102,6 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
 
   int leftClusterX = metrics.statusBarHorizontalMargin + orientedMarginLeft + 1;
   int rightClusterX = renderer.getScreenWidth() - metrics.statusBarHorizontalMargin - orientedMarginRight;
-#if FREEINK_DEVICE_EEGO_A4
-  // The EEGO A4 panel has physically rounded corners; the status bar text must
-  // stay inside the 28 px UI content inset (eego-a4-template-firmware
-  // SAFE_AREA spec), so clamp the left/right text clusters out of the corner
-  // cutouts. The bottom ~4 px of the bar is covered by the bezel, so the whole
-  // cluster is also lifted by that amount (measured on device).
-  constexpr int kEegoStatusBarSafeInset = 28;
-  leftClusterX = std::max(leftClusterX, kEegoStatusBarSafeInset);
-  rightClusterX = std::min(rightClusterX, renderer.getScreenWidth() - kEegoStatusBarSafeInset);
-  textY -= 4;
-#endif
   int leftClusterWidth = 0;
   int rightClusterWidth = 0;
 
@@ -1219,21 +1136,11 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
 
   // Draw Progress Bar
   if (sb.showsProgressBar()) {
-#if FREEINK_DEVICE_EEGO_A4
-    // The bar's bottom edge is lifted 4 px so the bezel does not cover it
-    // (measured on device); horizontal span is untouched.
-    const int barMarginLeft = fillMargin ? 0 : orientedMarginLeft;
-    const int barMarginRight = fillMargin ? 0 : orientedMarginRight;
-    const int progressBarMaxWidth = renderer.getScreenWidth() - barMarginLeft - barMarginRight;
-    const int progressBarY = renderer.getScreenHeight() - 4 - orientedMarginBottom - sb.progressBarHeightPx -
-                             paddingBottom + (fillMargin ? 1 : 0);
-#else
     const int barMarginLeft = fillMargin ? 0 : orientedMarginLeft;
     const int barMarginRight = fillMargin ? 0 : orientedMarginRight;
     const int progressBarMaxWidth = renderer.getScreenWidth() - barMarginLeft - barMarginRight;
     const int progressBarY = renderer.getScreenHeight() - orientedMarginBottom - sb.progressBarHeightPx -
                              paddingBottom + (fillMargin ? 1 : 0);
-#endif
     size_t progress;
     if (sb.progressBarMode == CrossPointSettings::STATUS_BAR_PROGRESS_BAR::BOOK_PROGRESS) {
       progress = static_cast<size_t>(bookProgress);

@@ -64,18 +64,12 @@ inline freeink::ui::ThemeTokens uiThemeTokens(const freeink::ui::GfxRendererTarg
   tokens.listSelectionStyle = static_cast<fui::SelectionStyle>(metrics.listSelectionStyle);
   tokens.listScrollWidth = static_cast<int16_t>(metrics.listScrollWidth);
   tokens.listScrollSide = static_cast<uint8_t>(metrics.listScrollSide);
-#if FREEINK_DEVICE_X4PRO || FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_PAPERMONO
-  // These upstream board profiles already apply their bezel inset through the
-  // FreeInkUI safe area, so do not compensate the scroll track a second time.
-  tokens.listScrollInset = 0;
-#else
   // The scroll track hugs the band edge; on boards whose panel sits recessed
   // behind the bezel the edge columns are covered, so push the indicator
   // inward past the covered side. Bezel truth is per-board data
   // (BoardConfig::ViewableInsets); lists render in the portrait UI frame, so
   // the panel-native portrait insets apply directly.
   tokens.listScrollInset = inxTheme ? ui_theme_detail::scrollInset(BoardConfig::ACTIVE, metrics.listScrollSide) : 0;
-#endif
   // Screen::header()/status() band height. Without this the SDK's
   // line-height-derived default applies and fui-drawn headers (OPDS) come out
   // a different height than every GUI.drawHeader band.

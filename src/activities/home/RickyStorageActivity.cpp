@@ -1,5 +1,4 @@
 #include "RickyStorageActivity.h"
-#ifdef RICKYOS_PRODUCT
 #include <ArduinoJson.h>
 #include <FsHelpers.h>
 #include <HalStorage.h>
@@ -489,4 +488,3 @@ void RickyStorageActivity::activateIndex(int index) {
         path, FileBrowserActivity::Mode::Books, /*scoped=*/index != 4);
   }
 }
-#endif

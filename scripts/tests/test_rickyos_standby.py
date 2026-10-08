@@ -14,8 +14,6 @@ class RickyStandbyTest(unittest.TestCase):
 #include <cassert>
 #include <cstring>
 constexpr const char* CROSSPOINT_VERSION="test-version";
-constexpr int STR_BOOTING=0;
-const char* tr(int) {return "Booting";}
 struct HalDisplay {enum {FULL_REFRESH=1};};
 struct Renderer {int paints=0,mode=0;void displayBuffer(int m=0){++paints;mode=m;}};
 struct Theme {

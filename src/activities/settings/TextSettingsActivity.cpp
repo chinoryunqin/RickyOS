@@ -6,9 +6,7 @@
 #include <I18n.h>
 #include <Logging.h>
 #include <SdCardFontCache.h>
-#ifdef ENABLE_CHINESE_VERSION
 #include <Memory.h>
-#endif
 
 #include <algorithm>
 #include <cstdio>
@@ -23,9 +21,7 @@
 #include "ReaderFontSizes.h"
 #include "SdCardFontSystem.h"
 #include "TextSettingsPreview.h"
-#ifdef ENABLE_CHINESE_VERSION
 #include "activities/settings/FontDownloadActivity.h"
-#endif
 #include "activities/util/IntervalSelectionActivity.h"
 #include "components/FontPreloadView.h"
 #include "components/UITheme.h"
@@ -123,14 +119,9 @@ void TextSettingsActivity::onEnter() {
 
   fonts_.clear();
   fonts_.reserve(CrossPointSettings::BUILTIN_FONT_COUNT + (registry_ ? registry_->getFamilyCount() : 0));
-#ifdef ENABLE_CHINESE_VERSION
   if (!registry_ || !registry_->findFamily(SdCardFontSystem::COMPLETE_CHINESE_NOTO_SANS_FAMILY)) {
     fonts_.push_back({I18N.get(StrId::STR_NOTO_SANS), true, static_cast<uint8_t>(CrossPointSettings::NOTOSANS)});
   }
-#else
-  fonts_.push_back({I18N.get(StrId::STR_NOTO_SERIF), true, static_cast<uint8_t>(CrossPointSettings::NOTOSERIF)});
-  fonts_.push_back({I18N.get(StrId::STR_NOTO_SANS), true, static_cast<uint8_t>(CrossPointSettings::NOTOSANS)});
-#endif
   if (registry_) {
     const auto& families = registry_->getFamilies();
     for (int i = 0; i < static_cast<int>(families.size()); i++) {
@@ -497,9 +488,7 @@ void TextSettingsActivity::activateRow(int row) {
         if (currentFamilyIndex_ == row) {
           SETTINGS.saveToFile();
         }
-#ifdef ENABLE_CHINESE_VERSION
         maybeOfferCompleteChineseFont();
-#endif
         requestUpdate();
       }
       break;
@@ -507,9 +496,7 @@ void TextSettingsActivity::activateRow(int row) {
       if (row != currentSizeIndex_) {
         applySize(row);
         SETTINGS.saveToFile();
-#ifdef ENABLE_CHINESE_VERSION
         maybeOfferCompleteChineseFont();
-#endif
         requestUpdate();
       }
       break;
@@ -887,13 +874,11 @@ void TextSettingsActivity::finishFinalFont(const bool accepted) {
   }
   const auto* file = fontFileForFamily(currentFamilyIndex_, SETTINGS.fontPointSize);
   const auto check = file ? SdCardFontCache::preflight(file->path.c_str()) : SdCardFontCache::Result::InvalidFont;
-#ifdef RICKYOS_PRODUCT
   if (check == SdCardFontCache::Result::TooLarge) {
     LOG_DBG("FSET", "Font exceeds cache capacity; keeping SD backend");
     completeExit();
     return;
   }
-#endif
   if (check != SdCardFontCache::Result::Ok && check != SdCardFontCache::Result::AlreadyCached) {
     showPreloadFailure(check);
     return;

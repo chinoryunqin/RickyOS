@@ -1,5 +1,4 @@
 #pragma once
-#ifdef RICKYOS_PRODUCT
 #include <cstdint>
 
 class GfxRenderer;
@@ -12,4 +11,3 @@ namespace RickyAaIcons {
 // so the caller draws the 1-bpp icon as before. `ink` false draws it white (on a pill).
 bool draw(const GfxRenderer& renderer, const uint8_t* bits, int width, int height, int x, int y, bool ink);
 }  // namespace RickyAaIcons
-#endif

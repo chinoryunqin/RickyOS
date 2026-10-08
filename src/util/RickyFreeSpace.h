@@ -1,5 +1,4 @@
 #pragma once
-#ifdef RICKYOS_PRODUCT
 
 #include <cstdint>
 
@@ -11,4 +10,3 @@ namespace RickyFreeSpace {
 bool measure(uint64_t& totalBytes, uint64_t& freeBytes);
 }  // namespace RickyFreeSpace
 
-#endif

@@ -1,5 +1,4 @@
 #pragma once
-#ifdef RICKYOS_PRODUCT
 
 #include <cstdint>
 #include <string>
@@ -52,4 +51,3 @@ class RickyWallpaperDownloadActivity final : public Activity {
   bool usedNetwork_ = false;
 };
 
-#endif

@@ -98,8 +98,8 @@ class RickyCjkCoverageTest(unittest.TestCase):
 
     def test_only_the_high_density_product_uses_the_extended_face(self):
         main = (ROOT / 'src/main.cpp').read_text(encoding='utf-8')
-        block = main[main.index('#if defined(RICKYOS_PRODUCT) && defined(CROSSMUX_UI_PROFILE_HIGH_DPI)'):]
-        block = block[:block.index('#endif')]
+        block = main[main.index('#include <builtinFonts/notosans_cjk_12_rickyos.h>'):]
+        block = block[:block.index('EpdFontFamily offlineReaderFontFamily')]
         self.assertIn('#include <builtinFonts/notosans_cjk_12_rickyos.h>', block)
         self.assertIn('cjk12Data = notosans_cjk_12_rickyos', block)
         self.assertIn('EpdFont offlineReaderFont(&cjk12Data);', main)

@@ -1,5 +1,4 @@
 #include "RickyProfile.h"
-#ifdef RICKYOS_PRODUCT
 #include <Bitmap.h>
 #include <FsHelpers.h>
 #include <HalStorage.h>
@@ -221,4 +220,3 @@ bool importAvatar(const std::string& path) {
   return setAvatar(target);
 }
 }  // namespace RickyProfile
-#endif

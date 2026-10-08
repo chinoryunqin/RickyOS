@@ -58,9 +58,6 @@ class HalGPIO {
 
  private:
   DeviceType _deviceType = DeviceType::X4;
-#if FREEINK_DEVICE_MURPHY_M4
-  freeink::MurphyM4Batch _murphyM4Batch = freeink::MurphyM4Batch::Second;
-#endif
 
  public:
   HalGPIO() = default;
@@ -68,10 +65,6 @@ class HalGPIO {
   // Inline device type helpers for cleaner downstream checks
   inline bool deviceIsX3() const { return _deviceType == DeviceType::X3; }
   inline bool deviceIsX4() const { return _deviceType == DeviceType::X4; }
-#if FREEINK_DEVICE_MURPHY_M4
-  freeink::MurphyM4Batch murphyM4Batch() const { return _murphyM4Batch; }
-  bool saveMurphyM4Batch(freeink::MurphyM4Batch batch);
-#endif
   bool isXteinkDevice() const;
 
   // True when the board's page buttons sit on the left/right screen edges

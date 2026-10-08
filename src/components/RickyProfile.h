@@ -1,5 +1,4 @@
 #pragma once
-#ifdef RICKYOS_PRODUCT
 #include "Rect.h"
 #include "UiAppHost.h"
 
@@ -22,4 +21,3 @@ void drawCard(UiScreen& screen, const GfxRenderer& renderer, freeink::ui::Rect r
               int value = 0);
 bool importAvatar(const std::string& path);
 }  // namespace RickyProfile
-#endif

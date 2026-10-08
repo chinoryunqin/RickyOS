@@ -8,9 +8,7 @@
 #include <I18n.h>
 #include <JpegToBmpConverter.h>
 #include <PngToBmpConverter.h>
-#ifdef RICKYOS_PRODUCT
 #include <JpegToBmpConverter.h>
-#endif
 
 #include <algorithm>
 
@@ -24,7 +22,6 @@ constexpr const char* TRANSPARENT_PREVIEW_PATH = "/.crosspoint/image_preview.tra
 constexpr const char* SLEEP_IMAGE_PATH = "/sleep.bmp";
 constexpr const char* SLEEP_IMAGE_PART_PATH = "/sleep.bmp.part";
 constexpr const char* SLEEP_IMAGE_BACKUP_PATH = "/sleep.bmp.bak";
-#ifdef RICKYOS_PRODUCT
 // Converted previews are kept: a PNG takes seconds to convert, and the same pictures
 // are opened again and again while choosing a wallpaper. Bounded by kPreviewCacheMax.
 constexpr const char* PREVIEW_CACHE_DIR = "/.crosspoint/previews";
@@ -63,14 +60,9 @@ void prunePreviewCache() {
   // Simple and bounded: start the cache over rather than track ages.
   for (const auto& entry : names) Storage.remove((std::string(PREVIEW_CACHE_DIR) + "/" + entry).c_str());
 }
-#endif
 
 constexpr StrId sleepCoverLabel() {
-#ifdef RICKYOS_PRODUCT
   return StrId::STR_RICKY_SET_WALLPAPER;
-#else
-  return StrId::STR_SET_SLEEP_COVER;
-#endif
 }
 
 Rect sleepCoverActionRect(const GfxRenderer& renderer) {
@@ -122,49 +114,32 @@ void ImageViewerActivity::loadSiblingImages() {
 bool ImageViewerActivity::isPng() const { return FsHelpers::hasPngExtension(filePath); }
 
 bool ImageViewerActivity::preparePreview() {
-#ifdef RICKYOS_PRODUCT
   previewPath = previewCachePath(filePath);
   if (Storage.exists(previewPath.c_str())) return true;
   if (!Storage.ensureDirectoryExists(PREVIEW_CACHE_DIR)) return false;
   prunePreviewCache();
   // Written aside and renamed, so a conversion cut short is never taken for a preview.
   const std::string outPath = previewPath + ".part";
-#else
-  previewPath = IMAGE_PREVIEW_PATH;
-  if (!Storage.ensureDirectoryExists("/.crosspoint")) return false;
-  const std::string outPath = previewPath;
-#endif
   if (Storage.exists(outPath.c_str()) && !Storage.remove(outPath.c_str())) return false;
 
   bool prepared = false;
   {
     GfxRenderer::FrameBufferLoan loan(renderer);
     if (isPng()) {
-#ifdef RICKYOS_PRODUCT
       // Read Pico's panel shows 16 grays; keep them all instead of dithering to four.
       prepared = PngToBmpConverter::pngFileToGray8BmpFile(filePath.c_str(), outPath.c_str(), true);
-#else
-      prepared = PngToBmpConverter::pngFileToBmpFile(filePath.c_str(), outPath.c_str(), true);
-#endif
     } else {
       HalFile input, output;
       if (Storage.openFileForRead("IMAGE", filePath.c_str(), input) &&
           Storage.openFileForWrite("IMAGE", outPath, output)) {
-#ifdef RICKYOS_PRODUCT
         // Read Pico's panel shows 16 grays; keep the photo's full gray range.
         prepared =
             JpegToBmpConverter::jpegFileToBmpStream(input, output, /*crop=*/false, JpegToBmpConverter::Output::Gray8);
-#else
-        prepared = JpegToBmpConverter::jpegFileToBmpStreamWithSize(input, output, renderer.getScreenWidth(),
-                                                                   renderer.getScreenHeight(), /*crop=*/false);
-#endif
         output.flush();
       }
     }
   }
-#ifdef RICKYOS_PRODUCT
   prepared = prepared && Storage.rename(outPath.c_str(), previewPath.c_str());
-#endif
   if (!prepared) Storage.remove(outPath.c_str());
   return prepared;
 }
@@ -178,11 +153,9 @@ void ImageViewerActivity::onEnter() {
 
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
-#ifdef RICKYOS_PRODUCT
   // No blank page first: the loading popup stays over the list until the picture lands
   // in one full refresh (a white screen for seconds read as a hang). The full GC16
   // commit below clears what was underneath.
-#endif
   Rect popupRect = GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
   GUI.fillPopupProgress(renderer, popupRect, 20);  // Initial 20% progress
   const bool needsPreview = isPng() || FsHelpers::hasJpgExtension(filePath);
@@ -236,12 +209,8 @@ void ImageViewerActivity::onEnter() {
 
       GUI.fillPopupProgress(renderer, popupRect, 50);
 
-#ifdef RICKYOS_PRODUCT
       // The 16-level pass below draws the picture itself; a B/W pass first only cost time.
       const bool native16 = bitmap.hasGreyscale() && renderer.getGrayscaleLevels() == 16;
-#else
-      constexpr bool native16 = false;
-#endif
       renderer.clearScreen();
       if (!native16 && !renderer.drawBitmap(bitmap, x, y, pageWidth, pageHeight, 0, 0)) {
         renderer.clearScreen();
@@ -255,7 +224,6 @@ void ImageViewerActivity::onEnter() {
       if (mappedInput.hasTouch()) {
         GUI.drawActionButton(renderer, sleepCoverActionRect(renderer), I18N.get(sleepCoverLabel()));
       }
-#ifdef RICKYOS_PRODUCT
       // Native 16-gray, as Standby and the sleep screen draw it. The overlay-mask path
       // also painted the Set button into its gray planes, turning it into a dark bar
       // with no readable label. Here the button is drawn in B/W and copied in.
@@ -284,14 +252,9 @@ void ImageViewerActivity::onEnter() {
         imageReady = shown;
         return;
       }
-#endif
       if (bitmap.hasGreyscale()) {
-#ifdef RICKYOS_PRODUCT
         // Read Pico's bitmap renderer emits overlay masks, not UC8279 absolute planes.
         constexpr bool absolute = false;
-#else
-        const bool absolute = renderer.grayscaleCapabilities(HalDisplay::GrayscaleMode::Absolute).supported();
-#endif
         if (absolute && !renderer.displayGrayscaleBase(HalDisplay::GrayscaleMode::Absolute)) return;
         if (!absolute) renderer.displayGrayscaleBase(HalDisplay::HALF_REFRESH);
         bool planesReady = true;
@@ -358,17 +321,10 @@ void ImageViewerActivity::onEnter() {
 void ImageViewerActivity::onExit() {
   Activity::onExit();
   imageReady = false;
-#ifndef RICKYOS_PRODUCT
-  if (Storage.exists(IMAGE_PREVIEW_PATH)) Storage.remove(IMAGE_PREVIEW_PATH);
-#endif
   if (Storage.exists(TRANSPARENT_PREVIEW_PATH)) Storage.remove(TRANSPARENT_PREVIEW_PATH);
   renderer.clearScreen();
-#ifdef RICKYOS_PRODUCT
   // Leave no gray picture under the next page (see onEnter).
   renderer.displayBuffer(HalDisplay::FULL_REFRESH);
-#else
-  renderer.displayBuffer(HalDisplay::HALF_REFRESH);
-#endif
 }
 
 bool ImageViewerActivity::doSetSleepCover(const char* sourcePath, const bool transparent) {
@@ -423,16 +379,12 @@ bool ImageViewerActivity::doSetSleepCover(const char* sourcePath, const bool tra
     const uint8_t previousMode = SETTINGS.sleepScreen;
     SETTINGS.sleepScreen = transparent ? CrossPointSettings::SLEEP_SCREEN_MODE::TRANSPARENT
                                        : CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM;
-#ifdef RICKYOS_PRODUCT
     // The picture just set is what Standby shows.
     const uint8_t previousFace = SETTINGS.rickyStandbyFace;
     if (!transparent) SETTINGS.rickyStandbyFace = CrossPointSettings::RICKY_STANDBY_PICTURE;
-#endif
     if (!SETTINGS.saveToFile()) {
       SETTINGS.sleepScreen = previousMode;
-#ifdef RICKYOS_PRODUCT
       SETTINGS.rickyStandbyFace = previousFace;
-#endif
       (void)SETTINGS.saveToFile();
       Storage.remove(SLEEP_IMAGE_PATH);
       if (Storage.exists(SLEEP_IMAGE_BACKUP_PATH)) {

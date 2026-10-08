@@ -79,20 +79,16 @@ class EpubReaderActivity final : public ReaderActivity {
   uint32_t sectionGeneration_ = 0;
   uint32_t renderEpoch_ = 0;
   bool pageCacheFailed_ = false;
-#ifdef ENABLE_CHINESE_VERSION
   uint32_t pageCacheMissingCodepoint_[kPageCacheSlots] = {};
-#endif
 
   bool pageCacheEligible() const;
-#ifdef RICKYOS_PRODUCT
   bool nativeGray16Page(const Page& page) const;
-#endif
   ReaderPageCacheKey pageCacheKey(int page, int top, int right, int bottom, int left) const;
   uint32_t idleRenderDelayMs() const override;
   void renderIdle(uint32_t generation) override;
   // Build one page into one cache slot; only called from renderIdle().
   bool buildPageCacheSlot(int slot, const ReaderPageCacheKey& key, uint32_t generation, Section* source = nullptr);
-#if FREEINK_DEVICE_READPICO && defined(RICKYOS_PRODUCT)
+#if FREEINK_DEVICE_READPICO
   void prefetchNextChapter(const ReaderPageCacheKey& layout, uint32_t generation);
 #endif
   void freePageCache();
@@ -104,12 +100,10 @@ class EpubReaderActivity final : public ReaderActivity {
   unsigned long bookmarkMessageTime = 0UL;
   bool pendingReadFolderMove = false;
 
-#ifdef ENABLE_CHINESE_VERSION
   std::atomic<uint32_t> pendingMissingChineseCodepoint_{0};
   char wereadBookId_[64] = {};
   bool clearInitialProgressAfterSave_ = false;
   bool maybeOfferCompleteChineseFont();
-#endif
 
   // Toolbar reader menu (SETTINGS.readerMenuStyle == READER_MENU_TOOLBAR): drawn
   // over the page instead of pushing the full-screen list menu. Select opens the
@@ -252,9 +246,7 @@ class EpubReaderActivity final : public ReaderActivity {
   void openFootnoteSelect(bool reopenMenuOnCancel);
   void openDictionaryWordSelect();
   bool launchKOReaderSync();
-#ifdef ENABLE_CHINESE_VERSION
   bool launchWeReadSync();
-#endif
   unsigned long confirmLongPressThreshold() const;
   void toggleAutoPageTurn(uint8_t requestedPageTurnRate);
   void loadCachedBookmarks();

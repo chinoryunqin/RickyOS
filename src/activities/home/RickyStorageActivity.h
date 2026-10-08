@@ -1,5 +1,4 @@
 #pragma once
-#ifdef RICKYOS_PRODUCT
 #include <array>
 
 #include "activities/UiListActivity.h"
@@ -46,4 +45,3 @@ class RickyStorageActivity final : public UiListActivity {
   void applyLastScan();
   void refresh();
 };
-#endif

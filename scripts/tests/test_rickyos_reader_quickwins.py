@@ -13,11 +13,11 @@ def read(rel):
 class RickyQuickWinsTest(unittest.TestCase):
     def test_tap_turns_are_the_default_and_migrate_the_old_swipe_only_default_once(self):
         header = read('src/CrossPointSettings.h')
-        start = header.index('#ifdef RICKYOS_PRODUCT\n  // Tapping the side of the page')
-        self.assertIn('uint8_t pageTurnGesture = TAP_AND_SWIPE;', header[start:header.index('#else', start)])
+        start = header.index('  // Tapping the side of the page')
+        self.assertIn('uint8_t pageTurnGesture = TAP_AND_SWIPE;', header[start:start + 200])
         source = read('src/CrossPointSettings.cpp')
         start = source.index('if (doc["rickyTapTurn"].isNull())')
-        migration = source[start:source.index('#endif', start)]
+        migration = source[start:source.index('if (doc["rickyStandbyKeyOn"]', start)]
         # Only the untouched old default moves; any other choice stays the reader's.
         self.assertIn('pageTurnGesture == SWIPE_ONLY && previousPageGesture == SWIPE_ONLY', migration)
         self.assertIn('needsResave = true;', migration)
@@ -65,7 +65,7 @@ class RickyQuickWinsTest(unittest.TestCase):
         source = read('src/activities/reader/EpubReaderActivity.cpp')
         self.assertIn('StrId::STR_TEXT_AA', source[source.index('constexpr StrId kTextRowNames[]'):])
         start = source.index('else if (panelIndex == kTextRowAntiAliasing)')
-        toggle = source[start:source.index('#endif', start)]
+        toggle = source[start:source.index('else {', start)]
         self.assertIn('SETTINGS.textAntiAliasing = SETTINGS.textAntiAliasing ? 0 : 1;', toggle)
         self.assertNotIn('applyReaderTextSettings', toggle)
 

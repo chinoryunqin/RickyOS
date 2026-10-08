@@ -13,49 +13,21 @@
 
 #include "CrossPointSettings.h"
 #include "OpdsServerStore.h"
-#ifndef RICKYOS_PRODUCT
-#include "apps/2048/Game2048Activity.h"
-#include "apps/avatar/UglyAvatarActivity.h"
-#include "apps/buddy/BuddyActivity.h"
-#include "apps/minesweeper/MinesweeperMenuActivity.h"
-#include "apps/pixel-switch/PixelSwitchActivity.h"
-#include "apps/sokoban/SokobanGameActivity.h"
-#include "apps/sudoku/SudokuMenuActivity.h"
-#include "apps/woodfish/WoodfishActivity.h"
-#ifdef ENABLE_CHINESE_VERSION
-#include "apps/chinese-chess/ChineseChessMenuActivity.h"
-#endif
-#endif
 #include "apps/AppsMenuActivity.h"
-#ifndef RICKYOS_PRODUCT
-#include "apps/airpage/AirPageActivity.h"
-#endif
 #include "apps/calculator/CalculatorActivity.h"
 #include "components/SubpageLayout.h"
-#ifdef ENABLE_CHINESE_VERSION
 #include "apps/weread/WeReadActivity.h"
-#endif
 #include "apps/gomoku/GomokuMenuActivity.h"
-#ifndef RICKYOS_PRODUCT
-// RickyOS replaces the stock reading-stats suite with one page; leaving these out
-// lets the linker drop about 50 KB of pages nothing on RickyOS can reach.
-#include "apps/reading-stats/ReadingStatsActivity.h"
-#include "apps/reading-stats/ReadingStatsMenuActivity.h"
-#endif
 #include "apps/standby/StandbyActivity.h"
-#ifdef RICKYOS_PRODUCT
 #include "apps/reading-stats/RickyReadingStatsActivity.h"
 #include "apps/standby/RickyStandbySettingsActivity.h"
-#endif
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
 #include "browser/OpdsBookBrowserActivity.h"
 #include "components/HeaderBackTapTarget.h"
 #include "home/CrashActivity.h"
 #include "home/FileBrowserActivity.h"
-#ifdef RICKYOS_PRODUCT
 #include "home/RickyStorageActivity.h"
-#endif
 #include "home/HomeActivity.h"
 #include "home/InxRecentActivity.h"
 #include "home/RecentBooksActivity.h"
@@ -106,7 +78,7 @@ void ActivityManager::renderTaskTrampoline(void* param) {
   self->renderTaskLoop();
 }
 
-#if defined(RICKYOS_PRODUCT) && FREEINK_DEVICE_READPICO
+#if FREEINK_DEVICE_READPICO
 namespace {
 // The UI draws in black and white so every touch gets the fast refresh (~230 ms), which
 // leaves curves and text edges stepped: a 300 ppi screen that looks like 200 ppi. Once
@@ -161,7 +133,7 @@ void ActivityManager::renderTaskLoop() {
         // Some renderers release the lock, so read activity-owned metadata
         // before calling them. Input during the render also cancels its idle pass.
         auto delayMs = currentActivity->idleRenderDelayMs();
-#if defined(RICKYOS_PRODUCT) && FREEINK_DEVICE_READPICO
+#if FREEINK_DEVICE_READPICO
         graySettlePending = delayMs == 0 && currentActivity->wantsGraySettle() && graySettleAllowed();
         if (graySettlePending) delayMs = kGraySettleDelayMs;
 #endif
@@ -171,7 +143,7 @@ void ActivityManager::renderTaskLoop() {
         idleDelayTicks = delayMs != 0 ? pdMS_TO_TICKS(delayMs) : portMAX_DELAY;
         waitTicks = idleDelayTicks;
       } else if (!idleRenderCancelled(idleGeneration)) {
-#if defined(RICKYOS_PRODUCT) && FREEINK_DEVICE_READPICO
+#if FREEINK_DEVICE_READPICO
         if (graySettlePending) {
           graySettlePending = false;
           settleToGray(std::move(lock), idleGeneration);
@@ -197,7 +169,7 @@ void ActivityManager::renderTaskLoop() {
   }
 }
 
-#if defined(RICKYOS_PRODUCT) && FREEINK_DEVICE_READPICO
+#if FREEINK_DEVICE_READPICO
 void ActivityManager::settleToGray(RenderLock&& lock, const uint32_t generation) {
   if (!renderer.beginGrayscale16()) return;
   const unsigned long started = millis();
@@ -226,7 +198,7 @@ void ActivityManager::settleToGray(RenderLock&& lock, const uint32_t generation)
 #endif
 
 void ActivityManager::loop() {
-#if defined(RICKYOS_PRODUCT) && FREEINK_DEVICE_READPICO && !defined(SIMULATOR)
+#if FREEINK_DEVICE_READPICO && !defined(SIMULATOR)
   {
     // Page turns and UI frames leave the panel rails up so the next frame starts at once;
     // held up while nothing is driven, they let charge build in the film until old pages
@@ -257,13 +229,9 @@ void ActivityManager::loop() {
       resetHomeStandbyInput();
       return;
     }
-#ifdef RICKYOS_PRODUCT
     // Standby is the screen at rest: only the side key (or Back) leaves it. Edge swipes
     // must not pull the control center or Home over it.
     const bool atRest = standbyShowing();
-#else
-    constexpr bool atRest = false;
-#endif
     if (!atRest && !currentActivity->isHomeActivity() && mappedInput.wasHomeGesture()) {
       resetHomeStandbyInput();
       if (currentActivity->handleHomeGesture()) {
@@ -275,11 +243,7 @@ void ActivityManager::loop() {
 
     // Touch users can also open the global control center from the status bar.
     bool statusBarTap = false;
-#ifdef RICKYOS_PRODUCT
     const bool statusTapOpensPanel = SETTINGS.rickyGestureStatus != 0;  // Settings -> Gestures
-#else
-    constexpr bool statusTapOpensPanel = true;
-#endif
     if (mappedInput.hasTouch() && statusTapOpensPanel) {
       int tx = 0;
       int ty = 0;
@@ -428,7 +392,6 @@ bool ActivityManager::handleHomeStandbyInput() {
 
   const bool pressed = mappedInput.wasPressed(MappedInputManager::Button::Back);
   const bool released = mappedInput.wasReleased(MappedInputManager::Button::Back);
-#ifdef RICKYOS_PRODUCT
   // Standby is never a touch gesture on Home: a rightward swipe from the left quarter
   // of the screen counts as Back, and turning the 最近翻过 page from its left book put
   // the device into Standby, whose brand screen reads as a reboot. Standby stays on
@@ -437,7 +400,6 @@ bool ActivityManager::handleHomeStandbyInput() {
     resetHomeStandbyInput();
     return false;
   }
-#endif
   // Touch Back gestures publish a complete pair in one frame, independent of
   // an inherited physical hold. They remain usable through the release barrier.
   if (pressed && released) {
@@ -619,9 +581,6 @@ void ActivityManager::goToUsbDrive() {
 
 void ActivityManager::goToSettings() { replaceActivityWith<SettingsActivity>(); }
 
-#ifndef RICKYOS_PRODUCT
-void ActivityManager::goToUglyAvatar() { replaceActivityWith<UglyAvatarActivity>(); }
-#endif
 
 void ActivityManager::goToFileBrowser(std::string path) { replaceActivityWith<FileBrowserActivity>(std::move(path)); }
 
@@ -636,16 +595,10 @@ void ActivityManager::goToMainTab(const MainTab tab) {
       goToInxRecent();
       return;
     case MainTab::Library:
-#ifdef RICKYOS_PRODUCT
       goToLibrary();
-#else
-      goToFileBrowser();
-#endif
       return;
     case MainTab::StorageFiles:
-#ifdef RICKYOS_PRODUCT
       replaceActivityWith<RickyStorageActivity>();
-#endif
       return;
     case MainTab::Settings:
       goToSettings();
@@ -743,52 +696,19 @@ void ActivityManager::goToCrashReport() { replaceActivityWith<CrashActivity>(); 
 
 void ActivityManager::goToApps() { replaceActivityWith<AppsMenuActivity>(); }
 
-#ifdef RICKYOS_PRODUCT
 void ActivityManager::goToReadingStatsMenu() { goToRickyReadingStats(); }
-#else
-void ActivityManager::goToReadingStatsMenu() { replaceActivityWith<ReadingStatsMenuActivity>(); }
-#endif
-#ifdef RICKYOS_PRODUCT
 void ActivityManager::goToRickyReadingStats() { replaceActivityWith<RickyReadingStatsActivity>(); }
-#endif
 
-#ifdef RICKYOS_PRODUCT
 void ActivityManager::goToReadingStats() { goToRickyReadingStats(); }
-#else
-void ActivityManager::goToReadingStats() { replaceActivityWith<ReadingStatsActivity>(true); }
-#endif
 
 void ActivityManager::goToGomoku() { replaceActivityWith<GomokuMenuActivity>(); }
 
-#ifndef RICKYOS_PRODUCT
-void ActivityManager::goToSudoku() { replaceActivityWith<SudokuMenuActivity>(); }
-
-void ActivityManager::goToSokoban() { replaceActivityWith<SokobanGameActivity>(); }
-
-void ActivityManager::goToMinesweeper() { replaceActivityWith<MinesweeperMenuActivity>(); }
-
-void ActivityManager::goToGame2048() { replaceActivityWith<Game2048Activity>(); }
-
-void ActivityManager::goToPixelSwitch() { replaceActivityWith<PixelSwitchActivity>(); }
-
-void ActivityManager::goToWoodfish() { replaceActivityWith<WoodfishActivity>(); }
-
-void ActivityManager::goToBuddy() { replaceActivityWith<BuddyActivity>(); }
-
-#ifdef ENABLE_CHINESE_VERSION
-void ActivityManager::goToChineseChess() { replaceActivityWith<ChineseChessMenuActivity>(); }
-#endif
-#endif
 
 void ActivityManager::goToCalculator() { replaceActivityWith<CalculatorActivity>(); }
 
-#ifndef RICKYOS_PRODUCT
-void ActivityManager::goToAirPage() { replaceActivityWith<AirPageActivity>(); }
-#endif
 
 void ActivityManager::goToStandby() { replaceActivityWith<StandbyActivity>(); }
 
-#ifdef RICKYOS_PRODUCT
 bool ActivityManager::standbyShowing() const { return currentActivity && currentActivity->name == "Standby"; }
 
 void ActivityManager::openStandby() {
@@ -805,14 +725,9 @@ void ActivityManager::closeStandby() {
   if (!standbyShowing() || isSwitchPending()) return;
   popActivity();  // back to the page under it; Home when Standby was the only one
 }
-#endif
-#ifdef RICKYOS_PRODUCT
 void ActivityManager::goToStandbySettings() { replaceActivityWith<RickyStandbySettingsActivity>(); }
-#endif
 
-#ifdef ENABLE_CHINESE_VERSION
 void ActivityManager::goToWeRead() { replaceActivityWith<WeReadActivity>(); }
-#endif
 
 void ActivityManager::pushActivity(std::unique_ptr<Activity>&& activity) {
   cancelIdleRender();

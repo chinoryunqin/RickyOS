@@ -1,6 +1,5 @@
 #pragma once
 
-#ifdef RICKYOS_PRODUCT
 #include <SdCardFontRegistry.h>
 
 #include <array>
@@ -38,4 +37,3 @@ class FontLibraryActivity final : public UiListActivity {
   void openTextSettings(bool useSelectedFamily);
   void confirmDelete();
 };
-#endif

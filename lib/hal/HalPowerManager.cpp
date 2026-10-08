@@ -1,9 +1,6 @@
 #include "HalPowerManager.h"
 
 #include <BoardConfig.h>
-#if FREEINK_DEVICE_METALIO_EINK4
-#include <MetalioEink4Board.h>
-#endif
 #if FREEINK_DEVICE_READPICO
 #include <BoardReadPico.h>
 #endif
@@ -23,9 +20,6 @@
 #include "HalGPIO.h"
 #include "Waveshare397Power.h"
 
-#if FREEINK_DEVICE_PAPERMONO
-#include <M5Pm1.h>
-#endif
 
 HalPowerManager powerManager;  // Singleton instance
 
@@ -67,22 +61,12 @@ StandbyRetention standbyRetention() {
 // is logged here; a returned hook means the PMU never cut the rail, and the SDK
 // then idles instead of sleeping.
 void readPicoHostShutdown() {
-#ifdef RICKYOS_PRODUCT
   // RickyOS power-off is the real off (the reference firmware's APP_SLEEP_OFF): the
   // side key has to be held about a second to turn it back on. Soft sleep woke on a
   // short press, which RickyOS uses for Standby.
   if (BoardReadPico::pmuPowerOff()) return;
   LOG_ERR("PWR", "PMU power-off handoff failed; trying soft sleep");
   if (BoardReadPico::pmuSoftSleep()) return;
-#else
-  // The sleep-screen path: HOST_SOFT_SLEEP asks the PMU to drop the host EN rail
-  // (same endpoint as the reference firmware's APP_SLEEP_DEEP). It only accepts
-  // the request from RUNNING, which it re-establishes internally.
-  if (BoardReadPico::pmuSoftSleep()) return;
-
-  LOG_ERR("PWR", "PMU soft-sleep handoff failed; requesting a full power-off");
-  if (BoardReadPico::pmuPowerOff()) return;
-#endif
 
   // Nothing else can turn this board off, and there is no wake source to arm, so
   // report it and let the SDK idle rather than entering a wake-less deep sleep.
@@ -120,13 +104,11 @@ HalPowerManager::LightSleepWakeReason lightSleepReadPico(const uint32_t seconds)
   // Release a pending assertion first: the expander's INT# is open-drain and NOT
   // latched, and reading its Input register is what releases it (fca9555.h).
   // Leaving a stale low on the line would end the sleep immediately.
-#ifdef RICKYOS_PRODUCT
   // Presses so far were already read as key levels; drop their PMU events so its
   // interrupt line releases and the next press changes INT# again. Left queued,
   // the full FIFO holds that line and no press can end the sleep.
   bool keyDown = false;
   (void)BoardReadPico::takePmuKeyPress(keyDown);
-#endif
   BoardReadPico::clearIoeInt();
 
   if (!freeink::PowerManager::armLightSleepWakeupLevels(kIoeIntMask, 0)) {
@@ -154,7 +136,6 @@ HalPowerManager::LightSleepWakeReason lightSleepReadPico(const uint32_t seconds)
     return LightSleepWakeReason::Failed;
   }
 
-#ifdef RICKYOS_PRODUCT
   // The PMU's key event is authoritative, whatever ended the sleep: a press can
   // also land just before a timer wake (read_pico main/sleep.c does the same).
   if (BoardReadPico::takePmuKeyPress(keyDown)) {
@@ -165,7 +146,6 @@ HalPowerManager::LightSleepWakeReason lightSleepReadPico(const uint32_t seconds)
     LOG_INF("PWR", "Light sleep ended by an expander input, not the key");
     return LightSleepWakeReason::Failed;
   }
-#endif
   switch (cause) {
     case ESP_SLEEP_WAKEUP_TIMER:
       return LightSleepWakeReason::Timer;
@@ -193,9 +173,6 @@ void HalPowerManager::begin() {
   // existing esp_deep_sleep_start() behaviour byte-for-byte.
   freeink::PowerManager::setHostShutdownHook(&readPicoHostShutdown);
 #endif
-#if FREEINK_DEVICE_WAVESHARE_EPAPER_397
-  if (!Waveshare397Power::begin()) LOG_ERR("PWR", "AXP2101 initialization failed");
-#endif
   if (BoardConfig::ACTIVE.batteryAdc >= 0) {
     pinMode(BoardConfig::ACTIVE.batteryAdc, INPUT);
   }
@@ -205,12 +182,6 @@ void HalPowerManager::begin() {
 }
 
 void HalPowerManager::setPowerSaving(bool enabled) {
-#if FREEINK_DEVICE_MURPHY_M4
-  // Hardware validation found FT6336U touch unreliable after runtime CPU clock
-  // changes. The main loop still uses its 50 ms idle delay on this target.
-  (void)enabled;
-  return;
-#else
   if (normalFreq <= 0) {
     return;  // invalid state
   }
@@ -241,13 +212,9 @@ void HalPowerManager::setPowerSaving(bool enabled) {
   }
 
   xSemaphoreGive(modeMutex);
-#endif
 }
 
 void HalPowerManager::startDeepSleep(HalGPIO& gpio) const {
-#if FREEINK_DEVICE_WAVESHARE_EPAPER_397
-  Waveshare397Power::waitForPowerButtonRelease();
-#endif
 #if defined(ENABLE_SERIAL_LOG) && !FREEINK_DEVICE_METALIO_EINK4 && !FREEINK_DEVICE_READPICO
   // Tear down HWCDC so the host sees a clean disconnect and the peripheral
   // doesn't hold power domains that interfere with USB-powered GPIO wake.
@@ -304,40 +271,12 @@ void HalPowerManager::startDeepSleep(HalGPIO& gpio) const {
   // deep-sleep command while its rail is still up (enterDeepSleep() in main.cpp
   // guarantees that ordering).
   gpio.prepareForDeepSleep();
-#if FREEINK_DEVICE_METALIO_EINK4
-  // Keep USB diagnostics available if external power prevents the hardware cut.
-  freeink::metalio::shutdown();
-#else
   freeink::PowerManager::powerDownRailsForSleep();
 
-#if FREEINK_DEVICE_WAVESHARE_EPAPER_397
-  if (Waveshare397Power::shutdown()) {
-    delay(500);  // Battery power normally disappears before this returns.
-  } else {
-    LOG_ERR("PWR", "AXP2101 shutdown failed; falling back to ESP deep sleep");
-  }
-  // A failed PMIC shutdown still needs a usable wake source. GPIO5 is the
-  // confirm key at runtime; it is also the fallback when USB keeps the MCU on.
-  constexpr int8_t FALLBACK_WAKE_PIN = 5;
-  pinMode(FALLBACK_WAKE_PIN, INPUT_PULLUP);
-  while (digitalRead(FALLBACK_WAKE_PIN) == LOW) delay(50);
-  freeink::PowerManager::armWakeOnPins(1ULL << FALLBACK_WAKE_PIN, true);
-  freeink::PowerManager::deepSleep();
-#elif FREEINK_DEVICE_PAPERMONO
-  // Its power button is behind the M5PM1 PMIC rather than an ESP GPIO, so
-  // normal GPIO deep sleep would have no wake source. Ask the PMIC to shut the
-  // device down; a button click then restarts it through a cold boot.
-  if (freeink::m5pm1::requestShutdown()) {
-    delay(1000);  // allow the PMIC firmware time to drop power
-  }
-#endif
 
-#if !FREEINK_DEVICE_WAVESHARE_EPAPER_397
   // Waits for the power button to be physically released (so holding it doesn't
   // immediately wake the device again), then arms the wake source and sleeps.
   freeink::PowerManager::deepSleepUntilPowerButton();
-#endif
-#endif
 }
 
 bool HalPowerManager::canStandbyLightSleep(const HalGPIO& gpio) const {
@@ -438,14 +377,6 @@ HalPowerManager::LightSleepWakeReason HalPowerManager::lightSleepFor(const uint3
 }
 
 uint16_t HalPowerManager::getBatteryPercentage() const {
-#if FREEINK_DEVICE_WAVESHARE_EPAPER_397
-  const unsigned long now = millis();
-  if (_batteryLastPollMs != 0 && (now - _batteryLastPollMs) < BATTERY_POLL_MS) return _batteryCachedPercent;
-  _batteryLastPollMs = now;
-  uint16_t percent = 0;
-  if (Waveshare397Power::readBatteryPercentage(percent)) _batteryCachedPercent = percent;
-  return _batteryCachedPercent;
-#endif
 
   static const BatteryMonitor battery;
   if (BoardConfig::ACTIVE.batteryGauge.gaugeAddr != 0) {

@@ -117,11 +117,7 @@ void AboutActivity::onEnter() {
   snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
   rowValues_[ITEM_MAC] = buf;
   // MIT: the notice travels with the firmware (full text: LICENSE, and the install site).
-#ifdef RICKYOS_PRODUCT
   rowValues_[ITEM_LICENSE] = "MIT (CrossMux, CrossPoint) · Inter font: SIL OFL 1.1";
-#else
-  rowValues_[ITEM_LICENSE] = "MIT";
-#endif
 }
 
 void AboutActivity::buildScreen(UiScreen& screen) {

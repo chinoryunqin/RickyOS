@@ -18,14 +18,12 @@
 #include "components/UIThemeTokens.h"
 #include "components/icons/customListIcons.h"
 #include "components/icons/listIcons.h"
-#ifdef RICKYOS_PRODUCT
 #include "ReadingStatsStore.h"
 #include "activities/ActivityManager.h"
 #include "activities/apps/standby/StandbyActivity.h"
 #include "components/RickyPageUi.h"
 #include "components/icons/rickyPageIcons.h"
 #include "util/TimeUtils.h"
-#endif
 
 namespace fui = freeink::ui;
 
@@ -66,11 +64,7 @@ uint8_t percentFromPermille(const int16_t permille) {
 FrontlightPanelActivity::FrontlightPanelActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                                  const bool overReader)
     : Activity("FrontlightPanel", renderer, mappedInput), UiAppHost(renderer, true) {
-#ifdef RICKYOS_PRODUCT
   this->overReader = overReader;
-#else
-  (void)overReader;
-#endif
 }
 
 void FrontlightPanelActivity::onEnter() {
@@ -83,12 +77,6 @@ void FrontlightPanelActivity::onEnter() {
   warmth = Frontlight.warmth();
   lightOn = Frontlight.isOn();
   lightOnChanged = false;
-#if FREEINK_DEVICE_EEGO_A4
-  // The first frame draws over the reader's gray AA page; a HALF refresh keeps
-  // the overlay clean instead of ghosting. Other boards keep the standard
-  // FAST_REFRESH first frame (X4 Pro reference behavior).
-  renderer.requestNextRefresh(HalDisplay::HALF_REFRESH);
-#endif
 
   // Seed the touch tile's restore mode from the live setting, so toggling off
   // and back on within this session returns to the mode the user had.
@@ -99,14 +87,12 @@ void FrontlightPanelActivity::onEnter() {
   resetUi();
   // The host app holds six handlers (UiAppHost); RickyOS boards have no frontlight
   // and route every control through the tile action.
-#ifdef RICKYOS_PRODUCT
   if (!Frontlight.present()) {
     app.on(ACTION_TILE, &FrontlightPanelActivity::onTileEvent, this);
     app.setScreen(&FrontlightPanelActivity::panelScreen, this);
     requestUpdate();
     return;
   }
-#endif
   app.on(ACTION_BRIGHTNESS, &FrontlightPanelActivity::onBrightnessEvent, this);
   app.on(ACTION_WARMTH, &FrontlightPanelActivity::onWarmthEvent, this);
   app.on(ACTION_TOGGLE, &FrontlightPanelActivity::onToggleEvent, this);
@@ -136,11 +122,6 @@ void FrontlightPanelActivity::persistLightSettings() {
 void FrontlightPanelActivity::onExit() {
   persistLightSettings();
   Activity::onExit();
-#if FREEINK_DEVICE_EEGO_A4
-  // The overlay pops back to the reader's gray AA page; force a clean first
-  // frame so the panel's white region does not ghost over the text.
-  renderer.requestNextFullRefresh();
-#endif
 }
 
 void FrontlightPanelActivity::onBrightnessEvent(const fui::ActionEvent& event, void* user) {
@@ -179,51 +160,8 @@ void FrontlightPanelActivity::onTileEvent(const fui::ActionEvent& event, void* u
 }
 
 void FrontlightPanelActivity::runTile(const int idx) {
-#ifdef RICKYOS_PRODUCT
   runRickyTile(static_cast<Tile>(idx));
   return;
-#endif
-  switch (idx) {
-    case 0:  // Night mode (inverted output polarity, applied to the whole UI)
-      SETTINGS.screenInverted = SETTINGS.screenInverted ? 0 : 1;
-      SETTINGS.saveToFile();
-      // Inversion rewrites every pixel; take the clean waveform so the panel
-      // does not keep a ghost of the old polarity.
-      cleanRefreshPending = true;
-      requestUpdate();
-      break;
-    case 1:  // Ghost-cleanup refresh of the whole frame
-      // Refreshing with the panel still up would clean a frame the user is
-      // about to dismiss anyway: drop the panel first and let the repaint of
-      // the screen underneath carry the clean waveform instead.
-      renderer.promoteNextRefresh(HalDisplay::FULL_REFRESH);
-      close();
-      break;
-    case 2:  // Cycle the reading orientation
-      SETTINGS.orientation = static_cast<uint8_t>((SETTINGS.orientation + 1) % 4);
-      SETTINGS.saveToFile();
-      // Only the setting changes: turning the renderer cropped the portrait-only
-      // screens the panel opens over. The reader reflows on its next loop().
-      requestUpdate();
-      break;
-    case 3:  // Touch reader controls (for reading with the palm on the glass)
-      // Toggles the existing Settings -> Controls option, nothing lower-level:
-      // that setting only governs the reader's tap/swipe handling, so the
-      // panel's own gestures (including the swipe that reopens it) keep
-      // working while it is off. Off remembers the mode (Tap/Swipe/Inverted
-      // Tap) so toggling back does not stomp the user's choice.
-      if (SETTINGS.touchReaderControls != CrossPointSettings::TOUCH_READER_OFF) {
-        touchModeRestore = SETTINGS.touchReaderControls;
-        SETTINGS.touchReaderControls = CrossPointSettings::TOUCH_READER_OFF;
-      } else {
-        SETTINGS.touchReaderControls = touchModeRestore;
-      }
-      SETTINGS.saveToFile();
-      requestUpdate();
-      break;
-    default:
-      break;
-  }
 }
 
 void FrontlightPanelActivity::adjustBrightness(const int delta) {
@@ -310,9 +248,7 @@ void FrontlightPanelActivity::loop() {
 }
 
 int FrontlightPanelActivity::computePanelBottom() const {
-#ifdef RICKYOS_PRODUCT
   if (!Frontlight.present()) return rickyPanelHeight();
-#endif
   const auto tokens = uiThemeTokens(uiTarget, true);
   const auto& metrics = uiThemeMetrics(true);
   const int16_t lineHeight = uiTarget.lineHeight(tokens.smallText.font);
@@ -378,83 +314,10 @@ void FrontlightPanelActivity::addSliderRow(UiScreen& screen, const char* label, 
 }
 
 void FrontlightPanelActivity::buildPanelScreen(UiScreen& screen) {
-#ifdef RICKYOS_PRODUCT
   buildRickyPanel(screen);
   return;
-#endif
-  const auto& theme = screen.theme();
-
-  // Sheet chrome first: the card body, the 2px rule along its bottom edge, and
-  // the grabber on the edge the sheet is dragged from. Screen::sheet() also
-  // clamps the content area to the sheet, so every band below lays out inside
-  // it. (No header: the panel is a floating card, and its own grabber says
-  // what it is.)
-  fui::SheetProps sheetProps;
-  // A roomy band above the bottom rule: the grabber gets a full spaceLg of
-  // air on both sides so the last row of content never crowds the sheet edge.
-  sheetProps.grabberMargin = theme.spaceLg;
-  sheetProps.grabberInset = static_cast<int16_t>(theme.spaceLg + theme.spaceMd);
-  screen.sheet(sheetProps, static_cast<int16_t>(panelBottom));
-  screen.insetContent(fui::Insets{0, kPanelSideMargin, 0, kPanelSideMargin});
-
-  // Reuse the exact battery renderer and header rectangle used by Home. Call
-  // the base implementation directly because RoundedRaff suppresses its
-  // untitled Home header.
-  {
-    const auto& metrics = uiThemeMetrics(true);
-    screen.spacer(theme.spaceMd);
-    const int16_t bandH = std::max<int16_t>(static_cast<int16_t>(metrics.batteryHeight),
-                                            screen.target().lineHeight(theme.smallText.font));
-    screen.takeTop(bandH, theme.spaceMd);
-    GUI.drawHeaderWithStyle(
-        renderer, Rect{0, metrics.topPadding, renderer.getScreenWidth(), metrics.homeTopPadding - metrics.topPadding},
-        nullptr, nullptr, true, true);
-  }
-
-  if (Frontlight.present()) {
-    addSliderRow(screen, tr(STR_BRIGHTNESS), brightness, ACTION_BRIGHTNESS, ACTION_BRIGHTNESS_STEP,
-                 /*showToggle=*/true);
-    if (Frontlight.hasColorTemperature()) {
-      addSliderRow(screen, tr(STR_WARMTH), warmth, ACTION_WARMTH, ACTION_WARMTH_STEP, /*showToggle=*/false);
-    }
-    screen.spacer(theme.spaceSm);
-  }
-
-  // Quick-setting tiles. Two columns of finger-sized cards; a tile whose
-  // setting is currently on draws filled (StateChecked -> selected style).
-  // Touch boards only — the tiles are touch targets.
-  if (mappedInput.hasTouch()) {
-    static constexpr StrId kOrientNames[4] = {StrId::STR_PORTRAIT, StrId::STR_LANDSCAPE_CW,
-                                              StrId::STR_ORIENTATION_INVERTED, StrId::STR_LANDSCAPE_CCW};
-    // The orientation tile is labelled with just the current mode ("Portrait"):
-    // the mode names say what the tile is about on their own.
-    const char* orientLabel = I18N.get(kOrientNames[SETTINGS.orientation % 4]);
-    const bool touchOn = SETTINGS.touchReaderControls != CrossPointSettings::TOUCH_READER_OFF;
-
-    const char* labels[kTileCount] = {tr(STR_NIGHT_MODE), tr(STR_FORCE_REFRESH), orientLabel, tr(STR_TOUCH_TOGGLE)};
-    const fui::State states[kTileCount] = {SETTINGS.screenInverted ? fui::StateChecked : fui::StateNormal,
-                                           fui::StateNormal, fui::StateNormal,
-                                           // Filled when touch reader controls are OFF — the non-default,
-                                           // attention-worthy state.
-                                           touchOn ? fui::StateNormal : fui::StateChecked};
-
-    for (int id = 0; id < kTileCount; ++id) {
-      gridItems[id].label = labels[id];
-      gridItems[id].value = static_cast<int16_t>(id);
-      gridItems[id].state = states[id];
-      gridItems[id].icon = id == 3 ? GUI.checkboxIcon(touchOn) : fui::BitmapRef{};
-    }
-    gridProps.items = gridItems;
-    gridProps.count = static_cast<uint16_t>(kTileCount);
-    gridProps.action = ACTION_TILE;
-    gridProps.tileHeight = kTileHeight;
-    gridProps.gap = kTileGap;
-    gridProps.iconOnRight = true;
-    screen.tileGrid(gridProps);
-  }
 }
 
-#ifdef RICKYOS_PRODUCT
 namespace {
 // Round actions: a circle per column, the label under it.
 constexpr int16_t kActionDiameter = 96;
@@ -639,7 +502,6 @@ void FrontlightPanelActivity::buildRickyPanel(UiScreen& screen) {
   };
   roundActionRow(screen, reading, static_cast<int>(std::size(reading)));
 }
-#endif
 
 void FrontlightPanelActivity::render(RenderLock&&) {
   panelBottom = computePanelBottom();
@@ -653,10 +515,6 @@ void FrontlightPanelActivity::render(RenderLock&&) {
   // flip the whole frame's polarity without the FULL waveform's blackout
   // flash. Any faint residue clears with the panel's dedicated refresh tile
   // or the next scheduled clean refresh.
-#if FREEINK_DEVICE_EEGO_A4
-  renderer.displayBuffer(cleanRefreshPending ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH);
-#else
   renderer.displayBuffer(cleanRefreshPending ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH);
-#endif
   cleanRefreshPending = false;
 }

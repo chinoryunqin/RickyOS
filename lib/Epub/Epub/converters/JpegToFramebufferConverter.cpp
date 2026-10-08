@@ -448,7 +448,7 @@ bool JpegToFramebufferConverter::decodeToFramebuffer(const std::string& imagePat
   ctx.screenWidth = renderer.getScreenWidth();
   ctx.screenHeight = renderer.getScreenHeight();
 
-#if defined(RICKYOS_PRODUCT) && !defined(SIMULATOR)
+#if !defined(SIMULATOR)
   // The 16-level path decodes from PSRAM: one read of the file instead of hundreds of
   // 2 KB card reads interleaved with the decode. Falls back to the file when short of memory.
   memory::ByteBuffer ramJpeg;

@@ -1,5 +1,4 @@
 #pragma once
-#ifdef RICKYOS_PRODUCT
 
 #include <cstdint>
 #include <string>
@@ -35,4 +34,3 @@ class WallpaperFace final : public StandbyFace {
   int32_t lastDay_ = -1;     // local day of year last drawn
 };
 
-#endif

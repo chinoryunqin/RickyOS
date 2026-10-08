@@ -22,12 +22,8 @@
 #include "components/icons/buddy.h"
 #include "components/icons/calculator.h"
 #include "components/icons/sokoban.h"
-#ifdef ENABLE_CHINESE_VERSION
 #include "components/icons/chinese_chess.h"
-#endif
-#ifdef ENABLE_CHINESE_VERSION
 #include "components/icons/weread.h"
-#endif
 #include "components/icons/cover.h"
 #include "components/icons/file24.h"
 #include "components/icons/folder.h"
@@ -112,32 +108,8 @@ const uint8_t* LyraTheme::iconForName(UIIcon icon, int size) {
         return AppsIcon;
       case UIIcon::Gomoku:
         return GomokuIcon;
-#ifndef RICKYOS_PRODUCT
-      case UIIcon::Sudoku:
-        return SudokuIcon;
-      case UIIcon::Sokoban:
-        return SokobanIcon;
-#ifdef ENABLE_CHINESE_VERSION
-      case UIIcon::ChineseChess:
-        return ChineseChessIcon;
-#endif
-      case UIIcon::Minesweeper:
-        return MinesweeperIcon;
-      case UIIcon::Game2048:
-        return Game2048Icon;
-      case UIIcon::Avatar:
-        return AvatarIcon;
-      case UIIcon::Buddy:
-        return BuddyIcon;
-      case UIIcon::PixelSwitch:
-        return PixelSwitchIcon;
-      case UIIcon::Woodfish:
-        return WoodfishIcon;
-#endif
-#ifdef ENABLE_CHINESE_VERSION
       case UIIcon::WeRead:
         return WeReadIcon;
-#endif
       case UIIcon::Standby:
         return StandbyIcon;
       case UIIcon::Calculator:

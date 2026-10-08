@@ -1,7 +1,4 @@
 #include <BoardConfig.h>
-#if FREEINK_DEVICE_METALIO_EINK4
-#include <MetalioEink4Board.h>
-#endif
 #if FREEINK_DEVICE_READPICO
 #include <BoardReadPico.h>
 #endif
@@ -19,13 +16,7 @@
 
 #include "Waveshare397Power.h"
 
-#if FREEINK_DEVICE_MURPHY_M4
-#include "MurphyM4BatchPreference.h"
-#endif
 
-#if FREEINK_DEVICE_WAVESHARE_EPAPER_397 || FREEINK_DEVICE_METALIO_EINK4
-#include <soc/usb_serial_jtag_reg.h>
-#endif
 
 // Global HalGPIO instance
 HalGPIO gpio;
@@ -120,15 +111,7 @@ namespace {
 constexpr char HW_NAMESPACE[] = "cphw";
 constexpr char NVS_KEY_DEV_OVERRIDE[] = "dev_ovr";  // 0=auto, 1=x4, 2=x3
 constexpr char NVS_KEY_DEV_CACHED[] = "dev_det";    // 0=unknown, 1=x4, 2=x3
-#if FREEINK_DEVICE_MURPHY_M4
-constexpr char NVS_KEY_M4_BATCH[] = "m4_batch_v3";
-#endif
 
-#if FREEINK_DEVICE_WAVESHARE_EPAPER_397
-uint8_t wavesharePowerButtonHook() {
-  return Waveshare397Power::powerButtonPressed() ? static_cast<uint8_t>(1u << HalGPIO::BTN_POWER) : 0;
-}
-#endif
 
 enum class NvsDeviceValue : uint8_t { Unknown = 0, X4 = 1, X3 = 2 };
 
@@ -198,13 +181,6 @@ HalGPIO::DeviceType detectDeviceTypeWithFingerprint() {
   return HalGPIO::DeviceType::X4;
 }
 
-#if FREEINK_DEVICE_MURPHY_M4
-freeink::MurphyM4Batch loadMurphyM4Batch() {
-  const uint8_t stored =
-      readNvsUChar(NVS_KEY_M4_BATCH, MurphyM4BatchPreference::encode(freeink::MurphyM4Batch::Second));
-  return MurphyM4BatchPreference::decode(stored);
-}
-#endif
 
 }  // namespace
 
@@ -259,39 +235,6 @@ void HalGPIO::begin() {
   // always powered and its reset already ran above.
   return;
 #endif
-#if FREEINK_DEVICE_WAVESHARE_EPAPER_397
-  InputManager::setButtonHook(wavesharePowerButtonHook);
-#endif
-#if FREEINK_DEVICE_MURPHY_M4
-  _murphyM4Batch = loadMurphyM4Batch();
-  LOG_INF("HW", "Murphy M4 batch %u selected", _murphyM4Batch == freeink::MurphyM4Batch::First ? 1U : 2U);
-  inputMgr.setMurphyM4Batch(_murphyM4Batch);
-#endif
-#if FREEINK_DEVICE_METALIO_EINK4
-  if (!freeink::metalio::begin()) {
-    LOG_ERR("HW", "Metalio power/expander initialization failed");
-  } else {
-    constexpr freeink::metalio::ChargerConfig charger{4350, 240, 60, 480, 480};  // 500 mA request -> 480 mA.
-    uint8_t partInfo = 0;
-    switch (freeink::metalio::configureCharger(charger, partInfo)) {
-      case freeink::metalio::ChargerConfigResult::Configured:
-        LOG_INF("PWR", "CX25601N 0x%02X ready: VREG=4350mV ICHG=480mA IINDPM=480mA", partInfo);
-        break;
-      case freeink::metalio::ChargerConfigResult::ProbeFailed:
-        LOG_INF("PWR", "CX25601N not detected at 0x%02X; using hardware defaults", freeink::metalio::CHARGER);
-        break;
-      case freeink::metalio::ChargerConfigResult::BusNotReady:
-        LOG_ERR("PWR", "CX25601N configuration skipped: Metalio I2C bus not ready");
-        break;
-      case freeink::metalio::ChargerConfigResult::InvalidConfig:
-        LOG_ERR("PWR", "CX25601N configuration rejected: invalid charge parameters");
-        break;
-      case freeink::metalio::ChargerConfigResult::IoError:
-        LOG_ERR("PWR", "CX25601N configuration failed at 0x%02X", freeink::metalio::CHARGER);
-        break;
-    }
-  }
-#endif
 #if FREEINK_CAP_HAPTIC
   if (!freeink::haptic::begin()) LOG_ERR("HW", "Haptic initialization failed; feedback disabled");
 #endif
@@ -309,13 +252,6 @@ void HalGPIO::beginInput() {
   inputMgr.begin();
 }
 
-#if FREEINK_DEVICE_MURPHY_M4
-bool HalGPIO::saveMurphyM4Batch(const freeink::MurphyM4Batch batch) {
-  if (writeNvsUChar(NVS_KEY_M4_BATCH, MurphyM4BatchPreference::encode(batch))) return true;
-  LOG_ERR("HW", "Failed to save Murphy M4 batch");
-  return false;
-}
-#endif
 
 void HalGPIO::update() {
 #if FREEINK_DEVICE_READPICO
@@ -482,26 +418,6 @@ bool HalGPIO::verifyPowerButtonWakeup(const uint16_t requiredDurationMs, const b
   return inputMgr.getPowerButtonHeldTime() >= calibratedDuration;
 }
 
-#if FREEINK_DEVICE_WAVESHARE_EPAPER_397 || FREEINK_DEVICE_METALIO_EINK4
-// Keep the last positive USB Serial/JTAG SOF result across nearby polls.
-static bool usbHostSofActive() {
-  static uint32_t lastFrame = 0;
-  static unsigned long lastAdvanceMs = 0;
-  static bool seeded = false;
-  if (!seeded) {
-    seeded = true;
-    lastFrame = REG_READ(USB_SERIAL_JTAG_FRAM_NUM_REG);
-    delay(3);  // A connected host advances the 1 kHz SOF counter within this window.
-  }
-  const uint32_t frame = REG_READ(USB_SERIAL_JTAG_FRAM_NUM_REG);
-  if (frame != lastFrame) {
-    lastFrame = frame;
-    lastAdvanceMs = millis();
-    return true;
-  }
-  return lastAdvanceMs != 0 && millis() - lastAdvanceMs < 1500;
-}
-#endif
 
 bool HalGPIO::isUsbConnected() const {
   if (deviceIsX3()) {
@@ -516,16 +432,6 @@ bool HalGPIO::isUsbConnected() const {
     }
     return false;
   }
-#if FREEINK_DEVICE_WAVESHARE_EPAPER_397
-  bool connected = false;
-  if (Waveshare397Power::externalPowerConnected(connected)) return connected;
-  return usbHostSofActive();
-#endif
-#if FREEINK_DEVICE_METALIO_EINK4
-  bool connected = false;
-  if (freeink::metalio::externalPowerConnected(connected)) return connected;
-  if (usbHostSofActive()) return true;
-#endif
   if (BoardConfig::ACTIVE.usbDetect >= 0) {
     return digitalRead(BoardConfig::ACTIVE.usbDetect) == HIGH;
   }

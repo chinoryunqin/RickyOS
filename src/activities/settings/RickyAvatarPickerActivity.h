@@ -1,5 +1,4 @@
 #pragma once
-#ifdef RICKYOS_PRODUCT
 #include "activities/UiListActivity.h"
 #include "components/icons/rickyAvatars.h"
 
@@ -21,4 +20,3 @@ class RickyAvatarPickerActivity final : public UiListActivity {
   bool failed = false;
   bool waitForConfirmRelease = false;
 };
-#endif

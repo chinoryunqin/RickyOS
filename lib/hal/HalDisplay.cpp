@@ -40,9 +40,6 @@ void HalDisplay::begin(bool seamless) {
           static_cast<unsigned>(ESP.getFreePsram()), static_cast<unsigned>(ESP.getMaxAllocPsram()),
           static_cast<unsigned>(ESP.getFreeHeap()), static_cast<unsigned>(ESP.getMaxAllocHeap()));
 #endif
-#if FREEINK_DEVICE_MURPHY_M4
-  einkDisplay.setMurphyM4Batch(gpio.murphyM4Batch());
-#endif
 
   einkDisplay.begin();
 
@@ -227,21 +224,21 @@ uint8_t* HalDisplay::beginGrayscale16() { return einkDisplay.beginGrayscale16();
 bool HalDisplay::commitGrayscale16() { return einkDisplay.commitGrayscale16(); }
 
 void HalDisplay::setNextGray16Profile(const uint8_t profile) {
-#if FREEINK_DEVICE_READPICO && defined(RICKYOS_PRODUCT)
+#if FREEINK_DEVICE_READPICO
   freeink::epdiyLcdSetGray16Profile(profile);  // added by scripts/patch_rickyos_epdiy.py
 #else
   (void)profile;
 #endif
 }
 void HalDisplay::railsOffIfIdle(const uint32_t idleMs) {
-#if FREEINK_DEVICE_READPICO && defined(RICKYOS_PRODUCT)
+#if FREEINK_DEVICE_READPICO
   freeink::epdiyLcdRailsOffIfIdle(idleMs);  // added by scripts/patch_rickyos_epdiy.py
 #else
   (void)idleMs;
 #endif
 }
 bool HalDisplay::restartPanel() {
-#if FREEINK_DEVICE_READPICO && defined(RICKYOS_PRODUCT)
+#if FREEINK_DEVICE_READPICO
   return freeink::epdiyLcdRestart();  // added by scripts/patch_rickyos_epdiy.py
 #else
   return false;

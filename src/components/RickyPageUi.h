@@ -1,5 +1,4 @@
 #pragma once
-#ifdef RICKYOS_PRODUCT
 #include <FreeInkUIIcon.h>
 
 #include <algorithm>
@@ -297,4 +296,3 @@ inline int syncNav(fui::ListNav& nav, int count) {
 }
 
 }  // namespace RickyPageUi
-#endif

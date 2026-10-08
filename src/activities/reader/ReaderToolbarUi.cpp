@@ -13,9 +13,7 @@
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
 #include "components/icons/readerToolbarIcons.h"
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
 #include "components/icons/readerToolbarIcons48.h"
-#endif
 
 namespace fui = freeink::ui;
 
@@ -117,15 +115,9 @@ void ReaderToolbarUi::screenFn(UiScreen& screen, void* user) {
 void ReaderToolbarUi::buildToolRow(UiScreen& screen, const fui::LayoutAnchor anchor, const int16_t sideInset) {
   const auto& tokens = screen.theme();
   constexpr int iconSize = UiHighDpiProfile::enabled ? UiHighDpiProfile::controlIconSize : 24;
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
   const fui::BitmapRef icons[kToolCount] = {fui::bitmapFromIcon(icon_reader_contents_48),
                                             fui::bitmapFromIcon(icon_reader_text_48),
                                             fui::bitmapFromIcon(icon_reader_more_48)};
-#else
-  const fui::BitmapRef icons[kToolCount] = {fui::bitmapFromIcon(icon_reader_contents_24),
-                                            fui::bitmapFromIcon(icon_reader_text_24),
-                                            fui::bitmapFromIcon(icon_reader_more_24)};
-#endif
   // sideInset absorbs the difference between the two hosts' content bands
   // (the toolbar's is spaceLg-inset, the panel's is full width): the slots
   // must land on the same x either way, or the icons jump when a tap swaps
@@ -176,11 +168,7 @@ void ReaderToolbarUi::buildToolbar(UiScreen& screen) {
   {
     const fui::Rect band = screen.takeTop(kScrubButton, tokens.spaceLg);
     stepProps_.label = nullptr;
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
     stepProps_.icon = fui::bitmapFromIcon(icon_reader_back_48);
-#else
-    stepProps_.icon = fui::bitmapFromIcon(icon_reader_back_24);
-#endif
     stepProps_.action = ACTION_PREV;
     stepProps_.inputMask = fui::InputTouch;
     stepProps_.styles.explicitlySet = true;
@@ -196,11 +184,7 @@ void ReaderToolbarUi::buildToolbar(UiScreen& screen) {
     stepProps_.styles.active.background = fui::Paint::solid(fui::Color::Black);
     stepProps_.styles.active.foreground = fui::Paint::solid(fui::Color::White);
     screen.button(stepProps_, fui::Rect{band.x, band.y, kScrubButton, kScrubButton});
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
     stepProps_.icon = fui::bitmapFromIcon(icon_reader_next_48);
-#else
-    stepProps_.icon = fui::bitmapFromIcon(icon_reader_next_24);
-#endif
     stepProps_.action = ACTION_NEXT;
     screen.button(stepProps_,
                   fui::Rect{static_cast<int16_t>(band.right() - kScrubButton), band.y, kScrubButton, kScrubButton});

@@ -42,11 +42,9 @@
 #include "WifiCredentialStore.h"
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
-#ifdef ENABLE_CHINESE_VERSION
 #include "activities/settings/FontDownloadActivity.h"
 #include "activities/settings/TextSettingsActivity.h"
 #include "activities/util/ConfirmationActivity.h"
-#endif
 #include "activities/settings/LanguageSelectActivity.h"
 #include "activities/settings/SdFirmwareUpdateActivity.h"
 #include "components/UITheme.h"
@@ -57,9 +55,7 @@
 #include "util/ScreenshotUtil.h"
 #include "util/Timezones.h"
 #include "util/UserGuide.h"
-#ifdef RICKYOS_PRODUCT
 #include "util/RickyStorageLayout.h"
-#endif
 
 #if CROSSPOINT_VECTOR_FONTS
 // Rendering (incl. FreeType TTF rasterization) runs on the Arduino loop task.
@@ -87,13 +83,9 @@ static unsigned long lastX4ProPowerClickAt = 0;
 
 namespace {
 constexpr unsigned long X4PRO_POWER_DOUBLE_CLICK_MS = 500;
-#ifdef RICKYOS_PRODUCT
 // Side key held this long powers off; anything shorter toggles Standby.
 constexpr unsigned long RICKY_POWER_OFF_HOLD_MS = 2000;
 constexpr bool kRickyPowerModel = true;
-#else
-constexpr bool kRickyPowerModel = false;
-#endif
 constexpr unsigned long X4PRO_POWER_CLICK_MAX_HOLD_MS = 300;
 #if CROSSPOINT_CAP_SOUND_FEEDBACK
 static_assert(CrossPointSettings::SOUND_FEEDBACK_OFF == static_cast<uint8_t>(SoundFeedback::Level::Off));
@@ -145,19 +137,13 @@ static bool wakePowerReleasePending = false;
 // Fonts
 // All legacy built-in reader IDs share one 12pt offline fallback. Complete
 // families, other sizes, and style variants come from SD .cpfont files.
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
 #include <builtinFonts/notosans_12_regular.h>
 #include <builtinFonts/notosans_cjk_14.h>
 #include <builtinFonts/notosans_cjk_16.h>
-#endif
-#if defined(RICKYOS_PRODUCT) && defined(CROSSMUX_UI_PROFILE_HIGH_DPI)
 // The product's only built-in CJK reading/UI size adds GB2312 level 1 (titles,
 // author names); the shared 8/10/12pt set stays as is for other targets.
 #include <builtinFonts/notosans_cjk_12_rickyos.h>
 static const EpdFontData& cjk12Data = notosans_cjk_12_rickyos;
-#else
-static const EpdFontData& cjk12Data = notosans_cjk_12;
-#endif
 EpdFont offlineReaderFont(&cjk12Data);
 EpdFontFamily offlineReaderFontFamily(&offlineReaderFont);
 
@@ -171,11 +157,7 @@ extern EpdFontFamily control18FontFamily;
 
 // International UI fonts remain primary; CJK subsets are selected only when
 // the primary is missing a Han glyph.
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
 EpdFont smallFont(&notosans_12_regular);
-#else
-EpdFont smallFont(&notosans_8_regular);
-#endif
 EpdFontFamily smallFontFamily(&smallFont);
 
 extern EpdFont ui10RegularFont;
@@ -186,7 +168,6 @@ extern EpdFont ui12RegularFont;
 extern EpdFont ui12BoldFont;
 EpdFontFamily ui12FontFamily(&ui12RegularFont, &ui12BoldFont);
 
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
 EpdFontFamily cjk8FontFamily(&offlineReaderFont);
 EpdFont cjk14Font(&notosans_cjk_14);
 EpdFont cjk16Font(&notosans_cjk_16);
@@ -197,12 +178,6 @@ static EpdFont rtlRegularFont(&ubuntu_12_regular);
 static EpdFont rtlBoldFont(&ubuntu_12_bold);
 static EpdFontFamily rtlFontFamily(&rtlRegularFont, &rtlBoldFont);
 static constexpr int kRtlFontId = 0x52544C0C;
-#else
-EpdFont cjk8Font(&notosans_cjk_8);
-EpdFont cjk10Font(&notosans_cjk_10);
-EpdFontFamily cjk8FontFamily(&cjk8Font);
-EpdFontFamily cjk10FontFamily(&cjk10Font);
-#endif
 EpdFont cjk12Font(&cjk12Data);
 EpdFontFamily cjk12FontFamily(&cjk12Font);
 
@@ -477,22 +452,11 @@ void enterDeepSleep(bool fromTimeout = false) {
   // floor now so a later cold boot resumes from it.
   trustedtime::note();
 
-#ifdef RICKYOS_PRODUCT
   // One source of truth: the Standby & power-off page. The separate "keep the page on
   // automatic sleep" switch could stay on after the mode changed and override it.
   const bool isQuickResumeSleep = SETTINGS.rickySleepScreenMode() == CrossPointSettings::SLEEP_SCREEN_MODE::QUICK_RESUME;
-#else
-  const bool isQuickResumeSleep =
-      SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::QUICK_RESUME ||
-      (fromTimeout &&
-       SETTINGS.quickResumeSleepScreen == CrossPointSettings::QUICK_RESUME_SLEEP_SCREEN::QUICK_RESUME_AFTER_TIMEOUT);
-#endif
-#ifdef RICKYOS_PRODUCT
   // Network progress/toasts must not replace any part of a retained reading page.
   deliverSleepPluginEvents(isQuickResumeSleep);
-#else
-  deliverSleepPluginEvents();
-#endif
   // Every sleep mode leaves a complete retained frame on the e-ink panel. Keep
   // it visible until the first useful reader or home paint replaces it.
   APP_STATE.showBootScreen = false;
@@ -534,24 +498,13 @@ void enterDeepSleep(bool fromTimeout = false) {
   SoundFeedback::shutdown();
 #endif
   display.deepSleep();
-#if !FREEINK_DEVICE_EEGO_A4
   Storage.prepareForDeepSleep();
-#endif
   LOG_DBG("MAIN", "Entering deep sleep");
 
   powerManager.startDeepSleep(gpio);
 }
 
 bool setupDisplayAndFonts(bool seamless = false, bool logSdFontLoadHeap = false) {
-#if FREEINK_DEVICE_X4PRO
-  // X4 Pro batches use SSD1677 or UC81xx. Resolve the controller before
-  // display.begin(); C3 X3/X4 already do this once in HalGPIO::begin().
-  static bool controllerResolved = false;
-  if (!controllerResolved) {
-    controllerResolved = true;
-    freeink::applyXteinkDisplayController();
-  }
-#endif
 
   display.begin(seamless);
 #if FREEINK_DEVICE_READPICO
@@ -562,11 +515,6 @@ bool setupDisplayAndFonts(bool seamless = false, bool logSdFontLoadHeap = false)
   // probe go out on the shared 400 kHz bus, which is what HalGPIO::begin()
   // deferred. Idempotent, so any other path that initialises the panel is safe.
   gpio.beginInput();
-#endif
-#if FREEINK_DEVICE_MURPHY_M4
-  if (!gpio.restoreTouchAfterDisplayReset()) {
-    LOG_ERR("MAIN", "Failed to restore Murphy M4 touch after display reset");
-  }
 #endif
   renderer.begin();
   activityManager.begin();
@@ -610,7 +558,6 @@ bool setupDisplayAndFonts(bool seamless = false, bool logSdFontLoadHeap = false)
   renderer.setFallbackFont(READER_STATUS_FONT_ID, CJK_UI_8_FONT_ID);
   renderer.setFallbackFont(READER_ESTIMATE_FONT_ID, CJK_UI_10_FONT_ID);
 #endif
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
   renderer.insertFont(UiHighDpiProfile::reader12FontId, offlineReaderFontFamily);
   // Same-size Chinese UI first, then common Chinese and Ubuntu script coverage.
   renderer.insertFont(CJK_UI_14_FONT_ID, ui14FallbackFamily);
@@ -626,7 +573,6 @@ bool setupDisplayAndFonts(bool seamless = false, bool logSdFontLoadHeap = false)
   renderer.setFallbackFont(CJK_UI_14_FONT_ID, CJK_UI_12_FONT_ID);
   renderer.setFallbackFont(CJK_UI_16_FONT_ID, CJK_UI_12_FONT_ID);
   renderer.setFallbackFont(CJK_UI_12_FONT_ID, kRtlFontId);
-#endif
   renderer.insertFont(CHINESE_CHESS_FONT_ID, chineseChessPieceFontFamily);
 
   // Discover and load SD card fonts
@@ -640,7 +586,6 @@ bool setupDisplayAndFonts(bool seamless = false, bool logSdFontLoadHeap = false)
   return fontDecompressorReady;
 }
 
-#ifdef ENABLE_CHINESE_VERSION
 void continueChineseFontInstall(const uint8_t expectedPointSize) {
   if (APP_STATE.openEpubPath.empty() || !Storage.exists(APP_STATE.openEpubPath.c_str())) {
     LOG_ERR("FONT", "Cannot resume automatic font install: original EPUB is unavailable");
@@ -703,7 +648,6 @@ void continueChineseFontInstall(const uint8_t expectedPointSize) {
   activityManager.pushActivity(std::move(notice));
   activityManager.loop();
 }
-#endif
 
 void setup() {
   BoardConfig::holdPowerRails();
@@ -770,12 +714,10 @@ void setup() {
   silentRebootMagic = 0;
   silentRebootTarget = 0;
   silentRebootFontPointSize = 0;
-#ifdef ENABLE_CHINESE_VERSION
   if (snapshotTarget == SilentRebootTarget::ReaderSuppressFontPrompt ||
       snapshotTarget == SilentRebootTarget::ReaderPreloadChineseFont) {
     FontDownloadActivity::suppressChineseFontPromptThisBoot();
   }
-#endif
   const bool silentRebootLightOn = isSilentReboot && (silentRebootPayload & SILENT_REBOOT_LIGHT_ON) != 0;
   silentRebootPayload = 0;
 
@@ -794,9 +736,7 @@ void setup() {
   // boot — but defer the sleep-or-boot decision until SETTINGS is loaded below:
   // click-to-wake is a setting, and an X4 battery power-off cuts all power, so
   // only SD state survives to the next boot.
-#if !FREEINK_DEVICE_EEGO_A4
   const bool wakeHoldVerified = wakeupReason != HalGPIO::WakeupReason::PowerButton || gpio.verifyPowerButtonWakeup();
-#endif
 
   // IMU bring-up on every target. Read Pico's SC7A20H is an accelerometer with no
   // gyroscope, so HalTiltSensor differentiates the gravity component for the tilt
@@ -810,7 +750,6 @@ void setup() {
   LOG_INF("MAIN", "Hardware detect: %s", BoardConfig::ACTIVE.name);
 
   bool recoveryFirmwareMode = false;
-#if !FREEINK_DEVICE_PAPERMONO
   if (wakeupReason == HalGPIO::WakeupReason::PowerButton) {
     const unsigned long settleStart = millis();
     while (millis() - settleStart < 500) {
@@ -825,7 +764,6 @@ void setup() {
               (BoardConfig::isX4Pro() || FREEINK_DEVICE_X4CLASSIC) ? "DOWN" : "UP");
     }
   }
-#endif
 
   // SD Card Initialization
   // We need 6 open files concurrently when parsing a new chapter
@@ -870,14 +808,12 @@ void setup() {
   const bool recentsLoaded = RECENT_BOOKS.loadFromFile();
   if (!recoveryFirmwareMode && !HalSystem::isRebootFromPanic()) UserGuide::prepare(recentsLoaded);
   READING_STATS.loadFromFile();
-#ifdef RICKYOS_PRODUCT
   // Fixed folders, and the one-time move of legacy books into /books. Runs after
   // recents and statistics load so their paths follow the moved books.
   if (!recoveryFirmwareMode) {
     RickyStorageLayout::ensureFolders();
     RickyStorageLayout::migrateLegacyBooks();
   }
-#endif
   ACHIEVEMENTS.loadFromFile();
   I18N.setLanguage(static_cast<Language>(SETTINGS.language));
   KOREADER_STORE.loadFromFile();
@@ -899,13 +835,6 @@ void setup() {
 
   switch (wakeupReason) {
     case HalGPIO::WakeupReason::PowerButton:
-#if FREEINK_DEVICE_EEGO_A4
-      LOG_DBG("MAIN", "Verifying power button press duration");
-      if (!gpio.verifyPowerButtonWakeup(SETTINGS.getPowerButtonDuration(),
-                                        SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP)) {
-        powerManager.startDeepSleep(gpio);
-      }
-#else
       // With Short Power Button Press = Sleep, a single click wakes on any
       // device; otherwise the button must still be held (ghost-wake debounce).
       if (!wakeHoldVerified && SETTINGS.shortPwrBtn != CrossPointSettings::SHORT_PWRBTN::SLEEP) {
@@ -913,7 +842,6 @@ void setup() {
         Storage.prepareForDeepSleep();
         powerManager.startDeepSleep(gpio);
       }
-#endif
       wakePowerReleasePending = true;
       break;
     case HalGPIO::WakeupReason::AfterUSBPower:
@@ -1011,11 +939,7 @@ void setup() {
   } else if (requiresOnboarding) {
     activityManager.replaceActivityWith<LanguageSelectActivity>(onboardingMode);
   } else if (resume == BootResume::Silent && snapshotTarget == SilentRebootTarget::ReaderPreloadChineseFont) {
-#ifdef ENABLE_CHINESE_VERSION
     continueChineseFontInstall(snapshotFontPointSize);
-#else
-    activityManager.goHome();
-#endif
   } else if (resume == BootResume::Silent &&
              (snapshotTarget == SilentRebootTarget::Reader ||
               snapshotTarget == SilentRebootTarget::ReaderSuppressFontPrompt) &&
@@ -1191,14 +1115,12 @@ void loop() {
     lastActivityTime = millis();         // Reset inactivity timer
     powerManager.setPowerSaving(false);  // Restore normal CPU frequency on user activity
   }
-#ifdef RICKYOS_PRODUCT
   // Standby closes itself on a key press that woke its light sleep, which this loop
   // never saw as input: leaving Standby is activity, or idle would reopen it at once.
   static bool standbyWasShowing = false;
   const bool standbyShowingNow = activityManager.standbyShowing();
   if (standbyWasShowing && !standbyShowingNow) lastActivityTime = millis();
   standbyWasShowing = standbyShowingNow;
-#endif
   // preventAutoSleep() is intentionally NOT folded into the activity check above:
   // it only short-circuits the deep-sleep timer below, not the inactivity clock
   // that drives auto-downclock. Standby (a clock face) wants deep sleep blocked
@@ -1266,7 +1188,6 @@ void loop() {
     return;
   }
 
-#ifdef RICKYOS_PRODUCT
   // RickyOS power model: Standby keeps the device on (the page under it stays in
   // memory, the clock light-sleeps between minutes); power-off is the PMU cut, whose
   // only way back is holding the side key. Standby asks for the power-off itself
@@ -1283,15 +1204,6 @@ void loop() {
     lastActivityTime = millis();
     return;
   }
-#else
-  const unsigned long sleepTimeoutMs = SETTINGS.getSleepTimeoutMs();
-  if (sleepTimeoutMs > 0 && !activityManager.preventAutoSleep() && millis() - lastActivityTime >= sleepTimeoutMs) {
-    LOG_DBG("SLP", "Auto-sleep triggered after %lu ms of inactivity", sleepTimeoutMs);
-    enterDeepSleep(true);
-    // This should never be hit as `enterDeepSleep` calls esp_deep_sleep_start
-    return;
-  }
-#endif
 
   // A hold that woke the device must be released before it can count as a new
   // in-app long press. Otherwise a user who keeps holding after wake would put
@@ -1306,7 +1218,6 @@ void loop() {
                                         SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP &&
                                         gpio.getPowerButtonHeldTime() <= X4PRO_POWER_CLICK_MAX_HOLD_MS;
 
-#ifdef RICKYOS_PRODUCT
   // Side key: a short press toggles Standby, a hold powers off (the same hold turns
   // the device back on). The PMU reports the key over the I2C bus it shares with
   // touch, and a failed poll reads as released: a release only counts after the key
@@ -1351,7 +1262,6 @@ void loop() {
       wakePressPending = false;  // booted without the key held
     }
   }
-#endif
   if (!kRickyPowerModel && !x4ProAwaitingClickWindow && powerReleasedSinceWake && millis() >= allowSleepAt &&
       gpio.isPressed(HalGPIO::BTN_POWER) && gpio.getPowerButtonHeldTime() > SETTINGS.getPowerButtonDuration()) {
     // If the screenshot combination is potentially being pressed, don't sleep
@@ -1364,17 +1274,6 @@ void loop() {
     return;
   }
 
-#if FREEINK_DEVICE_PAPERMONO
-  // Paper Mono reports the PMIC power button as a one-tick click, so the held
-  // path above cannot fire. With the default Ignore action, retain the normal
-  // power-button meaning and shut down; explicit alternate bindings still win.
-  if ((SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP ||
-       SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::IGNORE) &&
-      millis() >= allowSleepAt && mappedInputManager.wasReleased(MappedInputManager::Button::Power)) {
-    enterDeepSleep();
-    return;
-  }
-#endif
 
   // Refresh screen when power button is short-pressed with FORCE_REFRESH setting.
   if (mappedInputManager.homeButtonAction() == HomeButtonAction::ToggleFrontlight) {

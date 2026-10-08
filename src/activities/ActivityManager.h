@@ -68,7 +68,7 @@ class ActivityManager {
   TaskHandle_t renderTaskHandle = nullptr;
   static void renderTaskTrampoline(void* param);
   [[noreturn]] virtual void renderTaskLoop();
-#if defined(RICKYOS_PRODUCT) && FREEINK_DEVICE_READPICO
+#if FREEINK_DEVICE_READPICO
   void settleToGray(RenderLock&& lock, uint32_t generation);
 #endif
 
@@ -130,13 +130,8 @@ class ActivityManager {
   void goToJoinNetwork();  // File Transfer straight into Join Network (post heap-defrag reboot)
   void goToUsbDrive();
   void goToSettings();
-#ifndef RICKYOS_PRODUCT
-  void goToUglyAvatar();
-#endif
   void goToReadingStatsMenu();
-#ifdef RICKYOS_PRODUCT
   void goToRickyReadingStats();
-#endif
   void goToReadingStats();
   void goToInxRecent();
   void goToMainTab(MainTab tab);
@@ -153,24 +148,8 @@ class ActivityManager {
   void goToCrashReport();
   void goToApps();
   void goToGomoku();
-#ifndef RICKYOS_PRODUCT
-  void goToSudoku();
-  void goToSokoban();
-  void goToMinesweeper();
-  void goToGame2048();
-  void goToPixelSwitch();
-  void goToWoodfish();
-  void goToBuddy();
-#ifdef ENABLE_CHINESE_VERSION
-  void goToChineseChess();
-#endif
-#endif
   void goToCalculator();
-#ifndef RICKYOS_PRODUCT
-  void goToAirPage();
-#endif
   void goToStandby();
-#ifdef RICKYOS_PRODUCT
   // Side key / inactivity: Standby over whatever is open, popping back to it on close.
   void openStandby();
   void closeStandby();
@@ -182,14 +161,9 @@ class ActivityManager {
     powerOffRequested = false;
     return requested;
   }
-#endif
-#ifdef RICKYOS_PRODUCT
   // Apps → Standby: choose what the sleeping screen shows; full-screen Standby is a row there.
   void goToStandbySettings();
-#endif
-#ifdef ENABLE_CHINESE_VERSION
   void goToWeRead();
-#endif
   void goHome(HomeMenuItem initialMenuItem = HomeMenuItem::NONE);
   MainTabFocus getMainTabFocus() const { return mainTabFocus; }
 
@@ -222,9 +196,7 @@ class ActivityManager {
   // Trigger a render and block until it completes.
   // Must NOT be called from the render task or while holding a RenderLock.
   void requestUpdateAndWait();
-#ifdef RICKYOS_PRODUCT
   bool powerOffRequested = false;
-#endif
 };
 
 extern ActivityManager activityManager;  // singleton, to be defined in main.cpp

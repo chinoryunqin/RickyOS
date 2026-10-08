@@ -1,5 +1,4 @@
 #include "RickyFreeSpace.h"
-#ifdef RICKYOS_PRODUCT
 #include <HalStorage.h>
 
 #ifndef SIMULATOR
@@ -129,4 +128,3 @@ bool measure(uint64_t& totalBytes, uint64_t& freeBytes) {
 #endif
 }  // namespace RickyFreeSpace
 
-#endif

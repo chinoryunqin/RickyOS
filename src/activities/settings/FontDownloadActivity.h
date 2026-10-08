@@ -24,10 +24,8 @@ class FontDownloadActivity final : public UiListActivity {
   explicit FontDownloadActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                 Purpose purpose = Purpose::Manage, StartMode startMode = StartMode::Normal);
 
-#ifdef ENABLE_CHINESE_VERSION
   static bool wasChineseFontPromptShownThisBoot();
   static void suppressChineseFontPromptThisBoot();
-#endif
 
   void onEnter() override;
   void onExit() override;

@@ -1,5 +1,4 @@
 #include "RickyStorageLayout.h"
-#ifdef RICKYOS_PRODUCT
 #include <FsHelpers.h>
 #include <HalStorage.h>
 #include <LibraryBuilder.h>
@@ -107,4 +106,3 @@ int migrateLegacyBooks() {
   return moveBooksOnce(WEREAD_MIGRATION_MARKER, WEREAD_BOOK_FOLDERS);
 }
 }  // namespace RickyStorageLayout
-#endif

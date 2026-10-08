@@ -1,6 +1,5 @@
 #include "ChineseAlmanac.h"
 
-#ifdef ENABLE_CHINESE_VERSION
 
 #include <cstring>
 
@@ -679,13 +678,3 @@ bool computeAlmanac(const struct tm& t, AlmanacDay& out) {
   return true;
 }
 
-#else  // !ENABLE_CHINESE_VERSION
-
-// Non-CN builds: stub out the API so non-CN TUs that conditionally include
-// this header still link. (Currently nothing outside CN includes it.)
-bool computeAlmanac(const struct tm&, AlmanacDay& out) {
-  (void)out;
-  return false;
-}
-
-#endif  // ENABLE_CHINESE_VERSION

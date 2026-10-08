@@ -439,33 +439,6 @@ int main() {
                 subprocess.run([str(tmp / "test")], check=True)
 
 
-    def test_firmware_scanner_checks_metalio_across_chunk_boundaries(self):
-        with tempfile.TemporaryDirectory() as directory:
-            tmp = pathlib.Path(directory)
-            (tmp / "BoardConfig.h").write_text("#define FREEINK_DEVICE_METALIO_EINK4 1\n")
-            (tmp / "test.cpp").write_text(r'''
-#include <FirmwareBoardTag.h>
-#include <cassert>
-#include <cstring>
-int main() {
-  assert(board_tag::boardNameLen()==std::strlen("metalio_eink4"));
-  const char* tags[]={"CROSSPOINT-BOARD-V1:metalio_eink4;",
-                      "CROSSPOINT-BOARD-V1:waveshare_epaper_397;",
-                      "CROSSPOINT-BOARD-V1:x4;"};
-  for (unsigned i=0;i<3;++i) for (size_t split=0;split<=std::strlen(tags[i]);++split) {
-    board_tag::Scanner scanner;
-    auto data=reinterpret_cast<const uint8_t*>(tags[i]);
-    scanner.feed(data,split);
-    scanner.feed(data+split,std::strlen(tags[i])-split);
-    assert(scanner.mismatch()==(i!=0));
-  }
-}
-''')
-            subprocess.run(["c++", "-std=c++17", "-Wall", "-Wextra", "-Werror",
-                            "-I" + str(tmp), "-I" + str(ROOT / "src/network"),
-                            str(ROOT / "src/network/FirmwareBoardTag.cpp"), str(tmp / "test.cpp"),
-                            "-o", str(tmp / "test")], check=True)
-            subprocess.run([str(tmp / "test")], check=True)
 
 
 if __name__ == "__main__":

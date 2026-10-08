@@ -429,7 +429,6 @@ bool ImageBlock::renderInternal(GfxRenderer& renderer, const int x, const int y,
     return false;
   }
 
-#ifdef RICKYOS_PRODUCT
   // 16-level pages: a JPEG decodes straight into the native frame at full gray depth.
   // The pixel cache holds dithered 4-level samples written past the 16-level buffer,
   // which made illustrations look dark and blotchy.
@@ -460,7 +459,6 @@ bool ImageBlock::renderInternal(GfxRenderer& renderer, const int x, const int y,
     if (decodeError != ImageRenderError::Cancelled) renderPlaceholder(renderer, x, y);
     return false;
   }
-#endif
 
   // Try to render from cache first
   std::string cachePath = getCachePath(imagePath);

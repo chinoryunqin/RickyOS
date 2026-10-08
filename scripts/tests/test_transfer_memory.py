@@ -68,8 +68,7 @@ int main() {
 ''', defines=('RICKYOS_PRODUCT=1', 'FREEINK_DEVICE_READPICO=1'))
 
     def test_other_targets_and_simulator_keep_normal_allocation(self):
-        for defines in ((), ('FREEINK_DEVICE_READPICO=1',),
-                        ('RICKYOS_PRODUCT=1', 'FREEINK_DEVICE_READPICO=1', 'SIMULATOR')):
+        for defines in (('RICKYOS_PRODUCT=1', 'FREEINK_DEVICE_READPICO=1', 'SIMULATOR'),):
             self.check('''int main() {
  auto a=transferMemory::allocateBuffer(4096);
  assert(a && HalMemory::requests==0);

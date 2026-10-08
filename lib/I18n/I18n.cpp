@@ -55,12 +55,6 @@ Language I18n::languageFromCode(const char* code) {
 
 bool I18n::isLanguageAvailable(Language lang) {
   if (static_cast<uint8_t>(lang) >= getLanguageCount()) return false;
-#ifndef ENABLE_CHINESE_VERSION
-  // CJK glyphs ship only with the Chinese SKU; the global build embeds Latin
-  // fonts only, so Chinese strings render as garbled boxes even though ZH_CN's
-  // strings are compiled in. Treat it as unavailable here.
-  if (lang == Language::ZH_CN) return false;
-#endif
   return true;
 }
 

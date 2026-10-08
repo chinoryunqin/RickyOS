@@ -158,6 +158,11 @@ struct GfxRenderer {
  int getScreenWidth() { return 800; }
  int getScreenHeight() { return 480; }
  bool glyphIntersectsStrip(int,int,int,int) { return true; }
+ bool isGrayscale16Active() { return false; }  // the 16-level JPEG path is not under test
+};
+bool isJpegPath(const std::string&) { return true; }
+struct JpegToFramebufferConverter {
+ template <class C> bool decodeToFramebuffer(const std::string&, GfxRenderer&, const C&) { return false; }
 };
 struct HalFile { size_t size() { return 42; } };
 struct StorageStub { bool openFileForRead(const char*,const std::string&,HalFile&) { return true; } } Storage;

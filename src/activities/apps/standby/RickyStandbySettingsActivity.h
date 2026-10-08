@@ -1,5 +1,4 @@
 #pragma once
-#ifdef RICKYOS_PRODUCT
 
 #include <string>
 
@@ -62,4 +61,3 @@ class RickyStandbySettingsActivity final : public UiTabListActivity {
   char minutes_[24] = {};  // the auto-standby value when it is not one of the presets
 };
 
-#endif
