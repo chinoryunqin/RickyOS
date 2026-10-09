@@ -145,6 +145,7 @@ static bool wakePowerReleasePending = false;
 // Fonts
 // All legacy built-in reader IDs share one 12pt offline fallback. Complete
 // families, other sizes, and style variants come from SD .cpfont files.
+#include <StandbyDiag.h>
 #ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
 #include <builtinFonts/notosans_12_regular.h>
 #include <builtinFonts/notosans_cjk_14.h>
@@ -1078,6 +1079,9 @@ void setup() {
 }
 
 void loop() {
+#ifdef RICKYOS_STANDBY_DIAG
+  standby_diag::dumpWhenAwake();
+#endif
   static unsigned long maxLoopDuration = 0;
   const unsigned long loopStartTime = millis();
   static unsigned long lastMemPrint = 0;
@@ -1279,6 +1283,7 @@ void loop() {
   const unsigned long sleepTimeoutMs = SETTINGS.getSleepTimeoutMs();
   if (sleepTimeoutMs > 0 && !activityManager.preventAutoSleep() && millis() - lastActivityTime >= sleepTimeoutMs) {
     LOG_DBG("SLP", "Auto-standby after %lu ms of inactivity", sleepTimeoutMs);
+    STANDBY_DIAG("auto-standby after %lus idle", sleepTimeoutMs / 1000);
     activityManager.openStandby();
     lastActivityTime = millis();
     return;
@@ -1340,6 +1345,8 @@ void loop() {
       wakePressPending = false;
       if (!wakePress && !holdHandled && now >= allowSleepAt) {
         lastActivityTime = now;
+        STANDBY_DIAG("side key short press (%lums), standby=%d", lastDownAt - pressedAt,
+                     activityManager.standbyShowing());
         if (activityManager.standbyShowing()) {
           activityManager.closeStandby();
         } else {

@@ -43,6 +43,7 @@
 #include "WifiCredentialStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "StandbyDiag.h"
 
 namespace {
 
@@ -184,6 +185,7 @@ void StandbyActivity::onEnter() {
 }
 
 void StandbyActivity::onExit() {
+  STANDBY_DIAG("standby exit (up %lus)", (millis() - enteredMs_) / 1000);
   switch (syncState_) {
     case SyncState::Idle:
     case SyncState::Delayed:
@@ -453,7 +455,12 @@ bool StandbyActivity::tryLightSleep(const uint32_t idleMs) {
   const bool syncActive = syncState_ != SyncState::Idle;
   const bool wifiActive = WiFi.getMode() != WIFI_MODE_NULL;
   const bool hardwareAllowed = powerManager.canStandbyLightSleep(gpio);
-  if (!standby_time::shouldLightSleep(idleMs, syncActive, wifiActive, gpio.isUsbConnected(), hardwareAllowed)) {
+#ifdef RICKYOS_STANDBY_DIAG
+  const bool usbBlocks = false;  // diag: light-sleep with the cable in, to watch the wake
+#else
+  const bool usbBlocks = gpio.isUsbConnected();
+#endif
+  if (!standby_time::shouldLightSleep(idleMs, syncActive, wifiActive, usbBlocks, hardwareAllowed)) {
     return false;
   }
 
@@ -465,6 +472,7 @@ bool StandbyActivity::tryLightSleep(const uint32_t idleMs) {
   }
   switch (wakeReason) {
     case HalPowerManager::LightSleepWakeReason::Timer:
+      STANDBY_DIAG("wake: timer");
       processFaceTick(true);
       return true;
     case HalPowerManager::LightSleepWakeReason::PowerButton:
@@ -472,6 +480,7 @@ bool StandbyActivity::tryLightSleep(const uint32_t idleMs) {
       // A short press, already over before main.cpp's key poll could see it: leave
       // Standby, as that press does while awake.
       lastInputMs_ = millis();
+      STANDBY_DIAG("close: light-sleep wake read as a short press");
       activityManager.closeStandby();
       return true;
 #endif
@@ -480,10 +489,12 @@ bool StandbyActivity::tryLightSleep(const uint32_t idleMs) {
       mode_ = DisplayMode::Normal;
 #endif
       // Still down: main.cpp finishes it (release = leave Standby, hold = power off).
+      STANDBY_DIAG("wake: key still down");
       lastInputMs_ = millis();
       requestUpdate();
       return true;
     case HalPowerManager::LightSleepWakeReason::Failed:
+      STANDBY_DIAG("wake: failed/expander");
       lastInputMs_ = millis();
       return true;
   }
@@ -497,6 +508,7 @@ void StandbyActivity::loop() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
 #ifdef RICKYOS_PRODUCT
     // Back to the page that opened it (the Standby settings page, or Home).
+    STANDBY_DIAG("close: Back released");
     finish();
 #else
     activityManager.goHome();
