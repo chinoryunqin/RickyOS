@@ -4,6 +4,10 @@
 
 - **代码实现：** `src/components/RickyDesignTokens.h`（命名空间 `ricky::ds`）。规范里的名字和头文件里的常量一一对应，改数值时两边一起改。
 - **效果图：** `docs/design-system/` 里的 `01_home` 到 `05_empty`，以及总览 `board.png`。每张都有对应的 `*_1bit.png`，表示交互帧。
+- **老师第二版（10-09）：** 在 `docs/design-system/teacher-v2/` 里，新增应用、存储、休眠、阅读菜单、文件 5 屏，以及《HIG 学习笔记》。
+- **我们的落地稿：** `docs/design-system/rickyos-1.2-mockups.html`。以老师第二版为底，按本规范重画了 10 屏，用的是固件里的真实条目（应用名、阅读菜单、版本号、"SD 卡"），并标出了每屏和老师稿的差异。网页上可以切换"静止帧 / 快刷（黑白）"两种显示。
+  - 修改方式：改 `docs/design-system/mockup-src/` 里的生成脚本，再运行 `python3 docs/design-system/mockup-src/gen.py docs/design-system/rickyos-1.2-mockups.html` 重新生成。
+  - **落地稿和效果图不一致时，以落地稿为准。**
 - **来源：** 用户 2026-10-09 交付的设计包，包括《RickyOS 视觉方案》《方案》《三项设计决定》。原件备份在仓库外的 `/Users/rick/rickyos/design/1.2/`。
 - **工程安排：** `docs/rickyos-1.2-plan.md`。
 
