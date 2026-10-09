@@ -5,6 +5,7 @@
 #include <BoardReadPico.h>
 #endif
 #include <Logging.h>
+#include "StandbyDiag.h"
 #include <PowerManager.h>
 #include <WiFi.h>
 #include <driver/gpio.h>
@@ -106,9 +107,14 @@ HalPowerManager::LightSleepWakeReason lightSleepReadPico(const uint32_t seconds)
   // Leaving a stale low on the line would end the sleep immediately.
   // Presses so far were already read as key levels; drop their PMU events so its
   // interrupt line releases and the next press changes INT# again. Left queued,
-  // the full FIFO holds that line and no press can end the sleep.
+  // the full FIFO holds that line and no press can end the sleep. The newest event
+  // id seen now marks the boundary: after the sleep only a later press counts, so
+  // an old event the PMU reports late cannot close Standby by itself.
   bool keyDown = false;
-  (void)BoardReadPico::takePmuKeyPress(keyDown);
+  [[maybe_unused]] const bool stalePress = BoardReadPico::takePmuKeyPress(keyDown);
+  const uint16_t lastIdBeforeSleep = BoardReadPico::pmuLastEventId();
+  STANDBY_DIAG("pre-sleep %us: drained press=%d keyDown=%d int=%d lastId=%u", static_cast<unsigned>(seconds),
+               stalePress, keyDown, BoardReadPico::ioeIntAsserted(), lastIdBeforeSleep);
   BoardReadPico::clearIoeInt();
 
   if (!freeink::PowerManager::armLightSleepWakeupLevels(kIoeIntMask, 0)) {
@@ -138,7 +144,10 @@ HalPowerManager::LightSleepWakeReason lightSleepReadPico(const uint32_t seconds)
 
   // The PMU's key event is authoritative, whatever ended the sleep: a press can
   // also land just before a timer wake (read_pico main/sleep.c does the same).
-  if (BoardReadPico::takePmuKeyPress(keyDown)) {
+  const bool wakePress = BoardReadPico::takePmuKeyPress(keyDown, lastIdBeforeSleep);
+  STANDBY_DIAG("woke cause=%d press=%d keyDown=%d lastId=%u", static_cast<int>(cause), wakePress, keyDown,
+               BoardReadPico::pmuLastEventId());
+  if (wakePress) {
     return keyDown ? LightSleepWakeReason::PowerButtonHeld : LightSleepWakeReason::PowerButton;
   }
   if (cause == ESP_SLEEP_WAKEUP_GPIO) {

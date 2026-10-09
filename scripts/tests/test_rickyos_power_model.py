@@ -71,21 +71,48 @@ class RickyPowerModelTest(unittest.TestCase):
         self.assertIn('pre:scripts/patch_rickyos_pmu_keys.py', read('platformio.ini'))
         board = read('freeink-sdk/libs/hardware/BoardReadPico/src/BoardReadPico.cpp')
         header = read('freeink-sdk/libs/hardware/BoardReadPico/include/BoardReadPico.h')
-        for source, old, new in ((header, patch.OLD_DECL, patch.NEW_DECL), (board, patch.OLD_DEF, patch.NEW_DEF)):
-            patched = patch.patch_text(source, old, new)
+        for source, old, new, previous in ((header, patch.OLD_DECL, patch.NEW_DECL, (patch.V1_DECL,)),
+                                           (board, patch.OLD_DEF, patch.NEW_DEF, (patch.V1_DEF,))):
+            patched = patch.patch_text(source, old, new, previous)
             self.assertIn(new, patched)
-            self.assertEqual(patched, patch.patch_text(patched, old, new))
+            self.assertEqual(patched, patch.patch_text(patched, old, new, previous))
         self.assertIn('if (!pmuEventAck(id)) break;', patch.NEW_DEF)
         hal = read('lib/hal/HalPowerManager.cpp')
         sleep = hal[hal.index('HalPowerManager::LightSleepWakeReason lightSleepReadPico('):]
         self.assertLess(sleep.index('takePmuKeyPress(keyDown);'), sleep.index('esp_light_sleep_start()'))
-        self.assertLess(sleep.index('esp_light_sleep_start()'), sleep.index('if (BoardReadPico::takePmuKeyPress(keyDown))'))
+        self.assertLess(sleep.index('esp_light_sleep_start()'),
+                        sleep.index('BoardReadPico::takePmuKeyPress(keyDown, lastIdBeforeSleep)'))
         standby = method(read('src/activities/apps/standby/StandbyActivity.cpp'),
                          'bool StandbyActivity::tryLightSleep(')
         quick = standby[standby.index('LightSleepWakeReason::PowerButton:'):standby.index('LightSleepWakeReason::PowerButtonHeld:')]
         self.assertIn('activityManager.closeStandby();', quick)
         main = read('src/main.cpp')
         self.assertIn('if (standbyWasShowing && !standbyShowingNow) lastActivityTime = millis();', main)
+    def test_old_key_event_cannot_close_standby(self):
+        # Device, 1.1.3: a side-key press left its event queued while STATUS said no
+        # events were pending, so the pre-sleep drain skipped it; read after the next
+        # auto-Standby light sleep, it looked like a press and closed Standby by itself.
+        import sys
+        sys.path.insert(0, str(ROOT / 'scripts'))
+        import patch_rickyos_pmu_keys as patch
+        drain = patch.NEW_DEF[patch.NEW_DEF.index('bool takePmuKeyPress('):patch.NEW_DEF.index('uint16_t pmuLastEventId()')]
+        # Read until EVENT_PEEK says empty instead of trusting the pending count.
+        self.assertNotIn('g_pmuPendingEvents', drain)
+        self.assertIn('if (!pmuPeekEvent(id, type)) break;', drain)
+        # Only an event newer than the pre-sleep boundary counts as a press.
+        self.assertIn('static_cast<int16_t>(id - newerThan) > 0', drain)
+        self.assertIn('if (fresh && (type == kKeyDown || type == kKeyShort)) pressed = true;', drain)
+        self.assertIn('uint16_t newerThan = 0', patch.NEW_DECL)
+        hal = read('lib/hal/HalPowerManager.cpp')
+        sleep = hal[hal.index('HalPowerManager::LightSleepWakeReason lightSleepReadPico('):]
+        boundary = sleep.index('const uint16_t lastIdBeforeSleep = BoardReadPico::pmuLastEventId();')
+        self.assertLess(sleep.index('takePmuKeyPress(keyDown);'), boundary)
+        self.assertLess(boundary, sleep.index('esp_light_sleep_start()'))
+        # A tree patched by 1.1.3 upgrades in place instead of failing the build.
+        upgraded = patch.patch_text('x\n' + patch.V1_DEF + '\ny', patch.OLD_DEF, patch.NEW_DEF, (patch.V1_DEF,))
+        self.assertIn(patch.NEW_DEF, upgraded)
+        self.assertNotIn(patch.V1_DEF, upgraded)
+
     def test_standby_ignores_edge_swipes(self):
         manager = read('src/activities/ActivityManager.cpp')
         self.assertIn('const bool atRest = standbyShowing();', manager)
