@@ -17,6 +17,24 @@
 
 namespace {
 
+// WeReadHttpClient::AbortScope state. Requests run on the activity loop's task only.
+WeReadHttpClient::AbortProbe g_abortProbe = nullptr;
+void* g_abortContext = nullptr;
+bool g_aborted = false;
+unsigned long g_lastAbortCheck = 0;
+
+// Asks the probe at most every 15 ms (it may read the touch panel over I2C). Once it
+// says yes the answer stays yes for the rest of the request.
+bool abortRequested() {
+  if (g_aborted) return true;
+  if (!g_abortProbe) return false;
+  const unsigned long now = millis();
+  if (now - g_lastAbortCheck < 15) return false;
+  g_lastAbortCheck = now;
+  g_aborted = g_abortProbe(g_abortContext);
+  return g_aborted;
+}
+
 bool containsNewline(const char* value) { return value && (strchr(value, '\r') || strchr(value, '\n')); }
 
 bool copyHttpsUrlParts(const char* url, char* host, const size_t hostSize, const char*& path) {
@@ -139,6 +157,7 @@ bool readLine(freeink::SecureClient& client, uint8_t* buffer, const size_t capac
       continue;
     }
     if (!client.connected() && client.available() == 0) return false;
+    if (abortRequested()) return false;
     delay(1);
   }
   return false;
@@ -154,6 +173,7 @@ TransferResult readFixedBody(freeink::SecureClient& client, uint8_t* buffer, con
     if (count > 0) {
       const size_t received = static_cast<size_t>(count);
       if (onData && !onData(buffer, received)) return TransferResult::Aborted;
+      if (abortRequested()) return TransferResult::Aborted;
       remaining -= received;
       deadline = millis() + static_cast<unsigned long>(timeoutMs);
       continue;
@@ -162,6 +182,7 @@ TransferResult readFixedBody(freeink::SecureClient& client, uint8_t* buffer, con
         static_cast<int32_t>(millis() - deadline) >= 0) {
       return TransferResult::Error;
     }
+    if (abortRequested()) return TransferResult::Aborted;
     delay(1);
   }
   return TransferResult::Ok;
@@ -179,6 +200,7 @@ TransferResult readCloseDelimitedBody(freeink::SecureClient& client, uint8_t* bu
     }
     if (!client.connected() && client.available() == 0) return TransferResult::Ok;
     if (count < 0 || static_cast<int32_t>(millis() - deadline) >= 0) return TransferResult::Error;
+    if (abortRequested()) return TransferResult::Aborted;
     delay(1);
   }
 }
@@ -599,6 +621,17 @@ bool networkReady() {
 #endif
 }
 
+AbortScope::AbortScope(const AbortProbe probe, void* const context)
+    : previousProbe_(g_abortProbe), previousContext_(g_abortContext) {
+  g_abortProbe = probe;
+  g_abortContext = context;
+}
+
+AbortScope::~AbortScope() {
+  g_abortProbe = previousProbe_;
+  g_abortContext = previousContext_;
+}
+
 Session::~Session() { reset(); }
 
 bool Session::reusable() {
@@ -638,8 +671,22 @@ Result request(Session& session, const char* url, const RequestOptions& options,
     return Result::NetworkError;
   }
   LOG_DBG("HTTP", "%s %s", options.method ? options.method : "?", url ? url : "?");
-  return runRequest(url, options, onData, onHeader, status, session.client_, session.host_, sizeof(session.host_),
-                    session.newConnections_, session.reusedRequests_);
+  g_aborted = false;
+  g_lastAbortCheck = 0;
+  if (abortRequested()) {
+    status = -1;
+    return Result::Aborted;  // asked before a new TLS handshake could block for seconds
+  }
+  Result result = runRequest(url, options, onData, onHeader, status, session.client_, session.host_,
+                             sizeof(session.host_), session.newConnections_, session.reusedRequests_);
+  if (g_aborted) {
+    // An abort can surface as a failed read; the connection is gone either way.
+    session.reset();
+    result = Result::Aborted;
+    LOG_INF("HTTP", "Request abandoned for input");
+  }
+  g_aborted = false;
+  return result;
 }
 
 }  // namespace WeReadHttpClient

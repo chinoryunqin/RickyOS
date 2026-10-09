@@ -583,6 +583,7 @@ struct ActivityManager {
   void goToMainTab(MainTab tab) {
     auto p=page("INX");p->tab=tab;replaceActivity(std::move(p));
   }
+  bool standbyShowing() const { return currentActivity && currentActivity->name == "Standby"; }
   void goToStandby() {
     ++standbyCalls;
     auto p=std::make_unique<Activity>();p->home=false;p->name="Standby";

@@ -8,8 +8,11 @@
 #include <BoardReadPico.h>
 #endif
 #include <Logging.h>
+#include "StandbyDiag.h"
 #include <PowerManager.h>
 #include <WiFi.h>
+
+#include <atomic>
 #include <driver/gpio.h>
 #include <esp_sleep.h>
 #include <soc/soc_caps.h>
@@ -102,6 +105,13 @@ void readPicoHostShutdown() {
 // stays 0, so INT1 can never assert. Arming a level trigger on a line nothing
 // drives would be dead configuration pretending to be a wake source; the
 // primitive takes the high mask whenever a pickup-wake feature lands.
+// Newest PMU event id handled by the previous wake of this Standby; 0 until the first
+// one (a Standby that is just opening). Events after it that are still queued when the
+// next sleep starts are presses nobody saw: the clock redraw holds the main loop for
+// about 3 s each minute, and a tap in that window used to be dropped by the drain.
+uint16_t g_standbyKeyBoundary = 0;
+std::atomic<bool> g_sideKeyBusy{false};
+
 HalPowerManager::LightSleepWakeReason lightSleepReadPico(const uint32_t seconds) {
   using LightSleepWakeReason = HalPowerManager::LightSleepWakeReason;
   constexpr uint64_t kIoeIntMask = 1ULL << READPICO_IOE_INT;
@@ -123,9 +133,21 @@ HalPowerManager::LightSleepWakeReason lightSleepReadPico(const uint32_t seconds)
 #ifdef RICKYOS_PRODUCT
   // Presses so far were already read as key levels; drop their PMU events so its
   // interrupt line releases and the next press changes INT# again. Left queued,
-  // the full FIFO holds that line and no press can end the sleep.
+  // the full FIFO holds that line and no press can end the sleep. The newest event
+  // id seen now marks the boundary: after the sleep only a later press counts, so
+  // an old event the PMU reports late cannot close Standby by itself.
   bool keyDown = false;
-  (void)BoardReadPico::takePmuKeyPress(keyDown);
+  const uint16_t boundary = g_standbyKeyBoundary;
+  const bool queuedPress = BoardReadPico::takePmuKeyPress(keyDown, boundary);
+  const uint16_t lastIdBeforeSleep = BoardReadPico::pmuLastEventId();
+  STANDBY_DIAG("pre-sleep %us: drained press=%d keyDown=%d int=%d lastId=%u boundary=%u",
+               static_cast<unsigned>(seconds), queuedPress, keyDown, BoardReadPico::ioeIntAsserted(),
+               lastIdBeforeSleep, boundary);
+  g_standbyKeyBoundary = lastIdBeforeSleep;
+  if (boundary != 0 && (queuedPress || keyDown)) {
+    // A press since the last wake that the main loop never judged: answer it now.
+    return keyDown ? LightSleepWakeReason::PowerButtonHeld : LightSleepWakeReason::PowerButton;
+  }
 #endif
   BoardReadPico::clearIoeInt();
 
@@ -157,7 +179,25 @@ HalPowerManager::LightSleepWakeReason lightSleepReadPico(const uint32_t seconds)
 #ifdef RICKYOS_PRODUCT
   // The PMU's key event is authoritative, whatever ended the sleep: a press can
   // also land just before a timer wake (read_pico main/sleep.c does the same).
-  if (BoardReadPico::takePmuKeyPress(keyDown)) {
+  const bool wakePress = BoardReadPico::takePmuKeyPress(keyDown, lastIdBeforeSleep);
+  STANDBY_DIAG("woke cause=%d press=%d keyDown=%d lastId=%u type=%u", static_cast<int>(cause), wakePress, keyDown,
+               BoardReadPico::pmuLastEventId(), BoardReadPico::pmuLastEventType());
+  if (wakePress && keyDown) {
+    // Still down as the sleep ends: main.cpp's 50 ms key poll tells a tap from a
+    // hold, but a quick tap can be over before it looks, and then nothing ended
+    // Standby (device: a second press was needed). Watch the key here briefly: let go
+    // within kTapWindowMs is a tap; still down hands the hold to main.cpp.
+    constexpr unsigned long kTapWindowMs = 500;
+    const unsigned long watchStart = millis();
+    while (keyDown && millis() - watchStart < kTapWindowMs) {
+      delay(20);
+      (void)BoardReadPico::takePmuKeyPress(keyDown, BoardReadPico::pmuLastEventId());
+    }
+    STANDBY_DIAG("wake key %s after %lums", keyDown ? "held" : "released", millis() - watchStart);
+  }
+  g_standbyKeyBoundary = BoardReadPico::pmuLastEventId();
+  if (g_standbyKeyBoundary == 0) g_standbyKeyBoundary = 1;  // 0 means "no wake yet"
+  if (wakePress) {
     return keyDown ? LightSleepWakeReason::PowerButtonHeld : LightSleepWakeReason::PowerButton;
   }
   if (cause == ESP_SLEEP_WAKEUP_GPIO) {
@@ -340,6 +380,28 @@ void HalPowerManager::startDeepSleep(HalGPIO& gpio) const {
 #endif
 }
 
+void HalPowerManager::beginStandbyKeyWatch() {
+#if FREEINK_DEVICE_READPICO
+  g_standbyKeyBoundary = 0;
+#endif
+}
+
+void HalPowerManager::setSideKeyBusy(const bool busy) {
+#if FREEINK_DEVICE_READPICO
+  g_sideKeyBusy.store(busy, std::memory_order_relaxed);
+#else
+  (void)busy;
+#endif
+}
+
+bool HalPowerManager::sideKeyBusy() {
+#if FREEINK_DEVICE_READPICO
+  return g_sideKeyBusy.load(std::memory_order_relaxed);
+#else
+  return false;
+#endif
+}
+
 bool HalPowerManager::canStandbyLightSleep(const HalGPIO& gpio) const {
 #if FREEINK_DEVICE_READPICO
   // The power key is PMU-owned and has no GPIO, so the generic
@@ -348,7 +410,9 @@ bool HalPowerManager::canStandbyLightSleep(const HalGPIO& gpio) const {
   // expander must have come up for that line to mean anything: without it the
   // INT# net is just a floating input and a wake could never be attributed.
   (void)gpio;
-  return BoardReadPico::ready();
+  // Not while main.cpp is still judging a side-key press: sleeping then left the
+  // answer (leave Standby) waiting for the next wake.
+  return BoardReadPico::ready() && !g_sideKeyBusy.load(std::memory_order_relaxed);
 #else
   return gpio.isXteinkDevice() && BoardConfig::ACTIVE.input.power >= 0 && standbyRetention().pin >= 0;
 #endif

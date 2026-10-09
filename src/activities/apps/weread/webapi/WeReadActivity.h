@@ -60,6 +60,7 @@ class WeReadActivity final : public Activity {
   static constexpr int kDetailListActionCount = kDetailActionCount - 1;
   static constexpr int kMaxIntroPages = 128;
   static constexpr uint32_t kLongWaitMs = 30000;
+  static constexpr uint32_t kShelfCoverQuietMs = 1500;
 
   ButtonNavigator buttonNavigator_;
   OptionPopup optionPopup_;
@@ -106,6 +107,13 @@ class WeReadActivity final : public Activity {
   bool detailIntroTruncated_ = false;
   bool introPagesTruncated_ = false;
   bool shelfCoverStopped_ = false;
+  // Shelf covers download in the background only once the shelf has been left alone
+  // for a moment, and a key or touch during a download abandons it at once
+  // (WeReadHttpClient::AbortScope): each download blocks the loop for seconds.
+  unsigned long shelfQuietSince_ = 0;
+  bool coverInterrupted_ = false;
+  bool pendingBack_ = false;  // Back or Home seen while a download was abandoned
+  bool pendingHome_ = false;
   bool optionPopupClosing_ = false;
   bool disclaimerSaveFailed_ = false;
   bool wifiSessionActive_ = false;
@@ -125,6 +133,7 @@ class WeReadActivity final : public Activity {
   int shelfItemsPerPage() const;
   void resetShelfCoverLoading();
   void advanceShelfCovers();
+  static bool coverAbortProbe(void* context);
   WeReadClient::Operation::Event stepOperation();
   void updatePostProcessNotice(WeReadClient::Operation::ProgressStage previous,
                                WeReadClient::Operation::ProgressStage current);

@@ -71,21 +71,76 @@ class RickyPowerModelTest(unittest.TestCase):
         self.assertIn('pre:scripts/patch_rickyos_pmu_keys.py', read('platformio.ini'))
         board = read('freeink-sdk/libs/hardware/BoardReadPico/src/BoardReadPico.cpp')
         header = read('freeink-sdk/libs/hardware/BoardReadPico/include/BoardReadPico.h')
-        for source, old, new in ((header, patch.OLD_DECL, patch.NEW_DECL), (board, patch.OLD_DEF, patch.NEW_DEF)):
-            patched = patch.patch_text(source, old, new)
+        for source, old, new, previous in ((header, patch.OLD_DECL, patch.NEW_DECL, (patch.V2_DECL, patch.V1_DECL)),
+                                           (board, patch.OLD_DEF, patch.NEW_DEF, (patch.V2_DEF, patch.V1_DEF))):
+            patched = patch.patch_text(source, old, new, previous)
             self.assertIn(new, patched)
-            self.assertEqual(patched, patch.patch_text(patched, old, new))
+            self.assertEqual(patched, patch.patch_text(patched, old, new, previous))
         self.assertIn('if (!pmuEventAck(id)) break;', patch.NEW_DEF)
         hal = read('lib/hal/HalPowerManager.cpp')
         sleep = hal[hal.index('HalPowerManager::LightSleepWakeReason lightSleepReadPico('):]
-        self.assertLess(sleep.index('takePmuKeyPress(keyDown);'), sleep.index('esp_light_sleep_start()'))
-        self.assertLess(sleep.index('esp_light_sleep_start()'), sleep.index('if (BoardReadPico::takePmuKeyPress(keyDown))'))
+        self.assertLess(sleep.index('BoardReadPico::takePmuKeyPress(keyDown, boundary);'), sleep.index('esp_light_sleep_start()'))
+        self.assertLess(sleep.index('esp_light_sleep_start()'),
+                        sleep.index('BoardReadPico::takePmuKeyPress(keyDown, lastIdBeforeSleep)'))
         standby = method(read('src/activities/apps/standby/StandbyActivity.cpp'),
                          'bool StandbyActivity::tryLightSleep(')
         quick = standby[standby.index('LightSleepWakeReason::PowerButton:'):standby.index('LightSleepWakeReason::PowerButtonHeld:')]
         self.assertIn('activityManager.closeStandby();', quick)
         main = read('src/main.cpp')
         self.assertIn('if (standbyWasShowing && !standbyShowingNow) lastActivityTime = millis();', main)
+    def test_old_key_event_cannot_close_standby(self):
+        # Device, 1.1.3: a side-key press left its event queued while STATUS said no
+        # events were pending, so the pre-sleep drain skipped it; read after the next
+        # auto-Standby light sleep, it looked like a press and closed Standby by itself.
+        import sys
+        sys.path.insert(0, str(ROOT / 'scripts'))
+        import patch_rickyos_pmu_keys as patch
+        drain = patch.NEW_DEF[patch.NEW_DEF.index('bool takePmuKeyPress('):patch.NEW_DEF.index('uint16_t pmuLastEventId() {')]
+        # Read until EVENT_PEEK says empty instead of trusting the pending count.
+        self.assertNotIn('g_pmuPendingEvents', drain)
+        self.assertIn('if (!pmuPeekEvent(id, type)) break;', drain)
+        # Only an event newer than the pre-sleep boundary counts as a press.
+        self.assertIn('static_cast<int16_t>(id - newerThan) > 0', drain)
+        self.assertIn('if (fresh && (type == kKeyDown || type == kKeyShort)) pressed = true;', drain)
+        self.assertIn('uint16_t newerThan = 0', patch.NEW_DECL)
+        hal = read('lib/hal/HalPowerManager.cpp')
+        sleep = hal[hal.index('HalPowerManager::LightSleepWakeReason lightSleepReadPico('):]
+        boundary = sleep.index('const uint16_t lastIdBeforeSleep = BoardReadPico::pmuLastEventId();')
+        self.assertLess(sleep.index('BoardReadPico::takePmuKeyPress(keyDown, boundary);'), boundary)
+        self.assertLess(boundary, sleep.index('esp_light_sleep_start()'))
+        # A tree patched by 1.1.3 upgrades in place instead of failing the build.
+        for earlier in (patch.V1_DEF, patch.V2_DEF):
+            upgraded = patch.patch_text('x\n' + earlier + '\ny', patch.OLD_DEF, patch.NEW_DEF, (patch.V2_DEF, patch.V1_DEF))
+            self.assertIn(patch.NEW_DEF, upgraded)
+            self.assertNotIn(earlier, upgraded)
+
+    def test_quick_tap_that_wakes_standby_leaves_it(self):
+        # Device: a tap that ended the light sleep was sometimes over before
+        # main.cpp's key poll saw it held, so Standby stayed and a second press was
+        # needed. The wake path now watches the key briefly and reports a tap itself.
+        hal = read('lib/hal/HalPowerManager.cpp')
+        sleep = hal[hal.index('HalPowerManager::LightSleepWakeReason lightSleepReadPico('):]
+        watch = sleep[sleep.index('if (wakePress && keyDown) {'):sleep.index('if (wakePress) {')]
+        self.assertIn('constexpr unsigned long kTapWindowMs = 500;', watch)
+        self.assertIn('takePmuKeyPress(keyDown, BoardReadPico::pmuLastEventId())', watch)
+        self.assertIn('return keyDown ? LightSleepWakeReason::PowerButtonHeld : LightSleepWakeReason::PowerButton;',
+                      sleep[sleep.index('if (wakePress) {'):])
+
+    def test_press_during_clock_redraw_is_not_dropped(self):
+        # Device: the minute clock redraw holds the main loop ~3 s; a tap then was
+        # drained before the next sleep and lost. Presses newer than the previous
+        # wake are answered instead; a Standby that is just opening forgets older ones.
+        hal = read('lib/hal/HalPowerManager.cpp')
+        sleep = hal[hal.index('HalPowerManager::LightSleepWakeReason lightSleepReadPico('):]
+        pre = sleep[:sleep.index('esp_light_sleep_start()')]
+        self.assertIn('if (boundary != 0 && (queuedPress || keyDown)) {', pre)
+        self.assertIn('g_standbyKeyBoundary = BoardReadPico::pmuLastEventId();', sleep)
+        self.assertIn('HalPowerManager::beginStandbyKeyWatch();',
+                      method(read('src/activities/apps/standby/StandbyActivity.cpp'), 'void StandbyActivity::onEnter('))
+        # No light sleep while main.cpp is still judging a side-key press.
+        self.assertIn('!g_sideKeyBusy.load(std::memory_order_relaxed)', hal)
+        self.assertIn('HalPowerManager::setSideKeyBusy(keyDown);', read('src/main.cpp'))
+
     def test_standby_ignores_edge_swipes(self):
         manager = read('src/activities/ActivityManager.cpp')
         self.assertIn('const bool atRest = standbyShowing();', manager)
