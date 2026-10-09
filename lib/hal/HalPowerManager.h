@@ -56,6 +56,13 @@ class HalPowerManager {
   // Enter one light-sleep cycle. GPIO and timer wake sources are removed before returning.
   LightSleepWakeReason lightSleepFor(uint32_t seconds) const;
 
+  // Standby's side-key bookkeeping (Read Pico). A Standby that is just opening forgets
+  // the key events seen so far; main.cpp reports while it is judging a press, and
+  // Standby does not light-sleep in the middle of one.
+  static void beginStandbyKeyWatch();
+  static void setSideKeyBusy(bool busy);
+  static bool sideKeyBusy();
+
   // Get battery percentage (range 0-100)
   uint16_t getBatteryPercentage() const;
 

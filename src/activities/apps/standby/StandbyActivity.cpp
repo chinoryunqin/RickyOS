@@ -140,6 +140,7 @@ void drawFaceDots(const GfxRenderer& renderer, int sw, int sh, uint8_t total, ui
 
 void StandbyActivity::onEnter() {
   Activity::onEnter();
+  HalPowerManager::beginStandbyKeyWatch();
 #ifdef RICKYOS_PRODUCT
   // The calendar clock stands on its side, the keys under the screen to the left: the
   // portrait bottom is the panel's right edge, which LandscapeClockwise puts at x = 0
@@ -494,8 +495,10 @@ bool StandbyActivity::tryLightSleep(const uint32_t idleMs) {
       requestUpdate();
       return true;
     case HalPowerManager::LightSleepWakeReason::Failed:
-      STANDBY_DIAG("wake: failed/expander");
-      lastInputMs_ = millis();
+      // Not the key: the PMU's 30 s battery sample or another expander input. Sleep
+      // again after a short pause instead of treating it as input (StandbyTime.h).
+      STANDBY_DIAG("wake: other, sleep again in %ums", standby_time::kResleepAfterOtherWakeMs);
+      lastInputMs_ = millis() - (standby_time::kLightSleepIdleMs - standby_time::kResleepAfterOtherWakeMs);
       return true;
   }
 #else

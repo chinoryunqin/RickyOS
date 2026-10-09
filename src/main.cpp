@@ -1357,6 +1357,7 @@ void loop() {
     } else if (!keyDown) {
       wakePressPending = false;  // booted without the key held
     }
+    HalPowerManager::setSideKeyBusy(keyDown);
   }
 #endif
   if (!kRickyPowerModel && !x4ProAwaitingClickWindow && powerReleasedSinceWake && millis() >= allowSleepAt &&
