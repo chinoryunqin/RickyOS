@@ -1208,6 +1208,7 @@ void loop() {
     } else if (!keyDown) {
       wakePressPending = false;  // booted without the key held
     }
+    HalPowerManager::setSideKeyBusy(keyDown);
   }
   if (!kRickyPowerModel && !x4ProAwaitingClickWindow && powerReleasedSinceWake && millis() >= allowSleepAt &&
       gpio.isPressed(HalGPIO::BTN_POWER) && gpio.getPowerButtonHeldTime() > SETTINGS.getPowerButtonDuration()) {
