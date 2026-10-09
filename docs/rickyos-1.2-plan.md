@@ -87,6 +87,8 @@ RickyOS 27 是完全重写，1.x 只是过渡版本。所以 1.2 每一项都按
 
 ## 三、视觉提升（1.2 的主体）
 
+**完整的设计规范在 [`docs/design-system.md`](design-system.md)，实现时以它为准。** 本节只讲工程安排和来龙去脉。
+
 ### 3.0 设计包已到（2026-10-09），以它为准
 
 用户交付了完整设计包，原件在 `~/Downloads/RickyOS_视觉方案_交付/`，备份在 `/Users/rick/rickyos/design/1.2/`：
