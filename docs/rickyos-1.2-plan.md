@@ -132,15 +132,15 @@ RickyOS 27 是完全重写，1.x 只是过渡版本。所以 1.2 每一项都按
 
 - 界面文案的字符集：从 `lib/I18n/translations/chinese.yaml` 统计出 842 个汉字，再加上 ASCII 和标点。
 - 粗略估算：16pt Bold 和 14pt Medium 两档合计大约 300 到 450 KB，未压缩，2-bit。现在剩余约 715 KB，放得下，但余量不多。**生成之后要实测大小。**
-- 如果空间不够，可以考虑去掉中英文以外的界面语言。`lib/I18n/translations/` 里有二十多种语言，先确认它们是否都被编进了固件。**这一条要先问用户。**
+- 去掉其他界面语言**省不出空间**：`[rickyos_flash_trim] custom_i18n_builtin_langs = zh_cn` 早就只把中文和英文编进了固件，语言选择里也只有这两项。其他语言只剩翻译源文件、`Language` 枚举里的名字，以及 9 种外文键盘（`KeyboardLayoutSet.h`，设置里的"键盘布局"页）。要清理的话：删掉 33 个 YAML，键盘表只留 `QwertyEn`，删掉 `KeyboardLayoutsActivity` 和它在设置里的入口，再改 `test_rickyos_flash_trim.py` 和 `test/inx_navigation` 里相关的用例。这一步对 flash 没有收益，做之前跟用户确认。
 
-**需要用户确认的冲突：封面书名。**
+**用户 10-09 的答复**（全部以 `docs/design-system.md` 为准）：
 
-- 《三项设计决定》第 1 条要求：封面书名用 Noto Sans CJK Medium，与 headline 同级。
-- 头文件同时规定：动态文本（书名、作者）在该字重的子集里缺字时，整串退回 body Regular。
-- headline 的 Medium 只有界面文案的 842 个字，绝大多数书名都会缺字，所以实际效果几乎全是 Regular。
-- 要真正做到 Medium 书名，就得把 Medium 做成 6474 字的全集，单档就超过 1 MB，放不下。
-- **建议：** 接受"能用 Medium 就用，缺字就整串退回 Regular"。或者再加一个 2000 到 3000 字的常用字 Medium 子集，约 400 KB，但这样粗体档的空间就不够了。**问用户。**
+1. **封面书名：** 按建议做。字都在 Medium 子集里就用 Medium，缺字就整串退回 Regular。不做大的 Medium 全集。
+2. **座右铭：** 就是已有的"给自己的话 / 首页短句"（`STR_RICKY_HOME_PHRASE`），在用户资料里修改。不用新做。
+3. **统计卡里的"目标"：** 用户觉得可以再改一改，具体改法还没定。数据已经有了：`todayReadingMs`、`currentStreakDays`、`goalReadingMs`；每日目标由 `dailyGoalTarget` 设置。先按设计稿做，再请用户看。
+4. **1-bit 规则：** 同意按头文件来，文字在交互帧里变墨，不能消失。
+5. **去掉其他语言：** 用户同意去掉，但见上面字体段落里的说明。固件本来就只编进了中英文，所以去掉省不出空间，剩下的只是源文件和外文键盘。这一点已经告诉用户。
 
 **和固件现状的对照：**
 
