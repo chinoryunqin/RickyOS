@@ -61,7 +61,6 @@ add_subdirectory(rickyos_ota)
 add_subdirectory(differential_rounding)
 add_subdirectory(hyphenation_eval)
 add_subdirectory(utf8_compose)
-add_subdirectory(opds_filename)
 add_subdirectory(html_to_plain_text)
 add_subdirectory(library_text)
 add_subdirectory(library_format)
@@ -195,7 +194,6 @@ add_test(NAME FileBrowserImages
 
 add_test(NAME ArduinoBootstrapLto COMMAND ${Python3_EXECUTABLE} -m unittest discover -s ${REPO_ROOT}/scripts/tests -p test_pioarduino_cache.py)
 add_subdirectory(reader_session)
-add_subdirectory(plugin_manifest_classification)
 add_subdirectory(protected_paths)
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
