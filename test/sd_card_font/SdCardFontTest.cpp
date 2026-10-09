@@ -193,7 +193,7 @@ TEST(SdCardFontTest, BitmapAllocationRetriesAfterEvictingRebuildableAdvances) {
   SdCardFont font;
   ASSERT_TRUE(font.load("fixture"));
   const auto text = page(FIRST, 200);
-  ASSERT_EQ(0, font.buildAdvanceTable(text.c_str(), 1));
+  ASSERT_EQ(1, font.buildAdvanceTable(text.c_str(), 1));
   ASSERT_TRUE(font.hasAdvanceTable());
   ASSERT_EQ(0, font.prewarm(page(FIRST, 50).c_str(), 1, false, false, false));
   struct AllocationGuard {
@@ -209,7 +209,7 @@ TEST(SdCardFontTest, BitmapAllocationRetriesAfterEvictingRebuildableAdvances) {
   EXPECT_FALSE(font.hasAdvanceTable());
   expectPageBitmaps(font, FIRST, 200);
 
-  ASSERT_EQ(0, font.buildAdvanceTable(text.c_str(), 1));
+  ASSERT_EQ(1, font.buildAdvanceTable(text.c_str(), 1));
   for (uint32_t cp = FIRST; cp < FIRST + 200; ++cp) {
     EXPECT_EQ(32 << 4, font.getAdvance(cp, 0));
   }

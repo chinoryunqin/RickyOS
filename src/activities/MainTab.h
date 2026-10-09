@@ -6,6 +6,7 @@
 #include <cstdint>
 
 #include "components/Rect.h"
+#include "components/RickyDesignTokens.h"
 #include "components/UiHighDpiProfile.h"
 
 enum class MainTab : uint8_t { None, Recent, Library, Apps, Settings, Statistics, StorageFiles };
@@ -20,9 +21,8 @@ struct MainTabLayout {
 
 namespace MainTabs {
 inline constexpr int controlGap = UiHighDpiProfile::enabled ? UiHighDpiProfile::controlGap : 6;
-inline constexpr int statusBarHeight = UiHighDpiProfile::enabled ? UiHighDpiProfile::statusHeight : 28;
-// Brand navigation includes a separator, icon, label and breathing room.
-inline constexpr int bottomBarHeight = UiHighDpiProfile::enabled ? 116 : 86;
+inline constexpr int statusBarHeight = ricky::ds::layout::kStatusBarHeight;
+inline constexpr int bottomBarHeight = ricky::ds::layout::kTabBarHeight;
 // Apps sits in the middle: it is opened more often than Storage.
 inline constexpr std::array<MainTab, 5> values = {MainTab::Recent, MainTab::Library, MainTab::Apps,
                                                   MainTab::StorageFiles, MainTab::Settings};

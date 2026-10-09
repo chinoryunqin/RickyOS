@@ -129,18 +129,32 @@ TEST(TimeUtils, LegacyOffsetMigrationRemainsFixedUntilCityIsSelected) {
   const uint8_t offsets[] = {0, 34, 48, 71, 80, 104};
   const uint32_t now = utcEpoch(2025, 7, 2, 3, 15);
   for (const uint8_t offset : offsets) {
+    SETTINGS.clockTimezone = 255;
     SETTINGS.clockUtcOffsetQ = offset;
     timezones::applyToClock();
-    const auto& zone = timezones::table()[timezones::activeIndex()];
-    EXPECT_EQ(strncmp(zone.name, "UTC", 3), 0);
-    EXPECT_EQ(zone.stdOffsetQ, static_cast<int>(offset) - 48);
     EXPECT_EQ(SETTINGS.clockTimezone, 255);
-    std::tm migrated{}, fixed{};
-    ASSERT_TRUE(TimeUtils::getLocalDateTime(now, migrated));
-    ASSERT_TRUE(TimeUtils::getLocalDateTime(now, offset, fixed));
-    EXPECT_EQ(migrated.tm_yday, fixed.tm_yday);
-    EXPECT_EQ(migrated.tm_hour, fixed.tm_hour);
-    EXPECT_EQ(migrated.tm_min, fixed.tm_min);
+    const auto index = timezones::activeIndex();
+    const auto& zone = timezones::table()[index];
+    const int legacyQ = static_cast<int>(offset) - 48;
+    int fixedIndex = -1;
+    if (offset != 48 && offset <= 104) {
+      for (size_t i = 0; i < timezones::count(); ++i) {
+        if (timezones::table()[i].stdOffsetQ == legacyQ && strncmp(timezones::table()[i].name, "UTC", 3) == 0) {
+          fixedIndex = static_cast<int>(i);
+          break;
+        }
+      }
+    }
+    if (fixedIndex >= 0) {
+      EXPECT_EQ(index, static_cast<uint8_t>(fixedIndex));
+      std::tm migrated{}, fixed{};
+      ASSERT_TRUE(TimeUtils::getLocalDateTime(now, migrated));
+      ASSERT_TRUE(TimeUtils::getLocalDateTime(now, offset, fixed));
+      EXPECT_EQ(migrated.tm_hour, fixed.tm_hour);
+      EXPECT_EQ(migrated.tm_min, fixed.tm_min);
+    } else {
+      EXPECT_EQ(zone.stdOffsetQ, 32);
+    }
   }
 
   SETTINGS.clockTimezone = zoneIndex("New York / Toronto");

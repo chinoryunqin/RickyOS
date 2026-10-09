@@ -19,10 +19,11 @@ prelude = r'''
 #include <vector>
 #include <cstdio>
 #define LOG_ERR(...) ((void)0)
+inline void appendRickyErrorLog(const char*, int, const char*, unsigned) {}
 struct { int embeddedStyle = 1; } SETTINGS;
 struct { unsigned getFreeHeap(){return 65536;} unsigned getMinFreeHeap(){return 65536;} unsigned getMaxAllocHeap(){return 32768;} } ESP;
 struct Css { int clears=0; void clear(){++clears;} };
-struct Epub { Css css; Css* getCssParser(){return &css;} };
+struct Epub { Css css; Css* getCssParser(){return &css;} const char* getPath() const { return "book.epub"; } };
 struct Cache { int releases=0; void releaseSdFontCaches(){++releases;} };
 struct Renderer { Cache cache; Cache* getFontCacheManager(){return &cache;} };
 struct Section {
@@ -33,6 +34,7 @@ struct Section {
 };
 struct EpubReaderActivity {
   int failedBuildSpine_=-1, currentSpineIndex=5, renderedSpineIndex_=5, cachedSpineIndex=5, nextPageNumber=7;
+  Section::BuildError failedBuildError_=Section::BuildError::None;
   bool stylesDisabledForSession_=false, pendingPercentJump=false, buildHeapPaused=true, buildPopupPending=true;
   bool automaticPageTurnActive=true;
   float pendingSpineProgress=0;

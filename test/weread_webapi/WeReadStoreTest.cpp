@@ -476,9 +476,11 @@ TEST_F(WeReadStoreTest, FindsOnlyTheExactGeneratedBookPath) {
   ASSERT_TRUE(shelf.finish());
 
   char bookId[64] = {};
-  EXPECT_TRUE(WeReadStore::findBookIdForPath("/WeRead/Test Book-book-1.epub", bookId, sizeof(bookId)));
+  const std::string exact = std::string(WeReadStore::kExportDir) + "/Test Book-book-1.epub";
+  const std::string renamed = std::string(WeReadStore::kExportDir) + "/Renamed-book-1.epub";
+  EXPECT_TRUE(WeReadStore::findBookIdForPath(exact.c_str(), bookId, sizeof(bookId)));
   EXPECT_STREQ(bookId, "book-1");
-  EXPECT_FALSE(WeReadStore::findBookIdForPath("/WeRead/Renamed-book-1.epub", bookId, sizeof(bookId)));
+  EXPECT_FALSE(WeReadStore::findBookIdForPath(renamed.c_str(), bookId, sizeof(bookId)));
 }
 
 TEST_F(WeReadStoreTest, SortsEmptySingleAndTwentyBookShelves) {
@@ -1020,8 +1022,8 @@ TEST_F(WeReadStoreTest, ClearsSessionAndShelfButPreservesDownloadedContent) {
   ASSERT_TRUE(Storage.writeFile("/.crosspoint/weread/book-1/toc.bin", "toc"));
   ASSERT_TRUE(Storage.writeFile("/.crosspoint/weread/book-1/chapters/000000.xhtml", "chapter"));
   const std::string bookPath = WeReadStore::finalBookPath(record);
-  EXPECT_EQ(bookPath, "/WeRead/Test Book-book-1.epub");
-  ASSERT_TRUE(Storage.ensureDirectoryExists("/WeRead"));
+  EXPECT_EQ(bookPath, std::string(WeReadStore::kExportDir) + "/Test Book-book-1.epub");
+  ASSERT_TRUE(Storage.ensureDirectoryExists(WeReadStore::kExportDir));
   ASSERT_TRUE(Storage.writeFile(bookPath.c_str(), "epub"));
 
   ASSERT_TRUE(WeReadStore::clearSession());
@@ -1061,8 +1063,9 @@ TEST_F(WeReadStoreTest, ClearsWeReadCacheButPreservesAccountAndDownloadedBooks) 
   ASSERT_TRUE(Storage.ensureDirectoryExists("/.crosspoint/weread/browse-cache/book-1/slot0"));
   ASSERT_TRUE(Storage.writeFile("/.crosspoint/weread/browse-cache/book-1/slot0/page.txt", "review"));
   ASSERT_TRUE(Storage.writeFile("/.crosspoint/weread/detail.bin.part", "partial"));
-  ASSERT_TRUE(Storage.ensureDirectoryExists("/WeRead"));
-  ASSERT_TRUE(Storage.writeFile("/WeRead/Cached Book.epub", "epub"));
+  const std::string cachedBook = std::string(WeReadStore::kExportDir) + "/Cached Book.epub";
+  ASSERT_TRUE(Storage.ensureDirectoryExists(WeReadStore::kExportDir));
+  ASSERT_TRUE(Storage.writeFile(cachedBook.c_str(), "epub"));
   ASSERT_TRUE(Storage.ensureDirectoryExists("/.crosspoint/epub_123"));
   ASSERT_TRUE(Storage.writeFile("/.crosspoint/epub_123/progress.bin", "progress"));
 
@@ -1075,7 +1078,7 @@ TEST_F(WeReadStoreTest, ClearsWeReadCacheButPreservesAccountAndDownloadedBooks) 
   EXPECT_FALSE(Storage.exists("/.crosspoint/weread/book-1"));
   EXPECT_FALSE(Storage.exists("/.crosspoint/weread/browse-cache"));
   EXPECT_FALSE(Storage.exists("/.crosspoint/weread/detail.bin.part"));
-  EXPECT_TRUE(Storage.exists("/WeRead/Cached Book.epub"));
+  EXPECT_TRUE(Storage.exists(cachedBook.c_str()));
   EXPECT_TRUE(Storage.exists("/.crosspoint/epub_123/progress.bin"));
   EXPECT_TRUE(WeReadStore::clearCache());
 }

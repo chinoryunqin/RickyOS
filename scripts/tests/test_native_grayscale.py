@@ -59,6 +59,11 @@ def main():
         bitmap_sleep = sleep[sleep.index('void SleepActivity::renderBitmapSleepScreen('):sleep.index('bool SleepActivity::renderSleepOverlayFile(')]
         probe = """#include <cmath>
     #include <Logging.h>
+    #include "components/Rect.h"
+    inline bool marksPowerOff() { return false; }
+    struct RickyGuiStub {
+      static Rect drawRickyStandbyIndicator(const GfxRenderer&, bool = false) { return Rect{0, 0, 0, 0}; }
+    } GUI;
     enum class SleepRecentKind { Standard };
     inline bool selectRandomSleepFile(const char*, SleepRecentKind, std::string&) { return false; }
     class SleepProbe {

@@ -45,14 +45,14 @@ constexpr bool isSolid(const InxAppIcons::Icon& icon, const uint8_t value) {
 }  // namespace
 
 TEST(InxNavigation, WrapsAcrossFiveTabs) {
-  EXPECT_EQ(MainTabs::adjacent(MainTab::Recent, -1), MainTab::Statistics);
-  EXPECT_EQ(MainTabs::adjacent(MainTab::Statistics, 1), MainTab::Recent);
+  EXPECT_EQ(MainTabs::adjacent(MainTab::Recent, -1), MainTab::Settings);
+  EXPECT_EQ(MainTabs::adjacent(MainTab::Settings, 1), MainTab::Recent);
   EXPECT_EQ(MainTabs::adjacent(MainTab::Library, 1), MainTab::Apps);
   EXPECT_EQ(MainTabs::fromX(50, 500), MainTab::Recent);
   EXPECT_EQ(MainTabs::fromX(150, 500), MainTab::Library);
   EXPECT_EQ(MainTabs::fromX(250, 500), MainTab::Apps);
-  EXPECT_EQ(MainTabs::fromX(350, 500), MainTab::Settings);
-  EXPECT_EQ(MainTabs::fromX(450, 500), MainTab::Statistics);
+  EXPECT_EQ(MainTabs::fromX(350, 500), MainTab::StorageFiles);
+  EXPECT_EQ(MainTabs::fromX(450, 500), MainTab::Settings);
   EXPECT_EQ(MainTabs::fromX(500, 500), MainTab::None);
   EXPECT_EQ(MainTabs::backTarget(MainTab::Apps), MainTab::Recent);
   EXPECT_EQ(MainTabs::backTarget(MainTab::Recent), MainTab::None);
@@ -72,10 +72,10 @@ TEST(InxNavigation, PlacesTabsWithoutOverlappingContent) {
   EXPECT_EQ(top.statusBar.height, 0);
 
   constexpr MainTabLayout bottom = MainTabs::layout(safe, 0, MainTabs::bottomBarHeight, true);
-  EXPECT_EQ(bottom.tabBar.y, 704);
-  EXPECT_EQ(bottom.tabBar.height, 56);
+  EXPECT_EQ(bottom.tabBar.y, 760 - MainTabs::bottomBarHeight);
+  EXPECT_EQ(bottom.tabBar.height, MainTabs::bottomBarHeight);
   EXPECT_EQ(bottom.content.y, 0);
-  EXPECT_EQ(bottom.content.y + bottom.content.height, 704);
+  EXPECT_EQ(bottom.content.y + bottom.content.height, 760 - MainTabs::bottomBarHeight);
   EXPECT_EQ(bottom.statusBar.height, 0);
 
   constexpr MainTabLayout touchBottom = MainTabs::layout(Rect{0, 0, 800, 480}, 5, 45, true);
@@ -119,16 +119,18 @@ TEST(InxNavigation, ReservesStatusAndContentGapsInsideSafeArea) {
     const Rect safe{safeLeft, safeTop, safeWidth, height - safeTop - safeBottom - hints};
     const auto layout = MainTabs::layout(safe, 0, MainTabs::bottomBarHeight, true, MainTabs::statusBarHeight);
     EXPECT_EQ(layout.statusBar.y, safeTop);
-    EXPECT_EQ(layout.statusBar.height, 28);
-    EXPECT_EQ(layout.tabBar.height, 56);
-    EXPECT_EQ(layout.content.y - (layout.statusBar.y + layout.statusBar.height), 6);
-    EXPECT_EQ(layout.tabBar.y - (layout.content.y + layout.content.height), 6);
+    EXPECT_EQ(layout.statusBar.height, MainTabs::statusBarHeight);
+    EXPECT_EQ(layout.tabBar.height, MainTabs::bottomBarHeight);
+    EXPECT_EQ(layout.content.y - (layout.statusBar.y + layout.statusBar.height), MainTabs::controlGap);
+    EXPECT_EQ(layout.tabBar.y - (layout.content.y + layout.content.height), MainTabs::controlGap);
     EXPECT_EQ(layout.tabBar.y + layout.tabBar.height + hints, height - safeBottom);
     EXPECT_GT(layout.content.height, 0);
     const auto previous = MainTabs::layout(safe, 0, 66, true, 44);
-    EXPECT_EQ(layout.content.height - previous.content.height, 26);
+    const int gap = MainTabs::controlGap;
+    const int productConsumed = MainTabs::bottomBarHeight + MainTabs::statusBarHeight + 2 * gap;
+    EXPECT_EQ(layout.content.height - previous.content.height, (66 + 44 + 2 * gap) - productConsumed);
     const auto compact = MainTabs::layout(safe, 0, 58, true, 32);
-    EXPECT_EQ(layout.content.height - compact.content.height, 6);
+    EXPECT_EQ(layout.content.height - compact.content.height, (58 + 32 + 2 * gap) - productConsumed);
     for (const Rect& rect : {layout.tabBar, layout.statusBar, layout.content}) {
       EXPECT_EQ(rect.x, safeLeft);
       EXPECT_EQ(rect.width, safeWidth);
@@ -141,11 +143,14 @@ TEST(InxNavigation, PreservesSafeOriginAndTopPaddingInBothPositions) {
   for (const bool bottom : {false, true}) {
     const auto layout =
         MainTabs::layout(safe, 5, bottom ? MainTabs::bottomBarHeight : 66, bottom, MainTabs::statusBarHeight);
-    EXPECT_EQ(layout.tabBar.y, bottom ? 741 : 14);
+    const int tabHeight = bottom ? MainTabs::bottomBarHeight : 66;
+    const int status = bottom ? MainTabs::statusBarHeight : 0;
+    const int gap = status > 0 ? MainTabs::controlGap : 0;
+    EXPECT_EQ(layout.tabBar.y, bottom ? 9 + 788 - tabHeight : 14);
     EXPECT_EQ(layout.statusBar.y, 14);
-    EXPECT_EQ(layout.statusBar.height, bottom ? 28 : 0);
-    EXPECT_EQ(layout.content.y, bottom ? 48 : 80);
-    EXPECT_EQ(layout.content.y + layout.content.height, bottom ? 735 : 797);
+    EXPECT_EQ(layout.statusBar.height, status);
+    EXPECT_EQ(layout.content.y, bottom ? 14 + status + gap : 14 + tabHeight);
+    EXPECT_EQ(layout.content.y + layout.content.height, bottom ? 9 + 788 - tabHeight - gap : 797);
     for (const Rect& rect : {layout.tabBar, layout.statusBar, layout.content}) {
       EXPECT_EQ(rect.x, safe.x);
       EXPECT_EQ(rect.width, safe.width);
@@ -210,16 +215,16 @@ TEST(InxNavigation, HidesOnlyInxTouchFocusAndKeepsActiveFeedback) {
 }
 
 TEST(InxNavigation, KeepsLegacyListMetricsIndependentFromLyra) {
-  EXPECT_EQ(InxMetrics::values.listRowHeight, 66);
-  EXPECT_EQ(InxMetrics::values.listWithSubtitleRowHeight, 66);
+  EXPECT_EQ(InxMetrics::values.listRowHeight, ricky::ds::layout::kRowHeight);
+  EXPECT_EQ(InxMetrics::values.listWithSubtitleRowHeight, ricky::ds::layout::kRowHeightTwoLine);
   EXPECT_EQ(InxMetrics::values.listRowGap, 0);
-  EXPECT_EQ(InxMetrics::values.listRowRadius, 0);
+  EXPECT_EQ(InxMetrics::values.listRowRadius, ricky::ds::radius::kControl);
   EXPECT_EQ(InxMetrics::values.listInset, 0);
-  EXPECT_EQ(InxMetrics::values.listSidePadding, 20);
+  EXPECT_EQ(InxMetrics::values.listSidePadding, ricky::ds::space::kPageMargin);
   EXPECT_EQ(InxMetrics::values.listSelectionStyle, 0);
   EXPECT_EQ(InxMetrics::values.listScrollWidth, 6);
-  EXPECT_EQ(InxMetrics::values.listSeparatorStyle, 2);
-  EXPECT_EQ(InxMetrics::values.listValueMaxWidth, 200);
+  EXPECT_EQ(InxMetrics::values.listSeparatorStyle, 0);
+  EXPECT_EQ(InxMetrics::values.listValueMaxWidth, 260);
   EXPECT_TRUE(InxMetrics::values.listSelectionCoversScrollReservation);
 }
 
@@ -237,10 +242,10 @@ TEST(InxNavigation, KeepsRecentPagesInsideBounds) {
 }
 
 TEST(InxNavigation, ReservesRecentFooterWithOrWithoutButtonHints) {
-  EXPECT_EQ(InxRecentGeometry::footerReservedHeight, 40);
-  EXPECT_EQ(InxRecentGeometry::contentHeight(480, 66, 0), 374);
-  EXPECT_EQ(InxRecentGeometry::contentHeight(480, 66, 40), 374);
-  EXPECT_EQ(InxRecentGeometry::contentHeight(480, 66, 56), 358);
+  EXPECT_EQ(InxRecentGeometry::footerReservedHeight, UiHighDpiProfile::statusHeight);
+  EXPECT_EQ(InxRecentGeometry::contentHeight(480, 66, 0), 480 - 66 - UiHighDpiProfile::statusHeight);
+  EXPECT_EQ(InxRecentGeometry::contentHeight(480, 66, 40), 480 - 66 - UiHighDpiProfile::statusHeight);
+  EXPECT_EQ(InxRecentGeometry::contentHeight(480, 66, 56), 480 - 66 - 56);
   EXPECT_EQ(InxRecentGeometry::contentHeight(80, 60, 0), 0);
 }
 
@@ -255,11 +260,12 @@ TEST(InxNavigation, PositionsRecentHeaderContentAndBatteryInsideSafeArea) {
       EXPECT_EQ(header.x, safe.x);
       EXPECT_EQ(header.y, safe.y);
       EXPECT_EQ(header.width, safe.width);
-      EXPECT_EQ(header.height, 66);
+      EXPECT_EQ(header.height, metrics.headerHeight);
       EXPECT_EQ(content.x, header.x);
-      EXPECT_EQ(content.y, header.y + header.height);
+      EXPECT_EQ(content.y, header.y + metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing);
       EXPECT_EQ(content.width, header.width);
-      EXPECT_EQ(content.y + content.height, safe.y + safe.height - std::max(40, hints));
+      EXPECT_EQ(content.y + content.height,
+                safe.y + safe.height - std::max(InxRecentGeometry::footerReservedHeight, hints));
       EXPECT_EQ(battery.x + battery.width, safe.x + safe.width - 12);
       EXPECT_EQ(battery.y, safe.y + safe.height - 30);
       EXPECT_GE(battery.y, content.y + content.height);
@@ -278,11 +284,11 @@ TEST(InxNavigation, PreservesRecentGeometryWithoutBezelInsets) {
   EXPECT_EQ(header.x, 0);
   EXPECT_EQ(header.y, 0);
   EXPECT_EQ(header.width, 480);
-  EXPECT_EQ(header.height, 66);
+  EXPECT_EQ(header.height, metrics.headerHeight);
   EXPECT_EQ(content.x, 0);
-  EXPECT_EQ(content.y, 66);
+  EXPECT_EQ(content.y, metrics.headerHeight + metrics.verticalSpacing);
   EXPECT_EQ(content.width, 480);
-  EXPECT_EQ(content.height, 694);
+  EXPECT_EQ(content.height, 800 - metrics.headerHeight - metrics.verticalSpacing - InxRecentGeometry::footerReservedHeight);
   EXPECT_EQ(battery.x, 453);
   EXPECT_EQ(battery.y, 770);
   EXPECT_EQ(battery.width, 15);
@@ -372,8 +378,12 @@ TEST(InxNavigation, ValidatesItemLayoutsAndGridBounds) {
   EXPECT_EQ(InxGridGeometry::pageStart(12, 13), 12);
   EXPECT_EQ(InxGridGeometry::pageStart(14, 15), 12);
 
-  EXPECT_EQ(InxGridGeometry::indexFromPoint(4, 4, 300, 400, 12, 15), 12);
-  EXPECT_EQ(InxGridGeometry::indexFromPoint(295, 95, 300, 400, 12, 15), 14);
+  const Rect firstCell = InxGridGeometry::cellBounds(0, 300, 400);
+  const Rect thirdCell = InxGridGeometry::cellBounds(2, 300, 400);
+  EXPECT_EQ(InxGridGeometry::indexFromPoint(firstCell.x, firstCell.y, 300, 400, 12, 15), 12);
+  EXPECT_EQ(InxGridGeometry::indexFromPoint(thirdCell.x + thirdCell.width - 1, thirdCell.y + thirdCell.height - 1, 300,
+                                            400, 12, 15),
+            14);
   EXPECT_EQ(InxGridGeometry::indexFromPoint(99, 50, 300, 400, 0, 12), -1);
   EXPECT_EQ(InxGridGeometry::indexFromPoint(50, 99, 300, 400, 0, 12), -1);
   EXPECT_EQ(InxGridGeometry::indexFromPoint(0, 100, 300, 400, 12, 15), -1);
@@ -427,8 +437,8 @@ TEST(InxNavigation, KeepsOptionPopupOnFiveCenteredRows) {
   EXPECT_EQ(InxOptionGeometry::start(0, 8), 0);
   EXPECT_EQ(InxOptionGeometry::start(3, 8), 1);
   EXPECT_EQ(InxOptionGeometry::start(7, 8), 3);
-  EXPECT_EQ(InxOptionGeometry::headerHeight, 62);
-  EXPECT_EQ(InxOptionGeometry::rowHeight, 62);
+  EXPECT_EQ(InxOptionGeometry::headerHeight, UiHighDpiProfile::buttonHeight);
+  EXPECT_EQ(InxOptionGeometry::rowHeight, UiHighDpiProfile::buttonHeight);
 }
 
 TEST(InxNavigation, RoutesPopupReleaseAgainstPublishedRotatedHitRects) {
@@ -553,17 +563,18 @@ TEST(InxNavigation, KeepsStatisticsViewsInsideBounds) {
 
 TEST(InxNavigation, PaginatesButtonMenusAndKeepsIconIdsStable) {
   EXPECT_EQ(InxMenuGeometry::pageItems(0), 1);
-  EXPECT_EQ(InxMenuGeometry::pageItems(65), 1);
-  EXPECT_EQ(InxMenuGeometry::pageItems(132), 2);
-  EXPECT_EQ(InxMenuGeometry::pageStart(0, 5, 132), 0);
-  EXPECT_EQ(InxMenuGeometry::pageStart(2, 5, 132), 2);
-  EXPECT_EQ(InxMenuGeometry::pageStart(9, 5, 132), 4);
+  EXPECT_EQ(InxMenuGeometry::pageItems(InxMenuGeometry::rowHeight - 1), 1);
+  EXPECT_EQ(InxMenuGeometry::pageItems(InxMenuGeometry::rowHeight * 2), 2);
+  EXPECT_EQ(InxMenuGeometry::pageStart(0, 5, InxMenuGeometry::rowHeight * 2), 0);
+  EXPECT_EQ(InxMenuGeometry::pageStart(2, 5, InxMenuGeometry::rowHeight * 2), 2);
+  EXPECT_EQ(InxMenuGeometry::pageStart(9, 5, InxMenuGeometry::rowHeight), 4);
 
   EXPECT_EQ(static_cast<int>(UIIcon::ReadingHeatmap), static_cast<int>(UIIcon::AirPage) + 1);
   EXPECT_EQ(static_cast<int>(UIIcon::ReadingProfile), static_cast<int>(UIIcon::ReadingHeatmap) + 1);
   EXPECT_EQ(static_cast<int>(UIIcon::Achievements), static_cast<int>(UIIcon::ReadingProfile) + 1);
   EXPECT_EQ(static_cast<int>(UIIcon::Calculator), static_cast<int>(UIIcon::Achievements) + 1);
   EXPECT_EQ(static_cast<int>(UIIcon::Woodfish), static_cast<int>(UIIcon::Calculator) + 1);
+  EXPECT_EQ(InxAppIcons::get(UIIcon::Woodfish), nullptr);
 }
 
 TEST(InxNavigation, KeepsAppIconAssetsValidAndDistinct) {
@@ -587,22 +598,13 @@ TEST(InxNavigation, KeepsAppIconAssetsValidAndDistinct) {
   EXPECT_EQ(InxAppIcons::get(UIIcon::Transfer), InxAppIcons::Transfer.data());
   EXPECT_EQ(InxAppIcons::get(UIIcon::Opds), InxAppIcons::Opds.data());
   EXPECT_EQ(InxAppIcons::get(UIIcon::ReadingStats), InxAppIcons::ReadingStats.data());
-  EXPECT_EQ(InxAppIcons::get(UIIcon::Sudoku), InxAppIcons::Sudoku.data());
   EXPECT_EQ(InxAppIcons::get(UIIcon::Gomoku), InxAppIcons::Gomoku.data());
-  EXPECT_EQ(InxAppIcons::get(UIIcon::Sokoban), InxAppIcons::Sokoban.data());
-#ifdef ENABLE_CHINESE_VERSION
-  EXPECT_EQ(InxAppIcons::get(UIIcon::ChineseChess), InxAppIcons::ChineseChess.data());
   EXPECT_EQ(InxAppIcons::get(UIIcon::WeRead), InxAppIcons::WeRead.data());
-#endif
-  EXPECT_EQ(InxAppIcons::get(UIIcon::Minesweeper), InxAppIcons::Minesweeper.data());
-  EXPECT_EQ(InxAppIcons::get(UIIcon::Avatar), InxAppIcons::Avatar.data());
   EXPECT_EQ(InxAppIcons::get(UIIcon::Standby), InxAppIcons::Standby.data());
-  EXPECT_EQ(InxAppIcons::get(UIIcon::Game2048), InxAppIcons::Game2048.data());
-  EXPECT_EQ(InxAppIcons::get(UIIcon::Buddy), InxAppIcons::Buddy.data());
-  EXPECT_EQ(InxAppIcons::get(UIIcon::PixelSwitch), InxAppIcons::PixelSwitch.data());
   EXPECT_EQ(InxAppIcons::get(UIIcon::AirPage), InxAppIcons::AirPage.data());
   EXPECT_EQ(InxAppIcons::get(UIIcon::Calculator), InxAppIcons::Calculator.data());
-  EXPECT_EQ(InxAppIcons::get(UIIcon::Woodfish), InxAppIcons::Woodfish.data());
+  EXPECT_EQ(InxAppIcons::get(UIIcon::Sudoku), nullptr);
+  EXPECT_EQ(InxAppIcons::get(UIIcon::Woodfish), nullptr);
 }
 
 TEST(InxNavigation, KeepsSubpageContentInsideChrome) {

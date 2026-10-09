@@ -137,6 +137,7 @@ bool HttpDownloader::fetchVerifiedUrl(const std::string& url, const DataCallback
     }
     return true;
   }
+  if (url == ricky_ota::NOTES_URL) return true;
   CHECK(url == std::string(ricky_ota::SITE_BASE) + "firmware/RickyOS-test.bin");
   for (size_t i = 0; i < image.size(); i += 7) {
     if (cutDownload && i > 1000) return false;

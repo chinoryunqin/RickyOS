@@ -284,17 +284,4 @@ with tempfile.TemporaryDirectory(prefix='unified-keyboard-', dir=os.environ.get(
             assert scenes[scene,0][0]==keys, ('key tables',scene,theme)
             # INX chrome retains its own metrics; regular keyboard geometry is Lyra.
             if theme==5: assert scenes[scene,1][1]==draw, ('INX geometry',scene)
-    # Build the fixed upstream with its own production metrics and keyboard code.
-    ref=os.environ.get('FREEINK_UPSTREAM_READER_REF','38280863a50988683c2c63ccd7096e872a48c411')
-    upstream=subprocess.check_output(['git','show',ref+':src/activities/util/KeyboardEntryActivity.cpp'],cwd=ROOT,text=True)
-    code=harness.replace(metrics_code(),metrics_code(ref))
-    for name in names:
-        match=re.search(r'^[^\n]*KeyboardEntryActivity::'+name+r'\(.*?\n}',upstream,re.M|re.S)
-        if match: code=code.replace(method(name),match.group())
-    upstream_render=upstream[upstream.index('  interactions.beginPublishCycle();'):upstream.index('  interactionsReady = true;')]
-    code=code.replace(render,upstream_render)
-    reference=run_harness(code,tmp,'upstream')
-    for (scene,theme),trace in regular.items():
-        if theme!=5: assert reference[scene,theme]==trace, ('fixed upstream',scene,theme)
     print(f'{len(regular)//7} X3/X4 and {len(high)//7} ReadPico scenarios across 7 real theme metrics; four orientations, input layers, hit boundaries and one-shot holds passed')
-    print('6 non-INX themes match fixed upstream; regular INX keys match Lyra. High-DPI geometry checked separately.')

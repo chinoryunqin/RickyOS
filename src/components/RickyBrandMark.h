@@ -51,6 +51,31 @@ void drawBadge(const Renderer& renderer, const Rect box, const int threshold = 7
   }
 }
 
+// The dog sits on the right of the badge. Draw that side so a card can cover
+// the lower half and leave the head peeking out.
+template <typename Renderer>
+void drawDogPeek(const Renderer& renderer, const Rect box) {
+  constexpr int dogX = badgeX + badgeSize * 52 / 100;
+  constexpr int dogW = badgeX + badgeSize - dogX;
+  if (box.width <= 0 || box.height <= 0 || dogW <= 0) return;
+  for (int y = 0; y < box.height; ++y) {
+    const int y0 = badgeY + y * badgeSize / box.height;
+    const int y1 = std::max(y0 + 1, badgeY + (y + 1) * badgeSize / box.height);
+    for (int x = 0; x < box.width; ++x) {
+      const int x0 = dogX + x * dogW / box.width;
+      const int x1 = std::max(x0 + 1, dogX + (x + 1) * dogW / box.width);
+      int ink = 0, samples = 0;
+      for (int sy = y0; sy < y1 && sy < RickyLogoAsset::wordmarkTop; ++sy) {
+        for (int sx = x0; sx < x1 && sx < RickyLogoAsset::width; ++sx) {
+          ++samples;
+          ink += pixel(sx, sy, 3) ? 1 : 0;
+        }
+      }
+      if (samples > 0 && ink * 16 >= 7 * samples) renderer.drawPixel(box.x + x, box.y + y, true);
+    }
+  }
+}
+
 template <typename Renderer>
 void draw(const Renderer& renderer, const Rect box, const uint8_t phase) {
   const Rect mark = fit(box);

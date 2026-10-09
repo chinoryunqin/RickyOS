@@ -1,5 +1,6 @@
 #pragma once
 
+#include "components/RickyDesignTokens.h"
 #include "components/themes/lyra/LyraTheme.h"
 
 namespace InxMetrics {
@@ -109,6 +110,23 @@ constexpr ThemeMetrics makeValues() {
   metrics.scrollBarWidth = 6;
   metrics.scrollBarRightOffset = 2;
   UiHighDpiProfile::apply(metrics);
+  metrics.contentSidePadding = ricky::ds::space::kPageMargin;
+  metrics.headerSidePadding = ricky::ds::space::kPageMargin;
+  metrics.listSidePadding = ricky::ds::space::kPageMargin;
+  metrics.headerHeight = ricky::ds::layout::kPageHeaderHeight;
+  metrics.menuRowHeight = ricky::ds::layout::kRowHeight;
+  metrics.listRowHeight = ricky::ds::layout::kRowHeight;
+  metrics.listWithSubtitleRowHeight = ricky::ds::layout::kRowHeightTwoLine;
+  metrics.tabBarHeight = ricky::ds::layout::kTabBarHeight;
+  metrics.keyboardKeyHeight = ricky::ds::layout::kButtonHeight;
+  metrics.listRowRadius = ricky::ds::radius::kControl;
+  metrics.controlRadius = ricky::ds::radius::kControl;
+  metrics.optionPopupSelectionRadius = ricky::ds::radius::kControl;
+  metrics.popupCornerRadius = ricky::ds::radius::kContainer;
+  metrics.sheetRadius = ricky::ds::radius::kContainer;
+  metrics.popupFrameThickness = ricky::ds::stroke::kEmphasis;
+  metrics.progressBarHeight = ricky::ds::layout::kProgressHeight;
+  metrics.listSeparatorStyle = 0;
   return metrics;
 }
 inline constexpr ThemeMetrics values = makeValues();

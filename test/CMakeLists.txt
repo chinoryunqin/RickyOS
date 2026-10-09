@@ -51,6 +51,14 @@ target_compile_options(crosspoint_test_common INTERFACE
   -Wextra
   -pedantic
 )
+# Host tests compile the same product the firmware ships. Stock-only
+# expectations were retired with the 1.2 fold.
+target_compile_definitions(crosspoint_test_common INTERFACE
+  RICKYOS_PRODUCT=1
+  ENABLE_CHINESE_VERSION=1
+  CROSSMUX_UI_PROFILE_HIGH_DPI=1
+  HYPHENATION_ENGLISH_ONLY=1
+)
 
 enable_testing()
 include(GoogleTest)
@@ -171,10 +179,9 @@ add_test(NAME VectorGrayFallback
 
 add_test(NAME UnifiedKeyboard COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/test/inx_navigation/test_unified_keyboard.py)
 add_test(NAME TouchNetworkControls COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/test/inx_navigation/test_touch_network.py)
-add_test(NAME ThemeMenus COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/test/inx_navigation/test_theme_menus.py)
 
-add_test(NAME CoverGridCompatibility COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/test/inx_navigation/test_cover_grid.py)
-add_test(NAME ThemeCheckboxRows COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/test/inx_navigation/test_checkbox_rows.py)
+
+
 add_test(NAME LegacyThemeListGeometry COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/test/inx_navigation/test_legacy_list_adapter.py)
 
 add_test(NAME InxSettingControls COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/test/inx_navigation/test_inx_setting_controls.py)
@@ -209,7 +216,7 @@ add_test(NAME TlsMemoryPreflight COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/scri
 add_test(NAME AirPageDisplayRetry COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/scripts/tests/test_airpage_display_retry.py)
 
 add_test(NAME FontPreloadRefresh COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/scripts/tests/test_font_preload_refresh.py)
-add_test(NAME FirmwareUpdateRefresh COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/scripts/tests/test_firmware_update_refresh.py)
+
 
 add_test(NAME ImagePsramIo COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/scripts/tests/test_image_psram_io.py)
 

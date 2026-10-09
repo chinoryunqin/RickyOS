@@ -1,7 +1,8 @@
 // =============================================================================
 //  RickyDesignTokens.h — RickyOS 设计规范 (docs/design-system.md) 的 C++20 实现
 //
-//  *** DRAFT / 草案 — 未接入构建，未在真机验证。***
+//  Wired into InxTheme metrics and the main tab bar. Screens still draw
+//  their own geometry; device acceptance is still open.
 //  目标位置：src/components/RickyDesignTokens.h
 //  目标：取代散落在 UiHighDpiProfile.h / InxTheme.h / BaseTheme.h /
 //        UIThemeTokens.h / RickyPageUi.h 与各页面 constexpr 中的样式常量。

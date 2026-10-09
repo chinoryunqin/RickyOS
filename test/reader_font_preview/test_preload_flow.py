@@ -29,6 +29,7 @@ def enum(name):
 
 
 harness = r'''
+#define LOG_DBG(...) ((void)0)
 #include <atomic>
 #include <cassert>
 #include <cstdint>
@@ -156,21 +157,9 @@ int main() {
   check = Result::TooLarge;
   TextSettingsActivity large;
   large.exitAfterFinalFont(Exit::Previous);
-  assert(!large.optionPopup_.active && large.preloads == 0 && !large.exited);
-  now += fontpreload::NOTICE_DURATION_MS - 1;
-  large.handleCustomInput();
-  assert(!large.exited);
-  ++now;
-  large.mappedInput.held = true;
-  large.handleCustomInput();
-  assert(!large.exited);
-  large.mappedInput.held = false;
-  large.mappedInput.touch = true;
-  large.handleCustomInput();
-  assert(!large.exited);
-  large.mappedInput.touch = false;
-  large.handleCustomInput();
-  assert(large.exited && SETTINGS.sdFontFlashPreload == 0);
+  // Too large keeps the SD backend and leaves immediately; it does not dwell on a notice.
+  assert(large.exited && large.preloads == 0 && !large.optionPopup_.active);
+  assert(SETTINGS.sdFontFlashPreload == 0);
 
   check = Result::AlreadyCached;
   TextSettingsActivity cached;

@@ -226,6 +226,7 @@ void runLanguageEval(const char* langName, const char* primaryTag, const char* r
 }  // namespace
 
 TEST(HyphenationEval, English) { runLanguageEval("english", "en", "english_hyphenation_tests.txt", 98.10); }
+#ifndef HYPHENATION_ENGLISH_ONLY
 TEST(HyphenationEval, French) { runLanguageEval("french", "fr", "french_hyphenation_tests.txt", 99.00); }
 TEST(HyphenationEval, German) { runLanguageEval("german", "de", "german_hyphenation_tests.txt", 96.73); }
 TEST(HyphenationEval, Russian) { runLanguageEval("russian", "ru", "russian_hyphenation_tests.txt", 96.22); }
@@ -233,6 +234,7 @@ TEST(HyphenationEval, Spanish) { runLanguageEval("spanish", "es", "spanish_hyphe
 TEST(HyphenationEval, Italian) { runLanguageEval("italian", "it", "italian_hyphenation_tests.txt", 98.99); }
 TEST(HyphenationEval, Polish) { runLanguageEval("polish", "pl", "polish_hyphenation_tests.txt", 98.92); }
 TEST(HyphenationEval, Swedish) { runLanguageEval("swedish", "sv", "swedish_hyphenation_tests.txt", 94.01); }
+#endif
 
 TEST(HyphenationFallback, OversizedUrlWrapsWithoutChangingText) {
   Hyphenator::setPreferredLanguage("en");
@@ -262,11 +264,13 @@ TEST(HyphenationFallback, OversizedUrlWrapsWithoutChangingText) {
 }
 
 TEST(HyphenationFallback, LinguisticBreaksRemainAvailableBeforeEmergencyFallback) {
-  Hyphenator::setPreferredLanguage("de");
-  const auto legalBreaks = Hyphenator::breakOffsets("Quadratkilometer", false);
+  Hyphenator::setPreferredLanguage("en");
+  const auto legalBreaks = Hyphenator::breakOffsets("information", false);
 
   ASSERT_FALSE(legalBreaks.empty());
   EXPECT_TRUE(std::any_of(legalBreaks.begin(), legalBreaks.end(),
                           [](const auto& info) { return info.requiresInsertedHyphen; }));
 }
+#ifndef HYPHENATION_ENGLISH_ONLY
 TEST(HyphenationEval, Portuguese) { runLanguageEval("portuguese", "pt", "portuguese_hyphenation_tests.txt", 98.21); }
+#endif
