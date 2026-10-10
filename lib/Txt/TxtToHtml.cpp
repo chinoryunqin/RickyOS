@@ -9,7 +9,14 @@
 #include <cstring>
 #include <limits>
 
+#ifdef RICKYOS_PRODUCT
+#include "MarkdownFormatter.h"
+#endif
+
 const char* TxtToHtml::cacheVersionTag(std::string_view filename) {
+#ifdef RICKYOS_PRODUCT
+  if (FsHelpers::hasMarkdownExtension(filename)) return "<!-- MD_CACHE_VERSION: 5 -->";
+#endif
   return FsHelpers::hasMarkdownExtension(filename) ? "<!-- MD_CACHE_VERSION: 2 -->" : "<!-- TXT_CACHE_VERSION: 2 -->";
 }
 
@@ -27,6 +34,14 @@ bool TxtToHtml::stream(std::string_view filename, void* readerCtx, int (*readFn)
     LOG_ERR("TXT", "OOM: TXT/MD HTML streaming buffers (%zu bytes)", BUFFER_SIZE * 2);
     return false;
   }
+#ifdef RICKYOS_PRODUCT
+  const bool markdown = FsHelpers::hasMarkdownExtension(filename);
+  // MD splits the existing 8 KiB input allocation: 1 KiB read, 4 KiB line,
+  // 3 KiB lookahead header. No new heap; overlong lines remain literal.
+  const size_t readCapacity = markdown ? 1024 : BUFFER_SIZE;
+#else
+  constexpr size_t readCapacity = BUFFER_SIZE;
+#endif
 
   size_t outPos = 0;
   bool outputOk = true;
@@ -74,14 +89,14 @@ bool TxtToHtml::stream(std::string_view filename, void* readerCtx, int (*readFn)
   bool readError = false;
   const auto readByte = [&]() -> int {
     if (inputPos == static_cast<size_t>(inputSize)) {
-      inputSize = readFn(readerCtx, inBuf.get(), BUFFER_SIZE);
+      inputSize = readFn(readerCtx, inBuf.get(), readCapacity);
       inputPos = 0;
       if (inputSize <= 0) {
         readError = inputSize < 0;
         inputSize = 0;
         return -1;
       }
-      if (inputSize > static_cast<int>(BUFFER_SIZE)) {
+      if (inputSize > static_cast<int>(readCapacity)) {
         readError = true;
         return -1;
       }
@@ -96,6 +111,33 @@ bool TxtToHtml::stream(std::string_view filename, void* readerCtx, int (*readFn)
   const auto map = [&](const uint32_t pos, const uint8_t width, const uint8_t step) {
     if (options.map && !options.map(options.context, pos, visible, width, step)) outputOk = false;
   };
+#ifdef RICKYOS_PRODUCT
+  struct MarkdownContext {
+    const Options& options;
+    uint32_t& visible;
+    bool& ok;
+    const decltype(writeStr)& write;
+    const decltype(escaped)& escape;
+  } markdownContext{options, visible, outputOk, writeStr, escaped};
+  MarkdownFormatter formatter(
+      {&markdownContext,
+       [](void* opaque, std::string_view text) { static_cast<MarkdownContext*>(opaque)->write(text); },
+       [](void* opaque, uint32_t source, const uint8_t* character, uint8_t width, uint8_t utf8Length, bool show,
+          bool spaces) {
+         auto& ctx = *static_cast<MarkdownContext*>(opaque);
+         if (ctx.options.map && !ctx.options.map(ctx.options.context, source, ctx.visible, width, show ? 1 : 0))
+           ctx.ok = false;
+         if (!show) return;
+         ++ctx.visible;
+         if (spaces && character[0] == ' ')
+           ctx.write("&#160;");
+         else if (character[0] < 0x20 && character[0] != '\t')
+           ctx.write(" ");
+         else
+           for (uint8_t i = 0; i < utf8Length; ++i) ctx.escape(character[i]);
+       }},
+      inBuf.get() + 1024, 4096, inBuf.get() + 5120, 3072, options.encoding == txt_encoding::Encoding::Gbk);
+#endif
 
   bool atLineStart = true;
   uint32_t pendingSpaces = 0;
@@ -157,6 +199,9 @@ bool TxtToHtml::stream(std::string_view filename, void* readerCtx, int (*readFn)
     }
 
     if (options.chapterOffset && options.chapterOffset(options.context) == begin) {
+#ifdef RICKYOS_PRODUCT
+      if (markdown) formatter.beforeChapterAnchor();
+#endif
       finishSpaces(true);
       char anchor[48];
       snprintf(anchor, sizeof(anchor), "<div id=\"txt-%u\"></div>", static_cast<unsigned>(begin));
@@ -170,6 +215,12 @@ bool TxtToHtml::stream(std::string_view filename, void* readerCtx, int (*readFn)
       map(begin, width, 0);
       continue;
     }
+#ifdef RICKYOS_PRODUCT
+    if (markdown) {
+      formatter.add(begin, character, width, static_cast<uint8_t>(utf8Length));
+      continue;
+    }
+#endif
     if (first == '\r') {
       finishSpaces(false);
       map(begin, 1, 0);
@@ -198,11 +249,13 @@ bool TxtToHtml::stream(std::string_view filename, void* readerCtx, int (*readFn)
       for (size_t i = 0; i < utf8Length; ++i) escaped(character[i]);
     if (first != ' ') atLineStart = false;
   }
+#ifdef RICKYOS_PRODUCT
+  if (markdown && !readError && outputOk) formatter.finish();
+#endif
   finishSpaces(false);
   map(source, 0, 0);  // EOF sentinel; no footer whitespace belongs to the source file.
   if (readError || !outputOk) {
-    LOG_ERR("TXT", "Failed TXT/MD conversion (input, index or output): %.*s", static_cast<int>(filename.size()),
-            filename.data());
+    LOG_ERR("TXT", "TXT/MD conversion failed: %.*s", static_cast<int>(filename.size()), filename.data());
     return false;
   }
   writeStr("\n</body>\n</html>\n");

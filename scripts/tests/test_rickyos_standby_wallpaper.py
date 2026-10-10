@@ -175,7 +175,7 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
     def test_sleep_follows_the_standby_screen_mode_only(self):
         # The separate keep-page switch could stay on after the mode changed on the
         # Standby page and override the chosen picture on automatic sleep.
-        for path, start in (('src/main.cpp', 'const bool isQuickResumeSleep = SETTINGS.rickySleepScreenMode()'),
+        for path, start in (('src/main.cpp', 'const bool isQuickResumeSleep ='),
                             ('src/activities/boot_sleep/SleepActivity.cpp',
                              'const bool renderQuickResume = sleepScreenMode()')):
             source = (ROOT / path).read_text()

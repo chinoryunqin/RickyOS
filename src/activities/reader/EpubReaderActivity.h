@@ -289,6 +289,9 @@ class EpubReaderActivity final : public ReaderActivity {
   // failed Epub itself does not outlive loadBook().
   std::string loadProtectionError;
   bool legacyProgressPending = false;
+#ifdef RICKYOS_PRODUCT
+  bool markdownProgressPending_ = false;
+#endif
 
   bool loadBook() override;
   bool handleLoadFailure() override;

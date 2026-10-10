@@ -22,6 +22,54 @@ bool readRecord(HalFile& file, const uint32_t index, Record& out) {
 }
 }  // namespace
 
+LegacyResult readReflowSource(const char* cachePath, const uint32_t sourceSize, uint32_t& sourceOffset) {
+  const std::string path = std::string(cachePath) + "/md-resume-v1.bin";
+  if (!Storage.exists(path.c_str())) return LegacyResult::Absent;
+  HalFile file;
+  uint32_t magic = 0, size = 0, offset = 0;
+  if (!Storage.openFileForRead("TXT", path, file) || file.fileSize64() != 12 || !readU32(file, magic) ||
+      !readU32(file, size) || !readU32(file, offset) || magic != 0x3152444D || size != sourceSize || offset > size)
+    return LegacyResult::Failed;
+  sourceOffset = offset;
+  return LegacyResult::Restored;
+}
+
+LegacyResult preserveReflowSource(const char* cachePath, const uint32_t sourceSize) {
+  uint32_t sourceOffset = 0;
+  const auto checkpoint = readReflowSource(cachePath, sourceSize, sourceOffset);
+  if (checkpoint != LegacyResult::Absent) return checkpoint;
+  const std::string progressPath = std::string(cachePath) + "/progress.bin";
+  if (!Storage.exists(progressPath.c_str())) return LegacyResult::Absent;
+  HalFile progress;
+  uint32_t visible = 0;
+  if (!Storage.openFileForRead("TXT", progressPath, progress)) return LegacyResult::Failed;
+  // Older page-only records have no exact text coordinate. Retain the reader's
+  // existing proportional repositioning, rather than guessing a source offset.
+  if (progress.fileSize64() == 4 || progress.fileSize64() == 6) return LegacyResult::Absent;
+  if (progress.fileSize64() != 10 || !progress.seek(6) || !readU32(progress, visible)) return LegacyResult::Failed;
+  // The reader saves offset 0 for the first page before a content coordinate
+  // exists. The map starts at 1; do not reject a legitimate book-start resume.
+  if (visible == 0) {
+    uint32_t spineAndPage = 0;
+    return progress.seek(0) && readU32(progress, spineAndPage) && spineAndPage == 0 ? LegacyResult::Absent
+                                                                                    : LegacyResult::Failed;
+  }
+  HalFile mapping;
+  if (!Storage.openFileForRead("TXT", std::string(cachePath) + "/txt-map.bin", mapping) ||
+      !sourceForVisible(mapping, sourceSize, visible, sourceOffset))
+    return LegacyResult::Failed;
+  const std::string finalPath = std::string(cachePath) + "/md-resume-v1.bin";
+  const std::string temporary = finalPath + ".tmp";
+  {
+    HalFile output;
+    const uint32_t data[] = {0x3152444D, sourceSize, sourceOffset};  // MDR1, little-endian on supported targets.
+    if (!Storage.openFileForWrite("TXT", temporary, output) || output.write(data, sizeof(data)) != sizeof(data))
+      return LegacyResult::Failed;
+    output.flush();
+  }
+  return Storage.replaceFile(temporary.c_str(), finalPath.c_str()) ? LegacyResult::Restored : LegacyResult::Failed;
+}
+
 LegacyResult readLegacySource(const char* cachePath, const uint32_t sourceSize, uint32_t& sourceOffset) {
   const std::string progressPath = std::string(cachePath) + "/progress.bin";
   if (!Storage.exists(progressPath.c_str())) return LegacyResult::Absent;

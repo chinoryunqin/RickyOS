@@ -150,13 +150,30 @@ struct PageLine {
 TXT and Markdown now use the EPUB reader and section format. Conversion is
 streaming: two checked 8KiB buffers, plus one disk-backed chapter record; the
 8KiB chapter-index workspace is released before conversion. The HTML and metadata
-conversion markers are version 2. `txt-map.bin` version 1 records source byte to
+conversion markers are version 2 for TXT/upstream Markdown and version 5 for
+RickyOS 1.1.5 Markdown (3: initial candidate; 4: tables; 5: ATX TOC). Markdown
+borrows the input buffer as 1KiB input, 4KiB UTF-8 line and 3KiB pending header;
+the output stays 8KiB. No table-sized conversion allocation. Before rebuilding
+version 2, 3 or 4 Markdown conversion, preserve its
+source-coordinate checkpoint (`md-resume-v1.bin`), resolve it against the new map,
+and clear it only after the new page progress saves successfully. Never use an old
+visible-text offset unchanged after removing Markdown syntax. See the file-format
+contract for failure/restart handling and page-only legacy behavior.
+`txt-map.bin` version 1 records source byte to
 visible codepoint runs (see `docs/file-formats.md`). Chapters are processed one at
 a time and parser boundary IDs do not accumulate in the anchor table. The inverse
 map resolves the page's visible offset to a source position, then binary-searches
 the existing disk chapter index for menu/status/statistics titles. Chapter stepping
 and scrubbing use the same pending-anchor path as the Contents panel; the one-spine
 conversion never turns chapter navigation into a no-op.
+
+RickyOS Markdown uses chapter index semantic version 2 (same 196-byte record),
+retaining the ATX prefix in its raw UTF-8 title. Metadata strips inline markup
+and stores levels 1–6. Matching fenced code excludes fake headings; empty,
+indented and oversized headings are not indexed. Only that book's old MD index
+and conversion are rebuilt; TXT stays on chapter index version 1. Chapter anchor
+emission flushes pending table-header lookahead and closes the previous table.
+No new heap buffers or in-RAM document-wide heading list are introduced.
 
 Old `txt_<hash>/progress.bin` remains untouched until and after successful migration.
 Eight-byte source offsets map to their containing reflowed page. Four-byte old page
