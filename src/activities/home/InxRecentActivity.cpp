@@ -13,9 +13,11 @@
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "ReadingStatsStore.h"
+#include "activities/settings/RickyProfileActivity.h"
+#include "components/RickyDesignTokens.h"
+#include "components/RickyHomeLayout.h"
 #include "components/SubpageLayout.h"
 #include "components/UITheme.h"
-#include "components/RickyHomeLayout.h"
 #include "components/icons/cover.h"
 #include "components/themes/inx/InxTheme.h"
 #include "fontIds.h"
@@ -389,6 +391,22 @@ void InxRecentActivity::loop() {
       activityManager.goToRickyReadingStats();
       return;
     }
+    if (action == RickyHomeUi::PROFILE) {
+      startActivityForResultWith<RickyProfileActivity>([this](const ActivityResult&) { requestUpdate(); });
+      return;
+    }
+    if (action == RickyHomeUi::TRANSFER) {
+      activityManager.goToFileTransfer();
+      return;
+    }
+    if (action == RickyHomeUi::WEREAD) {
+      activityManager.goToWeRead();
+      return;
+    }
+    if (action == RickyHomeUi::FILES) {
+      activityManager.goToFileBrowser();
+      return;
+    }
     if (books && action >= 0 && action < static_cast<int>(books->size())) {
       selected = action;
       openSelected();
@@ -406,8 +424,7 @@ void InxRecentActivity::loop() {
   int y = 0;
   if (rickyHome) {
     // Already routed above, including the profile on an empty home.
-  } else
-  {
+  } else {
     if (mappedInput.wasScreenTouchDown(x, y)) {
       const int touched = indexFromPoint(x, y);
       if (touched >= 0 && touched != selected) {
@@ -607,24 +624,16 @@ void InxRecentActivity::render(RenderLock&&) {
     const GfxRenderer::ClipScope clip(renderer, content.x, content.y, content.width, content.height);
     if (rickyHome) {
       const int start = RickyHomeLayout::pageStart(selected);
-      const int inset = UiHighDpiProfile::contentPadding;
+      const int inset = ricky::ds::space::kPageMargin;
       const Rect bounds{content.x + inset, content.y, std::max(1, content.width - inset * 2), content.height};
       rickyHome->configure(bounds, selected, showMainTabContentSelection(), progressOf(statsAt(start)));
       rickyHome->renderUi();
-    } else
-        if (!books || books->empty()) {
+    } else if (!books || books->empty()) {
       UITheme::drawCenteredWrappedText(renderer, content, UI_12_FONT_ID, tr(STR_NO_RECENT_BOOKS), 2);
     } else {
       switch (layout()) {
         case InxRecentLayout::Flow:
-          if (rickyHome) {
-            const int start = RickyHomeLayout::pageStart(selected);
-            const int inset = UiHighDpiProfile::contentPadding;
-            const Rect bounds{content.x + inset, content.y, std::max(1, content.width - inset * 2), content.height};
-            rickyHome->configure(bounds, selected, showMainTabContentSelection(), progressOf(statsAt(start)));
-            rickyHome->renderUi();
-          } else
-            drawFlow(content);
+          drawFlow(content);
           break;
         case InxRecentLayout::Grid:
           drawGrid(content);

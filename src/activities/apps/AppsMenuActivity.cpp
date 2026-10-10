@@ -8,11 +8,12 @@
 
 #include "CrossPointSettings.h"
 #include "InxItemLayout.h"
+#include "components/RickyAaIcons.h"
+#include "components/RickyDesignUi.h"
 #include "components/SubpageLayout.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
 #include "components/icons/inx_apps.h"
-#include "components/RickyAaIcons.h"
 #include "components/icons/rickyAppIcons.h"
 #include "fontIds.h"
 
@@ -83,22 +84,22 @@ static_assert(appIndexForVisibleIndex(appBit(kAppEntries[1].id), 1) == 2,
 }  // namespace
 
 namespace {
-// The product grid draws its own 56 px line icons (same system as the tab bar)
+// The product grid draws native 40 px Lucide icons (same system as the tab bar)
 // at native size; the stock 32 px pixel icons are only doubled, which looks coarse.
 const uint8_t* rickyAppIcon(const UIIcon icon) {
   switch (icon) {
     case UIIcon::Transfer:
-      return ricky_app_transfer_56;
+      return ricky_app_transfer_40;
     case UIIcon::WeRead:
-      return ricky_app_weread_56;
+      return ricky_app_weread_40;
     case UIIcon::ReadingStats:
-      return ricky_app_stats_56;
+      return ricky_app_stats_40;
     case UIIcon::Gomoku:
-      return ricky_app_gomoku_56;
+      return ricky_app_gomoku_40;
     case UIIcon::Calculator:
-      return ricky_app_calculator_56;
+      return ricky_app_calculator_40;
     case UIIcon::Standby:
-      return ricky_app_standby_56;
+      return ricky_app_standby_40;
     default:
       return nullptr;
   }
@@ -108,8 +109,8 @@ const uint8_t* rickyAppIcon(const UIIcon icon) {
 // grid reads as apps rather than loose glyphs; the selected one is filled with the icon
 // knocked out, like the selected tab.
 constexpr int kAppTileSize = 112;
-constexpr int kAppTileRadius = 28;
-constexpr int kAppTileStroke = 3;
+constexpr int kAppTileRadius = ricky::ds::radius::kControl;
+constexpr int kAppTileStroke = ricky::ds::stroke::kHairline;
 constexpr int kAppPillWidth = kAppTileSize;  // the tile's footprint in the cell layout
 constexpr int kAppPillHeight = kAppTileSize;
 
@@ -154,9 +155,7 @@ bool AppsMenuActivity::setAppVisible(const int appIndex, const bool visible) {
   return true;
 }
 
-int AppsMenuActivity::getVisibleAppCount() {
-  return visibleAppCount(SETTINGS.hiddenAppsMask);
-}
+int AppsMenuActivity::getVisibleAppCount() { return visibleAppCount(SETTINGS.hiddenAppsMask); }
 
 void AppsMenuActivity::selectMainTabContentEdge(const MainTabContentEdge edge) {
   nav.selected = MainTabs::contentEdgeIndex(edge, getVisibleAppCount());
@@ -196,14 +195,21 @@ Rect AppsMenuActivity::appContentRect() const {
   Rect content = pageContentRect();
   content.y += spacing;
   content.height -= spacing * 2;
+  content.x += ricky::ds::space::kPageMargin;
+  content.width -= ricky::ds::space::kPageMargin * 2;
+  content.y += ricky::ds::layout::kPageHeaderHeight;
+  content.height -= ricky::ds::layout::kPageHeaderHeight;
+  content.height = std::min(content.height, 448);
   return content;
 }
 
 int AppsMenuActivity::iconIndexFromPoint(const int x, const int y) const {
   const Rect content = appContentRect();
-  return InxGridGeometry::indexFromPoint(x - content.x, y - content.y, content.width, content.height,
-                                         InxGridGeometry::pageStart(nav.selected, getVisibleAppCount()),
-                                         getVisibleAppCount());
+  for (int i = 0; i < getVisibleAppCount(); ++i) {
+    const auto rect = RickyPageLayout::cell(content, i, 6, ricky::ds::space::kGutter, 3);
+    if (x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height) return i;
+  }
+  return -1;
 }
 
 void AppsMenuActivity::openSelected() {
@@ -261,20 +267,32 @@ void AppsMenuActivity::drawIconGrid(const Rect& rect, const int visibleCount, co
     const int visibleIndex = start + slot;
     const int appIndex = getAppIndexForVisibleIndex(visibleIndex);
     if (appIndex < 0) continue;
-    const auto bounds = InxGridGeometry::cellBounds(slot, rect.width, rect.height);
-    const Rect cell{rect.x + bounds.x, rect.y + bounds.y, bounds.width, bounds.height};
+    const Rect cell = RickyPageLayout::cell(rect, slot, 6, ricky::ds::space::kGutter, 3);
     const bool isSelected = showSelection && visibleIndex == nav.selected;
     const std::string label =
         renderer.truncatedText(UI_10_FONT_ID, I18N.get(kAppEntries[appIndex].titleId), std::max(1, cell.width - 8));
     const int labelX = cell.x + (cell.width - renderer.getTextWidth(UI_10_FONT_ID, label.c_str())) / 2;
     if (const uint8_t* icon = rickyAppIcon(kAppEntries[appIndex].icon)) {
       // Lay out the capsule's height so a selected tile never crowds its label.
-      constexpr int labelGap = 12;
+      constexpr int labelGap = 10;
       const int blockTop = cell.y + std::max(8, (cell.height - kAppPillHeight - labelGap - lineHeight) / 2);
+      // One continuous selection surface, including the icon and its name.
+      // The 152 px design footprint shrinks only when the oriented cell needs it.
+      const int blockWidth = std::min(152, cell.width - 16);
+      if (isSelected)
+        RickyDesignUi::fill(
+            renderer,
+            {static_cast<int16_t>(cell.x + (cell.width - blockWidth) / 2), static_cast<int16_t>(blockTop - 12),
+             static_cast<int16_t>(blockWidth), static_cast<int16_t>(kAppPillHeight + labelGap + 28 + 22)},
+            ricky::ds::gray::kInk, ricky::ds::radius::kControl);
       const int iconX = cell.x + (cell.width - kRickyAppIconSize) / 2;
       const int iconY = blockTop + (kAppPillHeight - kRickyAppIconSize) / 2;
       drawRickyAppIcon(renderer, icon, iconX, iconY, isSelected);
-      renderer.drawText(UI_10_FONT_ID, labelX, blockTop + kAppPillHeight + labelGap, label.c_str(), true);
+      const fui::Rect labelRect{static_cast<int16_t>(cell.x + 8),
+                                static_cast<int16_t>(blockTop + kAppPillHeight + labelGap),
+                                static_cast<int16_t>(cell.width - 16), 28};
+      RickyDesignUi::text(renderer, labelRect, I18N.get(kAppEntries[appIndex].titleId), RickyDesignUi::CAPTION,
+                          isSelected, fui::TextAlign::Center);
       continue;
     }
     const int iconScale = cell.height >= InxAppIcons::size * 2 + lineHeight + 18 ? 2 : 1;
@@ -291,6 +309,14 @@ void AppsMenuActivity::drawIconGrid(const Rect& rect, const int visibleCount, co
 }
 
 void AppsMenuActivity::buildScreen(UiScreen& screen) {
+  if (usesMainTabBar()) {
+    const auto root = pageContentRect();
+    RickyDesignUi::text(
+        renderer,
+        {ricky::ds::space::kPageMargin, static_cast<int16_t>(root.y),
+         static_cast<int16_t>(root.width - ricky::ds::space::kPageMargin * 2), ricky::ds::layout::kPageHeaderHeight},
+        tr(STR_APPS_TITLE), RickyDesignUi::TITLE);
+  }
   const int sw = renderer.getScreenWidth();
   const int sh = renderer.getScreenHeight();
   const Rect content = appContentRect();

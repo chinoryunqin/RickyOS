@@ -27,7 +27,13 @@ parser.add_argument("--force-autohint", dest="force_autohint", action="store_tru
 parser.add_argument("--autohint-font", dest="autohint_fonts", action="append", default=[], metavar="PATH", help="Force the FreeType auto-hinter on one face of the fontstack, named by its path. Repeatable. For stacks that mix a manually hinted face with unhinted ones, where --force-autohint would discard the hints the former does have.")
 parser.add_argument("--pnum", dest="pnum", action="store_true", help="Use proportional numerals (pnum OpenType feature) instead of default tabular figures. Reduces visual gaps between digits in running prose.")
 parser.add_argument("--characters", help="Export only these characters (including any required replacement glyph). Overrides the default and additional intervals.")
+parser.add_argument("--line-height", type=int, help="Explicit UI line box in pixels (reader fonts keep source metrics).")
+parser.add_argument("--ascender", type=int, help="Explicit UI baseline offset in pixels; pair with --line-height.")
 args = parser.parse_args()
+if (args.line_height is None) != (args.ascender is None):
+    parser.error('--line-height and --ascender must be specified together')
+if args.line_height is not None and not (0 < args.ascender <= args.line_height):
+    parser.error('UI baseline must lie inside a positive line box')
 
 import freetype
 from fontTools.ttLib import TTFont
@@ -1082,9 +1088,9 @@ print(f"    {font_name}Bitmaps,")
 print(f"    {font_name}Glyphs,")
 print(f"    {font_name}Intervals,")
 print(f"    {len(intervals)},")
-print(f"    {norm_ceil(face.size.height)},")
-print(f"    {norm_ceil(face.size.ascender)},")
-print(f"    {norm_floor(face.size.descender)},")
+print(f"    {args.line_height if args.line_height is not None else norm_ceil(face.size.height)},")
+print(f"    {args.ascender if args.ascender is not None else norm_ceil(face.size.ascender)},")
+print(f"    {args.ascender - args.line_height if args.line_height is not None else norm_floor(face.size.descender)},")
 print(f"    {'true' if is2Bit else 'false'},")
 if compress:
     print(f"    {font_name}Groups,")

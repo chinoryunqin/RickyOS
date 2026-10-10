@@ -148,7 +148,7 @@ struct FileBrowserActivity {
  std::string basepath = "/", moveSourcePath;
  std::vector<std::string> files;
  std::unique_ptr<char[]> fileNameBuffer = std::make_unique<char[]>(NAME_BUFFER_SIZE);
- void rebuildRowItems() {} void loadFiles();
+ void rebuildRowItems() {} void resetMetadata() {} void loadFiles();
 };
 struct ReaderActivity { static int create(GfxRenderer&, int&, std::string, bool) { return 1; } };
 struct ActivityManager {

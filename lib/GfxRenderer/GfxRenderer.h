@@ -267,6 +267,11 @@ class GfxRenderer {
     nextRefreshOverridePending = true;
   }
   void clearNextRefreshOverride() const { nextRefreshOverridePending = false; }
+  // Direct-gray UI must honor wake/overlay cleanup requests without consuming
+  // them before its transaction succeeds; a failed commit still needs B/W cleanup.
+  bool nextRefreshNeedsCleanup() const {
+    return nextRefreshOverridePending && nextRefreshOverride != HalDisplay::FAST_REFRESH;
+  }
   void requestNextFullRefresh() const { requestNextRefresh(HalDisplay::FULL_REFRESH); }
   // One-shot: the next displayBuffer()/displayBufferAsync() call uses `mode`
   // instead of what its caller asked for, then the override clears itself.

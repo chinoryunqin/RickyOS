@@ -18,7 +18,7 @@ class RickyUiAlignmentTest(unittest.TestCase):
 #include "activities/MainTab.h"
 #include "components/RickyPageLayout.h"
 constexpr int SMALL_FONT_ID=0;
-constexpr int kIconSize=40, kPillWidth=80, kPillHeight=50;  // product tab bar, both density profiles
+constexpr int kIconSize=40, kPillWidth=88, kPillHeight=48;  // design tokens, both density profiles
 namespace EpdFontFamily {enum Style {REGULAR,BOLD};}
 enum class Color {DarkGray};
 enum class StrId {STR_RICKY_NAV_HOME,STR_LIBRARY,STR_RICKY_STORAGE,STR_APPS_TITLE,STR_SETTINGS_TITLE};
@@ -67,31 +67,31 @@ int main() {
 }
 ''', include_dirs=(ROOT / 'src',), defines=('RICKYOS_PRODUCT', 'CROSSMUX_UI_PROFILE_HIGH_DPI'))
 
-    def test_advertised_chrome_has_underlines_not_black_filter_buttons(self):
+    def test_1_2_chrome_uses_inverse_chips_and_native_gray_progress(self):
         source = (ROOT / 'src/activities/library/LibraryListActivity.cpp').read_text()
         shelf = method(source, 'void LibraryListActivity::buildRickyShelf(')
-        for key in ('STR_RICKY_LIBRARY_COUNT', 'separatorY', 'markWidth'):
+        for key in ('STR_RICKY_LIBRARY_COUNT', 'kTabPillHeight', 'picked ? fui::Color::White'):
             self.assertIn(key, shelf)
         self.assertIn('screen.frame().hit(rect, ACTION_READING_FILTER', shelf)
         self.assertNotIn('button.state = readingFilter', shelf)
         home = (ROOT / 'src/components/RickyHomeUi.cpp').read_text()
         portrait = method(home, 'void RickyHomeUi::drawPortrait(')
-        for key in ('STR_RICKY_HOME_DATE','STR_RICKY_HOME_TODAY','STR_RICKY_HOME_STREAK',
+        for key in ('STR_RICKY_HOME_MONTH_DAY','STR_RICKY_TODAY_READING','STR_RICKY_STREAK_READING',
                     'STR_RICKY_HOME_RECENT'):
             self.assertIn(key, portrait)
         self.assertIn('READING_STATS.findMatchingBookForPath', portrait)
         self.assertIn('RickyProfile::homePhrase()', portrait)
-        # The progress track keeps the dithered gray, now through the shared helper.
-        self.assertIn('RickyPageUi::progressBar(', portrait)
-        self.assertIn('Paint::dither', method((ROOT / 'src/components/RickyPageUi.h').read_text(),
-                                              'inline void progressBar('))
+        self.assertIn('design::progress(', portrait)
+        helper = (ROOT / 'src/components/RickyDesignUi.h').read_text()
+        self.assertNotIn('Paint::dither', helper)
+        self.assertIn('ds::gray::kTint', method(helper, 'inline void progress('))
 
     def test_main_pages_omit_decorative_explanations_and_their_reservations(self):
         # The promotional images carry explanatory captions; the product keeps them out.
         home = method((ROOT / 'src/components/RickyHomeUi.cpp').read_text(),
                       'void RickyHomeUi::drawPortrait(')
         self.assertNotIn('STR_RICKY_PHRASE_CAPTION', home)
-        self.assertIn('screen.takeBottom(phraseHeight, gap)', home)
+        self.assertIn('screen.takeBottom(28, ds::space::k4)', home)
         self.assertIn('RickyProfile::homePhrase()', home)
         shelf = method((ROOT / 'src/activities/library/LibraryListActivity.cpp').read_text(),
                        'void LibraryListActivity::buildRickyShelf(')
@@ -251,14 +251,14 @@ int main() {
         self.assertIn('doc["rickyHomePhrase"] | ""', settings)
         self.assertIn('utf8SafeTruncateBuffer(rickyHomePhrase', settings)
 
-    def test_advertised_filters_and_four_book_portrait_shelf_remain(self):
+    def test_1_2_filters_and_six_book_portrait_shelf_remain(self):
         source = (ROOT / 'src/activities/library/LibraryListActivity.cpp').read_text()
         shelf = method(source, 'void LibraryListActivity::buildRickyShelf(')
         for key in ('STR_RICKY_BOOKS_ALL','STR_RICKY_BOOKS_READING','STR_RICKY_BOOKS_UNREAD'):
             self.assertIn(key, shelf)
-        self.assertIn('const int columns = body.width > body.height ? 4 : 2', shelf)
+        self.assertIn('const int columns = body.width > body.height ? 6 : 3', shelf)
         header = (ROOT / 'src/activities/library/LibraryListActivity.h').read_text()
-        self.assertIn('SHELF_CAPACITY = 4', header)
+        self.assertIn('SHELF_CAPACITY = 6', header)
         self.assertNotIn('buildTabBar(screen)', shelf)
         self.assertIn('ACTION_SHELF_OPTIONS', shelf)
         self.assertIn('STR_RICKY_BOOK_PROGRESS', shelf)
@@ -274,7 +274,7 @@ int main() {
     def test_storage_does_not_create_or_reorganize_user_directories(self):
         source = (ROOT / 'src/activities/home/RickyStorageActivity.cpp').read_text()
         for key in ('STR_RICKY_DOWNLOADS','STR_RICKY_IMAGES','STR_FONT', 'STR_RICKY_BOOK_FILES',
-                    'STR_RICKY_STORAGE_SPACE'):
+                    'STR_RICKY_SD_CARD'):
             self.assertIn(key, source)
         # The page only creates the four fixed folders; it never renames or deletes.
         for mutation in ('Storage.rename', 'Storage.remove', 'Storage.rmdir'):
@@ -284,8 +284,8 @@ int main() {
         self.assertIn('!Storage.exists(path)', source)
         self.assertIn('folderMissing = true', source)
         self.assertNotIn('RickyPageUi::tile(screen', source)
-        # Folder cells are rounded icon cards whose focus thickens the outline.
-        self.assertIn('RickyPageUi::card(target, rect, focus && selected == i)', source)
+        # 1.2 folder cards use inverse selection, not a thicker outline.
+        self.assertIn('RickyPageUi::card(target, rect, picked)', source)
         self.assertIn('RickyPageUi::pageIcon(', source)
 
     def test_font_tile_releases_parent_lists_and_system_keeps_controls(self):

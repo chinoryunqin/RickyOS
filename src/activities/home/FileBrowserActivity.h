@@ -1,11 +1,16 @@
 #pragma once
 
+#include <HalStorage.h>
+
+#include <array>
+#include <atomic>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "activities/UiListActivity.h"
 #include "components/OptionPopup.h"
+#include "components/UIScale.h"
 
 class FileBrowserActivity final : public UiListActivity {
  public:
@@ -75,6 +80,27 @@ class FileBrowserActivity final : public UiListActivity {
   static constexpr size_t ROW_NAME_BUF_SIZE = 512;  // NAME_BUFFER_SIZE + "[]" + terminator slack
   char rowNameBuf[ROW_NAME_BUF_SIZE]{};
   char rowExtBuf[16]{};
+  char rowInfoBuf[UiHighDpiProfile::enabled ? 96 : 1]{};
+  int rowLabelWidth_ = 400;
+  // Only the nearby viewport has metadata, not another per-file vector.
+  // 16 slots cost 256 bytes; scanning owns one HAL handle and a bounded path.
+  struct Metadata {
+    uint64_t value = 0;
+    bool done = false;
+    bool known = false;
+  };
+  static constexpr int METADATA_WINDOW = UiHighDpiProfile::enabled ? 16 : 0;
+  std::array<Metadata, METADATA_WINDOW> metadata_{};
+  std::atomic<int> requestedMetadataStart_{0};
+  int metadataStart_ = -1;
+  int metadataSlot_ = -1;
+  uint64_t directoryCount_ = 0;
+  HalFile metadataDirectory_;
+  char metadataPath_[UiHighDpiProfile::enabled ? 1024 : 1]{};
+  bool metadataRepaint_ = false;
+  unsigned long metadataRepaintAt_ = 0;
+  void updateMetadata();
+  void resetMetadata();
   static void provideRow(void* ctx, uint16_t index, freeink::ui::ListItem& item);
 
   // CJK fallback glyphs are prewarmed for a bounded window of rows around the
@@ -111,6 +137,7 @@ class FileBrowserActivity final : public UiListActivity {
                                Mode mode = Mode::Books, bool scoped = false);
   void onEnter() override;
   void onExit() override;
+  void loop() override;
   void render(RenderLock&& lock) override;
   MainTab mainTab() const override {
     // File navigation is a child of Storage, not the book shelf.

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-/** Original RickyOS app-grid SVGs -> native 56 px 1-bpp Flash resources.
+/** Maintained Lucide app-grid SVGs -> native 40 px 1-bpp Flash resources.
  * Same line system as the tab bar (scripts/build_rickyos_navigation_icons.cjs):
- * 56-unit viewBox, 3.6 stroke, round caps and joins, threshold 110.
+ * 24-unit viewBox, 1.2 source stroke = 2 native pixels, round caps and joins.
  * Developer-only dependency: sharp (librsvg).
  * Run: NODE_PATH=/path/to/node_modules node scripts/build_rickyos_app_icons.cjs [--out header.h]
  * The checked-in header makes device/simulator builds independent of Node/sharp.
@@ -12,7 +12,7 @@ const sharp = require('sharp');
 
 const root = path.resolve(__dirname, '..');
 const sourceDir = path.join(root, 'src/components/icons/sources/rickyos/apps');
-const SIZE = 56;
+const SIZE = 40;
 const THRESHOLD = 110;
 const names = ['transfer', 'opds', 'weread', 'stats', 'gomoku', 'calculator', 'standby'];
 
@@ -25,13 +25,13 @@ for (let i = 0; i < args.length; ++i) {
 
 async function main() {
   const lines = ['#pragma once', '', '#include <cstdint>', '',
-    '// Generated from ORIGINAL RickyOS SVGs by scripts/build_rickyos_app_icons.cjs.',
+    '// Generated from maintained Lucide SVGs (ISC license) by scripts/build_rickyos_app_icons.cjs.',
     '// Edit sources/rickyos/apps/*.svg and regenerate; never edit these bytes manually.',
     `// ${SIZE} x ${SIZE}, MSB-first, 1 = transparent/white, 0 = ink. Upright; no runtime resampling.`, '',
     `inline constexpr int kRickyAppIconSize = ${SIZE};`, ''];
   for (const name of names) {
     const svg = fs.readFileSync(path.join(sourceDir, name + '.svg')).toString()
-      .replace('<svg ', `<svg width="${SIZE}" height="${SIZE}" `);
+      .replace(/<svg\b/, `<svg width="${SIZE}" height="${SIZE}"`);
     const { data, info } = await sharp(Buffer.from(svg)).flatten({ background: '#fff' })
       .greyscale().raw().toBuffer({ resolveWithObject: true });
     if (info.channels !== 1 || info.width !== SIZE || info.height !== SIZE) throw new Error(`${name}: bad raster`);

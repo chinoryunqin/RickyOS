@@ -195,6 +195,7 @@ void StatusBarSettingsActivity::buildScreen(UiScreen& screen) {
 }
 
 void StatusBarSettingsActivity::render(RenderLock&&) {
+  if (optionPopup.isActive()) renderPopupUnderlay();
   if (optionPopup.processRender(renderer, mappedInput)) return;
 
   renderer.clearScreen();

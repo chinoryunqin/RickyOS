@@ -184,7 +184,7 @@ int main() {
 }
 ''', defines=('CROSSMUX_UI_PROFILE_HIGH_DPI','FREEINK_DEVICE_READPICO=1'))
 
-    def test_reader_content_reclaims_footer_padding_without_moving_text(self):
+    def test_reader_content_reserves_product_chrome_and_preserves_legacy_geometry(self):
         layout_source = (ROOT / 'src/components/UITheme.cpp').read_text()
         reader_source = (ROOT / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
         render = method(reader_source, 'void EpubReaderActivity::renderBook(')
@@ -245,24 +245,16 @@ int main() {
    const int oldReserve=(text||automatic?lane:0)+bar;
    const int oldBottom=r.height-r.bottom-std::max<int>(margin,oldReserve);
    const int bottom=contentBottom(r,automatic);
-   assert(bottom>=oldBottom);
    assert(bottom<=r.height-r.bottom-margin);
-   if(!UiHighDpiProfile::enabled || !(text||automatic) || margin>=oldReserve)
-     assert(bottom==oldBottom);
-   if(UiHighDpiProfile::enabled && (text||automatic)) {
-     const int offset=UITheme::getStatusBarTextTopPadding(r);
-     const int textY=r.height-r.bottom-oldReserve+offset;
-     assert(textY-bottom>=std::min(6,offset));
-     if(textHeight==34 && numericHeight==34 && margin==25) {
-       assert(bottom-oldBottom==7);
-       assert(textY+34==r.height-r.bottom-bar-1);
-     }
-     if(std::max(textHeight,numericHeight)>=42) assert(bottom==oldBottom);
-   }
+   const bool productChrome=UiHighDpiProfile::enabled && text;
+   const int reserve=productChrome?std::max(oldReserve,static_cast<int>(ricky::ds::layout::kReaderFooterHeight)):oldReserve;
+   assert(bottom==r.height-r.bottom-std::max<int>(margin,reserve));
+   if(!productChrome) assert(bottom==oldBottom);
  }
 }
 '''
-        for defines in (('CROSSMUX_UI_PROFILE_HIGH_DPI', 'FREEINK_DEVICE_READPICO=1'), ()):
+        for defines in (('CROSSMUX_UI_PROFILE_HIGH_DPI=1', 'FREEINK_DEVICE_READPICO=1'),
+                        ('CROSSMUX_UI_PROFILE_HIGH_DPI=0', 'FREEINK_DEVICE_READPICO=0')):
             run_cpp(program, defines=defines)
 
 

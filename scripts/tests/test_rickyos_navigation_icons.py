@@ -26,8 +26,8 @@ class RickyNavigationIconTest(unittest.TestCase):
         sources = ROOT / 'src/components/icons/sources/rickyos'
         for name in NAMES:
             svg = ET.parse(sources / f'{name}.svg').getroot()
-            self.assertEqual(svg.attrib['viewBox'], '0 0 56 56')
-            self.assertEqual(svg.attrib['stroke-width'], '3.6')  # ~2.5 px at 40 px: solid after thresholding
+            self.assertEqual(svg.attrib['viewBox'], '0 0 24 24')
+            self.assertEqual(svg.attrib['stroke-width'], '1.2')  # 2 physical pixels at 40 px
             self.assertEqual(svg.attrib['stroke-linecap'], 'round')
             self.assertEqual(svg.attrib['stroke-linejoin'], 'round')
         arrays = re.findall(r'uint8_t (\w+)\[\] = \{([^}]+)\}', HEADER.read_text())
@@ -45,7 +45,7 @@ class RickyNavigationIconTest(unittest.TestCase):
                    if not bits[y * stride + x // 8] & (0x80 >> (x % 8))}
             self.assertGreater(len(ink), size * size // 20)
             self.assertLess(len(ink), size * size // 3)
-            self.assertTrue(all(3 <= x < size - 3 and 3 <= y < size - 3 for x, y in ink))
+            self.assertTrue(all(2 <= x < size - 2 and 2 <= y < size - 2 for x, y in ink))
             if size % 8:
                 padding_mask = (1 << (8 - size % 8)) - 1
                 self.assertTrue(all(bits[y * stride + stride - 1] & padding_mask == padding_mask
@@ -69,7 +69,7 @@ class RickyNavigationIconTest(unittest.TestCase):
         source = SOURCE.read_text()
         # The product tab bar uses the 40 px set in both UI density profiles.
         size = 40
-        pill = ''.join(re.findall(r'constexpr int kPill\w+ = \d+;\n', source))
+        pill = ''.join(re.findall(r'constexpr int kPill\w+ = ricky::ds::layout::kTabPill\w+;\n', source))
         self.assertEqual(pill.count('kPill'), 2)
         for high_dpi in (False, True):
             with self.subTest(high_dpi=high_dpi):

@@ -1,6 +1,8 @@
 #include "WallpaperFace.h"
 
 #include <Bitmap.h>
+#include <Epub.h>
+#include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalClock.h>
 #include <HalDisplay.h>
@@ -12,9 +14,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
-
-#include <Epub.h>
-#include <FsHelpers.h>
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
@@ -37,9 +36,7 @@ constexpr int kDateFont = UI_10_FONT_ID;
 bool showsTime() { return SETTINGS.standbyOverlay == CrossPointSettings::STANDBY_OVERLAY_TIME; }
 bool showsCorner() { return SETTINGS.standbyOverlay != CrossPointSettings::STANDBY_OVERLAY_NONE; }
 
-bool filtered() {
-  return SETTINGS.sleepScreenCoverFilter != CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER;
-}
+bool filtered() { return SETTINGS.sleepScreenCoverFilter != CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER; }
 
 struct Placement {
   int x = 0;
@@ -237,15 +234,8 @@ void WallpaperFace::render(GfxRenderer& renderer, const Rect& viewport) {
     // No picture chosen yet: the RickyOS rest screen (the same one the sleep screen
     // shows by default), so Standby starts out branded instead of empty.
     const int textHeight = renderer.getLineHeight(UI_10_FONT_ID);
-    const auto layout = RickyPowerLayout::fit(viewport, textHeight, UiHighDpiProfile::controlGap);
+    const auto layout = RickyPowerLayout::fit(viewport, textHeight, ricky::ds::space::kBlockGap);
     RickyBrandMark::draw(renderer, layout.mark, 3);
-    if (layout.mark.y - viewport.y > textHeight * 3) {
-      const Rect eyebrow{viewport.x, viewport.y + (layout.mark.y - viewport.y) / 3, viewport.width, textHeight};
-      UITheme::drawCenteredWrappedText(renderer, eyebrow, UI_10_FONT_ID, tr(STR_RICKY_REST), 1);
-      const int inset = std::max(12, viewport.width / 12);
-      const int lineY = eyebrow.y + eyebrow.height + UiHighDpiProfile::controlGap;
-      renderer.drawLine(viewport.x + inset, lineY, viewport.x + viewport.width - inset - 1, lineY, 1, true);
-    }
     UITheme::drawCenteredWrappedText(renderer, layout.message, UI_10_FONT_ID, tr(STR_RICKY_BRAND_TAGLINE), 2);
     drawCorner(renderer, viewport, false);
     std::tm local{};

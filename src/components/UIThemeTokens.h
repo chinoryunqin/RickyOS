@@ -7,7 +7,7 @@
 #include "themes/lyra/LyraTheme.h"
 
 inline const ThemeMetrics& uiThemeMetrics(bool upstreamStyle = false) {
-  if (upstreamStyle && SETTINGS.uiTheme == CrossPointSettings::UI_THEME::INX) {
+  if (upstreamStyle && !UiHighDpiProfile::enabled && SETTINGS.uiTheme == CrossPointSettings::UI_THEME::INX) {
     static constexpr ThemeMetrics lyra = [] {
       auto metrics = LyraMetrics::values;
       UiHighDpiProfile::apply(metrics);
@@ -48,7 +48,8 @@ inline freeink::ui::ThemeTokens uiThemeTokens(const freeink::ui::GfxRendererTarg
                                               bool upstreamStyle = false) {
   namespace fui = freeink::ui;
   const ThemeMetrics& metrics = uiThemeMetrics(upstreamStyle);
-  const bool inxTheme = !upstreamStyle && SETTINGS.uiTheme == CrossPointSettings::UI_THEME::INX;
+  const bool inxTheme =
+      (!upstreamStyle || UiHighDpiProfile::enabled) && SETTINGS.uiTheme == CrossPointSettings::UI_THEME::INX;
 
   fui::ThemeTokens tokens = fui::themeTokensForLineHeight(target.lineHeight(fui::GfxRendererTarget::FONT_BODY));
   if (!inxTheme && !BoardConfig::hasTouch()) tokens.listMinRowHeight = static_cast<int16_t>(metrics.listRowHeight);
@@ -92,15 +93,25 @@ inline freeink::ui::ThemeTokens uiThemeTokens(const freeink::ui::GfxRendererTarg
     tokens.listValueText = tokens.bodyText;
   }
   if (UiHighDpiProfile::enabled) {
-    tokens.minTouchSize = UiHighDpiProfile::buttonHeight;
-    tokens.rowHeight = UiHighDpiProfile::rowHeight;
-    tokens.listMinRowHeight = UiHighDpiProfile::rowHeight;
-    tokens.listTouchMinRowHeight = UiHighDpiProfile::rowHeight;
-    tokens.listTouchRowPaddingY = 16;
-    tokens.listTouchRowGap = UiHighDpiProfile::controlGap;
-    tokens.spaceSm = 8;
-    tokens.spaceMd = UiHighDpiProfile::controlGap;
-    tokens.spaceLg = 24;
+    tokens.minTouchSize = ricky::ds::layout::kTouchMin;
+    tokens.rowHeight = ricky::ds::layout::kRowHeight;
+    tokens.listMinRowHeight = ricky::ds::layout::kRowHeight;
+    tokens.listTouchMinRowHeight = ricky::ds::layout::kRowHeight;
+    tokens.listTouchRowPaddingY = ricky::ds::space::k3;
+    tokens.listTouchRowGap = ricky::ds::space::kTouchSpacing;
+    tokens.listRowGap = ricky::ds::space::kTouchSpacing;
+    tokens.spaceSm = ricky::ds::space::k2;
+    tokens.spaceMd = ricky::ds::space::k4;
+    tokens.spaceLg = ricky::ds::space::k6;
+    // The title slot binds an actual Bold face. Dilating that face, or the
+    // regular body/caption faces, defeats the design's weight hierarchy.
+    tokens.titleText.bold = false;
+    tokens.bodyText.bold = false;
+    tokens.listEmphasizedText = tokens.titleText;
+    tokens.listEmphasizedText.bold = false;
+    tokens.listInset = ricky::ds::space::kPageMargin - ricky::ds::space::kSelectionBleed;
+    tokens.listSidePadding = ricky::ds::space::kSelectionBleed;
+    tokens.listSelectionCoversScrollReservation = false;
   }
   if (!UITheme::getInstance().showSelectionCursor()) SelectionCursorPolicy::hideFreeInkListFocus(tokens);
   return tokens;

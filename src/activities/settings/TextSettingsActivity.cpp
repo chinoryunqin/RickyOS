@@ -5,8 +5,8 @@
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Logging.h>
-#include <SdCardFontCache.h>
 #include <Memory.h>
+#include <SdCardFontCache.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -436,6 +436,7 @@ void TextSettingsActivity::render(RenderLock&& lock) {
     renderer.displayBuffer();
     return;
   }
+  if (optionPopup_.isActive()) renderPopupUnderlay();
   if (optionPopup_.processRender(renderer, mappedInput)) return;  // picker draws over everything
   UiListActivity::render(std::move(lock));
 }

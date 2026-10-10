@@ -15,16 +15,19 @@
 #include "MappedInputManager.h"
 #include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
+#include "activities/home/RickyStorageActivity.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
+#include "components/RickyDesignUi.h"
+#include "components/RickyFileLabel.h"
 #include "components/SubpageLayout.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
 #include "components/icons/inx_library.h"
+#include "components/icons/rickyPageIcons.h"
 #include "fontIds.h"
 #include "util/BookCacheUtils.h"
 #include "util/FileEditUtils.h"
-#include "activities/home/RickyStorageActivity.h"
 
 namespace fui = freeink::ui;
 
@@ -58,6 +61,7 @@ FileBrowserActivity::FileBrowserActivity(GfxRenderer& renderer, MappedInputManag
 }
 
 void FileBrowserActivity::loadFiles() {
+  resetMetadata();
   prewarmedStart = -1;
   files.clear();
 
@@ -127,7 +131,7 @@ void FileBrowserActivity::loadFiles() {
 // ListItem) per file each time it's called.
 void FileBrowserActivity::rebuildRowItems() {
   rowsUseFileIcons = UITheme::getInstance().getTheme().showsFileIcons();
-  if (!UITheme::getInstance().hasMainTabs()) {
+  if (!usesIconLayout()) {
     rowNames.clear();
     rowExtensions.clear();
     rowItems.clear();
@@ -178,6 +182,9 @@ void FileBrowserActivity::rebuildRowItems() {
 }
 
 bool FileBrowserActivity::usesIconLayout() const {
+  // The shelf grid belongs to Library. Storage/pickers use the list contract
+  // even when the legacy shelf layout setting is Icons.
+  if (UiHighDpiProfile::enabled) return false;
   return mode == Mode::Books && browserState == BrowserState::Browsing && UITheme::getInstance().hasMainTabs() &&
          InxGridGeometry::layoutFrom(SETTINGS.inxLibraryLayout) == InxItemLayout::Icons;
 }
@@ -243,6 +250,7 @@ void FileBrowserActivity::onEnter() {
 }
 
 void FileBrowserActivity::onExit() {
+  metadataDirectory_.close();
   Activity::onExit();
   files.clear();
   rowNames.clear();
@@ -253,6 +261,110 @@ void FileBrowserActivity::onExit() {
   moveSourcePath.clear();
   moveSourceEntry.clear();
   moveReturnPath.clear();
+}
+
+void FileBrowserActivity::resetMetadata() {
+  metadataDirectory_.close();
+  metadataStart_ = -1;
+  metadataSlot_ = -1;
+  metadata_ = {};
+  requestedMetadataStart_ = 0;
+  metadataRepaint_ = false;
+}
+
+void FileBrowserActivity::loop() {
+  UiListActivity::loop();  // Input is always handled before background I/O.
+  if (UiHighDpiProfile::enabled && fileNameBuffer) updateMetadata();
+}
+
+void FileBrowserActivity::updateMetadata() {
+  const int requested = requestedMetadataStart_.load();
+  if (requested != metadataStart_) {
+    metadataDirectory_.close();
+    RenderLock lock(RenderLock::Mode::Try);
+    if (!lock.ownsLock()) return;
+    metadataStart_ = requested;
+    metadata_ = {};
+    metadataSlot_ = -1;
+    metadataRepaint_ = false;
+  }
+  if (metadataSlot_ < 0) {
+    RenderLock lock(RenderLock::Mode::Try);
+    if (!lock.ownsLock()) return;
+    // File sizes before directory counts: a huge first folder cannot hold up
+    // the sizes of every file below it. No recursive walk is performed.
+    for (int directories = 0; directories < 2 && metadataSlot_ < 0; ++directories) {
+      for (int slot = 0; slot < METADATA_WINDOW; ++slot) {
+        const int index = metadataStart_ + slot;
+        if (index >= static_cast<int>(files.size())) break;
+        const auto& entry = files[index];
+        if (metadata_[slot].done || entry == MOVE_HERE_ENTRY || entry.empty()) continue;
+        const bool directory = entry.back() == '/';
+        if (directory != static_cast<bool>(directories)) continue;
+        const int length =
+            snprintf(metadataPath_, sizeof(metadataPath_), "%s%s%.*s", basepath.c_str(), basepath == "/" ? "" : "/",
+                     static_cast<int>(entry.size() - (directory ? 1 : 0)), entry.c_str());
+        if (length < 0 || length >= static_cast<int>(sizeof(metadataPath_))) {
+          metadata_[slot].done = true;
+          continue;
+        }
+        metadataSlot_ = slot;
+        directoryCount_ = 0;
+        break;
+      }
+    }
+  }
+  if (metadataSlot_ < 0) {
+    if (metadataRepaint_) {
+      metadataRepaint_ = false;
+      requestUpdate();
+    }
+    return;
+  }
+  uint64_t value = 0;
+  bool done = false;
+  bool known = false;
+  if (!metadataDirectory_) {
+    auto entry = Storage.open(metadataPath_);
+    if (!entry) {
+      done = true;
+    } else if (!entry.isDirectory()) {
+      value = entry.fileSize64();
+      known = done = true;
+    } else {
+      metadataDirectory_ = std::move(entry);
+    }
+  }
+  if (metadataDirectory_) {
+    const auto started = millis();
+    // Bounded per-pass work, including a time check between HAL operations.
+    // A single slow SD operation cannot be preempted; hardware testing remains required.
+    for (int entries = 0; entries < 24 && millis() - started < 3; ++entries) {
+      auto child = metadataDirectory_.openNextFile();
+      if (!child) {
+        value = directoryCount_;
+        known = done = true;
+        metadataDirectory_.close();
+        break;
+      }
+      child.getName(fileNameBuffer.get(), NAME_BUFFER_SIZE);
+      if ((!SETTINGS.showHiddenFiles && fileNameBuffer[0] == '.') ||
+          strcmp(fileNameBuffer.get(), "System Volume Information") == 0)
+        continue;
+      ++directoryCount_;
+    }
+  }
+  if (done) {
+    RenderLock lock(*this);
+    metadata_[metadataSlot_] = {value, true, known};
+    metadataSlot_ = -1;
+    metadataRepaint_ = true;
+  }
+  if (metadataRepaint_ && millis() - metadataRepaintAt_ >= 300) {
+    metadataRepaint_ = false;
+    metadataRepaintAt_ = millis();
+    requestUpdate();
+  }
 }
 
 void FileBrowserActivity::selectMainTabContentEdge(const MainTabContentEdge edge) {
@@ -644,9 +756,8 @@ void FileBrowserActivity::activateSelected() {
     const std::string fullPath = basepath + entry;
     lock.unlock();
     if (!FsHelpers::hasEpubExtension(fullPath) && !FsHelpers::hasTxtExtension(fullPath) &&
-        !FsHelpers::hasMarkdownExtension(fullPath) &&
-        !FsHelpers::hasBmpExtension(fullPath) && !FsHelpers::hasPngExtension(fullPath) &&
-        !FsHelpers::hasJpgExtension(fullPath)) {
+        !FsHelpers::hasMarkdownExtension(fullPath) && !FsHelpers::hasBmpExtension(fullPath) &&
+        !FsHelpers::hasPngExtension(fullPath) && !FsHelpers::hasJpgExtension(fullPath)) {
       showNotice(StrId::STR_RICKY_NO_PREVIEW);
       return;
     }
@@ -772,33 +883,39 @@ void FileBrowserActivity::buildScreen(UiScreen& screen) {
       static_cast<int16_t>(renderer.getScreenHeight() - content.y - content.height), static_cast<int16_t>(content.x)});
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 
-  // Full path band at the bottom: separator on top, left-truncated so the
+  // Full path band: left-truncated so the
   // deepest directory stays visible.
   {
-    const int pathLineHeight = renderer.getLineHeight(SMALL_FONT_ID);
-    const fui::Rect band = screen.takeBottom(static_cast<int16_t>(pathLineHeight + metrics.verticalSpacing));
-    screen.target().fill(fui::Rect{band.x, band.y, band.width, 3}, fui::Paint::solid(fui::Color::Black));
+    const int pathFont = UiHighDpiProfile::enabled
+                             ? RickyDesignUi::fontFor(renderer, RickyDesignUi::CAPTION, basepath.c_str())
+                             : SMALL_FONT_ID;
+    const int pathLineHeight = renderer.getLineHeight(pathFont);
+    const fui::Rect band = UiHighDpiProfile::enabled
+                               ? screen.takeTop(ricky::ds::layout::kSectionHeaderHeight)
+                               : screen.takeBottom(static_cast<int16_t>(pathLineHeight + metrics.verticalSpacing));
+    if (!UiHighDpiProfile::enabled)
+      screen.target().fill(fui::Rect{band.x, band.y, band.width, 3}, fui::Paint::solid(fui::Color::Black));
     const int pathY =
         band.y + metrics.verticalSpacing / 2 + (band.height - metrics.verticalSpacing / 2 - pathLineHeight) / 2;
     const int pathMaxWidth = band.width - metrics.contentSidePadding * 2;
     const char* pathStr = basepath.c_str();
     const char* pathDisplay = pathStr;
     char leftTruncBuf[256];
-    if (renderer.getTextWidth(SMALL_FONT_ID, pathStr) > pathMaxWidth) {
+    if (renderer.getTextWidth(pathFont, pathStr) > pathMaxWidth) {
       const char ellipsis[] = "\xe2\x80\xa6";  // UTF-8 ellipsis (…)
-      const int ellipsisWidth = renderer.getTextWidth(SMALL_FONT_ID, ellipsis);
+      const int ellipsisWidth = renderer.getTextWidth(pathFont, ellipsis);
       const int available = pathMaxWidth - ellipsisWidth;
       // Walk forward from the start until the suffix fits, skipping UTF-8 continuation bytes
       const char* p = pathStr;
       while (*p) {
-        if (renderer.getTextWidth(SMALL_FONT_ID, p) <= available) break;
+        if (renderer.getTextWidth(pathFont, p) <= available) break;
         ++p;
         while (*p && (static_cast<unsigned char>(*p) & 0xC0) == 0x80) ++p;
       }
       snprintf(leftTruncBuf, sizeof(leftTruncBuf), "%s%s", ellipsis, p);
       pathDisplay = leftTruncBuf;
     }
-    renderer.drawText(SMALL_FONT_ID, band.x + metrics.contentSidePadding, pathY, pathDisplay);
+    renderer.drawText(pathFont, band.x + metrics.contentSidePadding, pathY, pathDisplay);
   }
 
   if (files.empty()) {
@@ -836,6 +953,16 @@ void FileBrowserActivity::buildScreen(UiScreen& screen) {
   fui::TextStyle label = UITheme::getInstance().hasMainTabs() ? screen.theme().bodyText : screen.theme().smallText;
   label.maxLines = 2;
   props.labelText = label;
+  if (UiHighDpiProfile::enabled) {
+    props.rowHeight = ricky::ds::layout::kRowHeightTwoLine;
+    props.rowInset = screen.theme().listInset;
+    props.sidePadding = screen.theme().listSidePadding;
+    props.subtitleText = screen.theme().smallText;
+    props.subtitleText.maxLines = 1;
+    props.iconSize = 32;
+    props.textGap = ricky::ds::space::kInlineGap;
+    props.labelText.maxLines = 2;
+  }
   // The trailing value here is just the short extension: skip the balanced
   // 60%-band wrap cap and let both name lines run the full width before it.
   props.balanceWrappedLabelWithValue = false;
@@ -844,6 +971,9 @@ void FileBrowserActivity::buildScreen(UiScreen& screen) {
   // files past the fold are visibly present, not silently absent.
   props.partialTrailingRow = UITheme::getInstance().hasMainTabs();
   syncListViewport(screen, props);
+  requestedMetadataStart_.store(nav.top);
+  rowLabelWidth_ = std::max(1, screen.body().width - std::max<int>(0, props.rowInset) * 2 -
+                                   std::max<int>(0, props.sidePadding) * 2 - props.iconSize - props.textGap);
   prewarmRowGlyphs(nav.top);
   screen.list(props);
 }
@@ -882,6 +1012,7 @@ void FileBrowserActivity::drawFooter() {
 }
 
 void FileBrowserActivity::render(RenderLock&& lock) {
+  if (editPopup.isActive()) renderPopupUnderlay();
   if (editPopup.processRender(renderer, mappedInput)) return;
   UiListActivity::render(std::move(lock));
 }
@@ -922,6 +1053,57 @@ void FileBrowserActivity::provideRow(void* ctx, const uint16_t index, fui::ListI
   }
   formatFileName(entry, self->rowNameBuf, sizeof(self->rowNameBuf));
   item.label = self->rowNameBuf;
+  if (UiHighDpiProfile::enabled) {
+    // Filesystem names keep their suffix; folder names omit the legacy []
+    // notation. Formatting touches only the visible provider scratch row.
+    const bool directory = !entry.empty() && entry.back() == '/';
+    snprintf(self->rowNameBuf, sizeof(self->rowNameBuf), "%.*s", static_cast<int>(entry.size() - (directory ? 1 : 0)),
+             entry.c_str());
+    utf8ComposeNfcInPlace(self->rowNameBuf);
+    const int font = RickyDesignUi::fontFor(self->renderer, RickyDesignUi::BODY, self->rowNameBuf);
+    RickyFileLabel::middleEllipsis(self->rowNameBuf, self->rowLabelWidth_ * 2 - self->renderer.getLineHeight(font),
+                                   [&](const char* text) { return self->renderer.getTextWidth(font, text); });
+    formatFileExtension(entry, self->rowExtBuf, sizeof(self->rowExtBuf));
+    if (directory) {
+      item.subtitle = tr(STR_RICKY_FOLDER_TYPE);
+      item.icon = fui::bitmapFromIcon(icon_ricky_row_folder_32);
+    } else {
+      char* extension = self->rowExtBuf;
+      if (*extension == '.') ++extension;
+      for (char* p = extension; *p; ++p) {
+        if (*p >= 'a' && *p <= 'z') *p -= 'a' - 'A';
+      }
+      item.subtitle = extension;
+      const auto kind = UITheme::getFileIcon(entry);
+      item.icon = fui::bitmapFromIcon(kind == UIIcon::Book    ? icon_ricky_row_books_32
+                                      : kind == UIIcon::Text  ? icon_ricky_row_text_32
+                                      : kind == UIIcon::Image ? icon_ricky_row_image_32
+                                                              : icon_ricky_row_file_32);
+    }
+    const int slot = static_cast<int>(index) - self->metadataStart_;
+    if (slot >= 0 && slot < METADATA_WINDOW && self->metadata_[slot].known) {
+      const auto value = self->metadata_[slot].value;
+      if (directory) {
+        snprintf(self->rowInfoBuf, sizeof(self->rowInfoBuf), tr(STR_RICKY_FOLDER_COUNT), static_cast<unsigned>(value));
+      } else {
+        // Bytes from the file's actual directory entry, never inferred from its format.
+        const double size = static_cast<double>(value);
+        const char* unit = value >= 1024ULL * 1024 * 1024 ? "GB"
+                           : value >= 1024 * 1024         ? "MB"
+                           : value >= 1024                ? "KB"
+                                                          : "B";
+        const double divisor = unit[0] == 'G'   ? 1073741824.0
+                               : unit[0] == 'M' ? 1048576.0
+                               : unit[0] == 'K' ? 1024.0
+                                                : 1.0;
+        snprintf(self->rowInfoBuf, sizeof(self->rowInfoBuf), "%s · %.*f %s", item.subtitle,
+                 value >= 1024 * 1024 ? 1 : 0, size / divisor, unit);
+      }
+      item.subtitle = self->rowInfoBuf;
+    }
+    item.actionValue = static_cast<int16_t>(index);
+    return;
+  }
   formatFileExtension(entry, self->rowExtBuf, sizeof(self->rowExtBuf));
   if (self->rowExtBuf[0] != '\0') {
     item.value = self->rowExtBuf;

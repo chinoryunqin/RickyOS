@@ -1,4 +1,5 @@
 #include "RickyOptionListActivity.h"
+
 #include <GfxRenderer.h>
 
 #include <algorithm>
@@ -66,6 +67,7 @@ bool RickyOptionListActivity::handleCustomInput() {
 }
 
 void RickyOptionListActivity::render(RenderLock&& lock) {
+  if (optionPopup.isActive()) renderPopupUnderlay();
   if (optionPopup.processRender(renderer, mappedInput)) return;
   UiListActivity::render(std::move(lock));
 }
@@ -75,47 +77,29 @@ void RickyOptionListActivity::buildScreen(UiScreen& screen) {
   screen.setContentMarginFromScreen(
       fui::Insets{static_cast<int16_t>(bounds.y), 0,
                   static_cast<int16_t>(renderer.getScreenHeight() - bounds.y - bounds.height), 0});
-  const auto& theme = screen.theme();
-  auto& target = screen.target();
-  screen.insetContent(fui::Insets{static_cast<int16_t>(theme.spaceMd), theme.spaceLg, theme.spaceSm, theme.spaceLg});
-  const int gap = std::max<int>(10, theme.spaceSm);
-  const int bodyHeight = target.lineHeight(theme.bodyText.font);
-  const int smallHeight = target.lineHeight(theme.smallText.font);
-  const int selected = RickyPageUi::syncNav(nav, listCount());
-  const bool focus = showMainTabContentSelection();
-  RickyPageUi::Bold bold(renderer, 1);
+  fui::ListProps props;
+  props.rowProvider = &RickyOptionListActivity::provideRow;
+  props.rowProviderCtx = this;
+  props.count = static_cast<uint16_t>(std::max(0, list.count));
+  props.action = ACTION_ROW;
+  props.inputMask = fui::InputTouch;
+  props.labelText = screen.theme().bodyText;
+  props.labelText.maxLines = 2;
+  syncListViewport(screen, props);
+  screen.list(props);
+}
 
-  auto label = theme.bodyText;
-  label.maxLines = 1;
-  auto value = theme.smallText;
-  value.maxLines = 1;
-  value.align = fui::TextAlign::Right;
-  auto caption = theme.smallText;
-  caption.maxLines = 1;
-
-  const int rowHeight = bodyHeight + gap * 2;
-  for (int i = 0; i < list.count; ++i) {
-    const RickyOptionRow& item = list.rows[i];
-    if (item.section != StrId::STR_NONE_OPT) {
-      if (i > 0) screen.spacer(static_cast<int16_t>(gap));
-      target.text(screen.takeTop(static_cast<int16_t>(smallHeight), static_cast<int16_t>(gap)), I18N.get(item.section),
-                  caption);
-    }
-    const auto row = screen.takeTop(static_cast<int16_t>(rowHeight), static_cast<int16_t>(gap));
-    RickyPageUi::card(target, row, focus && selected == i);
-    screen.frame().hit(row, ACTION_ROW, i, fui::InputTouch);
-    const int middle = row.y + row.height / 2;
-    const int textX = row.x + gap * 2;
-    const int valueWidth = row.width * 2 / 5;
-    const int valueX = row.right() - gap * 2 - valueWidth;
-    target.text(fui::Rect{static_cast<int16_t>(textX), static_cast<int16_t>(middle - bodyHeight / 2),
-                          static_cast<int16_t>(valueX - textX - gap), static_cast<int16_t>(bodyHeight)},
-                I18N.get(item.label), label);
-    const char* current = item.options ? I18N.get(item.options[*item.field % item.optionCount])
-                                       : I18N.get(*item.field ? StrId::STR_STATE_ON : StrId::STR_STATE_OFF);
-    target.text(fui::Rect{static_cast<int16_t>(valueX), static_cast<int16_t>(middle - smallHeight / 2),
-                          static_cast<int16_t>(valueWidth), static_cast<int16_t>(smallHeight)},
-                current, value);
+void RickyOptionListActivity::provideRow(void* ctx, uint16_t index, fui::ListItem& item) {
+  const auto* self = static_cast<const RickyOptionListActivity*>(ctx);
+  if (index >= self->list.count) return;
+  const auto& row = self->list.rows[index];
+  item.label = I18N.get(row.label);
+  item.actionValue = static_cast<int16_t>(index);
+  if (row.section != StrId::STR_NONE_OPT) item.sectionHeading = I18N.get(row.section);
+  if (row.options && row.optionCount) {
+    item.value = I18N.get(row.options[*row.field % row.optionCount]);
+  } else {
+    GUI.setCheckboxRow(item, *row.field != 0);
   }
 }
 

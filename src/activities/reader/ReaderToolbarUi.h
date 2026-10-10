@@ -44,7 +44,7 @@ class ReaderToolbarUi : public UiAppHost {
     // Panel
     const char* panelTitle = nullptr;
     // Two switchable titles (Contents | Bookmarks) in place of panelTitle when
-    // both are set; the active one is bold and underlined.
+    // both are set; the product's active segment is an inverse chip.
     const char* segmentLabels[2] = {nullptr, nullptr};
     int activeSegment = 0;
     // Size the sheet for at least this many rows even when the list is

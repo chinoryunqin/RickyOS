@@ -14,20 +14,21 @@
 #include "CrossPointSettings.h"
 #include "apps/AppsMenuActivity.h"
 #include "apps/calculator/CalculatorActivity.h"
-#include "components/SubpageLayout.h"
-#include "apps/weread/WeReadActivity.h"
 #include "apps/gomoku/GomokuMenuActivity.h"
-#include "apps/standby/StandbyActivity.h"
 #include "apps/reading-stats/RickyReadingStatsActivity.h"
 #include "apps/standby/RickyStandbySettingsActivity.h"
+#include "apps/standby/StandbyActivity.h"
+#include "apps/weread/WeReadActivity.h"
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
 #include "components/HeaderBackTapTarget.h"
+#include "components/RickyDesignTokens.h"
+#include "components/SubpageLayout.h"
 #include "home/CrashActivity.h"
 #include "home/FileBrowserActivity.h"
-#include "home/RickyStorageActivity.h"
 #include "home/InxRecentActivity.h"
 #include "home/RecentBooksActivity.h"
+#include "home/RickyStorageActivity.h"
 #include "library/LibraryListActivity.h"
 #include "network/CrossPointWebServerActivity.h"
 #include "network/UsbDriveActivity.h"
@@ -73,20 +74,13 @@ void ActivityManager::renderTaskTrampoline(void* param) {
   self->renderTaskLoop();
 }
 
-#if FREEINK_DEVICE_READPICO
+#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
 namespace {
-// The UI draws in black and white so every touch gets the fast refresh (~230 ms), which
-// leaves curves and text edges stepped: a 300 ppi screen that looks like 200 ppi. Once
-// input has been quiet this long, the same screen is redrawn into the 16-level frame and
-// committed with the no-flash text-turn waveform, so a screen at rest looks like the
-// reader's anti-aliased text. The next touch goes back to the fast B/W refresh; the panel
-// keeps the 16-level state, so its gray edge pixels are driven back cleanly.
-constexpr uint32_t kGraySettleDelayMs = 1500;
+// Keep the previous B/W + delayed-gray candidate available for A/B builds.
+// The direct-gray experiment skips both the B/W submission and this idle redraw.
+constexpr uint32_t kGraySettleDelayMs = ricky::ds::refresh::kGraySettleDelayMs;
 
-// Off for now: on device a settle occasionally left the panel out of step with the
-// driver (two screens superimposed until a full refresh), cause not yet found. The
-// anti-aliased drawing it uses stays in place for when it returns.
-bool graySettleAllowed() { return false; }
+bool graySettleAllowed() { return !ricky::ds::refresh::kDirectGrayUi; }
 }  // namespace
 #endif
 
@@ -128,17 +122,25 @@ void ActivityManager::renderTaskLoop() {
         // Some renderers release the lock, so read activity-owned metadata
         // before calling them. Input during the render also cancels its idle pass.
         auto delayMs = currentActivity->idleRenderDelayMs();
-#if FREEINK_DEVICE_READPICO
+        [[maybe_unused]] bool directGray = false;
+#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
+        directGray = delayMs == 0 && currentActivity->wantsGraySettle() && ricky::ds::refresh::kDirectGrayUi;
         graySettlePending = delayMs == 0 && currentActivity->wantsGraySettle() && graySettleAllowed();
         if (graySettlePending) delayMs = kGraySettleDelayMs;
 #endif
         idleGeneration = idleRenderGeneration.load(std::memory_order_relaxed);
         display.setInverted(SETTINGS.screenInverted != 0);
+#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
+        // A missing gray buffer or failed commit gets the existing readable B/W
+        // fallback. The direct path never arms a second, delayed submission.
+        if (!directGray || !renderDirectGray(std::move(lock))) currentActivity->render(std::move(lock));
+#else
         currentActivity->render(std::move(lock));
+#endif
         idleDelayTicks = delayMs != 0 ? pdMS_TO_TICKS(delayMs) : portMAX_DELAY;
         waitTicks = idleDelayTicks;
       } else if (!idleRenderCancelled(idleGeneration)) {
-#if FREEINK_DEVICE_READPICO
+#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
         if (graySettlePending) {
           graySettlePending = false;
           settleToGray(std::move(lock), idleGeneration);
@@ -164,7 +166,38 @@ void ActivityManager::renderTaskLoop() {
   }
 }
 
-#if FREEINK_DEVICE_READPICO
+#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
+bool ActivityManager::renderDirectGray(RenderLock&& lock) {
+  if (!renderer.beginGrayscale16()) {
+    LOG_DBG("ACT", "Direct gray: unavailable, B/W fallback");
+    return false;
+  }
+  const unsigned long started = millis();
+  renderer.setDisplayCapture(true);
+  currentActivity->render(std::move(lock));
+  renderer.setDisplayCapture(false);
+  if (!renderer.isGrayscale16Active()) return true;  // The page owns its cancellation.
+  // A plain touch/release must not discard the only foreground frame. Discard
+  // only when a newer redraw or navigation is queued (e.g. a cover finishes).
+  if (isSwitchPending() || requestedUpdate.load()) {
+    renderer.cancelGrayscale16();
+    LOG_DBG("ACT", "Direct gray: superseded");
+    return true;
+  }
+#if !defined(SIMULATOR)
+  static uint8_t frames = 0;
+  const uint8_t next = static_cast<uint8_t>((frames + 1) % ricky::ds::refresh::kGc16EveryDirectFrames);
+  display.setNextGray16Profile(renderer.nextRefreshNeedsCleanup() || next == 0 ? 2 : 1);
+#endif
+  const bool committed = renderer.commitGrayscale16();
+  if (committed) renderer.clearNextRefreshOverride();
+#if !defined(SIMULATOR)
+  if (committed) frames = next;
+#endif
+  LOG_DBG("ACT", "Direct gray: %s in %lu ms", committed ? "done" : "failed, B/W fallback", millis() - started);
+  return committed;
+}
+
 void ActivityManager::settleToGray(RenderLock&& lock, const uint32_t generation) {
   if (!renderer.beginGrayscale16()) return;
   const unsigned long started = millis();
@@ -183,7 +216,7 @@ void ActivityManager::settleToGray(RenderLock&& lock, const uint32_t generation)
   // the panel's real state build up across fast refreshes and settles (old screens show
   // through). Every few settles is a full GC16 clean instead.
   static uint8_t settles = 0;
-  constexpr uint8_t kCleanEvery = 8;
+  constexpr uint8_t kCleanEvery = ricky::ds::refresh::kGc16EverySettles;
   settles = static_cast<uint8_t>((settles + 1) % kCleanEvery);
   display.setNextGray16Profile(settles == 0 ? 2 : 1);
 #endif
@@ -576,7 +609,6 @@ void ActivityManager::goToUsbDrive() {
 
 void ActivityManager::goToSettings() { replaceActivityWith<SettingsActivity>(); }
 
-
 void ActivityManager::goToFileBrowser(std::string path) { replaceActivityWith<FileBrowserActivity>(std::move(path)); }
 
 void ActivityManager::goToRecentBooks() { replaceActivityWith<RecentBooksActivity>(); }
@@ -668,9 +700,7 @@ void ActivityManager::goToReadingStats() { goToRickyReadingStats(); }
 
 void ActivityManager::goToGomoku() { replaceActivityWith<GomokuMenuActivity>(); }
 
-
 void ActivityManager::goToCalculator() { replaceActivityWith<CalculatorActivity>(); }
-
 
 void ActivityManager::goToStandby() { replaceActivityWith<StandbyActivity>(); }
 
@@ -745,7 +775,18 @@ bool ActivityManager::deferBluetoothStart() const {
 
 bool ActivityManager::handleForcedRefresh() {
   cancelIdleRender();
-  return currentActivity && currentActivity->handleForcedRefresh();
+  if (!currentActivity) return false;
+  if (currentActivity->handleForcedRefresh()) return true;
+#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
+  if (ricky::ds::refresh::kDirectGrayUi && currentActivity->wantsGraySettle() &&
+      currentActivity->idleRenderDelayMs() == 0) {
+    // Refresh the real gray UI, not its approximate 1-bit proxy.
+    renderer.requestNextFullRefresh();
+    requestUpdate();
+    return true;
+  }
+#endif
+  return false;
 }
 
 bool ActivityManager::skipLoopDelay() const { return currentActivity && currentActivity->skipLoopDelay(); }

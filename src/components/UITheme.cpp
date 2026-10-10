@@ -7,6 +7,10 @@
 #include <HalMemory.h>
 #include <Logging.h>
 #include <Memory.h>
+#include <builtinFonts/notosans_14_bold.h>
+#include <builtinFonts/notosans_14_regular.h>
+#include <builtinFonts/notosans_16_bold.h>
+#include <builtinFonts/notosans_16_regular.h>
 #include <builtinFonts/notosans_18_bold.h>
 #include <builtinFonts/notosans_18_regular.h>
 #include <builtinFonts/ubuntu_10_bold.h>
@@ -23,10 +27,6 @@
 #include "components/SelectionCursorPolicy.h"
 #include "components/themes/BaseTheme.h"
 #include "components/themes/inx/InxTheme.h"
-#include <builtinFonts/notosans_14_bold.h>
-#include <builtinFonts/notosans_14_regular.h>
-#include <builtinFonts/notosans_16_bold.h>
-#include <builtinFonts/notosans_16_regular.h>
 
 // The registered families keep these stable addresses across theme changes.
 EpdFont ui10RegularFont(&notosans_14_regular);
@@ -56,17 +56,11 @@ void UITheme::reload() {
   setTheme(themeType);
 }
 
-bool UITheme::supportsCoverGrid() {
-  return false;
-}
+bool UITheme::supportsCoverGrid() { return false; }
 
-bool UITheme::hasCoverGridHome() {
-  return false;
-}
+bool UITheme::hasCoverGridHome() { return false; }
 
-void UITheme::drawCoverGridHome(CoverGridHomeUi& home) {
-  (void)home;
-}
+void UITheme::drawCoverGridHome(CoverGridHomeUi& home) { (void)home; }
 
 void UITheme::setTheme(CrossPointSettings::UI_THEME type) {
   (void)type;
@@ -83,7 +77,9 @@ const ThemeMetrics& UITheme::getMetrics() const {
   const bool showButtonHints = currentTheme->buttonHintsVisible();
   if (!metricsValid || showButtonHints != metricsForButtonHints) {
     adjustedMetrics = *currentMetrics;
-    UiHighDpiProfile::apply(adjustedMetrics);
+    // InxMetrics already applies the hardware preset, then the product's
+    // design tokens. Applying the old preset again silently undid margins,
+    // subpage header height, keyboard size and row cadence at runtime.
     if (!showButtonHints) {
       adjustedMetrics.buttonHintsHeight = 0;
     }

@@ -49,5 +49,5 @@ class RickyOptionListActivity final : public UiListActivity {
  private:
   const RickyOptionList& list;
   OptionPopup optionPopup;
+  static void provideRow(void* ctx, uint16_t index, freeink::ui::ListItem& item);
 };
-

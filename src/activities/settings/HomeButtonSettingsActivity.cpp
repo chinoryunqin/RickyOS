@@ -27,6 +27,7 @@ void HomeButtonSettingsActivity::activateIndex(int index) {
 }
 
 void HomeButtonSettingsActivity::render(RenderLock&& lock) {
+  if (optionPopup.isActive()) renderPopupUnderlay();
   if (optionPopup.processRender(renderer, mappedInput)) return;
   UiListActivity::render(std::move(lock));
 }

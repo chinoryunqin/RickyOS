@@ -351,6 +351,8 @@ class BaseTheme {
   // A small framed label in the bottom-right corner over whatever the screen shows
   // ("Standby", or "Off" on the power-off screen); returns where it drew.
   static Rect drawRickyStandbyIndicator(const GfxRenderer& renderer, bool poweredOff = false);
+  static void drawRickyReaderChrome(GfxRenderer& renderer, float bookProgress, int currentPage, int pageCount,
+                                    const char* title, bool bookmarked, bool estimated);
   // Also draws the wall clock opposite the battery when the user enabled
   // SETTINGS.clockShowInHeader and system time is valid. On touch boards a
   // tappable back button leads the band (see HeaderBackTapTarget); root
@@ -358,7 +360,7 @@ class BaseTheme {
   virtual void drawHeader(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle = nullptr,
                           bool backButton = true) const;
   static void drawHeaderWithStyle(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle,
-                                  bool backButton, bool upstreamStyle);
+                                  bool backButton, bool upstreamStyle, int trailingReserve = 0);
   // Fill the battery/clock status chrome (settings + theme metrics) into
   // header props, so FUI-native screens drawing their own interactive header
   // carry the same band as drawHeader. Status text is styled with the

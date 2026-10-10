@@ -7,6 +7,7 @@
 
 #include "activities/UiListActivity.h"
 #include "components/OptionPopup.h"
+#include "components/RickyReaderMenuLayout.h"
 
 class EpubReaderMenuActivity final : public UiListActivity {
  public:
@@ -40,9 +41,12 @@ class EpubReaderMenuActivity final : public UiListActivity {
 
   explicit EpubReaderMenuActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::string& title,
                                   const int currentPage, const int totalPages, const int bookProgressPercent,
-                                  const uint8_t currentOrientation, const bool hasFootnotes, bool hasBookmarks);
+                                  const uint8_t currentOrientation, const bool hasFootnotes, bool hasBookmarks,
+                                  const char* chapterTitle = "", bool pageBookmarked = false,
+                                  unsigned bookmarkCount = 0);
 
   void render(RenderLock&&) override;
+  void onEnter() override;
   bool handleHomeGesture() override;
 
  private:
@@ -54,7 +58,7 @@ class EpubReaderMenuActivity final : public UiListActivity {
   freeink::ui::ListItem menuRowItems[MAX_MENU_ITEMS]{};
   void buildMenuRowItems();
 
-  int listCount() const override { return static_cast<int>(menuItems.size()); }
+  int listCount() const override { return menuView.count; }
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
   // Popup input runs before any button or touch handling.
@@ -66,6 +70,14 @@ class EpubReaderMenuActivity final : public UiListActivity {
   void drawChrome() override;
 
   void closeCancelled();
+  void finishWithAction(MenuAction action);
+  void setMenuView(bool more);
+  RickyReaderMenuLayout::View menuView;
+  bool moreView = false;
+  char progressValue[8]{};
+  char chapterTitle_[192]{};  // bounded snapshot, no extra dynamic string
+  char bookmarkCount_[24]{};
+  bool pageBookmarked_ = false;
 
   // Fixed menu layout
   std::vector<MenuItem> menuItems;

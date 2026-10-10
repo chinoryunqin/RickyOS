@@ -10,6 +10,7 @@
 #include "ReadingStatsStore.h"
 #include "RickyBrandMark.h"
 #include "RickyDesignTokens.h"
+#include "RickyDesignUi.h"
 #include "RickyHomeLayout.h"
 #include "RickyPageUi.h"
 #include "RickyProfile.h"
@@ -73,7 +74,7 @@ bool RickyHomeUi::paint(fui::Rect rect, int index) {
   if (painter && painter(owner, index, Rect{rect.x, rect.y, rect.width, rect.height})) {
     // Real artwork gets the same hairline edge as generated covers; pale covers
     // would otherwise dissolve into the page.
-    uiTarget.stroke(rect, fui::Paint::solid(fui::Color::Black), 1);
+    uiTarget.stroke(rect, fui::Paint::solid(fui::Color::Black), ricky::ds::stroke::kHairline);
     return true;
   }
   if (!books || index < 0 || index >= static_cast<int>(books->size())) return false;
@@ -84,7 +85,7 @@ bool RickyHomeUi::paint(fui::Rect rect, int index) {
     RickyPageUi::bookTile(uiTarget, rect, titleOf(book), text);
     return true;
   }
-  RickyPageUi::generatedCover(uiTarget, rect, titleOf(book), book.author.c_str(), formatOf(book.path), text);
+  RickyDesignUi::cover(renderer, rect, titleOf(book), formatOf(book.path));
   return true;
 }
 
@@ -237,41 +238,20 @@ void RickyHomeUi::draw(UiScreen& screen) {
 }
 
 void RickyHomeUi::drawPortrait(UiScreen& screen) {
-  const auto& theme = screen.theme();
+  namespace design = RickyDesignUi;
+  namespace ds = ricky::ds;
+  const int pad = ds::space::kCardPadding;
+  const int gap = ds::space::kGutter;
   auto& target = screen.target();
-  const int gap = ricky::ds::space::kGutter;
-  const int pad = ricky::ds::space::kCardPadding;
-  const int radius = ricky::ds::radius::kContainer;
-  const int titleHeight = target.lineHeight(theme.titleText.font);
-  const int bodyHeight = target.lineHeight(theme.bodyText.font);
-  const int smallHeight = target.lineHeight(theme.smallText.font);
-  auto small = theme.smallText;
-  small.maxLines = 1;
-  small.bold = false;
-  auto title = theme.titleText;
-  title.bold = false;
-  title.maxLines = 1;
-  auto body = theme.bodyText;
-  body.bold = false;
-  body.maxLines = 1;
-  const auto ink = fui::Paint::solid(fui::Color::Black);
-  const auto paper = fui::Paint::solid(fui::Color::White);
-  const auto cardOf = [&](fui::Rect rect, bool selected) {
-    target.fill(rect, selected ? ink : paper, radius);
-    if (!selected) target.stroke(rect, ink, ricky::ds::stroke::kHairline, radius);
+  const auto box = [](int x, int y, int w, int h) {
+    return fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(y), static_cast<int16_t>(w),
+                     static_cast<int16_t>(h)};
   };
-  const auto styleOn = [&](fui::TextStyle style, bool selected) {
-    style.color = selected ? fui::Color::White : fui::Color::Black;
-    style.bold = false;
-    return style;
-  };
-
   std::tm local{};
-  const bool hasClock = halClock.localTime(local);
   static constexpr StrId weekdays[] = {
       StrId::STR_CAL_WEEKDAY_SUN, StrId::STR_CAL_WEEKDAY_MON, StrId::STR_CAL_WEEKDAY_TUE, StrId::STR_CAL_WEEKDAY_WED,
       StrId::STR_CAL_WEEKDAY_THU, StrId::STR_CAL_WEEKDAY_FRI, StrId::STR_CAL_WEEKDAY_SAT};
-  if (hasClock) {
+  if (halClock.localTime(local)) {
     snprintf(dateText, sizeof(dateText), tr(STR_RICKY_HOME_MONTH_DAY), static_cast<unsigned>(local.tm_mon + 1),
              static_cast<unsigned>(local.tm_mday));
     snprintf(statsText, sizeof(statsText), tr(STR_RICKY_HOME_WEEK_STREAK),
@@ -279,222 +259,165 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
              static_cast<unsigned>(READING_STATS.getCurrentStreakDays()));
   } else {
     snprintf(dateText, sizeof(dateText), "%s", tr(STR_RICKY_DATE_UNSET));
-    snprintf(statsText, sizeof(statsText), "%s", "");
+    statsText[0] = 0;
   }
   snprintf(greetingText, sizeof(greetingText), I18N.get(greetingKeys[greetingChoice]), RickyProfile::nickname());
+  auto greetingStyle = screen.theme().bodyText;
+  greetingStyle.maxLines = 2;
+  const int greetingWidth = std::max(1, screen.body().width - 250 - gap);
+  const int greetingHeight =
+      std::clamp<int>(fui::measureWrappedText(target, greetingText, greetingStyle, greetingWidth).height, 36, 72);
+  const auto profile = screen.takeTop(88 + greetingHeight + 4, ds::space::k6);
+  const auto avatar =
+      box(profile.right() - ds::layout::kAvatarSize, profile.y, ds::layout::kAvatarSize, ds::layout::kAvatarSize);
+  RickyProfile::drawAvatar(renderer, Rect{avatar.x, avatar.y, avatar.width, avatar.height});
+  screen.frame().hit(avatar, OPEN_BOOK, PROFILE, fui::InputTouch);
+  const int textWidth = profile.width - avatar.width - gap;
+  design::text(renderer, box(profile.x, profile.y, textWidth, 56), dateText, design::NUMERIC_DISPLAY);
+  design::text(renderer, box(profile.x, profile.y + 56, textWidth, 28), statsText, design::CAPTION);
+  design::text(renderer, box(profile.x, profile.y + 88, greetingWidth, greetingHeight), greetingText, design::BODY,
+               false, fui::TextAlign::Left, 2);
+  const auto note = screen.takeBottom(28, ds::space::k4);
+  design::text(renderer, note, RickyProfile::homePhrase(), design::CAPTION, false, fui::TextAlign::Center);
 
-  const int avatarSize = std::min<int>(ricky::ds::layout::kAvatarSize, screen.body().width / 5);
-  const int introHeight = titleHeight + smallHeight + bodyHeight + gap;
-  const auto profile = screen.takeTop(std::max(introHeight, avatarSize), gap);
-  RickyProfile::drawAvatar(renderer, Rect{profile.right() - avatarSize, profile.y, avatarSize, avatarSize});
-  auto line = profile;
-  line.width -= avatarSize + gap;
-  line.height = titleHeight;
-  target.text(line, dateText, title);
-  line.y += titleHeight;
-  line.height = smallHeight;
-  if (statsText[0]) target.text(line, statsText, small);
-  line.y += smallHeight + gap / 2;
-  line.height = bodyHeight;
-  target.text(line, greetingText, body);
-  screen.frame().hit(fui::Rect{static_cast<int16_t>(profile.right() - avatarSize), profile.y,
-                               static_cast<int16_t>(avatarSize), static_cast<int16_t>(avatarSize)},
-                     OPEN_BOOK, STATISTICS, fui::InputTouch);
-
-  auto phrase = small;
-  phrase.align = fui::TextAlign::Center;
-  const auto note = screen.takeBottom(smallHeight, gap);
-  target.text(note, RickyProfile::homePhrase(), phrase);
-
-  if (!books || books->empty()) {
-    const auto empty = screen.body();
-    cardOf(empty, false);
-    auto message = body;
-    message.align = fui::TextAlign::Center;
-    message.maxLines = 2;
-    target.text(empty, tr(STR_NO_RECENT_BOOKS), message);
-    screen.frame().hit(empty, OPEN_BOOK, LIBRARY, fui::InputTouch);
+  const bool empty = !books || books->empty();
+  const int cardH = empty ? 256 : std::min(288, screen.body().height - 144 - 24 - 40 - 12 - 200);
+  const auto main = screen.takeTop(std::max(256, cardH), ds::space::k6);
+  RickyBrandMark::drawDogPeek(renderer, Rect{main.right() - 250, main.y - 78, 126, 84});
+  const bool selectedCard = !empty && showSelection && selected == start;
+  design::card(renderer, main, selectedCard);
+  const int coverH = main.height - pad * 2;
+  const int coverW = coverH * ds::layout::kCoverAspectW / ds::layout::kCoverAspectH;
+  thumbnailHeight = coverH;
+  const auto art = box(main.x + pad, main.y + pad, coverW, coverH);
+  const int x = art.right() + pad;
+  const int width = main.right() - x - pad;
+  const auto button =
+      box(x, main.bottom() - pad - ds::layout::kButtonCompactHeight, width, ds::layout::kButtonCompactHeight);
+  if (empty) {
+    target.stroke(art, fui::Paint::solid(fui::Color::Black), ds::stroke::kHairline);
+    target.line({static_cast<int16_t>(art.x + art.width / 2 - 20), static_cast<int16_t>(art.y + art.height / 2)},
+                {static_cast<int16_t>(art.x + art.width / 2 + 20), static_cast<int16_t>(art.y + art.height / 2)},
+                ds::stroke::kHairline, fui::Paint::solid(fui::Color::Black));
+    target.line({static_cast<int16_t>(art.x + art.width / 2), static_cast<int16_t>(art.y + art.height / 2 - 20)},
+                {static_cast<int16_t>(art.x + art.width / 2), static_cast<int16_t>(art.y + art.height / 2 + 20)},
+                ds::stroke::kHairline, fui::Paint::solid(fui::Color::Black));
+    design::text(renderer, box(x, main.y + pad + 16, width, 44), tr(STR_RICKY_FIRST_BOOK), design::HEADLINE);
+    design::fill(renderer, button, ds::gray::kInk, ds::radius::kControl);
+    design::text(renderer, button, tr(STR_RICKY_START_TRANSFER), design::BODY, true, fui::TextAlign::Center);
+    screen.frame().hit(main, OPEN_BOOK, TRANSFER, fui::InputTouch);
+    const auto heading = screen.takeTop(40, 8);
+    design::text(renderer, heading, tr(STR_RICKY_TRANSFER_METHODS), design::HEADLINE);
+    // These entries are already supported; routing stays on the existing
+    // transfer chooser rather than adding a second network implementation.
+    const StrId methods[] = {StrId::STR_RICKY_BROWSER_TRANSFER, StrId::STR_RICKY_WEBDAV_CALIBRE,
+                             StrId::STR_RICKY_CREATE_HOTSPOT, StrId::STR_RICKY_SD_BOOKS, StrId::STR_WEREAD_TITLE};
+    for (auto id : methods) {
+      auto row = screen.takeTop(ds::layout::kRowHeight, 0);
+      if (row.empty()) break;
+      design::text(renderer, row, I18N.get(id));
+      RickyPageUi::chevron(target, box(row.right() - 24, row.y, 24, row.height));
+      screen.frame().hit(row, OPEN_BOOK,
+                         id == StrId::STR_WEREAD_TITLE     ? WEREAD
+                         : id == StrId::STR_RICKY_SD_BOOKS ? FILES
+                                                           : TRANSFER,
+                         fui::InputTouch);
+    }
     return;
   }
-
-  const int statsH = ricky::ds::layout::kSettingsCardHeight;
-  const int recentLabels = smallHeight * 2 + gap / 2;
-  const int recentHead = smallHeight;
-  const int lower = statsH + gap + recentHead + gap + recentLabels;
-  int cardH = screen.body().height - lower - gap * 2;
-  int recentCover = std::max(smallHeight * 3, (cardH > 280 ? 140 : 96));
-  if (cardH < 220) {
-    recentCover = smallHeight * 3;
-    cardH = std::max(180, screen.body().height - statsH - recentHead - recentCover - recentLabels - gap * 3);
-  }
-  thumbnailHeight = std::max(1, cardH - pad * 2);
-
-  const auto card = screen.takeTop(cardH, gap);
-  const int peek = std::min(88, card.width / 5);
-  RickyBrandMark::drawDogPeek(
-      renderer, Rect{card.right() - peek - pad, card.y - peek / 2, peek, peek + pad});
-  const bool cardSelected = showSelection && selected == start;
-  cardOf(card, cardSelected);
   const auto& book = (*books)[start];
-  const int coverH = card.height - pad * 2;
-  const int coverW = coverH * ricky::ds::layout::kCoverAspectW / ricky::ds::layout::kCoverAspectH;
-  const fui::Rect cover{static_cast<int16_t>(card.x + pad), static_cast<int16_t>(card.y + pad),
-                        static_cast<int16_t>(coverW), static_cast<int16_t>(coverH)};
-  paint(cover, start);
-  auto info = card;
-  info.x = static_cast<int16_t>(cover.right() + gap);
-  info.width = static_cast<int16_t>(card.right() - pad - info.x);
-  info.y = static_cast<int16_t>(card.y + pad);
-  info.height = smallHeight;
-  target.text(info, tr(STR_RICKY_HOME_NOW), styleOn(small, cardSelected));
-  info.y += smallHeight + 4;
-  auto bookTitle = body;
-  bookTitle.maxLines = 2;
-  bookTitle.color = cardSelected ? fui::Color::White : fui::Color::Black;
-  const int bookTitleHeight =
-      std::min<int>(bodyHeight * 2, fui::measureWrappedText(target, titleOf(book), bookTitle, info.width).height);
-  info.height = static_cast<int16_t>(bookTitleHeight);
-  RickyPageUi::wrappedText(target, info, titleOf(book), bookTitle);
-  info.y += bookTitleHeight + 4;
-  info.height = smallHeight;
-  if (!book.author.empty()) target.text(info, book.author.c_str(), styleOn(small, cardSelected));
-  const int barY = card.bottom() - pad - smallHeight - gap - 8;
-  target.fill(fui::Rect{info.x, static_cast<int16_t>(barY + 3), info.width, 2},
-              fui::Paint::solid(cardSelected ? fui::Color::White : fui::Color::Black));
-  const int filled = info.width * std::clamp(progress, 0, 100) / 100;
-  if (filled > 0)
-    target.fill(fui::Rect{info.x, static_cast<int16_t>(barY), static_cast<int16_t>(filled), 8},
-                fui::Paint::solid(cardSelected ? fui::Color::White : fui::Color::Black), 4);
+  paint(art, start);
+  design::text(renderer, box(x, main.y + pad, width, 28), tr(STR_RICKY_HOME_NOW), design::CAPTION, selectedCard);
+  const int titleFont = design::fontFor(renderer, design::HEADLINE, titleOf(book));
+  const bool singleTitle = renderer.getTextWidth(titleFont, titleOf(book)) <= width;
+  design::text(renderer, box(x, main.y + pad + 32, width, singleTitle ? 40 : 80), titleOf(book), design::HEADLINE,
+               selectedCard, fui::TextAlign::Left, 2);
+  // Reserve the author row only when the title fits one line. Two title lines
+  // otherwise share that space; neither may collide with progress or the CTA.
+  if (!book.author.empty() && singleTitle)
+    design::text(renderer, box(x, main.y + pad + 80, width, 28), book.author.c_str(), design::CAPTION, selectedCard);
+  const int barY = button.y - 48;
+  design::progress(renderer, box(x, barY, width, ds::layout::kProgressHeight), progress, selectedCard);
+  snprintf(progressText, sizeof(progressText), "%d%%", progress);
   const auto* saved = READING_STATS.findMatchingBookForPath(book.path);
   if (saved && !saved->chapterTitle.empty())
-    snprintf(progressText, sizeof(progressText), "%u%%", static_cast<unsigned>(progress));
-  else
-    snprintf(progressText, sizeof(progressText), "%u%%", static_cast<unsigned>(progress));
-  info.y = static_cast<int16_t>(barY + 10);
-  info.height = smallHeight;
-  if (saved && !saved->chapterTitle.empty()) {
-    snprintf(statsText, sizeof(statsText), "%s", saved->chapterTitle.c_str());
-    auto chapter = info;
-    chapter.width = static_cast<int16_t>(info.width * 2 / 3);
-    target.text(chapter, statsText, styleOn(small, cardSelected));
-    auto percent = info;
-    percent.x += chapter.width;
-    percent.width = static_cast<int16_t>(info.width - chapter.width);
-    auto percentStyle = styleOn(small, cardSelected);
-    percentStyle.align = fui::TextAlign::Right;
-    target.text(percent, progressText, percentStyle);
-  } else {
-    target.text(info, progressText, styleOn(small, cardSelected));
-  }
-  const int buttonH = ricky::ds::layout::kButtonCompactHeight;
-  const fui::Rect button{info.x, static_cast<int16_t>(card.bottom() - pad - buttonH),
-                         static_cast<int16_t>(std::min<int>(info.width, 220)), static_cast<int16_t>(buttonH)};
-  target.fill(button, cardSelected ? paper : ink, ricky::ds::radius::kControl);
-  auto buttonText = body;
-  buttonText.align = fui::TextAlign::Center;
-  buttonText.color = cardSelected ? fui::Color::Black : fui::Color::White;
-  target.text(button, tr(STR_CONTINUE_READING), buttonText);
-  screen.frame().hit(card, OPEN_BOOK, start, fui::InputTouch);
+    design::text(renderer, box(x, barY + 12, width - 80, 28), saved->chapterTitle.c_str(), design::CAPTION,
+                 selectedCard);
+  design::text(renderer, box(x + width - 80, barY + 12, 80, 28), progressText, design::CAPTION, selectedCard,
+               fui::TextAlign::Right);
+  design::fill(renderer, button, selectedCard ? ds::gray::kPaper : ds::gray::kInk, ds::radius::kControl);
+  design::text(renderer, button, tr(STR_CONTINUE_READING), design::BODY, !selectedCard, fui::TextAlign::Center);
+  screen.frame().hit(main, OPEN_BOOK, start, fui::InputTouch);
 
-  const auto statsRow = screen.takeTop(statsH, gap);
-  const int colGap = ricky::ds::space::kGutter;
-  const int colW = (statsRow.width - colGap) / 2;
-  const unsigned minutes = static_cast<unsigned>(READING_STATS.getTodayReadingMs() / 60000);
-  const unsigned goal = static_cast<unsigned>(getDailyReadingGoalMs() / 60000);
-  const unsigned streak = static_cast<unsigned>(READING_STATS.getCurrentStreakDays());
-  for (int column = 0; column < 2; ++column) {
-    const fui::Rect cell{static_cast<int16_t>(statsRow.x + column * (colW + colGap)), statsRow.y,
-                         static_cast<int16_t>(colW), statsRow.height};
-    cardOf(cell, false);
-    auto number = title;
-    number.maxLines = 1;
-    auto label = cell;
-    label.x += pad;
-    label.y += pad;
-    label.width -= pad * 2;
-    label.height = titleHeight;
-    snprintf(statsText, sizeof(statsText), "%u", column == 0 ? minutes : streak);
-    target.text(label, statsText, number);
-    label.y += titleHeight;
-    label.height = smallHeight;
-    target.text(label, column == 0 ? tr(STR_RICKY_HOME_MINUTES_UNIT) : tr(STR_RICKY_HOME_DAYS_UNIT), small);
-    label.y = static_cast<int16_t>(cell.bottom() - pad - smallHeight);
-    if (column == 0) {
+  const auto stats = screen.takeTop(144, ds::space::k6);
+  const unsigned todayMinutes = READING_STATS.getTodayReadingMs() / 60000;
+  const unsigned streak = READING_STATS.getCurrentStreakDays();
+  const unsigned goal = getDailyReadingGoalMs() / 60000;
+  const int col = (stats.width - gap) / 2;
+  for (int i = 0; i < 2; ++i) {
+    const auto cell = box(stats.x + i * (col + gap), stats.y, col, stats.height);
+    design::card(renderer, cell, false);
+    design::text(renderer, box(cell.x + pad, cell.y + 12, col - pad * 2, 28),
+                 i == 0 ? tr(STR_RICKY_TODAY_READING) : tr(STR_RICKY_STREAK_READING), design::CAPTION);
+    snprintf(statsText, sizeof(statsText), "%u", i == 0 ? todayMinutes : streak);
+    design::text(renderer, box(cell.x + pad, cell.y + 40, 136, 56), statsText, design::NUMERIC_DISPLAY);
+    design::text(renderer, box(cell.x + 160, cell.y + 64, col - 160 - pad, 28),
+                 i == 0 ? tr(STR_RICKY_HOME_MINUTES_UNIT) : tr(STR_RICKY_HOME_DAYS_UNIT), design::CAPTION);
+    if (i == 0) {
+      design::progress(renderer, box(cell.x + pad, cell.y + 96, col - pad * 2, 8),
+                       goal ? std::min<uint64_t>(100, uint64_t(todayMinutes) * 100 / goal) : 0);
       snprintf(statsText, sizeof(statsText), tr(STR_RICKY_HOME_GOAL_LINE), goal);
-      target.text(label, statsText, small);
+      design::text(renderer, box(cell.x + pad, cell.y + 108, col - pad * 2, 28), statsText, design::CAPTION);
     } else {
-      const int barsH = std::max(12, label.y - (cell.y + pad + titleHeight + smallHeight + 8));
-      const fui::Rect bars{label.x, static_cast<int16_t>(label.y - barsH - 4), label.width,
-                           static_cast<int16_t>(barsH)};
       const uint32_t today = TimeUtils::getLocalDayOrdinal(static_cast<uint32_t>(halClock.nowUtc()));
-      uint64_t samples[7] = {};
+      uint64_t samples[7]{};
       uint64_t peak = 1;
-      if (today != 0) {
-        for (const auto& day : READING_STATS.getReadingDays()) {
-          if (day.dayOrdinal > today || today - day.dayOrdinal > 6) continue;
-          samples[6 - static_cast<int>(today - day.dayOrdinal)] = day.readingMs;
-          peak = std::max(peak, day.readingMs);
-        }
+      if (today)
+        for (const auto& day : READING_STATS.getReadingDays())
+          if (day.dayOrdinal <= today && today - day.dayOrdinal <= 6) {
+            samples[6 - (today - day.dayOrdinal)] = day.readingMs;
+            peak = std::max(peak, day.readingMs);
+          }
+      for (int b = 0; b < 7; ++b) {
+        const int h = samples[b] ? std::max<int>(2, 32 * samples[b] / peak) : 2;
+        design::fill(renderer, box(cell.x + pad + b * 22, cell.y + 104 - h, 12, h), ds::gray::kInk);
       }
-      const int barGap = 4;
-      const int barW = std::max(2, (bars.width - barGap * 6) / 7);
-      for (int i = 0; i < 7; ++i) {
-        const int h = samples[i] == 0 ? 2 : std::max(2, static_cast<int>(bars.height * samples[i] / peak));
-        target.fill(fui::Rect{static_cast<int16_t>(bars.x + i * (barW + barGap)),
-                              static_cast<int16_t>(bars.bottom() - h), static_cast<int16_t>(barW),
-                              static_cast<int16_t>(h)},
-                    ink, 2);
-      }
+      design::text(renderer, box(cell.x + pad, cell.y + 108, col - pad * 2, 28), tr(STR_RICKY_LAST_SEVEN_DAYS),
+                   design::CAPTION);
     }
     screen.frame().hit(cell, OPEN_BOOK, STATISTICS, fui::InputTouch);
   }
-
-  auto recent = screen.takeTop(recentHead, gap / 2);
-  auto all = recent;
-  all.width = recent.width / 4;
-  all.x = recent.right() - all.width;
-  recent.width -= all.width + gap;
-  target.text(recent, tr(STR_RICKY_HOME_RECENT), small);
-  auto allStyle = small;
-  allStyle.align = fui::TextAlign::Right;
-  target.text(all, tr(STR_RICKY_HOME_ALL), allStyle);
+  auto recent = screen.takeTop(40, 12);
+  design::text(renderer, recent, tr(STR_RICKY_HOME_RECENT), design::HEADLINE);
+  const auto all = box(recent.right() - 104, recent.y - 16, 104, 64);
+  design::text(renderer, box(all.x, recent.y, all.width, 40), tr(STR_RICKY_HOME_ALL), design::CAPTION, false,
+               fui::TextAlign::Right);
   screen.frame().hit(all, OPEN_BOOK, LIBRARY, fui::InputTouch);
-
   const auto shelf = screen.body();
-  const int count = std::min(3, static_cast<int>(books->size()) - start - 1);
-  if (count <= 0) return;
-  const int column = ricky::ds::space::kGutter;
-  const int width = (shelf.width - column * (count - 1)) / count;
-  const int thumbH = std::min(recentCover, std::max(1, shelf.height - recentLabels));
-  const int thumbW = thumbH * ricky::ds::layout::kCoverAspectW / ricky::ds::layout::kCoverAspectH;
-  auto centered = small;
-  centered.align = fui::TextAlign::Center;
+  const int count = std::min(RickyHomeLayout::PAGE_BOOKS - 1, static_cast<int>(books->size()) - start - 1);
+  const int cellW = (shelf.width - gap * 3) / 4;
+  const int thumbH = std::min(cellW * 3 / 2, std::max(1, shelf.height - 64));
+  const int thumbW = thumbH * 2 / 3;
   for (int i = 0; i < count; ++i) {
-    const int index = start + i + 1;
+    const int index = start + 1 + i;
     const auto& item = (*books)[index];
-    const fui::Rect cell{static_cast<int16_t>(shelf.x + i * (width + column)), shelf.y, static_cast<int16_t>(width),
-                         shelf.height};
-    const fui::Rect thumb{static_cast<int16_t>(cell.x + (width - thumbW) / 2), cell.y, static_cast<int16_t>(thumbW),
-                          static_cast<int16_t>(thumbH)};
-    paint(thumb, index);
-    if (showSelection && selected == index)
-      target.fill(fui::Rect{static_cast<int16_t>(thumb.x - 8), static_cast<int16_t>(thumb.y - 8),
-                            static_cast<int16_t>(thumb.width + 16), static_cast<int16_t>(thumb.height + 16)},
-                  ink, ricky::ds::radius::kControl);
-    if (showSelection && selected == index) paint(thumb, index);
-    auto label = fui::Rect{cell.x, static_cast<int16_t>(thumb.bottom() + 4), cell.width, static_cast<int16_t>(smallHeight)};
-    target.text(label, titleOf(item), centered);
-    label.y += smallHeight;
-    const auto* itemStats = READING_STATS.findMatchingBookForPath(item.path);
-    const char* format = formatOf(item.path);
-    if (itemStats && format)
-      snprintf(statsText, sizeof(statsText), "%s · %u%%", format,
-               static_cast<unsigned>(itemStats->lastProgressPercent));
-    else if (itemStats)
-      snprintf(statsText, sizeof(statsText), "%u%%", static_cast<unsigned>(itemStats->lastProgressPercent));
+    const auto cell = box(shelf.x + i * (cellW + gap), shelf.y, cellW, thumbH + 64);
+    const auto cover = box(cell.x + (cellW - thumbW) / 2, cell.y, thumbW, thumbH);
+    const bool selectedBook = showSelection && selected == index;
+    if (selectedBook)
+      design::fill(renderer, box(cell.x - 4, cell.y - 8, cell.width + 8, cell.height + 8), ds::gray::kInk,
+                   ds::radius::kControl);
+    paint(cover, index);
+    design::text(renderer, box(cell.x, cover.bottom() + 8, cell.width, 28), titleOf(item), design::CAPTION,
+                 selectedBook);
+    const auto* reading = READING_STATS.findMatchingBookForPath(item.path);
+    if (reading && reading->lastProgressPercent)
+      snprintf(statsText, sizeof(statsText), "%s · %u%%", formatOf(item.path) ? formatOf(item.path) : "",
+               unsigned(reading->lastProgressPercent));
     else
-      snprintf(statsText, sizeof(statsText), "%s", format ? format : tr(STR_RICKY_READ_UNREAD));
-    target.text(label, statsText, centered);
+      snprintf(statsText, sizeof(statsText), "%s · %s", formatOf(item.path) ? formatOf(item.path) : "",
+               tr(STR_RICKY_READ_UNREAD));
+    design::text(renderer, box(cell.x, cover.bottom() + 36, cell.width, 28), statsText, design::CAPTION, selectedBook);
     screen.frame().hit(cell, OPEN_BOOK, index, fui::InputTouch);
   }
 }

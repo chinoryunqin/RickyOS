@@ -276,7 +276,13 @@ void EpubReaderBookmarksActivity::buildScreen(UiScreen& screen) {
   screen.list(props);
 }
 
-void EpubReaderBookmarksActivity::render(RenderLock&&) {
+void EpubReaderBookmarksActivity::render(RenderLock&& lock) {
+  if (UiHighDpiProfile::enabled) {
+    if (confirmPopup.isActive()) renderPopupUnderlay();
+    if (confirmPopup.processRender(renderer, mappedInput)) return;
+    UiListActivity::render(std::move(lock));
+    return;
+  }
   renderer.clearScreen();
 
   const auto pageWidth = renderer.getScreenWidth();

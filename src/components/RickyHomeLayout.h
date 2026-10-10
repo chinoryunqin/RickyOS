@@ -6,7 +6,7 @@
 // Geometry only: both orientations use the current content/safe area, not
 // panel constants. The SDK components own drawing and their hit rectangles.
 namespace RickyHomeLayout {
-constexpr int PAGE_BOOKS = 3;
+constexpr int PAGE_BOOKS = 5;  // Continue + four recent covers, as the 1.2 landing mockup.
 struct Metrics {
   int columns;
   int rows;
@@ -14,7 +14,7 @@ struct Metrics {
   int coverHeight;
 };
 inline Metrics fit(int width, int height, int headingHeight, int labelHeight, int gap, int padding) {
-  const int columns = 2;
+  const int columns = PAGE_BOOKS - 1;
   const int rows = 1;
   const int rowHeight = std::max(1, (height - 2 * headingHeight - (rows + 2) * gap) / (rows + 1));
   const int coverWidth = std::max(1, (width - (columns - 1) * gap) / columns - 2 * padding);

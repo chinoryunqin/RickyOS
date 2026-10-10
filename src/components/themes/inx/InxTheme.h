@@ -113,7 +113,7 @@ constexpr ThemeMetrics makeValues() {
   metrics.contentSidePadding = ricky::ds::space::kPageMargin;
   metrics.headerSidePadding = ricky::ds::space::kPageMargin;
   metrics.listSidePadding = ricky::ds::space::kPageMargin;
-  metrics.headerHeight = ricky::ds::layout::kPageHeaderHeight;
+  metrics.headerHeight = ricky::ds::layout::kStatusBarHeight + ricky::ds::layout::kSubHeaderHeight;
   metrics.menuRowHeight = ricky::ds::layout::kRowHeight;
   metrics.listRowHeight = ricky::ds::layout::kRowHeight;
   metrics.listWithSubtitleRowHeight = ricky::ds::layout::kRowHeightTwoLine;
@@ -127,6 +127,9 @@ constexpr ThemeMetrics makeValues() {
   metrics.popupFrameThickness = ricky::ds::stroke::kEmphasis;
   metrics.progressBarHeight = ricky::ds::layout::kProgressHeight;
   metrics.listSeparatorStyle = 0;
+  metrics.listRowGap = ricky::ds::space::kTouchSpacing;
+  metrics.headerUnderlineSize = 0;
+  metrics.optionPopupInnerPadding = ricky::ds::space::kDialogPadding;
   return metrics;
 }
 inline constexpr ThemeMetrics values = makeValues();

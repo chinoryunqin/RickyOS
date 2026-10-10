@@ -1,4 +1,5 @@
 #include "RickyStorageActivity.h"
+
 #include <ArduinoJson.h>
 #include <FsHelpers.h>
 #include <HalStorage.h>
@@ -20,6 +21,7 @@
 #include "SdCardFontSystem.h"
 #include "activities/RenderLock.h"
 #include "activities/settings/FontLibraryActivity.h"
+#include "components/RickyDesignUi.h"
 #include "components/RickyPageUi.h"
 #include "components/UITheme.h"
 #include "components/icons/rickyPageIcons.h"
@@ -334,8 +336,8 @@ void RickyStorageActivity::buildScreen(UiScreen& screen) {
                   static_cast<int16_t>(renderer.getScreenWidth() - content.x - content.width)});
   const auto& theme = screen.theme();
   auto& target = screen.target();
-  screen.insetContent(fui::Insets{theme.spaceSm, theme.spaceLg, theme.spaceSm, theme.spaceLg});
-  const int gap = std::max<int>(12, theme.spaceSm);
+  screen.insetContent(fui::Insets{0, ricky::ds::space::kPageMargin, 0, ricky::ds::space::kPageMargin});
+  const int gap = ricky::ds::space::kGutter;
   const int bodyHeight = target.lineHeight(theme.bodyText.font);
   const int smallHeight = target.lineHeight(theme.smallText.font);
   RickyPageUi::Bold bold(renderer, 1);
@@ -346,7 +348,7 @@ void RickyStorageActivity::buildScreen(UiScreen& screen) {
   const int selected = RickyPageUi::syncNav(nav, listCount());
   const bool focus = showMainTabContentSelection();
 
-  auto title = screen.takeTop(target.lineHeight(theme.titleText.font), gap * 2);
+  auto title = screen.takeTop(ricky::ds::layout::kPageHeaderHeight, 0);
   {
     // Refresh: count everything again (a card edited on a computer leaves no mark).
     const char* refreshLabel = counting ? tr(STR_RICKY_STORAGE_COUNTING) : tr(STR_RICKY_STORAGE_REFRESH);
@@ -358,12 +360,15 @@ void RickyStorageActivity::buildScreen(UiScreen& screen) {
     const int middle = title.y + title.height / 2;
     const fui::Rect hit{static_cast<int16_t>(buttonX - gap), static_cast<int16_t>(title.y - gap / 2),
                         static_cast<int16_t>(buttonWidth + gap * 2), static_cast<int16_t>(title.height + gap)};
-    if (focus && selected == kRefreshAction) RickyPageUi::card(target, hit, true);
-    RickyPageUi::pageIcon(target, renderer, buttonX, middle, icon);
+    const bool refreshSelected = focus && selected == kRefreshAction;
+    if (refreshSelected) RickyPageUi::card(target, hit, true);
+    RickyPageUi::pageIcon(target, renderer, buttonX, middle, icon, refreshSelected);
+    auto refreshStyle = small;
+    refreshStyle.color = refreshSelected ? fui::Color::White : fui::Color::Black;
     target.text(
         fui::Rect{static_cast<int16_t>(buttonX + icon.w + iconGap), static_cast<int16_t>(middle - smallHeight / 2),
                   static_cast<int16_t>(labelWidth + 2), static_cast<int16_t>(smallHeight)},
-        refreshLabel, small);
+        refreshLabel, refreshStyle);
     if (!counting) screen.frame().hit(hit, ACTION_ROW, kRefreshAction, fui::InputTouch);
     title.width = static_cast<int16_t>(buttonX - gap - title.x);
   }
@@ -383,25 +388,26 @@ void RickyStorageActivity::buildScreen(UiScreen& screen) {
   const bool wide = content.width > content.height;
   const int columns = wide ? 4 : 2;
   const int gridRows = 4 / columns;
-  const int pad = gap + gap / 2;
-  const int ring = bodyHeight + smallHeight + gap * 3;
-  const int summaryHeight = ring + pad * 2;
-  const int cellHeight = std::max(48, bodyHeight + smallHeight) + pad * 2;
-  const int needed = summaryHeight + cellHeight * gridRows + gap * gridRows;
-  const int section = gap + std::clamp((screen.body().height - needed) / 4, 0, gap * 2);
+  const int pad = ricky::ds::space::kCardPadding;
+  const int ring = ricky::ds::layout::kAvatarSize;
+  const int summaryHeight = ricky::ds::layout::kProfileCardHeight;
+  const int cellHeight = ricky::ds::layout::kSettingsCardHeight;
+  const int section = ricky::ds::space::k8;
 
   // SD card: usage ring, free / total, opens the whole card in the file browser.
   const auto summary = screen.takeTop(summaryHeight, section);
-  RickyPageUi::card(target, summary, focus && selected == 4);
+  const bool summarySelected = focus && selected == 4;
+  RickyPageUi::card(target, summary, summarySelected);
   screen.frame().hit(summary, ACTION_ROW, 4, fui::InputTouch);
   const Rect ringBox{summary.x + pad, summary.y + pad, ring, ring};
   const int percent =
       space == Space::Ready && sdTotalBytes ? static_cast<int>((sdTotalBytes - sdFreeBytes) * 100 / sdTotalBytes) : 0;
-  RickyPageUi::usageRing(renderer, ringBox, percent, std::max(6, ring / 12));
+  RickyPageUi::usageRing(renderer, ringBox, percent, ricky::ds::stroke::kEmphasis, summarySelected);
   char text[48];
   snprintf(text, sizeof(text), "%d%%", percent);
   auto centered = small;
   centered.align = fui::TextAlign::Center;
+  centered.color = summarySelected ? fui::Color::White : fui::Color::Black;
   if (space == Space::Ready)
     target.text(fui::Rect{static_cast<int16_t>(ringBox.x), static_cast<int16_t>(ringBox.y + (ring - smallHeight) / 2),
                           static_cast<int16_t>(ring), static_cast<int16_t>(smallHeight)},
@@ -411,9 +417,10 @@ void RickyStorageActivity::buildScreen(UiScreen& screen) {
   const int textTop = summary.y + (summary.height - bodyHeight - smallHeight - gap / 2) / 2;
   auto strong = label;
   strong.bold = true;
+  strong.color = summarySelected ? fui::Color::White : fui::Color::Black;
   target.text(fui::Rect{static_cast<int16_t>(textX), static_cast<int16_t>(textTop), static_cast<int16_t>(textWidth),
                         static_cast<int16_t>(bodyHeight)},
-              tr(STR_RICKY_STORAGE), strong);
+              tr(STR_RICKY_SD_CARD), strong);
   char freeText[16], totalText[16];
   formatBytes(freeText, sizeof(freeText), sdFreeBytes);
   formatBytes(totalText, sizeof(totalText), sdTotalBytes);
@@ -423,9 +430,10 @@ void RickyStorageActivity::buildScreen(UiScreen& screen) {
               space == Space::Ready       ? text
               : space == Space::Measuring ? tr(STR_LOADING)
                                           : tr(STR_NOT_AVAILABLE),
-              small);
+              centered);
   RickyPageUi::chevron(target,
-                       fui::Rect{static_cast<int16_t>(summary.right() - 24 - pad), summary.y, 24, summary.height});
+                       fui::Rect{static_cast<int16_t>(summary.right() - 24 - pad), summary.y, 24, summary.height},
+                       summarySelected);
 
   // Content folders as icon cards with a count, Boox-style.
   const StrId labels[] = {StrId::STR_RICKY_BOOK_FILES, StrId::STR_FONT, StrId::STR_RICKY_IMAGES,
@@ -436,13 +444,16 @@ void RickyStorageActivity::buildScreen(UiScreen& screen) {
   for (int i = 0; i < 4; ++i) {
     const auto rect =
         RickyPageUi::uiRect(RickyPageLayout::cell(Rect{grid.x, grid.y, grid.width, grid.height}, i, 4, gap, columns));
-    RickyPageUi::card(target, rect, focus && selected == i);
+    const bool picked = focus && selected == i;
+    RickyPageUi::card(target, rect, picked);
     screen.frame().hit(rect, ACTION_ROW, i, fui::InputTouch);
-    const int middle = rect.y + rect.height / 2;
-    RickyPageUi::pageIcon(target, renderer, rect.x + pad, middle, *icons[i]);
-    const int x = rect.x + pad + icons[i]->w + gap;
+    const int middle = rect.y + pad + icons[i]->h / 2;
+    RickyPageUi::pageIcon(target, renderer, rect.x + pad, middle, *icons[i], picked);
+    const int x = rect.x + pad;
     const int width = rect.right() - x - pad;
-    const int top = middle - (bodyHeight + smallHeight) / 2;
+    const int top = rect.y + 80;
+    label.color = picked ? fui::Color::White : fui::Color::Black;
+    small.color = label.color;
     target.text(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(top), static_cast<int16_t>(width),
                           static_cast<int16_t>(bodyHeight)},
                 I18N.get(labels[i]), label);
@@ -452,10 +463,16 @@ void RickyStorageActivity::buildScreen(UiScreen& screen) {
       snprintf(text, sizeof(text), "%d", counts[i]);
     else
       snprintf(text, sizeof(text), "%s", counting || space == Space::Measuring ? "…" : "—");
-    target.text(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(top + bodyHeight), static_cast<int16_t>(width),
+    small.align = fui::TextAlign::Right;
+    target.text(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(top), static_cast<int16_t>(width),
                           static_cast<int16_t>(smallHeight)},
                 text, small);
   }
+  screen.takeTop(section, 0);
+  const auto browse = screen.takeTop(ricky::ds::layout::kRowHeight, 0);
+  RickyDesignUi::text(renderer, browse, tr(STR_RICKY_BROWSE_FILES));
+  RickyPageUi::chevron(target, {static_cast<int16_t>(browse.right() - 24), browse.y, 24, browse.height});
+  screen.frame().hit(browse, ACTION_ROW, 4, fui::InputTouch);
 }
 
 void RickyStorageActivity::activateIndex(int index) {

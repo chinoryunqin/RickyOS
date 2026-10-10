@@ -8,6 +8,7 @@
 #include <cstring>
 #include <string>
 
+#include "RickyDesignTokens.h"
 #include "RickyPageLayout.h"
 #include "UiAppHost.h"
 #include "components/RickyAaIcons.h"
@@ -43,25 +44,26 @@ inline void arrow(fui::DrawTarget& target, fui::Rect r) {
   target.line({static_cast<int16_t>(end - 7), static_cast<int16_t>(mid + 7)}, {end, mid}, 2, black);
 }
 
-// Rounded hairline card used by the storage and settings grids; focus thickens it.
-constexpr uint8_t CARD_RADIUS = 12;
+// The same inversion recipe on every main-page card.
+constexpr uint8_t CARD_RADIUS = ricky::ds::radius::kContainer;
 inline void card(fui::DrawTarget& target, fui::Rect rect, bool focused) {
-  target.fill(rect, fui::Paint::solid(fui::Color::White), CARD_RADIUS);
-  target.stroke(rect, fui::Paint::solid(fui::Color::Black), focused ? 3 : 2, CARD_RADIUS);
+  target.fill(rect, fui::Paint::solid(focused ? fui::Color::Black : fui::Color::White), CARD_RADIUS);
+  if (!focused) target.stroke(rect, fui::Paint::solid(fui::Color::Black), ricky::ds::stroke::kHairline, CARD_RADIUS);
 }
 
 // Pre-rendered Lucide icon (rickyPageIcons.h), optically centred on `centerY`.
 inline void pageIcon(fui::DrawTarget& target, const GfxRenderer& renderer, int x, int centerY,
-                     const freeink::Icon& icon) {
+                     const freeink::Icon& icon, bool inverted = false) {
   // Settled screens draw the anti-aliased twin; the B/W pass keeps the 1-bpp icon.
-  if (RickyAaIcons::draw(renderer, icon.bits, icon.w, icon.h, x, centerY - icon.opticalCenterY, true)) return;
+  if (RickyAaIcons::draw(renderer, icon.bits, icon.w, icon.h, x, centerY - icon.opticalCenterY, !inverted)) return;
   target.bitmap(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(centerY - icon.opticalCenterY),
                           static_cast<int16_t>(icon.w), static_cast<int16_t>(icon.h)},
-                fui::bitmapFromIcon(icon), fui::BitmapMode::Center);
+                fui::bitmapFromIcon(icon), fui::BitmapMode::Center,
+                fui::Paint::solid(inverted ? fui::Color::White : fui::Color::Black));
 }
 
 // Usage ring: hairline track, `percent` of it filled clockwise from 12 o'clock.
-inline void usageRing(const GfxRenderer& renderer, Rect box, int percent, int thickness) {
+inline void usageRing(const GfxRenderer& renderer, Rect box, int percent, int thickness, bool inverted = false) {
   const int size = std::min(box.width, box.height);
   if (size <= 0) return;
   const float outer = size / 2.0f, inner = outer - static_cast<float>(thickness);
@@ -75,23 +77,25 @@ inline void usageRing(const GfxRenderer& renderer, Rect box, int percent, int th
       float angle = std::atan2(dx, -dy);
       if (angle < 0) angle += 6.2831853f;
       const bool edge = r > outer - 1.5f || r < inner + 1.5f;
-      if (angle <= limit || edge) renderer.drawPixel(box.x + x, box.y + y, true);
+      if (angle <= limit || edge) renderer.drawPixel(box.x + x, box.y + y, !inverted);
     }
   }
 }
 
 // Quiet secondary affordance for rows that open a list or page.
-inline void chevron(fui::DrawTarget& target, fui::Rect r) {
-  const auto black = fui::Paint::solid(fui::Color::Black);
+inline void chevron(fui::DrawTarget& target, fui::Rect r, bool inverted = false) {
+  const auto black = fui::Paint::solid(inverted ? fui::Color::White : fui::Color::Black);
   const int16_t mid = r.y + r.height / 2;
   const int16_t tip = r.right() - 3;
   target.line({static_cast<int16_t>(tip - 7), static_cast<int16_t>(mid - 8)}, {tip, mid}, 2, black);
   target.line({tip, mid}, {static_cast<int16_t>(tip - 7), static_cast<int16_t>(mid + 8)}, 2, black);
 }
 
-// The UI faces ship one CJK weight; headings and book titles use the renderer's
-// synthetic bold while this guard is alive. Text without style.bold is unaffected.
-using Bold = GfxRenderer::SyntheticBoldScope;
+// Compatibility for older functional pages while they move to the new type
+// roles. UI weights now come from actual font faces, never pixel dilation.
+struct Bold {
+  explicit Bold(const GfxRenderer&, uint8_t) {}
+};
 
 inline void progressBar(fui::DrawTarget& target, fui::Rect r, int percent) {
   target.fill(r, fui::Paint::dither(fui::Color::LightGray));

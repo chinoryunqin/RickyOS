@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "Rect.h"
+#include "images/RickyDog.h"
 #include "images/RickyLogo.h"
 
 // User-selected portrait + dog + circular border + RickyOS wordmark.
@@ -51,27 +52,23 @@ void drawBadge(const Renderer& renderer, const Rect box, const int threshold = 7
   }
 }
 
-// The dog sits on the right of the badge. Draw that side so a card can cover
-// the lower half and leave the head peeking out.
+// Use the approved isolated dog; cropping the badge also drew its circular ring.
+// Card overdraw hides the lower edge. Paper pixels are transparent.
 template <typename Renderer>
 void drawDogPeek(const Renderer& renderer, const Rect box) {
-  constexpr int dogX = badgeX + badgeSize * 52 / 100;
-  constexpr int dogW = badgeX + badgeSize - dogX;
-  if (box.width <= 0 || box.height <= 0 || dogW <= 0) return;
+  if (box.width <= 0 || box.height <= 0) return;
   for (int y = 0; y < box.height; ++y) {
-    const int y0 = badgeY + y * badgeSize / box.height;
-    const int y1 = std::max(y0 + 1, badgeY + (y + 1) * badgeSize / box.height);
+    const int sy = y * RickyDogAsset::height / box.height;
     for (int x = 0; x < box.width; ++x) {
-      const int x0 = dogX + x * dogW / box.width;
-      const int x1 = std::max(x0 + 1, dogX + (x + 1) * dogW / box.width);
-      int ink = 0, samples = 0;
-      for (int sy = y0; sy < y1 && sy < RickyLogoAsset::wordmarkTop; ++sy) {
-        for (int sx = x0; sx < x1 && sx < RickyLogoAsset::width; ++sx) {
-          ++samples;
-          ink += pixel(sx, sy, 3) ? 1 : 0;
-        }
-      }
-      if (samples > 0 && ink * 16 >= 7 * samples) renderer.drawPixel(box.x + x, box.y + y, true);
+      const int sx = x * RickyDogAsset::width / box.width;
+      const int offset = sy * RickyDogAsset::width + sx;
+      const uint8_t packed = RickyDogAsset::coverage[offset / 2];
+      const int level = offset % 2 ? packed & 15 : packed >> 4;
+      if (!level) continue;
+      if (renderer.isGrayscale16Active())
+        renderer.drawGrayscale16Pixel(box.x + x, box.y + y, 255 - level * 17);
+      else if (level >= 8)
+        renderer.drawPixel(box.x + x, box.y + y, true);
     }
   }
 }

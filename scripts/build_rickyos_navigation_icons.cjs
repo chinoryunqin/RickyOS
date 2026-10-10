@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Original RickyOS SVGs -> native 1-bpp Flash resources, not runtime SVGs.
+/** Maintained Lucide SVGs (ISC license) -> native 1-bpp resources, not runtime SVGs.
  * Developer-only dependency: sharp 0.35.4 (librsvg 2.62.91).
  * Run: NODE_PATH=/path/to/node_modules node scripts/build_rickyos_navigation_icons.cjs
  * Optional: --out header.h --preview preview.png
@@ -23,14 +23,14 @@ for (let i = 0; i < args.length; ++i) {
 
 async function main() {
   const lines = ['#pragma once', '', '#include <cstdint>', '',
-    '// Generated from ORIGINAL RickyOS SVGs by scripts/build_rickyos_navigation_icons.cjs.',
+    '// Generated from maintained Lucide SVGs (ISC license) by scripts/build_rickyos_navigation_icons.cjs.',
     '// Edit sources/rickyos/*.svg and regenerate; never edit these bytes manually.',
     '// MSB-first, 1 = transparent/white, 0 = ink. Upright; no runtime resampling.', ''];
   const gallery = [];
   for (const [index, name] of names.entries()) {
     const svg = fs.readFileSync(path.join(sourceDir, name + '.svg'));
     for (const size of [40, 56]) {
-      const nativeSvg = Buffer.from(svg.toString().replace('<svg ', `<svg width="${size}" height="${size}" `));
+      const nativeSvg = Buffer.from(svg.toString().replace(/<svg\b/, `<svg width="${size}" height="${size}"`));
       const { data, info } = await sharp(nativeSvg).flatten({ background: '#fff' })
         .greyscale().raw().toBuffer({ resolveWithObject: true });
       if (info.channels !== 1 || info.width !== size || info.height !== size) {

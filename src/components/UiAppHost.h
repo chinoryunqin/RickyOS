@@ -4,6 +4,8 @@
 
 #include <atomic>
 
+#include "RickyUiTarget.h"
+
 class GfxRenderer;
 class MappedInputManager;
 
@@ -69,7 +71,7 @@ class UiAppHost {
   bool routingReady() const { return uiReady.load(); }
   bool usesUpstreamStyle() const { return upstreamStyle; }
 
-  freeink::ui::GfxRendererTarget uiTarget;  // must precede `app`: the app holds a reference to it
+  RickyUiTarget uiTarget;  // must precede `app`: the app holds a reference to it
   UiApp app;
 
  private:

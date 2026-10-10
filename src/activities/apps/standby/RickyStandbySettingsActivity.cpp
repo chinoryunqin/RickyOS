@@ -1,4 +1,5 @@
 #include "RickyStandbySettingsActivity.h"
+
 #include <Bitmap.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
@@ -44,10 +45,9 @@ constexpr StrId kInfoLabels[] = {StrId::STR_RICKY_STANDBY_INFO_NONE, StrId::STR_
 static_assert(std::size(kInfoLabels) == Settings::STANDBY_OVERLAY_COUNT);
 // Minutes before Standby; SLEEP_TIMEOUT_NEVER_MINUTES means never.
 constexpr uint8_t kStandbyMinutes[] = {1, 3, 5, 10, 15, 30, Settings::SLEEP_TIMEOUT_NEVER_MINUTES};
-constexpr StrId kStandbyMinuteLabels[] = {StrId::STR_RICKY_MINUTES_1,  StrId::STR_RICKY_MINUTES_3,
-                                          StrId::STR_RICKY_MINUTES_5,  StrId::STR_RICKY_MINUTES_10,
-                                          StrId::STR_RICKY_MINUTES_15, StrId::STR_RICKY_MINUTES_30,
-                                          StrId::STR_RICKY_NEVER};
+constexpr StrId kStandbyMinuteLabels[] = {
+    StrId::STR_RICKY_MINUTES_1,  StrId::STR_RICKY_MINUTES_3,  StrId::STR_RICKY_MINUTES_5, StrId::STR_RICKY_MINUTES_10,
+    StrId::STR_RICKY_MINUTES_15, StrId::STR_RICKY_MINUTES_30, StrId::STR_RICKY_NEVER};
 static_assert(std::size(kStandbyMinuteLabels) == std::size(kStandbyMinutes));
 constexpr StrId kAutoOffLabels[] = {StrId::STR_RICKY_NEVER,   StrId::STR_RICKY_HOURS_1,  StrId::STR_RICKY_HOURS_3,
                                     StrId::STR_RICKY_HOURS_6, StrId::STR_RICKY_HOURS_12, StrId::STR_RICKY_HOURS_24};
@@ -56,11 +56,11 @@ constexpr StrId kPowerOffLabels[] = {StrId::STR_RICKY_POWER_OFF_SAME, StrId::STR
                                      StrId::STR_RICKY_SLEEP_BLANK};
 static_assert(std::size(kPowerOffLabels) == Settings::RICKY_POWER_OFF_SCREEN_COUNT);
 
-constexpr StrId kRowLabels[] = {StrId::STR_RICKY_STANDBY_STYLE,  StrId::STR_RICKY_SELECT_WALLPAPER,
+constexpr StrId kRowLabels[] = {StrId::STR_RICKY_STANDBY_STYLE,      StrId::STR_RICKY_SELECT_WALLPAPER,
                                 StrId::STR_RICKY_WALLPAPER_DOWNLOAD, StrId::STR_RICKY_PICTURE_FIT,
-                                StrId::STR_RICKY_PICTURE_FILTER, StrId::STR_RICKY_STANDBY_INFO,
-                                StrId::STR_RICKY_AUTO_STANDBY,   StrId::STR_RICKY_STANDBY_NOW,
-                                StrId::STR_RICKY_POWER_OFF_SCREEN, StrId::STR_RICKY_AUTO_OFF};
+                                StrId::STR_RICKY_PICTURE_FILTER,     StrId::STR_RICKY_STANDBY_INFO,
+                                StrId::STR_RICKY_AUTO_STANDBY,       StrId::STR_RICKY_STANDBY_NOW,
+                                StrId::STR_RICKY_POWER_OFF_SCREEN,   StrId::STR_RICKY_AUTO_OFF};
 static_assert(std::size(kRowLabels) == RickyStandbySettingsActivity::RowKinds);
 
 int styleIndex() {
@@ -165,6 +165,7 @@ bool RickyStandbySettingsActivity::handleButtons() {
 }
 
 void RickyStandbySettingsActivity::render(RenderLock&& lock) {
+  if (optionPopup.isActive()) renderPopupUnderlay();
   if (optionPopup.processRender(renderer, mappedInput)) return;
   UiTabListActivity::render(std::move(lock));
 }
@@ -189,8 +190,7 @@ const char* RickyStandbySettingsActivity::rowValue(const Row row) const {
       return minutes_;
     }
     case PowerOffScreen:
-      return I18N.get(
-          kPowerOffLabels[std::min<int>(SETTINGS.rickyPowerOffScreen, std::size(kPowerOffLabels) - 1)]);
+      return I18N.get(kPowerOffLabels[std::min<int>(SETTINGS.rickyPowerOffScreen, std::size(kPowerOffLabels) - 1)]);
     case AutoPowerOff:
       return I18N.get(kAutoOffLabels[std::min<int>(SETTINGS.rickyAutoOffIndex, std::size(kAutoOffLabels) - 1)]);
     default:
@@ -333,8 +333,7 @@ void RickyStandbySettingsActivity::activateIndex(const int index) {
                  [](const int chosen) { SETTINGS.standbyOverlay = static_cast<uint8_t>(chosen); });
       break;
     case AutoStandby:
-      showOption(optionPopup, StrId::STR_RICKY_AUTO_STANDBY, kStandbyMinuteLabels,
-                 std::max(0, standbyMinutesIndex()),
+      showOption(optionPopup, StrId::STR_RICKY_AUTO_STANDBY, kStandbyMinuteLabels, std::max(0, standbyMinutesIndex()),
                  [](const int chosen) { SETTINGS.sleepTimeoutMinutes = kStandbyMinutes[chosen]; });
       break;
     case StandbyNow:

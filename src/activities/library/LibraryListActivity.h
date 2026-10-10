@@ -2,6 +2,7 @@
 
 #include <LibraryIndexFile.h>
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -10,8 +11,6 @@
 #include "RecentBooksStore.h"
 #include "activities/UiTabListActivity.h"
 #include "components/OptionPopup.h"
-#include <array>
-
 #include "components/media/cover-grid.h"
 
 // One Library screen: every indexed book on the card shown by recency, title,
@@ -198,7 +197,7 @@ class LibraryListActivity final : public UiTabListActivity {
   // Row options modal (Recent long-press menu); owned here so it outlives the
   // touch event that opened it.
   OptionPopup optionPopup;
-  static constexpr int SHELF_CAPACITY = 4;
+  static constexpr int SHELF_CAPACITY = 6;  // One bounded 3 x 2 page, never all card records.
   static constexpr freeink::ui::ActionId ACTION_READING_FILTER = ACTION_BACK + 1;
   static constexpr freeink::ui::ActionId ACTION_SHELF_OPTIONS = ACTION_READING_FILTER + 1;
   uint8_t readingFilter = 0;
@@ -207,8 +206,6 @@ class LibraryListActivity final : public UiTabListActivity {
   int shelfCount = 0;
   std::array<std::string, SHELF_CAPACITY> shelfTitles{}, shelfAuthors{}, shelfPaths{}, shelfCovers{};
   std::array<std::array<char, 56>, SHELF_CAPACITY> shelfDetails{};
-  std::array<freeink::ui::CoverGridItem, SHELF_CAPACITY> shelfItems{};
-  freeink::ui::CoverGridProps shelfGrid{};
   void buildRickyShelf(UiScreen& screen);
   bool entryPath(int entry, std::string& path);
 };

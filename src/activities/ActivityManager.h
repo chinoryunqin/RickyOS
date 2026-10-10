@@ -68,7 +68,8 @@ class ActivityManager {
   TaskHandle_t renderTaskHandle = nullptr;
   static void renderTaskTrampoline(void* param);
   [[noreturn]] virtual void renderTaskLoop();
-#if FREEINK_DEVICE_READPICO
+#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
+  bool renderDirectGray(RenderLock&& lock);
   void settleToGray(RenderLock&& lock, uint32_t generation);
 #endif
 

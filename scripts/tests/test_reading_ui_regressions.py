@@ -33,7 +33,8 @@ def run_cpp(program, include_dirs=(), defines=()):
     with tempfile.TemporaryDirectory(prefix='reading-ui-') as directory:
         cpp = Path(directory) / 'check.cpp'
         exe = Path(directory) / 'check'
-        cpp.write_text(f'#include "{ROOT}/src/components/UiHighDpiProfile.h"\n' + program)
+        cpp.write_text(f'#include "{ROOT}/src/components/UiHighDpiProfile.h"\n'
+                       f'#include "{ROOT}/src/components/RickyDesignTokens.h"\n' + program)
         subprocess.run(['c++', '-std=c++20', '-Wall', '-Wextra', '-Werror',
                         *('-I'+str(path) for path in include_dirs), *('-D'+define for define in defines), str(cpp), '-o', str(exe)], check=True)
         subprocess.run([str(exe)], check=True)

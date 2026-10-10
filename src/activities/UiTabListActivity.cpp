@@ -166,10 +166,11 @@ void UiTabListActivity::buildTabBar(UiScreen& screen, const bool boldLabels) {
     const bool tabsFocused = ringPos() == 0;
     const bool mainTabs = UITheme::getInstance().hasMainTabs();
     if (mainTabs) {
-      tabProps.text = screen.theme().bodyText;
+      tabProps.text = screen.theme().smallText;
       tabProps.selectedText = tabProps.text;
-      tabProps.selectedText.bold = true;
-      tabProps.tabInset = fui::Insets{0, 0, 0, 0};
+      tabProps.selectedText.bold = false;
+      tabProps.gap = ricky::ds::space::kTouchSpacing;
+      tabProps.tabInset = fui::Insets{8, 0, 8, 0};
       tabProps.contentInset = fui::Insets{0, 0, 0, 0};
     } else if (metrics.tabPillFullSlot) {
       tabProps.text = screen.theme().bodyText;
@@ -184,22 +185,24 @@ void UiTabListActivity::buildTabBar(UiScreen& screen, const bool boldLabels) {
       tabProps.tabInset = tabsFocused ? fui::Insets{2, 4, 4, 4} : fui::Insets{2, 4, 0, 4};
       tabProps.contentInset = fui::Insets{2, 0, 2, 0};
     }
-    if (boldLabels) tabProps.text.bold = true;
+    if (boldLabels && !UiHighDpiProfile::enabled) tabProps.text.bold = true;
     const int16_t tabLineHeight = screen.target().lineHeight(tabProps.text.font);
-    const int16_t preferredTabHeight =
-        mappedInput.hasTouch() ? TOUCH_TAB_BAR_HEIGHT : static_cast<int16_t>(metrics.tabBarHeight);
+    const int16_t preferredTabHeight = UiHighDpiProfile::enabled ? ricky::ds::layout::kTouchMin
+                                       : mappedInput.hasTouch()  ? TOUCH_TAB_BAR_HEIGHT
+                                                                 : static_cast<int16_t>(metrics.tabBarHeight);
     const int16_t tabBand = preferredTabHeight > tabLineHeight + 10 ? preferredTabHeight : tabLineHeight + 10;
     // Legacy Lyra two-state treatment: with the selection on the tab band, the
     // band fills gray and the active tab is a solid pill; with the selection
     // down in the list, the band is plain and the active tab keeps a gray box
     // with an underline. The 1px rule under the band is always there.
-    tabProps.divider = mainTabs;
+    tabProps.divider = mainTabs && !UiHighDpiProfile::enabled;
     fui::StyleSet tabStyles;
     tabStyles.explicitlySet = true;
     tabStyles.normal.foreground = fui::Paint::solid(fui::Color::Black);
     if (mainTabs) {
       tabStyles.selected.background = fui::Paint::solid(fui::Color::Black);
       tabStyles.selected.foreground = fui::Paint::solid(fui::Color::White);
+      tabStyles.selected.radius = ricky::ds::radius::kControl;
     } else if (tabsFocused) {
       tabStyles.selected.background = fui::Paint::solid(fui::Color::Black);
       tabStyles.selected.foreground = fui::Paint::solid(fui::Color::White);
@@ -231,7 +234,11 @@ void UiTabListActivity::buildTabBar(UiScreen& screen, const bool boldLabels) {
       screen.target().fill(tabRect, fui::Paint::dither(fui::Color::LightGray));
     }
     if (mainTabs) {
-      fui::tabBar(screen.frame(), tabRect, tabProps);
+      const int16_t side = ricky::ds::space::kPageMargin;
+      fui::tabBar(screen.frame(),
+                  {static_cast<int16_t>(tabRect.x + side), tabRect.y,
+                   static_cast<int16_t>(std::max(0, tabRect.width - side * 2)), tabRect.height},
+                  tabProps);
     } else {
       const auto side = static_cast<int16_t>(metrics.contentSidePadding);
       const fui::Rect slotsRect{static_cast<int16_t>(tabRect.x + side), tabRect.y,

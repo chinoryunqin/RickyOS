@@ -10,10 +10,12 @@
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "components/RickyDesignUi.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
 #include "components/icons/readerToolbarIcons.h"
 #include "components/icons/readerToolbarIcons48.h"
+#include "components/icons/rickyPageIcons.h"
 
 namespace fui = freeink::ui;
 
@@ -32,9 +34,9 @@ constexpr int16_t kSegmentToolBase = 16;
 // track with a round knob -- the reading page's chrome is light, so the
 // controls stay slim rather than control-center sized.
 constexpr int16_t kScrubButton =
-    UiHighDpiProfile::enabled ? UiHighDpiProfile::buttonHeight : 36;  // chapter step buttons (square)
-constexpr int16_t kScrubKnob = UiHighDpiProfile::enabled ? 28 : 16;   // round knob on the 2px progress track
-constexpr int16_t kScrubGap = 12;                                     // air between the buttons and the track
+    UiHighDpiProfile::enabled ? ricky::ds::layout::kButtonHeight : 36;  // chapter step buttons (square)
+constexpr int16_t kScrubKnob = UiHighDpiProfile::enabled ? 28 : 16;     // round knob on the 2px progress track
+constexpr int16_t kScrubGap = 12;                                       // air between the buttons and the track
 // Tool row: a 24px glyph centred in each slot, the active slot in an outline
 // pill. The whole slot is the tap target; the row height sets its size.
 constexpr int16_t kToolRowH = UiHighDpiProfile::enabled ? 112 : 80;
@@ -49,7 +51,9 @@ constexpr int kPanelHeightMaxPercent = 72;
 constexpr int kLandscapePanelHeightPercent = 88;
 }  // namespace
 
-ReaderToolbarUi::ReaderToolbarUi(GfxRenderer& renderer) : UiAppHost(renderer, true) {}
+ReaderToolbarUi::ReaderToolbarUi(GfxRenderer& renderer) : UiAppHost(renderer, true) {
+  if (UiHighDpiProfile::enabled) uiTarget.setFont(fui::GfxRendererTarget::FONT_TITLE, RickyDesignUi::HEADLINE);
+}
 
 void ReaderToolbarUi::begin() {
   resetUi();
@@ -108,35 +112,48 @@ void ReaderToolbarUi::screenFn(UiScreen& screen, void* user) {
   }
 }
 
-// The Contents / Text / More row: three equal slots, an icon centred in each,
-// the active one inside an outline pill (the theme's control radius). Each
-// slot is registered as one tap target, so the row stays light (no filled
-// tiles, no labels -- the glyphs carry the meaning).
+// Three named tools. Product controls share inverse selection and 40px icons;
+// legacy profiles keep their icon-only outline. Actions and slots are shared.
 void ReaderToolbarUi::buildToolRow(UiScreen& screen, const fui::LayoutAnchor anchor, const int16_t sideInset) {
   const auto& tokens = screen.theme();
-  constexpr int iconSize = UiHighDpiProfile::enabled ? UiHighDpiProfile::controlIconSize : 24;
-  const fui::BitmapRef icons[kToolCount] = {fui::bitmapFromIcon(icon_reader_contents_48),
-                                            fui::bitmapFromIcon(icon_reader_text_48),
-                                            fui::bitmapFromIcon(icon_reader_more_48)};
+  constexpr int iconSize = UiHighDpiProfile::enabled ? ricky::ds::icon::kNav : 24;
+  const fui::BitmapRef icons[kToolCount] = {
+      fui::bitmapFromIcon(UiHighDpiProfile::enabled ? icon_ricky_contents_40 : icon_reader_contents_48),
+      fui::bitmapFromIcon(UiHighDpiProfile::enabled ? icon_ricky_fonts_40 : icon_reader_text_48),
+      fui::bitmapFromIcon(UiHighDpiProfile::enabled ? icon_ricky_more_40 : icon_reader_more_48)};
+  const char* labels[kToolCount] = {tr(STR_TOOL_CONTENTS), tr(STR_TOOL_TEXT), tr(STR_TOOL_MORE)};
   // sideInset absorbs the difference between the two hosts' content bands
   // (the toolbar's is spaceLg-inset, the panel's is full width): the slots
   // must land on the same x either way, or the icons jump when a tap swaps
   // the toolbar for a panel.
   const fui::Rect row = screen.take(anchor, kToolRowH).inset(fui::Insets{0, sideInset, 0, sideInset});
   const int16_t slotW = static_cast<int16_t>(row.width / kToolCount);
-  // Theme radius as-is (the frontlight panel pattern); the fill clamps to
-  // the shape's own height so round themes cannot overshoot.
+  // Legacy profile radius; product controls use the design token below.
   const uint8_t pillRadius = tokens.controlRadius;
   for (int i = 0; i < kToolCount; ++i) {
     const fui::Rect slot{static_cast<int16_t>(row.x + slotW * i), row.y, slotW, row.height};
-    if (i == model_.activeTool) {
+    const bool selected = i == model_.activeTool;
+    if (UiHighDpiProfile::enabled && selected) {
+      screen.target().fill(slot.inset(fui::Insets{8, 4, 8, 4}), fui::Paint::solid(fui::Color::Black),
+                           ricky::ds::radius::kControl);
+    } else if (selected) {
       screen.target().stroke(slot.inset(fui::Insets{4, kToolPillInset, 4, kToolPillInset}),
                              fui::Paint::solid(fui::Color::Black), 2, pillRadius);
     }
-    const fui::Rect iconRect{static_cast<int16_t>(slot.x + (slot.width - iconSize) / 2),
-                             static_cast<int16_t>(slot.y + (slot.height - iconSize) / 2),
-                             static_cast<int16_t>(iconSize), static_cast<int16_t>(iconSize)};
-    screen.target().bitmap(iconRect, icons[i], fui::BitmapMode::Center);
+    const fui::Rect iconRect{
+        static_cast<int16_t>(slot.x + (slot.width - iconSize) / 2),
+        static_cast<int16_t>(slot.y + (UiHighDpiProfile::enabled ? 16 : (slot.height - iconSize) / 2)),
+        static_cast<int16_t>(iconSize), static_cast<int16_t>(iconSize)};
+    screen.target().bitmap(
+        iconRect, icons[i], fui::BitmapMode::Center,
+        fui::Paint::solid(UiHighDpiProfile::enabled && selected ? fui::Color::White : fui::Color::Black));
+    if (UiHighDpiProfile::enabled) {
+      auto style = tokens.smallText;
+      style.bold = false;
+      style.align = fui::TextAlign::Center;
+      style.color = selected ? fui::Color::White : fui::Color::Black;
+      screen.target().text({slot.x, static_cast<int16_t>(slot.y + 64), slot.width, 36}, labels[i], style);
+    }
     screen.frame().hit(slot, ACTION_TOOL, static_cast<int16_t>(i), fui::InputTouch);
   }
 }
@@ -168,14 +185,14 @@ void ReaderToolbarUi::buildToolbar(UiScreen& screen) {
   {
     const fui::Rect band = screen.takeTop(kScrubButton, tokens.spaceLg);
     stepProps_.label = nullptr;
-    stepProps_.icon = fui::bitmapFromIcon(icon_reader_back_48);
+    stepProps_.icon = fui::bitmapFromIcon(UiHighDpiProfile::enabled ? icon_ricky_back_40 : icon_reader_back_48);
     stepProps_.action = ACTION_PREV;
     stepProps_.inputMask = fui::InputTouch;
     stepProps_.styles.explicitlySet = true;
     stepProps_.styles.normal.background = fui::Paint::solid(fui::Color::White);
     stepProps_.styles.normal.foreground = fui::Paint::solid(fui::Color::Black);
     stepProps_.styles.normal.border = fui::Paint::solid(fui::Color::Black);
-    stepProps_.styles.normal.borderWidth = 1;
+    stepProps_.styles.normal.borderWidth = UiHighDpiProfile::enabled ? ricky::ds::stroke::kHairline : 1;
     stepProps_.styles.normal.radius = tokens.controlRadius;
     stepProps_.styles.selected = stepProps_.styles.normal;
     stepProps_.styles.focused = stepProps_.styles.normal;
@@ -184,7 +201,7 @@ void ReaderToolbarUi::buildToolbar(UiScreen& screen) {
     stepProps_.styles.active.background = fui::Paint::solid(fui::Color::Black);
     stepProps_.styles.active.foreground = fui::Paint::solid(fui::Color::White);
     screen.button(stepProps_, fui::Rect{band.x, band.y, kScrubButton, kScrubButton});
-    stepProps_.icon = fui::bitmapFromIcon(icon_reader_next_48);
+    stepProps_.icon = fui::bitmapFromIcon(UiHighDpiProfile::enabled ? icon_ricky_next_40 : icon_reader_next_48);
     stepProps_.action = ACTION_NEXT;
     screen.button(stepProps_,
                   fui::Rect{static_cast<int16_t>(band.right() - kScrubButton), band.y, kScrubButton, kScrubButton});
@@ -211,7 +228,7 @@ void ReaderToolbarUi::buildToolbar(UiScreen& screen) {
   {
     const fui::Rect line = screen.takeTop(metaH, tokens.spaceSm);
     fui::TextStyle titleStyle = tokens.smallText;
-    titleStyle.bold = true;
+    titleStyle.bold = !UiHighDpiProfile::enabled;
     fui::TextStyle infoStyle = tokens.smallText;
     infoStyle.align = fui::TextAlign::Right;
     const int16_t infoW =
@@ -241,7 +258,8 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   // everything in the sheet that is not the list; the row count starts from
   // the target share, grows one row when that still fits the cap, and shrinks
   // to the item count when the list is shorter than the space.
-  const int16_t titleH = screen.target().lineHeight(tokens.titleText.font);
+  const int16_t titleH =
+      UiHighDpiProfile::enabled ? ricky::ds::layout::kTouchMin : screen.target().lineHeight(tokens.titleText.font);
   const int16_t rowH = model_.denseRows ? static_cast<int16_t>(uiThemeMetrics(true).listRowHeight) : tokens.rowHeight;
   const int16_t rowGap = model_.denseRows ? tokens.listRowGap : std::max(tokens.listRowGap, tokens.listTouchRowGap);
   const int16_t rowStride = static_cast<int16_t>(rowH + rowGap);
@@ -267,7 +285,7 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   // Title line: panel name left, page position right when the list spans pages.
   {
     fui::TextStyle titleStyle = tokens.titleText;
-    titleStyle.bold = true;
+    titleStyle.bold = !UiHighDpiProfile::enabled;
     const fui::Rect line =
         screen.takeTop(titleH, tokens.spaceMd).inset(fui::Insets{0, tokens.spaceLg, 0, tokens.spaceLg});
     if (model_.segmentLabels[0] && model_.segmentLabels[1]) {
@@ -276,6 +294,23 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
       const int16_t gap = static_cast<int16_t>(tokens.spaceLg * 2);
       int16_t x = line.x;
       for (int i = 0; i < 2; ++i) {
+        if (UiHighDpiProfile::enabled) {
+          auto style = tokens.smallText;
+          style.bold = false;
+          style.align = fui::TextAlign::Center;
+          const bool selected = i == model_.activeSegment;
+          style.color = selected ? fui::Color::White : fui::Color::Black;
+          const int16_t width = static_cast<int16_t>(
+              std::max<int>(ricky::ds::layout::kTouchMin,
+                            screen.target().measureText(style.font, model_.segmentLabels[i], style).width + 32));
+          const fui::Rect hit{x, line.y, width, titleH};
+          const fui::Rect pill{x, static_cast<int16_t>(line.y + (titleH - 48) / 2), width, 48};
+          if (selected) screen.target().fill(pill, fui::Paint::solid(fui::Color::Black), ricky::ds::radius::kControl);
+          screen.target().text(pill, model_.segmentLabels[i], style);
+          screen.frame().hit(hit, ACTION_TOOL, static_cast<int16_t>(kSegmentToolBase + i), fui::InputTouch);
+          x = static_cast<int16_t>(x + width + ricky::ds::space::kTouchSpacing);
+          continue;
+        }
         fui::TextStyle style = tokens.titleText;
         style.bold = i == model_.activeSegment;
         const int16_t w = screen.target().measureText(style.font, model_.segmentLabels[i], style).width;
@@ -309,9 +344,13 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   listProps_.inputMask = fui::InputTouch;  // physical buttons stay with the reader
   listProps_.rowHeight = rowH;
   listProps_.rowGap = rowGap;
-  listProps_.toggleCheckbox = true;
-  listProps_.toggleWidth = UiHighDpiProfile::enabled ? 48 : 28;
-  listProps_.toggleHeight = UiHighDpiProfile::enabled ? 48 : 28;
+  listProps_.toggleCheckbox = !UiHighDpiProfile::enabled;
+  listProps_.toggleWidth = UiHighDpiProfile::enabled ? ricky::ds::layout::kToggleWidth : 28;
+  listProps_.toggleHeight = UiHighDpiProfile::enabled ? ricky::ds::layout::kToggleHeight : 28;
+  listProps_.toggleRadius = UiHighDpiProfile::enabled ? ricky::ds::layout::kToggleHeight / 2 : 0;
+  listProps_.toggleKnobInset =
+      UiHighDpiProfile::enabled ? (ricky::ds::layout::kToggleHeight - ricky::ds::layout::kToggleKnobOn) / 2 : 2;
+  listProps_.toggleKnobRadius = UiHighDpiProfile::enabled ? ricky::ds::layout::kToggleKnobOn / 2 : 0;
   // The label column starts flush with the panel title (no list-side padding
   // on top of the sheet's own inset). Body-size text: small reads condensed
   // and the taller row doubles as the tap target.
@@ -320,7 +359,8 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   // The list band spans the sheet's full width -- the scroll track hugs the
   // panel edge (theme bezel inset included) exactly like a full-screen list.
   // rowInset pulls the rows back to the title's spaceLg alignment.
-  listProps_.rowInset = tokens.spaceLg;
+  listProps_.rowInset = UiHighDpiProfile::enabled ? tokens.listInset : tokens.spaceLg;
+  listProps_.sidePadding = UiHighDpiProfile::enabled ? tokens.listSidePadding : 0;
   const fui::Rect listRect = screen.body();
   const int count = std::max(0, model_.itemCount);
   // The nav owns selection + viewport (same fui::ListNav idiom as the list
@@ -348,7 +388,7 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   listProps_.itemsWindowFirst = static_cast<uint16_t>(nav_.top);
   listProps_.itemsWindowCount = static_cast<uint16_t>(std::max(0, windowCount));
   listProps_.valueText = tokens.bodyText;
-  listProps_.valueText.bold = true;
+  listProps_.valueText.bold = !UiHighDpiProfile::enabled;
   if (count > 0) {
     screen.list(listProps_);
   }

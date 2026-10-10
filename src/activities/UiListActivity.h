@@ -85,6 +85,10 @@ class UiListActivity : public Activity, protected UiAppHost {
   void syncListViewport(UiScreen& screen, freeink::ui::ListProps& props, int selectionOffset = 0);
   // Move the selection to index and pull the viewport to it.
   void moveSelectionTo(int index);
+  // A native-gray transaction starts with a cleared canvas. Popups must
+  // reconstruct their underlay, not depend on a previous 1-bit framebuffer.
+  // Suppresses the intermediate display in both direct-gray and B/W modes.
+  void renderPopupUnderlay();
 
   // --- shared state ----------------------------------------------------------
   // Selection + viewport (selected/top/visibleRows/followOnBuild). Access via

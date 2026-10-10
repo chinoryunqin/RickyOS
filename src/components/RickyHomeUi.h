@@ -18,6 +18,10 @@ class RickyHomeUi final : public UiAppHost {
   int coverHeight() const { return thumbnailHeight; }
   static constexpr int LIBRARY = -3;
   static constexpr int STATISTICS = -4;
+  static constexpr int PROFILE = -5;
+  static constexpr int TRANSFER = -6;
+  static constexpr int WEREAD = -7;
+  static constexpr int FILES = -8;
 
  private:
   static void screenFn(UiScreen& screen, void* user);

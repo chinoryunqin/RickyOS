@@ -16,6 +16,7 @@
 #include <SdCardFontCache.h>
 #include <TrustedTime.h>
 #include <Txt.h>
+#include <WeReadStore.h>
 #include <WiFi.h>
 #include <esp_system.h>
 
@@ -52,22 +53,20 @@
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
 #include "SilentRestart.h"
+#include "activities/apps/weread/WeReadProgressSyncActivity.h"
 #include "activities/network/WifiSelectionActivity.h"
+#include "activities/settings/FontDownloadActivity.h"
 #include "activities/settings/TextSettingsActivity.h"
 #include "components/FontPreloadView.h"
-#include "util/BookCacheUtils.h"
-#include "util/BookmarkFile.h"
-#include "util/ReadingBackground.h"
-#include "util/ReadingGuideLine.h"
-#include <WeReadStore.h>
-
-#include "activities/apps/weread/WeReadProgressSyncActivity.h"
-#include "activities/settings/FontDownloadActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/AchievementPopupUtils.h"
+#include "util/BookCacheUtils.h"
+#include "util/BookmarkFile.h"
 #include "util/BookmarkUtil.h"
 #include "util/ButtonNavigator.h"
+#include "util/ReadingBackground.h"
+#include "util/ReadingGuideLine.h"
 #include "util/ScreenshotUtil.h"
 #include "util/TimeUtils.h"
 
@@ -89,9 +88,7 @@ constexpr int PAGE_TURN_RATES[] = {1, 1, 3, 6, 12};
 // Body-text weight (RickyOS 字重): a curve over the 0..15 glyph coverage. Index 2 is the
 // font as drawn; the others are gamma 2.0 / 1.4 (lighter edges, thinner strokes), 0.45
 // (darker edges) and 0.65 on a one-pixel spread (readerTextWeightSpread). Layout never changes.
-uint8_t readerTextWeight() {
-  return SETTINGS.rickyTextWeight;
-}
+uint8_t readerTextWeight() { return SETTINGS.rickyTextWeight; }
 
 const uint8_t* readerTextWeightCurve(const uint8_t weight) {
   static constexpr uint8_t kCurves[5][16] = {
@@ -365,8 +362,8 @@ bool EpubReaderActivity::loadBook() {
 #endif
     disableFastInitialRefresh();
     GUI.drawPopup(renderer, tr(STR_INDEXING));
-  }
-  else if (SETTINGS.embeddedStyle != 0 && !Storage.exists((loadedEpub->getCachePath() + "/css_rules.cache").c_str())) {
+  } else if (SETTINGS.embeddedStyle != 0 &&
+             !Storage.exists((loadedEpub->getCachePath() + "/css_rules.cache").c_str())) {
     // A book without its style cache parses every stylesheet once (seconds for books
     // with hundreds of them): say so instead of looking frozen.
     GUI.drawPopup(renderer, tr(STR_INDEXING));
@@ -541,7 +538,8 @@ void EpubReaderActivity::openReaderMenu() {
         }
       },
       epub->getTitle(), currentPage, totalPages, bookProgressPercent, SETTINGS.orientation,
-      !currentPageFootnotes.empty(), !cachedBookmarks.empty());
+      !currentPageFootnotes.empty(), !cachedBookmarks.empty(), currentChapterTitle().c_str(), currentPageBookmarked,
+      static_cast<unsigned>(cachedBookmarks.size()));
 }
 
 ReaderRenderSpec EpubReaderActivity::effectiveRenderSpec(const uint16_t width, const uint16_t height) const {
@@ -662,6 +660,10 @@ void EpubReaderActivity::openDictionaryWordSelect() {
   orientedMarginTop += SETTINGS.screenMargin;
   orientedMarginLeft += SETTINGS.screenMargin;
 
+  if (UiHighDpiProfile::enabled && SETTINGS.statusBarSpec().textLaneVisible()) {
+    orientedMarginTop += ricky::ds::layout::kReaderHeaderHeight + ricky::ds::layout::kReaderHeaderGap;
+  }
+
   startActivityForResultWith<DictionaryWordSelectActivity>(
       [this](const ActivityResult&) {
         READING_STATS.resumeSession();
@@ -708,6 +710,9 @@ void EpubReaderActivity::openFootnoteSelect(const bool reopenMenuOnCancel) {
                                    &orientedMarginLeft);
   orientedMarginTop += SETTINGS.screenMargin;
   orientedMarginLeft += SETTINGS.screenMargin;
+  if (UiHighDpiProfile::enabled && SETTINGS.statusBarSpec().textLaneVisible()) {
+    orientedMarginTop += ricky::ds::layout::kReaderHeaderHeight + ricky::ds::layout::kReaderHeaderGap;
+  }
   auto selector = makeUniqueNoThrow<EpubReaderFootnoteSelectActivity>(renderer, mappedInput, std::move(page),
                                                                       orientedMarginLeft, orientedMarginTop);
   if (!selector) {
@@ -1723,6 +1728,10 @@ void EpubReaderActivity::renderBook() {
   orientedMarginLeft += SETTINGS.screenMargin;
   orientedMarginRight += SETTINGS.screenMargin;
 
+  if (UiHighDpiProfile::enabled && SETTINGS.statusBarSpec().textLaneVisible()) {
+    orientedMarginTop += ricky::ds::layout::kReaderHeaderHeight + ricky::ds::layout::kReaderHeaderGap;
+  }
+
   const uint8_t statusBarHeight = UITheme::getInstance().getStatusBarHeight();
 
   int bottomReserve = statusBarHeight;
@@ -1730,10 +1739,8 @@ void EpubReaderActivity::renderBook() {
       (statusBarHeight == 0 || statusBarHeight == UITheme::getInstance().getProgressBarHeight())) {
     bottomReserve += UITheme::getInstance().getMetrics().statusBarVerticalMargin;
   }
-  if (UiHighDpiProfile::enabled && (SETTINGS.statusBarSpec().textLaneVisible() || automaticPageTurnActive)) {
-    // Reuse the footer's unused top space while keeping a gap above its text.
-    bottomReserve -=
-        std::max(0, UITheme::getStatusBarTextTopPadding(renderer) - UiHighDpiProfile::readerContentStatusGap);
+  if (UiHighDpiProfile::enabled && SETTINGS.statusBarSpec().textLaneVisible()) {
+    bottomReserve = std::max(bottomReserve, static_cast<int>(ricky::ds::layout::kReaderFooterHeight));
   }
   orientedMarginBottom += std::max(static_cast<int>(SETTINGS.screenMargin), bottomReserve);
 
@@ -2488,10 +2495,9 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
     }
     memcpy(pageCacheBase_[slot].get(), live, bytes);
     pageCacheIs16_[slot] = true;
-  } else
-      if (!renderPlane(GfxRenderer::BW, pageCacheBase_[slot].get()) ||
-          !renderPlane(GfxRenderer::GRAYSCALE_LSB, pageCacheLsb_[slot].get()) ||
-          !renderPlane(GfxRenderer::GRAYSCALE_MSB, pageCacheMsb_[slot].get()) || cancelled()) {
+  } else if (!renderPlane(GfxRenderer::BW, pageCacheBase_[slot].get()) ||
+             !renderPlane(GfxRenderer::GRAYSCALE_LSB, pageCacheLsb_[slot].get()) ||
+             !renderPlane(GfxRenderer::GRAYSCALE_MSB, pageCacheMsb_[slot].get()) || cancelled()) {
     return false;
   } else {
     pageCacheIs16_[slot] = false;
@@ -3031,6 +3037,19 @@ void EpubReaderActivity::renderStatusBar() const {
     title = epub ? epub->getTitle() : "";
   }
 
+  if (UiHighDpiProfile::enabled && (!automaticPageTurnActive || sb.textLaneVisible())) {
+    if (epub && sb.titleMode == CrossPointSettings::STATUS_BAR_TITLE::CHAPTER_TITLE && !automaticPageTurnActive &&
+        title != epub->getTitle()) {
+      // Bound the new display strings by pixels, not untrusted metadata length.
+      const int column = renderer.getScreenWidth() / 4;
+      auto book = renderer.truncatedText(RickyDesignUi::BODY, epub->getTitle().c_str(), column);
+      auto chapter = renderer.truncatedText(RickyDesignUi::BODY, title.c_str(), column);
+      title = book + " · " + chapter;
+    }
+    GUI.drawRickyReaderChrome(renderer, bookProgress, currentPage, pageCount, title.c_str(), currentPageBookmarked,
+                              section ? section->isBuilding() : false);
+    return;
+  }
   GUI.drawStatusBar(renderer, bookProgress, currentPage, pageCount, title, 0, textYOffset, true, currentPageBookmarked,
                     section ? section->isBuilding() : false);
 }
@@ -3049,11 +3068,9 @@ constexpr int kTextRowFirstLayout = 3;
 constexpr int kTextRowSpacing = kTextRowFirstLayout;
 constexpr int kTextRowAlignment = kTextRowFirstLayout + 1;
 constexpr int kTextRowIndent = kTextRowFirstLayout + 2;
-constexpr StrId kTextRowNames[] = {StrId::STR_FONT,         StrId::STR_FONT_SIZE,
-                                   StrId::STR_RICKY_WEIGHT,
+constexpr StrId kTextRowNames[] = {StrId::STR_FONT,         StrId::STR_FONT_SIZE,      StrId::STR_RICKY_WEIGHT,
                                    StrId::STR_LINE_SPACING, StrId::STR_PARA_ALIGNMENT, StrId::STR_FIRST_LINE_INDENT,
-                                   StrId::STR_TEXT_AA
-};
+                                   StrId::STR_TEXT_AA};
 constexpr int kTextRowAntiAliasing = kTextRowIndent + 1;
 // Body-text weight (readerTextWeightCurve); the middle step is the font as drawn.
 constexpr StrId kWeightIds[] = {StrId::STR_RICKY_WEIGHT_THINNEST, StrId::STR_RICKY_WEIGHT_THIN,
@@ -3551,15 +3568,13 @@ void EpubReaderActivity::handleOverlayInput() {
           if (toolbarUi) toolbarUi->begin();  // the picker drew its own FUI screen
           requestUpdate();                    // re-render page + Text panel
         });
-      }
-      else if (panelIndex == kTextRowAntiAliasing) {
+      } else if (panelIndex == kTextRowAntiAliasing) {
         // Same layout either way: only the page's rendering changes, so no re-pagination.
         SETTINGS.textAntiAliasing = SETTINGS.textAntiAliasing ? 0 : 1;
         SETTINGS.saveToFile();
         discardOverlayPage();
         requestUpdate();
-      }
-      else {
+      } else {
         // Enum rows open the Settings-style option picker.
         showTextRowPopup(panelIndex);
       }

@@ -1,4 +1,5 @@
-#include "components/RickyAaIcons.h"
+#include "InxTheme.h"
+
 #include <GfxRenderer.h>
 #include <HalGPIO.h>
 
@@ -10,11 +11,11 @@
 #include "CrossPointSettings.h"
 #include "I18n.h"
 #include "InxItemLayout.h"
-#include "InxTheme.h"
+#include "components/RickyAaIcons.h"
+#include "components/RickyPageLayout.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
 #include "components/icons/inx_apps.h"
-#include "components/RickyPageLayout.h"
 #include "components/icons/rickyNavigationIcons.h"
 #include "fontIds.h"
 #include "util/TimeUtils.h"
@@ -23,8 +24,8 @@ namespace {
 // The product tab bar: 40 px icons drawn with ~2.5 px round strokes over small labels;
 // the selected tab reverses its icon inside an ink capsule.
 constexpr int kIconSize = 40;
-constexpr int kPillWidth = 80;
-constexpr int kPillHeight = 50;
+constexpr int kPillWidth = ricky::ds::layout::kTabPillWidth;
+constexpr int kPillHeight = ricky::ds::layout::kTabPillHeight;
 constexpr int kUnderlineHeight = 5;
 constexpr int kRowHeight = InxMenuGeometry::rowHeight;
 constexpr int kRowPadding = UiHighDpiProfile::enabled ? UiHighDpiProfile::contentPadding : 20;
@@ -154,6 +155,23 @@ void InxTheme::drawHeader(const GfxRenderer& renderer, const Rect rect, const ch
 
 void InxTheme::drawSubHeader(const GfxRenderer& renderer, const Rect rect, const char* label,
                              const char* rightLabel) const {
+  if (UiHighDpiProfile::enabled) {
+    const int pad = ricky::ds::space::kPageMargin;
+    int right = rect.x + rect.width - pad;
+    if (rightLabel && *rightLabel) {
+      const int width = std::min(renderer.getTextWidth(RickyDesignUi::BODY, rightLabel), std::max(0, rect.width / 3));
+      RickyDesignUi::text(renderer,
+                          {static_cast<int16_t>(right - width), static_cast<int16_t>(rect.y),
+                           static_cast<int16_t>(width), static_cast<int16_t>(rect.height)},
+                          rightLabel, RickyDesignUi::CAPTION, false, freeink::ui::TextAlign::Right);
+      right -= width + ricky::ds::space::kInlineGap;
+    }
+    RickyDesignUi::text(renderer,
+                        {static_cast<int16_t>(rect.x + pad), static_cast<int16_t>(rect.y),
+                         static_cast<int16_t>(std::max(0, right - rect.x - pad)), static_cast<int16_t>(rect.height)},
+                        label, RickyDesignUi::HEADLINE);
+    return;
+  }
   const int padding = kRowPadding;
   int labelRight = rect.x + rect.width - padding;
   if (rightLabel && *rightLabel) {
@@ -408,12 +426,11 @@ void InxTheme::drawOptionPopup(const GfxRenderer& renderer, const char* title, c
   const int panelY = layout.panel.y;
   const bool selectionVisible = UITheme::getInstance().showSelectionCursor();
 
-  renderer.fillRect(panelX, panelY, panelWidth, panelHeight, false);
-  const std::string shownTitle = renderer.truncatedText(UI_10_FONT_ID, title, panelWidth - 32, EpdFontFamily::BOLD);
-  const int titleY = panelY + (InxOptionGeometry::headerHeight - renderer.getLineHeight(UI_10_FONT_ID)) / 2;
-  renderer.drawText(UI_10_FONT_ID, panelX + 16, titleY, shownTitle.c_str(), true, EpdFontFamily::BOLD);
-  renderer.drawLine(panelX, panelY + InxOptionGeometry::headerHeight, panelX + panelWidth - 1,
-                    panelY + InxOptionGeometry::headerHeight, true);
+  renderer.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, ricky::ds::radius::kContainer, Color::White);
+  RickyDesignUi::text(renderer,
+                      {static_cast<int16_t>(panelX + 32), static_cast<int16_t>(panelY),
+                       static_cast<int16_t>(panelWidth - 64), static_cast<int16_t>(InxOptionGeometry::headerHeight)},
+                      title, RickyDesignUi::HEADLINE);
 
   for (int slot = 0; slot < visibleRows; ++slot) {
     const int optionIndex = start + slot;
@@ -421,14 +438,12 @@ void InxTheme::drawOptionPopup(const GfxRenderer& renderer, const char* title, c
     const bool isSelected = selectionVisible && optionIndex == selected;
     if (isSelected) {
       const Rect row = layout.optionRect(slot);
-      renderer.fillRect(row.x, row.y, row.width, row.height, true);
+      renderer.fillRoundedRect(row.x, row.y, row.width, row.height, ricky::ds::radius::kControl, Color::Black);
     }
-    const std::string option = renderer.truncatedText(UI_10_FONT_ID, options[optionIndex].c_str(), panelWidth - 44);
-    const int textY = rowY + (InxOptionGeometry::rowHeight - renderer.getLineHeight(UI_10_FONT_ID)) / 2;
-    renderer.drawText(UI_10_FONT_ID, panelX + 18, textY, option.c_str(), !isSelected,
-                      isSelected ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR);
-    if (slot + 1 < visibleRows)
-      drawDottedSeparator(renderer, panelX + 2, rowY + InxOptionGeometry::rowHeight - 1, panelWidth - 4);
+    RickyDesignUi::text(renderer,
+                        {static_cast<int16_t>(panelX + 40), static_cast<int16_t>(rowY),
+                         static_cast<int16_t>(panelWidth - 80), static_cast<int16_t>(InxOptionGeometry::rowHeight)},
+                        options[optionIndex].c_str(), RickyDesignUi::BODY, isSelected);
   }
 
   if (optionCount > visibleRows) {
@@ -441,8 +456,8 @@ void InxTheme::drawOptionPopup(const GfxRenderer& renderer, const char* title, c
     renderer.fillRect(trackX - 2, thumbY, 6, thumbHeight, true);
   }
 
-  renderer.drawRect(panelX, panelY, panelWidth, panelHeight, true);
-  renderer.drawRect(panelX + 1, panelY + 1, panelWidth - 2, panelHeight - 2, true);
+  renderer.drawRoundedRect(panelX, panelY, panelWidth, panelHeight, ricky::ds::stroke::kEmphasis,
+                           ricky::ds::radius::kContainer, true);
 }
 
 void InxTheme::drawMainTabBar(const GfxRenderer& renderer, const Rect rect, const MainTab selected) const {
@@ -491,7 +506,7 @@ void InxTheme::drawMainTabBar(const GfxRenderer& renderer, const Rect rect, cons
 void InxTheme::drawMainTabStatusBar(const GfxRenderer& renderer, const Rect rect) const {
   if (rect.width <= 0 || rect.height <= 0) return;
   constexpr int numericFontId = UiHighDpiProfile::enabled ? SMALL_FONT_ID : STATUS_NUMERIC_FONT_ID;
-  constexpr int edgeInset = UiHighDpiProfile::enabled ? UiHighDpiProfile::contentPadding : 12;
+  constexpr int edgeInset = ricky::ds::space::kPageMargin;
   constexpr int batteryTextOffset = 6;  // drawBatteryRight offsets the icon below the text origin.
   const auto& metrics = UITheme::getInstance().getMetrics();
   const bool tabsAtBottom = SETTINGS.inxTabPosition == CrossPointSettings::INX_TAB_BOTTOM;

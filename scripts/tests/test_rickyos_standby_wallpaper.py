@@ -155,9 +155,11 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
     def test_without_a_picture_standby_shows_the_rest_screen(self):
         render = body(self.face, 'void WallpaperFace::render(')
         rest = render.split('if (!hasPicture_) {', 1)[1].split('return;', 1)[0]
-        for piece in ('RickyBrandMark::draw(renderer, layout.mark, 3)', 'tr(STR_RICKY_REST)',
+        for piece in ('RickyBrandMark::draw(renderer, layout.mark, 3)',
                       'tr(STR_RICKY_BRAND_TAGLINE)', 'drawCorner(renderer, viewport, false)'):
             self.assertIn(piece, rest)
+        self.assertNotIn('tr(STR_RICKY_REST)', rest)
+        self.assertNotIn('drawLine(', rest)
         self.assertNotIn('needsPicture', (ROOT / 'src/activities/apps/standby/WallpaperFace.h').read_text())
         self.assertIn('STR_RICKY_SLEEP_LIGHT: "默认画面"', (ROOT / 'lib/I18n/translations/chinese.yaml').read_text())
 
@@ -177,7 +179,7 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
                             ('src/activities/boot_sleep/SleepActivity.cpp',
                              'const bool renderQuickResume = sleepScreenMode()')):
             source = (ROOT / path).read_text()
-            product = source.split(start, 1)[1].split('#else', 1)[0]
+            product = re.split(re.escape(start).replace(r'\ ', r'\s+'), source, maxsplit=1)[1].split('#else', 1)[0]
             self.assertNotIn('quickResumeSleepScreen', product, path)
         settings = (ROOT / 'src/activities/settings/SettingsActivity.cpp').read_text()
         hidden = settings[settings.index('const auto elsewhere'):]

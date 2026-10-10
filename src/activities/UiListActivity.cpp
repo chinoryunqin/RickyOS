@@ -112,7 +112,15 @@ void UiListActivity::navigateButtons() {
 }
 
 void UiListActivity::syncListViewport(UiScreen& screen, fui::ListProps& props, const int selectionOffset) {
-  if (usesUpstreamStyle() || SETTINGS.uiTheme != CrossPointSettings::INX) {
+  if (UiHighDpiProfile::enabled && SETTINGS.uiTheme == CrossPointSettings::INX) {
+    props.toggleWidth = ricky::ds::layout::kToggleWidth;
+    props.toggleHeight = ricky::ds::layout::kToggleHeight;
+    props.toggleRadius = ricky::ds::layout::kToggleHeight / 2;
+    props.toggleKnobRadius = ricky::ds::layout::kToggleKnobOn / 2;
+    props.toggleKnobInset = (ricky::ds::layout::kToggleHeight - ricky::ds::layout::kToggleKnobOn) / 2;
+    props.toggleBorderWidth = ricky::ds::stroke::kHairline;
+  }
+  if ((!UiHighDpiProfile::enabled && usesUpstreamStyle()) || SETTINGS.uiTheme != CrossPointSettings::INX) {
     props.toggleCheckbox = true;
     props.toggleWidth = 28;
     props.toggleHeight = 28;
@@ -171,4 +179,14 @@ void UiListActivity::render(RenderLock&&) {
   }
   drawFooter();
   renderer.displayBuffer();
+}
+
+void UiListActivity::renderPopupUnderlay() {
+  const bool capture = renderer.isDisplayCapture();
+  renderer.setDisplayCapture(true);
+  renderer.clearScreen();
+  drawChrome();
+  renderUi();
+  drawFooter();
+  renderer.setDisplayCapture(capture);
 }

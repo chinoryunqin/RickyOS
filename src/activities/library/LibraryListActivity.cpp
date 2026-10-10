@@ -1,6 +1,8 @@
 #include "LibraryListActivity.h"
 
+#include <Bitmap.h>
 #include <FreeInkUIIcon.h>
+#include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
 #include <I18n.h>
@@ -15,24 +17,23 @@
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
+#include "activities/home/RickyStorageActivity.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
+#include "components/RickyDesignUi.h"
+#include "components/RickyPageUi.h"
 #include "components/UIScale.h"
 #include "components/UITheme.h"
+#include "components/controls/button.h"
 #include "components/icons/headerIcons.h"
 #include "components/icons/listIcons.h"
+#include "components/icons/rickyPageIcons.h"
 #include "components/icons/search32.h"
 #include "fontIds.h"
 #include "util/BookCacheUtils.h"
-#include <Bitmap.h>
-#include <FsHelpers.h>
-
-#include "ReadingStatsStore.h"
-#include "components/RickyPageUi.h"
-#include "components/controls/button.h"
 #include "util/BookCoverLoader.h"
-#include "activities/home/RickyStorageActivity.h"
 
 namespace fui = freeink::ui;
 
@@ -531,9 +532,7 @@ int LibraryListActivity::listCount() const { return groupsCollapsed ? static_cas
 // With pins active, entries below pinnedCount() belong to the store and must
 // not reach this; the rest walk past the pinned books' own sort rows.
 int LibraryListActivity::rowFor(const int entry) const {
-  if (!query.empty()
-      || readingFilter != 0
-  ) {
+  if (!query.empty() || readingFilter != 0) {
     if (entry < 0 || entry >= static_cast<int>(filteredCount) || !filtered) return 0;
     return filtered[entry];
   }
@@ -645,10 +644,7 @@ void LibraryListActivity::applyFilter() {
   // The header shows the active query in place of the screen title, so the
   // reader can see what narrowed the list without reopening the keyboard.
   headerSearchTitle = query.empty() ? std::string() : "“" + query + "”";
-  if (query.empty()
-      && readingFilter == 0
-  )
-    return;
+  if (query.empty() && readingFilter == 0) return;
 
   const std::string needle = library::fold(query);
   const int total = static_cast<int>(index.bookCount());
@@ -1040,45 +1036,32 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
       fui::Insets{static_cast<int16_t>(bounds.y), static_cast<int16_t>(bounds.x),
                   static_cast<int16_t>(renderer.getScreenHeight() - bounds.y - bounds.height),
                   static_cast<int16_t>(renderer.getScreenWidth() - bounds.x - bounds.width)});
-  screen.insetContent(fui::Insets{theme.spaceSm, theme.spaceLg, theme.spaceSm, theme.spaceLg});
-  const int gap = std::max<int>(6, theme.spaceSm);
+  screen.insetContent(fui::Insets{0, ricky::ds::space::kPageMargin, 0, ricky::ds::space::kPageMargin});
+  const int gap = ricky::ds::space::kGutter;
   const int labelHeight = screen.target().lineHeight(theme.smallText.font);
   const int count = bookRowCount();
-  RickyPageUi::Bold bold(renderer, 1);
-  auto titleRect = screen.takeTop(screen.target().lineHeight(theme.titleText.font), gap);
+  auto titleRect = screen.takeTop(ricky::ds::layout::kPageHeaderHeight, 0);
   auto countRect = titleRect;
   countRect.width = titleRect.width / 3;
   countRect.x = titleRect.right() - countRect.width;
   titleRect.width -= countRect.width + gap;
   auto pageTitle = theme.titleText;
   pageTitle.bold = true;
-  {
-    // Title-size strokes need two pixels of synthetic weight to read as bold.
-    RickyPageUi::Bold heading(renderer, 2);
-    screen.target().text(titleRect, headerTitle(), pageTitle);
-  }
+  screen.target().text(titleRect, headerTitle(), pageTitle);
   char position[48];
   snprintf(position, sizeof(position), tr(STR_RICKY_LIBRARY_COUNT), static_cast<unsigned>(count));
   auto countStyle = theme.smallText;
   countStyle.align = fui::TextAlign::Right;
   screen.target().text(countRect, position, countStyle);
-  auto filters = screen.takeTop(labelHeight + gap * 2, gap * 2);
-  // Search needs text entry, and the device has no Chinese input yet: offer
-  // only the sort/refresh menu, as quiet text at the end of the tab row.
+  auto filters = screen.takeTop(ricky::ds::layout::kTouchMin, gap);
+  // Sort/refresh remains the existing menu; the shared icon has an 88 px hit.
   const int moreWidth = std::max(44, filters.width / 6);
   auto moreRect = filters;
   moreRect.x += filters.width - moreWidth;
   moreRect.width = moreWidth;
-  moreRect.height -= gap;
-  fui::ButtonProps button;
-  button.label = tr(STR_TOOL_MORE);
-  button.text = theme.smallText;
-  button.text.align = fui::TextAlign::Right;
-  button.action = ACTION_SHELF_OPTIONS;
-  button.inputMask = fui::InputTouch;
-  button.minTouchSize = 0;
-  button.styles = fui::plainStyles(fui::Paint::solid(fui::Color::Black));
-  fui::button(screen.frame(), moreRect, button);
+  RickyPageUi::pageIcon(screen.target(), renderer, moreRect.x + (moreRect.width - 40) / 2,
+                        moreRect.y + moreRect.height / 2, icon_ricky_filter_40);
+  screen.frame().hit(moreRect, ACTION_SHELF_OPTIONS, 0, fui::InputTouch);
   const StrId filterLabels[] = {StrId::STR_RICKY_BOOKS_ALL, StrId::STR_RICKY_BOOKS_READING,
                                 StrId::STR_RICKY_BOOKS_UNREAD};
   int widestLabel = 0;
@@ -1087,25 +1070,25 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
         widestLabel,
         static_cast<int>(screen.target().measureText(theme.smallText.font, I18N.get(id), theme.smallText).width));
   const int width = std::min((moreRect.x - filters.x - gap * 3) / 3, std::max(44, widestLabel + gap * 3));
-  const int separatorY = filters.bottom() - 2;
-  screen.target().fill(fui::Rect{filters.x, static_cast<int16_t>(separatorY + 1), filters.width, 1},
-                       fui::Paint::solid(fui::Color::Black));
   for (int i = 0; i < 3; ++i) {
     auto rect = filters;
     rect.x += i * (width + gap);
     rect.width = width;
     screen.frame().hit(rect, ACTION_READING_FILTER, i, fui::InputTouch);
     auto labelRect = rect;
-    labelRect.height = labelHeight;
-    labelRect.y += gap / 2;
+    labelRect.height = ricky::ds::layout::kTabPillHeight;
+    labelRect.y += (filters.height - labelRect.height) / 2;
+    const bool picked = readingFilter == i;
+    if (picked)
+      screen.target().fill(labelRect, fui::Paint::solid(fui::Color::Black), labelRect.height / 2);
+    else
+      screen.target().stroke(labelRect, fui::Paint::solid(fui::Color::Black), ricky::ds::stroke::kHairline,
+                             labelRect.height / 2);
     auto label = theme.smallText;
-    label.bold = readingFilter == i;
+    label.bold = false;
+    label.color = picked ? fui::Color::White : fui::Color::Black;
+    label.align = fui::TextAlign::Center;
     screen.target().text(labelRect, I18N.get(filterLabels[i]), label);
-    if (readingFilter == i) {
-      const int markWidth = std::min(width, widestLabel + gap);
-      screen.target().fill(fui::Rect{rect.x, static_cast<int16_t>(separatorY - 2), static_cast<int16_t>(markWidth), 4},
-                           fui::Paint::solid(fui::Color::Black));
-    }
   }
   if (count == 0) {
     screen.centeredText(
@@ -1116,12 +1099,12 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
   const bool multiplePages = count > SHELF_CAPACITY;
   const auto positionRect = multiplePages ? screen.takeBottom(labelHeight, gap) : fui::Rect{};
   const auto body = screen.body();
-  const int columns = body.width > body.height ? 4 : 2;
+  const int columns = body.width > body.height ? 6 : 3;
   const int rows = SHELF_CAPACITY / columns;
   const int rowHeight = std::max(1, (body.height - gap * (rows - 1)) / rows);
-  // 3:4 covers with air around them, like printed spines on a shelf.
-  const int coverHeight = std::max(1, std::min(rowHeight - labelHeight * 2 - gap * 3,
-                                               (body.width - gap * (columns - 1)) / columns * 64 / 100 * 4 / 3));
+  // 2:3 covers, one page of six bounded records.
+  const int coverHeight = std::max(
+      1, std::min(rowHeight - labelHeight * 2 - gap * 3, ((body.width - gap * (columns - 1)) / columns - 16) * 3 / 2));
   auto& n = activeNav();
   fui::ListProps paging;
   // Feed the existing atomic list-nav requests with four virtual one-pixel rows.
@@ -1171,54 +1154,36 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
     shelfStart = start;
     shelfHeight = coverHeight;
   }
-  for (int i = 0; i < visible; ++i) shelfItems[i] = fui::coverGridItem(shelfTitles[i].c_str(), start + i);
-  shelfGrid = {};
-  shelfGrid.items = shelfItems.data();
-  shelfGrid.count = visible;
-  shelfGrid.columns = columns;
-  shelfGrid.rowHeight = rowHeight;
-  shelfGrid.gap = shelfGrid.rowGap = gap;
-  shelfGrid.cellInset = fui::Insets{0, static_cast<int16_t>(gap), 0, static_cast<int16_t>(gap)};
-  shelfGrid.coverSize = fui::Size{static_cast<int16_t>(coverHeight * 3 / 4), static_cast<int16_t>(coverHeight)};
-  shelfGrid.labelHeight = labelHeight;
-  shelfGrid.labelGap = gap;
-  shelfGrid.titleText = theme.smallText;
-  shelfGrid.titleText.maxLines = 1;
-  shelfGrid.cellStyles = theme.listRow;
-  shelfGrid.selectedIndex = showMainTabContentSelection() ? paging.selectedIndex - start : -1;
-  shelfGrid.selectionIndicator = fui::CoverGridSelectionIndicator::CoverFrame;
-  shelfGrid.action = ACTION_ROW;
-  shelfGrid.inputMask = fui::InputTouch | fui::InputLongPress;
-  shelfGrid.minTouchSize = 0;
-  shelfGrid.scrollIndicator = false;
-  shelfGrid.coverPainterUserData = this;
-  shelfGrid.coverPainter = [](fui::DrawTarget& target, fui::Rect rect, const fui::CoverGridItem& item, uint16_t slot,
-                              void* user) {
-    auto& self = *static_cast<LibraryListActivity*>(user);
+  const int cellWidth = (body.width - gap * (columns - 1)) / columns;
+  for (int slot = 0; slot < visible; ++slot) {
+    const fui::Rect cell{static_cast<int16_t>(body.x + slot % columns * (cellWidth + gap)),
+                         static_cast<int16_t>(body.y + slot / columns * (rowHeight + gap)),
+                         static_cast<int16_t>(cellWidth), static_cast<int16_t>(coverHeight + 72)};
+    const bool picked = showMainTabContentSelection() && paging.selectedIndex == start + slot;
+    if (picked) RickyDesignUi::fill(renderer, cell, ricky::ds::gray::kInk, ricky::ds::radius::kControl);
+    const int coverWidth = coverHeight * 2 / 3;
+    const fui::Rect rect{static_cast<int16_t>(cell.x + (cell.width - coverWidth) / 2), static_cast<int16_t>(cell.y + 8),
+                         static_cast<int16_t>(coverWidth), static_cast<int16_t>(coverHeight)};
+    bool painted = false;
     HalFile file;
-    if (!self.shelfCovers[slot].empty() && Storage.openFileForRead("LIB", self.shelfCovers[slot], file)) {
+    if (!shelfCovers[slot].empty() && Storage.openFileForRead("LIB", shelfCovers[slot], file)) {
       Bitmap bitmap(file);
       if (bitmap.parseHeaders() == BmpReaderError::Ok &&
-          GUI.drawCoverThumbFill(self.renderer, bitmap, Rect{rect.x, rect.y, rect.width, rect.height})) {
-        target.stroke(rect, fui::Paint::solid(fui::Color::Black), 1);
-        return true;
+          GUI.drawCoverThumbFill(renderer, bitmap, Rect{rect.x, rect.y, rect.width, rect.height})) {
+        screen.target().stroke(rect, fui::Paint::solid(fui::Color::Black), ricky::ds::stroke::kHairline);
+        painted = true;
       }
     }
-    // The label under the cover already names the format.
-    RickyPageUi::generatedCover(target, rect, item.title, self.shelfAuthors[slot].c_str(), nullptr,
-                                self.shelfGrid.titleText);
-    return true;
-  };
-  fui::coverGrid(screen.frame(), body, shelfGrid);
-  auto detail = theme.smallText;
-  detail.align = fui::TextAlign::Center;
-  for (int i = 0; i < visible; ++i) {
-    const int cellWidth = (body.width - gap * (columns - 1)) / columns;
-    const fui::Rect textRect{
-        static_cast<int16_t>(body.x + i % columns * (cellWidth + gap)),
-        static_cast<int16_t>(body.y + i / columns * (rowHeight + gap) + coverHeight + labelHeight + gap),
-        static_cast<int16_t>(cellWidth), static_cast<int16_t>(labelHeight)};
-    screen.target().text(textRect, shelfDetails[i].data(), detail);
+    if (!painted) {
+      const auto& path = shelfPaths[slot];
+      const char* format = FsHelpers::hasEpubExtension(path) ? "EPUB" : FsHelpers::hasTxtExtension(path) ? "TXT" : "MD";
+      RickyDesignUi::cover(renderer, rect, shelfTitles[slot].c_str(), format);
+    }
+    RickyDesignUi::text(renderer, {cell.x, static_cast<int16_t>(rect.bottom() + 8), cell.width, 28},
+                        shelfTitles[slot].c_str(), RickyDesignUi::CAPTION, picked, fui::TextAlign::Center);
+    RickyDesignUi::text(renderer, {cell.x, static_cast<int16_t>(rect.bottom() + 36), cell.width, 28},
+                        shelfDetails[slot].data(), RickyDesignUi::CAPTION, picked, fui::TextAlign::Center);
+    screen.frame().hit(cell, ACTION_ROW, start + slot, fui::InputTouch | fui::InputLongPress);
   }
   n.drawnCount = count;
   n.onListRendered(start, visible, paging.selectedIndex >= start && paging.selectedIndex < start + visible);
@@ -1277,6 +1242,7 @@ void LibraryListActivity::drawHoldHelp() const {
 // OptionPopup is a self-contained modal: it owns the whole frame (hints
 // included) whenever it is up, mirroring the FileBrowser pattern.
 void LibraryListActivity::render(RenderLock&& lock) {
+  if (optionPopup.isActive()) renderPopupUnderlay();
   if (optionPopup.processRender(renderer, mappedInput)) return;
   UiTabListActivity::render(std::move(lock));
 }

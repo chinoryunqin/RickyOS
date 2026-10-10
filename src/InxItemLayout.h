@@ -117,6 +117,8 @@ struct Layout {
   int first;
 
   Rect optionRect(const int slot) const {
+    if constexpr (UiHighDpiProfile::enabled)
+      return Rect{panel.x + 24, panel.y + headerHeight + slot * rowHeight + 4, panel.width - 48, rowHeight - 8};
     return Rect{panel.x + 2, panel.y + headerHeight + slot * rowHeight + 3, panel.width - 4, rowHeight - 6};
   }
 };

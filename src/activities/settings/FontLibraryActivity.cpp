@@ -206,6 +206,7 @@ bool FontLibraryActivity::handleCustomInput() {
 }
 
 void FontLibraryActivity::render(RenderLock&& lock) {
+  if (popup_.isActive()) renderPopupUnderlay();
   if (popup_.processRender(renderer, mappedInput)) return;
   UiListActivity::render(std::move(lock));
 }

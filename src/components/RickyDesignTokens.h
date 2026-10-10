@@ -1,8 +1,8 @@
 // =============================================================================
 //  RickyDesignTokens.h — RickyOS 设计规范 (docs/design-system.md) 的 C++20 实现
 //
-//  Wired into InxTheme metrics and the main tab bar. Screens still draw
-//  their own geometry; device acceptance is still open.
+//  Wired into refresh, InxTheme metrics and the main tab bar. Screens still
+//  draw their own geometry; device acceptance is still open.
 //  目标位置：src/components/RickyDesignTokens.h
 //  目标：取代散落在 UiHighDpiProfile.h / InxTheme.h / BaseTheme.h /
 //        UIThemeTokens.h / RickyPageUi.h 与各页面 constexpr 中的样式常量。
@@ -33,7 +33,7 @@ inline constexpr int kPpi = 297;  // 标称值；1 mm ≈ 11.7 px
 // 1. 灰阶色板（§3）。只有 6 个具名等级；其余 10 级不得直接出现在 UI 代码里。
 // -----------------------------------------------------------------------------
 namespace gray {
-using Level = uint8_t;  // 0..15, 0 = black
+using Level = uint8_t;               // 0..15, 0 = black
 inline constexpr Level kInk = 0;     // #000000 文字/图标/反白底/主按钮
 inline constexpr Level kInk2 = 4;    // #444444 次级文字（仅静止帧）
 inline constexpr Level kMute = 8;    // #888888 禁用/占位（仅静止帧）
@@ -72,8 +72,8 @@ struct Style {
   uint8_t px;          // 字面 em 高度
   uint8_t lineHeight;  // 行高盒，4 的倍数
   Weight weight;
-  int8_t trackingPx;   // 整数像素字距
-  uint8_t convertPt;   // fontconvert.py 的 size 参数（150 DPI 基准）
+  int8_t trackingPx;  // 整数像素字距
+  uint8_t convertPt;  // fontconvert.py 的 size 参数（150 DPI 基准）
   Coverage coverage;
   bool tabularDigits;  // 生成时不加 --pnum / 冻结 tnum
 };
@@ -108,17 +108,17 @@ inline constexpr int16_t k10 = 40;
 inline constexpr int16_t k12 = 48;
 inline constexpr int16_t k16 = 64;
 
-inline constexpr int16_t kPageMargin = k10;       // 40：所有 UI 页面左右边距（阅读正文除外）
+inline constexpr int16_t kPageMargin = k10;                                // 40：所有 UI 页面左右边距（阅读正文除外）
 inline constexpr int16_t kContentWidth = panel::kWidth - 2 * kPageMargin;  // 604
-inline constexpr int16_t kGutter = k5;            // 20：所有栅格栏距
-inline constexpr int16_t kSectionGap = k10;       // 40：分组之间
-inline constexpr int16_t kBlockGap = k8;          // 32：同组内大块之间（页眉→首卡）
-inline constexpr int16_t kCardPadding = k6;       // 24：卡片内边距
-inline constexpr int16_t kDialogPadding = k8;     // 32
-inline constexpr int16_t kInlineGap = k4;         // 16：图标→文字
-inline constexpr int16_t kTextStackGap = k1;      // 4：标题→副标题
-inline constexpr int16_t kSelectionBleed = k4;    // 16：列表反白条向页边距外扩
-inline constexpr int16_t kTouchSpacing = k2;      // 8：相邻触控区最小间隔
+inline constexpr int16_t kGutter = k5;                                     // 20：所有栅格栏距
+inline constexpr int16_t kSectionGap = k10;                                // 40：分组之间
+inline constexpr int16_t kBlockGap = k8;                                   // 32：同组内大块之间（页眉→首卡）
+inline constexpr int16_t kCardPadding = k6;                                // 24：卡片内边距
+inline constexpr int16_t kDialogPadding = k8;                              // 32
+inline constexpr int16_t kInlineGap = k4;                                  // 16：图标→文字
+inline constexpr int16_t kTextStackGap = k1;                               // 4：标题→副标题
+inline constexpr int16_t kSelectionBleed = k4;                             // 16：列表反白条向页边距外扩
+inline constexpr int16_t kTouchSpacing = k2;                               // 8：相邻触控区最小间隔
 
 constexpr int16_t columnWidth(int columns) {
   return static_cast<int16_t>((kContentWidth - (columns - 1) * kGutter) / columns);
@@ -129,7 +129,7 @@ static_assert(columnWidth(4) * 4 + 3 * kGutter == kContentWidth, "4-col grid mus
 }  // namespace space
 
 namespace layout {
-inline constexpr int16_t kTouchMin = 88;           // ≈7.5 mm
+inline constexpr int16_t kTouchMin = 88;  // ≈7.5 mm
 inline constexpr int16_t kStatusBarHeight = 48;
 inline constexpr int16_t kPageHeaderHeight = 96;   // 大标题页眉（tab 根页面）
 inline constexpr int16_t kSubHeaderHeight = 88;    // 返回 + 标题（子页面）
@@ -148,6 +148,10 @@ inline constexpr int16_t kProfileCardHeight = 136;
 inline constexpr int16_t kAppTileSize = 112;
 inline constexpr int16_t kAvatarSize = 88;
 inline constexpr int16_t kProgressHeight = 8;
+inline constexpr int16_t kReaderHeaderHeight = 48;
+inline constexpr int16_t kReaderHeaderGap = 16;
+inline constexpr int16_t kReaderFooterHeight = 96;
+inline constexpr int16_t kReaderChromeInset = 32;
 inline constexpr int16_t kToggleWidth = 64;
 inline constexpr int16_t kToggleHeight = 36;
 inline constexpr int16_t kToggleKnobOn = 26;   // 直径
@@ -185,8 +189,8 @@ constexpr int concentric(int outer, int inset) { return outer - inset > 0 ? oute
 // 5. 线宽（§7）：2 个值。图标线宽见 icon::strokeFor()。
 // -----------------------------------------------------------------------------
 namespace stroke {
-inline constexpr uint8_t kHairline = 2;  // 卡片描边、分隔线、次按钮、进度轨(1-bit)
-inline constexpr uint8_t kEmphasis = 4;  // 弹窗边框、按下态主按钮、强调线
+inline constexpr uint8_t kHairline = 2;        // 卡片描边、分隔线、次按钮、进度轨(1-bit)
+inline constexpr uint8_t kEmphasis = 4;        // 弹窗边框、按下态主按钮、强调线
 enum class Divider : uint8_t { None, Solid };  // 无 Dotted
 inline constexpr Divider kDefaultListDivider = Divider::None;
 }  // namespace stroke
@@ -199,7 +203,7 @@ enum class Selection : uint8_t { Invert };  // 唯一选中语言：承载面反
 enum class Pressed : uint8_t { Invert };    // 按下 = 同一反白，DU 立即提交
 // 主按钮本身是墨底，其按下态改为纸底 + kEmphasis 描边（“反向反白”）。
 inline constexpr uint8_t kPrimaryPressedStroke = stroke::kEmphasis;
-inline constexpr uint32_t kPressedMinVisibleMs = 0;  // 不额外拖延；导航帧自然覆盖
+inline constexpr uint32_t kPressedMinVisibleMs = 0;        // 不额外拖延；导航帧自然覆盖
 inline constexpr gray::Level kDisabledText = gray::kMute;  // 1-bit 回退：墨 + 去箭头/值
 }  // namespace state
 
@@ -226,6 +230,13 @@ static_assert(strokeFor(kInline) == 2 && strokeFor(kList) == 3 && strokeFor(kNav
 // -----------------------------------------------------------------------------
 namespace refresh {
 enum class Tier : uint8_t { Interaction1Bit, Resting16Gray };
+// Local visual experiment: -DRICKYOS_UI_DIRECT_GRAY=0 restores B/W + idle
+// settle. This is not a user setting and does not alter reader page rendering.
+#ifndef RICKYOS_UI_DIRECT_GRAY
+#define RICKYOS_UI_DIRECT_GRAY 1
+#endif
+inline constexpr bool kDirectGrayUi = RICKYOS_UI_DIRECT_GRAY != 0;
+inline constexpr uint8_t kGc16EveryDirectFrames = 8;  // Experimental cadence; device acceptance required.
 inline constexpr uint32_t kGraySettleDelayMs = 1500;  // 同 ActivityManager.cpp kGraySettleDelayMs
 inline constexpr uint8_t kGc16EverySettles = 8;       // 同 settleToGray() kCleanEvery
 inline constexpr uint8_t kGc16EveryDuFrames = 32;     // 建议值，需真机调参
@@ -258,8 +269,8 @@ inline constexpr int16_t kCoverPlatePadding = space::k2;  // 8
 
 struct ProgressBar {
   int16_t height = layout::kProgressHeight;
-  gray::Level trackResting = gray::kTint;  // 静止帧：8px tint 胶囊
-  uint8_t trackOneBit = stroke::kHairline; // 交互帧：居中 2px 墨线
+  gray::Level trackResting = gray::kTint;   // 静止帧：8px tint 胶囊
+  uint8_t trackOneBit = stroke::kHairline;  // 交互帧：居中 2px 墨线
   gray::Level fill = gray::kInk;
   uint8_t cornerRadius = radius::kPill;
 };

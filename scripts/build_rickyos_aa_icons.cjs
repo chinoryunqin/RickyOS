@@ -19,13 +19,13 @@ const lucide = path.join(root, 'freeink-sdk/libs/assets/Icons/lucide/icons');
 const THRESHOLD = 110;
 
 function sized(svg, size) {
-  return Buffer.from(svg.replace('<svg ', `<svg width="${size}" height="${size}" `));
+  return Buffer.from(svg.replace(/<svg\b/, `<svg width="${size}" height="${size}"`));
 }
 
 const sets = [
   ...['transfer', 'opds', 'weread', 'stats', 'gomoku', 'calculator', 'standby'].map(name => ({
-    name: `ricky_app_${name}_56`, size: 56,
-    svg: () => sized(fs.readFileSync(path.join(iconRoot, 'sources/rickyos/apps', name + '.svg'), 'utf8'), 56),
+    name: `ricky_app_${name}_40`, size: 40,
+    svg: () => sized(fs.readFileSync(path.join(iconRoot, 'sources/rickyos/apps', name + '.svg'), 'utf8'), 40),
   })),
   ...['home', 'library', 'apps', 'settings', 'storage'].map(name => ({
     name: `ricky_nav_${name}_40`, size: 40,
@@ -36,13 +36,13 @@ const sets = [
 // Page icons: read the generator's own table so names and Lucide sources stay in step.
 const pageScript = fs.readFileSync(path.join(root, 'scripts/build_rickyos_page_icons.cjs'), 'utf8');
 const stroke = pageScript.match(/const STROKE = '?([\d.]+)'?/)[1];
-const pageIcons = [...pageScript.matchAll(/\['(\w+)',\s*'([\w-]+)'/g)].map(m => [m[1], m[2]]);
-for (const [alias, lucideName] of pageIcons) {
+const pageIcons = [...pageScript.matchAll(/\['(\w+)',\s*'([\w-]+)'(?:,\s*(\d+))?/g)].map(m => [m[1], m[2], Number(m[3] || 40)]);
+for (const [alias, lucideName, size] of pageIcons) {
   sets.push({
-    name: `icon_ricky_${alias}_40_bits`, size: 40,
+    name: `icon_ricky_${alias}_${size}_bits`, size,
     svg: () => Buffer.from(fs.readFileSync(path.join(lucide, lucideName + '.svg'), 'utf8')
       .replace('stroke-width="2"', `stroke-width="${stroke}"`)
-      .replace(/width="24"\s+height="24"/, 'width="40" height="40"')),
+      .replace(/width="24"\s+height="24"/, `width="${size}" height="${size}"`)),
   });
 }
 

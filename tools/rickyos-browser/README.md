@@ -55,3 +55,38 @@ pio run -e simulator_rickyos
 ```sh
 python -m unittest discover -s scripts/tests -p test_rickyos_browser.py -v
 ```
+
+1.2 设计验收脚本（仅本机，不操作串口）：
+
+```sh
+python tools/rickyos-browser/capture_design_preview.py --url http://127.0.0.1:8769
+python tools/rickyos-browser/capture_design_preview.py --url http://127.0.0.1:8769 --wait-seconds 0.3 --out build/design-direct-gray/screenshots
+python tools/rickyos-browser/check_design_scenarios.py
+python tools/rickyos-browser/check_interior_preview.py
+python tools/rickyos-browser/check_reader_preview.py
+```
+
+前者重启指定预览并检查五个主页面、资料入口和返回首页，输出原生 PNG 与亮度检查记录。
+会改变该预览的当前页面，但不清空其演示 SD 卡。默认输出在 `build/design-stage2/screenshots/`。
+`--wait-seconds 0.3` 在模拟器启动完成后只等 300 ms，检查当前直接灰阶路径无需等待 1.5 s 沉淀；
+这不是设备触摸响应或面板刷新耗时测试。
+后者使用临时 SD 卡和自己的模拟器子进程，覆盖空首页、长昵称、六本书与书库筛选；
+不修改正在使用的预览数据。两者都不把主机渲染时长当成墨水屏刷新时长。
+
+`check_interior_preview.py` 同样只用临时 SD 和独立子进程；检查设置子页、字体管理、
+文件列表、阅读菜单／更多、弹窗与返回、文字设置及横屏菜单，输出在
+`build/design-interior/screenshots/`，不操作设备、不改变端口 8769 的演示数据。
+
+`check_reader_preview.py` 使用临时 TXT 书籍和独立子进程，检查阅读信息栏、浮层工具栏、
+目录／文字／更多面板与返回、四个阅读方向、夜间模式和隐藏信息栏，输出在
+`build/design-reader/screenshots/`。脚本不修改正在使用的演示卡，不操作串口。
+截图亮度只说明模拟器帧：浮层仍走原有 B/W 快照，不代表面板响应速度、残影或灰阶波形已验收。
+
+重新对齐时可用 `--out` 保留旧候选的截图：
+
+```sh
+python tools/rickyos-browser/check_interior_preview.py --out build/design-alignment/screenshots --check-home
+python tools/rickyos-browser/check_reader_preview.py --out build/design-alignment/reader-screenshots
+```
+
+`--check-home` 在横屏阅读菜单点按可见的首页按钮，确认确实回到首页；不只检查图标被画出来。

@@ -75,27 +75,24 @@ int main() {
 }
 ''', include_dirs=(ROOT / 'freeink-sdk/libs/ui/FreeInkUI/include',))
         home = method((ROOT / 'src/components/RickyHomeUi.cpp').read_text(), 'void RickyHomeUi::drawPortrait(')
-        self.assertIn('RickyPageUi::wrappedText(screen.target(), intro, greetingText', home)
-        self.assertIn('target.text(label, titleOf(item), centeredTitle)', home)
+        self.assertIn('measureWrappedText(target, greetingText, greetingStyle', home)
+        self.assertIn('design::BODY, false, fui::TextAlign::Left, 2)', re.sub(r'\s+', ' ', home))
+        self.assertIn('titleOf(item), design::CAPTION, selectedBook', re.sub(r'\s+', ' ', home))
 
     def test_portrait_follows_the_quiet_home_layout(self):
         source = method((ROOT / 'src/components/RickyHomeUi.cpp').read_text(),
                         'void RickyHomeUi::drawPortrait(')
-        # Continue reading, stats with a hairline, then two recent covers.
-        order = [source.index(key) for key in ('STR_CONTINUE_READING', 'STR_RICKY_HOME_TODAY',
-                                               'STR_RICKY_HOME_RECENT', 'paint(thumb, index)')]
+        # 1.2: continue card, two actual statistic cards, then four recent covers.
+        order = [source.index(key) for key in ('STR_CONTINUE_READING', 'STR_RICKY_TODAY_READING',
+                                               'STR_RICKY_HOME_RECENT', 'paint(cover, index)')]
         self.assertEqual(order, sorted(order))
         self.assertIn('screen.frame().hit(cell, OPEN_BOOK, index', source)
-        self.assertIn('screen.frame().hit(stats, OPEN_BOOK, STATISTICS', source)
-        # Leftover height is shared between sections instead of pooling above the note.
-        self.assertIn('const int section = gap + std::min(spare / 3', source)
-        # Recent covers share the current book's cover size and thumbnail cache.
-        self.assertIn('const fui::Rect thumb{', source)
-        self.assertIn('cover.width,', source)
-        self.assertIn('static_cast<int16_t>(coverHeight)};', source)
-        # Book titles use the full-coverage small face, never the UI-only larger faces.
-        self.assertIn('auto strong = small;', source)
-        self.assertNotIn('theme.bodyText;\n  bookTitle', source)
+        self.assertIn('screen.frame().hit(cell, OPEN_BOOK, STATISTICS', source)
+        self.assertIn('shelf.height - 64', source)
+        self.assertIn('gap * 3) / 4', source)
+        self.assertIn('thumbnailHeight = coverH', source)
+        self.assertIn('showSelection && selected == index', source)
+        self.assertNotIn('SyntheticBoldScope', source)
 
     def test_real_cover_renderer_preserves_ratio_and_centers_without_changing_stock(self):
         source = (ROOT / 'src/activities/home/InxRecentActivity.cpp').read_text()
@@ -144,7 +141,7 @@ int main() {
         self.assertNotIn('activity.setThumbnailHeight(bounds.height)', source)
         home = method((ROOT / 'src/components/RickyHomeUi.cpp').read_text(), 'void RickyHomeUi::drawPortrait(')
         # Recent tiles are typographic; only the continue cover uses the cache size.
-        self.assertIn('thumbnailHeight = coverHeight;', home)
+        self.assertIn('thumbnailHeight = coverH;', home)
 
     def test_greeting_varies_per_visit_not_per_render_and_fits_existing_buffer(self):
         run_cpp(r'''
@@ -169,7 +166,7 @@ int main() {
         self.assertNotIn('chooseGreeting', portrait)
         self.assertNotIn('STR_RICKY_HOME_HELLO', portrait)
         self.assertIn('RickyProfile::nickname()', portrait)
-        self.assertIn('greeting.maxLines = 2', portrait)
+        self.assertIn('greetingStyle.maxLines = 2', portrait)
         for language in ('chinese', 'english'):
             translations = (ROOT / f'lib/I18n/translations/{language}.yaml').read_text()
             formats = re.findall(r'^STR_RICKY_HOME_GREETING(?:_\w+)?: "(.*)"$', translations, re.M)
@@ -202,7 +199,7 @@ int main() {
                     std::pair{526, 796}, std::pair{916, 386}}) {
     for (int heading : {34, 40, 46}) for (int label : {28, 34, 40}) {
       auto m = RickyHomeLayout::fit(size.first, size.second, heading, label, 12, 12);
-      assert(m.columns * m.rows == 2);
+      assert(m.columns * m.rows == RickyHomeLayout::PAGE_BOOKS - 1);
       assert(m.coverHeight > 0);
       assert(m.coverHeight + label + 24 <= m.rowHeight);
       assert(m.coverHeight * 2 / 3 + 24 <= (size.first - (m.columns - 1) * 12) / m.columns);

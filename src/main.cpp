@@ -42,18 +42,18 @@
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
 #include "activities/settings/FontDownloadActivity.h"
-#include "activities/settings/TextSettingsActivity.h"
-#include "activities/util/ConfirmationActivity.h"
 #include "activities/settings/LanguageSelectActivity.h"
 #include "activities/settings/SdFirmwareUpdateActivity.h"
+#include "activities/settings/TextSettingsActivity.h"
+#include "activities/util/ConfirmationActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "platform/UsbSerialJtagHandoff.h"
 #include "util/ButtonNavigator.h"
+#include "util/RickyStorageLayout.h"
 #include "util/ScreenshotUtil.h"
 #include "util/Timezones.h"
 #include "util/UserGuide.h"
-#include "util/RickyStorageLayout.h"
 
 #if CROSSPOINT_VECTOR_FONTS
 // Rendering (incl. FreeType TTF rasterization) runs on the Arduino loop task.
@@ -136,8 +136,12 @@ static bool wakePowerReleasePending = false;
 // All legacy built-in reader IDs share one 12pt offline fallback. Complete
 // families, other sizes, and style variants come from SD .cpfont files.
 #include <builtinFonts/notosans_12_regular.h>
-#include <builtinFonts/notosans_cjk_14.h>
-#include <builtinFonts/notosans_cjk_16.h>
+#include <builtinFonts/ricky_caption_10_regular.h>
+#include <builtinFonts/ricky_display_23_bold.h>
+#include <builtinFonts/ricky_headline_14_medium.h>
+#include <builtinFonts/ricky_title_16_bold.h>
+
+#include "components/RickyDesignUi.h"
 // The product's only built-in CJK reading/UI size adds GB2312 level 1 (titles,
 // author names); the shared 8/10/12pt set stays as is for other targets.
 #include <builtinFonts/notosans_cjk_12_rickyos.h>
@@ -167,9 +171,13 @@ extern EpdFont ui12BoldFont;
 EpdFontFamily ui12FontFamily(&ui12RegularFont, &ui12BoldFont);
 
 EpdFontFamily cjk8FontFamily(&offlineReaderFont);
-EpdFont cjk14Font(&notosans_cjk_14);
-EpdFont cjk16Font(&notosans_cjk_16);
-EpdFontFamily cjk10FontFamily(&cjk14Font);
+EpdFont cjk14Font(&ricky_headline_14_medium);
+EpdFont cjk16Font(&ricky_title_16_bold);
+EpdFont designCaptionFont(&ricky_caption_10_regular);
+EpdFont designDisplayFont(&ricky_display_23_bold);
+EpdFontFamily designCaptionFamily(&designCaptionFont);
+EpdFontFamily designDisplayFamily(&designDisplayFont);
+EpdFontFamily cjk10FontFamily(&designCaptionFont);
 EpdFontFamily ui14FallbackFamily(&cjk14Font);
 EpdFontFamily ui16FallbackFamily(&cjk16Font);
 static EpdFont rtlRegularFont(&ubuntu_12_regular);
@@ -396,7 +404,8 @@ void enterDeepSleep(bool fromTimeout = false) {
 
   // One source of truth: the Standby & power-off page. The separate "keep the page on
   // automatic sleep" switch could stay on after the mode changed and override it.
-  const bool isQuickResumeSleep = SETTINGS.rickySleepScreenMode() == CrossPointSettings::SLEEP_SCREEN_MODE::QUICK_RESUME;
+  const bool isQuickResumeSleep =
+      SETTINGS.rickySleepScreenMode() == CrossPointSettings::SLEEP_SCREEN_MODE::QUICK_RESUME;
   // Activity-owned state (reading progress, session) is saved before the sleep screen.
   activityManager.prepareForSleep();
   // Every sleep mode leaves a complete retained frame on the e-ink panel. Keep
@@ -447,7 +456,6 @@ void enterDeepSleep(bool fromTimeout = false) {
 }
 
 bool setupDisplayAndFonts(bool seamless = false, bool logSdFontLoadHeap = false) {
-
   display.begin(seamless);
 #if FREEINK_DEVICE_READPICO
   // Read Pico step 4 of 5 (see the boot-order note in setup()): the panel has
@@ -482,9 +490,9 @@ bool setupDisplayAndFonts(bool seamless = false, bool logSdFontLoadHeap = false)
 #endif  // OMIT_FONTS
   // The fixed slider title font keeps its face while INX uses its historical large-text fallback.
   renderer.insertFont(CONTROL_18_FONT_ID, control18FontFamily);
-  renderer.insertFont(UI_10_FONT_ID, ui10FontFamily);
-  renderer.insertFont(UI_12_FONT_ID, ui12FontFamily);
-  renderer.insertFont(SMALL_FONT_ID, smallFontFamily);
+  renderer.insertFont(UI_10_FONT_ID, cjk12FontFamily);
+  renderer.insertFont(UI_12_FONT_ID, ui16FallbackFamily);
+  renderer.insertFont(SMALL_FONT_ID, designCaptionFamily);
   renderer.insertFont(CJK_UI_8_FONT_ID, cjk8FontFamily);
   renderer.insertFont(CJK_UI_10_FONT_ID, cjk10FontFamily);
   renderer.insertFont(CJK_UI_12_FONT_ID, cjk12FontFamily);
@@ -515,6 +523,18 @@ bool setupDisplayAndFonts(bool seamless = false, bool logSdFontLoadHeap = false)
   renderer.setFallbackFont(CJK_UI_14_FONT_ID, CJK_UI_12_FONT_ID);
   renderer.setFallbackFont(CJK_UI_16_FONT_ID, CJK_UI_12_FONT_ID);
   renderer.setFallbackFont(CJK_UI_12_FONT_ID, kRtlFontId);
+  renderer.insertFont(RickyDesignUi::BODY, cjk12FontFamily);
+  renderer.insertFont(RickyDesignUi::CAPTION, designCaptionFamily);
+  renderer.insertFont(RickyDesignUi::HEADLINE, ui14FallbackFamily);
+  renderer.insertFont(RickyDesignUi::TITLE, ui16FallbackFamily);
+  renderer.insertFont(RickyDesignUi::NUMERIC_DISPLAY, designDisplayFamily);
+  renderer.setFallbackFont(RickyDesignUi::BODY, kRtlFontId);
+  renderer.setFallbackFont(RickyDesignUi::CAPTION, RickyDesignUi::BODY);
+  // Existing functional pages keep their stable IDs, but use the same Noto
+  // family as the redesigned pages. Reader families are not rebound.
+  renderer.setFallbackFont(SMALL_FONT_ID, RickyDesignUi::BODY);
+  renderer.setFallbackFont(UI_10_FONT_ID, kRtlFontId);
+  renderer.setFallbackFont(UI_12_FONT_ID, RickyDesignUi::BODY);
   renderer.insertFont(CHINESE_CHESS_FONT_ID, chineseChessPieceFontFamily);
 
   // Discover and load SD card fonts
@@ -1213,7 +1233,6 @@ void loop() {
     // This should never be hit as `enterDeepSleep` calls esp_deep_sleep_start
     return;
   }
-
 
   // Refresh screen when power button is short-pressed with FORCE_REFRESH setting.
   if (mappedInputManager.homeButtonAction() == HomeButtonAction::ToggleFrontlight) {

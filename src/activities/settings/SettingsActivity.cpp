@@ -29,11 +29,6 @@
 #include "DictionaryDownloadActivity.h"
 #include "FontDownloadActivity.h"
 #include "FontLibraryActivity.h"
-#include "RickyProfileActivity.h"
-#include "activities/util/ImageViewerActivity.h"
-#include "components/RickyPageUi.h"
-#include "components/RickyProfile.h"
-#include "components/icons/rickyPageIcons.h"
 #include "HomeButtonSettingsActivity.h"
 #include "InxItemLayout.h"
 #include "KOReaderSettingsActivity.h"
@@ -42,6 +37,8 @@
 #include "MappedInputManager.h"
 #include "OtaUpdateActivity.h"
 #include "ReadingStatsSettingsActivity.h"
+#include "RickyHelpActivity.h"
+#include "RickyProfileActivity.h"
 #include "SdCardFontSystem.h"
 #include "SdFirmwareUpdateActivity.h"
 #include "SettingsList.h"
@@ -50,18 +47,23 @@
 #include "TextSettingsActivity.h"
 #include "activities/home/FileBrowserActivity.h"
 #include "activities/network/WifiSelectionActivity.h"
+#include "activities/settings/RickyOptionListActivity.h"
 #include "activities/util/ConfirmationActivity.h"
+#include "activities/util/ImageViewerActivity.h"
 #include "activities/util/IntervalSelectionActivity.h"
+#include "components/RickyDesignUi.h"
+#include "components/RickyPageUi.h"
+#include "components/RickyProfile.h"
 #include "components/SubpageLayout.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
 #include "components/UiAppHelpers.h"
+#include "components/icons/rickyPageIcons.h"
 #include "fontIds.h"
 #include "util/ButtonNavigator.h"
 #include "util/ReadingBackground.h"
-#include "util/SystemSettingsReset.h"
-#include "activities/settings/RickyOptionListActivity.h"
 #include "util/RickyStorageLayout.h"
+#include "util/SystemSettingsReset.h"
 
 namespace fui = freeink::ui;
 
@@ -505,6 +507,14 @@ void SettingsActivity::onEnter() {
         self.startActivityForResultWith<RickyProfileActivity>([](const ActivityResult&) {});
       },
       this);
+  app.on(
+      ACTION_TAB_USER + 21,
+      [](const fui::ActionEvent&, void* user) {
+        auto& self = *static_cast<SettingsActivity*>(user);
+        self.app.clearTapFlash();
+        self.startActivityForResultWith<AboutActivity>([](const ActivityResult&) {});
+      },
+      this);
   dictionariesLoaded = !usesAccordion();
   preserveQuickResumeTimeoutOn =
       SETTINGS.quickResumeSleepScreen == CrossPointSettings::QUICK_RESUME_SLEEP_SCREEN::QUICK_RESUME_AFTER_TIMEOUT;
@@ -533,21 +543,21 @@ void SettingsActivity::rebuildRowItems() {
   rowItems_.reserve(count);  // Existing storage; bounded by the current category.
   for (size_t i = 0; i < count; ++i) {
     fui::ListItem item;
-    item.label = categoryRoot_ ? I18N.get(categoryNames[i]) : I18N.get((*currentSettings)[i].nameId);
-    item.subtitle = categoryRoot_ ? I18N.get(categoryDescriptions[i]) : rickySettingDescription((*currentSettings)[i]);
+    item.label = categoryRoot_ ? (i < categoryCount    ? I18N.get(categoryNames[i])
+                                  : i == categoryCount ? tr(STR_RICKY_ABOUT_DEVICE)
+                                                       : tr(STR_RICKY_HELP_FEEDBACK))
+                               : I18N.get((*currentSettings)[i].nameId);
+    item.subtitle = categoryRoot_ ? (i < categoryCount ? I18N.get(categoryDescriptions[i]) : nullptr)
+                                  : rickySettingDescription((*currentSettings)[i]);
     item.actionValue = static_cast<int16_t>(i);
     rowItems_.push_back(item);
   }
   return;
 }
 
-int SettingsActivity::listCount() const {
-  return categoryRoot_ ? categoryCount : settingsCount;
-}
+int SettingsActivity::listCount() const { return categoryRoot_ ? categoryCount + 2 : settingsCount; }
 
-freeink::ui::ListNav& SettingsActivity::activeNav() {
-  return nav;
-}
+freeink::ui::ListNav& SettingsActivity::activeNav() { return nav; }
 
 void SettingsActivity::openRickyCategory(const int index) {
   if (index < 0 || index >= categoryCount) return;
@@ -610,6 +620,14 @@ void SettingsActivity::activateIndex(const int index) {
   if (index < 0 || index >= listCount()) return;
   app.clearTapFlash();
   if (categoryRoot_) {
+    if (index == categoryCount) {
+      startActivityForResultWith<AboutActivity>([](const ActivityResult&) {});
+      return;
+    }
+    if (index == categoryCount + 1) {
+      startActivityForResultWith<RickyHelpActivity>([](const ActivityResult&) {});
+      return;
+    }
     if (index == 3) {
       releaseListsForMemoryHungryChild();
       if (!startActivityForResultWith<FontLibraryActivity>([this](const ActivityResult&) {
@@ -697,9 +715,7 @@ bool SettingsActivity::handleButtons() {
   return false;
 }
 
-bool SettingsActivity::usesAccordion() const {
-  return true;
-}
+bool SettingsActivity::usesAccordion() const { return true; }
 
 const std::vector<SettingInfo>& SettingsActivity::settingsForCategory(const int categoryIndex) const {
   switch (categoryIndex) {
@@ -722,8 +738,7 @@ const std::vector<SettingInfo>& SettingsActivity::settingsForCategory(const int 
 std::array<int, SettingsActivity::categoryCount> SettingsActivity::accordionSettingCounts() const {
   return {static_cast<int>(displaySettings.size()),    static_cast<int>(readerSettings.size()),
           static_cast<int>(connectionSettings.size()), static_cast<int>(fontSettings.size()),
-          static_cast<int>(librarySettings.size()),
-          static_cast<int>(systemSettings.size())};
+          static_cast<int>(librarySettings.size()),    static_cast<int>(systemSettings.size())};
 }
 
 void SettingsActivity::toggleAccordionCategory(const int categoryIndex) {
@@ -1241,28 +1256,22 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
   if (categoryRoot_) {
     const auto& theme = screen.theme();
     auto& target = screen.target();
-    screen.insetContent(fui::Insets{theme.spaceSm, theme.spaceLg, theme.spaceSm, theme.spaceLg});
-    const int gap = std::max<int>(12, theme.spaceSm);
-    const int pad = gap + gap / 2;
+    screen.insetContent(fui::Insets{0, ricky::ds::space::kPageMargin, 0, ricky::ds::space::kPageMargin});
+    const int gap = ricky::ds::space::kGutter;
+    const int pad = ricky::ds::space::kCardPadding;
     const int bodyHeight = target.lineHeight(theme.bodyText.font);
     const int smallHeight = target.lineHeight(theme.smallText.font);
     auto pageTitle = theme.titleText;
-    pageTitle.bold = true;
-    {
-      RickyPageUi::Bold heading(renderer, 2);
-      target.text(screen.takeTop(target.lineHeight(theme.titleText.font), gap * 2), tr(STR_SETTINGS_TITLE), pageTitle);
-    }
+    pageTitle.bold = false;
+    target.text(screen.takeTop(ricky::ds::layout::kPageHeaderHeight, 0), tr(STR_SETTINGS_TITLE), pageTitle);
     // Profile card, then the categories as Boox-style icon cards in two columns.
-    const int profileHeight = bodyHeight + smallHeight + gap + pad * 2;
+    const int profileHeight = ricky::ds::layout::kProfileCardHeight;
     const int columns = content.width > content.height ? 3 : 2;
     const int rows = (categoryCount + columns - 1) / columns;
-    const int baseCell = std::max(48, bodyHeight) + pad * 2;
-    const int roomy = (screen.body().height - profileHeight - gap * 2 * (rows + 1)) / rows;
-    const int cellHeight = std::clamp(roomy, baseCell, baseCell * 13 / 10);
-    const int needed = profileHeight + cellHeight * rows + gap * rows;
-    const int section = gap + std::clamp((screen.body().height - needed) / 3, 0, gap * 2);
+    const int cellHeight = ricky::ds::layout::kSettingsCardHeight;
+    const int section = ricky::ds::space::k8;
     RickyProfile::drawCard(screen, renderer, screen.takeTop(profileHeight, section), ACTION_TAB_USER + 20);
-    const int selected = RickyPageUi::syncNav(nav, categoryCount);
+    const int selected = RickyPageUi::syncNav(nav, listCount());
     const bool focus = showMainTabContentSelection();
     const freeink::Icon* icons[] = {&icon_ricky_display_40, &icon_ricky_reader_40, &icon_ricky_network_40,
                                     &icon_ricky_fonts_40,   &icon_ricky_folder_40, &icon_ricky_system_40};
@@ -1273,15 +1282,31 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
     for (int i = 0; i < categoryCount; ++i) {
       const auto rect = RickyPageUi::uiRect(
           RickyPageLayout::cell(Rect{grid.x, grid.y, grid.width, grid.height}, i, categoryCount, gap, columns));
-      RickyPageUi::card(target, rect, focus && selected == i);
+      const bool picked = focus && selected == i;
+      RickyPageUi::card(target, rect, picked);
       screen.frame().hit(rect, ACTION_ROW, i, fui::InputTouch);
-      const int middle = rect.y + rect.height / 2;
-      RickyPageUi::pageIcon(target, renderer, rect.x + pad, middle, *icons[i]);
-      const int x = rect.x + pad + icons[i]->w + gap;
-      target.text(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(middle - bodyHeight / 2),
-                            static_cast<int16_t>(rect.right() - x - pad), static_cast<int16_t>(bodyHeight)},
-                  I18N.get(categoryNames[i]), label);
+      RickyPageUi::pageIcon(target, renderer, rect.x + pad, rect.y + pad + icons[i]->h / 2, *icons[i], picked);
+      RickyDesignUi::text(renderer,
+                          {static_cast<int16_t>(rect.x + pad), static_cast<int16_t>(rect.y + 80),
+                           static_cast<int16_t>(rect.width - pad * 2), 44},
+                          I18N.get(categoryNames[i]), RickyDesignUi::HEADLINE, picked);
     }
+    screen.takeTop(section, 0);
+    const auto about = screen.takeTop(ricky::ds::layout::kRowHeight, ricky::ds::space::kTouchSpacing);
+    const bool aboutPicked = focus && selected == categoryCount;
+    if (aboutPicked) RickyDesignUi::fill(renderer, about, ricky::ds::gray::kInk, ricky::ds::radius::kControl);
+    RickyDesignUi::text(renderer, about, tr(STR_RICKY_ABOUT_DEVICE), RickyDesignUi::BODY, aboutPicked);
+    const fui::Rect version{static_cast<int16_t>(about.right() - 248), about.y, 208, about.height};
+    RickyDesignUi::text(renderer, version, CROSSPOINT_VERSION, RickyDesignUi::CAPTION, aboutPicked,
+                        fui::TextAlign::Right);
+    RickyPageUi::chevron(target, {static_cast<int16_t>(about.right() - 24), about.y, 24, about.height}, aboutPicked);
+    screen.frame().hit(about, ACTION_ROW, categoryCount, fui::InputTouch);
+    const auto help = screen.takeTop(ricky::ds::layout::kRowHeight, 0);
+    const bool helpPicked = focus && selected == categoryCount + 1;
+    if (helpPicked) RickyDesignUi::fill(renderer, help, ricky::ds::gray::kInk, ricky::ds::radius::kControl);
+    RickyDesignUi::text(renderer, help, tr(STR_RICKY_HELP_FEEDBACK), RickyDesignUi::BODY, helpPicked);
+    RickyPageUi::chevron(target, {static_cast<int16_t>(help.right() - 24), help.y, 24, help.height}, helpPicked);
+    screen.frame().hit(help, ACTION_ROW, categoryCount + 1, fui::InputTouch);
     return;
   }
   for (size_t i = 0; i < rowItems_.size(); ++i) {
@@ -1328,6 +1353,7 @@ void SettingsActivity::drawFooter() {
 }
 
 void SettingsActivity::render(RenderLock&& lock) {
+  if (optionPopup.isActive()) renderPopupUnderlay();
   if (optionPopup.processRender(renderer, mappedInput)) return;
   UiListActivity::render(std::move(lock));
 }

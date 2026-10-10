@@ -1,5 +1,6 @@
 #pragma once
 #include "CrossPointSettings.h"
+#include "RickyDesignUi.h"
 #include "UiHighDpiProfile.h"
 #include "fontIds.h"
 
@@ -24,9 +25,9 @@ inline UIScaleSpec uiScaleSpec(bool upstreamStyle = false) {
   // Same font develop's drawHeader used, so script coverage matches develop.
   spec.titleFontId = UI_12_FONT_ID;
   if (UiHighDpiProfile::enabled) {
-    spec.smallFontId = SMALL_FONT_ID;
-    spec.bodyFontId = UI_10_FONT_ID;
-    spec.titleFontId = UI_12_FONT_ID;
+    spec.smallFontId = RickyDesignUi::CAPTION;
+    spec.bodyFontId = RickyDesignUi::BODY;
+    spec.titleFontId = RickyDesignUi::TITLE;
   }
   return spec;
 }

@@ -7,6 +7,7 @@
 #include <atomic>
 
 #include "MappedInputManager.h"
+#include "components/RickyUiTarget.h"
 #include "components/UIScale.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
@@ -14,6 +15,7 @@
 #include "components/icons/inx_apps.h"
 #include "components/icons/listIcons.h"
 #include "components/icons/listIcons48.h"
+#include "components/icons/rickyPageIcons.h"
 #include "components/icons/uiChromeIcons.h"
 
 // Shared glue for activities hosting a FreeInkApp: the font-bound render
@@ -66,8 +68,8 @@ inline void applySharedUiTheme(App& app, const freeink::ui::GfxRendererTarget& t
 
 // Bind the uiScale fonts before FreeInkApp's constructor derives its theme
 // metrics from the body font's line height.
-inline freeink::ui::GfxRendererTarget makeUiTarget(const GfxRenderer& renderer, bool upstreamStyle = false) {
-  freeink::ui::GfxRendererTarget target(renderer, BoardConfig::hasTouch());
+inline RickyUiTarget makeUiTarget(const GfxRenderer& renderer, bool upstreamStyle = false) {
+  RickyUiTarget target(renderer, BoardConfig::hasTouch());
   applyUiTextAlignment(target, upstreamStyle);
   const auto spec = uiScaleSpec(upstreamStyle);
   target.setFont(freeink::ui::GfxRendererTarget::FONT_SMALL,
@@ -88,6 +90,29 @@ inline freeink::ui::GfxRendererTarget makeUiTarget(const GfxRenderer& renderer, 
 // the legacy drawIcon assets use a different bit layout). Two crisp sizes:
 // 24 for single-line rows, 32 for label+subtitle rows.
 inline freeink::ui::BitmapRef listIconFor(const UIIcon icon, const int size = 24) {
+  if (UiHighDpiProfile::enabled) {
+    switch (icon) {
+      case UIIcon::Settings:
+        return freeink::ui::bitmapFromIcon(icon_ricky_system_40);
+      case UIIcon::Folder:
+        return freeink::ui::bitmapFromIcon(icon_ricky_folder_40);
+      case UIIcon::Text:
+        return freeink::ui::bitmapFromIcon(icon_ricky_text_40);
+      case UIIcon::Image:
+        return freeink::ui::bitmapFromIcon(icon_ricky_images_40);
+      case UIIcon::Book:
+      case UIIcon::Library:
+        return freeink::ui::bitmapFromIcon(icon_ricky_books_40);
+      case UIIcon::File:
+        return freeink::ui::bitmapFromIcon(icon_ricky_file_40);
+      case UIIcon::Wifi:
+        return freeink::ui::bitmapFromIcon(icon_ricky_network_40);
+      case UIIcon::Bookmark:
+        return freeink::ui::bitmapFromIcon(icon_ricky_bookmark_40);
+      default:
+        break;
+    }
+  }
   if (size >= 48 || UiHighDpiProfile::enabled) {
     switch (icon) {
       case UIIcon::Settings:

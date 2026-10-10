@@ -24,20 +24,20 @@ class RickyAppIconTest(unittest.TestCase):
     def test_sources_share_the_tab_bar_line_system(self):
         for svg_path in sorted(SOURCES.glob('*.svg')):
             svg = ET.parse(svg_path).getroot()
-            self.assertEqual(svg.attrib['viewBox'], '0 0 56 56', svg_path.name)
-            self.assertEqual(svg.attrib['stroke-width'], '3.6', svg_path.name)
+            self.assertEqual(svg.attrib['viewBox'], '0 0 24 24', svg_path.name)
+            self.assertEqual(svg.attrib['stroke-width'], '1.2', svg_path.name)
             self.assertEqual(svg.attrib['stroke-linecap'], 'round', svg_path.name)
             self.assertEqual(svg.attrib['stroke-linejoin'], 'round', svg_path.name)
 
-    def test_native_56_px_resources_with_white_padding(self):
-        arrays = re.findall(r'uint8_t ricky_app_(\w+)_56\[\] = \{([^}]+)\}', HEADER.read_text())
+    def test_native_40_px_resources_with_white_padding(self):
+        arrays = re.findall(r'uint8_t ricky_app_(\w+)_40\[\] = \{([^}]+)\}', HEADER.read_text())
         self.assertEqual(sorted(name for name, _ in arrays), sorted(p.stem for p in SOURCES.glob('*.svg')))
         for name, body in arrays:
             bits = bytes(int(value, 16) for value in re.findall(r'0x([0-9A-F]{2})', body))
-            self.assertEqual(len(bits), 7 * 56, name)
-            ink = [(x, y) for y in range(56) for x in range(56) if not bits[y * 7 + x // 8] & (0x80 >> (x % 8))]
-            self.assertGreater(len(ink), 56 * 56 // 20, name)
-            self.assertTrue(all(3 <= x < 53 and 3 <= y < 53 for x, y in ink), name)
+            self.assertEqual(len(bits), 5 * 40, name)
+            ink = [(x, y) for y in range(40) for x in range(40) if not bits[y * 5 + x // 8] & (0x80 >> (x % 8))]
+            self.assertGreater(len(ink), 40 * 40 // 20, name)
+            self.assertTrue(all(2 <= x < 38 and 2 <= y < 38 for x, y in ink), name)
 
     def test_every_product_app_has_a_line_icon_and_capsule_selection(self):
         source = MENU.read_text()
@@ -65,6 +65,10 @@ class RickyAppIconTest(unittest.TestCase):
                       draw)
         self.assertIn('RickyAaIcons::draw(renderer, icon, kRickyAppIconSize, kRickyAppIconSize, x, y, !selected)', draw)
         self.assertIn('renderer.drawPixel(x + column, y + row, !selected)', draw)
+        grid = source.split('void AppsMenuActivity::drawIconGrid(', 1)[1].split('void AppsMenuActivity::buildScreen', 1)[0]
+        self.assertIn('const int blockWidth = std::min(152, cell.width - 16)', grid)
+        self.assertIn('kAppPillHeight + labelGap + 28 + 22', grid)
+        self.assertNotIn('fill(renderer, labelRect', grid)
 
     @unittest.skipUnless(sharp_available(), 'regeneration requires developer Node.js + sharp')
     def test_regeneration_matches_resource(self):

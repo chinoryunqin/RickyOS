@@ -259,8 +259,9 @@ class OptionPopup {
     // Touch only: physical buttons stay on the legacy wrap/confirm path above,
     // so the buffer never competes with it for focus/confirm dispatch.
     props.inputMask = fui::InputTouch;
-    props.titleText.font = fui::GfxRendererTarget::FONT_BODY;
-    props.titleText.bold = true;
+    props.titleText.font =
+        UiHighDpiProfile::enabled ? fui::GfxRendererTarget::FONT_TITLE : fui::GfxRendererTarget::FONT_BODY;
+    props.titleText.bold = !UiHighDpiProfile::enabled;
     props.titleText.align = fui::TextAlign::Center;
     // Captions like "Remove from Recent Books?" overflow the narrow portrait
     // dialog in one line; let them wrap and the panel grow.
@@ -289,6 +290,8 @@ class OptionPopup {
     props.styles.disabled = props.styles.normal;
     props.buttonHeight =
         fui::clampI16(target.lineHeight(fui::GfxRendererTarget::FONT_BODY) + metrics.optionPopupSelectionVPadding * 2);
+    if (UiHighDpiProfile::enabled)
+      props.buttonHeight = std::max<int16_t>(props.buttonHeight, ricky::ds::layout::kButtonHeight);
 
     // Fixed fraction of the screen, clamped by the theme's side margins; the
     // old max-text-width sizing is gone, long labels wrap inside the buttons.
