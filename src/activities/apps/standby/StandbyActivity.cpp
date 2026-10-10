@@ -39,11 +39,11 @@
 #include "activities/util/ImageViewerActivity.h"
 #include "util/RickyStorageLayout.h"
 #endif
+#include "StandbyDiag.h"
 #include "StandbyTime.h"
 #include "WifiCredentialStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
-#include "StandbyDiag.h"
 
 namespace {
 
@@ -140,7 +140,9 @@ void drawFaceDots(const GfxRenderer& renderer, int sw, int sh, uint8_t total, ui
 
 void StandbyActivity::onEnter() {
   Activity::onEnter();
+#if CROSSPOINT_EMULATED == 0
   HalPowerManager::beginStandbyKeyWatch();
+#endif
 #ifdef RICKYOS_PRODUCT
   // The calendar clock stands on its side, the keys under the screen to the left: the
   // portrait bottom is the panel's right edge, which LandscapeClockwise puts at x = 0
@@ -510,9 +512,12 @@ bool StandbyActivity::tryLightSleep(const uint32_t idleMs) {
 void StandbyActivity::loop() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
 #ifdef RICKYOS_PRODUCT
-    // Back to the page that opened it (the Standby settings page, or Home).
-    STANDBY_DIAG("close: Back released");
-    finish();
+    // The middle-key shortcut controls both entry and exit. Consume a disabled
+    // Back release here; the independent side power key can still wake Standby.
+    if (SETTINGS.standbyShortcutEnabled) {
+      STANDBY_DIAG("close: Back released");
+      finish();
+    }
 #else
     activityManager.goHome();
 #endif

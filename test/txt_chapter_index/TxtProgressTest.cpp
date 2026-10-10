@@ -145,4 +145,54 @@ TEST_F(TxtProgressTest, FindsTheCurrentConvertedChapterWithoutRetainingChapterTa
   std::filesystem::resize_file(root / "converted/txt-map.bin", sizeof(header));
   EXPECT_EQ(Txt::tocIndexForPosition("/book.txt", "/converted", 1), -1);
 }
+
+TEST_F(TxtProgressTest, CheckpointsMarkdownSourceBeforeMapReplacementAndRetainsOriginalProgress) {
+  const txt_progress::Header header{txt_progress::MAGIC, 100, 2, 12, txt_progress::VERSION, 1};
+  const txt_progress::Record records[] = {{0, 1, 1, 1}, {100, 101, 0, 0}};
+  {
+    std::ofstream output(root / "old/txt-map.bin", std::ios::binary);
+    output.write(reinterpret_cast<const char*>(&header), sizeof(header));
+    output.write(reinterpret_cast<const char*>(records), sizeof(records));
+  }
+  std::vector<uint8_t> progress(6, 0);
+  u32(progress, 36);
+  write("old/progress.bin", progress);
+  ASSERT_EQ(txt_progress::preserveReflowSource("/old", 100), txt_progress::LegacyResult::Restored);
+  uint32_t source = 0;
+  ASSERT_EQ(txt_progress::readReflowSource("/old", 100, source), txt_progress::LegacyResult::Restored);
+  EXPECT_EQ(source, 35U);
+  // After replacing a map or restarting, the checkpoint is not recaptured.
+  std::filesystem::remove(root / "old/txt-map.bin");
+  EXPECT_EQ(txt_progress::preserveReflowSource("/old", 100), txt_progress::LegacyResult::Restored);
+  std::ifstream original(root / "old/progress.bin", std::ios::binary);
+  EXPECT_EQ(std::vector<uint8_t>(std::istreambuf_iterator<char>(original), {}), progress);
+  EXPECT_EQ(txt_progress::readReflowSource("/old", 101, source), txt_progress::LegacyResult::Failed);
+  std::filesystem::resize_file(root / "old/md-resume-v1.bin", 11);
+  source = 99;
+  EXPECT_EQ(txt_progress::readReflowSource("/old", 100, source), txt_progress::LegacyResult::Failed);
+  EXPECT_EQ(source, 99U);
+}
+
+TEST_F(TxtProgressTest, DoesNotPublishMarkdownCheckpointFromMissingOrCorruptCoordinates) {
+  EXPECT_EQ(txt_progress::preserveReflowSource("/old", 100), txt_progress::LegacyResult::Absent);
+  std::vector<uint8_t> progress(6, 0);
+  u32(progress, 36);
+  write("old/progress.bin", progress);
+  EXPECT_EQ(txt_progress::preserveReflowSource("/old", 100), txt_progress::LegacyResult::Failed);
+  EXPECT_FALSE(std::filesystem::exists(root / "old/md-resume-v1.bin"));
+  write("old/progress.bin", std::vector<uint8_t>(6, 0));
+  EXPECT_EQ(txt_progress::preserveReflowSource("/old", 100), txt_progress::LegacyResult::Absent);
+  EXPECT_FALSE(std::filesystem::exists(root / "old/md-resume-v1.bin"));
+}
+
+TEST_F(TxtProgressTest, MarkdownFirstPageZeroOffsetIsNotAnInvalidCoordinate) {
+  write("old/progress.bin", std::vector<uint8_t>(10, 0));
+  EXPECT_EQ(txt_progress::preserveReflowSource("/old", 100), txt_progress::LegacyResult::Absent);
+  EXPECT_FALSE(std::filesystem::exists(root / "old/md-resume-v1.bin"));
+  std::vector<uint8_t> unknown(10, 0);
+  unknown[2] = 2;  // A non-first page with no coordinate is not a known book start.
+  write("old/progress.bin", unknown);
+  EXPECT_EQ(txt_progress::preserveReflowSource("/old", 100), txt_progress::LegacyResult::Failed);
+  EXPECT_FALSE(std::filesystem::exists(root / "old/md-resume-v1.bin"));
+}
 }  // namespace

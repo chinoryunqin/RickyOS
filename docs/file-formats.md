@@ -510,9 +510,19 @@ known page-index prefix opens it directly and keeps a fixed 32-page local
 navigation history, so jumping does not synchronously paginate the intervening
 text or grow RAM with book length.
 
+RickyOS Markdown uses semantic chapter-index version 2, without changing the
+16-byte header / 196-byte record layout. Its title contains the original ATX
+line (including the `#` prefix), under 192 UTF-8 bytes. Metadata derives levels
+1–6 and plain labels from this prefix. Fenced code is excluded. Old MD version-1
+indexes are rebuilt on demand; TXT and non-product Markdown remain version 1.
+
 ## Reflowed TXT/Markdown source map
 
-Reflowed TXT/Markdown metadata and HTML use conversion marker 2 and the EPUB
+Reflowed TXT metadata and HTML use conversion marker 2; RickyOS 1.1.5 Markdown
+uses marker 5 for parsed reading-oriented Markdown including pipe tables and ATX
+TOC (initial non-table candidate: 3; table candidate: 4). Non-product builds retain
+Markdown marker 2. Marker mismatch rebuilds only that book's HTML/sections.
+The metadata uses the EPUB
 book/section formats above. Generated chapter IDs are `txt-<source-byte-offset>`.
 Titles stay disk-backed; each chapter boundary is consumed during parsing without
 retaining the full chapter list. Old source progress is never deleted or rewritten
@@ -541,6 +551,23 @@ offsets, then resolves the source position through `chapters.bin` for the curren
 TOC title and chapter navigation, without retaining chapter tables.
 Maps publish from `.tmp` only after successful conversion and flush. Books at or
 above 4GiB and chapter counts exceeding the existing 16-bit TOC budget fail safely.
+
+### RickyOS Markdown upgrade checkpoint
+
+`md-resume-v1.bin` is a 12-byte little-endian checkpoint in the reflowed EPUB
+cache: `uint32 magic=0x3152444D` (`MDR1`), `uint32 sourceSize`, and `uint32 sourceOffset`.
+Before replacing a version-2, version-3 or version-4 Markdown map, a 10-byte reader progress record is
+resolved through that old map and checkpointed atomically using `.tmp`/replace.
+The original progress file is not changed. The reader resolves the checkpoint
+through the new map, locates its containing page, then removes the checkpoint
+only after successfully saving the new progress. Restart/retry does not recapture
+the old visible offset through an already replaced map. Invalid checkpoints/maps
+fail the open without overwriting progress. Older 4/6-byte page-only records retain
+the existing proportional re-pagination behavior; they have no exact text coordinate.
+No existing binary layout/version changes. Dropped Markdown delimiters and link
+destinations have visible step 0; table pipes, delimiter rows and cell padding
+also have step 0, while displayed text/entities retain step 1. Deferred table
+headers are mapped in source order before the following delimiter line.
 
 ## Electronic Woodfish counter
 

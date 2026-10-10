@@ -55,3 +55,27 @@ pio run -e simulator_rickyos
 ```sh
 python -m unittest discover -s scripts/tests -p test_rickyos_browser.py -v
 ```
+
+1.1.5 原生输入与 Markdown 集成回归（先编译 `simulator_rickyos`）：
+
+```sh
+python tools/rickyos-browser/check_middle_key.py --output build/qa-1.1.5
+python tools/rickyos-browser/check_markdown.py --output build/qa-1.1.5
+```
+
+这两项使用独立临时演示 SD 卡，输出日志／截图到指定目录，不更改已运行预览的
+数据，不读取 USB。Markdown 升级项构造文档化的 MD2 旧缓存与阅读位置，
+验证新分页包含目标内容、没有退回第 0 页；它不是原厂迁移或真实设备验收。
+
+表格专项使用本地 MD，验证转换出的表格、连续翻页至结束面板、重开及改变行距
+触发重排，并核对 ATX 目录层级／文字／锚点及实际选项跳转。
+可选传入之前保存的真实 MD3／MD4 原生程序，验证旧版→MD5 升级：
+
+```sh
+python tools/rickyos-browser/check_markdown_tables.py --sample /absolute/path/sample.md --output build/table-qa
+python tools/rickyos-browser/check_markdown_tables.py --sample /absolute/path/sample.md --baseline /absolute/path/old-md3-simulator --output build/table-qa
+```
+
+只在私有临时 SD 中复制样本，不访问设备或上传文件。输出包含样本文字，须保持
+本地，不提交或发布。内置 high-DPI 字体 ID 固定，所以这项检查的是行距重排，
+不能替代 SD 字体／字号变更的真机验证。

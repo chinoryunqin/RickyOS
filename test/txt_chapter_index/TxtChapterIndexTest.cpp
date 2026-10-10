@@ -38,3 +38,31 @@ TEST(TxtChapterIndex, RejectsEmptyAndOversizedLines) {
   oversized.append(txt_chapter_index::TITLE_CAPACITY, 'x');
   EXPECT_TRUE(txt_chapter_index::chapterTitle(oversized).empty());
 }
+
+TEST(MarkdownChapterIndex, HeadingLevelsWhitespaceAndClosingHashes) {
+  for (uint8_t expected = 1; expected <= 6; ++expected) {
+    uint8_t level;
+    EXPECT_EQ(txt_chapter_index::markdownTitle("  " + std::string(expected, '#') + "\t中文标题 ##\r", level),
+              "中文标题");
+    EXPECT_EQ(level, expected);
+  }
+  for (auto line : {"#hashtag", "####### title", "    # code", "\t# code", "#   ", "\\# escaped", "> # quote"}) {
+    uint8_t level;
+    EXPECT_TRUE(txt_chapter_index::markdownTitle(line, level).empty()) << line;
+    EXPECT_EQ(level, 0);
+  }
+}
+
+TEST(MarkdownChapterIndex, FencesRequireMatchingCharacterLengthAndClosingWhitespace) {
+  txt_chapter_index::MarkdownHeadings headings;
+  EXPECT_FALSE(headings.accept("   ```md"));
+  EXPECT_FALSE(headings.accept("# code"));
+  EXPECT_FALSE(headings.accept("~~~"));
+  EXPECT_FALSE(headings.accept("``"));
+  EXPECT_FALSE(headings.accept("``` trailing"));
+  EXPECT_FALSE(headings.accept("## still code"));
+  EXPECT_FALSE(headings.accept("   ```` \r"));
+  EXPECT_TRUE(headings.accept("# visible"));
+  EXPECT_FALSE(headings.accept("    ~~~"));
+  EXPECT_TRUE(headings.accept("## still visible"));
+}
