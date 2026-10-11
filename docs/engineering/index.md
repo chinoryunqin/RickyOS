@@ -14,6 +14,7 @@ that matches your task — don't load everything at once.
 | [architecture-and-patterns.md](architecture-and-patterns.md) | Using the HAL, singletons, the activity lifecycle, FreeRTOS tasks, or fonts. (Big-picture diagrams: [../contributing/architecture.md](../contributing/architecture.md).) |
 | [coding-standards.md](coding-standards.md) | Naming, header guards, or the error-handling pattern hierarchy. |
 | [ui-and-input.md](ui-and-input.md) | Rendering UI, handling orientation, mapping buttons, or using the `GUI`/UITheme macro and `tr()`. |
+| [pinyin-input-research-2026-10-12.md](pinyin-input-research-2026-10-12.md) | Device Chinese input, source comparison, bounded decoder, glyph coverage and prototype acceptance limits. |
 | [generated-files.md](generated-files.md) | Editing HTML pages, i18n translations, or fonts (anything produced by a build script). |
 | [testing-and-debugging.md](testing-and-debugging.md) | Building, monitoring, debugging crashes, verifying changes, or reading CI workflows. |
 | [c3-bluetooth.md](c3-bluetooth.md) | Reviewing the C3 BLE profile, reader lifecycle, paged font indexes, build isolation, or X4 validation limits. |
@@ -32,6 +33,7 @@ that matches your task — don't load everything at once.
 | [upstream-merge-policy.md](upstream-merge-policy.md) | Reconciling upstream guide changes with the canonical `AGENTS.md` layout — how to keep the map thin and route upstream changes into these docs. |
 | [Metalio E-Ink 4](metalio-eink4.md) | Metalio BSP, CST816S bezel keys, SDMMC, power sequencing and acceptance |
 | [read-pico.md](read-pico.md) | Building, first-flashing, or hardware-validating the Read Pico (小纸 Pico, RDP-G01-W) ESP32-S3 target: 16-bit parallel EPD through epdiy LCD_CAM, CST836U touch, CW32L010 PMU, and the frozen interface contract. |
+| [transparent-wallpaper-2026-10-12.md](transparent-wallpaper-2026-10-12.md) | Private 1.2 transparent PNG standby: retained native gray, installation recovery, tests and hardware acceptance limits. |
 | [high-dpi-ui-profile.md](high-dpi-ui-profile.md) | High-density UI preset, currently validated on ReadPico and Nightly, fixed fonts, resource budget and validation. |
 
 ## Related docs outside this directory

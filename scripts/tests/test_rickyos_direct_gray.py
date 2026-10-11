@@ -11,8 +11,21 @@ class RickyDirectGrayTest(unittest.TestCase):
         harness = harness.replace('bool requested = false, switching = false;',
                                   'std::atomic<bool> requested{false}; bool switching = false;')
         harness = harness.replace('requested', 'requestedUpdate')
+        harness = harness.replace('uint32_t generation = 7;',
+                                  'uint32_t generation = 7; std::atomic<uint32_t> renderRequestGeneration{0};')
+        harness = harness.replace('struct RenderLock {};',
+                                  'struct Rect { int x=0,y=0,width=0,height=0; };\nstruct RenderLock {};')
+        harness = harness.replace('struct Page {',
+                                  'struct Page {\n bool usesMainTabBar() const {return true;}\n'
+                                  'struct Layout { Rect tabBar{0,120,32,8}; };\n'
+                                  'Layout mainTabLayout() const {return {}; }\n')
+        harness = harness.replace('uint32_t& generation;',
+                                  'uint32_t& generation; std::atomic<uint32_t>* requests=nullptr; bool newer=false;')
+        harness = harness.replace('if (interrupt) ++generation;',
+                                  'if (interrupt) ++generation; if(newer) ++*requests;')
         harness = harness.replace('int begins = 0, commits = 0, cancels = 0;',
-                                  'int begins = 0, commits = 0, cancels = 0; bool cleanup = false;\n'
+                                  'int begins = 0, commits = 0, cancels = 0; bool cleanup = false; int uiProfiles=0;\n'
+                                  'void setNextGray16UiRefresh(int,int,int,int,uint8_t,uint8_t) {++uiProfiles;}\n'
                                   'bool nextRefreshNeedsCleanup() const { return cleanup; }\n'
                                   'void clearNextRefreshOverride() { cleanup = false; }')
         harness = harness.replace('void settleToGray(RenderLock&&, uint32_t);',
@@ -25,6 +38,7 @@ int main() {
   assert(!m.renderDirectGray(RenderLock{}));
   assert(m.page.renders==0 && m.renderer.commits==0 && !m.renderer.capture);
   m.renderer.canBegin=true;
+  m.page.requests=&m.renderRequestGeneration;
   // Touch/release alone must not cancel the only foreground frame.
   m.page.interrupt=true;
   assert(m.renderDirectGray(RenderLock{}));
@@ -36,6 +50,12 @@ int main() {
   assert(m.renderDirectGray(RenderLock{}));
   m.switching=false;
   assert(m.renderer.commits==1 && m.renderer.cancels==2 && !m.renderer.capture);
+  // Main loop can consume requestedUpdate during painting, but the newer
+  // generation must still suppress this stale frame before any panel scan.
+  m.page.newer=true;
+  assert(m.renderDirectGray(RenderLock{}));
+  assert(m.renderer.commits==1 && m.renderer.cancels==3);
+  m.page.newer=false;
   m.page.abandon=true;
   assert(m.renderDirectGray(RenderLock{}));
   m.page.abandon=false;
@@ -44,7 +64,8 @@ int main() {
     assert(m.renderDirectGray(RenderLock{}));
     assert(m.renderer.commits==i && !m.renderer.active && !m.renderer.capture);
 #ifndef SIMULATOR
-    assert(m.display.profile==(i%ricky::ds::refresh::kGc16EveryDirectFrames==0 ? 2 : 1));
+    assert(m.renderer.uiProfiles==i);
+    assert(m.display.profiles==0); // Driver owns regional cadence, not a whole-screen counter.
 #else
     assert(m.display.profiles==0);
 #endif

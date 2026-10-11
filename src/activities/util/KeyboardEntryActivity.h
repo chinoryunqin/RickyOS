@@ -9,6 +9,9 @@
 
 #include "activities/Activity.h"
 #include "util/ButtonNavigator.h"
+#ifdef RICKYOS_PRODUCT
+#include "util/PinyinInput.h"
+#endif
 
 enum class InputType { Text, Password, Url };
 
@@ -32,6 +35,9 @@ class KeyboardEntryActivity : public Activity {
   void loop() override;
   void render(RenderLock&&) override;
   bool preventAutoSleep() override { return true; }
+#ifdef RICKYOS_PRODUCT
+  bool wantsGraySettle() const override { return imeAvailable; }
+#endif
 
  private:
   std::string title;
@@ -39,6 +45,24 @@ class KeyboardEntryActivity : public Activity {
   size_t maxLength;
   InputType inputType;
   bool passwordVisible = false;
+#ifdef RICKYOS_PRODUCT
+  // Activity-owned fixed storage: no resident decoder after keyboard exit.
+  PinyinInput ime;
+  bool chineseMode = false;
+  bool imeAvailable = false;
+  uint16_t imeRevision = 0;
+  freeink::ui::KeyboardKey imeKeys[PinyinInput::PAGE_SIZE + 3]{};
+  freeink::ui::KeyboardKey imeBottom[8]{};
+  freeink::ui::KeyboardRow imeRows[6]{};
+  freeink::ui::KeyboardLayout imeLayout{};
+  static constexpr int16_t IME_TOGGLE = -5;
+  static constexpr int16_t IME_PREV = -6;
+  static constexpr int16_t IME_NEXT = -7;
+  static constexpr int16_t IME_RAW = -8;
+  static constexpr int16_t IME_CANDIDATE_BASE = 4000;
+  void rebuildImeLayout();
+  bool commitIme(size_t index);
+#endif
 
   ButtonNavigator buttonNavigator;
 

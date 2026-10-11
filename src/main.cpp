@@ -837,7 +837,11 @@ void setup() {
   }
 
   // First serial output only here to avoid timing inconsistencies for power button press duration verification
+#ifdef RICKYOS_PRODUCT
+  LOG_INF("MAIN", "Starting CrossPoint version " CROSSPOINT_VERSION);
+#else
   LOG_DBG("MAIN", "Starting CrossPoint version " CROSSPOINT_VERSION);
+#endif
 
   // Resolve the single boot-presentation decision. Skipping the splash also
   // skips the panel-clearing pass and the X3 initial-full-sync arming (see

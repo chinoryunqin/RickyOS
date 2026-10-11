@@ -221,6 +221,18 @@ uint16_t HalDisplay::getDisplayWidth() const { return einkDisplay.getDisplayWidt
 uint16_t HalDisplay::getDisplayHeight() const { return einkDisplay.getDisplayHeight(); }
 uint8_t HalDisplay::getGrayscaleLevels() const { return einkDisplay.getGrayscaleLevels(); }
 uint8_t* HalDisplay::beginGrayscale16() { return einkDisplay.beginGrayscale16(); }
+uint8_t* HalDisplay::beginRetainedGrayscale16() {
+#if FREEINK_DEVICE_READPICO
+  uint8_t* frame = einkDisplay.beginGrayscale16();
+  if (!frame) return nullptr;
+  if (freeink::epdiyLcdRestoreGray16Baseline(einkDisplay.getFrameBuffer())) {
+    freeink::epdiyLcdSetGray16Profile(1);  // Held-diagonal waveform; unchanged page gray stays untouched.
+    return frame;
+  }
+  einkDisplay.cancelGrayscale16();
+#endif
+  return nullptr;
+}
 bool HalDisplay::commitGrayscale16() { return einkDisplay.commitGrayscale16(); }
 
 void HalDisplay::setNextGray16Profile(const uint8_t profile) {
@@ -228,6 +240,18 @@ void HalDisplay::setNextGray16Profile(const uint8_t profile) {
   freeink::epdiyLcdSetGray16Profile(profile);  // added by scripts/patch_rickyos_epdiy.py
 #else
   (void)profile;
+#endif
+}
+void HalDisplay::setNextGray16UiRefresh(int x, int y, int width, int height, uint8_t contentEvery, uint8_t smallEvery) {
+#if FREEINK_DEVICE_READPICO
+  freeink::epdiyLcdSetGray16UiRefresh(x, y, width, height, contentEvery, smallEvery);
+#else
+  (void)x;
+  (void)y;
+  (void)width;
+  (void)height;
+  (void)contentEvery;
+  (void)smallEvery;
 #endif
 }
 void HalDisplay::railsOffIfIdle(const uint32_t idleMs) {

@@ -2048,7 +2048,11 @@ void EpubReaderActivity::renderBook() {
 
     const auto start = millis();
     renderContents(std::move(p), orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
+#ifdef RICKYOS_PRODUCT
+    LOG_INF("ERS", "Rendered page in %dms", millis() - start);
+#else
     LOG_DBG("ERS", "Rendered page in %dms", millis() - start);
+#endif
     lastRenderCompleteMs = millis();
     markPageRendered();
   }

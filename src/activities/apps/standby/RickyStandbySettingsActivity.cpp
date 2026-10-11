@@ -14,6 +14,7 @@
 #include <utility>
 
 #include "CrossPointSettings.h"
+#include "KeepPageFace.h"
 #include "RickyWallpaperDownloadActivity.h"
 #include "StandbyActivity.h"
 #include "activities/home/FileBrowserActivity.h"
@@ -30,9 +31,11 @@ constexpr char kPicture[] = "/sleep.bmp";
 
 // Standby styles in the order people pick them; stored values differ (RICKY_STANDBY_FACE).
 constexpr uint8_t kStyles[] = {Settings::RICKY_STANDBY_PICTURE, Settings::RICKY_STANDBY_COVER,
-                               Settings::RICKY_STANDBY_CALENDAR, Settings::RICKY_STANDBY_KEEP_PAGE};
+                               Settings::RICKY_STANDBY_CALENDAR, Settings::RICKY_STANDBY_KEEP_PAGE,
+                               Settings::RICKY_STANDBY_TRANSPARENT};
 constexpr StrId kStyleLabels[] = {StrId::STR_RICKY_STANDBY_STYLE_PICTURE, StrId::STR_RICKY_STANDBY_STYLE_COVER,
-                                  StrId::STR_RICKY_STANDBY_STYLE_CALENDAR, StrId::STR_RICKY_STANDBY_STYLE_KEEP};
+                                  StrId::STR_RICKY_STANDBY_STYLE_CALENDAR, StrId::STR_RICKY_STANDBY_STYLE_KEEP,
+                                  StrId::STR_RICKY_STANDBY_STYLE_TRANSPARENT};
 static_assert(std::size(kStyles) == Settings::RICKY_STANDBY_FACE_COUNT);
 static_assert(std::size(kStyleLabels) == std::size(kStyles));
 constexpr StrId kFitLabels[] = {StrId::STR_RICKY_PICTURE_FIT_WHOLE, StrId::STR_RICKY_PICTURE_FIT_FILL};
@@ -56,11 +59,11 @@ constexpr StrId kPowerOffLabels[] = {StrId::STR_RICKY_POWER_OFF_SAME, StrId::STR
                                      StrId::STR_RICKY_SLEEP_BLANK};
 static_assert(std::size(kPowerOffLabels) == Settings::RICKY_POWER_OFF_SCREEN_COUNT);
 
-constexpr StrId kRowLabels[] = {StrId::STR_RICKY_STANDBY_STYLE,      StrId::STR_RICKY_SELECT_WALLPAPER,
-                                StrId::STR_RICKY_WALLPAPER_DOWNLOAD, StrId::STR_RICKY_PICTURE_FIT,
-                                StrId::STR_RICKY_PICTURE_FILTER,     StrId::STR_RICKY_STANDBY_INFO,
-                                StrId::STR_RICKY_AUTO_STANDBY,       StrId::STR_RICKY_STANDBY_NOW,
-                                StrId::STR_RICKY_POWER_OFF_SCREEN,   StrId::STR_RICKY_AUTO_OFF};
+constexpr StrId kRowLabels[] = {
+    StrId::STR_RICKY_STANDBY_STYLE, StrId::STR_RICKY_SELECT_WALLPAPER,   StrId::STR_RICKY_WALLPAPER_DOWNLOAD,
+    StrId::STR_RICKY_PICTURE_FIT,   StrId::STR_RICKY_PICTURE_FILTER,     StrId::STR_RICKY_STANDBY_INFO,
+    StrId::STR_RICKY_AUTO_STANDBY,  StrId::STR_RICKY_STANDBY_NOW,        StrId::STR_RICKY_POWER_OFF_SCREEN,
+    StrId::STR_RICKY_AUTO_OFF,      StrId::STR_RICKY_SELECT_TRANSPARENT, StrId::STR_RICKY_CLEAR_TRANSPARENT};
 static_assert(std::size(kRowLabels) == RickyStandbySettingsActivity::RowKinds);
 
 int styleIndex() {
@@ -92,6 +95,7 @@ void showOption(OptionPopup& popup, const StrId title, const StrId (&labels)[N],
 }  // namespace
 
 void RickyStandbySettingsActivity::onEnter() {
+  KeepPageFace::recoverSticker();
   rebuildRows();
   UiTabListActivity::onEnter();
 }
@@ -119,6 +123,11 @@ void RickyStandbySettingsActivity::rebuildRows() {
     add(PictureFit);
     add(PictureFilter);
     add(StandbyInfo);
+  }
+  if (SETTINGS.rickyStandbyFace == Settings::RICKY_STANDBY_TRANSPARENT) {
+    add(ChooseSticker);
+    if (Storage.exists(KeepPageFace::kStickerPath)) add(ClearSticker);
+    add(PictureFit);
   }
   add(AutoStandby);
   add(StandbyNow);
@@ -281,25 +290,26 @@ void RickyStandbySettingsActivity::buildScreen(UiScreen& screen) {
   }
 }
 
-void RickyStandbySettingsActivity::openPicturePicker(const std::string& folder) {
+void RickyStandbySettingsActivity::openPicturePicker(const std::string& folder, const bool sticker) {
   // Back from the preview returns to the list it was opened from, not to this page.
-  const auto previewDone = [this](const ActivityResult& result) {
+  const auto previewDone = [this, sticker](const ActivityResult& result) {
     const auto* entry = std::get_if<FilePathResult>(&result.data);
     if (result.isCancelled && entry) {
-      openPicturePicker(FsHelpers::extractFolderPath(entry->path));
+      openPicturePicker(FsHelpers::extractFolderPath(entry->path), sticker);
       return;
     }
+    rebuildRows();
     requestUpdate();
   };
   if (!startActivityForResultWith<FileBrowserActivity>(
-          [this, previewDone](const ActivityResult& result) {
+          [this, previewDone, sticker](const ActivityResult& result) {
             const auto* entry = std::get_if<FilePathResult>(&result.data);
             if (result.isCancelled || !entry ||
-                !startActivityForResultWith<ImageViewerActivity>(previewDone, entry->path, true)) {
+                !startActivityForResultWith<ImageViewerActivity>(previewDone, entry->path, true, sticker)) {
               requestUpdate();
             }
           },
-          folder, FileBrowserActivity::Mode::PickWallpaper)) {
+          folder, sticker ? FileBrowserActivity::Mode::PickPng : FileBrowserActivity::Mode::PickWallpaper)) {
     LOG_ERR("STANDBY", "Cannot open the picture picker");
   }
 }
@@ -316,6 +326,16 @@ void RickyStandbySettingsActivity::activateIndex(const int index) {
     case ChoosePicture:
       openPicturePicker();
       return;
+    case ChooseSticker:
+      openPicturePicker(RickyStorageLayout::IMAGES, true);
+      return;
+    case ClearSticker:
+      // Remove a stale backup first, so a later entry cannot resurrect an old sticker.
+      if ((Storage.exists(KeepPageFace::kStickerBackupPath) && !Storage.remove(KeepPageFace::kStickerBackupPath)) ||
+          !Storage.remove(KeepPageFace::kStickerPath))
+        GUI.drawPopup(renderer, tr(STR_FAILED_LOWER));
+      rebuildRows();
+      break;
     case DownloadPictures:
       // Restarts to Home when it leaves after using the network, like the font downloader.
       startActivityForResultWith<RickyWallpaperDownloadActivity>([this](const ActivityResult&) { requestUpdate(); });

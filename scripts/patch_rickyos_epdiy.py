@@ -161,7 +161,108 @@ HEADER_BLOCK = ('/// RICKYOS_GRAY16_TEXT_TURN: profile for the next 16-level com
                 'void epdiyLcdRailsOffIfIdle(uint32_t idleMs);\n'
                 '/// RICKYOS_PANEL_RESTART: rebuild the scan path; the next frame is a full refresh.\n'
                 'bool epdiyLcdRestart();\n')
+UI_MARK = 'RICKYOS_UI_DAMAGE'
+UI_HEADER = ('/// RICKYOS_UI_DAMAGE: physical navigation strip and bounded regional cleanup cadence.\n'
+             'void epdiyLcdSetGray16UiRefresh(int x, int y, int width, int height, uint8_t contentEvery, uint8_t smallEvery);\n')
+HEADER_BLOCK += UI_HEADER
+HEADER_BLOCK += ('/// RICKYOS_RETAINED_GRAY: restore the successful native frame and its B/W proxy.\n'
+                 'bool epdiyLcdRestoreGray16Baseline(uint8_t* bwProxy);\n')
 HEADER_LINES = set(HEADER_BLOCK.splitlines(keepends=True))
+
+RETAINED_GRAY = '''// RICKYOS_RETAINED_GRAY: reuse the driver back frame, never a new screenshot.
+bool epdiyLcdRestoreGray16Baseline(uint8_t* bwProxy) {
+  if (!epdiyLcdReady() || !g_nativeGrayActive || !g_baselineKnown || !g_base || !bwProxy) return false;
+  memcpy(g_fb4, g_hl.back_fb, static_cast<size_t>(epd_width()) / 2 * epd_height());
+  memcpy(bwProxy, g_base, static_cast<size_t>(epd_width()) / 8 * epd_height());
+  return true;
+}
+
+'''
+
+UI_STATE = '''// RICKYOS_UI_DAMAGE: no extra framebuffer or heap allocation.
+ricky::gray::Ledger g_uiLedger;
+'''
+UI_CONFIG = '''// RICKYOS_UI_DAMAGE: consumed by one native commit, never by a later reader frame.
+static EpdRect g_uiNav = {};
+static uint8_t g_uiContentEvery = 8, g_uiSmallEvery = 32;
+void epdiyLcdSetGray16UiRefresh(int x, int y, int width, int height, uint8_t contentEvery, uint8_t smallEvery) {
+  g_uiNav = {x, y, width, height};
+  g_uiContentEvery = contentEvery ? contentEvery : 8;
+  g_uiSmallEvery = smallEvery ? smallEvery : 32;
+  g_gray16Profile = 4;
+}
+
+static bool pushUiFrame() {
+  if (!g_baselineKnown) return pushFrame(EpdiyLcdRefresh::Full, false);
+  const auto nav = ricky::gray::navigationZone(
+      {g_uiNav.x, g_uiNav.y, g_uiNav.width, g_uiNav.height}, epd_width(), epd_height());
+  const int64_t startedUs = esp_timer_get_time();
+  const auto damage = ricky::gray::difference(g_fb4, g_hl.back_fb, epd_width(), epd_height(), nav);
+  auto candidate = g_uiLedger;
+  const auto plan = candidate.advance(damage, nav, g_uiContentEvery, g_uiSmallEvery);
+#if FREEINK_READPICO_DIAGNOSTICS
+  esp_rom_printf("[EPDF] UI damage=%d,%d/%dx%d nav=%d,%d/%dx%d steps=%u classify=%uus\\r\\n",
+                 damage.content.x, damage.content.y, damage.content.width, damage.content.height,
+                 damage.navigation.x, damage.navigation.y, damage.navigation.width, damage.navigation.height,
+                 static_cast<unsigned>(plan.count), static_cast<unsigned>(esp_timer_get_time() - startedUs));
+#else
+  (void)startedUs;
+#endif
+  for (uint8_t i = 0; i < plan.count; ++i) {
+    const auto& step = plan.steps[i];
+    const EpdRect area = {step.area.x, step.area.y, step.area.width, step.area.height};
+    if (!pushFrame(step.cleanup ? EpdiyLcdRefresh::Full : EpdiyLcdRefresh::TextTurn, false, &area)) {
+      g_uiLedger = {};
+      return false;  // Partial success is not a trusted whole-frame baseline.
+    }
+  }
+  g_uiLedger = candidate;  // Only successful scans advance the debt/counters.
+  return true;            // Identical frames need no power-on or scan.
+}
+
+'''
+
+
+def patch_ui(source):
+    if UI_MARK in source:
+        for expected in (UI_STATE, UI_CONFIG, 'const bool regionalUi = g_gray16Profile == 4;',
+                         'epd_hl_update_area_full(&g_hl, drawModeFor(mode), temperature, *area)',
+                         'g_gray16Profile = 0;  // Cancel the one-shot UI/profile configuration too.'):
+            if expected not in source:
+                raise RuntimeError('SDK regional-gray source changed; review the RickyOS patch before building.')
+        return source
+    steps = (
+        ('#include <cstring>\n', '#include <cstring>\n#include "RickyNativeGrayRefreshPolicy.h"\n'),
+        ('int64_t g_lastPushUs = 0;     // RICKYOS_RAILS_IDLE\n',
+         'int64_t g_lastPushUs = 0;     // RICKYOS_RAILS_IDLE\n' + UI_STATE),
+        ('bool pushFrame(EpdiyLcdRefresh mode, bool turnOff) {\n',
+         'bool pushFrame(EpdiyLcdRefresh mode, bool turnOff, const EpdRect* area = nullptr) {\n'
+         '  if (area == nullptr) g_uiLedger = {};  // Foreign/manual/full frame invalidates regional history.\n'),
+        ('    mode = EpdiyLcdRefresh::Full;\n  }\n  const int temperature',
+         '    mode = EpdiyLcdRefresh::Full;\n    area = nullptr;\n    g_uiLedger = {};\n  }\n  const int temperature'),
+        ('  const auto err = mode == EpdiyLcdRefresh::Full ? epd_hl_update_screen_full(&g_hl, drawModeFor(mode), temperature)\n'
+         '                                                 : epd_hl_update_screen(&g_hl, drawModeFor(mode), temperature);',
+         '  const auto err = area != nullptr\n'
+         '      ? (mode == EpdiyLcdRefresh::Full ? epd_hl_update_area_full(&g_hl, drawModeFor(mode), temperature, *area)\n'
+         '                                      : epd_hl_update_area(&g_hl, drawModeFor(mode), temperature, *area))\n'
+         '      : (mode == EpdiyLcdRefresh::Full ? epd_hl_update_screen_full(&g_hl, drawModeFor(mode), temperature)\n'
+         '                                      : epd_hl_update_screen(&g_hl, drawModeFor(mode), temperature));'),
+        ('bool epdiyLcdCommitGrayscale16(const uint8_t* bwProxy) {\n',
+         UI_CONFIG + 'bool epdiyLcdCommitGrayscale16(const uint8_t* bwProxy) {\n'),
+        ('  if (!g_nativeGrayActive || !epdiyLcdReady() || bwProxy == nullptr) return false;\n',
+         '  if (!g_nativeGrayActive || !epdiyLcdReady() || bwProxy == nullptr) {\n'
+         '    g_gray16Profile = 0;\n    return false;\n  }\n'),
+        ('  const EpdiyLcdRefresh grayMode = g_gray16Profile == 1',
+         '  const bool regionalUi = g_gray16Profile == 4;\n'
+         '  const EpdiyLcdRefresh grayMode = g_gray16Profile == 1'),
+        ('  if (!pushFrame(grayMode, turnOff)) return false;\n',
+         '  if (!(regionalUi ? pushUiFrame() : pushFrame(grayMode, turnOff))) return false;\n'),
+        ('void epdiyLcdCancelGrayscale16() {\n',
+         'void epdiyLcdCancelGrayscale16() {\n  g_gray16Profile = 0;  // Cancel the one-shot UI/profile configuration too.\n'),
+    )
+    for old, new in steps:
+        source = patch_text(source, old, new, UI_MARK)
+    return source
 
 
 def patch_header(source):
@@ -196,7 +297,20 @@ def apply(project_dir):
         source = path.read_text()
         patched = source
         for old, new, mark in steps:
+            if mark in (MARK, RESTART_MARK) and UI_MARK in patched:
+                continue  # UI/diagnostic patches own these evolved bodies.
             patched = patch_text(patched, old, new, mark)
+        if path.name == 'EpdiyLcd.cpp':
+            patched = patch_ui(patched)
+            patched = patch_text(patched, 'uint8_t* epdiyLcdBeginGrayscale16() {\n',
+                                 RETAINED_GRAY + 'uint8_t* epdiyLcdBeginGrayscale16() {\n', 'RICKYOS_RETAINED_GRAY')
+            # The restart diagnostic must also compile in production builds
+            # without the ROM console declaration (diagnostics == 0).
+            patched = patch_text(patched,
+                '  esp_rom_printf("[EPDF] panel restart ok=%d\\r\\n", ok ? 1 : 0);\n',
+                '#if FREEINK_READPICO_DIAGNOSTICS\n'
+                '  esp_rom_printf("[EPDF] panel restart ok=%d\\r\\n", ok ? 1 : 0);\n'
+                '#endif\n', 'RICKYOS_RESTART_DIAGNOSTIC')
         if patched != source:
             path.write_text(patched)
     header = base / 'include/EpdiyLcd.h'
@@ -204,6 +318,13 @@ def apply(project_dir):
     patched = patch_header(source)
     if patched != source:
         header.write_text(patched)
+    # SDK files are generated build inputs, not independent edits to the dirty
+    # submodule. The reviewed/tested product header remains the source of truth.
+    policy = Path(project_dir) / 'lib/hal/NativeGrayRefreshPolicy.h'
+    generated = base / 'src/RickyNativeGrayRefreshPolicy.h'
+    content = policy.read_text()
+    if not generated.exists() or generated.read_text() != content:
+        generated.write_text(content)
 
 
 if 'Import' in globals():

@@ -83,6 +83,16 @@ class ActivityManager {
   // Cross-task render request flag. requestUpdate() may set it from any task;
   // loop() consumes and clears it with exchange(false).
   std::atomic<bool> requestedUpdate{false};
+#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
+  // Unlike requestedUpdate, this survives loop() consuming the notification.
+  std::atomic<uint32_t> renderRequestGeneration{0};
+#endif
+#if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
+  // Earliest coalesced request, encoded +1 to reserve zero. No per-event heap
+  // storage or filenames/text in timing logs. Unsigned differences wrap safely.
+  std::atomic<uint32_t> queuedRenderMs{0};
+  void recordRenderRequest();
+#endif
   std::atomic<uint32_t> idleRenderGeneration{0};
   std::atomic<const char*> lastIdleCancel{"none"};
   std::atomic<bool> lastIdleCancelRearms{false};

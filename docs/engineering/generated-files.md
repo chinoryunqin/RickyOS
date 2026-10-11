@@ -32,6 +32,24 @@
 
 ## Modifying Generated Content Workflow
 
+### RickyOS device Pinyin dictionary
+
+`src/util/PinyinDictionary.h` is a checked-in generated table (like the builtin
+font headers, not a normally ignored `*.generated.h`). Edit
+`scripts/build_pinyin_dictionary.py`, then regenerate it with `python3
+scripts/build_pinyin_dictionary.py`. This explicit development step downloads
+SHA-256-pinned MIT pypinyin v0.55.0 data; ordinary firmware/simulator builds are
+offline and do not regenerate/download it. The complete license is retained in
+`data/ime/LICENSE.pypinyin.txt`.
+
+The generator normalizes tone-bearing ü to `v` before dropping tones and retains
+GB2312 Han characters covered by `cn_rickyos_chars.txt`. Changing the product
+body font requires regenerating/checking this intersection. The table contains
+30-bit sortable syllable codes and aligned uint16 offsets/counts/characters; no
+runtime allocation or unaligned cast is required. Keep the generated header with
+its recipe. Run `scripts/tests/test_pinyin_input.py`; see the
+[research/acceptance record](pinyin-input-research-2026-10-12.md).
+
 ### Bundled first-use user guide
 
 `scripts/build_userguide.py` runs for firmware and simulator builds. It calls

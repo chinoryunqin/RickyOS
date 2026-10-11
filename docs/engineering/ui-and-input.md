@@ -252,9 +252,10 @@ preserved; the default applies when no selection has been saved.
 
 RickyOS cold boot paints its complete logo once with FULL_REFRESH, without
 an animation, forced dwell, or version footer. Normal wake and PostOTA retain
-their distinct paths. Product Quick Resume overlays a small localized Standby
-badge at the oriented safe area's bottom-right, reusing the retained framebuffer.
-The reader orientation is applied for badge drawing then restored; night-mode
+their distinct paths. Product Keep Page and transparent-wallpaper standby add
+no status label or backing; only power-off adds its localized status at the
+oriented safe area's bottom-right, reusing the retained framebuffer.
+The reader orientation is applied for power-off status drawing then restored; night-mode
 polarity and the existing FAST transfer/cache path remain. Sleep plugin delivery
 receives no renderer on this path, so loading popups and handler toasts cannot
 replace the retained reading page. Stock builds retain their moon indicator.

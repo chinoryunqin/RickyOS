@@ -9,7 +9,13 @@
 #include "components/UITheme.h"
 #include "util/ButtonNavigator.h"
 
-void Activity::onEnter() { LOG_DBG("ACT", "Entering activity: %s", name.c_str()); }
+void Activity::onEnter() {
+#ifdef RICKYOS_PRODUCT
+  LOG_INF("ACT", "Entering activity: %s", name.c_str());
+#else
+  LOG_DBG("ACT", "Entering activity: %s", name.c_str());
+#endif
+}
 
 void Activity::onExit() { LOG_DBG("ACT", "Exiting activity: %s", name.c_str()); }
 

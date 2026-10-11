@@ -5,6 +5,7 @@
 #include <FsHelpers.h>
 #include <HalDisplay.h>
 #include <HalGPIO.h>
+#include <HalMemory.h>
 #include <HalPowerManager.h>
 #include <Memory.h>
 #include <VectorFontSupport.h>
@@ -92,6 +93,10 @@ void ActivityManager::renderTaskLoop() {
   while (true) {
     const bool idleArmed = waitTicks != portMAX_DELAY;
     const bool foreground = ulTaskNotifyTake(pdTRUE, waitTicks) != 0;
+#if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
+    const uint32_t queued = foreground ? queuedRenderMs.exchange(0) : 0;
+    const uint32_t wokeMs = millis();
+#endif
     waitTicks = portMAX_DELAY;
     // Name why an armed idle pass did not run; a reader page cache that never fills
     // looks the same from outside whichever of these fired.
@@ -116,6 +121,13 @@ void ActivityManager::renderTaskLoop() {
       }
     }
     RenderLock lock;
+#if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
+    if (foreground) {
+      LOG_INF("PERF", "render wake queue=%u ms lock=%u ms requested=%d pending=%d",
+              queued ? static_cast<uint32_t>(wokeMs - (queued - 1)) : 0, static_cast<uint32_t>(millis() - wokeMs),
+              queued != 0, isSwitchPending());
+    }
+#endif
     if (currentActivity && pendingAction.load() == PendingAction::None) {
       HalPowerManager::Lock powerLock;
       if (foreground) {
@@ -173,28 +185,43 @@ bool ActivityManager::renderDirectGray(RenderLock&& lock) {
     return false;
   }
   const unsigned long started = millis();
+  const uint32_t renderGeneration = renderRequestGeneration.load(std::memory_order_relaxed);
+  // Renderers may release the lock; capture page-owned geometry first.
+  const Rect navigation = currentActivity->usesMainTabBar() ? currentActivity->mainTabLayout().tabBar : Rect{};
   renderer.setDisplayCapture(true);
   currentActivity->render(std::move(lock));
   renderer.setDisplayCapture(false);
   if (!renderer.isGrayscale16Active()) return true;  // The page owns its cancellation.
   // A plain touch/release must not discard the only foreground frame. Discard
   // only when a newer redraw or navigation is queued (e.g. a cover finishes).
-  if (isSwitchPending() || requestedUpdate.load()) {
+  if (isSwitchPending() || requestedUpdate.load() ||
+      renderGeneration != renderRequestGeneration.load(std::memory_order_relaxed)) {
     renderer.cancelGrayscale16();
     LOG_DBG("ACT", "Direct gray: superseded");
     return true;
   }
 #if !defined(SIMULATOR)
-  static uint8_t frames = 0;
-  const uint8_t next = static_cast<uint8_t>((frames + 1) % ricky::ds::refresh::kGc16EveryDirectFrames);
-  display.setNextGray16Profile(renderer.nextRefreshNeedsCleanup() || next == 0 ? 2 : 1);
+  renderer.setNextGray16UiRefresh(navigation.x, navigation.y, navigation.width, navigation.height,
+                                  ricky::ds::refresh::kGc16EveryDirectFrames,
+                                  ricky::ds::refresh::kGc16EveryControlFrames);
+  if (renderer.nextRefreshNeedsCleanup()) display.setNextGray16Profile(2);
+#else
+  (void)navigation;
 #endif
+  const unsigned long painted = millis();
   const bool committed = renderer.commitGrayscale16();
   if (committed) renderer.clearNextRefreshOverride();
-#if !defined(SIMULATOR)
-  if (committed) frames = next;
+  LOG_DBG("ACT", "Direct gray: %s paint=%lu ms submit=%lu ms total=%lu ms", committed ? "done" : "failed, B/W fallback",
+          painted - started, millis() - painted, millis() - started);
+#if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
+  const auto internal = HalMemory::getInternalHeap();
+  const auto dma = HalMemory::getInternalDmaHeap();
+  const auto psram = HalMemory::getPsramHeap();
+  LOG_INF("PERF", "gray heap internal=%u/%u dma=%u/%u psram=%u/%u (free/maxBlock)",
+          static_cast<unsigned>(internal.freeBytes), static_cast<unsigned>(internal.largestBlockBytes),
+          static_cast<unsigned>(dma.freeBytes), static_cast<unsigned>(dma.largestBlockBytes),
+          static_cast<unsigned>(psram.freeBytes), static_cast<unsigned>(psram.largestBlockBytes));
 #endif
-  LOG_DBG("ACT", "Direct gray: %s in %lu ms", committed ? "done" : "failed, B/W fallback", millis() - started);
   return committed;
 }
 
@@ -805,7 +832,20 @@ void ActivityManager::prepareForSleep() {
   if (currentActivity) currentActivity->prepareForSleep();
 }
 
+#if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
+void ActivityManager::recordRenderRequest() {
+  uint32_t empty = 0;
+  queuedRenderMs.compare_exchange_strong(empty, static_cast<uint32_t>(millis()) + 1);
+}
+#endif
+
 void ActivityManager::requestUpdate(bool immediate) {
+#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
+  renderRequestGeneration.fetch_add(1, std::memory_order_relaxed);
+#endif
+#if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
+  recordRenderRequest();
+#endif
   cancelIdleRender();
   if (immediate) {
     if (renderTaskHandle) {
@@ -818,6 +858,12 @@ void ActivityManager::requestUpdate(bool immediate) {
   }
 }
 void ActivityManager::requestUpdateAndWait() {
+#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
+  renderRequestGeneration.fetch_add(1, std::memory_order_relaxed);
+#endif
+#if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
+  recordRenderRequest();
+#endif
   cancelIdleRender();
   if (!renderTaskHandle) {
     return;

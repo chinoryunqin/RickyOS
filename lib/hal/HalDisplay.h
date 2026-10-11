@@ -156,10 +156,15 @@ class HalDisplay {
   uint16_t getDisplayHeight() const;
   uint8_t getGrayscaleLevels() const;
   uint8_t* beginGrayscale16();
+  // Borrow the last successful native frame, without another screenshot allocation.
+  uint8_t* beginRetainedGrayscale16();
   bool commitGrayscale16();
   // Read Pico: refresh profile for the next 16-level commit (0 = Half, 1 = text turn,
   // 2 = Full cleanup). One-shot; a no-op on other panels.
   void setNextGray16Profile(uint8_t profile);
+  // Direct-gray UI: physical navigation strip, separate content/control cleanup
+  // ledgers. No-op on other panels. Manual Full profile still overrides this.
+  void setNextGray16UiRefresh(int x, int y, int width, int height, uint8_t contentEvery, uint8_t smallEvery);
   // Power the panel rails down when no frame has been pushed for idleMs (Read Pico).
   void railsOffIfIdle(uint32_t idleMs);
   // Rebuild the panel scan path in place (Screen repair); the next frame is a full refresh.

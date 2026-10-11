@@ -11,6 +11,9 @@
 #include "MappedInputManager.h"
 #include "components/UITheme.h"
 #include "components/themes/lyra/LyraTheme.h"
+#ifdef RICKYOS_PRODUCT
+#include "components/RickyDesignUi.h"
+#endif
 #include "fontIds.h"
 
 namespace fui = freeink::ui;
@@ -161,12 +164,92 @@ void KeyboardEntryActivity::onEnter() {
   touchRouter.holdMs = TOUCH_LONG_PRESS_MS;
   touchRouter.overrideHoldMs = TOUCH_DEL_LONG_PRESS_MS;
   interactionsReady = false;
+#ifdef RICKYOS_PRODUCT
+  ime.resetSession();
+  imeAvailable = inputType == InputType::Text && I18n::isLanguageAvailable(Language::ZH_CN);
+  chineseMode = imeAvailable && I18N.getLanguage() == Language::ZH_CN;
+  if (imeAvailable) {
+    layoutId = fui::KeyboardLayoutId::QwertyEn;
+    showLangKey = true;
+    rebuildImeLayout();
+    selRow = chineseMode ? 1 : 0;
+  }
+#endif
   requestUpdate();
 }
 
 void KeyboardEntryActivity::onExit() { Activity::onExit(); }
 
+#ifdef RICKYOS_PRODUCT
+void KeyboardEntryActivity::rebuildImeLayout() {
+  const auto& base = fui::builtinKeyboardLayout(fui::KeyboardLayoutId::QwertyEn, shifted, symbols, true, true);
+  const int extra = chineseMode ? 1 : 0;
+  imeRevision = (imeRevision + 1) % 4096;
+  if (extra) {
+    for (size_t i = 0; i < PinyinInput::PAGE_SIZE; ++i) {
+      const auto* candidate = ime.candidate(i);
+      imeKeys[i] = fui::KeyboardKey{candidate ? candidate->text : "",
+                                    nullptr,
+                                    fui::KeyKind::Normal,
+                                    fui::StateNormal,
+                                    static_cast<int16_t>(IME_CANDIDATE_BASE + imeRevision * PinyinInput::PAGE_SIZE + i),
+                                    1,
+                                    candidate != nullptr,
+                                    nullptr};
+    }
+    imeKeys[PinyinInput::PAGE_SIZE] =
+        fui::KeyboardKey{"<", nullptr, fui::KeyKind::Normal, fui::StateNormal, IME_PREV, 1, ime.hasPrevious(), nullptr};
+    imeKeys[PinyinInput::PAGE_SIZE + 1] =
+        fui::KeyboardKey{">", nullptr, fui::KeyKind::Normal, fui::StateNormal, IME_NEXT, 1, ime.hasNext(), nullptr};
+    imeKeys[PinyinInput::PAGE_SIZE + 2] = fui::KeyboardKey{
+        tr(STR_KEY_MODE_ABC), nullptr, fui::KeyKind::Normal, fui::StateNormal, IME_RAW, 1, !ime.empty(), nullptr};
+    imeRows[0] = fui::KeyboardRow{imeKeys, PinyinInput::PAGE_SIZE + 3, 0, true};
+  }
+  for (int row = 0; row < base.rowCount; ++row) imeRows[row + extra] = base.rows[row];
+  const int bottom = base.rowCount + extra - 1;
+  const auto& original = base.rows[base.rowCount - 1];
+  assert(original.count <= sizeof(imeBottom) / sizeof(imeBottom[0]));
+  bool foundLanguage = false;
+  int count = original.count;
+  for (int i = 0; i < count; ++i) {
+    imeBottom[i] = original.keys[i];
+    if (imeBottom[i].value == fui::QWERTY_KEY_LANG) {
+      foundLanguage = true;
+      imeBottom[i].value = IME_TOGGLE;
+      imeBottom[i].kind = fui::KeyKind::Normal;
+      imeBottom[i].label = chineseMode ? tr(STR_IME_ENGLISH) : tr(STR_IME_PINYIN);
+    }
+  }
+  if (!foundLanguage && count < static_cast<int>(sizeof(imeBottom) / sizeof(imeBottom[0])))
+    imeBottom[count++] = fui::KeyboardKey{chineseMode ? tr(STR_IME_ENGLISH) : tr(STR_IME_PINYIN),
+                                          nullptr,
+                                          fui::KeyKind::Normal,
+                                          fui::StateNormal,
+                                          IME_TOGGLE,
+                                          1,
+                                          true,
+                                          nullptr};
+  imeRows[bottom] = fui::KeyboardRow{imeBottom, static_cast<uint8_t>(count), original.insetUnits};
+  imeLayout = fui::KeyboardLayout{imeRows, static_cast<uint8_t>(base.rowCount + extra)};
+}
+
+bool KeyboardEntryActivity::commitIme(const size_t index) {
+  const auto* item = ime.candidate(index);
+  if (!item) return false;
+  const size_t before = text.size();
+  insertUtf8(item->text);
+  if (text.size() == before) return false;  // byte limit hit: preserve composition
+  ime.consume(index);
+  rebuildImeLayout();
+  clampSelection();
+  return true;
+}
+#endif
+
 const fui::KeyboardLayout& KeyboardEntryActivity::currentLayout() const {
+#ifdef RICKYOS_PRODUCT
+  if (imeAvailable) return imeLayout;
+#endif
   if (symbols) return fui::builtinKeyboardLayout(layoutId, shifted, true, false, false);
   if (inputType == InputType::Url) {
     if (urlPanel) return URL_SNIPPET_LAYOUT;
@@ -204,6 +287,19 @@ void KeyboardEntryActivity::clampSelection() {
   const int cols = layout.rows[selRow].count;
   if (selCol < 0) selCol = 0;
   if (selCol >= cols) selCol = cols > 0 ? cols - 1 : 0;
+#ifdef RICKYOS_PRODUCT
+  if (imeAvailable && cols) {
+    for (int step = 0; step < cols; ++step) {
+      if (layout.rows[selRow].keys[selCol].enabled) return;
+      selCol = (selCol + 1) % cols;
+    }
+    // An empty candidate strip is not a dead-end for physical navigation.
+    if (chineseMode && selRow == 0) {
+      selRow = 1;
+      selCol = 0;
+    }
+  }
+#endif
 }
 
 void KeyboardEntryActivity::moveSelectionRow(const int delta) {
@@ -211,6 +307,10 @@ void KeyboardEntryActivity::moveSelectionRow(const int delta) {
   if (layout.rowCount == 0) return;
   const int oldCols = selRow < layout.rowCount ? layout.rows[selRow].count : 1;
   selRow = (selRow + delta + layout.rowCount) % layout.rowCount;
+#ifdef RICKYOS_PRODUCT
+  if (imeAvailable && chineseMode && selRow == 0 && ime.empty())
+    selRow = (selRow + delta + layout.rowCount) % layout.rowCount;
+#endif
   const int newCols = layout.rows[selRow].count;
   // Proportional column mapping keeps vertical travel intuitive between rows
   // of different key counts (e.g. a 10-key letter row over a 6-key bottom row).
@@ -226,6 +326,11 @@ void KeyboardEntryActivity::moveSelectionCol(const int delta) {
   const int cols = layout.rows[selRow].count;
   if (cols <= 0) return;
   selCol = (selCol + delta + cols) % cols;
+#ifdef RICKYOS_PRODUCT
+  if (imeAvailable)
+    for (int step = 0; step < cols && !layout.rows[selRow].keys[selCol].enabled; ++step)
+      selCol = (selCol + delta + cols) % cols;
+#endif
 }
 
 bool KeyboardEntryActivity::syncSelectionToValue(const int16_t value) {
@@ -274,12 +379,71 @@ bool KeyboardEntryActivity::backspaceUtf8() {
 }
 
 bool KeyboardEntryActivity::activateValue(const int16_t value, const bool longPress) {
+#ifdef RICKYOS_PRODUCT
+  if (imeAvailable) {
+    if (value == IME_TOGGLE || value == fui::QWERTY_KEY_LANG) {
+      // Do not silently discard an unfinished composition when changing mode.
+      if (!ime.empty()) return false;
+      chineseMode = !chineseMode;
+      shifted = symbols = false;
+      rebuildImeLayout();
+      clampSelection();
+      return true;
+    }
+    if (value == IME_PREV || value == IME_NEXT) {
+      const bool changed = value == IME_PREV ? ime.previousPage() : ime.nextPage();
+      if (changed) rebuildImeLayout();
+      return changed;
+    }
+    if (value == IME_RAW && !ime.empty()) {
+      const size_t before = text.size();
+      insertUtf8(ime.raw());
+      if (before == text.size()) return false;
+      ime.clear();
+      rebuildImeLayout();
+      return true;
+    }
+    if (value >= IME_CANDIDATE_BASE) {
+      // A release from an old published candidate generation may not select
+      // a different new word at the same location.
+      const int index = value - IME_CANDIDATE_BASE - imeRevision * PinyinInput::PAGE_SIZE;
+      return index >= 0 && index < static_cast<int>(PinyinInput::PAGE_SIZE) && commitIme(index);
+    }
+    if (chineseMode && !ime.empty()) {
+      if (value == fui::QWERTY_KEY_ENTER || value == fui::QWERTY_KEY_SPACE) return commitIme(0);
+      if (value == fui::QWERTY_KEY_BACKSPACE) {
+        if (longPress)
+          ime.clear();
+        else
+          ime.backspace();
+        rebuildImeLayout();
+        return true;
+      }
+      // Symbols/Shift are still available but never flush unconfirmed Latin
+      // into the committed text. Other non-letter output waits for selection.
+    }
+    const char* out = fui::keyboardOutputFor(currentLayout(), value);
+    if (chineseMode && out && out[0] && !out[1] &&
+        ((out[0] >= 'a' && out[0] <= 'z') || (out[0] >= 'A' && out[0] <= 'Z') || out[0] == '\'')) {
+      const bool changed = ime.append(out[0]);
+      if (changed) {
+        if (!symbols) shifted = false;
+        rebuildImeLayout();
+      }
+      return changed;
+    }
+    if (chineseMode && !ime.empty() && value != fui::QWERTY_KEY_MODE && value != fui::QWERTY_KEY_SHIFT) return false;
+  }
+#endif
   switch (value) {
     case fui::QWERTY_KEY_SHIFT:
       delPressCount = 0;
       hintVisible = false;
       // Letters: case toggle. Symbols: pages between "?123" and "#+=".
       shifted = !shifted;
+#ifdef RICKYOS_PRODUCT
+      if (imeAvailable) rebuildImeLayout();
+#endif
       clampSelection();
       return true;
     case fui::QWERTY_KEY_MODE:
@@ -291,6 +455,9 @@ bool KeyboardEntryActivity::activateValue(const int16_t value, const bool longPr
         symbols = !symbols;
         shifted = false;
       }
+#ifdef RICKYOS_PRODUCT
+      if (imeAvailable) rebuildImeLayout();
+#endif
       clampSelection();
       return true;
     case fui::QWERTY_KEY_LANG: {
@@ -343,6 +510,9 @@ bool KeyboardEntryActivity::activateValue(const int16_t value, const bool longPr
       insertUtf8(out);
       if (shifted && !symbols) {
         shifted = false;  // shift auto-releases after one character
+#ifdef RICKYOS_PRODUCT
+        if (imeAvailable) rebuildImeLayout();
+#endif
         clampSelection();
       }
       return true;
@@ -353,6 +523,9 @@ bool KeyboardEntryActivity::activateValue(const int16_t value, const bool longPr
 bool KeyboardEntryActivity::clearAllOrAltOnSelected() {
   const fui::KeyboardKey* key = selectedKey();
   if (!key) return false;
+#ifdef RICKYOS_PRODUCT
+  if (imeAvailable && chineseMode) return activateValue(key->value, true);
+#endif
   if (key->value == fui::QWERTY_KEY_BACKSPACE) {
     text.clear();
     cursorPos = 0;
@@ -586,7 +759,10 @@ fui::Rect KeyboardEntryActivity::keyboardRect() const {
             : inputStartY();
     const int inputBottom = keyboardInputY + inputLineCount() * renderer.getLineHeight(UI_12_FONT_ID) +
                             metrics.verticalSpacing + 4 + KEYBOARD_MIN_GAP;
-    const int available = bottom - inputBottom;
+    int available = bottom - inputBottom;
+#ifdef RICKYOS_PRODUCT
+    if (imeAvailable) available -= renderer.getLineHeight(SMALL_FONT_ID) + KEYBOARD_MIN_GAP;
+#endif
     const int keyHeight = std::min(
         metrics.keyboardKeyHeight,
         (available - KEYBOARD_PANEL_PADDING * 2 - (rows - 1) * keyboardGap(metrics, inputLineCount() == 1)) / rows);
@@ -616,12 +792,21 @@ fui::Rect KeyboardEntryActivity::keyboardKeysRect() const {
 }
 
 void KeyboardEntryActivity::loop() {
+#ifdef RICKYOS_PRODUCT
+  // Candidate labels and committed text are shared with the render task.
+  // Serialize mutation/publication; no font/SD lookup in the decoder itself.
+  RenderLock inputLock;
+#endif
   int tx = 0;
   int ty = 0;
 
   size_t touchedCursorPos = 0;
   bool touchedPasswordToggle = false;
-  if (mappedInput.wasScreenTapped(tx, ty) && cursorPositionFromPoint(tx, ty, touchedCursorPos, touchedPasswordToggle)) {
+  if (mappedInput.wasScreenTapped(tx, ty) &&
+#ifdef RICKYOS_PRODUCT
+      ime.empty() &&
+#endif
+      cursorPositionFromPoint(tx, ty, touchedCursorPos, touchedPasswordToggle)) {
     if (touchedPasswordToggle) {
       passwordVisible = !passwordVisible;
       cursorMode = false;
@@ -665,7 +850,12 @@ void KeyboardEntryActivity::loop() {
       return;
     }
     if (result.activeChanged) {
-      requestUpdate();
+#ifdef RICKYOS_PRODUCT
+      // Do not submit a separate panel update just to paint a transient key
+      // press; the completed gesture already requests its committed frame.
+      if (!imeAvailable)
+#endif
+        requestUpdate();
     }
     if (pressedDown || tapped) {
       return;
@@ -679,6 +869,12 @@ void KeyboardEntryActivity::loop() {
 
   if (upHeld && !upLongHandled && mappedInput.isPressed(MappedInputManager::Button::Up) &&
       mappedInput.getHeldTime() > LONG_PRESS_MS) {
+#ifdef RICKYOS_PRODUCT
+    if (!ime.empty()) {
+      upLongHandled = true;
+      return;
+    }
+#endif
     cursorMode = true;
     upLongHandled = true;
     hintVisible = true;
@@ -812,6 +1008,14 @@ void KeyboardEntryActivity::loop() {
   }
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+#ifdef RICKYOS_PRODUCT
+    if (!ime.empty()) {
+      ime.clear();
+      rebuildImeLayout();
+      requestUpdate();
+      return;
+    }
+#endif
     onCancel();
   }
 
@@ -1065,6 +1269,9 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   fui::GfxRendererTarget target(renderer);
   target.setFont(fui::GfxRendererTarget::FONT_SMALL, SMALL_FONT_ID);
   target.setFont(fui::GfxRendererTarget::FONT_BODY, UI_12_FONT_ID);
+#ifdef RICKYOS_PRODUCT
+  if (imeAvailable) target.setFont(fui::GfxRendererTarget::FONT_BODY, RickyDesignUi::BODY);
+#endif
   const fui::DeviceContext device = target.deviceContext();
   const fui::InputSnapshot noInput{};
   fui::Frame<56> frame(target, device, noInput, interactions);
@@ -1074,6 +1281,25 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   props.layout = &layout;
   props.keyAction = ACTION_KEY;  // one action id; loop() dispatches on key value
   props.okLabel = tr(STR_OK_BUTTON);
+#ifdef RICKYOS_PRODUCT
+  if (imeAvailable) {
+    props.background = fui::Paint::solid(fui::Color::White);
+    props.keyStyles = fui::defaultKeyStyles();
+    props.keyStyles.disabled.border = fui::Paint::none();
+    props.keyStyles.disabled.borderWidth = 0;
+    props.keyStyles.disabled.foreground = fui::Paint::solid(fui::Color::LightGray);
+    props.spaceLabel = chineseMode ? tr(STR_IME_SELECT_FIRST) : "";
+    // A composition is distinct from committed text; OK selects once, it
+    // never both picks a candidate and submits the activity on that gesture.
+    if (!ime.empty()) props.okLabel = tr(STR_SELECT);
+    const int rawHeight = renderer.getLineHeight(SMALL_FONT_ID);
+    const fui::Rect rawRect{kbRect.x, static_cast<int16_t>(kbRect.y - rawHeight - KEYBOARD_MIN_GAP), kbRect.width,
+                            static_cast<int16_t>(rawHeight)};
+    const GfxRenderer::ClipScope rawClip(renderer, rawRect.x, rawRect.y, rawRect.width, rawRect.height);
+    renderer.drawText(SMALL_FONT_ID, rawRect.x, rawRect.y,
+                      ime.empty() ? (chineseMode ? tr(STR_IME_PINYIN) : tr(STR_IME_ENGLISH)) : ime.raw());
+  }
+#endif
   // Match the label to the layer the mode key leads back from: the symbols
   // layer and the URL snippet panel both label it "abc" in the static tables.
   props.modeLabel =

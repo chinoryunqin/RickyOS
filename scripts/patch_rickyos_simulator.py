@@ -1,7 +1,8 @@
-"""Narrow, checked adaptation of the pinned simulator's task notification shim.
+"""Checked adapters for timed task notification and retained native-gray frames.
 
 Only simulator_rickyos uses this. The maintained input is this script, not the
-generated dependency under .pio/. Remove when the pinned shim honors timeouts.
+generated dependency under .pio/. Remove each adapter when the pinned simulator
+provides the matching capability.
 """
 
 from pathlib import Path
@@ -45,8 +46,52 @@ def patch_task_notify(path):
     return True
 
 
+RETAINED_GRAY = '''// RICKYOS_RETAINED_GRAY: reconstruct from the last visible frame, not staging pixels.
+uint8_t* HalDisplay::beginRetainedGrayscale16() {
+#if FREEINK_DEVICE_READPICO
+  if (grayscale16Active || frameBufferLent || isInverted()) return nullptr;
+  const std::lock_guard<std::mutex> lock(pixelBufMutex);
+  grayscale16Active = true;
+  for (size_t i = 0; i < DISPLAY_WIDTH * DISPLAY_HEIGHT; ++i) {
+    const uint8_t gray = static_cast<uint8_t>(pixelBuf[i] & 255);
+    const uint8_t level = (gray + 8) / 17;
+    const unsigned shift = (i & 1) * 4;
+    grayscale16Buffer[i / 2] = (grayscale16Buffer[i / 2] & ~(15u << shift)) | (level << shift);
+    const uint8_t bit = 0x80u >> (i & 7);
+    if (level >= 8) frameBufferStorage[i / 8] |= bit;
+    else frameBufferStorage[i / 8] &= ~bit;
+  }
+  return grayscale16Buffer.data();
+#else
+  return nullptr;
+#endif
+}
+
+'''
+
+
+def patch_retained_gray(dependency):
+    dependency = Path(dependency)
+    header = dependency / 'src/HalDisplay.h'
+    source = header.read_text()
+    declaration = '  uint8_t* beginRetainedGrayscale16();\n'
+    anchor = '  uint8_t* beginGrayscale16();\n'
+    if declaration not in source:
+        if source.count(anchor) != 1:
+            raise RuntimeError('Simulator native gray declaration changed')
+        header.write_text(source.replace(anchor, anchor + declaration))
+    driver = dependency / 'src/HalDisplay.cpp'
+    source = driver.read_text()
+    anchor = 'uint8_t* HalDisplay::beginGrayscale16() {\n'
+    if RETAINED_GRAY not in source:
+        if 'RICKYOS_RETAINED_GRAY' in source or source.count(anchor) != 1:
+            raise RuntimeError('Simulator retained gray adapter changed')
+        driver.write_text(source.replace(anchor, RETAINED_GRAY + anchor))
+
+
 if 'Import' in globals():
     Import('env')  # noqa: F821 -- supplied by PlatformIO/SCons
     if env.subst('$PIOENV') == 'simulator_rickyos':  # noqa: F821
         dependency = Path(env.subst('$PROJECT_LIBDEPS_DIR')) / 'simulator_rickyos' / 'simulator'  # noqa: F821
         patch_task_notify(dependency / 'src/freertos/task.h')
+        patch_retained_gray(dependency)

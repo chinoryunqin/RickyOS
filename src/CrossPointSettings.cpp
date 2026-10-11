@@ -1,5 +1,4 @@
 #include "CrossPointSettings.h"
-#include <Utf8.h>
 
 #include <BoardConfig.h>
 #include <HalStorage.h>
@@ -7,6 +6,7 @@
 #include <Logging.h>
 #include <ObfuscationUtils.h>
 #include <Serialization.h>
+#include <Utf8.h>
 
 #include <algorithm>
 #include <array>
@@ -869,6 +869,7 @@ uint8_t CrossPointSettings::rickySleepScreenMode() const {
       case RICKY_STANDBY_COVER:
         return COVER_CUSTOM;  // the book being read, else the picture, as Standby
       case RICKY_STANDBY_KEEP_PAGE:
+      case RICKY_STANDBY_TRANSPARENT:
         return QUICK_RESUME;
       default:
         break;  // the calendar would show a clock that no longer runs

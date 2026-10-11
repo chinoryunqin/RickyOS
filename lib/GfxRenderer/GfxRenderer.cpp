@@ -62,6 +62,11 @@ bool commitNativeGray(Display& display) {
   return false;
 }
 template <typename Display>
+uint8_t* beginRetainedNativeGray(Display& display) {
+  if constexpr (requires { display.beginRetainedGrayscale16(); }) return display.beginRetainedGrayscale16();
+  return nullptr;
+}
+template <typename Display>
 void cancelNativeGray(Display& display) {
   if constexpr (requires { display.cancelGrayscale16(); }) display.cancelGrayscale16();
 }
@@ -1860,6 +1865,46 @@ bool GfxRenderer::drawBitmapCropToFill(const Bitmap& bitmap, const int x, const 
 
 uint8_t GfxRenderer::getGrayscaleLevels() const { return grayscaleLevels(display); }
 
+namespace {
+template <typename Display>
+void configureGrayUi(Display& target, int x, int y, int w, int h, uint8_t contentEvery, uint8_t smallEvery) {
+  if constexpr (requires { target.setNextGray16UiRefresh(x, y, w, h, contentEvery, smallEvery); }) {
+    target.setNextGray16UiRefresh(x, y, w, h, contentEvery, smallEvery);
+  }
+}
+}  // namespace
+
+void GfxRenderer::setNextGray16UiRefresh(int x, int y, int width, int height, const uint8_t contentEvery,
+                                         const uint8_t smallEvery) const {
+  const int x0 = std::clamp(x, 0, getScreenWidth());
+  const int y0 = std::clamp(y, 0, getScreenHeight());
+  const int x1 = std::clamp(x + std::max(0, width), 0, getScreenWidth());
+  const int y1 = std::clamp(y + std::max(0, height), 0, getScreenHeight());
+  x = x0;
+  y = y0;
+  width = std::max(0, x1 - x0);
+  height = std::max(0, y1 - y0);
+  switch (orientation) {
+    case Portrait:
+      x = y0;
+      y = panelHeight - x1;
+      std::swap(width, height);
+      break;
+    case PortraitInverted:
+      x = panelWidth - y1;
+      y = x0;
+      std::swap(width, height);
+      break;
+    case LandscapeClockwise:
+      x = panelWidth - x1;
+      y = panelHeight - y1;
+      break;
+    case LandscapeCounterClockwise:
+      break;
+  }
+  configureGrayUi(display, x, y, width, height, contentEvery, smallEvery);
+}
+
 bool GfxRenderer::beginGrayscale16() {
   if (grayscale16Buffer || _stripActive || !frameBuffer || getGrayscaleLevels() != 16) return false;
   grayscale16Buffer = beginNativeGray(display);
@@ -1885,6 +1930,14 @@ bool GfxRenderer::commitGrayscale16() const {
   if (!committed) cancelNativeGray(display);
   grayscale16Buffer = nullptr;
   return committed;
+}
+
+bool GfxRenderer::beginRetainedGrayscale16() {
+  if (grayscale16Buffer || _stripActive || !frameBuffer || getGrayscaleLevels() != 16) return false;
+  grayscale16Buffer = beginRetainedNativeGray(display);
+  if (!grayscale16Buffer) return false;
+  setRenderMode(BW);
+  return true;  // Native frame and B/W proxy both match the displayed baseline.
 }
 
 void GfxRenderer::cancelGrayscale16() const {

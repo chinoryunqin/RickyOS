@@ -19,7 +19,7 @@ class RickyStandbyPowerOffTest(unittest.TestCase):
 #include <cstdint>
 struct CrossPointSettings {
   enum { DARK = 0, LIGHT, CUSTOM, COVER, BLANK, COVER_CUSTOM, QUICK_RESUME, TRANSPARENT };
-  enum { RICKY_STANDBY_PICTURE = 0, RICKY_STANDBY_CALENDAR, RICKY_STANDBY_COVER, RICKY_STANDBY_KEEP_PAGE };
+  enum { RICKY_STANDBY_PICTURE = 0, RICKY_STANDBY_CALENDAR, RICKY_STANDBY_COVER, RICKY_STANDBY_KEEP_PAGE, RICKY_STANDBY_TRANSPARENT };
   enum { RICKY_POWER_OFF_SAME = 0, RICKY_POWER_OFF_DEFAULT, RICKY_POWER_OFF_BLANK };
   uint8_t sleepScreen = LIGHT, rickyStandbyFace = 0, rickyPowerOffScreen = 0;
   uint8_t rickySleepScreenMode() const;
@@ -32,6 +32,7 @@ int main() {
   s.rickyStandbyFace = S::RICKY_STANDBY_PICTURE; assert(s.rickySleepScreenMode() == S::CUSTOM);
   s.rickyStandbyFace = S::RICKY_STANDBY_COVER; assert(s.rickySleepScreenMode() == S::COVER_CUSTOM);
   s.rickyStandbyFace = S::RICKY_STANDBY_KEEP_PAGE; assert(s.rickySleepScreenMode() == S::QUICK_RESUME);
+  s.rickyStandbyFace = S::RICKY_STANDBY_TRANSPARENT; assert(s.rickySleepScreenMode() == S::QUICK_RESUME);
   // A stopped clock must not look like Standby: the rest screen instead.
   s.rickyStandbyFace = S::RICKY_STANDBY_CALENDAR; assert(s.rickySleepScreenMode() == S::LIGHT);
   s.rickyPowerOffScreen = S::RICKY_POWER_OFF_BLANK; assert(s.rickySleepScreenMode() == S::BLANK);

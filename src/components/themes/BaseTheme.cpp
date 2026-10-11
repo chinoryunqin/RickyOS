@@ -68,18 +68,26 @@ void BaseTheme::drawRickyPowerScreen(const GfxRenderer& renderer, const bool sle
 }
 
 Rect BaseTheme::drawRickyStandbyIndicator(const GfxRenderer& renderer, const bool poweredOff) {
-  const char* label = poweredOff ? tr(STR_RICKY_POWERED_OFF) : tr(STR_RICKY_STANDBY);
+  if (!poweredOff) return Rect{};  // Product standby has no added status chrome.
+  const char* label = tr(STR_RICKY_POWERED_OFF);
   const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer);
-  const int padding = std::max(3, UiHighDpiProfile::controlGap / 2);
-  // Cover the footer's progress slot too, rather than leaving half a page number beside the badge.
-  const int width =
-      std::min(safe.width, std::max(safe.width / 5, renderer.getTextWidth(SMALL_FONT_ID, label) + padding * 2));
-  const int height = std::min(safe.height, renderer.getLineHeight(SMALL_FONT_ID) + padding * 2);
-  const Rect badge{safe.x + safe.width - width, safe.y + safe.height - height, width, height};
+  if (safe.width <= 0 || safe.height <= 0) return Rect{};
+  const int font = UiHighDpiProfile::enabled ? RickyDesignUi::CAPTION : UI_10_FONT_ID;
+  // A quiet status, not a bordered button. Keep a paper backing so it stays
+  // readable over arbitrary page/PNG content; no snapshot or extra allocation.
+  const int insetX = std::min<int>(ricky::ds::space::k2, safe.width / 8);
+  // Align with the retained reader footer and cover its whole percentage slot,
+  // rather than clipping half a progress label behind a narrow floating chip.
+  const int insetY = std::min<int>(ricky::ds::space::k6, safe.height / 8);
+  const int width = std::min(safe.width - insetX * 2,
+                             std::max(safe.width / 5, renderer.getTextWidth(font, label) + ricky::ds::space::k4 * 2));
+  const int height = std::min(safe.height - insetY * 2, renderer.getLineHeight(font) + ricky::ds::space::k1 * 2);
+  const Rect badge{safe.x + safe.width - insetX - width, safe.y + safe.height - insetY - height, width, height};
   const GfxRenderer::ClipScope clip(renderer, badge.x, badge.y, badge.width, badge.height);
-  renderer.fillRect(badge.x, badge.y, badge.width, badge.height, false);
-  renderer.drawRect(badge.x, badge.y, badge.width, badge.height);
-  UITheme::drawCenteredWrappedText(renderer, badge, SMALL_FONT_ID, label, 1);
+  renderer.fillRoundedRect(badge.x, badge.y, badge.width, badge.height,
+                           ricky::ds::radius::resolve(ricky::ds::radius::kPill, width, height), Color::White);
+  const GfxRenderer::TextInkScope tone(renderer, ricky::ds::gray::kInk2);
+  UITheme::drawCenteredWrappedText(renderer, badge, font, label, 1);
   return badge;
 }
 

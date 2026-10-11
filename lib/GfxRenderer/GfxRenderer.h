@@ -586,6 +586,10 @@ class GfxRenderer {
   uint16_t getDisplayHeight() const { return panelHeight; }
   uint8_t getGrayscaleLevels() const;
   bool beginGrayscale16();
+  bool beginRetainedGrayscale16();
+  // Logical navigation geometry from the published page layout, rotated once
+  // at the renderer/HAL boundary. Empty bar means a subpage without main tabs.
+  void setNextGray16UiRefresh(int x, int y, int width, int height, uint8_t contentEvery, uint8_t smallEvery) const;
   bool commitGrayscale16() const;
   void cancelGrayscale16() const;
   bool isGrayscale16Active() const { return grayscale16Buffer != nullptr; }

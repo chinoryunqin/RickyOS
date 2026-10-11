@@ -68,6 +68,8 @@ constexpr FaceEntry kFaces[] = {
            return makeUniqueNoThrow<CalendarClockFace>();
          case CrossPointSettings::RICKY_STANDBY_KEEP_PAGE:
            return makeUniqueNoThrow<KeepPageFace>();
+         case CrossPointSettings::RICKY_STANDBY_TRANSPARENT:
+           return makeUniqueNoThrow<KeepPageFace>(true);
          default:
            return makeUniqueNoThrow<WallpaperFace>();  // the picture, or the cover
        }

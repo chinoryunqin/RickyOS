@@ -10,7 +10,7 @@
 class ImageViewerActivity final : public Activity {
  public:
   ImageViewerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string filePath,
-                      bool wallpaperPicker = false);
+                      bool wallpaperPicker = false, bool stickerPicker = false);
 
   void onEnter() override;
   void onExit() override;
@@ -22,11 +22,13 @@ class ImageViewerActivity final : public Activity {
   bool isPng() const;
   bool preparePreview();
   bool doSetSleepCover(const char* sourcePath, bool transparent);
+  bool doSetSticker();
   void showSleepCoverOptions();
 
   std::string filePath;
   std::string previewPath;  // the converted BMP shown for a PNG/JPEG
   bool wallpaperPicker = false;
+  bool stickerPicker = false;
   bool imageReady = false;
   std::vector<std::string> siblingImages;
   int currentImageIndex = -1;

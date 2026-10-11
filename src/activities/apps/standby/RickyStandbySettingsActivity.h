@@ -28,6 +28,8 @@ class RickyStandbySettingsActivity final : public UiTabListActivity {
     StandbyNow,
     PowerOffScreen,
     AutoPowerOff,
+    ChooseSticker,
+    ClearSticker,
     RowKinds
   };
 
@@ -52,7 +54,7 @@ class RickyStandbySettingsActivity final : public UiTabListActivity {
   void rebuildRows();
   const char* rowValue(Row row) const;
   void drawPreview(const Rect& box) const;
-  void openPicturePicker(const std::string& folder = RickyStorageLayout::IMAGES);
+  void openPicturePicker(const std::string& folder = RickyStorageLayout::IMAGES, bool sticker = false);
 
   OptionPopup optionPopup;
   int tab_ = StandbyTab;
@@ -60,4 +62,3 @@ class RickyStandbySettingsActivity final : public UiTabListActivity {
   int rowCount_ = 0;
   char minutes_[24] = {};  // the auto-standby value when it is not one of the presets
 };
-

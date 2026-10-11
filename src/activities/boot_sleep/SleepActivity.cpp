@@ -22,6 +22,7 @@
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
+#include "activities/apps/standby/KeepPageFace.h"
 #include "activities/reader/ReaderUtils.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -124,15 +125,11 @@ bool isValidPngHeader(HalFile& file) {
 }
 
 // RickyOS derives the power-off screen from its Standby and power-off choices.
-uint8_t sleepScreenMode() {
-  return SETTINGS.rickySleepScreenMode();
-}
+uint8_t sleepScreenMode() { return SETTINGS.rickySleepScreenMode(); }
 
 // The picture or cover Standby showed stays on after power-off; a small label says the
 // device is off, so it is not mistaken for Standby (which a short press would leave).
-bool marksPowerOff() {
-  return SETTINGS.rickyPowerOffScreen == CrossPointSettings::RICKY_POWER_OFF_SAME;
-}
+bool marksPowerOff() { return SETTINGS.rickyPowerOffScreen == CrossPointSettings::RICKY_POWER_OFF_SAME; }
 
 BitmapPlacement calculateBitmapPlacement(const int bitmapWidth, const int bitmapHeight, const GfxRenderer& renderer) {
   BitmapPlacement placement;
@@ -570,40 +567,40 @@ void SleepActivity::onEnter() {
       GUI.drawPopup(renderer, tr(STR_ENTERING_SLEEP));
     }
 
-  // 睡前先把面板洗白，再让各路径照常用 HALF 画睡眠画面 —— 仅 Read Pico。
-  //
-  // HALF 是单趟波形，擦不掉已经存在的墨，而睡眠画面全部用 HALF 画，所以阅读器留下的残影
-  // 会透到睡眠图上。这里清空帧缓冲再用一趟 FULL（GC16，36 相完整波形）把它推上去：每个
-  // 像素从它的实际残留态被强行驱动到白，不做差分跳过。全白是关键 —— 只推"旧页"那一帧的话，
-  // 面板上已积累的残留不在差分的比较范围里，洗不掉。
-  //
-  // 顺序必须在提示之后：全刷会把提示一起刷掉。但上面 drawPopup() 自己已经 displayBuffer()
-  // 过一次，所以这里不再推提示 —— 早先那版多推了一趟 HALF，是对同一个提示的重复刷新，
-  // 白白多一次闪烁和等待。
-  //
-  // 两条保留当前帧的路径（Quick Resume、Transparent）在上面已早退：它们要的就是原来那幅
-  // 画面，洗掉反而错了。到这里的一定是"会重画内容"的睡眠画面。
-  //
-  // 先只开在 Read Pico：目前只有这块面板做过实机验证（普通睡眠画面、Quick Resume、
-  // Transparent、夜间模式），其它面板等验收后再扩大范围。
-  // / Wash the panel white before the sleep screens paint -- Read Pico only.
-  //
-  // HALF is a single-pass waveform and cannot erase ink that is already there, and every sleep
-  // screen paints with HALF, so whatever the reader left behind shows through. Clearing the
-  // framebuffer and pushing it with FULL (GC16, a 36-phase complete waveform) drives every
-  // pixel from wherever it actually sits to white with no difference skip. The white field is
-  // the point: pushing the old page alone is not enough, because ghosting already on the panel
-  // is not part of that comparison.
-  //
-  // It has to come after the popup, since the wash takes the popup with it -- and drawPopup()
-  // has already pushed it through displayBuffer(), so no extra popup pass belongs here. An
-  // earlier revision pushed one more HALF, which was a second refresh of the same notice.
-  //
-  // The two frame-preserving paths above (Quick Resume, Transparent) have already returned --
-  // they exist to keep the current frame, so washing it away would be wrong.
-  //
-  // Read Pico only: it is the one panel where this has been checked on hardware (normal sleep
-  // screen, Quick Resume, Transparent, night mode). Other panels can follow once validated.
+    // 睡前先把面板洗白，再让各路径照常用 HALF 画睡眠画面 —— 仅 Read Pico。
+    //
+    // HALF 是单趟波形，擦不掉已经存在的墨，而睡眠画面全部用 HALF 画，所以阅读器留下的残影
+    // 会透到睡眠图上。这里清空帧缓冲再用一趟 FULL（GC16，36 相完整波形）把它推上去：每个
+    // 像素从它的实际残留态被强行驱动到白，不做差分跳过。全白是关键 —— 只推"旧页"那一帧的话，
+    // 面板上已积累的残留不在差分的比较范围里，洗不掉。
+    //
+    // 顺序必须在提示之后：全刷会把提示一起刷掉。但上面 drawPopup() 自己已经 displayBuffer()
+    // 过一次，所以这里不再推提示 —— 早先那版多推了一趟 HALF，是对同一个提示的重复刷新，
+    // 白白多一次闪烁和等待。
+    //
+    // 两条保留当前帧的路径（Quick Resume、Transparent）在上面已早退：它们要的就是原来那幅
+    // 画面，洗掉反而错了。到这里的一定是"会重画内容"的睡眠画面。
+    //
+    // 先只开在 Read Pico：目前只有这块面板做过实机验证（普通睡眠画面、Quick Resume、
+    // Transparent、夜间模式），其它面板等验收后再扩大范围。
+    // / Wash the panel white before the sleep screens paint -- Read Pico only.
+    //
+    // HALF is a single-pass waveform and cannot erase ink that is already there, and every sleep
+    // screen paints with HALF, so whatever the reader left behind shows through. Clearing the
+    // framebuffer and pushing it with FULL (GC16, a 36-phase complete waveform) drives every
+    // pixel from wherever it actually sits to white with no difference skip. The white field is
+    // the point: pushing the old page alone is not enough, because ghosting already on the panel
+    // is not part of that comparison.
+    //
+    // It has to come after the popup, since the wash takes the popup with it -- and drawPopup()
+    // has already pushed it through displayBuffer(), so no extra popup pass belongs here. An
+    // earlier revision pushed one more HALF, which was a second refresh of the same notice.
+    //
+    // The two frame-preserving paths above (Quick Resume, Transparent) have already returned --
+    // they exist to keep the current frame, so washing it away would be wrong.
+    //
+    // Read Pico only: it is the one panel where this has been checked on hardware (normal sleep
+    // screen, Quick Resume, Transparent, night mode). Other panels can follow once validated.
 #if FREEINK_DEVICE_READPICO
   renderer.clearScreen();
   renderer.displayBuffer(HalDisplay::FULL_REFRESH);
@@ -706,11 +703,12 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const bool pre
 
   if (nativeCustomImage && !preserveBackground && renderer.getGrayscaleLevels() == 16 &&
       SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER) {
-    bool displayed =
-        renderer.beginGrayscale16() && renderer.drawBitmapGrayscale16(bitmap, x, y, pageWidth, pageHeight, cropX, cropY);
+    bool displayed = renderer.beginGrayscale16() &&
+                     renderer.drawBitmapGrayscale16(bitmap, x, y, pageWidth, pageHeight, cropX, cropY);
     if (displayed && marksPowerOff()) {
-      const Rect badge = GUI.drawRickyStandbyIndicator(renderer, true);
-      renderer.copyBwToGrayscale16(badge.x, badge.y, badge.width, badge.height, 0);
+      // The indicator draws directly into the open native frame. Copying its
+      // B/W proxy back would flatten caption gray and erase the rounded corners.
+      GUI.drawRickyStandbyIndicator(renderer, true);
     }
     displayed = displayed && renderer.commitGrayscale16();
     renderer.cancelGrayscale16();
@@ -931,7 +929,14 @@ void SleepActivity::renderCoverSleepScreen() const {
 void SleepActivity::renderLastScreenSleepScreen() const {
   const auto previousOrientation = renderer.getOrientation();
   if (APP_STATE.lastSleepFromReader) ReaderUtils::applyOrientation(renderer, SETTINGS.orientation);
-  // Standby keeps the page with its own "Standby" label; once off, the page says so.
+  int top = 0, right = 0, bottom = 0, left = 0;
+  renderer.getOrientedViewableTRBL(&top, &right, &bottom, &left);
+  const Rect safe{left, top, renderer.getScreenWidth() - left - right, renderer.getScreenHeight() - top - bottom};
+  if (KeepPageFace::drawRetained(renderer, safe, false, true)) {
+    renderer.setOrientation(previousOrientation);
+    return;
+  }
+  // Standby keeps the page unlabelled; only power-off adds an explicit status.
   GUI.drawRickyStandbyIndicator(renderer, true);
   renderer.setOrientation(previousOrientation);
   // Only the standby indicator differs from the displayed frame, so a differential FAST

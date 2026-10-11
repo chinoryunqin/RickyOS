@@ -3,6 +3,7 @@
 #include <BuildScratch.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
+#include <HalMemory.h>
 #include <HalStorage.h>
 #include <Logging.h>
 #include <Memory.h>
@@ -128,8 +129,11 @@ constexpr size_t PNG_DECODER_SIZE = sizeof(PNG);
 constexpr size_t MIN_FREE_HEAP_FOR_PNG = PNG_DECODER_SIZE + 16 * 1024;
 
 bool hasHeapForPngDecoder(const char* operation) {
-  const size_t freeHeap = ESP.getFreeHeap();
-  const size_t maxAlloc = ESP.getMaxAllocHeap();
+  // Match makeUniqueNoThrow's default allocator, including registered PSRAM.
+  // Internal-only ESP metrics can reject a Read Pico decode before allocation.
+  const auto heap = HalMemory::getDefaultHeap();
+  const size_t freeHeap = heap.freeBytes;
+  const size_t maxAlloc = heap.largestBlockBytes;
   if (freeHeap >= MIN_FREE_HEAP_FOR_PNG && maxAlloc >= PNG_DECODER_SIZE) return true;
   LOG_ERR("PNG", "Not enough heap for PNG %s (free=%u need=%u, maxAlloc=%u need=%u)", operation, freeHeap,
           MIN_FREE_HEAP_FOR_PNG, maxAlloc, PNG_DECODER_SIZE);
@@ -453,7 +457,9 @@ int pngDrawCallback(PNGDRAW* pDraw) {
       int outX = outXBase + dstX;
       if (outX < screenWidth) {
         const uint8_t alpha = ctx->alphaLineBuffer ? ctx->alphaLineBuffer[srcX] : 255;
-        if (alpha >= 8 && alpha > alphaThreshold4x4(outX, outY)) {
+        if (ctx->config->output == DecodeOutput::NativeGrayscale16) {
+          ctx->renderer->blendGrayscale16Pixel(outX, outY, (ctx->grayLineBuffer[srcX] + 8) / 17, (alpha + 8) / 17);
+        } else if (alpha >= 8 && alpha > alphaThreshold4x4(outX, outY)) {
           uint8_t gray = ctx->grayLineBuffer[srcX];
 
           uint8_t ditheredGray;
@@ -511,6 +517,11 @@ bool PngToFramebufferConverter::decodeToFramebuffer(const std::string& imagePath
   LOG_DBG("PNG", "Decoding PNG: %s", imagePath.c_str());
 
   const bool cacheOnly = config.output == DecodeOutput::CacheOnly;
+  if (config.output == DecodeOutput::NativeGrayscale16 && (!renderer.isGrayscale16Active() || config.bilinearScaling)) {
+    LOG_ERR("PNG", "Native decode requires an active frame and nearest-neighbor scaling");
+    if (config.error) *config.error = ImageRenderError::Failed;
+    return false;
+  }
   if (cacheOnly && config.cachePath.empty()) {
     LOG_ERR("PNG", "Cache-only decode requires a cache path");
     return false;
@@ -665,7 +676,7 @@ bool PngToFramebufferConverter::decodeToFramebuffer(const std::string& imagePath
   // unlike the old full-image buffer it neither competes with the ~44KB decoder
   // nor forces larger images to skip caching - which previously meant a full
   // re-decode on every one of an image page's ~14 render passes.
-  ctx.caching = !config.preserveAlpha && !config.cachePath.empty();
+  ctx.caching = config.output != DecodeOutput::NativeGrayscale16 && !config.preserveAlpha && !config.cachePath.empty();
   if (ctx.caching) {
     if (!ctx.cache.begin(config.cachePath, ctx.dstWidth, ctx.dstHeight, config.x, config.y, 1)) {
       LOG_ERR("PNG", "Failed to start cache stream%s", cacheOnly ? "" : ", continuing without caching");

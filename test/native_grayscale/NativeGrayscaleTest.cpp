@@ -7,6 +7,7 @@
 #include <HalStorage.h>
 #include <JPEGDEC.h>
 #include <JpegToBmpConverter.h>
+#include <PNGdec.h>
 #include <SdCardFont.h>
 
 #include <algorithm>
@@ -23,6 +24,7 @@
 #include "CrossPointSettings.h"
 #include "Epub/blocks/ImageBlock.h"
 #include "Epub/converters/JpegToFramebufferConverter.h"
+#include "Epub/converters/PngToFramebufferConverter.h"
 #include "QrParams.h"
 #include "SleepProbe.h"
 #include "components/themes/BaseTheme.h"
@@ -42,7 +44,7 @@ HalMemory::HeapStats HalMemory::getInternalHeap() { return {33087, 283859, 9796,
 HalMemory::HeapStats HalMemory::getPsramHeap() { return {6235816, 8373520, 4112312, 4980724}; }
 static bool failDecoderAllocation = false;
 void* operator new(size_t size, const std::nothrow_t&) noexcept {
-  return size == sizeof(JPEGDEC) && failDecoderAllocation ? nullptr : std::malloc(size);
+  return (size == sizeof(JPEGDEC) || size == sizeof(PNG)) && failDecoderAllocation ? nullptr : std::malloc(size);
 }
 
 bool FontCacheManager::isScanning() const { return false; }
@@ -52,9 +54,12 @@ ESPMock ESP;
 namespace {
 std::array<uint8_t, HalDisplay::BUFFER_SIZE> bw;
 std::array<uint8_t, HalDisplay::DISPLAY_WIDTH * HalDisplay::DISPLAY_HEIGHT / 2> native;
+auto visibleNative = native;
+auto visibleBw = bw;
 uint8_t levels = 16;
 bool loan = false, failRefresh = false, failAllocation = false;
 int commits = 0, cancels = 0;
+std::array<int, 6> uiRegion{};
 std::vector<char> refreshEvents;
 }  // namespace
 void* operator new[](size_t size, const std::nothrow_t&) noexcept {
@@ -69,6 +74,9 @@ uint16_t HalDisplay::getDisplayWidthBytes() const { return DISPLAY_WIDTH_BYTES; 
 uint32_t HalDisplay::getBufferSize() const { return BUFFER_SIZE; }
 void HalDisplay::clearScreen(uint8_t value) const { bw.fill(value); }
 uint8_t HalDisplay::getGrayscaleLevels() const { return levels; }
+void HalDisplay::setNextGray16UiRefresh(int x, int y, int w, int h, uint8_t content, uint8_t small) {
+  uiRegion = {x, y, w, h, content, small};
+}
 uint8_t* HalDisplay::beginGrayscale16() {
   if (loan) return nullptr;
   loan = true;
@@ -80,7 +88,18 @@ bool HalDisplay::commitGrayscale16() {
   loan = false;
   ++commits;
   refreshEvents.push_back('C');
+  if (!failRefresh) {
+    visibleNative = native;
+    visibleBw = bw;
+  }
   return !failRefresh;
+}
+uint8_t* HalDisplay::beginRetainedGrayscale16() {
+  if (loan) return nullptr;
+  loan = true;
+  native = visibleNative;
+  bw = visibleBw;
+  return native.data();
 }
 void HalDisplay::cancelGrayscale16() {
   loan = false;
@@ -202,6 +221,14 @@ int main(int argc, char** argv) {
   for (const auto orientation : {GfxRenderer::Portrait, GfxRenderer::PortraitInverted, GfxRenderer::LandscapeClockwise,
                                  GfxRenderer::LandscapeCounterClockwise}) {
     renderer.setOrientation(orientation);
+    // Shared logical footer geometry reaches the physical driver in every
+    // orientation; no Activity-owned rotated coordinates or extra hit boxes.
+    const int footerY = renderer.getScreenHeight() - 8;
+    renderer.setNextGray16UiRefresh(0, footerY, renderer.getScreenWidth(), 8, 8, 32);
+    const auto [ax, ay] = physical(orientation, 0, footerY);
+    const auto [bx, by] = physical(orientation, renderer.getScreenWidth() - 1, footerY + 7);
+    assert((uiRegion == std::array<int, 6>{std::min(ax, bx), std::min(ay, by), std::abs(bx - ax) + 1,
+                                           std::abs(by - ay) + 1, 8, 32}));
     assert(renderer.beginGrayscale16());
     // Exact secondary ink, coverage and inversion, on the actual renderer.
     assert(renderer.textInkLevel() == 0);
@@ -226,6 +253,52 @@ int main(int argc, char** argv) {
     }
     assert(renderer.textInkLevel() == 0);
     renderer.cancelGrayscale16();
+    // Real PNGdec: RGBA, gray+alpha, indexed tRNS and truecolor/gray color keys.
+    PngToFramebufferConverter png;
+    for (const auto* name : {"rgba", "gray-alpha", "indexed", "rgb-key", "gray-key"}) {
+      const std::string path = std::string("/") + name + ".png";
+      RenderConfig cfg{};
+      cfg.x = 3;
+      cfg.y = 4;
+      cfg.maxWidth = 16;
+      cfg.maxHeight = 2;
+      cfg.preserveAlpha = true;
+      cfg.output = DecodeOutput::NativeGrayscale16;
+      assert(!png.decodeToFramebuffer(path, renderer, cfg));
+      assert(renderer.beginGrayscale16());
+      native.fill(0x66);
+      bw.fill(0xA5);
+      assert(renderer.commitGrayscale16());
+      const auto originalBw = bw;
+      assert(renderer.beginRetainedGrayscale16() && !renderer.beginRetainedGrayscale16());
+      assert(bw == originalBw);
+      assert(png.decodeToFramebuffer(path, renderer, cfg));
+      for (int y = 0; y < 2; ++y)
+        for (int x = 0; x < 16; ++x) {
+          const bool keyed = std::string(name).find("key") != std::string::npos;
+          const int alpha = keyed ? (x == 1 ? 0 : 15) : (x % 3 == 0 ? 0 : x % 3 == 1 ? 8 : 15);
+          const int delta = (x - 6) * alpha;
+          const int expected = 6 + (delta >= 0 ? (delta + 7) / 15 : -((7 - delta) / 15));
+          const auto [px, py] = physical(orientation, x + 3, y + 4);
+          assert(tone(px, py) == expected);
+        }
+      const auto [px, py] = physical(orientation, 2, 4);
+      assert(tone(px, py) == 6);  // All pixels outside the sticker stay gray, not BW.
+      renderer.cancelGrayscale16();
+      assert(renderer.beginRetainedGrayscale16());
+      for (const auto byte : native) assert(byte == 0x66);  // Partial/cancelled decode discarded.
+      failDecoderAllocation = true;
+      assert(!png.decodeToFramebuffer(path, renderer, cfg));
+      failDecoderAllocation = false;
+      failAllocation = true;
+      assert(!png.decodeToFramebuffer(path, renderer, cfg));
+      failAllocation = false;
+      const auto heap = availableHeap;
+      availableHeap = {100, 100, 100, 100};
+      assert(!png.decodeToFramebuffer(path, renderer, cfg));
+      availableHeap = heap;
+      renderer.cancelGrayscale16();
+    }
     assert(renderer.beginGrayscale16());
     renderer.fillRect(0, 0, 3, 2);
     for (int y = 0; y < renderer.getScreenHeight(); ++y) {

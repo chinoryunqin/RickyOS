@@ -236,11 +236,12 @@ enum class Tier : uint8_t { Interaction1Bit, Resting16Gray };
 #define RICKYOS_UI_DIRECT_GRAY 1
 #endif
 inline constexpr bool kDirectGrayUi = RICKYOS_UI_DIRECT_GRAY != 0;
-inline constexpr uint8_t kGc16EveryDirectFrames = 8;  // Experimental cadence; device acceptance required.
-inline constexpr uint32_t kGraySettleDelayMs = 1500;  // 同 ActivityManager.cpp kGraySettleDelayMs
-inline constexpr uint8_t kGc16EverySettles = 8;       // 同 settleToGray() kCleanEvery
-inline constexpr uint8_t kGc16EveryDuFrames = 32;     // 建议值，需真机调参
-inline constexpr bool kDitherInChrome = false;        // UI 外框禁止棋盘抖动
+inline constexpr uint8_t kGc16EveryDirectFrames = 8;    // Content-area changes, not every UI redraw.
+inline constexpr uint8_t kGc16EveryControlFrames = 32;  // Small controls/navigation have their own regional ledger.
+inline constexpr uint32_t kGraySettleDelayMs = 1500;    // 同 ActivityManager.cpp kGraySettleDelayMs
+inline constexpr uint8_t kGc16EverySettles = 8;         // 同 settleToGray() kCleanEvery
+inline constexpr uint8_t kGc16EveryDuFrames = 32;       // 建议值，需真机调参
+inline constexpr bool kDitherInChrome = false;          // UI 外框禁止棋盘抖动
 }  // namespace refresh
 
 // -----------------------------------------------------------------------------

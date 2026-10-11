@@ -118,8 +118,9 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
         install = body(viewer, 'bool ImageViewerActivity::doSetSleepCover(')
         self.assertIn('static char buffer[4096];', install)
         options = body(viewer, 'void ImageViewerActivity::showSleepCoverOptions()')
-        self.assertEqual(options.count('wallpaperPicker'), 2)
-        self.assertEqual(options.count('finish();'), 2)
+        self.assertEqual(options.count('wallpaperPicker'), 3)  # product and legacy PNG paths
+        self.assertEqual(options.count('finish();'), 4)
+        self.assertIn('index == 1 ? doSetSticker()', options)
         self.assertIn('!activityManager.isSwitchPending()) onEnter();', body(viewer, 'void ImageViewerActivity::loop()'))
 
 
