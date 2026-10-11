@@ -84,6 +84,8 @@ class GfxRenderer {
   mutable uint8_t syntheticBoldPixels = 0;
   mutable const uint8_t* textCoverageCurve_ = nullptr;  // 16 entries; null = coverage as drawn
   mutable uint8_t textSpread_ = 0;                      // 0 none, 1 half a pixel, 2 a pixel (TextWeightScope)
+  mutable uint8_t textInkLevel_ = 0;                    // native UI text tone, scoped per run
+  void writeGrayscale16Physical(int px, int py, uint8_t level) const;
   uint8_t* frameBuffer = nullptr;
   uint16_t panelWidth = HalDisplay::DISPLAY_WIDTH;
   uint16_t panelHeight = HalDisplay::DISPLAY_HEIGHT;
@@ -434,6 +436,21 @@ class GfxRenderer {
   const uint8_t* textCoverageCurve() const { return textCoverageCurve_; }
   uint8_t textSpread() const { return textSpread_; }
 
+  class TextInkScope {
+   public:
+    TextInkScope(const GfxRenderer& renderer, uint8_t level) : renderer_(renderer), previous_(renderer.textInkLevel_) {
+      renderer_.textInkLevel_ = std::min<uint8_t>(level, 15);
+    }
+    ~TextInkScope() { renderer_.textInkLevel_ = previous_; }
+    TextInkScope(const TextInkScope&) = delete;
+    TextInkScope& operator=(const TextInkScope&) = delete;
+
+   private:
+    const GfxRenderer& renderer_;
+    uint8_t previous_;
+  };
+  uint8_t textInkLevel(bool black = true) const { return black ? textInkLevel_ : 15; }
+
   class SyntheticBoldScope {
    public:
     SyntheticBoldScope(const GfxRenderer& renderer, const uint8_t pixels)
@@ -590,6 +607,7 @@ class GfxRenderer {
   uint8_t* grayscale16Frame() const { return grayscale16Buffer; }
   size_t grayscale16FrameBytes() const { return static_cast<size_t>(panelWidth / 2) * panelHeight; }
   void drawGrayscale16Pixel(int x, int y, uint8_t gray) const;
+  void blendGrayscale16Pixel(int x, int y, uint8_t inkLevel, uint8_t coverage) const;
   // Copy a rectangle of the B/W proxy into the native 16-gray frame (ink -> black,
   // paper -> white), so text and shapes drawn with the normal B/W API can sit on a
   // 16-gray picture. `cornerRadius` leaves the corners outside a rounded rectangle

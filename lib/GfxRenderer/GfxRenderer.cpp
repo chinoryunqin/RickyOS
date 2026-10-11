@@ -564,8 +564,7 @@ static uint8_t weighted2BitCoverage(const uint8_t* curve, const uint8_t* bitmap,
 // LSB/MSB planes, where a zero bit only means "not this plane".
 static void draw4BitGlyphPixel(const GfxRenderer& renderer, const int x, const int y, const uint8_t coverage) {
   if (coverage == 0) return;
-  const uint8_t gray = static_cast<uint8_t>((15u - coverage) * 17u);
-  renderer.drawGrayscale16Pixel(x, y, gray);
+  renderer.blendGrayscale16Pixel(x, y, renderer.textInkLevel(), coverage);
 }
 
 // Outline fallback has no font bitmap and uses the same metrics as layout.
@@ -762,12 +761,12 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
           } else if (pixelState) {
             draw4BitGlyphPixel(renderer, screenX, screenY, coverage);
           } else {
-            renderer.drawGrayscale16Pixel(screenX, screenY, static_cast<uint8_t>(coverage * 17));
+            renderer.blendGrayscale16Pixel(screenX, screenY, 15, coverage);
           }
         }
       }
-    } else if (is4Bit && renderer.isGrayscale16Active() && pixelState && syntheticBoldPixels == 0) {
-      // Native coverage is used only for unmodified black glyphs.
+    } else if (is4Bit && renderer.isGrayscale16Active() && syntheticBoldPixels == 0) {
+      // Preserve all coverage steps for both ink and selected paper glyphs.
       for (int glyphY = 0; glyphY < height; glyphY++) {
         const int outerCoord = outerBase + glyphY;
         for (int glyphX = 0; glyphX < width; glyphX++) {
@@ -779,12 +778,11 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
             screenX = innerBase + glyphX;
             screenY = outerCoord;
           }
-          draw4BitGlyphPixel(renderer, screenX, screenY,
-                             weigh4BitCoverage(curve, get4BitCoverage(bitmap, glyphY * width + glyphX)));
+          renderer.blendGrayscale16Pixel(screenX, screenY, renderer.textInkLevel(pixelState),
+                                         weigh4BitCoverage(curve, get4BitCoverage(bitmap, glyphY * width + glyphX)));
         }
       }
-    }
-    else if ((is2Bit || is4Bit) && renderer.isGrayscale16Active()) {
+    } else if ((is2Bit || is4Bit) && renderer.isGrayscale16Active()) {
       // 2-bit faces (downloaded .cpfont) and synthetic bold go straight into the 16-level
       // frame as well, so a page is rasterised once instead of once per B/W, LSB and MSB
       // plane. Coverage 0..3 spreads over the 16 levels (x5); 0 stays transparent.
@@ -810,15 +808,14 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
             draw4BitGlyphPixel(renderer, screenX, screenY, static_cast<uint8_t>(coverage * 5));
           } else if (coverage != 0) {
             // White text on ink (a selected pill or tile): coverage lifts toward paper.
-            renderer.drawGrayscale16Pixel(screenX, screenY, static_cast<uint8_t>(coverage * 5 * 17));
+            renderer.blendGrayscale16Pixel(screenX, screenY, 15, static_cast<uint8_t>(coverage * 5));
           }
           previous3 = previous2;
           previous2 = previous1;
           previous1 = current;
         }
       }
-    }
-    else if (is2Bit || is4Bit) {
+    } else if (is2Bit || is4Bit) {
       for (int glyphY = 0; glyphY < height; glyphY++) {
         const int outerCoord = outerBase + glyphY;
         if (syntheticBoldPixels == 0) {
@@ -878,7 +875,12 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
           const uint8_t bit_index = 7 - (pixelPosition & 7);
 
           if ((byte >> bit_index) & 1) {
-            drawGlyphPixel(renderer, screenX, screenY, pixelState, syntheticBoldPixels);
+            if (renderer.isGrayscale16Active()) {
+              for (int offset = 0; offset <= syntheticBoldPixels; ++offset)
+                renderer.blendGrayscale16Pixel(screenX + offset, screenY, renderer.textInkLevel(pixelState), 15);
+            } else {
+              drawGlyphPixel(renderer, screenX, screenY, pixelState, syntheticBoldPixels);
+            }
           }
         }
       }
@@ -1933,6 +1935,25 @@ uint8_t GfxRenderer::grayscale16Level(const int x, const int y) const {
   return (grayscale16Buffer[index] >> ((px & 1) * 4)) & 0x0F;
 }
 
+void GfxRenderer::blendGrayscale16Pixel(const int x, const int y, const uint8_t inkLevel,
+                                        const uint8_t coverage) const {
+  if (!grayscale16Buffer || !coverage || x < clipLeft_ || y < clipTop_ || x >= clipRight_ || y >= clipBottom_) return;
+  int px, py;
+  rotateCoordinates(orientation, x, y, &px, &py, panelWidth, panelHeight);
+  if (px < 0 || px >= panelWidth || py < 0 || py >= panelHeight) return;
+  const int ink = std::min<uint8_t>(inkLevel, 15);
+  const int alpha = std::min<uint8_t>(coverage, 15);
+  if (alpha == 15) {
+    writeGrayscale16Physical(px, py, static_cast<uint8_t>(ink));
+    return;
+  }
+  const size_t index = static_cast<size_t>(py) * (panelWidth / 2) + px / 2;
+  const int paper = (grayscale16Buffer[index] >> ((px & 1) * 4)) & 15;
+  const int delta = (ink - paper) * alpha;
+  const int level = paper + (delta >= 0 ? (delta + 7) / 15 : -((7 - delta) / 15));
+  writeGrayscale16Physical(px, py, static_cast<uint8_t>(level));
+}
+
 void GfxRenderer::drawGrayscale16Pixel(const int x, const int y, const uint8_t gray) const {
   // Hot path of every anti-aliased text page: one clip test, one rotation, then the
   // B/W proxy bit and the 4-bit level written directly. Going through drawPixel()
@@ -1943,6 +1964,10 @@ void GfxRenderer::drawGrayscale16Pixel(const int x, const int y, const uint8_t g
   rotateCoordinates(orientation, x, y, &px, &py, panelWidth, panelHeight);
   if (px < 0 || px >= panelWidth || py < 0 || py >= panelHeight) return;
   const uint8_t level = (static_cast<unsigned>(gray) + 8) / 17;
+  writeGrayscale16Physical(px, py, level);
+}
+
+void GfxRenderer::writeGrayscale16Physical(const int px, const int py, const uint8_t level) const {
   // B/W proxy for popups and later partial updates: level < 8 is ink, as drawPixel(x, y,
   // level < 8) would write it.
   const uint32_t byteIndex = static_cast<uint32_t>(py) * panelWidthBytes + (px / 8);

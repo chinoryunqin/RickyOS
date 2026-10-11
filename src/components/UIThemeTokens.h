@@ -93,6 +93,7 @@ inline freeink::ui::ThemeTokens uiThemeTokens(const freeink::ui::GfxRendererTarg
     tokens.listValueText = tokens.bodyText;
   }
   if (UiHighDpiProfile::enabled) {
+    tokens.listValueText.color = fui::Color::DarkGray;
     tokens.minTouchSize = ricky::ds::layout::kTouchMin;
     tokens.rowHeight = ricky::ds::layout::kRowHeight;
     tokens.listMinRowHeight = ricky::ds::layout::kRowHeight;

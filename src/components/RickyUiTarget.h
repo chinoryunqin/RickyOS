@@ -3,6 +3,7 @@
 #include <FreeInkUIGfxRenderer.h>
 
 #include "RickyAaIcons.h"
+#include "RickyDesignTokens.h"
 
 // Firmware-owned adapter: the SDK remains product-independent. A native-sized
 // RickyOS line icon uses its coverage twin, including SDK-rendered list rows.
@@ -45,6 +46,16 @@ class RickyUiTarget : public freeink::ui::DrawTarget {
     target_.triangle(a, b, c, paint);
   }
   void text(freeink::ui::Rect rect, const char* text, freeink::ui::TextStyle style) override {
+    // The pinned SDK falls gray text back to solid drawText(). Keep its layout
+    // but supply exact product ink to the renderer, never B/W checkerboard text.
+    using freeink::ui::Color;
+    if (style.color == Color::Transparent) return;
+    const auto ink = style.inverted || style.color == Color::White ? ricky::ds::gray::kPaper
+                     : style.color == Color::DarkGray              ? ricky::ds::gray::kInk2
+                     : style.color == Color::LightGray             ? ricky::ds::gray::kMute
+                                                                   : ricky::ds::gray::kInk;
+    const GfxRenderer::TextInkScope tone(renderer_, ink);
+    if (style.color != Color::White && !style.inverted) style.color = Color::Black;
     if (style.maxLines <= 1) {
       target_.text(rect, text, style);
       return;

@@ -41,6 +41,7 @@ def main():
             "uiTheme": 5, "inxTabPosition": 1, "language": "ZH_CN", "onboardingVersion": 1,
             "orientation": 0, "rickyNickname": "Ricky", "clockUtcOffsetQ": 32,
             "clockAutoSync": 0, "sleepTimeoutMinutes": 60, "showReaderMenu": 1,
+            "readerMenuStyle": 1, "textAntiAliasing": 1,
         }, ensure_ascii=False))
         (config / "user-guide.checked").write_text("1")
         preview = Preview(state, 18780)

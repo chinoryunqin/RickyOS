@@ -68,14 +68,17 @@ inline void progress(const GfxRenderer& renderer, fui::Rect r, int percent, bool
 }
 
 inline void text(const GfxRenderer& renderer, fui::Rect r, const char* value, int font = BODY, bool inverted = false,
-                 fui::TextAlign align = fui::TextAlign::Left, int lines = 1) {
+                 fui::TextAlign align = fui::TextAlign::Left, int lines = 1, ds::gray::Level tone = ds::gray::kInk) {
   // A tiny stack adapter avoids changing the host's published font bindings.
   // Layout's fixed-capacity UTF-8 wrapping avoids per-line heap vectors.
-  fui::GfxRendererTarget target(renderer);
+  RickyUiTarget target(renderer);
   target.setFont(fui::GfxRendererTarget::FONT_BODY, fontFor(renderer, font, value));
   fui::TextStyle style;
   style.font = fui::GfxRendererTarget::FONT_BODY;
-  style.color = inverted ? fui::Color::White : fui::Color::Black;
+  style.color = inverted                  ? fui::Color::White
+                : tone == ds::gray::kInk2 ? fui::Color::DarkGray
+                : tone == ds::gray::kMute ? fui::Color::LightGray
+                                          : fui::Color::Black;
   style.align = align;
   style.maxLines = lines;
   const int height = target.lineHeight(style.font);
@@ -95,6 +98,11 @@ inline void text(const GfxRenderer& renderer, fui::Rect r, const char* value, in
   });
 }
 
+inline void secondaryText(const GfxRenderer& renderer, fui::Rect r, const char* value, int font = CAPTION,
+                          bool inverted = false, fui::TextAlign align = fui::TextAlign::Left, int lines = 1) {
+  text(renderer, r, value, font, inverted, align, lines, ds::gray::kInk2);
+}
+
 inline void cover(const GfxRenderer& renderer, fui::Rect r, const char* title, const char* format) {
   if (r.empty()) return;
   const GfxRenderer::ClipScope clip(renderer, r.x, r.y, r.width, r.height);
@@ -102,7 +110,8 @@ inline void cover(const GfxRenderer& renderer, fui::Rect r, const char* title, c
   const bool dark = style == 0 || style == 3;
   fill(renderer, r, dark ? ds::gray::kInk : style == 4 ? ds::gray::kTint : ds::gray::kPaper);
   renderer.drawRect(r.x, r.y, r.width, r.height, ds::stroke::kHairline, !dark);
-  const int pad = ds::space::k4;
+  const bool compact = r.width < 120 || r.height < 180;
+  const int pad = compact ? ds::space::k2 : ds::space::k4;
   if (style == 2) {
     const int band = std::min<int>(ds::space::k12, r.height / 4);
     fill(renderer, {r.x, static_cast<int16_t>(r.bottom() - band), r.width, static_cast<int16_t>(band)}, ds::gray::kInk);
@@ -118,7 +127,9 @@ inline void cover(const GfxRenderer& renderer, fui::Rect r, const char* title, c
               ds::stroke::kHairline},
              ds::gray::kLine);
   }
-  const int font = fontFor(renderer, HEADLINE, title);
+  // Recent-book thumbnails share the cover templates, not full-size type.
+  // Format is already shown below the thumbnail; keep that space for its title.
+  const int font = fontFor(renderer, compact ? CAPTION : HEADLINE, title);
   const int lh = renderer.getLineHeight(font);
   int chars = 0;
   const uint8_t* cursor = reinterpret_cast<const uint8_t*>(title ? title : "");
@@ -130,7 +141,7 @@ inline void cover(const GfxRenderer& renderer, fui::Rect r, const char* title, c
   const bool vertical = r.width >= 160 && chars > 0 && chars <= 5 && cjk && chars * lh <= r.height - 64;
   const fui::Rect label{static_cast<int16_t>(r.x + pad), static_cast<int16_t>(r.y + pad),
                         static_cast<int16_t>(std::max(1, r.width - pad * 2)),
-                        static_cast<int16_t>(std::max(1, r.height - pad * 2 - 32))};
+                        static_cast<int16_t>(std::max(1, r.height - pad * 2 - (compact ? 0 : 32)))};
   if (vertical) {
     cursor = reinterpret_cast<const uint8_t*>(title);
     int y = label.y + std::max(0, (label.height - chars * lh) / 2);
@@ -151,9 +162,10 @@ inline void cover(const GfxRenderer& renderer, fui::Rect r, const char* title, c
     centered.height = rows * lh;
     text(renderer, centered, title, font, dark, fui::TextAlign::Center, rows);
   }
-  text(renderer,
-       {static_cast<int16_t>(r.x + pad), static_cast<int16_t>(r.bottom() - pad - 28),
-        static_cast<int16_t>(r.width - pad * 2), 28},
-       format ? format : "", CAPTION, dark || style == 2);
+  if (!compact)
+    text(renderer,
+         {static_cast<int16_t>(r.x + pad), static_cast<int16_t>(r.bottom() - pad - 28),
+          static_cast<int16_t>(r.width - pad * 2), 28},
+         format ? format : "", CAPTION, dark || style == 2);
 }
 }  // namespace RickyDesignUi

@@ -958,6 +958,7 @@ void FileBrowserActivity::buildScreen(UiScreen& screen) {
     props.rowInset = screen.theme().listInset;
     props.sidePadding = screen.theme().listSidePadding;
     props.subtitleText = screen.theme().smallText;
+    props.subtitleText.color = fui::Color::DarkGray;
     props.subtitleText.maxLines = 1;
     props.iconSize = 32;
     props.textGap = ricky::ds::space::kInlineGap;

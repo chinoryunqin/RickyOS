@@ -101,10 +101,10 @@ python tools/rickyos-browser/check_reader_preview.py
 文件列表、阅读菜单／更多、弹窗与返回、文字设置及横屏菜单，输出在
 `build/design-interior/screenshots/`，不操作设备、不改变端口 8769 的演示数据。
 
-`check_reader_preview.py` 使用临时 TXT 书籍和独立子进程，检查阅读信息栏、浮层工具栏、
-目录／文字／更多面板与返回、四个阅读方向、夜间模式和隐藏信息栏，输出在
+`check_reader_preview.py` 使用临时 TXT 书籍和独立子进程，检查阅读信息栏、保存旧工具栏
+偏好时的新全屏菜单入口、目录／文字／更多与返回、四个阅读方向、夜间模式和隐藏信息栏，输出在
 `build/design-reader/screenshots/`。脚本不修改正在使用的演示卡，不操作串口。
-截图亮度只说明模拟器帧：浮层仍走原有 B/W 快照，不代表面板响应速度、残影或灰阶波形已验收。
+截图亮度只说明模拟器帧，不代表面板响应速度、残影或灰阶波形已验收。
 
 重新对齐时可用 `--out` 保留旧候选的截图：
 

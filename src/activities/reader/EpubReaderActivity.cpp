@@ -3109,6 +3109,9 @@ static_assert(std::size(kAlignIds) == CrossPointSettings::PARAGRAPH_ALIGNMENT_CO
 }  // namespace
 
 bool EpubReaderActivity::usesToolbarMenu() const {
+  // Read Pico has one product menu, including cards/upgrades whose saved
+  // readerMenuStyle was Toolbar. Do not mutate or reset reader preferences.
+  if (UiHighDpiProfile::enabled) return false;
   // Both board classes drive the same chrome: touch through the FreeInkUI tap
   // targets, buttons through the focused-tool pill and the panel cursor.
   return SETTINGS.readerMenuStyle == CrossPointSettings::READER_MENU_TOOLBAR;

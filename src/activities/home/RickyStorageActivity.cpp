@@ -425,6 +425,8 @@ void RickyStorageActivity::buildScreen(UiScreen& screen) {
   formatBytes(freeText, sizeof(freeText), sdFreeBytes);
   formatBytes(totalText, sizeof(totalText), sdTotalBytes);
   snprintf(text, sizeof(text), tr(STR_RICKY_STORAGE_SPACE), freeText, totalText);
+  centered.color = summarySelected ? fui::Color::White : fui::Color::DarkGray;
+  centered.align = fui::TextAlign::Left;
   target.text(fui::Rect{static_cast<int16_t>(textX), static_cast<int16_t>(textTop + bodyHeight + gap / 2),
                         static_cast<int16_t>(textWidth), static_cast<int16_t>(smallHeight)},
               space == Space::Ready       ? text
@@ -453,7 +455,7 @@ void RickyStorageActivity::buildScreen(UiScreen& screen) {
     const int width = rect.right() - x - pad;
     const int top = rect.y + 80;
     label.color = picked ? fui::Color::White : fui::Color::Black;
-    small.color = label.color;
+    small.color = picked ? fui::Color::White : fui::Color::DarkGray;
     target.text(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(top), static_cast<int16_t>(width),
                           static_cast<int16_t>(bodyHeight)},
                 I18N.get(labels[i]), label);

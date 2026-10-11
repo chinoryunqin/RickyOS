@@ -64,6 +64,9 @@ void text(GfxRenderer& g,R r,const char*,int,bool=false,freeink::ui::TextAlign=f
 void text(GfxRenderer& g,Rect r,const char* s,int f,bool inverted=false,freeink::ui::TextAlign a=freeink::ui::TextAlign::Left) {
   text<Rect>(g,r,s,f,inverted,a);
 }
+void secondaryText(GfxRenderer& g,Rect r,const char* s,int f,bool inverted=false,freeink::ui::TextAlign a=freeink::ui::TextAlign::Left) {
+  text<Rect>(g,r,s,f,inverted,a);
+}
 void progress(GfxRenderer& g,Rect r,int percent) {
   assert(r.x>=5 && r.y>=5 && r.x+r.width<=g.w-5 && r.y+r.height<=g.h-8);
   runs.push_back({r,std::clamp(percent,0,100)});

@@ -257,8 +257,8 @@ typedef struct EpdFontData {
   int8_t (*kernHandler)(void* ctx, uint32_t leftCp, uint32_t rightCp);
 
   /// 4 位覆盖度（两个像素一字节，高半字节在前，0 = 全透明，15 = 满墨）。
-  /// 只有矢量字体（TtfEpdFont）会置位：FreeType 本来就算出 8 位覆盖度，压成 2 位等于把
-  /// 抗锯齿的层次丢掉。预烤好的 .cpfont 位图仍是 2 位，所以它为 false。
+  /// 矢量字体（TtfEpdFont）及 --4bit 生成的 UI 字体会置位：FreeType 本来就算出
+  /// 8 位覆盖度，压成 2 位等于把抗锯齿的层次丢掉。现有 .cpfont 位图仍是 2 位。
   /// 渲染器据此选择读取路径：见 GfxRenderer 的 get4BitCoverage()。
   ///
   /// 必须留在结构体**最末尾**：内置字体（lib/EpdFont/builtinFonts/*.h）是用位置初始化
@@ -266,8 +266,8 @@ typedef struct EpdFontData {
   /// "invalid conversion from 'int' to 'const EpdFontGroup*'"。放在最后则既不影响它们
   /// （新字段零初始化 = false），也不影响按名字赋值的 TtfEpdFont。
   /// / 4-bit coverage (two pixels per byte, high nibble first, 0 = transparent, 15 = full
-  /// ink). Set only by vector faces: FreeType already computes 8-bit coverage, and packing
-  /// it to 2 bits throws away the anti-aliasing depth. Pre-rasterised .cpfont bitmaps stay
+  /// ink). Set by vector faces and --4bit UI faces: FreeType computes 8-bit coverage, and
+  /// packing it to 2 bits throws away depth. Existing pre-rasterised .cpfont bitmaps stay
   /// 2-bit, so this is false for them. GfxRenderer::get4BitCoverage() reads it.
   ///
   /// It MUST stay the last member: the built-in fonts initialise this table positionally,

@@ -201,7 +201,8 @@ class Preview:
             if path.exists():
                 with path.open('rb') as log:
                     log.seek(max(0, path.stat().st_size - 32768))
-                    entries = re.findall(r'Entering activity: ([\w-]+)', log.read().decode('utf-8', errors='replace'))
+                    entries = re.findall(r'(?:Entering|Resuming) activity: ([\w-]+)',
+                                         log.read().decode('utf-8', errors='replace'))
                     if entries:
                         activity = entries[-1]
             return {'product': 'RickyOS-browser-preview', 'alive': alive, 'building': self.busy, 'activity': activity,

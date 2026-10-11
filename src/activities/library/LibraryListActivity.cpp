@@ -1051,6 +1051,7 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
   char position[48];
   snprintf(position, sizeof(position), tr(STR_RICKY_LIBRARY_COUNT), static_cast<unsigned>(count));
   auto countStyle = theme.smallText;
+  countStyle.color = fui::Color::DarkGray;
   countStyle.align = fui::TextAlign::Right;
   screen.target().text(countRect, position, countStyle);
   auto filters = screen.takeTop(ricky::ds::layout::kTouchMin, gap);
@@ -1181,8 +1182,8 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
     }
     RickyDesignUi::text(renderer, {cell.x, static_cast<int16_t>(rect.bottom() + 8), cell.width, 28},
                         shelfTitles[slot].c_str(), RickyDesignUi::CAPTION, picked, fui::TextAlign::Center);
-    RickyDesignUi::text(renderer, {cell.x, static_cast<int16_t>(rect.bottom() + 36), cell.width, 28},
-                        shelfDetails[slot].data(), RickyDesignUi::CAPTION, picked, fui::TextAlign::Center);
+    RickyDesignUi::secondaryText(renderer, {cell.x, static_cast<int16_t>(rect.bottom() + 36), cell.width, 28},
+                                 shelfDetails[slot].data(), RickyDesignUi::CAPTION, picked, fui::TextAlign::Center);
     screen.frame().hit(cell, ACTION_ROW, start + slot, fui::InputTouch | fui::InputLongPress);
   }
   n.drawnCount = count;

@@ -1297,8 +1297,8 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
     if (aboutPicked) RickyDesignUi::fill(renderer, about, ricky::ds::gray::kInk, ricky::ds::radius::kControl);
     RickyDesignUi::text(renderer, about, tr(STR_RICKY_ABOUT_DEVICE), RickyDesignUi::BODY, aboutPicked);
     const fui::Rect version{static_cast<int16_t>(about.right() - 248), about.y, 208, about.height};
-    RickyDesignUi::text(renderer, version, CROSSPOINT_VERSION, RickyDesignUi::CAPTION, aboutPicked,
-                        fui::TextAlign::Right);
+    RickyDesignUi::secondaryText(renderer, version, CROSSPOINT_VERSION, RickyDesignUi::CAPTION, aboutPicked,
+                                 fui::TextAlign::Right);
     RickyPageUi::chevron(target, {static_cast<int16_t>(about.right() - 24), about.y, 24, about.height}, aboutPicked);
     screen.frame().hit(about, ACTION_ROW, categoryCount, fui::InputTouch);
     const auto help = screen.takeTop(ricky::ds::layout::kRowHeight, 0);
@@ -1324,6 +1324,7 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
   productProps.labelText = screen.theme().bodyText;
   productProps.labelText.maxLines = 2;
   productProps.subtitleText = screen.theme().smallText;
+  productProps.subtitleText.color = fui::Color::DarkGray;
   productProps.subtitleText.maxLines = 2;
   productProps.rowGap = std::max<int16_t>(6, screen.theme().listRowGap);
   syncListViewport(screen, productProps);

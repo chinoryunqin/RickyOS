@@ -41,7 +41,7 @@ def main():
         # These are generated resources, not hand-edited font bytes.
         result = subprocess.run([sys.executable,
             'lib/EpdFont/scripts/fontconvert.py', name, str(size),
-            str((SOURCES / f'NotoSansSC-{weight}.otf').relative_to(ROOT)), '--2bit',
+            str((SOURCES / f'NotoSansSC-{weight}.otf').relative_to(ROOT)), '--4bit',
             '--characters', subset, '--line-height', str(height), '--ascender', str(ascender)],
             check=True, capture_output=True, cwd=ROOT)
         # The echoed --characters argument contains YAML newlines; normalize

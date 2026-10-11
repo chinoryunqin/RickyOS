@@ -88,7 +88,8 @@ int main() {
         self.assertEqual(order, sorted(order))
         self.assertIn('screen.frame().hit(cell, OPEN_BOOK, index', source)
         self.assertIn('screen.frame().hit(cell, OPEN_BOOK, STATISTICS', source)
-        self.assertIn('shelf.height - 64', source)
+        # Two title lines and a metadata lane must fit even with BODY fallback.
+        self.assertIn('shelf.height - 120', source)
         self.assertIn('gap * 3) / 4', source)
         self.assertIn('thumbnailHeight = coverH', source)
         self.assertIn('showSelection && selected == index', source)

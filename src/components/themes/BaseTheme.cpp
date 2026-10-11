@@ -1137,10 +1137,10 @@ void BaseTheme::drawRickyReaderChrome(GfxRenderer& renderer, const float bookPro
         titleLeft += width + ds::space::k4;
     }
     if (title && *title && titleRight > titleLeft) {
-      RickyDesignUi::text(renderer,
-                          {static_cast<int16_t>(titleLeft), static_cast<int16_t>(y),
-                           static_cast<int16_t>(titleRight - titleLeft), ds::type::kBody.lineHeight},
-                          title, RickyDesignUi::CAPTION, false, freeink::ui::TextAlign::Center);
+      RickyDesignUi::secondaryText(renderer,
+                                   {static_cast<int16_t>(titleLeft), static_cast<int16_t>(y),
+                                    static_cast<int16_t>(titleRight - titleLeft), ds::type::kBody.lineHeight},
+                                   title, RickyDesignUi::CAPTION, false, freeink::ui::TextAlign::Center);
     }
     const int textY = safe.y + safe.height - ds::space::kBlockGap - ds::type::kCaption.lineHeight;
     int counterLeft = left;
@@ -1155,18 +1155,18 @@ void BaseTheme::drawRickyReaderChrome(GfxRenderer& renderer, const float bookPro
     if (sb.showChapterPageCount) {
       char pages[32];
       snprintf(pages, sizeof(pages), "%s%d / %d", estimated ? "~" : "", currentPage, pageCount);
-      RickyDesignUi::text(renderer,
-                          {static_cast<int16_t>(counterLeft), static_cast<int16_t>(textY),
-                           static_cast<int16_t>((right - counterLeft) / 2), ds::type::kBody.lineHeight},
-                          pages, RickyDesignUi::CAPTION);
+      RickyDesignUi::secondaryText(renderer,
+                                   {static_cast<int16_t>(counterLeft), static_cast<int16_t>(textY),
+                                    static_cast<int16_t>((right - counterLeft) / 2), ds::type::kBody.lineHeight},
+                                   pages, RickyDesignUi::CAPTION);
     }
     if (sb.showBookProgressPercent) {
       char percent[12];
       snprintf(percent, sizeof(percent), "%.0f%%", std::clamp(bookProgress, 0.0f, 100.0f));
-      RickyDesignUi::text(renderer,
-                          {static_cast<int16_t>(left), static_cast<int16_t>(textY), static_cast<int16_t>(right - left),
-                           ds::type::kBody.lineHeight},
-                          percent, RickyDesignUi::CAPTION, false, freeink::ui::TextAlign::Right);
+      RickyDesignUi::secondaryText(renderer,
+                                   {static_cast<int16_t>(left), static_cast<int16_t>(textY),
+                                    static_cast<int16_t>(right - left), ds::type::kBody.lineHeight},
+                                   percent, RickyDesignUi::CAPTION, false, freeink::ui::TextAlign::Right);
     }
   }
   if (sb.showsProgressBar()) {

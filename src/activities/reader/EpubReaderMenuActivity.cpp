@@ -303,9 +303,10 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
     else
       snprintf(pages, sizeof(pages), "%d%%", bookProgressPercent);
     const int lane = std::min<int>(content.width / 2, renderer.getTextWidth(RickyDesignUi::CAPTION, pages) + 16);
-    RickyDesignUi::text(renderer, {content.x, content.y, static_cast<int16_t>(content.width - lane), content.height},
-                        strcmp(chapterTitle_, title.c_str()) == 0 ? "" : chapterTitle_, RickyDesignUi::CAPTION);
-    RickyDesignUi::text(
+    RickyDesignUi::secondaryText(
+        renderer, {content.x, content.y, static_cast<int16_t>(content.width - lane), content.height},
+        strcmp(chapterTitle_, title.c_str()) == 0 ? "" : chapterTitle_, RickyDesignUi::CAPTION);
+    RickyDesignUi::secondaryText(
         renderer, {static_cast<int16_t>(content.right() - lane), content.y, static_cast<int16_t>(lane), content.height},
         pages, RickyDesignUi::CAPTION, false, fui::TextAlign::Right);
   } else {
@@ -420,6 +421,7 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
         setting.inputMask = fui::InputTouch;
         setting.labelText = props.labelText;
         setting.valueText = screen.theme().smallText;
+        setting.valueText.color = fui::Color::DarkGray;
         setting.styles = props.rowStyles;
         setting.state = selected ? fui::StateSelected : fui::StateNormal;
         setting.radius = ricky::ds::radius::kControl;

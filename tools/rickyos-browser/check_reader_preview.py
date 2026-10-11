@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Native reader chrome/toolbar QA on a disposable card; no hardware I/O."""
+"""Native reader chrome/product-menu QA, including saved legacy toolbar settings."""
 import io
 import argparse
 import json
@@ -74,17 +74,19 @@ def main():
             tap(.18,.3)
             shot('reader')
             key('ENTER')
-            shot('toolbar')
-            tap(.5,.91)
-            shot('text-panel')
+            shot('reader-menu-legacy-preference', 'EpubReaderMenu')
+            tap(.61,.23)
+            shot('text-settings', 'TextSettings')
             key('BACK')
-            shot('toolbar-return')
-            tap(.17,.91)
-            shot('contents-panel')
+            shot('menu-return', 'EpubReaderMenu')
+            tap(.16,.23)
+            shot('contents', 'EpubReaderChapterSelection')
             key('BACK')
-            tap(.83,.91)
-            shot('more-panel')
+            shot('contents-return', 'EpubReaderMenu')
+            tap(.5,.78)
+            shot('more', 'EpubReaderMenu')
             key('BACK')
+            shot('more-return', 'EpubReaderMenu')
             key('BACK')
             shot('page-return')
             key('DOWN')
@@ -100,10 +102,7 @@ def main():
                 size = (684,1216) if orientation == 2 else (1216,684)
                 reopen(f'reader-orientation-{orientation}', size)
                 key('ENTER')
-                shot(f'toolbar-orientation-{orientation}', size=size)
-                tap(.5,.86 if orientation != 2 else .91)
-                shot(f'text-orientation-{orientation}', size=size)
-                key('BACK')
+                shot(f'menu-orientation-{orientation}', 'EpubReaderMenu', size=size)
                 key('BACK')
                 shot(f'return-orientation-{orientation}', size=size)
             preview.stop()
@@ -113,7 +112,7 @@ def main():
             preview.start()
             reopen('reader-night')
             key('ENTER')
-            shot('toolbar-night')
+            shot('menu-night', 'EpubReaderMenu')
             preview.stop()
             settings.update(screenInverted=0, statusBarTitle=2, statusBarClock=0,
                             statusBarChapterPageCount=0, statusBarBookProgressPercentage=0,

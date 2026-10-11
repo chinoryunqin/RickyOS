@@ -18,6 +18,25 @@ spec.loader.exec_module(preview)
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_status_reports_resumed_reader_after_menu_closes(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory)
+            binary = state / 'program'
+            binary.touch()
+            (state / 'input.sock').touch()
+            (state / 'simulator.log').write_text(
+                'Entering activity: EpubReader\nEntering activity: EpubReaderMenu\n'
+                'Resuming activity: EpubReader\n')
+            host = object.__new__(preview.Preview)
+            host.lock = threading.RLock()
+            host.process = SimpleNamespace(poll=lambda: None)
+            host.state_dir = host.transport = state
+            host.binary = binary
+            host.busy = False
+            host.error = ''
+            self.assertEqual(host.status()['activity'], 'EpubReader')
+
     def test_build_uses_checkout_virtualenv_without_overwriting_core_dir(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -19,6 +19,7 @@
 #include "SdCardFontSystem.h"
 #include "activities/settings/SettingsActivity.h"
 #include "components/UITheme.h"
+#include "components/UiHighDpiProfile.h"
 #include "util/DictionaryRegistry.h"
 
 // Build the font family setting dynamically. SD-card rows follow whichever
@@ -184,7 +185,6 @@ inline std::vector<StrId> buildLongPressMenuValues() {
   const size_t count = BoardConfig::hasHomeKey() ? std::size(VALUES) : std::size(VALUES) - 1;
   return {VALUES, VALUES + count};
 }
-
 
 // Shared settings list used by both the device settings UI and the web settings API.
 // Each entry has a key (for JSON API) and category (for grouping).
@@ -600,6 +600,13 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
   const auto& baseList = getBaseSettingsList();
 
   std::vector<SettingInfo> v = baseList;
+  if (UiHighDpiProfile::enabled) {
+    // Product navigation is fixed; preserve the stored preference for compatibility,
+    // but do not expose a switch which cannot change this device's menu.
+    v.erase(std::remove_if(v.begin(), v.end(),
+                           [](const SettingInfo& s) { return s.nameId == StrId::STR_READER_MENU_STYLE; }),
+            v.end());
+  }
   if (!BoardConfig::hasTouch()) {
     // The reader menu style stays available on button boards (the toolbar
     // chrome is button-navigable); only the touch controls are hidden.

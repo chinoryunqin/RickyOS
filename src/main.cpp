@@ -754,7 +754,7 @@ void setup() {
 
   const bool settingsLoaded = SETTINGS.loadFromFile();
 #if FREEINK_DEVICE_READPICO
-  if (!settingsLoaded) SETTINGS.readerMenuStyle = CrossPointSettings::READER_MENU_TOOLBAR;
+  if (!settingsLoaded) SETTINGS.readerMenuStyle = CrossPointSettings::READER_MENU_LIST;
 #endif
   const auto onboardingMode =
       settingsLoaded ? LanguageSelectActivity::Mode::Upgrade : LanguageSelectActivity::Mode::Initial;

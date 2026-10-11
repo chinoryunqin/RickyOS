@@ -203,6 +203,30 @@ int main(int argc, char** argv) {
                                  GfxRenderer::LandscapeCounterClockwise}) {
     renderer.setOrientation(orientation);
     assert(renderer.beginGrayscale16());
+    // Exact secondary ink, coverage and inversion, on the actual renderer.
+    assert(renderer.textInkLevel() == 0);
+    {
+      GfxRenderer::TextInkScope ink(renderer, 4);
+      assert(renderer.textInkLevel() == 4 && renderer.textInkLevel(false) == 15);
+      {
+        GfxRenderer::TextInkScope muted(renderer, 8);
+        assert(renderer.textInkLevel() == 8);
+      }
+      assert(renderer.textInkLevel() == 4);
+      renderer.blendGrayscale16Pixel(5, 5, renderer.textInkLevel(), 15);
+      auto [px, py] = physical(orientation, 5, 5);
+      assert(tone(px, py) == 4);
+      renderer.blendGrayscale16Pixel(5, 5, 0, 0);
+      assert(tone(px, py) == 4);  // Transparent coverage preserves the underlay.
+      renderer.blendGrayscale16Pixel(5, 5, 15, 7);
+      assert(tone(px, py) == 9);  // Paper glyph coverage over secondary ink.
+      const GfxRenderer::ClipScope clip(renderer, 8, 8, 2, 2);
+      renderer.blendGrayscale16Pixel(5, 5, 0, 15);
+      assert(tone(px, py) == 9);
+    }
+    assert(renderer.textInkLevel() == 0);
+    renderer.cancelGrayscale16();
+    assert(renderer.beginGrayscale16());
     renderer.fillRect(0, 0, 3, 2);
     for (int y = 0; y < renderer.getScreenHeight(); ++y) {
       for (int x = 0; x < renderer.getScreenWidth(); ++x) {

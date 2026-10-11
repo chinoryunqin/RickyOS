@@ -344,6 +344,7 @@ void ActivityManager::loop() {
 
         // Request an update to ensure the popped activity gets re-rendered
         if (pendingAction.load() == PendingAction::None) {
+          LOG_DBG("ACT", "Resuming activity: %s", currentActivity->name.c_str());
           requestUpdate();
         }
 

@@ -274,14 +274,14 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   screen.frame().hit(avatar, OPEN_BOOK, PROFILE, fui::InputTouch);
   const int textWidth = profile.width - avatar.width - gap;
   design::text(renderer, box(profile.x, profile.y, textWidth, 56), dateText, design::NUMERIC_DISPLAY);
-  design::text(renderer, box(profile.x, profile.y + 56, textWidth, 28), statsText, design::CAPTION);
-  design::text(renderer, box(profile.x, profile.y + 88, greetingWidth, greetingHeight), greetingText, design::BODY,
-               false, fui::TextAlign::Left, 2);
+  design::secondaryText(renderer, box(profile.x, profile.y + 56, textWidth, 28), statsText, design::CAPTION);
+  design::secondaryText(renderer, box(profile.x, profile.y + 88, greetingWidth, greetingHeight), greetingText,
+                        design::BODY, false, fui::TextAlign::Left, 2);
   const auto note = screen.takeBottom(28, ds::space::k4);
-  design::text(renderer, note, RickyProfile::homePhrase(), design::CAPTION, false, fui::TextAlign::Center);
+  design::secondaryText(renderer, note, RickyProfile::homePhrase(), design::CAPTION, false, fui::TextAlign::Center);
 
   const bool empty = !books || books->empty();
-  const int cardH = empty ? 256 : std::min(288, screen.body().height - 144 - 24 - 40 - 12 - 200);
+  const int cardH = empty ? 256 : std::min(288, screen.body().height - 184 - 24 - 40 - 12 - 200);
   const auto main = screen.takeTop(std::max(256, cardH), ds::space::k6);
   RickyBrandMark::drawDogPeek(renderer, Rect{main.right() - 250, main.y - 78, 126, 84});
   const bool selectedCard = !empty && showSelection && selected == start;
@@ -327,7 +327,8 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   }
   const auto& book = (*books)[start];
   paint(art, start);
-  design::text(renderer, box(x, main.y + pad, width, 28), tr(STR_RICKY_HOME_NOW), design::CAPTION, selectedCard);
+  design::secondaryText(renderer, box(x, main.y + pad, width, 28), tr(STR_RICKY_HOME_NOW), design::CAPTION,
+                        selectedCard);
   const int titleFont = design::fontFor(renderer, design::HEADLINE, titleOf(book));
   const bool singleTitle = renderer.getTextWidth(titleFont, titleOf(book)) <= width;
   design::text(renderer, box(x, main.y + pad + 32, width, singleTitle ? 40 : 80), titleOf(book), design::HEADLINE,
@@ -335,21 +336,22 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   // Reserve the author row only when the title fits one line. Two title lines
   // otherwise share that space; neither may collide with progress or the CTA.
   if (!book.author.empty() && singleTitle)
-    design::text(renderer, box(x, main.y + pad + 80, width, 28), book.author.c_str(), design::CAPTION, selectedCard);
+    design::secondaryText(renderer, box(x, main.y + pad + 80, width, 28), book.author.c_str(), design::CAPTION,
+                          selectedCard);
   const int barY = button.y - 48;
   design::progress(renderer, box(x, barY, width, ds::layout::kProgressHeight), progress, selectedCard);
   snprintf(progressText, sizeof(progressText), "%d%%", progress);
   const auto* saved = READING_STATS.findMatchingBookForPath(book.path);
   if (saved && !saved->chapterTitle.empty())
-    design::text(renderer, box(x, barY + 12, width - 80, 28), saved->chapterTitle.c_str(), design::CAPTION,
-                 selectedCard);
-  design::text(renderer, box(x + width - 80, barY + 12, 80, 28), progressText, design::CAPTION, selectedCard,
-               fui::TextAlign::Right);
+    design::secondaryText(renderer, box(x, barY + 12, width - 80, 28), saved->chapterTitle.c_str(), design::CAPTION,
+                          selectedCard);
+  design::secondaryText(renderer, box(x + width - 80, barY + 12, 80, 28), progressText, design::CAPTION, selectedCard,
+                        fui::TextAlign::Right);
   design::fill(renderer, button, selectedCard ? ds::gray::kPaper : ds::gray::kInk, ds::radius::kControl);
   design::text(renderer, button, tr(STR_CONTINUE_READING), design::BODY, !selectedCard, fui::TextAlign::Center);
   screen.frame().hit(main, OPEN_BOOK, start, fui::InputTouch);
 
-  const auto stats = screen.takeTop(144, ds::space::k6);
+  const auto stats = screen.takeTop(184, ds::space::k6);
   const unsigned todayMinutes = READING_STATS.getTodayReadingMs() / 60000;
   const unsigned streak = READING_STATS.getCurrentStreakDays();
   const unsigned goal = getDailyReadingGoalMs() / 60000;
@@ -357,17 +359,17 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   for (int i = 0; i < 2; ++i) {
     const auto cell = box(stats.x + i * (col + gap), stats.y, col, stats.height);
     design::card(renderer, cell, false);
-    design::text(renderer, box(cell.x + pad, cell.y + 12, col - pad * 2, 28),
-                 i == 0 ? tr(STR_RICKY_TODAY_READING) : tr(STR_RICKY_STREAK_READING), design::CAPTION);
+    design::secondaryText(renderer, box(cell.x + pad, cell.y + 12, col - pad * 2, 28),
+                          i == 0 ? tr(STR_RICKY_TODAY_READING) : tr(STR_RICKY_STREAK_READING), design::CAPTION);
     snprintf(statsText, sizeof(statsText), "%u", i == 0 ? todayMinutes : streak);
     design::text(renderer, box(cell.x + pad, cell.y + 40, 136, 56), statsText, design::NUMERIC_DISPLAY);
-    design::text(renderer, box(cell.x + 160, cell.y + 64, col - 160 - pad, 28),
-                 i == 0 ? tr(STR_RICKY_HOME_MINUTES_UNIT) : tr(STR_RICKY_HOME_DAYS_UNIT), design::CAPTION);
+    design::secondaryText(renderer, box(cell.x + 160, cell.y + 64, col - 160 - pad, 28),
+                          i == 0 ? tr(STR_RICKY_HOME_MINUTES_UNIT) : tr(STR_RICKY_HOME_DAYS_UNIT), design::CAPTION);
     if (i == 0) {
-      design::progress(renderer, box(cell.x + pad, cell.y + 96, col - pad * 2, 8),
+      design::progress(renderer, box(cell.x + pad, cell.y + 128, col - pad * 2, 8),
                        goal ? std::min<uint64_t>(100, uint64_t(todayMinutes) * 100 / goal) : 0);
       snprintf(statsText, sizeof(statsText), tr(STR_RICKY_HOME_GOAL_LINE), goal);
-      design::text(renderer, box(cell.x + pad, cell.y + 108, col - pad * 2, 28), statsText, design::CAPTION);
+      design::secondaryText(renderer, box(cell.x + pad, cell.y + 148, col - pad * 2, 28), statsText, design::CAPTION);
     } else {
       const uint32_t today = TimeUtils::getLocalDayOrdinal(static_cast<uint32_t>(halClock.nowUtc()));
       uint64_t samples[7]{};
@@ -380,36 +382,36 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
           }
       for (int b = 0; b < 7; ++b) {
         const int h = samples[b] ? std::max<int>(2, 32 * samples[b] / peak) : 2;
-        design::fill(renderer, box(cell.x + pad + b * 22, cell.y + 104 - h, 12, h), ds::gray::kInk);
+        design::fill(renderer, box(cell.x + pad + b * 22, cell.y + 144 - h, 12, h), ds::gray::kInk);
       }
-      design::text(renderer, box(cell.x + pad, cell.y + 108, col - pad * 2, 28), tr(STR_RICKY_LAST_SEVEN_DAYS),
-                   design::CAPTION);
+      design::secondaryText(renderer, box(cell.x + pad, cell.y + 148, col - pad * 2, 28), tr(STR_RICKY_LAST_SEVEN_DAYS),
+                            design::CAPTION);
     }
     screen.frame().hit(cell, OPEN_BOOK, STATISTICS, fui::InputTouch);
   }
   auto recent = screen.takeTop(40, 12);
   design::text(renderer, recent, tr(STR_RICKY_HOME_RECENT), design::HEADLINE);
   const auto all = box(recent.right() - 104, recent.y - 16, 104, 64);
-  design::text(renderer, box(all.x, recent.y, all.width, 40), tr(STR_RICKY_HOME_ALL), design::CAPTION, false,
-               fui::TextAlign::Right);
+  design::secondaryText(renderer, box(all.x, recent.y, all.width, 40), tr(STR_RICKY_HOME_ALL), design::CAPTION, false,
+                        fui::TextAlign::Right);
   screen.frame().hit(all, OPEN_BOOK, LIBRARY, fui::InputTouch);
   const auto shelf = screen.body();
   const int count = std::min(RickyHomeLayout::PAGE_BOOKS - 1, static_cast<int>(books->size()) - start - 1);
   const int cellW = (shelf.width - gap * 3) / 4;
-  const int thumbH = std::min(cellW * 3 / 2, std::max(1, shelf.height - 64));
+  const int thumbH = std::min(cellW * 3 / 2, std::max(1, shelf.height - 120));
   const int thumbW = thumbH * 2 / 3;
   for (int i = 0; i < count; ++i) {
     const int index = start + 1 + i;
     const auto& item = (*books)[index];
-    const auto cell = box(shelf.x + i * (cellW + gap), shelf.y, cellW, thumbH + 64);
+    const auto cell = box(shelf.x + i * (cellW + gap), shelf.y, cellW, thumbH + 120);
     const auto cover = box(cell.x + (cellW - thumbW) / 2, cell.y, thumbW, thumbH);
     const bool selectedBook = showSelection && selected == index;
     if (selectedBook)
       design::fill(renderer, box(cell.x - 4, cell.y - 8, cell.width + 8, cell.height + 8), ds::gray::kInk,
                    ds::radius::kControl);
     paint(cover, index);
-    design::text(renderer, box(cell.x, cover.bottom() + 8, cell.width, 28), titleOf(item), design::CAPTION,
-                 selectedBook);
+    design::text(renderer, box(cell.x, cover.bottom() + 8, cell.width, 72), titleOf(item), design::CAPTION,
+                 selectedBook, fui::TextAlign::Left, 2);
     const auto* reading = READING_STATS.findMatchingBookForPath(item.path);
     if (reading && reading->lastProgressPercent)
       snprintf(statsText, sizeof(statsText), "%s · %u%%", formatOf(item.path) ? formatOf(item.path) : "",
@@ -417,7 +419,8 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
     else
       snprintf(statsText, sizeof(statsText), "%s · %s", formatOf(item.path) ? formatOf(item.path) : "",
                tr(STR_RICKY_READ_UNREAD));
-    design::text(renderer, box(cell.x, cover.bottom() + 36, cell.width, 28), statsText, design::CAPTION, selectedBook);
+    design::secondaryText(renderer, box(cell.x, cover.bottom() + 84, cell.width, 36), statsText, design::CAPTION,
+                          selectedBook);
     screen.frame().hit(cell, OPEN_BOOK, index, fui::InputTouch);
   }
 }

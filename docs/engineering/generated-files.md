@@ -124,6 +124,9 @@ Chinese translation characters, ASCII and UI punctuation form the subset;
 numeric Display has its own smaller whitelist. Explicit line height and baseline
 are part of the recipe. Do not change reader fonts to reproduce these UI faces.
 Unsupported text falls back as a whole string to the existing body family.
+These four faces now use uncompressed `--4bit` coverage (two continuous pixels
+per byte, high nibble first). BODY CJK fallback and existing SD-card `.cpfont`
+files remain 2-bit; this is not a conversion of all reader fonts.
 
 Maintained icon SVGs live in `src/components/icons/sources/rickyos/`. The current
 design normalizes pinned SDK Lucide geometry to 24-unit viewBoxes and 1.2-unit

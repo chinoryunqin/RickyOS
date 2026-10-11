@@ -115,18 +115,27 @@ int main() {
   for(int i=0;i<4;++i) {
     const auto& font=*fonts[i];
     assert(font.advanceY==heights[i] && font.ascender==baselines[i]);
-    assert(font.descender==baselines[i]-heights[i] && font.is2Bit);
+    assert(font.descender==baselines[i]-heights[i] && !font.is2Bit);
     assert(font.groups==nullptr && font.groupCount==0);
     assert(font.glyphMissHandler==nullptr && font.glyphMissCtx==nullptr);
-    assert(font.vectorBitmapHandler==nullptr && font.kernHandler==nullptr && !font.is4Bit);
+    assert(font.vectorBitmapHandler==nullptr && font.kernHandler==nullptr && font.is4Bit);
+    unsigned tones=0;
+    bool oddGlyph=false;
     for(uint32_t j=0;j<font.intervalCount;++j) {
       const auto& interval=font.intervals[j];
       for(uint32_t cp=interval.first;cp<=interval.last;++cp) {
         const auto& glyph=font.glyph[interval.offset+cp-interval.first];
         assert(font.ascender-glyph.top>=0);
         assert(font.ascender-glyph.top+glyph.height<=font.advanceY);
+        const unsigned pixels=unsigned(glyph.width)*glyph.height;
+        assert(glyph.dataLength==(pixels+1)/2); // no per-row padding
+        const auto* bitmap=font.bitmap+glyph.dataOffset;
+        for(unsigned p=0;p<pixels;++p)
+          tones|=1u<<((bitmap[p/2]>>(p%2==0?4:0))&15);
+        if(pixels%2) {oddGlyph=true;assert((bitmap[pixels/2]&15)==0);}
       }
     }
+    assert(oddGlyph && tones==65535);
   }
 }
 ''', include_dirs=(ROOT / "lib/EpdFont", ROOT / "lib/EpdFont/builtinFonts"))
