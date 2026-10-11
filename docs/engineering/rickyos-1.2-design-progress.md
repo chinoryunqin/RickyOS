@@ -376,3 +376,12 @@ python tools/rickyos-browser/check_reader_preview.py
 SDK 固定提交仍为 `96de1be6ce08eb732909e6e8149af8f892b9a2c5`，其已有工作区
 改动不纳入本次产品提交，也不重置。线上旧版修复应使用独立检出和对应发布基线，
 不把此视觉实验批量带入旧版。
+
+## 私有远程与正式版功能同步（2026-10-11）
+
+用户要求后，已将 `185bfe78` 推至私有仓库 `chinoryunqin/RickyOS-dev` 的
+`codex/rickyos-1.2-design`，未推至正式版仓库。随后在该视觉分支合入
+`rickyos-1.2` 的两项待机修复，并定向移植正式版 1.1.5 的 Markdown、目录、
+进度迁移和中间键开关修复，不覆盖 1.2 设计或正式发布配置。
+范围、来源、验证结果及限制见
+[`1.2 正式版功能同步`](rickyos-1.2-stable-sync.md)。

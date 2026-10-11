@@ -119,4 +119,45 @@ std::string_view chapterTitle(std::string_view line) {
   return isChineseHeading(line) || isEnglishHeading(line) ? line : std::string_view{};
 }
 
+std::string_view markdownTitle(std::string_view line, uint8_t& level) {
+  level = 0;
+  if (line.compare(0, 3, "\xEF\xBB\xBF") == 0) line.remove_prefix(3);
+  size_t indent = 0;
+  while (indent < line.size() && line[indent] == ' ') ++indent;
+  if (indent > 3) return {};
+  line.remove_prefix(indent);
+  size_t hashes = 0;
+  while (hashes < line.size() && line[hashes] == '#') ++hashes;
+  if (!hashes || hashes > 6 || hashes == line.size() || (line[hashes] != ' ' && line[hashes] != '\t')) return {};
+  line = trim(line.substr(hashes));
+  size_t end = line.size();
+  while (end && line[end - 1] == '#') --end;
+  if (end < line.size() && end && isAsciiSpace(line[end - 1])) line = trim(line.substr(0, end));
+  if (line.empty()) return {};
+  level = static_cast<uint8_t>(hashes);
+  return line;
+}
+
+bool MarkdownHeadings::accept(std::string_view line) {
+  if (line.compare(0, 3, "\xEF\xBB\xBF") == 0) line.remove_prefix(3);
+  size_t indent = 0;
+  while (indent < line.size() && indent < 3 && line[indent] == ' ') ++indent;
+  auto content = line.substr(indent);
+  while (!content.empty() && isAsciiSpace(content.back())) content.remove_suffix(1);
+  size_t run = 0;
+  if (!content.empty() && (content[0] == '`' || content[0] == '~'))
+    while (run < content.size() && content[run] == content[0]) ++run;
+  if (fence_) {
+    if (run >= fenceLength_ && content[0] == fence_ && run == content.size()) fence_ = 0;
+    return false;
+  }
+  if (run >= 3) {
+    fence_ = content[0];
+    fenceLength_ = run;
+    return false;
+  }
+  uint8_t level;
+  return !markdownTitle(line, level).empty();
+}
+
 }  // namespace txt_chapter_index

@@ -114,6 +114,13 @@ Grid, and to INX Recent while focus is on the tabs. All use
 The shortcut defaults to off on first boot, after restoring system settings, or
 when the saved settings omit this key. Existing saved On/Off values are preserved;
 users can enable it in Display settings.
+RickyOS 1.1.5 ties the product Standby Back-release exit to that same switch.
+With the middle-key shortcut off, Back cannot enter Standby from Home or leave
+Standby; its release is consumed without navigating the resumed page. Turning
+it on restores both actions. The side power key, automatic standby and explicit
+Standby entries remain independent. The middle key is a capacitive strip input,
+not an additional GPIO light-sleep wake source; this fix does not change the
+Read Pico light-sleep wake mask or PMU key handling.
 The manager requires a local logical Back press followed by release, or a
 completed touch Back gesture that publishes both edges in the same frame.
 Push/Pop/Replace cancel the old pair; activation and parent restoration seed a

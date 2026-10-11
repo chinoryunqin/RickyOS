@@ -64,25 +64,25 @@ bool Txt::load() {
   }
 
   if (!Storage.exists(filepath.c_str())) {
-    LOG_ERR("TXT", "File does not exist: %s", filepath.c_str());
+    LOG_ERR("TXT", "Missing: %s", filepath.c_str());
     return false;
   }
 
   HalFile file;
   if (!Storage.openFileForRead("TXT", filepath, file)) {
-    LOG_ERR("TXT", "Failed to open file: %s", filepath.c_str());
+    LOG_ERR("TXT", "Open failed: %s", filepath.c_str());
     return false;
   }
 
   const uint64_t sourceSize = file.fileSize64();
   if (sourceSize >= UINT32_MAX) {
-    LOG_ERR("TXT", "Source is too large for 32-bit positions: %s", filepath.c_str());
+    LOG_ERR("TXT", "Source >=4GiB: %s", filepath.c_str());
     return false;
   }
   fileSize = static_cast<size_t>(sourceSize);
 
   loaded = true;
-  LOG_DBG("TXT", "Loaded TXT file: %s (%zu bytes)", filepath.c_str(), fileSize);
+  LOG_DBG("TXT", "Loaded %s (%zu B)", filepath.c_str(), fileSize);
   return true;
 }
 
@@ -126,7 +126,7 @@ std::string Txt::findCoverImage() const {
   for (const auto& ext : extensions) {
     std::string coverPath = folder + "/" + baseName + ext;
     if (Storage.exists(coverPath.c_str())) {
-      LOG_DBG("TXT", "Found matching cover image: %s", coverPath.c_str());
+      LOG_DBG("TXT", "Cover: %s", coverPath.c_str());
       return coverPath;
     }
   }
@@ -137,7 +137,7 @@ std::string Txt::findCoverImage() const {
     for (const auto& ext : extensions) {
       std::string coverPath = folder + "/" + std::string(name) + ext;
       if (Storage.exists(coverPath.c_str())) {
-        LOG_DBG("TXT", "Found fallback cover image: %s", coverPath.c_str());
+        LOG_DBG("TXT", "Fallback cover: %s", coverPath.c_str());
         return coverPath;
       }
     }
@@ -156,7 +156,7 @@ bool Txt::generateCoverBmp() const {
 
   std::string coverImagePath = findCoverImage();
   if (coverImagePath.empty()) {
-    LOG_DBG("TXT", "No cover image found for TXT file");
+    LOG_DBG("TXT", "No cover");
     return false;
   }
 
@@ -165,7 +165,7 @@ bool Txt::generateCoverBmp() const {
 
   if (FsHelpers::hasBmpExtension(coverImagePath)) {
     // Copy BMP file to cache
-    LOG_DBG("TXT", "Copying BMP cover image to cache");
+    LOG_DBG("TXT", "Copy BMP cover");
     HalFile src, dst;
     if (!Storage.openFileForRead("TXT", coverImagePath, src)) {
       return false;
@@ -178,11 +178,11 @@ bool Txt::generateCoverBmp() const {
       size_t bytesRead = src.read(buffer, sizeof(buffer));
       dst.write(buffer, bytesRead);
     }
-    LOG_DBG("TXT", "Copied BMP cover to cache");
+    LOG_DBG("TXT", "BMP copied");
     return true;
   } else if (FsHelpers::hasJpgExtension(coverImagePath)) {
     // Convert JPG/JPEG to BMP (same approach as Epub)
-    LOG_DBG("TXT", "Generating BMP from JPG cover image");
+    LOG_DBG("TXT", "Convert JPG cover");
     HalFile coverJpg, coverBmp;
     if (!Storage.openFileForRead("TXT", coverImagePath, coverJpg)) {
       return false;
@@ -193,31 +193,31 @@ bool Txt::generateCoverBmp() const {
     const bool success = JpegToBmpConverter::jpegFileToBmpStream(coverJpg, coverBmp);
 
     if (!success) {
-      LOG_ERR("TXT", "Failed to generate BMP from JPG cover image");
+      LOG_ERR("TXT", "JPG conversion failed");
       Storage.remove(getCoverBmpPath().c_str());
     } else {
-      LOG_DBG("TXT", "Generated BMP from JPG cover image");
+      LOG_DBG("TXT", "JPG converted");
     }
     return success;
   }
 
   // PNG files are not supported (would need a PNG decoder)
-  LOG_ERR("TXT", "Cover image format not supported (only BMP/JPG/JPEG)");
+  LOG_ERR("TXT", "Cover requires BMP/JPG/JPEG");
   return false;
 }
 
 bool Txt::clearCache() const {
   if (!Storage.exists(cachePath.c_str())) {
-    LOG_DBG("TXT", "Cache does not exist, no action needed");
+    LOG_DBG("TXT", "No cache");
     return true;
   }
 
   if (!Storage.removeDir(cachePath.c_str())) {
-    LOG_ERR("TXT", "Failed to clear cache");
+    LOG_ERR("TXT", "Cache clear failed");
     return false;
   }
 
-  LOG_DBG("TXT", "Cache cleared successfully");
+  LOG_DBG("TXT", "Cache cleared");
   return true;
 }
 
@@ -240,14 +240,20 @@ bool Txt::readContent(uint8_t* buffer, size_t offset, size_t length) const {
 }
 
 bool Txt::openChapterIndex(HalFile& file, txt_encoding::Encoding& encoding, uint32_t& count) const {
+#ifdef RICKYOS_PRODUCT
+  const bool markdown = FsHelpers::hasMarkdownExtension(filepath);
+#else
+  constexpr bool markdown = false;
+#endif
   count = 0;
   const std::string path = cachePath + "/chapters.bin";
   if (!Storage.openFileForRead("TXT", path, file)) return false;
 
   ChapterIndexHeader header;
   if (file.read(&header, sizeof(header)) != static_cast<int>(sizeof(header)) || header.magic != CHAPTER_INDEX_MAGIC ||
-      header.version != CHAPTER_INDEX_VERSION || header.recordSize != sizeof(txt_chapter_index::Record) ||
-      header.fileSize != fileSize || !txt_encoding::isSerializedValueValid(static_cast<uint8_t>(header.encoding)) ||
+      header.version != (markdown ? 2 : CHAPTER_INDEX_VERSION) ||
+      header.recordSize != sizeof(txt_chapter_index::Record) || header.fileSize != fileSize ||
+      !txt_encoding::isSerializedValueValid(static_cast<uint8_t>(header.encoding)) ||
       !txt_encoding::isSupported(header.encoding) || !encodingMatches(encoding, header.encoding) ||
       header.count > static_cast<uint32_t>(std::numeric_limits<int>::max())) {
     return false;
@@ -260,8 +266,13 @@ bool Txt::openChapterIndex(HalFile& file, txt_encoding::Encoding& encoding, uint
   uint32_t previousOffset = 0;
   for (uint32_t i = 0; i < header.count; ++i) {
     txt_chapter_index::Record chapter;
-    if (!readChapter(file, header.count, i, chapter) || (i > 0 && chapter.sourceOffset <= previousOffset) ||
-        txt_chapter_index::chapterTitle(chapter.title).empty()) {
+    if (!readChapter(file, header.count, i, chapter) || (i > 0 && chapter.sourceOffset <= previousOffset)) {
+      return false;
+    }
+    uint8_t level;
+    if ((markdown ? txt_chapter_index::markdownTitle(chapter.title, level)
+                  : txt_chapter_index::chapterTitle(chapter.title))
+            .empty()) {
       return false;
     }
     previousOffset = chapter.sourceOffset;
@@ -295,6 +306,13 @@ bool Txt::buildChapterIndex(txt_encoding::Encoding& encoding, uint8_t* scratch, 
   if (!txt_encoding::isSupported(encoding)) return false;
 
   ChapterIndexHeader header;
+#ifdef RICKYOS_PRODUCT
+  const bool markdown = FsHelpers::hasMarkdownExtension(filepath);
+#else
+  constexpr bool markdown = false;
+#endif
+  header.version = markdown ? 2 : CHAPTER_INDEX_VERSION;
+  txt_chapter_index::MarkdownHeadings headings;
   header.fileSize = static_cast<uint32_t>(fileSize);
   header.encoding = encoding;
 
@@ -311,7 +329,7 @@ bool Txt::buildChapterIndex(txt_encoding::Encoding& encoding, uint8_t* scratch, 
     bool lineTooLong = false;
 
     const auto appendChapter = [&]() {
-      if (lineTooLong || lineLength == 0) return true;
+      if (lineLength == 0 || lineTooLong) return true;
 
       size_t utf8Length = lineLength;
       if (encoding == txt_encoding::Encoding::Gbk) {
@@ -322,8 +340,11 @@ bool Txt::buildChapterIndex(txt_encoding::Encoding& encoding, uint8_t* scratch, 
         lineBuffer[utf8Length] = '\0';
       }
 
-      const auto title =
-          txt_chapter_index::chapterTitle(std::string_view(reinterpret_cast<const char*>(lineBuffer), utf8Length));
+      const auto line = std::string_view(reinterpret_cast<const char*>(lineBuffer), utf8Length);
+      // Keep the raw ATX prefix in the fixed record; metadata derives its level.
+      if (markdown && !headings.accept(line)) return true;
+      const auto title = markdown ? line : txt_chapter_index::chapterTitle(line);
+      if (title.size() >= txt_chapter_index::TITLE_CAPACITY) return true;
       if (title.empty()) return true;
 
       txt_chapter_index::Record chapter;
@@ -350,7 +371,7 @@ bool Txt::buildChapterIndex(txt_encoding::Encoding& encoding, uint8_t* scratch, 
           lineTooLong = false;
           lineStartOffset = sourceOffset + static_cast<size_t>(i) + 1;
         } else if (!lineTooLong) {
-          if (lineLength + 1 < txt_chapter_index::TITLE_CAPACITY) {
+          if (lineLength + 1 < (markdown ? lineCapacity : txt_chapter_index::TITLE_CAPACITY)) {
             lineBuffer[lineLength++] = value;
           } else {
             lineTooLong = true;

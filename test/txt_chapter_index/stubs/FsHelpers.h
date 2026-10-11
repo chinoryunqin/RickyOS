@@ -9,6 +9,12 @@ inline bool endsWith(const std::string_view value, const std::string_view suffix
 }
 
 inline bool hasTxtExtension(const std::string_view value) { return endsWith(value, ".txt"); }
+inline bool hasMarkdownExtension(std::string_view value) {
+  if (value.size() < 3) return false;
+  auto suffix = value.substr(value.size() - 3);
+  if (suffix[0] == '.' && (suffix[1] == 'm' || suffix[1] == 'M') && (suffix[2] == 'd' || suffix[2] == 'D')) return true;
+  return false;
+}
 inline bool hasBmpExtension(const std::string_view value) { return endsWith(value, ".bmp"); }
 inline bool hasJpgExtension(const std::string_view value) {
   return endsWith(value, ".jpg") || endsWith(value, ".jpeg");

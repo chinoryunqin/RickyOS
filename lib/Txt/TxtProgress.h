@@ -25,6 +25,9 @@ struct Record {
 static_assert(sizeof(Header) == 16 && sizeof(Record) == 12);
 
 enum class LegacyResult : uint8_t { Absent, Restored, Failed };
+// Upgrade checkpoint: source coordinates survive a Markdown syntax/layout change.
+LegacyResult readReflowSource(const char* cachePath, uint32_t sourceSize, uint32_t& sourceOffset);
+LegacyResult preserveReflowSource(const char* cachePath, uint32_t sourceSize);
 LegacyResult readLegacySource(const char* cachePath, uint32_t sourceSize, uint32_t& sourceOffset);
 bool resolve(HalFile& mapping, uint32_t sourceSize, uint32_t sourceOffset, uint32_t& visibleOffset);
 bool sourceForVisible(HalFile& mapping, uint32_t sourceSize, uint32_t visibleOffset, uint32_t& sourceOffset);

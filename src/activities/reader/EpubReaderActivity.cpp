@@ -437,6 +437,21 @@ bool EpubReaderActivity::loadBook() {
     }
   }
 
+  uint32_t markdownOffset = 0;
+  const auto markdownProgress = Txt::restoreMarkdownProgress(bookPath, epub->getCachePath(), markdownOffset);
+  if (markdownProgress == txt_progress::LegacyResult::Failed) {
+    legacyProgressPending = true;
+    loadProtectionError = "markdown progress migration failed";
+    return false;
+  }
+  if (markdownProgress == txt_progress::LegacyResult::Restored) {
+    currentSpineIndex = cachedSpineIndex = nextPageNumber = 0;
+    cachedChapterTotalPageCount = 0;
+    cachedVisibleTextOffset = pendingOffsetJump = markdownOffset;
+    hasSavedProgress = true;
+    legacyProgressPending = markdownProgressPending_ = true;
+  }
+
   if (!hasSavedProgress && Txt::isTxtOrMd(bookPath)) {
     uint32_t visibleOffset = 0;
     switch (Txt::restoreLegacyProgress(bookPath, epub->getCachePath(), visibleOffset)) {
@@ -1817,8 +1832,10 @@ void EpubReaderActivity::renderBook() {
         // When the saved page is already cached, show it now; updateChapterBuild() extends
         // the chapter in the background while the reader is on the page.
         constexpr int kOpenMargin = 0;
-        if (section->isPartial() && (anchorJump ? section->getPageForAnchor(pendingAnchor).has_value()
-                                                : target + kOpenMargin < static_cast<int>(section->pageCount))) {
+        if (section->isPartial() &&
+            (offsetJump.has_value() ? section->getPageForVisibleTextOffset(*offsetJump).has_value()
+             : anchorJump           ? section->getPageForAnchor(pendingAnchor).has_value()
+                                    : target + kOpenMargin < static_cast<int>(section->pageCount))) {
           LOG_DBG("ERS", "Partial covers target %d of %d; deferring extension build", target, section->pageCount);
         } else {
           const size_t spineBytes =
@@ -2146,6 +2163,10 @@ bool EpubReaderActivity::saveProgress(int spineIndex, int currentPage, int pageC
   READING_STATS.updateProgress(static_cast<uint8_t>(progressPercent), progressPercent >= 100, chapterTitle,
                                chapterProgress);
   const bool saved = EpubReaderUtils::saveProgress(*epub, spineIndex, currentPage, pageCount, offset);
+  if (saved && markdownProgressPending_) {
+    const std::string checkpoint = epub->getCachePath() + "/md-resume-v1.bin";
+    if (Storage.remove(checkpoint.c_str())) markdownProgressPending_ = false;
+  }
   if (saved && clearInitialProgressAfterSave_ && WeReadStore::clearInitialProgress(wereadBookId_)) {
     clearInitialProgressAfterSave_ = false;
   }

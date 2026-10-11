@@ -99,6 +99,26 @@ TEST_F(LibraryBuilderTest, DirectoryEntriesAreEnumeratedOnce) {
   EXPECT_EQ(fake::directoryEntriesByPath["/folder/c.txt"], 1u);
 }
 
+TEST_F(LibraryBuilderTest, MarkdownUploadInBooksIsIndexedAfterDirtyRebuild) {
+  initial();
+  fake::add("/books/中文笔记.md", "# 标题\n\n中文正文\n");
+  fake::add("/books/大写后缀.MD", "# Uppercase\n");
+  // Successful HTTP and WebSocket uploads persist this marker after closing
+  // the file. Exercise the same scanner/reconciliation path as Library entry.
+  ASSERT_TRUE(markLibraryIndexDirty());
+  ASSERT_TRUE(isLibraryIndexDirty());
+  ASSERT_TRUE(buildLibraryIndex("/", stats, true));
+  EXPECT_FALSE(isLibraryIndexDirty());
+  EXPECT_EQ(stats.books, 4);
+  EXPECT_EQ(stats.added, 2);
+  LibraryIndexFile index;
+  ASSERT_TRUE(index.open(INDEX));
+  std::vector<std::string> paths;
+  for (uint16_t row = 0; row < index.bookCount(); ++row) paths.push_back(pathAt(index, SortOrder::TitleAsc, row));
+  EXPECT_EQ(std::count(paths.begin(), paths.end(), "/books/中文笔记.md"), 1);
+  EXPECT_EQ(std::count(paths.begin(), paths.end(), "/books/大写后缀.MD"), 1);
+}
+
 TEST_F(LibraryBuilderTest, DirectoryResumeFailureRetainsPreviousIndex) {
   initial();
   const auto old = fake::files[INDEX]->bytes;

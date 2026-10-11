@@ -132,3 +132,55 @@ TEST_F(TxtChapterCacheTest, DetectsAndCachesGbkChapterTitles) {
 }
 
 }  // namespace
+
+#ifdef RICKYOS_PRODUCT
+TEST_F(TxtChapterCacheTest, MarkdownIndexesAtxOutsideFencesAndRejectsOldCache) {
+  const std::string source =
+      "\xEF\xBB\xBF# 标题\r\n正文\n##\t**小节** ##\n```cpp\n# 假标题\n````\n"
+      "    # 缩进代码\n~~~~\n## 另一假标题\n~~~\n~~~~\n###### 最深\n#hashtag\n";
+  writeBook(source);
+  std::filesystem::rename(hostPath("/book.txt"), hostPath("/book.MD"));
+  Txt txt("/book.MD", "/.crosspoint");
+  ASSERT_TRUE(txt.load());
+  std::array<uint8_t, 8192> scratch{};
+  txt_encoding::Encoding encoding = txt_encoding::Encoding::Unknown;
+  uint32_t count = 0;
+  ASSERT_TRUE(txt.buildChapterIndex(encoding, scratch.data(), scratch.size(), count));
+  ASSERT_EQ(count, 3U);
+  HalFile cache;
+  ASSERT_TRUE(txt.openChapterIndex(cache, encoding, count));
+  for (uint32_t i = 0; i < count; ++i) {
+    txt_chapter_index::Record chapter;
+    ASSERT_TRUE(txt.readChapter(cache, count, i, chapter));
+    uint8_t level = 0;
+    ASSERT_FALSE(txt_chapter_index::markdownTitle(chapter.title, level).empty());
+    EXPECT_EQ(level, i == 0 ? 1 : i == 1 ? 2 : 6);
+    EXPECT_EQ(chapter.sourceOffset, i == 0 ? 0U : source.find(i == 1 ? "##\t" : "######"));
+  }
+  cache.close();
+  {
+    std::fstream old(hostPath(txt.getCachePath() + "/chapters.bin"), std::ios::binary | std::ios::in | std::ios::out);
+    old.seekp(14);
+    old.put(1);
+  }
+  HalFile old;
+  EXPECT_FALSE(txt.openChapterIndex(old, encoding, count));
+  old.close();
+  ASSERT_TRUE(txt.buildChapterIndex(encoding, scratch.data(), scratch.size(), count));
+  HalFile rebuilt;
+  EXPECT_TRUE(txt.openChapterIndex(rebuilt, encoding, count));
+  EXPECT_EQ(count, 3U);
+}
+
+TEST_F(TxtChapterCacheTest, MarkdownLongFenceInfoDoesNotLeakFakeHeadings) {
+  writeBook("```" + std::string(500, 'x') + "\n# hidden\n```\n## visible\n" + std::string(5000, 'z') + "\n### last");
+  std::filesystem::rename(hostPath("/book.txt"), hostPath("/book.md"));
+  Txt txt("/book.md", "/.crosspoint");
+  ASSERT_TRUE(txt.load());
+  std::array<uint8_t, 8192> scratch{};
+  txt_encoding::Encoding encoding = txt_encoding::Encoding::Unknown;
+  uint32_t count = 0;
+  ASSERT_TRUE(txt.buildChapterIndex(encoding, scratch.data(), scratch.size(), count));
+  EXPECT_EQ(count, 2U);
+}
+#endif

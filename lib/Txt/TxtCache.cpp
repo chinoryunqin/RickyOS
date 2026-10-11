@@ -13,6 +13,9 @@
 #include "Txt.h"
 #include "TxtProgress.h"
 #include "TxtToHtml.h"
+#ifdef RICKYOS_PRODUCT
+#include "MarkdownFormatter.h"
+#endif
 
 namespace {
 bool openChapters(Txt& txt, HalFile& chapters, txt_encoding::Encoding& encoding, uint32_t& count) {
@@ -234,8 +237,20 @@ txt_progress::LegacyResult Txt::restoreLegacyProgress(const std::string& filepat
   const auto legacy = txt_progress::readLegacySource(txt.getCachePath().c_str(), txt.getFileSize(), sourceOffset);
   if (legacy != txt_progress::LegacyResult::Restored) return legacy;
   if (resolveSourcePosition(filepath, cachePath, sourceOffset, visibleOffset)) return legacy;
-  LOG_ERR("TXT", "Legacy progress migration failed; original progress retained: %s", filepath.c_str());
+  LOG_ERR("TXT", "Resume failed; keeping old progress: %s", filepath.c_str());
   return txt_progress::LegacyResult::Failed;
+}
+
+txt_progress::LegacyResult Txt::restoreMarkdownProgress(const std::string& filepath, const std::string& cachePath,
+                                                        uint32_t& visibleOffset) {
+  if (!FsHelpers::hasMarkdownExtension(filepath)) return txt_progress::LegacyResult::Absent;
+  Txt txt(filepath, "/.crosspoint");
+  if (!txt.load() || txt.getFileSize() >= UINT32_MAX) return txt_progress::LegacyResult::Failed;
+  uint32_t source = 0;
+  const auto result = txt_progress::readReflowSource(cachePath.c_str(), txt.getFileSize(), source);
+  if (result != txt_progress::LegacyResult::Restored) return result;
+  return resolveSourcePosition(filepath, cachePath, source, visibleOffset) ? result
+                                                                           : txt_progress::LegacyResult::Failed;
 }
 
 void Txt::invalidateCache(const std::string& cachePath) {
@@ -247,7 +262,12 @@ bool Txt::validateCache(const std::string& filepath, const std::string& cachePat
   char metadataVersion[4] = {};
   const std::string marker = cachePath + "/txt-cache-version";
   bool valid = Storage.readFileToBuffer(marker.c_str(), metadataVersion, sizeof(metadataVersion)) == 1 &&
-               metadataVersion[0] == '2';
+               metadataVersion[0] ==
+#ifdef RICKYOS_PRODUCT
+                   (FsHelpers::hasMarkdownExtension(filepath) ? '5' : '2');
+#else
+                   '2';
+#endif
 
   // 1. If html/0.html exists, check its embedded version comment
   const std::string htmlPath = cachePath + "/html/0.html";
@@ -259,7 +279,7 @@ bool Txt::validateCache(const std::string& filepath, const std::string& cachePat
       if (bytesRead > 0) {
         header[bytesRead] = '\0';
         if (strstr(header, TxtToHtml::cacheVersionTag(filepath)) == nullptr) {
-          LOG_DBG("TXT", "HTML cache version mismatch or missing, invalidating: %s", htmlPath.c_str());
+          LOG_DBG("TXT", "Stale HTML cache: %s", htmlPath.c_str());
           valid = false;
         }
       } else {
@@ -275,7 +295,7 @@ bool Txt::validateCache(const std::string& filepath, const std::string& cachePat
     HalFile rawFile;
     if (Storage.openFileForRead("TXT", filepath, rawFile)) {
       if (rawFile.fileSize64() != cachedSize) {
-        LOG_DBG("TXT", "File size changed (%u vs cached %u), invalidating cache", static_cast<uint32_t>(rawFile.size()),
+        LOG_DBG("TXT", "File size changed: %u != %u", static_cast<uint32_t>(rawFile.size()),
                 static_cast<uint32_t>(cachedSize));
         valid = false;
       }
@@ -285,7 +305,7 @@ bool Txt::validateCache(const std::string& filepath, const std::string& cachePat
   }
 
   if (!valid) {
-    LOG_DBG("TXT", "Cache invalid for %s, wiping html and sections", filepath.c_str());
+    LOG_DBG("TXT", "Rebuild HTML/sections: %s", filepath.c_str());
     invalidateCache(cachePath);
   }
 
@@ -294,7 +314,23 @@ bool Txt::validateCache(const std::string& filepath, const std::string& cachePat
 
 bool Txt::buildTxtCache(const std::string& filepath, const std::string& cachePath,
                         std::unique_ptr<BookMetadataCache>& bookMetadataCache) {
-  LOG_DBG("TXT", "Building metadata cache for TXT: %s", filepath.c_str());
+  LOG_DBG("TXT", "Build TXT/MD metadata: %s", filepath.c_str());
+
+#ifdef RICKYOS_PRODUCT
+  if (FsHelpers::hasMarkdownExtension(filepath)) {
+    char version[4] = {};
+    if (Storage.readFileToBuffer((cachePath + "/txt-cache-version").c_str(), version, sizeof(version)) == 1 &&
+        (version[0] == '2' || version[0] == '3' || version[0] == '4')) {
+      Txt txt(filepath, "/.crosspoint");
+      if (!txt.load() || txt.getFileSize() >= UINT32_MAX ||
+          txt_progress::preserveReflowSource(cachePath.c_str(), txt.getFileSize()) ==
+              txt_progress::LegacyResult::Failed) {
+        LOG_ERR("TXT", "MD resume failed; keeping old progress/map");
+        return false;
+      }
+    }
+  }
+#endif
 
   if (!Storage.exists(cachePath.c_str())) {
     Storage.mkdir(cachePath.c_str());
@@ -303,24 +339,24 @@ bool Txt::buildTxtCache(const std::string& filepath, const std::string& cachePat
   }
 
   if (!bookMetadataCache->beginWrite()) {
-    LOG_ERR("TXT", "Could not begin writing cache");
+    LOG_ERR("TXT", "Metadata begin failed");
     return false;
   }
 
   if (!bookMetadataCache->beginContentOpfPass()) {
-    LOG_ERR("TXT", "Could not begin writing content.opf pass");
+    LOG_ERR("TXT", "Begin content.opf failed");
     return false;
   }
 
   bookMetadataCache->createSpineEntry("content.html");
 
   if (!bookMetadataCache->endContentOpfPass()) {
-    LOG_ERR("TXT", "Could not end writing content.opf pass");
+    LOG_ERR("TXT", "End content.opf failed");
     return false;
   }
 
   if (!bookMetadataCache->beginTocPass()) {
-    LOG_ERR("TXT", "Could not begin writing toc pass");
+    LOG_ERR("TXT", "Begin TOC failed");
     return false;
   }
 
@@ -331,21 +367,32 @@ bool Txt::buildTxtCache(const std::string& filepath, const std::string& cachePat
   txt_encoding::Encoding encoding = txt_encoding::Encoding::Unknown;
   uint32_t count = 0;
   if (!openChapters(txt, chapters, encoding, count) || count >= UINT16_MAX - 1) return false;
+#ifdef RICKYOS_PRODUCT
+  const bool markdown = FsHelpers::hasMarkdownExtension(filepath);
+#endif
   for (uint32_t chapterIndex = 0; chapterIndex < count; ++chapterIndex) {
     txt_chapter_index::Record chapter;
     if (!txt.readChapter(chapters, count, chapterIndex, chapter)) return false;
     char anchor[32];
     snprintf(anchor, sizeof(anchor), "txt-%u", static_cast<unsigned>(chapter.sourceOffset));
-    bookMetadataCache->createTocEntry(chapter.title, "content.html", anchor, 0);
+    uint8_t level = 0;
+#ifdef RICKYOS_PRODUCT
+    if (markdown) {
+      const auto title = txt_chapter_index::markdownTitle(chapter.title, level);
+      // inlineText reads and consumes forward; its output never grows the input.
+      MarkdownFormatter::plainText(title, chapter.title);
+    }
+#endif
+    bookMetadataCache->createTocEntry(chapter.title, "content.html", anchor, level);
   }
 
   if (!bookMetadataCache->endTocPass()) {
-    LOG_ERR("TXT", "Could not end writing toc pass");
+    LOG_ERR("TXT", "End TOC failed");
     return false;
   }
 
   if (!bookMetadataCache->endWrite()) {
-    LOG_ERR("TXT", "Could not end writing cache");
+    LOG_ERR("TXT", "Metadata end failed");
     return false;
   }
 
@@ -359,7 +406,7 @@ bool Txt::buildTxtCache(const std::string& filepath, const std::string& cachePat
   }
 
   if (!bookMetadataCache->buildBookBin(filepath, bookMetadata)) {
-    LOG_ERR("TXT", "Could not build book.bin for TXT");
+    LOG_ERR("TXT", "book.bin build failed");
     return false;
   }
 
@@ -367,10 +414,15 @@ bool Txt::buildTxtCache(const std::string& filepath, const std::string& cachePat
 
   bookMetadataCache = makeUniqueNoThrow<BookMetadataCache>(cachePath);
   if (!bookMetadataCache || !bookMetadataCache->load()) {
-    LOG_ERR("TXT", "Failed to reload cache after build");
+    LOG_ERR("TXT", "Cache reload failed");
     return false;
   }
 
-  if (!Storage.writeFile((cachePath + "/txt-cache-version").c_str(), "2")) return false;
+  if (!Storage.writeFile((cachePath + "/txt-cache-version").c_str(),
+#ifdef RICKYOS_PRODUCT
+                         FsHelpers::hasMarkdownExtension(filepath) ? "5" :
+#endif
+                                                                   "2"))
+    return false;
   return true;
 }
