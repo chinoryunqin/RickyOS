@@ -1,0 +1,13 @@
+.local/
+logs/
+tools/
+firmware/rickyos-plus-1.2/upstream/
+firmware/rickyos-plus-1.2/upstream-restore/
+firmware/rickyos-plus-1.2/generated/
+firmware/**/dist/*.bin
+firmware/**/sdkconfig
+firmware/**/sdkconfig.old
+firmware/**/managed_components/
+firmware/**/dependencies.lock
+__pycache__/
+.DS_Store

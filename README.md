@@ -1,3 +1,5 @@
+> **Metalio E-Ink4-Plus 专用分支**：设备工程入口见 [ports/metalio-e-ink4-plus](ports/metalio-e-ink4-plus/README.md)。本分支目标为 ESP32-S31 + 4.7 寸并行屏。
+
 # RickyOS
 
 由 **Ricky AI Studio** 为 MindReset Read Pico（小纸 Pico）打造的阅读与生活工具固件。

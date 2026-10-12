@@ -1,0 +1,4 @@
+idf_component_register(INCLUDE_DIRS "include" "../../upstream/freeink-sdk/libs/hardware/BoardConfig/include"
+    REQUIRES arduino-esp32-4.0.0-RC1 esp_driver_gpio mbedtls efuse esp_netif esp_event esp_wifi
+        esp_driver_uart esp_driver_i2c esp_driver_ledc esp_driver_usb_serial_jtag)
+target_compile_definitions(${COMPONENT_LIB} INTERFACE FREEINK_DEVICE_METALIO_PLUS=1)

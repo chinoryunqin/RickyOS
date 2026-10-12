@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+TASK_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+python3 "$TASK_ROOT/scripts/check_rickyos_plus_sources.py"
+export IDF_TOOLS_PATH="$TASK_ROOT/.local/espressif"
+export IDF_COMPONENT_MANAGER=0
+PIO_TOOL_ROOT="${PLATFORMIO_CORE_DIR:-$HOME/.platformio}/packages"
+export PATH="$PIO_TOOL_ROOT/tool-cmake/bin:$PIO_TOOL_ROOT/tool-ninja:/opt/homebrew/bin:$PATH"
+source "$TASK_ROOT/tools/esp-idf-v6.1/export.sh"
+cd "$TASK_ROOT/firmware/rickyos-plus-1.2"
+IDF_TARGET=esp32s31 idf.py -B "$TASK_ROOT/.local/build-rickyos-plus-1.2" build
+python3 "$TASK_ROOT/scripts/check_rickyos_plus_sources.py"
+python3 - "$TASK_ROOT/.local/build-rickyos-plus-1.2/RickyOS-Plus-1.2.elf" <<'PY'
+from pathlib import Path
+import sys
+if b'pollMetalioPlusTouch' not in Path(sys.argv[1]).read_bytes():
+    raise SystemExit('Linked application is missing the Plus touch backend')
+print('Linked Plus touch backend verified')
+PY
+python3 "$TASK_ROOT/tests/check_plus_clock_objects.py"

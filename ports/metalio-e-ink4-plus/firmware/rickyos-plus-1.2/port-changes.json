@@ -1,0 +1,231 @@
+{
+  "baseline": "24c05ff7ffb06254879d9928d8531db6839e7ad1",
+  "sdk_baseline": "96de1be6ce08eb732909e6e8149af8f892b9a2c5",
+  "changes": [
+    {
+      "path": "lib/Logging/Logging.cpp",
+      "baseline_sha256": "a484e746aa2c62f875e0fe0134f71ec181a9ad9f758832910f6fcccd1f5695f7",
+      "ported_sha256": "98681524032c73117edb905a96938796e67ba9a8a5cf8e9544775925303c8738"
+    },
+    {
+      "path": "lib/WeReadWebApi/src/WeReadClient.cpp",
+      "baseline_sha256": "e257fb9dbf31aef9ed6e86d1d294cd983fc8bf9d3627df6d0c1697bba7ad8cc6",
+      "ported_sha256": "de8ec54d3d2326641204a76f9a6a412d7b8ee12dbc9af1a06315746727a2fc71"
+    },
+    {
+      "path": "lib/hal/HalDisplay.h",
+      "baseline_sha256": "264572df9fd5123a3347b340b1c2ebd2921de5e9701ff37c3688d75e3840c74e",
+      "ported_sha256": "a87dbba0cccbd098499b1c308f1985983b17414ba9482203fb2a42b71946aa1a"
+    },
+    {
+      "path": "lib/hal/HalGPIO.cpp",
+      "baseline_sha256": "12c4c18ac3586866d8b2551e016c4cc6d85f727dfd5c15ddb7625efc1022fe77",
+      "ported_sha256": "09bb3b0eb1706cc784b70a9e31d31cb3ed477d18efe1324f4261d5184ec280b2"
+    },
+    {
+      "path": "src/activities/ActivityManager.cpp",
+      "baseline_sha256": "1c27071138700cf241f092a8d426f6eea0eaaf9c2bddae8424800f28f94ecaa4",
+      "ported_sha256": "bff9c392a2433a9f6f243ac20d6ed94aa5de2019e72c75e903d7a76b235d419b"
+    },
+    {
+      "path": "src/activities/ActivityManager.h",
+      "baseline_sha256": "0736e2facf16b9e5bf61c9f9eda9d81516f55da27f5d1a5feff93d1509289a53",
+      "ported_sha256": "377674420763dfea15932f10b86241bb075d2cd7c627af3126c2116fd9510e82"
+    },
+    {
+      "path": "src/activities/reader/EpubReaderActivity.cpp",
+      "baseline_sha256": "9d132f79495f90728c8a7a4aa1a769ba69c5a6ae08948c0195a24cbe159d55b1",
+      "ported_sha256": "e88a81bca5db36a62487ae780d89f29196dca0891a62c923c1cc3e7e1a310720"
+    },
+    {
+      "path": "src/activities/reader/EpubReaderActivity.h",
+      "baseline_sha256": "862f3bf390f94d539710de4e12d9f5c9ed9fc621535287e9d3d78ca71af4f1fd",
+      "ported_sha256": "301310aeea5c48d1281578d458468753c3cdf30bebfcef63f1a388d2b3a243ae"
+    },
+    {
+      "path": "src/components/UITheme.cpp",
+      "baseline_sha256": "8229fe954cb82d346c6297657a2b597128379b71bf5e5e5b9c38ffac84aab2aa",
+      "ported_sha256": "42e4e6263e20d803363bc9235a2528bbe4d570a132ed79aff2c23efe61c163c9"
+    },
+    {
+      "path": "src/main.cpp",
+      "baseline_sha256": "eac95e662790f4c470c587e5249a4512c6f58ff5d5d2482ccab7ee28bb6a3457",
+      "ported_sha256": "0916a508052036b90f7e725c9e339bfd4484621aa6a78b61c61753520770f905"
+    },
+    {
+      "path": "freeink-sdk/libs/book/ContentProtection/src/WolfsslCrypto.cpp",
+      "baseline_sha256": "acf1109473c9290cedca944e8bc7779264c3d985b8e6a314270e2014f602174f",
+      "ported_sha256": "f3b27c1edabcd03c59963e9a90cdd46b10c554132569d9462742a6b3ba0cd0c0"
+    },
+    {
+      "path": "freeink-sdk/libs/hardware/InputManager/include/InputManager.h",
+      "baseline_sha256": "f093f88a3096281e2cd5d0a766e20abaa263bb4efbe49379fc4c4c64dd419baa",
+      "ported_sha256": "4c7b2152ea3b3542aab2913d1a8fb393667b382aa51eaed3305f5b2354121cf8"
+    },
+    {
+      "path": "freeink-sdk/libs/hardware/PowerManager/src/PowerManager.cpp",
+      "baseline_sha256": "2c76b408db836c96fbd0d6f288c3ba5dbd7494a3eb2709bc02c38809b6a14a5b",
+      "ported_sha256": "effa795fad7f9bb0176cb3df64cd1587c1b7ba88f8a135d387c688bab3942de9"
+    },
+    {
+      "path": "freeink-sdk/libs/hardware/InputManager/src/InputManager.cpp",
+      "baseline_sha256": "3a42a0bb11354775900ed8fa06a25bd5ec12a083ba97c8ddc872840b52ba3ada",
+      "ported_sha256": "1ac7290facab2d600ee51c6cbda8daba97fa94a8552f3f656762458711b2b810"
+    },
+    {
+      "path": "lib/hal/HalDisplay.cpp",
+      "baseline_sha256": "ccb0509d0946ceabf57e37b93ac7aa9a2cbb0dd132cfdb2646cefefb0efcef62",
+      "ported_sha256": "3dbb99bc2aaec82d0097ca49cde75dca6283fa3b7f150584c2bf78e33b619418"
+    },
+    {
+      "path": "freeink-sdk/libs/hardware/BatteryMonitor/src/BatteryMonitor.cpp",
+      "baseline_sha256": "f6a217520fd415968d75ac1b1e226283d397b28469ab3e44570c085d36d30eec",
+      "ported_sha256": "5365e9cd71d3d782c85956349ca14d5f39892530942f7b10bf4e3ec7936e2f2c"
+    },
+    {
+      "path": "freeink-sdk/libs/hardware/Rtc/src/Rtc.cpp",
+      "baseline_sha256": "863de99db69d15cb431f2ee5f547f7858a1f73aba8b5850beac7f4abb41eb3df",
+      "ported_sha256": "1507ad1dd08a4fe46f481612fef1a685c1a84f15b87f0ee51fdc925000084a2b"
+    },
+    {
+      "path": "src/activities/home/InxRecentActivity.h",
+      "baseline_sha256": "25dd8130878577cc68c68f072afd4a9a056f4ab955a26d167576e8c0bdbecbbf",
+      "ported_sha256": "b4fd57160d474f9ed0a2f07a1aa563c322fc6c15bf94777883c45afa6b67f166"
+    },
+    {
+      "path": "src/activities/UiListActivity.h",
+      "baseline_sha256": "2ab54e81a490129243e6f5d4b8b44ea8b2b97697eb737e69bfe154fc90dc2214",
+      "ported_sha256": "90a1ff1d6ea303d18adeff21257104123fab0750c4ffb7d8e3689f01a0292f4b"
+    },
+    {
+      "path": "src/activities/settings/ClockSyncActivity.h",
+      "baseline_sha256": "d2954320133f173a2aef4bb7ba3d362ac9e0cfe823bccfed10873a5ba1578884",
+      "ported_sha256": "5ca0b2e8171c4ff54b9d48a4d9d956acfbf57ac735e1591d24ad12cc1107d73e"
+    },
+    {
+      "path": "src/activities/settings/ClockSyncActivity.cpp",
+      "baseline_sha256": "5feb59d42fbd7c2da1872cb399895594b3fa4c060785c41395732ee8f00c67a9",
+      "ported_sha256": "3fc36366627bb199f410c543d17913ca34553d129ef524904ba4f6149ef9989c"
+    },
+    {
+      "path": "lib/TrustedTime/TrustedTime.cpp",
+      "baseline_sha256": "9373de24b10de51934ab8bd232ed3fc2fd096a480fd576b5c502e5df723a9004",
+      "ported_sha256": "d4b345eed4d32ec44803c6c61096ad045b5c26c87a540736722737200d472b00"
+    },
+    {
+      "path": "lib/hal/HalClock.cpp",
+      "baseline_sha256": "0567d8be98feb5942e6217066792e250fe6b014ce9474c86c2eb5c3a2b72c465",
+      "ported_sha256": "6fc7398577dc5bfad6241c5072659a0dedda5b0b475028110af9662462207b0f"
+    },
+    {
+      "path": "lib/hal/HalClock.h",
+      "baseline_sha256": "5eb10e1591668cb59e2a56c7c28d3ff2b08d05121b3afa4d18c94d27b3b4ad84",
+      "ported_sha256": "e21adb611b087cf887e16189664e7695ee30eb2bde8e4588182585fc803c2093"
+    },
+    {
+      "path": "src/activities/network/WifiSelectionActivity.cpp",
+      "baseline_sha256": "09017f99c91da12bfeb162063ef047cad46c71a588de955acbd4d08f06e25432",
+      "ported_sha256": "20f3b834dec1eca998330383af9ddf63bfee58047cc002e3d90f2d0e83d30797"
+    },
+    {
+      "path": "lib/EpdFont/FontDecompressor.cpp",
+      "baseline_sha256": "4e90f3a97bc5255b33e370a12801d61ed169b52125b0f3c647e1201404913f05",
+      "ported_sha256": "50938e3913c5e2048d13d577a9367e59f8e0852be64bfaa3168a78c106ab96dc"
+    },
+    {
+      "path": "lib/EpdFont/FontDecompressor.h",
+      "baseline_sha256": "d0b789cadd11a29a57d942f9beeeb240d0d5498b152ec5f52f0fdea870531f9d",
+      "ported_sha256": "34107a00a8724c0b068a5b22aa400fc7ebb6bfe31bf91b042d95497043fe2790"
+    },
+    {
+      "path": "freeink-sdk/libs/network/SecureNet/src/SecureClient.cpp",
+      "baseline_sha256": "544d404e40b81e254a418118623c01a207897b72f7297fd2275b1fe44160dfd5",
+      "ported_sha256": "1461118a45608c86574de7d7cf61eb8387959fc8d0f6b39c8465aa2ef242db1c"
+    },
+    {
+      "path": "src/activities/settings/FontDownloadActivity.cpp",
+      "baseline_sha256": "24450464bfdd20f64a89430079fe275106617afd8cae210b8a7c50d9008fca1e",
+      "ported_sha256": "46e7f4253530701add02d8fe0127d91f710a49cca0ebef48a640faf3e82b03f4"
+    },
+    {
+      "path": "src/network/HttpDownloader.cpp",
+      "baseline_sha256": "f1cac89fd42bdd2206d6fc625c762c4e3f2306bb2519cc9bbb3537ba8aeb0784",
+      "ported_sha256": "d2da1d71f47470e0ee8e68da0c3aaa0d428fedf68eba55d712c36add99cbc4d3"
+    },
+    {
+      "path": "src/network/HttpDownloader.h",
+      "baseline_sha256": "63521ca2fd8dfee0e5b79b491fe18f54bb201b6502ae176afe7aeeca8963bc64",
+      "ported_sha256": "e5e88d3e1b3c924e3069a0cd7260d2dd30c5393e7a79b046e9dacc8538a9737f"
+    },
+    {
+      "path": "src/network/WifiPowerSaveGuard.h",
+      "baseline_sha256": "00a0ea3d2a912d96af0c3c6f1e9815096b7d8dd39f352d9a7e5f15ad6ccd4580",
+      "ported_sha256": "e820fad5603086a392b042ed72bb3235794ac97bf2ddc4ab6515ada644921f9e"
+    },
+    {
+      "path": "src/network/CrossPointWebServer.h",
+      "baseline_sha256": "848da78a7e6db037f7b8285ae66417dcee3ec32fab802cfc63d001bf92fb15ab",
+      "ported_sha256": "b4440cb90bc490ef63783a7f34e6bdf5340b607f145354795d33012b44613252"
+    },
+    {
+      "path": "src/network/CrossPointWebServer.cpp",
+      "baseline_sha256": "cc26e2862bc34cfd502efd63ab616d9c7e577d51e120037525a8be6222c75ee5",
+      "ported_sha256": "44c6569138c4e9a75489670dbc876e71752afd54cd9f5b941f95d100de0ed9b3"
+    },
+    {
+      "path": "freeink-sdk/libs/network/SecureNet/include/SecureHttpClient.h",
+      "baseline_sha256": "690c9772a16013702e124afd21c5c050f281f1fa20a0d2f38d7906b975ebca72",
+      "ported_sha256": "909c28dc9310124780abe66f0e937dd582de636a97c75708e56b4ed2b87f36b1"
+    },
+    {
+      "path": "src/activities/util/FrontlightPanelActivity.cpp",
+      "baseline_sha256": "cb9ff5f652ac848f6789e58f488f2bb53ddfc86905bc4259dfa98decbadd7a93",
+      "ported_sha256": "3214cb0e5f8ddc9e2e2ff14ee759518a12c967dd2e395782a357761e416fd79a"
+    },
+    {
+      "path": "src/activities/util/FrontlightPanelActivity.h",
+      "baseline_sha256": "28f273626ec6d605dd24764a8b99c856289cb7d8b27664e6e839d7689486f779",
+      "ported_sha256": "16bdce1745563baa30280cb177f24f01ac232c8425ef7fa9da0402c1047544bc"
+    },
+    {
+      "path": "lib/I18n/translations/english.yaml",
+      "baseline_sha256": "681900ea71fbb31de22e46a254df1c3a30a267cf1e45b3914aecef7827a4f99c",
+      "ported_sha256": "38eb76ca8ae1625fc067dcd031e81ce3deec1458f0989cd6fb82dd7af1a3b469"
+    },
+    {
+      "path": "lib/I18n/translations/chinese.yaml",
+      "baseline_sha256": "1a08d260f1e6da688733a956a90607bba1dd56dff746a5975470add5a13562dc",
+      "ported_sha256": "22c62925dbbbd4818df8f0f7818537a5459df5d4281a02d2093d95eadd24afd0"
+    },
+    {
+      "path": "src/activities/apps/standby/StandbyActivity.cpp",
+      "baseline_sha256": "492ca8697502289f838fb357a363d977a7325ef46bd5db6158084b21f83fe8ae",
+      "ported_sha256": "b0b37d21b222b7b510a863da3c19dcd2b2d1411e98abdca842c8b76df843bd19"
+    },
+    {
+      "path": "src/activities/apps/standby/StandbyActivity.h",
+      "baseline_sha256": "819202486c48dfdb3816e4eef79a286b93ed2d7d305e0f6f027fed4cfc2e7e30",
+      "ported_sha256": "88bd3f256ae38d18c6eb0fb0fafa50017efe0c97c35d680463bc71ab9fa24b0e"
+    },
+    {
+      "path": "lib/hal/HalAudioOutput.cpp",
+      "baseline_sha256": "402506af5026e44ed927ce857fa97917e029b3144793ede908c0a0d38fece482",
+      "ported_sha256": "43624f45f22684436dd7a853212d098c3fd080d8dcf836ccf5a0b8d5ac7b62c0"
+    },
+    {
+      "path": "lib/hal/HalAudioOutput.h",
+      "baseline_sha256": "f0bf1cf1618f778f2302a24198c45052791e6fd643b49b034e2e714ab1bd3ee1",
+      "ported_sha256": "953eccd4cbc5fcf0f066c8586fd4ea71524e4f817c38d8fd1cc369b1d32f2c64"
+    },
+    {
+      "path": "src/CrossPointSettings.cpp",
+      "baseline_sha256": "b5506174e7df9283dc19d0a24a9a844306e250da908e0ee2be68b1a013d3b933",
+      "ported_sha256": "51ecf7672fb2c517796e3f6ba9a517bab908d561b3f42fb8ca56e0737850ef36"
+    },
+    {
+      "path": "src/CrossPointSettings.h",
+      "baseline_sha256": "a67b0d572a4c8f827e3af5679fd2f9f5899df1051fa25fd76e545147c94aec61",
+      "ported_sha256": "562917cc375b491f79b72447a5119c06feff08678aa782d455ead09d0c9eb15c"
+    }
+  ]
+}

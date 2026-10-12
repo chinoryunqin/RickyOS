@@ -1,0 +1,2001 @@
+--- a/lib/Logging/Logging.cpp
++++ b/lib/Logging/Logging.cpp
+@@ -2,6 +2,9 @@
+ 
+ #include <BoardConfig.h>
+ #include <esp_rom_sys.h>
++#if FREEINK_DEVICE_METALIO_PLUS
++#include <esp_log.h>
++#endif
+ 
+ #include <string>
+ 
+@@ -62,7 +65,11 @@
+     }
+   }
+   va_end(args);
+-#if FREEINK_LOG_TRANSPORT == FREEINK_LOG_TRANSPORT_ROM_PRINTF
++#if FREEINK_DEVICE_METALIO_PLUS
++  // IDF owns USB Serial/JTAG. Route through its console instead of creating a
++  // second Arduino USB interrupt owner or sending application logs only to UART.
++  esp_log_write(level[0] == 'E' ? ESP_LOG_ERROR : ESP_LOG_INFO, origin, "%s", buf);
++#elif FREEINK_LOG_TRANSPORT == FREEINK_LOG_TRANSPORT_ROM_PRINTF
+   // Sticky's USB serial bridge uses UART0; ROM output also works before Serial0.begin().
+   esp_rom_printf("%s", buf);
+ #else
+--- a/lib/WeReadWebApi/src/WeReadClient.cpp
++++ b/lib/WeReadWebApi/src/WeReadClient.cpp
+@@ -10,7 +10,7 @@
+ #include <Memory.h>
+ #include <PngToBmpConverter.h>
+ #include <StreamingJsonParser.h>
+-#include <mbedtls/sha256.h>
++#include <PlusSha256.h>
+ #include <strings.h>
+ 
+ #include <algorithm>
+@@ -237,12 +237,12 @@
+ bool sha256Hex(const char* value, char* out, const size_t outSize) {
+   if (!value || !out || outSize < 65) return false;
+   uint8_t digest[32];
+-  mbedtls_sha256_context context;
+-  mbedtls_sha256_init(&context);
+-  const bool ok = mbedtls_sha256_starts(&context, 0) == 0 &&
+-                  mbedtls_sha256_update(&context, reinterpret_cast<const uint8_t*>(value), strlen(value)) == 0 &&
+-                  mbedtls_sha256_finish(&context, digest) == 0;
+-  mbedtls_sha256_free(&context);
++  PlusSha256Context context;
++  plus_sha256_init(&context);
++  const bool ok = plus_sha256_starts(&context, 0) == 0 &&
++                  plus_sha256_update(&context, reinterpret_cast<const uint8_t*>(value), strlen(value)) == 0 &&
++                  plus_sha256_finish(&context, digest) == 0;
++  plus_sha256_free(&context);
+   if (!ok) return false;
+   for (size_t i = 0; i < sizeof(digest); ++i) snprintf(out + i * 2, outSize - i * 2, "%02x", digest[i]);
+   out[64] = '\0';
+--- a/lib/hal/HalDisplay.h
++++ b/lib/hal/HalDisplay.h
+@@ -52,7 +52,10 @@
+   // (read-pico.md 1.2), so it cannot ride the 800x480 default: a compile-time
+   // consumer sized from it would be 2.2x too small. The device term comes from
+   // the frozen profile, not from a repeated literal.
+-#if FREEINK_DEVICE_READPICO
++#if FREEINK_DEVICE_METALIO_PLUS
++  static constexpr uint16_t DISPLAY_WIDTH = BoardConfig::METALIO_PLUS.displayWidth;
++  static constexpr uint16_t DISPLAY_HEIGHT = BoardConfig::METALIO_PLUS.displayHeight;
++#elif FREEINK_DEVICE_READPICO
+   static constexpr uint16_t DISPLAY_WIDTH = BoardConfig::READ_PICO.displayWidth;
+   static constexpr uint16_t DISPLAY_HEIGHT = BoardConfig::READ_PICO.displayHeight;
+ #else
+--- a/lib/hal/HalGPIO.cpp
++++ b/lib/hal/HalGPIO.cpp
+@@ -1,4 +1,7 @@
+ #include <BoardConfig.h>
++#if FREEINK_DEVICE_METALIO_PLUS
++#include <PlusBoard.h>
++#endif
+ #if FREEINK_DEVICE_READPICO
+ #include <BoardReadPico.h>
+ #endif
+@@ -185,6 +188,11 @@
+ }  // namespace
+ 
+ void HalGPIO::begin() {
++#if FREEINK_DEVICE_METALIO_PLUS
++  if (!plus_board::begin()) LOG_ERR("HW", "Plus board initialization failed");
++  _deviceType = DeviceType::X4;
++  return; // Start touch after the panel reset sequence in beginInput().
++#endif
+ #if FREEINK_MCU_C3
+   _deviceType = detectDeviceTypeWithFingerprint();
+   BoardConfig::selectDevice(deviceIsX3() ? BoardConfig::Board::XteinkX3 : BoardConfig::Board::XteinkX4);
+--- a/src/activities/ActivityManager.cpp
++++ b/src/activities/ActivityManager.cpp
+@@ -74,7 +74,7 @@
+   self->renderTaskLoop();
+ }
+ 
+-#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
++#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || defined(SIMULATOR_DEVICE_READPICO)
+ namespace {
+ // Keep the previous B/W + delayed-gray candidate available for A/B builds.
+ // The direct-gray experiment skips both the B/W submission and this idle redraw.
+@@ -123,14 +123,14 @@
+         // before calling them. Input during the render also cancels its idle pass.
+         auto delayMs = currentActivity->idleRenderDelayMs();
+         [[maybe_unused]] bool directGray = false;
+-#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
++#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || defined(SIMULATOR_DEVICE_READPICO)
+         directGray = delayMs == 0 && currentActivity->wantsGraySettle() && ricky::ds::refresh::kDirectGrayUi;
+         graySettlePending = delayMs == 0 && currentActivity->wantsGraySettle() && graySettleAllowed();
+         if (graySettlePending) delayMs = kGraySettleDelayMs;
+ #endif
+         idleGeneration = idleRenderGeneration.load(std::memory_order_relaxed);
+         display.setInverted(SETTINGS.screenInverted != 0);
+-#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
++#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || defined(SIMULATOR_DEVICE_READPICO)
+         // A missing gray buffer or failed commit gets the existing readable B/W
+         // fallback. The direct path never arms a second, delayed submission.
+         if (!directGray || !renderDirectGray(std::move(lock))) currentActivity->render(std::move(lock));
+@@ -140,7 +140,7 @@
+         idleDelayTicks = delayMs != 0 ? pdMS_TO_TICKS(delayMs) : portMAX_DELAY;
+         waitTicks = idleDelayTicks;
+       } else if (!idleRenderCancelled(idleGeneration)) {
+-#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
++#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || defined(SIMULATOR_DEVICE_READPICO)
+         if (graySettlePending) {
+           graySettlePending = false;
+           settleToGray(std::move(lock), idleGeneration);
+@@ -166,7 +166,7 @@
+   }
+ }
+ 
+-#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
++#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || defined(SIMULATOR_DEVICE_READPICO)
+ bool ActivityManager::renderDirectGray(RenderLock&& lock) {
+   if (!renderer.beginGrayscale16()) {
+     LOG_DBG("ACT", "Direct gray: unavailable, B/W fallback");
+@@ -778,7 +778,7 @@
+   cancelIdleRender();
+   if (!currentActivity) return false;
+   if (currentActivity->handleForcedRefresh()) return true;
+-#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
++#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || defined(SIMULATOR_DEVICE_READPICO)
+   if (ricky::ds::refresh::kDirectGrayUi && currentActivity->wantsGraySettle() &&
+       currentActivity->idleRenderDelayMs() == 0) {
+     // Refresh the real gray UI, not its approximate 1-bit proxy.
+--- a/src/activities/ActivityManager.h
++++ b/src/activities/ActivityManager.h
+@@ -68,7 +68,7 @@
+   TaskHandle_t renderTaskHandle = nullptr;
+   static void renderTaskTrampoline(void* param);
+   [[noreturn]] virtual void renderTaskLoop();
+-#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
++#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || defined(SIMULATOR_DEVICE_READPICO)
+   bool renderDirectGray(RenderLock&& lock);
+   void settleToGray(RenderLock&& lock, uint32_t generation);
+ #endif
+--- a/src/activities/reader/EpubReaderActivity.cpp
++++ b/src/activities/reader/EpubReaderActivity.cpp
+@@ -2180,7 +2180,6 @@
+   }
+ }
+ 
+-#if FREEINK_DEVICE_READPICO
+ // A page that renders on the native 16-level path: anti-aliased text with no images or
+ // only JPEG ones (they decode straight into the frame). Must match use16LevelText.
+ bool EpubReaderActivity::nativeGray16Page(const Page& page) const {
+@@ -2188,6 +2187,7 @@
+          !SETTINGS.readingBackgroundEnabled && page.imagesAreAllJpeg();
+ }
+ 
++#if FREEINK_DEVICE_READPICO
+ bool EpubReaderActivity::pageCacheEligible() const {
+   // No !section->isBuilding() here, deliberately. The page cache renders ONE page --
+   // the current one or the next -- and Section::loadPage() is written to serve exactly
+--- a/src/activities/reader/EpubReaderActivity.h
++++ b/src/activities/reader/EpubReaderActivity.h
+@@ -53,6 +53,8 @@
+   int idlePrewarmPage = -1;
+   unsigned long lastRenderCompleteMs = 0;
+ 
++  bool nativeGray16Page(const Page& page) const;
++
+ #if FREEINK_DEVICE_READPICO
+   // Two slots of four reusable PSRAM frames each (~812 KiB total); too large for
+   // the render task's stack. The activity owns them and releases them in onExit().
+@@ -82,7 +84,6 @@
+   uint32_t pageCacheMissingCodepoint_[kPageCacheSlots] = {};
+ 
+   bool pageCacheEligible() const;
+-  bool nativeGray16Page(const Page& page) const;
+   ReaderPageCacheKey pageCacheKey(int page, int top, int right, int bottom, int left) const;
+   uint32_t idleRenderDelayMs() const override;
+   void renderIdle(uint32_t generation) override;
+--- a/src/components/UITheme.cpp
++++ b/src/components/UITheme.cpp
+@@ -124,7 +124,7 @@
+   const int screenWidth = renderer.getScreenWidth();
+   const int screenHeight = renderer.getScreenHeight();
+   Rect safeArea = Rect{0, 0, screenWidth, screenHeight};
+-#if FREEINK_DEVICE_READPICO
++#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+   int top, right, bottom, left;
+   renderer.getOrientedViewableTRBL(&top, &right, &bottom, &left);
+   safeArea = Rect{left, top, screenWidth - left - right, screenHeight - top - bottom};
+@@ -199,7 +199,7 @@
+ 
+ int UITheme::getStatusBarTextTopPadding(const GfxRenderer& renderer) {
+   if (!UiHighDpiProfile::enabled) return 0;
+-#if FREEINK_DEVICE_READPICO
++#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+   constexpr int textFontId = READER_STATUS_FONT_ID;
+ #else
+   constexpr int textFontId = SMALL_FONT_ID;
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -137,15 +137,15 @@
+ // families, other sizes, and style variants come from SD .cpfont files.
+ #include <StandbyDiag.h>
+ #include <builtinFonts/notosans_12_regular.h>
+-#include <builtinFonts/ricky_caption_10_regular.h>
+-#include <builtinFonts/ricky_display_23_bold.h>
+-#include <builtinFonts/ricky_headline_14_medium.h>
+-#include <builtinFonts/ricky_title_16_bold.h>
++#include <fonts/ricky_caption_10_regular.packed.h>
++#include <fonts/ricky_display_23_bold.packed.h>
++#include <fonts/ricky_headline_14_medium.packed.h>
++#include <fonts/ricky_title_16_bold.packed.h>
+ 
+ #include "components/RickyDesignUi.h"
+ // The product's only built-in CJK reading/UI size adds GB2312 level 1 (titles,
+ // author names); the shared 8/10/12pt set stays as is for other targets.
+-#include <builtinFonts/notosans_cjk_12_rickyos.h>
++#include <fonts/notosans_cjk_12_rickyos.packed.h>
+ static const EpdFontData& cjk12Data = notosans_cjk_12_rickyos;
+ EpdFont offlineReaderFont(&cjk12Data);
+ EpdFontFamily offlineReaderFontFamily(&offlineReaderFont);
+@@ -458,7 +458,7 @@
+ 
+ bool setupDisplayAndFonts(bool seamless = false, bool logSdFontLoadHeap = false) {
+   display.begin(seamless);
+-#if FREEINK_DEVICE_READPICO
++#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+   // Read Pico step 4 of 5 (see the boot-order note in setup()): the panel has
+   // stepped through its own rails by now — BoardReadPico::epdPrepare/On/Off are
+   // the board's LgfxEpdPowerHooks, so the SY7636A enable (FCA9555 P0.3), VCOM and
+@@ -503,7 +503,7 @@
+   renderer.setFallbackFont(UI_12_FONT_ID, CJK_UI_12_FONT_ID);
+   renderer.setFallbackFont(NOTOSANS_18_FONT_ID, CJK_UI_12_FONT_ID);
+   renderer.insertFont(BaseTheme::STATUS_NUMERIC_FONT_ID, smallFontFamily);
+-#if FREEINK_DEVICE_READPICO
++#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+   renderer.insertFont(READER_STATUS_FONT_ID, smallFontFamily);
+   renderer.insertFont(READER_ESTIMATE_FONT_ID, ui10FontFamily);
+   renderer.setFallbackFont(READER_STATUS_FONT_ID, CJK_UI_8_FONT_ID);
+@@ -650,7 +650,9 @@
+   // enumeration proceed asynchronously so users do not pay this startup cost.
+   delay(250);
+ #endif
++#if !FREEINK_DEVICE_METALIO_PLUS
+   Serial.begin(115200);
++#endif
+ #if LOG_SERIAL_HAS_TX_TIMEOUT
+   logSerial.setTxTimeoutMs(1);  // This is a load-bearing 1. Do not modify.
+ #endif
+@@ -753,7 +755,7 @@
+   HalSystem::checkPanic();
+ 
+   const bool settingsLoaded = SETTINGS.loadFromFile();
+-#if FREEINK_DEVICE_READPICO
++#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+   if (!settingsLoaded) SETTINGS.readerMenuStyle = CrossPointSettings::READER_MENU_LIST;
+ #endif
+   const auto onboardingMode =
+@@ -809,7 +811,7 @@
+       // Most devices return to sleep after a USB-powered cold boot.
+       LOG_DBG("MAIN", "Wakeup reason: After USB Power");
+ #if FREEINK_DEVICE_X4PRO || FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_PAPERMONO || FREEINK_DEVICE_EEGO_A4 || \
+-    FREEINK_DEVICE_WAVESHARE_EPAPER_397 || FREEINK_DEVICE_METALIO_EINK4 || FREEINK_DEVICE_READPICO
++    FREEINK_DEVICE_WAVESHARE_EPAPER_397 || FREEINK_DEVICE_METALIO_EINK4 || FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+       // X4 Pro must stay awake so USB Serial/JTAG remains available after leaving
+       // USB Drive and reconnecting the cable. Paper Mono has no armable GPIO wake
+       // (its button is behind the PMIC). EEGO A4's post-flash reset reads as
+--- a/freeink-sdk/libs/book/ContentProtection/src/WolfsslCrypto.cpp
++++ b/freeink-sdk/libs/book/ContentProtection/src/WolfsslCrypto.cpp
+@@ -16,6 +16,7 @@
+ //    scripts/patch_wolfssl.py in the firmware if this fails to link.
+ 
+ #include "WolfsslCrypto.h"
++#include <BoardConfig.h>
+ 
+ #ifdef FREEINK_CONTENT_WOLFSSL
+ 
+@@ -27,7 +28,7 @@
+ #include <wolfssl/wolfcrypt/sha.h>
+ #include <wolfssl/wolfcrypt/sha256.h>
+ 
+-#if defined(ESP_PLATFORM)
++#if defined(ESP_PLATFORM) && !FREEINK_MCU_S31
+ #include <mbedtls/esp_mbedtls_random.h>
+ #include <mbedtls/pk.h>
+ #include <mbedtls/rsa.h>
+@@ -236,7 +237,7 @@
+     lastError = "rng not initialized";
+     return false;
+   }
+-#if defined(ESP_PLATFORM)
++#if defined(ESP_PLATFORM) && !FREEINK_MCU_S31
+   // wolfSSL 5.7.2's Tom's Fast Math key-generation path is unstable on the
+   // ESP32-C3 (the Miller-Rabin test faults in fp_mul_comba). ESP-IDF already
+   // ships mbedTLS with RSA key generation enabled, so use it for this one
+--- a/freeink-sdk/libs/hardware/InputManager/include/InputManager.h
++++ b/freeink-sdk/libs/hardware/InputManager/include/InputManager.h
+@@ -365,6 +365,11 @@
+   // Touch backend. Compiled only when FREEINK_CAP_TOUCH is set; dispatches on
+   // BoardConfig::ACTIVE.touch.controller (CHSC6x, GT911, or FT5x06/FT6336U).
+   void beginTouch();
++#if FREEINK_DEVICE_METALIO_PLUS
++  void pollMetalioPlusTouch(unsigned long now);
++  uint8_t plusCoverButtons = 0;
++  bool plusCoverContact = false;
++#endif
+   uint8_t serviceTouch();  // runs the machine; returns synthesized button mask
+   void updateTouchFromIrq(unsigned long now,
+                           int irqRaw);  // CHSC6x I2C poll + touch-bit gate
+@@ -376,7 +381,7 @@
+   bool readChsc6xPoint(TouchPoint& point);
+   bool decodeChsc6xFrame(const uint8_t* data, size_t len, TouchPoint& point) const;
+   uint16_t mapTouchAxis(uint16_t raw, uint16_t rawMin, uint16_t rawMax, uint16_t outMax) const;
+-#if FREEINK_DEVICE_EEGO_A4 || FREEINK_DEVICE_MURPHY_M4 || FREEINK_DEVICE_METALIO_EINK4 || FREEINK_DEVICE_READPICO
++#if FREEINK_DEVICE_EEGO_A4 || FREEINK_DEVICE_MURPHY_M4 || FREEINK_DEVICE_METALIO_EINK4 || FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+   TouchPoint mapTouchPoint(uint16_t rawX, uint16_t rawY, unsigned long now) const;
+   void updateTouchContact(const TouchPoint& point);
+   void releaseTouch(unsigned long now);
+--- a/freeink-sdk/libs/hardware/PowerManager/src/PowerManager.cpp
++++ b/freeink-sdk/libs/hardware/PowerManager/src/PowerManager.cpp
+@@ -195,7 +195,7 @@
+     }
+   }
+   esp_sleep_config_gpio_isolate();
+-#if !FREEINK_MCU_C61
++#if !SOC_GPIO_SUPPORT_HOLD_SINGLE_IO_IN_DSLP
+   gpio_deep_sleep_hold_en();
+ #endif
+   esp_deep_sleep_start();
+--- a/freeink-sdk/libs/hardware/InputManager/src/InputManager.cpp
++++ b/freeink-sdk/libs/hardware/InputManager/src/InputManager.cpp
+@@ -3,6 +3,11 @@
+ #include <algorithm>
+ 
+ #include "MultiTouchGestureMath.h"
++#if FREEINK_DEVICE_METALIO_PLUS
++#include <plus_i2c_wire.h>
++#include <metalio_i2c1.h>
++#include <PlusCoverKeys.h>
++#endif
+ #if FREEINK_DEVICE_METALIO_EINK4
+ #include <MetalioEink4Board.h>
+ #endif
+@@ -55,7 +60,7 @@
+ namespace {
+ int absInt(const int value) { return value < 0 ? -value : value; }
+ 
+-#if FREEINK_DEVICE_EEGO_A4 || FREEINK_DEVICE_MURPHY_M4 || FREEINK_DEVICE_METALIO_EINK4 || FREEINK_DEVICE_READPICO
++#if FREEINK_DEVICE_EEGO_A4 || FREEINK_DEVICE_MURPHY_M4 || FREEINK_DEVICE_METALIO_EINK4 || FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+ bool movedBeyondSlop(const int dx, const int dy, const int slop) {
+   return absInt(dx) > slop || absInt(dy) > slop;
+ }
+@@ -1411,6 +1416,10 @@
+ void InputManager::beginTouch() {
+ #if FREEINK_CAP_TOUCH
+   const auto& t = BoardConfig::ACTIVE.touch;
++#if FREEINK_DEVICE_METALIO_PLUS
++  touchDataEnabled = plus_i2c_probe(t.i2cAddress) == ESP_OK;
++  return;
++#endif
+ #if FREEINK_DEVICE_METALIO_EINK4
+   if (t.controller == BoardConfig::TouchController::Cst816s) {
+     beginCst816s();
+@@ -1495,6 +1504,11 @@
+     pollGslx680(now);
+   } else
+ #endif
++#if FREEINK_DEVICE_METALIO_PLUS
++  if (t.controller == BoardConfig::TouchController::Ft6336u) {
++    pollMetalioPlusTouch(now);
++  } else
++#endif
+ #if FREEINK_DEVICE_MURPHY_M4
+   if (t.controller == BoardConfig::TouchController::Ft6336u) {
+     pollFt6336u(now);
+@@ -1531,6 +1545,9 @@
+ #endif
+ #if FREEINK_DEVICE_READPICO
+   if (t.controller == BoardConfig::TouchController::Cst836u) return cst836uButtons;
++#endif
++#if FREEINK_DEVICE_METALIO_PLUS
++  return plusCoverButtons;
+ #endif
+   return (t.synthesizeConfirm && now < touchIrqPulseUntil) ? (1 << BTN_CONFIRM) : 0;
+ #else
+@@ -1639,7 +1656,7 @@
+   return static_cast<uint32_t>(raw - rawMin) * outMax / (rawMax - rawMin);
+ }
+ 
+-#if FREEINK_DEVICE_EEGO_A4 || FREEINK_DEVICE_MURPHY_M4 || FREEINK_DEVICE_METALIO_EINK4 || FREEINK_DEVICE_READPICO
++#if FREEINK_DEVICE_EEGO_A4 || FREEINK_DEVICE_MURPHY_M4 || FREEINK_DEVICE_METALIO_EINK4 || FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+ InputManager::TouchPoint InputManager::mapTouchPoint(const uint16_t rawX, const uint16_t rawY,
+                                                      const unsigned long now) const {
+   const auto& t = BoardConfig::ACTIVE.touch;
+@@ -2749,3 +2766,54 @@
+ }
+ 
+ #endif  // FREEINK_CAP_TOUCH
++
++#if FREEINK_DEVICE_METALIO_PLUS
++// Reuse the SDK contact state machine and the shared Wire1 transport.
++__attribute__((used, noinline)) void InputManager::pollMetalioPlusTouch(const unsigned long now) {
++  if (now < touchReadAt) return;
++  touchReadAt = now + 10;
++  uint8_t frame[5]{};
++  if (!metalio_i2c1_lock(20)) return;
++  const auto result = plus_i2c_read(BoardConfig::ACTIVE.touch.i2cAddress, 0x02, frame, sizeof(frame));
++  metalio_i2c1_unlock();
++  if (result != ESP_OK) return;
++  const unsigned count = frame[0] & 0x0f;
++  const auto releaseCover = [&] {
++    if (touchHomeKeyDown) touchHomeKeyTapEvent = !touchHomeKeyLongFired;
++    touchHomeKeyDown = false;
++    plusCoverButtons = 0;
++    plusCoverContact = false;
++  };
++  if (count == 0) { releaseTouch(now); releaseCover(); return; }
++  if (count > 2) return;
++  const unsigned event = frame[1] >> 6;
++  const uint16_t x = (static_cast<uint16_t>(frame[1] & 0x0f) << 8) | frame[2];
++  const uint16_t y = (static_cast<uint16_t>(frame[3] & 0x0f) << 8) | frame[4];
++  if (event == 1 || event == 3) { releaseTouch(now); releaseCover(); return; }
++  // OEM cover keys are off-panel FT6336 coordinates, before rotation/scaling.
++  const auto coverKey = plus_board::coverKeyAt(x, y);
++  if (coverKey != plus_board::CoverKey::None) {
++    releaseTouch(now);
++    if (!plusCoverContact) {
++      plusCoverContact = true;
++      if (coverKey == plus_board::CoverKey::Home) {
++        touchHomeKeyDown = true;
++        touchHomeKeyEvent = true;
++        touchHomeKeyLongFired = false;
++        touchHomeKeyDownAt = now;
++      } else if (coverKey == plus_board::CoverKey::Previous) plusCoverButtons = 1u << BTN_LEFT;
++      else if (coverKey == plus_board::CoverKey::Next) plusCoverButtons = 1u << BTN_RIGHT;
++    }
++    if (touchHomeKeyDown && !touchHomeKeyLongFired && now - touchHomeKeyDownAt >= 500) {
++      touchHomeKeyLongFired = true;
++      touchHomeKeyLongEvent = true;
++    }
++    return;
++  }
++  // A cover gesture remains a cover gesture until release; do not leak it as
++  // a screen tap or change keys when the finger slides between cover zones.
++  if (plusCoverContact) return;
++  if (event == 3 || x > 683 || y > 1215) { releaseTouch(now); return; }
++  updateTouchContact(mapTouchPoint(x, y, now));
++}
++#endif
+--- a/lib/hal/HalDisplay.cpp
++++ b/lib/hal/HalDisplay.cpp
+@@ -1,5 +1,8 @@
+ #include <HalDisplay.h>
+ #include <HalGPIO.h>
++#if FREEINK_DEVICE_METALIO_PLUS
++#include <PlusDisplayProfile.h>
++#endif
+ 
+ #if FREEINK_DEVICE_READPICO
+ #include <BoardReadPico.h>
+@@ -224,7 +227,9 @@
+ bool HalDisplay::commitGrayscale16() { return einkDisplay.commitGrayscale16(); }
+ 
+ void HalDisplay::setNextGray16Profile(const uint8_t profile) {
+-#if FREEINK_DEVICE_READPICO
++#if FREEINK_DEVICE_METALIO_PLUS
++  freeink::metalioPlusSetGray16Profile(profile);
++#elif FREEINK_DEVICE_READPICO
+   freeink::epdiyLcdSetGray16Profile(profile);  // added by scripts/patch_rickyos_epdiy.py
+ #else
+   (void)profile;
+--- a/freeink-sdk/libs/hardware/BatteryMonitor/src/BatteryMonitor.cpp
++++ b/freeink-sdk/libs/hardware/BatteryMonitor/src/BatteryMonitor.cpp
+@@ -4,6 +4,12 @@
+ #include <BoardConfig.h>
+ #include <M5Pm1.h>
+ #include <esp_idf_version.h>
++#if FREEINK_DEVICE_METALIO_PLUS
++#include <PlusBattery.h>
++#include <plus_i2c_wire.h>
++#include <metalio_i2c1.h>
++#include <esp_log.h>
++#endif
+ #if ESP_IDF_VERSION_MAJOR < 5
+ #include <esp_adc_cal.h>
+ #endif
+@@ -55,6 +61,15 @@
+ 
+ bool readReg16(uint8_t addr, uint8_t reg, uint16_t& out) {
+   if (addr == 0) return false;
++#if FREEINK_DEVICE_METALIO_PLUS
++  uint8_t bytes[2]{};
++  if (!metalio_i2c1_lock(20)) return false;
++  const auto result = plus_i2c_read(addr, reg, bytes, sizeof(bytes));
++  metalio_i2c1_unlock();
++  if (result != ESP_OK) return false;
++  out = static_cast<uint16_t>(bytes[0]) | (static_cast<uint16_t>(bytes[1]) << 8);
++  return true;
++#else
+   ensureWire();
+   TwoWire& w = gaugeWire();
+   w.beginTransmission(addr);
+@@ -65,6 +80,7 @@
+   const uint8_t hi = w.read();
+   out = static_cast<uint16_t>(lo) | (static_cast<uint16_t>(hi) << 8);
+   return true;
++#endif
+ }
+ 
+ bool readReg8(uint8_t addr, uint8_t reg, uint8_t& out) {
+@@ -231,6 +247,16 @@
+ // SoC (0..100) from the active gauge, dispatched by type. false on I2C failure.
+ bool readGaugeSoc(uint16_t& out) {
+   const auto& g = BoardConfig::ACTIVE.batteryGauge;
++#if FREEINK_DEVICE_METALIO_PLUS
++  uint16_t mv = 0;
++  if (!readReg16(g.gaugeAddr, BQ27220_VOLTAGE, mv) || !plus_board::batteryPercentFromMv(mv, out)) return false;
++  static bool logged = false;
++  if (!logged) {
++    ESP_LOGI("PlusBattery", "BQ27220 voltage=%u mV estimated_percent=%u", mv, out);
++    logged = true;
++  }
++  return true;
++#endif
+   if (g.gaugeType == BoardConfig::GaugeType::Cw32L010Pmu) {
+     uint16_t mv = 0;
+     uint16_t permille = 0;
+--- a/freeink-sdk/libs/hardware/Rtc/src/Rtc.cpp
++++ b/freeink-sdk/libs/hardware/Rtc/src/Rtc.cpp
+@@ -3,6 +3,10 @@
+ #include <time.h>
+ 
+ #include <BoardConfig.h>
++#if FREEINK_DEVICE_METALIO_PLUS
++#include <plus_i2c_wire.h>
++#include <metalio_i2c1.h>
++#endif
+ 
+ namespace {
+ // Board-supplied PMU time source (BoardConfig::RtcType::Cw32L010Pmu). Kept
+@@ -82,6 +86,9 @@
+ }
+ 
+ void ensureWire() {
++#if FREEINK_DEVICE_METALIO_PLUS
++  return; // The Plus board owns Wire1; all RTC transfers use its shared lock.
++#endif
+   const auto& s = BoardConfig::ACTIVE.sensors;
+   const uint8_t bus =
+ #if SOC_I2C_NUM > 1
+@@ -99,15 +106,28 @@
+ uint8_t decToBcd(uint8_t v) { return static_cast<uint8_t>((v / 10U) << 4 | (v % 10U)); }
+ 
+ bool writeReg(uint8_t addr, uint8_t reg, uint8_t value) {
++#if FREEINK_DEVICE_METALIO_PLUS
++  if (!metalio_i2c1_lock(20)) return false;
++  const auto result = plus_i2c_write(addr, reg, &value, 1);
++  metalio_i2c1_unlock();
++  return result == ESP_OK;
++#else
+   ensureWire();
+   auto& wire = sensorWire();
+   wire.beginTransmission(addr);
+   wire.write(reg);
+   wire.write(value);
+   return wire.endTransmission() == 0;
++#endif
+ }
+ 
+ bool readRegs(uint8_t addr, uint8_t reg, uint8_t* dst, uint8_t len) {
++#if FREEINK_DEVICE_METALIO_PLUS
++  if (!metalio_i2c1_lock(20)) return false;
++  const auto result = plus_i2c_read(addr, reg, dst, len);
++  metalio_i2c1_unlock();
++  return result == ESP_OK;
++#else
+   ensureWire();
+   auto& wire = sensorWire();
+   wire.beginTransmission(addr);
+@@ -116,6 +136,7 @@
+   if (wire.requestFrom(addr, len, static_cast<uint8_t>(true)) < len) return false;
+   for (uint8_t i = 0; i < len; ++i) dst[i] = wire.read();
+   return true;
++#endif
+ }
+ 
+ #if FREEINK_DEVICE_MURPHY_M4
+@@ -317,6 +338,17 @@
+   const uint8_t addr = BoardConfig::ACTIVE.sensors.rtcAddr;
+   if (!begun_ || addr == 0) return false;
+   const auto& s = BoardConfig::ACTIVE.sensors;
++#if FREEINK_DEVICE_METALIO_PLUS
++  if (s.rtcType != BoardConfig::RtcType::Pcf8563 || dt.year < 2000 || dt.year > 2099 ||
++      dt.month < 1 || dt.month > 12 || dt.day < 1 || dt.day > 31 || dt.hour > 23 || dt.minute > 59 || dt.second > 59)
++    return false;
++  const uint8_t raw[7] = {decToBcd(dt.second), decToBcd(dt.minute), decToBcd(dt.hour), decToBcd(dt.day),
++                          decToBcd(dt.weekday), decToBcd(dt.month), decToBcd(static_cast<uint8_t>(dt.year % 100))};
++  if (!metalio_i2c1_lock(20)) return false;
++  const auto result = plus_i2c_write(addr, PCF8563_REG_TIME, raw, sizeof(raw));
++  metalio_i2c1_unlock();
++  return result == ESP_OK;
++#endif
+   if (s.rtcType == BoardConfig::RtcType::Cw32L010Pmu) {
+     // PMU_CMD_TIME_SYNC takes unix seconds, so the calendar has to be converted
+     // here. Unix seconds cannot express a year before 1970, and the register-map
+--- a/src/activities/home/InxRecentActivity.h
++++ b/src/activities/home/InxRecentActivity.h
+@@ -77,7 +77,7 @@
+   void drawCover(const Rect& content);
+ 
+  public:
+-#if FREEINK_DEVICE_READPICO
++#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+   // render() redraws the whole home screen from state; a cover still to prepare queues
+   // its own update, which cancels the settle.
+   bool wantsGraySettle() const override { return true; }
+--- a/src/activities/UiListActivity.h
++++ b/src/activities/UiListActivity.h
+@@ -18,7 +18,7 @@
+ // should NOT derive from this — they use UiAppHost directly.
+ class UiListActivity : public Activity, protected UiAppHost {
+  public:
+-#if FREEINK_DEVICE_READPICO
++#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+   // Every list screen redraws itself whole from state (clearScreen, chrome, UI, footer).
+   bool wantsGraySettle() const override { return true; }
+ #endif
+--- a/src/activities/settings/ClockSyncActivity.h
++++ b/src/activities/settings/ClockSyncActivity.h
+@@ -27,6 +27,8 @@
+   State state = State::Syncing;
+   char syncedTime[16] = {0};
+   bool shouldTearDownWifiOnExit = false;
++  bool syncStarted = false;
++  uint32_t syncStartedAt = 0;
+ 
+   void runSync();
+   void launchWifiSelection();
+--- a/src/activities/settings/ClockSyncActivity.cpp
++++ b/src/activities/settings/ClockSyncActivity.cpp
+@@ -22,6 +22,7 @@
+ void ClockSyncActivity::onEnter() {
+   Activity::onEnter();
+   state = State::Syncing;
++  syncStarted = false;
+   syncedTime[0] = '\0';
+ 
+   if (WiFi.status() == WL_CONNECTED) {
+@@ -36,6 +37,7 @@
+ 
+ void ClockSyncActivity::onExit() {
+   Activity::onExit();
++  if (syncStarted && halClock.syncState() == ClockSyncState::Syncing) halClock.cancelSync();
+ 
+   if (shouldTearDownWifiOnExit && WiFi.getMode() != WIFI_MODE_NULL) {
+     WiFi.disconnect(false);
+@@ -77,12 +79,28 @@
+     return;
+   }
+ 
+-  const bool ok = halClock.syncNow();
+-  if (!ok) {
++  if (!syncStarted) {
++    if (!halClock.requestSync()) {
++      state = State::Failed;
++      requestUpdate();
++      return;
++    }
++    syncStarted = true;
++    syncStartedAt = millis();
++    LOG_INF("CLK", "Manual sync waiting asynchronously for up to 55 seconds");
++  }
++  // Three servers can each need the lwIP 15-second receive timeout, plus
++  // startup/DNS delay. Keep the main loop running while fallback takes place.
++  halClock.update();
++  const auto clockState = halClock.syncState();
++  if (clockState == ClockSyncState::Failed || millis() - syncStartedAt >= 55000) {
++    LOG_ERR("CLK", "Manual sync failed or timed out after %lu ms", millis() - syncStartedAt);
++    halClock.cancelSync();
+     state = State::Failed;
+     requestUpdate();
+     return;
+   }
++  if (clockState != ClockSyncState::Succeeded) return;
+ 
+   char buf[9];
+   if (TimeUtils::formatCurrentTime(buf, sizeof(buf), SETTINGS.clockFormat == 1)) {
+@@ -94,9 +112,11 @@
+ 
+ void ClockSyncActivity::loop() {
+   if (state == State::Syncing) {
+-    // First-tick: render the "Syncing..." screen, then perform the (blocking) sync.
+-    // requestUpdateAndWait below forces the render before we block on WiFi.
+-    requestUpdateAndWait();
++    if (!syncStarted) requestUpdateAndWait();
++    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
++      finish();
++      return;
++    }
+     runSync();
+     return;
+   }
+--- a/lib/TrustedTime/TrustedTime.cpp
++++ b/lib/TrustedTime/TrustedTime.cpp
+@@ -1,6 +1,10 @@
+ #include "TrustedTime.h"
+ 
+ #include <Arduino.h>
++#include <BoardConfig.h>
++#if FREEINK_DEVICE_METALIO_PLUS
++#include <HalClock.h>
++#endif
+ #include <Logging.h>
+ #include <Preferences.h>
+ #include <esp_sntp.h>
+@@ -68,7 +72,9 @@
+ }  // namespace
+ 
+ void init() {
++#if !FREEINK_DEVICE_METALIO_PLUS
+   sntp_set_time_sync_notification_cb(&onTimeSynced);
++#endif
+   const int64_t floor = readFloor();
+   if (floor < MIN_VALID_EPOCH) return;
+   raiseFloor(floor);
+@@ -95,11 +101,18 @@
+ }
+ 
+ void startSync() {
++#if FREEINK_DEVICE_METALIO_PLUS
++  halClock.requestSync();
++#else
+   if (esp_sntp_enabled()) return;  // running; the sync callback handles the rest
+   configureSntp();
++#endif
+ }
+ 
+ bool syncNow(const uint32_t timeoutMs) {
++#if FREEINK_DEVICE_METALIO_PLUS
++  return halClock.syncNow(timeoutMs);
++#else
+   // configureSntp() (configTzTime) restarts SNTP if already running.
+   configureSntp();
+   const unsigned long deadline = millis() + timeoutMs;
+@@ -109,6 +122,7 @@
+   const bool synced = sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED;
+   if (synced) note();
+   return synced;
++#endif
+ }
+ 
+ int64_t trustedNow() {
+--- a/lib/hal/HalClock.cpp
++++ b/lib/hal/HalClock.cpp
+@@ -1,6 +1,12 @@
+ #include "HalClock.h"
+ 
+ #include <Logging.h>
++#include <BoardConfig.h>
++#if FREEINK_DEVICE_METALIO_PLUS
++#include <TrustedTime.h>
++#include <esp_wifi.h>
++#include <PlusHttpsClock.h>
++#endif
+ #include <WiFi.h>
+ #include <esp_netif.h>
+ #include <esp_netif_sntp.h>
+@@ -186,13 +192,19 @@
+       return false;
+     }
+     esp_sntp_config_t config =
+-        ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(2, ESP_SNTP_SERVER_LIST("pool.ntp.org", "time.nist.gov"));
++        ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(3, ESP_SNTP_SERVER_LIST("pool.ntp.org", "time.nist.gov", "ntp.aliyun.com"));
+     if (_useChinaServers) {
++      // Tencent public server published in NTP Pool. A numeric first peer
++      // avoids repeated DNS failures on the device; retain named fallbacks.
++      // https://www.ntppool.org/scores/119.28.183.184
+       config = ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(
+-          3, ESP_SNTP_SERVER_LIST("ntp.aliyun.com", "ntp.tencent.com", "cn.pool.ntp.org"));
++          3, ESP_SNTP_SERVER_LIST("119.28.183.184", "ntp.aliyun.com", "ntp.tencent.com"));
+     }
+     config.start = false;
+     config.smooth_sync = false;
++    config.sync_cb = [](struct timeval* tv) {
++      LOG_INF("CLK", "NTP reply received: UTC epoch=%lld", static_cast<long long>(tv->tv_sec));
++    };
+     if (esp_netif_sntp_init(&config) != ESP_OK) {
+       LOG_ERR("CLK", "Failed to initialize SNTP service");
+       _syncState = ClockSyncState::Failed;
+@@ -201,21 +213,42 @@
+     _sntpInitialized = true;
+   }
+ 
++#if FREEINK_DEVICE_METALIO_PLUS
++  if (!_wifiPowerSaveHeld) {
++    if (_wifiAwakeLease.acquire()) {
++      _wifiPowerSaveHeld = true;
++      LOG_INF("CLK", "Radio-awake lease acquired during NTP");
++    } else {
++      LOG_ERR("CLK", "Failed to disable WiFi power-save during NTP");
++    }
++  }
++#endif
+   if (esp_netif_sntp_start() != ESP_OK) {
+     LOG_ERR("CLK", "Failed to start SNTP service");
++    stopSntp();
+     _syncState = ClockSyncState::Failed;
+     return false;
+   }
+ 
+   _syncState = ClockSyncState::Syncing;
+-  LOG_INF("CLK", "SNTP sync started");
++  _syncStartedMs = millis();
++  _httpsAttempted = false;
++  LOG_INF("CLK", "SNTP sync started, server group=%s", _useChinaServers ? "China" : "Global+Aliyun");
++  _lastDiagnosticMs = millis();
+   return true;
+ }
+ 
+ void HalClock::stopSntp() {
+-  if (!_sntpInitialized) return;
+-  esp_netif_sntp_deinit();
+-  _sntpInitialized = false;
++  if (_sntpInitialized) {
++    esp_netif_sntp_deinit();
++    _sntpInitialized = false;
++  }
++#if FREEINK_DEVICE_METALIO_PLUS
++  if (_wifiPowerSaveHeld) {
++    _wifiAwakeLease.release();
++    _wifiPowerSaveHeld = false;
++  }
++#endif
+ }
+ 
+ void HalClock::completeSync() {
+@@ -232,10 +265,18 @@
+   if (!updateRtcFromSystemTime()) {
+     LOG_ERR("CLK", "System clock synced, but external RTC persistence failed");
+   }
++#if FREEINK_DEVICE_METALIO_PLUS
++  trustedtime::note();
++#endif
+   LOG_INF("CLK", "System UTC clock synchronized");
+ }
+ 
+ bool HalClock::requestSync() { return startSntp(); }
++
++void HalClock::cancelSync() {
++  stopSntp();
++  if (_syncState == ClockSyncState::Syncing) _syncState = ClockSyncState::Idle;
++}
+ 
+ bool HalClock::syncNow(const uint32_t timeoutMs) {
+   if (!startSntp()) return false;
+@@ -265,13 +306,52 @@
+   const bool wifiConnected = WiFi.status() == WL_CONNECTED;
+   if (!wifiConnected) {
+     if (_syncState == ClockSyncState::Syncing) _syncState = ClockSyncState::Failed;
+-    if (_wifiWasConnected) stopSntp();
++    if (_wifiWasConnected || _sntpInitialized || _wifiPowerSaveHeld) stopSntp();
+     _wifiWasConnected = false;
+     return;
+   }
+ 
+-  if (_sntpInitialized && esp_sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED) {
++  if (_sntpInitialized && esp_netif_sntp_sync_wait(0) == ESP_OK) {
+     completeSync();
++  }
++
++#if FREEINK_DEVICE_METALIO_PLUS
++  // HTTPS fallback is synchronous; do not stall active transfer/server owners.
++  if (_sntpInitialized && !_httpsAttempted && HalWifiAwakeLease::activeCount() <= 1 &&
++      millis() - _syncStartedMs >= 20000 && hasValidTime()) {
++    _httpsAttempted = true;
++    LOG_INF("CLK", "NTP still pending; trying verified HTTPS clock backup");
++    time_t epoch = 0;
++    const bool fetched = metalioPlusFetchHttpsUtc(epoch);
++    // A NTP reply received during TLS has priority over the coarse Date clock.
++    if (esp_netif_sntp_sync_wait(0) == ESP_OK) {
++      completeSync();
++    } else if (fetched) {
++      const timeval value = {epoch, 0};
++      if (settimeofday(&value, nullptr) == 0) completeSync();
++      else LOG_ERR("CLK", "Failed to apply verified HTTPS clock");
++    }
++  }
++#endif
++
++  if (_sntpInitialized && millis() - _syncStartedMs >= 60000) {
++    LOG_ERR("CLK", "NTP exchange exceeded 60 seconds; stopping and restoring WiFi power-save");
++    stopSntp();
++    _syncState = ClockSyncState::Failed;
++  }
++
++  if (_sntpInitialized && millis() - _lastDiagnosticMs >= 15000) {
++    _lastDiagnosticMs = millis();
++    esp_netif_tcpip_exec([](void*) -> esp_err_t {
++      for (uint8_t i = 0; i < 3; ++i) {
++        const ip_addr_t* address = sntp_getserver(i);
++        char text[48] = {};
++        if (address) ipaddr_ntoa_r(address, text, sizeof(text));
++        LOG_INF("CLK", "NTP server %u: %s address=%s reach=0x%02x", i,
++                sntp_getservername(i), text, sntp_getreachability(i));
++      }
++      return ESP_OK;
++    }, nullptr);
+   }
+ 
+   const bool fresh = _syncState == ClockSyncState::Succeeded && millis() - _lastSyncMs < CONFIG_LWIP_SNTP_UPDATE_DELAY;
+--- a/lib/hal/HalClock.h
++++ b/lib/hal/HalClock.h
+@@ -1,7 +1,11 @@
+ #pragma once
+ 
+ #include <Arduino.h>
++#include <BoardConfig.h>
+ #include <Rtc.h>
++#if FREEINK_DEVICE_METALIO_PLUS
++#include <HalWifiAwakeLease.h>
++#endif
+ 
+ #include <cstdint>
+ #include <ctime>
+@@ -25,6 +29,13 @@
+   bool _useChinaServers = false;
+   ClockSyncState _syncState = ClockSyncState::Idle;
+   unsigned long _lastSyncMs = 0;
++  unsigned long _lastDiagnosticMs = 0;
++  unsigned long _syncStartedMs = 0;
++#if FREEINK_DEVICE_METALIO_PLUS
++  HalWifiAwakeLease _wifiAwakeLease;
++#endif
++  bool _wifiPowerSaveHeld = false;
++  bool _httpsAttempted = false;
+ 
+   bool restoreSystemTimeFromRtc();
+   bool updateRtcFromSystemTime();
+@@ -50,6 +61,7 @@
+   void setAutoSyncEnabled(bool enabled);
+   void setUseChinaServers(bool enabled) { _useChinaServers = enabled; }
+   bool requestSync();
++  void cancelSync();
+   bool syncNow(uint32_t timeoutMs = 10000);
+   ClockSyncState syncState() const { return _syncState; }
+ };
+--- a/src/activities/network/WifiSelectionActivity.cpp
++++ b/src/activities/network/WifiSelectionActivity.cpp
+@@ -1,5 +1,10 @@
+ #include "WifiSelectionActivity.h"
+ 
++#include <BoardConfig.h>
++#if FREEINK_DEVICE_METALIO_PLUS
++#include <HalWifiDiagnostics.h>
++#include <esp_wifi.h>
++#endif
+ #include <GfxRenderer.h>
+ #include <HalClock.h>
+ #include <I18n.h>
+@@ -549,6 +554,20 @@
+   WiFi.disconnect(true, true);  // Abort any in-progress SDK auto-connect and clear NVS-saved SSID
+   delay(100);
+ 
++#if FREEINK_DEVICE_METALIO_PLUS
++  plusWifiDiagnosticsBegin();
++  // Match the vendor station's default protocol negotiation for a controlled
++  // LAN comparison. disconnect(true) ended STA, so initialize it first.
++  if (!WiFi.mode(WIFI_STA)) {
++    LOG_ERR("WIFI", "Plus compatibility station initialization failed");
++    showNetworkError();
++    return;
++  }
++  uint8_t protocol = 0;
++  const esp_err_t protocolRead = esp_wifi_get_protocol(WIFI_IF_STA, &protocol);
++  LOG_INF("WIFI", "Plus station protocol driver default: read=%d mask=0x%02x", protocolRead, protocol);
++#endif
++
+   // Scan all channels so networks with multiple APs use the strongest matching
+   // BSSID instead of the first match found by the framework's default fast scan.
+   WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
+@@ -597,6 +616,11 @@
+             WiFi.RSSI());
+ #endif
+ 
++#if FREEINK_DEVICE_METALIO_PLUS
++    // HalClock owns the shared SNTP client; do not block the join or restart
++    // it before the manual sync activity has a chance to observe completion.
++    halClock.requestSync();
++#else
+     // Sync RTC from NTP on the first successful WiFi connection only. The DS3231
+     // drifts ~2 ppm so one sync is enough; users can force a re-sync from
+     // Settings > System > Clock > Sync clock now.
+@@ -606,6 +630,8 @@
+         SETTINGS.saveToFile();
+       }
+     }
++
++#endif
+ 
+     // Every station join is a chance to snap the loan-clock floor to real
+     // time (non-blocking; see TrustedTime).
+--- a/lib/EpdFont/FontDecompressor.cpp
++++ b/lib/EpdFont/FontDecompressor.cpp
+@@ -98,7 +98,7 @@
+ 
+   auto accumGlyph = [&](const EpdGlyph& g) {
+     if (g.width > 0 && g.height > 0) {
+-      offset += ((g.width + 3) / 4) * g.height;
++      offset += ((g.width + (fontData->is4Bit ? 1 : 3)) / (fontData->is4Bit ? 2 : 4)) * g.height;
+     }
+   };
+ 
+@@ -121,10 +121,13 @@
+ }
+ 
+ void FontDecompressor::compactSingleGlyph(const uint8_t* alignedSrc, uint8_t* packedDst, uint8_t width,
+-                                          uint8_t height) {
++                                          uint8_t height, bool is4Bit) {
+   if (width == 0 || height == 0) return;
+-  const uint32_t rowStride = (width + 3) / 4;
+-  if (width % 4 == 0) {
++  const uint8_t bits = is4Bit ? 4 : 2;
++  const uint8_t perByte = 8 / bits;
++  const uint8_t mask = (1u << bits) - 1;
++  const uint32_t rowStride = (width + perByte - 1) / perByte;
++  if (width % perByte == 0) {
+     memcpy(packedDst, alignedSrc, rowStride * height);
+     return;
+   }
+@@ -132,8 +135,8 @@
+   uint32_t writeIdx = 0;
+   for (uint8_t y = 0; y < height; y++) {
+     for (uint8_t x = 0; x < width; x++) {
+-      outByte = (outByte << 2) | ((alignedSrc[y * rowStride + x / 4] >> ((3 - (x % 4)) * 2)) & 0x3);
+-      outBits += 2;
++      outByte = (outByte << bits) | ((alignedSrc[y * rowStride + x / perByte] >> ((perByte - 1 - (x % perByte)) * bits)) & mask);
++      outBits += bits;
+       if (outBits == 8) {
+         packedDst[writeIdx++] = outByte;
+         outByte = 0;
+@@ -221,7 +224,7 @@
+   }
+ 
+   uint32_t alignedOff = getAlignedOffset(fontData, groupIndex, glyphIndex);
+-  compactSingleGlyph(&hotGroup[alignedOff], hotGlyphBuf, glyph->width, glyph->height);
++  compactSingleGlyph(&hotGroup[alignedOff], hotGlyphBuf, glyph->width, glyph->height, fontData->is4Bit);
+   stats.getBitmapTimeUs += micros() - tStart;
+   return hotGlyphBuf;
+ }
+@@ -434,7 +437,7 @@
+       }
+ 
+       if (glyph.width > 0 && glyph.height > 0) {
+-        groupAlignedTracker[gpPos] += ((glyph.width + 3) / 4) * glyph.height;
++        groupAlignedTracker[gpPos] += ((glyph.width + (fontData->is4Bit ? 1 : 3)) / (fontData->is4Bit ? 2 : 4)) * glyph.height;
+       }
+     }
+   } else {
+@@ -460,7 +463,7 @@
+         }
+ 
+         if (glyph.width > 0 && glyph.height > 0) {
+-          alignedOff += ((glyph.width + 3) / 4) * glyph.height;
++          alignedOff += ((glyph.width + (fontData->is4Bit ? 1 : 3)) / (fontData->is4Bit ? 2 : 4)) * glyph.height;
+         }
+       }
+     }
+@@ -497,7 +500,7 @@
+       if (getGroupIndex(fontData, slot.glyphs[i].glyphIndex) != groupIdx) continue;
+ 
+       const EpdGlyph& glyph = fontData->glyph[slot.glyphs[i].glyphIndex];
+-      compactSingleGlyph(&tempBuf[slot.glyphs[i].alignedOffset], &slot.buffer[writeOffset], glyph.width, glyph.height);
++      compactSingleGlyph(&tempBuf[slot.glyphs[i].alignedOffset], &slot.buffer[writeOffset], glyph.width, glyph.height, fontData->is4Bit);
+       slot.glyphs[i].bufferOffset = writeOffset;
+       writeOffset += glyph.dataLength;
+     }
+--- a/lib/EpdFont/FontDecompressor.h
++++ b/lib/EpdFont/FontDecompressor.h
+@@ -91,6 +91,6 @@
+   uint16_t getGroupIndex(const EpdFontData* fontData, uint32_t glyphIndex);
+   uint32_t getAlignedOffset(const EpdFontData* fontData, uint16_t groupIndex, uint32_t glyphIndex);
+   bool decompressGroup(const EpdFontData* fontData, uint16_t groupIndex, uint8_t* outBuf, uint32_t outSize);
+-  static void compactSingleGlyph(const uint8_t* alignedSrc, uint8_t* packedDst, uint8_t width, uint8_t height);
++  static void compactSingleGlyph(const uint8_t* alignedSrc, uint8_t* packedDst, uint8_t width, uint8_t height, bool is4Bit);
+   static int32_t findGlyphIndex(const EpdFontData* fontData, uint32_t codepoint);
+ };
+--- a/freeink-sdk/libs/network/SecureNet/src/SecureClient.cpp
++++ b/freeink-sdk/libs/network/SecureNet/src/SecureClient.cpp
+@@ -1,4 +1,10 @@
+ #include "SecureClient.h"
++#include <BoardConfig.h>
++#if FREEINK_DEVICE_METALIO_PLUS
++#include <Network.h>
++#include <PlusNetworkProbe.h>
++#include <Logging.h>
++#endif
+ 
+ // wolfSSL is only pulled in when explicitly enabled. This keeps the default SDK
+ // build free of the wolfSSL dependency while leaving a single, well-defined
+@@ -70,7 +76,26 @@
+   const uint32_t timeoutMs = getTimeout();
+   if (abortRequested()) return 0;
+   _transport.setConnectionTimeout(timeoutMs);
+-  if (!_transport.connect(host, port)) {
++#if FREEINK_DEVICE_METALIO_PLUS
++  // Arduino 4 RC1 NetworkClient accepts negative DNS errors as success.
++  // Require the resolver's success value, then keep the original host for
++  // SNI/certificate verification while connecting TCP to the resolved IP.
++  static bool networkProbed = false;
++  if (!networkProbed) { networkProbed = true; metalioPlusProbeNetwork(); }
++  LOG_INF("TLS", "Resolving %s for %s", host, label);
++  IPAddress resolved;
++  const int dnsResult = Network.hostByName(host, resolved);
++  LOG_INF("TLS", "DNS result=%d for %s", dnsResult, host);
++  if (dnsResult != 1) {
++    if (Serial) Serial.printf("[SecureClient] DNS failed: %s result=%d\n", host, dnsResult);
++    return 0;
++  }
++  const bool tcpConnected = _transport.connect(resolved, port);
++  LOG_INF("TLS", "TCP result=%d for %s:%u", tcpConnected, host, port);
++#else
++  const bool tcpConnected = _transport.connect(host, port);
++#endif
++  if (!tcpConnected) {
+     if (Serial) Serial.printf("[SecureClient] TCP connect failed (%s): %s:%u\n", label, host, port);
+     return 0;
+   }
+@@ -81,6 +106,9 @@
+ 
+   auto* ctx = wolfSSL_CTX_new(static_cast<WOLFSSL_METHOD*>(method));
+   if (!ctx) {
++#if FREEINK_DEVICE_METALIO_PLUS
++    LOG_ERR("TLS", "CTX allocation failed (%s), heap=%u", label, (unsigned)ESP.getFreeHeap());
++#endif
+     if (Serial) Serial.printf("[SecureClient] CTX alloc failed (%s), free heap %u\n", label, (unsigned)ESP.getFreeHeap());
+     _transport.stop();
+     return 0;
+@@ -90,14 +118,22 @@
+   if (_insecure) {
+     wolfSSL_CTX_set_verify(ctx, WOLFSSL_VERIFY_NONE, nullptr);
+   } else if (_rootCA) {
+-    wolfSSL_CTX_load_verify_buffer(ctx, reinterpret_cast<const unsigned char*>(_rootCA),
++    const int caResult = wolfSSL_CTX_load_verify_buffer(ctx, reinterpret_cast<const unsigned char*>(_rootCA),
+                                    strlen(_rootCA), WOLFSSL_FILETYPE_PEM);
++#if FREEINK_DEVICE_METALIO_PLUS
++    LOG_INF("TLS", "CA load result=%d (%s), UTC=%lld", caResult, label, (long long)time(nullptr));
++#else
++    (void)caResult;
++#endif
+   }
+   wolfSSL_SetIORecv(ctx, wcRecv);
+   wolfSSL_SetIOSend(ctx, wcSend);
+ 
+   auto* ssl = wolfSSL_new(ctx);
+   if (!ssl) {
++#if FREEINK_DEVICE_METALIO_PLUS
++    LOG_ERR("TLS", "SSL allocation failed (%s), heap=%u", label, (unsigned)ESP.getFreeHeap());
++#endif
+     if (Serial) Serial.printf("[SecureClient] SSL alloc failed (%s), free heap %u\n", label, (unsigned)ESP.getFreeHeap());
+     stop();
+     return 0;
+@@ -134,16 +170,30 @@
+   while ((ret = wolfSSL_connect(ssl)) != WOLFSSL_SUCCESS) {
+     const int err = wolfSSL_get_error(ssl, ret);
+     if (!isWantIo(err)) {
++#if FREEINK_DEVICE_METALIO_PLUS
++      char description[80]{};
++      wolfSSL_ERR_error_string(err, description);
++      LOG_ERR("TLS", "Handshake failed (%s): error=%d %s, heap=%u largest=%u TCP=%d elapsed=%lu", label, err,
++              description, (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap(),
++              _transport.connected(), (unsigned long)(millis() - started));
++#endif
+       if (Serial) Serial.printf("[SecureClient] wolfSSL_connect failed (%s): %d\n", label, err);
+       stop();
+       return 0;
+     }
+     if (abortRequested()) {
++#if FREEINK_DEVICE_METALIO_PLUS
++      LOG_ERR("TLS", "Handshake aborted by caller (%s), elapsed=%lu", label, (unsigned long)(millis()-started));
++#endif
+       if (Serial) Serial.printf("[SecureClient] handshake aborted by caller (%s)\n", label);
+       stop();
+       return 0;
+     }
+     if (static_cast<int32_t>(millis() - deadline) >= 0) {
++#if FREEINK_DEVICE_METALIO_PLUS
++      LOG_ERR("TLS", "Handshake timeout (%s): error=%d TCP=%d heap=%u", label, err,
++              _transport.connected(), (unsigned)ESP.getFreeHeap());
++#endif
+       if (Serial) {
+         Serial.printf("[SecureClient] handshake timeout (%s): last err %d, transport %s, free heap %u\n", label, err,
+                       _transport.connected() ? "up" : "down", (unsigned)ESP.getFreeHeap());
+@@ -154,6 +204,10 @@
+     delay(5);
+   }
+   _connected = true;
++#if FREEINK_DEVICE_METALIO_PLUS
++  LOG_INF("TLS", "Handshake ok (%s): %s / %s elapsed=%lu", label, wolfSSL_get_version(ssl),
++          wolfSSL_get_cipher(ssl), (unsigned long)(millis()-started));
++#endif
+   if (Serial) {
+     Serial.printf("[SecureClient] handshake ok (%s): %s / %s in %lu ms\n", label, wolfSSL_get_version(ssl),
+                   wolfSSL_get_cipher(ssl), (unsigned long)(millis() - started));
+@@ -210,6 +264,10 @@
+   // A mid-stream failure is invisible to callers (they just see the connection
+   // die); the error code distinguishes an OOM (MEMORY_E -125) from a peer
+   // drop or MAC failure.
++#if FREEINK_DEVICE_METALIO_PLUS
++  LOG_ERR("TLS", "Read failed: error=%d heap=%u largest=%u TCP=%d", err, (unsigned)ESP.getFreeHeap(),
++          (unsigned)ESP.getMaxAllocHeap(), _transport.connected());
++#endif
+   if (Serial) {
+     Serial.printf("[SecureClient] read failed: %d, free heap %u, max block %u\n", err, (unsigned)ESP.getFreeHeap(),
+                   (unsigned)ESP.getMaxAllocHeap());
+--- a/src/activities/settings/FontDownloadActivity.cpp
++++ b/src/activities/settings/FontDownloadActivity.cpp
+@@ -807,7 +807,7 @@
+   }
+ 
+   NetworkStartup::prepare(renderer);
+-  const auto onProgress = [this, fileStartProgress, fileSize = file.size](size_t downloaded, size_t) {
++  const auto pollInput = [this] {
+     mappedInput.update();
+     if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+       cancelRequested_ = true;
+@@ -818,6 +818,8 @@
+       goHomeRequested_ = true;
+     }
+     UiAppHost::routeTouch(mappedInput);
++  };
++  const auto onProgress = [this, fileStartProgress, fileSize = file.size](size_t downloaded, size_t) {
+     updateDownloadProgress(fileStartProgress + std::min(downloaded, fileSize));
+   };
+   // A refused or dropped connection is retried, moving to the next host that carries
+@@ -834,9 +836,14 @@
+       delay(kRetryDelayMs);
+     }
+     const unsigned long started = millis();
+-    result = HttpDownloader::downloadToFile(base + fileName, downloadPath, onProgress, &cancelRequested_);
+-    if (result == HttpDownloader::OK)
++    result = HttpDownloader::downloadToFile(base + fileName, downloadPath, onProgress, &cancelRequested_,
++                                            "", "", {}, false, pollInput);
++    if (result == HttpDownloader::OK) {
+       LOG_INF("FONT", "Downloaded %s: %u B in %lu ms", fileName, static_cast<unsigned>(file.size), millis() - started);
++      // The same catalog hosts carry every size. Keep the working host first
++      // for subsequent files instead of retrying a known-bad primary each time.
++      if (host > 0) std::swap(baseUrl_, mirrorUrls_[host - 1]);
++    }
+   }
+ 
+   if (result == HttpDownloader::ABORTED) {
+--- a/src/network/HttpDownloader.cpp
++++ b/src/network/HttpDownloader.cpp
+@@ -28,7 +28,8 @@
+                                            const std::vector<HttpDownloader::Header>& headers,
+                                            const freeink::FetchSink& sink, const bool* cancelFlag = nullptr,
+                                            size_t* bytesOut = nullptr, const bool downgradeRedirectsToHttp = false,
+-                                           const char* rootCa = nullptr) {
++                                           const char* rootCa = nullptr,
++                                           const std::function<void()>& pollInput = nullptr) {
+   char userAgent[80];
+   const int length =
+       snprintf(userAgent, sizeof(userAgent), "CrossMux-%s-" CROSSPOINT_VERSION, HalSystem::getDeviceModel());
+@@ -37,6 +38,7 @@
+   freeink::FetchOptions options;
+   options.redirectToHttp = downgradeRedirectsToHttp;
+   bool rejectedRedirect = false;
++  uint32_t lastInputPoll = millis() - 20;
+   const freeink::FetchResult result = freeink::fetchResumable(
+       url, options,
+       [&](freeink::SecureHttpClient& http, const bool sameOrigin) {
+@@ -65,7 +67,15 @@
+         LOG_DBG("HTTP", "wolfSSL GET: %s (heap %u, max block %u)", url.c_str(), (unsigned)ESP.getFreeHeap(),
+                 (unsigned)ESP.getMaxAllocHeap());
+       },
+-      sink, [&rejectedRedirect, cancelFlag] { return rejectedRedirect || (cancelFlag && *cancelFlag); });
++      sink, [&rejectedRedirect, cancelFlag, &pollInput, &lastInputPoll] {
++        // Poll even when no body bytes arrive (headers/TLS/retry waits).
++        const uint32_t now = millis();
++        if (pollInput && now - lastInputPoll >= 20) {
++          lastInputPoll = now;
++          pollInput();
++        }
++        return rejectedRedirect || (cancelFlag && *cancelFlag);
++      });
+   if (bytesOut) *bytesOut = result.bytes;
+ 
+   if (result.aborted) return HttpDownloader::ABORTED;
+@@ -127,7 +137,8 @@
+                                                              ProgressCallback progress, const bool* cancelFlag,
+                                                              const std::string& username, const std::string& password,
+                                                              const std::vector<Header>& headers,
+-                                                             bool downgradeRedirectsToHttp) {
++                                                             bool downgradeRedirectsToHttp,
++                                                             const std::function<void()>& pollInput) {
+   LOG_DBG("HTTP", "Downloading: %s -> %s", url.c_str(), destPath.c_str());
+ 
+   // Stage in <dest>.part: a failed or cancelled download never replaces an
+@@ -141,17 +152,55 @@
+   }
+ 
+   freeink::FetchSink sink;
++#if FREEINK_DEVICE_METALIO_PLUS
++  // Per-transfer counters stay on the stack; no per-chunk allocation or logs.
++  struct { uint64_t writeUs = 0, progressUs = 0; size_t calls = 0; } timing;
++  sink.write = [&file, &timing](const uint8_t* data, size_t len) {
++    const uint32_t started = micros();
++    const bool ok = file.write(data, len) == len;
++    timing.writeUs += static_cast<uint32_t>(micros() - started);
++    ++timing.calls;
++    return ok;
++  };
++#else
+   sink.write = [&file](const uint8_t* data, size_t len) { return file.write(data, len) == len; };
++#endif
+   // Reopening for write truncates: the server restarted the body from byte 0.
+   sink.rewind = [&file, &partPath] {
+     file.close();
+     return Storage.openFileForWrite("HTTP", partPath.c_str(), file);
+   };
++#if FREEINK_DEVICE_METALIO_PLUS
++  if (progress) sink.progress = [&progress, &timing](size_t bytes, size_t total) {
++    const uint32_t started = micros();
++    progress(bytes, total);
++    timing.progressUs += static_cast<uint32_t>(micros() - started);
++  };
++  const uint32_t transferStarted = millis();
++#else
+   sink.progress = progress;
++#endif
+ 
+   size_t downloaded = 0;
++#if FREEINK_DEVICE_METALIO_PLUS
++  const std::function<void()> timedInput = pollInput ? std::function<void()>([&pollInput, &timing] {
++    const uint32_t started = micros();
++    pollInput();
++    timing.progressUs += static_cast<uint32_t>(micros() - started);
++  }) : nullptr;
++#endif
+   const DownloadError result =
+-      runGetSecure(url, username, password, headers, sink, cancelFlag, &downloaded, downgradeRedirectsToHttp);
++      runGetSecure(url, username, password, headers, sink, cancelFlag, &downloaded, downgradeRedirectsToHttp,
++#if FREEINK_DEVICE_METALIO_PLUS
++                   nullptr, timedInput);
++#else
++                   nullptr, pollInput);
++#endif
++#if FREEINK_DEVICE_METALIO_PLUS
++  LOG_INF("HTTP", "Transfer timing: bytes=%zu totalMs=%lu writeMs=%llu inputMs=%llu writes=%zu result=%d",
++          downloaded, (unsigned long)(millis() - transferStarted), (unsigned long long)(timing.writeUs / 1000),
++          (unsigned long long)(timing.progressUs / 1000), timing.calls, result);
++#endif
+   // Close before any remove() on the same path; DESTRUCTOR_CLOSES_FILE would
+   // otherwise close only after the remove. A failed rewind leaves no open handle.
+   if (file.isOpen()) file.close();
+--- a/src/network/HttpDownloader.h
++++ b/src/network/HttpDownloader.h
+@@ -61,5 +61,6 @@
+   static DownloadError downloadToFile(const std::string& url, const std::string& destPath,
+                                       ProgressCallback progress = nullptr, const bool* cancelFlag = nullptr,
+                                       const std::string& username = "", const std::string& password = "",
+-                                      const std::vector<Header>& headers = {}, bool downgradeRedirectsToHttp = false);
++                                      const std::vector<Header>& headers = {}, bool downgradeRedirectsToHttp = false,
++                                      const std::function<void()>& pollInput = nullptr);
+ };
+--- a/src/network/WifiPowerSaveGuard.h
++++ b/src/network/WifiPowerSaveGuard.h
+@@ -1,5 +1,17 @@
+ #pragma once
+ 
++#include <BoardConfig.h>
++#if FREEINK_DEVICE_METALIO_PLUS
++#include <HalWifiAwakeLease.h>
++
++struct WifiPowerSaveGuard {
++  WifiPowerSaveGuard() { lease.acquire(); }
++  WifiPowerSaveGuard(const WifiPowerSaveGuard&) = delete;
++  WifiPowerSaveGuard& operator=(const WifiPowerSaveGuard&) = delete;
++ private:
++  HalWifiAwakeLease lease;
++};
++#else
+ #include <Logging.h>
+ #include <esp_wifi.h>
+ 
+@@ -26,3 +38,4 @@
+  private:
+   wifi_ps_type_t previous = WIFI_PS_MIN_MODEM;
+ };
++#endif
+--- a/src/network/CrossPointWebServer.h
++++ b/src/network/CrossPointWebServer.h
+@@ -1,6 +1,10 @@
+ #pragma once
+ 
+ #include <ArduinoJson.h>
++#include <BoardConfig.h>
++#if FREEINK_DEVICE_METALIO_PLUS
++#include <HalWifiAwakeLease.h>
++#endif
+ #include <HalStorage.h>
+ #include <Memory.h>
+ #include <NetworkUdp.h>
+@@ -80,6 +84,9 @@
+   std::unique_ptr<WebSocketsServer> wsServer = nullptr;
+   memory::ByteBuffer fileListBatch;
+   bool running = false;
++#if FREEINK_DEVICE_METALIO_PLUS
++  HalWifiAwakeLease wifiAwakeLease;
++#endif
+   bool memoryError = false;
+   unsigned long lastMemoryCheck = 0;
+   bool apMode = false;  // true when running in AP mode, false for STA mode
+--- a/src/network/CrossPointWebServer.cpp
++++ b/src/network/CrossPointWebServer.cpp
+@@ -2,6 +2,9 @@
+ 
+ #include <ArduinoJson.h>
+ #include <BoardConfig.h>
++#if FREEINK_DEVICE_METALIO_PLUS
++#include <HalWifiDiagnostics.h>
++#endif
+ #include <BookKey.h>
+ #include <Crypto.h>
+ #include <DeviceSecret.h>
+@@ -238,7 +241,14 @@
+ 
+   // Disable WiFi sleep to improve responsiveness and prevent 'unreachable' errors.
+   // This is critical for reliable web server operation on ESP32.
++#if FREEINK_DEVICE_METALIO_PLUS
++  if (!wifiAwakeLease.acquire()) {
++    stop();
++    return false;
++  }
++#else
+   WiFi.setSleep(false);
++#endif
+   // Default varies by ESP32 core version. The activity's loss-recovery loop
+   // relies on driver retries during transient disconnects.
+   WiFi.setAutoReconnect(true);
+@@ -454,6 +464,9 @@
+   fontUpload.buffer.reset();
+   fileListBatch.reset();
+   LOG_DBG("WEB", "Web server stopped and deleted");
++#if FREEINK_DEVICE_METALIO_PLUS
++  wifiAwakeLease.release();
++#endif
+   LOG_DBG("WEB", "[MEM] Free heap after delete server: %d bytes", ESP.getFreeHeap());
+ 
+   // Note: Static upload variables (uploadFileName, uploadPath, uploadError) are declared
+@@ -487,6 +500,9 @@
+ 
+   // Print debug every 10 seconds to confirm handleClient is being called
+   if (millis() - lastDebugPrint > 10000) {
++#if FREEINK_DEVICE_METALIO_PLUS
++    plusWifiDiagnosticsSample();
++#endif
+     LOG_DBG("WEB", "handleClient active, server running on port %d", port);
+     lastDebugPrint = millis();
+   }
+--- a/freeink-sdk/libs/network/SecureNet/include/SecureHttpClient.h
++++ b/freeink-sdk/libs/network/SecureNet/include/SecureHttpClient.h
+@@ -46,6 +46,9 @@
+ #include <vector>
+ 
+ #include "SecureClient.h"
++#if FREEINK_DEVICE_METALIO_PLUS
++#include <PlusHttpReadTiming.h>
++#endif
+ 
+ namespace freeink {
+ 
+@@ -513,12 +516,19 @@
+   // Streams exactly `count` body bytes.
+   bool readFixed(Client& c, size_t count, const DataCallback& onData, const AbortCallback& shouldAbort = nullptr) {
+     uint8_t buf[READ_CHUNK];
++#if FREEINK_DEVICE_METALIO_PLUS
++    PlusHttpReadTiming timing;
++#endif
+     size_t remaining = count;
+     unsigned long deadline = millis() + _timeoutMs;
+     while (remaining > 0) {
+       if (isAborted(shouldAbort)) return false;
+       const size_t want = remaining < sizeof(buf) ? remaining : sizeof(buf);
++#if FREEINK_DEVICE_METALIO_PLUS
++      const int n = timing.read(c, buf, want);
++#else
+       const int n = c.read(buf, want);
++#endif
+       if (n <= 0) {
+         if (!c.connected() && c.available() == 0) return false;
+         if (static_cast<int32_t>(millis() - deadline) >= 0) return false;
+@@ -535,10 +545,17 @@
+   // Streams body bytes until the peer closes (Connection: close, no length).
+   bool readUntilClose(Client& c, const DataCallback& onData, const AbortCallback& shouldAbort = nullptr) {
+     uint8_t buf[READ_CHUNK];
++#if FREEINK_DEVICE_METALIO_PLUS
++    PlusHttpReadTiming timing;
++#endif
+     unsigned long deadline = millis() + _timeoutMs;
+     for (;;) {
+       if (isAborted(shouldAbort)) return false;
++#if FREEINK_DEVICE_METALIO_PLUS
++      const int n = timing.read(c, buf, sizeof(buf));
++#else
+       const int n = c.read(buf, sizeof(buf));
++#endif
+       if (n <= 0) {
+         if (!c.connected() && c.available() == 0) return true;
+         if (static_cast<int32_t>(millis() - deadline) >= 0) return false;
+--- a/src/activities/util/FrontlightPanelActivity.cpp
++++ b/src/activities/util/FrontlightPanelActivity.cpp
+@@ -3,6 +3,8 @@
+ #include <FreeInkUIIcon.h>
+ #include <GfxRenderer.h>
+ #include <HalClock.h>
++#include <HalAudioOutput.h>
++#include <array>
+ #include <HalDisplay.h>
+ #include <HalFrontlight.h>
+ #include <HalGPIO.h>
+@@ -41,7 +43,7 @@
+ // size the bands, and computePanelBottom() mirrors them.
+ constexpr int16_t kPanelSideMargin = 16;
+ constexpr int16_t kGrabberHeight = 5;     // fui::SheetProps default, mirrored here
+-constexpr int16_t kSliderRowHeight = 56;  // the pill itself (finger-sized)
++constexpr int16_t kSliderRowHeight = UiHighDpiProfile::enabled ? UiHighDpiProfile::buttonHeight : 56;  // the pill itself (finger-sized)
+ constexpr int16_t kTileHeight = UiHighDpiProfile::enabled ? UiHighDpiProfile::buttonHeight : 84;
+ constexpr int16_t kTileGap = UiHighDpiProfile::enabled ? UiHighDpiProfile::controlGap : 16;
+ constexpr int kTileCols = 2;
+@@ -52,6 +54,18 @@
+ // button next to the slider is for, so a 0% "on" level would only be a second,
+ // worse way to reach the same place.
+ constexpr uint8_t MIN_BRIGHTNESS = 1;
++constexpr int kVolumeStep = 101;
++constexpr int kVolumePreview = 200;
++constexpr auto kPlayBits = [] {
++  std::array<uint8_t, 128> bits{};
++  for (auto& b : bits) b = 0xff;
++  for (int y = 6; y < 26; ++y) {
++    const int extent = 20 - 2 * std::abs(y - 16);
++    for (int x = 9; x < 9 + extent; ++x) bits[y * 4 + x / 8] &= ~(0x80 >> (x % 8));
++  }
++  return bits;
++}();
++constexpr freeink::Icon kPlayIcon{32, 32, 16, kPlayBits.data()};
+ 
+ uint8_t percentFromPermille(const int16_t permille) {
+   int value = (static_cast<int>(permille) * 100 + 500) / 1000;
+@@ -73,10 +87,13 @@
+   // A stored 0% predates the 1% floor (or came from the web settings): show it
+   // as the floor rather than a level the slider can no longer produce. onExit
+   // persists that, which is the intent — 0 is not a brightness any more.
++  volume = std::min<uint8_t>(SETTINGS.speakerVolume, 100);
++  HalAudioOutput::setVolume(volume);
+   brightness = std::max(MIN_BRIGHTNESS, Frontlight.brightness());
+   warmth = Frontlight.warmth();
+   lightOn = Frontlight.isOn();
+   lightOnChanged = false;
++  lastSliderRenderAt = 0;
+ 
+   // Seed the touch tile's restore mode from the live setting, so toggling off
+   // and back on within this session returns to the mode the user had.
+@@ -85,8 +102,7 @@
+   }
+ 
+   resetUi();
+-  // The host app holds six handlers (UiAppHost); RickyOS boards have no frontlight
+-  // and route every control through the tile action.
++  // The host app holds six handlers; light-capable boards use all six.
+   if (!Frontlight.present()) {
+     app.on(ACTION_TILE, &FrontlightPanelActivity::onTileEvent, this);
+     app.setScreen(&FrontlightPanelActivity::panelScreen, this);
+@@ -109,9 +125,10 @@
+   // against SETTINGS here only fires on a genuine user change. lightOn has
+   // no such guarantee (see lightOnChanged's declaration), so it's gated on
+   // the user actually having touched it this session instead.
+-  const bool changed = SETTINGS.frontlightBrightness != brightness || SETTINGS.frontlightWarmth != warmth ||
++  const bool changed = SETTINGS.speakerVolume != volume || SETTINGS.frontlightBrightness != brightness || SETTINGS.frontlightWarmth != warmth ||
+                        (lightOnChanged && SETTINGS.frontlightOn != (lightOn ? 1 : 0));
+   if (changed) {
++    SETTINGS.speakerVolume = volume;
+     SETTINGS.frontlightBrightness = brightness;
+     SETTINGS.frontlightWarmth = warmth;
+     if (lightOnChanged) SETTINGS.frontlightOn = lightOn ? 1 : 0;
+@@ -127,7 +144,9 @@
+ void FrontlightPanelActivity::onBrightnessEvent(const fui::ActionEvent& event, void* user) {
+   auto* self = static_cast<FrontlightPanelActivity*>(user);
+   if (event.dragPermille < 0) return;
+-  self->brightness = std::max(MIN_BRIGHTNESS, percentFromPermille(event.dragPermille));
++  const auto next = std::max(MIN_BRIGHTNESS, percentFromPermille(event.dragPermille));
++  if (next == self->brightness && self->lightOn) return;
++  self->brightness = next;
+   Frontlight.setBrightness(self->brightness);
+   if (!self->lightOn) {
+     self->lightOn = true;
+@@ -139,7 +158,9 @@
+ void FrontlightPanelActivity::onWarmthEvent(const fui::ActionEvent& event, void* user) {
+   auto* self = static_cast<FrontlightPanelActivity*>(user);
+   if (event.dragPermille < 0) return;
+-  self->warmth = percentFromPermille(event.dragPermille);
++  const auto next = percentFromPermille(event.dragPermille);
++  if (next == self->warmth) return;
++  self->warmth = next;
+   Frontlight.setWarmth(self->warmth);
+ }
+ 
+@@ -156,7 +177,16 @@
+ }
+ 
+ void FrontlightPanelActivity::onTileEvent(const fui::ActionEvent& event, void* user) {
+-  static_cast<FrontlightPanelActivity*>(user)->runTile(event.value);
++  auto* self = static_cast<FrontlightPanelActivity*>(user);
++  if (event.dragPermille >= 0 || event.value == kVolumeStep || event.value == -kVolumeStep) {
++    self->volume = event.dragPermille >= 0 ? percentFromPermille(event.dragPermille)
++        : static_cast<uint8_t>(std::clamp<int>(self->volume + (event.value > 0 ? 1 : -1), 0, 100));
++    HalAudioOutput::setVolume(self->volume);
++  } else if (event.value == kVolumePreview) {
++    HalAudioOutput::preview(self->volume);
++  } else {
++    self->runTile(event.value);
++  }
+ }
+ 
+ void FrontlightPanelActivity::runTile(const int idx) {
+@@ -206,7 +236,7 @@
+ void FrontlightPanelActivity::loop() {
+   const auto touch = routeTouch(mappedInput, false, /*routeHeld=*/true);
+   if (touch.routed) {
+-    if (app.invalidated()) requestUpdate();
++    if (app.invalidated() && (!touch.snap.touchHeld || millis() - lastSliderRenderAt >= 250)) requestUpdate();
+     if (touch) {
+       if (touch.event.dragPermille >= 0) draggingSlider = true;
+       return;
+@@ -241,37 +271,14 @@
+     return;
+   }
+ 
+-  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Left},
++  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::NavPrevious},
+                                        [this] { adjustBrightness(-BRIGHTNESS_STEP); });
+-  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Right},
++  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::NavNext},
+                                        [this] { adjustBrightness(BRIGHTNESS_STEP); });
+ }
+ 
+ int FrontlightPanelActivity::computePanelBottom() const {
+-  if (!Frontlight.present()) return rickyPanelHeight();
+-  const auto tokens = uiThemeTokens(uiTarget, true);
+-  const auto& metrics = uiThemeMetrics(true);
+-  const int16_t lineHeight = uiTarget.lineHeight(tokens.smallText.font);
+-  // Slim battery band + the air around it (mirrors buildPanelScreen).
+-  const int y0 = std::max<int>(metrics.batteryHeight, lineHeight);
+-  int y = tokens.spaceMd + y0 + tokens.spaceMd;
+-  if (Frontlight.present()) {
+-    // Screen::sliderRow reserves caption + spaceMd + control band, then a
+-    // spaceMd gap; addSliderRow() adds one more spaceMd of air after each row.
+-    y += lineHeight + tokens.spaceMd + kSliderRowHeight + 2 * tokens.spaceMd;  // brightness
+-    if (Frontlight.hasColorTemperature()) {
+-      y += lineHeight + tokens.spaceMd + kSliderRowHeight + 2 * tokens.spaceMd;  // warmth
+-    }
+-    y += tokens.spaceSm;
+-  }
+-  // Tiles are touch targets, so a buttons-only board gets no grid and the
+-  // sheet is exactly the frontlight controls.
+-  const int tileCount = mappedInput.hasTouch() ? kTileCount : 0;
+-  y += fui::tileGridHeight(static_cast<uint16_t>(tileCount), kTileCols, kTileHeight, kTileGap);
+-  // The sheet's grabber band: content margin + grabber + air to the edge.
+-  // buildPanelScreen() feeds the same theme spacings into SheetProps.
+-  y += tokens.spaceLg + kGrabberHeight + tokens.spaceLg + tokens.spaceMd;
+-  return y;
++  return rickyPanelHeight();
+ }
+ 
+ void FrontlightPanelActivity::panelScreen(UiScreen& screen, void* user) {
+@@ -283,8 +290,13 @@
+                                            const bool showToggle) {
+   // Live percentage readout. The row draws before this call returns
+   // (immediate mode), so borrowing a stack buffer is safe.
+-  char pct[8];
+-  snprintf(pct, sizeof(pct), "%u%%", static_cast<unsigned>(value));
++  char pct[64];
++  if (showToggle) {
++    snprintf(pct, sizeof(pct), "%u%% · %s", static_cast<unsigned>(value),
++             I18N.get(lightOn ? StrId::STR_RICKY_CC_LIGHT_ON : StrId::STR_RICKY_CC_LIGHT_OFF));
++  } else {
++    snprintf(pct, sizeof(pct), "%u%%", static_cast<unsigned>(value));
++  }
+ 
+   // rowProps is a member (fui::SliderRowProps embeds a 324-byte StyleSet, well
+   // past the 256-byte budget a local gets — AGENTS.md). Every field that
+@@ -306,6 +318,16 @@
+   } else {
+     rowProps.toggleAction = fui::NO_ACTION;
+     rowProps.toggleIcon = fui::BitmapRef{};
++  }
++  if (sliderAction == ACTION_TILE) {
++    // Share the tile dispatcher so the six-handler host needs no extra allocation.
++    rowProps.decrementValue = -kVolumeStep;
++    rowProps.incrementValue = kVolumeStep;
++    rowProps.toggleAction = ACTION_TILE;
++    rowProps.toggleValue = kVolumePreview;
++    rowProps.toggleIcon = fui::bitmapFromIcon(kPlayIcon);
++  } else {
++    rowProps.toggleValue = 0;
+   }
+   screen.sliderRow(rowProps, kSliderRowHeight);
+   // The wrapper's own trailing gap is one spaceMd; double it so the rows
+@@ -374,9 +396,15 @@
+   const int actionRow = kActionDiameter + kActionLabelGap + small;
+   int y = tokens.spaceMd + std::max<int>(metrics.batteryHeight, title) + tokens.spaceXs;  // clock and battery
+   y += small;                                                                             // date line
++  if (Frontlight.present()) {
++    const int row = small + tokens.spaceMd + kSliderRowHeight + 2 * tokens.spaceMd;
++    const bool stacked = renderer.getScreenHeight() >= renderer.getScreenWidth();
++    y += 2 * tokens.spaceLg + row * (stacked ? (Frontlight.hasColorTemperature() ? 2 : 1) + (HalAudioOutput::present() ? 1 : 0) : 1);
++  }
+   if (mappedInput.hasTouch()) {
+     y += 2 * tokens.spaceLg + actionRow;
+-    if (overReader) y += 2 * tokens.spaceLg + small + tokens.spaceMd + actionRow;
++    if (overReader && renderer.getScreenHeight() >= renderer.getScreenWidth())
++      y += 2 * tokens.spaceLg + small + tokens.spaceMd + actionRow;
+   }
+   y += tokens.spaceLg + kGrabberHeight + tokens.spaceLg + tokens.spaceMd;  // grabber band
+   return y;
+@@ -390,7 +418,7 @@
+   label.align = fui::TextAlign::Center;
+   const int16_t labelHeight = target.lineHeight(theme.smallText.font);
+   const auto row = screen.takeTop(static_cast<int16_t>(kActionDiameter + kActionLabelGap + labelHeight), 0);
+-  const int16_t column = static_cast<int16_t>(row.width / kActionColumns);
++  const int16_t column = static_cast<int16_t>(row.width / std::max(kActionColumns, count));
+   for (int i = 0; i < count; ++i) {
+     const RoundAction& action = actions[i];
+     const fui::Rect cell{static_cast<int16_t>(row.x + i * column), row.y, column, row.height};
+@@ -462,8 +490,6 @@
+   snprintf(infoText, sizeof(infoText), haveTime ? "%s · %s" : "%s%s", date, today);
+   target.text(screen.takeTop(smallHeight, 0), infoText, small);
+ 
+-  // Round actions are touch targets; a buttons-only board keeps just the clock.
+-  if (!mappedInput.hasTouch()) return;
+   const auto rule = [&] {
+     screen.spacer(theme.spaceLg);
+     const auto line = screen.takeTop(1, 0);
+@@ -471,6 +497,41 @@
+     screen.spacer(theme.spaceLg);
+   };
+ 
++  if (Frontlight.present()) {
++    rule();
++    if (Frontlight.hasColorTemperature() && renderer.getScreenWidth() > renderer.getScreenHeight()) {
++      // Share the same interaction frame across two small, stack-owned columns.
++      // Reserve one row in landscape so all quick actions fit below the light.
++      const int rowHeight = smallHeight + 3 * theme.spaceMd + kSliderRowHeight;
++      const auto band = screen.takeTop(rowHeight, 0);
++      const int columns = HalAudioOutput::present() ? 3 : 2;
++      const int16_t width = static_cast<int16_t>((band.width - (columns - 1) * theme.spaceLg) / columns);
++      for (int i = 0; i < columns; ++i) {
++        const fui::Rect rect{static_cast<int16_t>(band.x + i * (width + theme.spaceLg)), band.y, width, band.height};
++        UiScreen column(screen.frame(), theme);
++        const auto area = column.contentRect();
++        column.insetContent(fui::Insets{static_cast<int16_t>(rect.y - area.y),
++            static_cast<int16_t>(area.right() - rect.right()), static_cast<int16_t>(area.bottom() - rect.bottom()),
++            static_cast<int16_t>(rect.x - area.x)});
++        if (i == 2) {
++          addSliderRow(column, tr(STR_RICKY_CC_VOLUME), volume, ACTION_TILE, ACTION_TILE, false);
++          continue;
++        }
++        addSliderRow(column, I18N.get(i == 0 ? StrId::STR_BRIGHTNESS : StrId::STR_RICKY_CC_WARMTH), i == 0 ? brightness : warmth,
++                     i == 0 ? ACTION_BRIGHTNESS : ACTION_WARMTH,
++                     i == 0 ? ACTION_BRIGHTNESS_STEP : ACTION_WARMTH_STEP, i == 0);
++      }
++    } else {
++      addSliderRow(screen, tr(STR_BRIGHTNESS), brightness, ACTION_BRIGHTNESS, ACTION_BRIGHTNESS_STEP, true);
++      if (Frontlight.hasColorTemperature())
++        addSliderRow(screen, tr(STR_RICKY_CC_WARMTH), warmth, ACTION_WARMTH, ACTION_WARMTH_STEP, false);
++      if (HalAudioOutput::present())
++        addSliderRow(screen, tr(STR_RICKY_CC_VOLUME), volume, ACTION_TILE, ACTION_TILE, false);
++    }
++  }
++
++  // Round actions are touch targets; a buttons-only board keeps the light controls.
++  if (!mappedInput.hasTouch()) return;
+   rule();
+   const bool night = SETTINGS.screenInverted != 0;
+   const RoundAction common[] = {
+@@ -479,12 +540,15 @@
+       {Tile::Standby, &icon_ricky_standby_40, tr(STR_RICKY_STANDBY_NOW), false},
+       {Tile::Transfer, &icon_ricky_transfer_40, tr(STR_FILE_TRANSFER), false},
+   };
+-  roundActionRow(screen, common, static_cast<int>(std::size(common)));
++  const bool landscape = renderer.getScreenWidth() > renderer.getScreenHeight();
++  if (!overReader || !landscape) roundActionRow(screen, common, static_cast<int>(std::size(common)));
+ 
+   if (!overReader) return;
+   // Reading: only over a book, where each of these changes the page underneath.
+-  rule();
+-  target.text(screen.takeTop(smallHeight, theme.spaceMd), tr(STR_RICKY_CC_READING), small);
++  if (!landscape) {
++    rule();
++    target.text(screen.takeTop(smallHeight, theme.spaceMd), tr(STR_RICKY_CC_READING), small);
++  }
+   static constexpr StrId kOrientNames[4] = {StrId::STR_PORTRAIT, StrId::STR_LANDSCAPE_CW,
+                                             StrId::STR_ORIENTATION_INVERTED, StrId::STR_LANDSCAPE_CCW};
+   const uint8_t orientation = SETTINGS.orientation % 4;
+@@ -500,7 +564,12 @@
+        I18N.get(kOrientNames[orientation]), false},
+       {Tile::Clean, &icon_ricky_clean_40, refreshText, false},
+   };
+-  roundActionRow(screen, reading, static_cast<int>(std::size(reading)));
++  if (landscape) {
++    const RoundAction combined[] = {common[0], common[1], common[2], common[3], reading[0], reading[1]};
++    roundActionRow(screen, combined, static_cast<int>(std::size(combined)));
++  } else {
++    roundActionRow(screen, reading, static_cast<int>(std::size(reading)));
++  }
+ }
+ 
+ void FrontlightPanelActivity::render(RenderLock&&) {
+@@ -517,4 +586,5 @@
+   // or the next scheduled clean refresh.
+   renderer.displayBuffer(cleanRefreshPending ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH);
+   cleanRefreshPending = false;
+-}
++  lastSliderRenderAt = millis();
++}
+--- a/src/activities/util/FrontlightPanelActivity.h
++++ b/src/activities/util/FrontlightPanelActivity.h
+@@ -18,6 +18,7 @@
+ class FrontlightPanelActivity final : public Activity, private UiAppHost {
+   ButtonNavigator buttonNavigator;
+ 
++  uint8_t volume = 35;
+   uint8_t brightness = 60;
+   uint8_t warmth = 50;
+   bool lightOn = false;
+@@ -31,6 +32,7 @@
+   // reflected user intent in the first place.
+   bool lightOnChanged = false;
+   bool draggingSlider = false;
++  uint32_t lastSliderRenderAt = 0;
+   // The touch tile toggles SETTINGS.touchReaderControls between off and this
+   // remembered mode, so a Swipe or Inverted Tap user gets their mode back
+   // rather than the Tap default. Seeded from the setting in onEnter().
+--- a/lib/I18n/translations/english.yaml
++++ b/lib/I18n/translations/english.yaml
+@@ -1500,3 +1500,9 @@
+ STR_RICKY_HELP_FEEDBACK_3: "Send feedback through your existing Ricky AI Studio contact channel. This page does not upload device information. Scan the website QR code to visit the site."
+ STR_RICKY_MENU_AUTO_TURN: "Auto page turn"
+ STR_RICKY_MENU_PROGRESS: "Reading progress"
++
++STR_RICKY_CC_WARMTH: "Warmth (warmer to right)"
++STR_RICKY_CC_LIGHT_ON: "On"
++STR_RICKY_CC_LIGHT_OFF: "Off"
++
++STR_RICKY_CC_VOLUME: "Volume (play to preview)"
+--- a/lib/I18n/translations/chinese.yaml
++++ b/lib/I18n/translations/chinese.yaml
+@@ -1478,3 +1478,9 @@
+ STR_RICKY_HELP_FEEDBACK_3: "通过你现有的 Ricky AI Studio 联系渠道发送反馈。本页面不会自动上传设备信息。官网入口可扫码打开。"
+ STR_RICKY_MENU_AUTO_TURN: "自动翻页"
+ STR_RICKY_MENU_PROGRESS: "阅读进度"
++
++STR_RICKY_CC_WARMTH: "冷暖（向右更暖）"
++STR_RICKY_CC_LIGHT_ON: "已开启"
++STR_RICKY_CC_LIGHT_OFF: "已关闭"
++
++STR_RICKY_CC_VOLUME: "音量（右侧试听）"
+--- a/src/activities/apps/standby/StandbyActivity.cpp
++++ b/src/activities/apps/standby/StandbyActivity.cpp
+@@ -1,8 +1,10 @@
++#include <HalAudioOutput.h>
+ #include "StandbyActivity.h"
+ 
+ #include <Arduino.h>
+ #include <FsHelpers.h>
+ #include <HalClock.h>
++#include <HalFrontlight.h>
+ #include <I18n.h>
+ #include <Logging.h>
+ #include <Memory.h>
+@@ -127,6 +129,12 @@
+ 
+ void StandbyActivity::onEnter() {
+   Activity::onEnter();
++#if FREEINK_DEVICE_METALIO_PLUS
++  HalAudioOutput::shutdown();
++#endif
++  savedFrontlightOn_ = Frontlight.present() && Frontlight.isOn();
++  Frontlight.setOn(false);
++  LOG_INF("STANDBY", "Frontlight suspended: wasOn=%u", savedFrontlightOn_);
+ #if CROSSPOINT_EMULATED == 0
+   HalPowerManager::beginStandbyKeyWatch();
+ #endif
+@@ -189,6 +197,9 @@
+   renderer.setOrientation(savedOrientation_);
+   // Time in Standby is not reading time: the book under it starts its gap afresh.
+   READING_STATS.resumeSession();
++  const bool restoreLight = savedFrontlightOn_ && SETTINGS.frontlightRestoreOnWake != 0;
++  Frontlight.setOn(restoreLight);
++  LOG_INF("STANDBY", "Frontlight resumed: on=%u", restoreLight);
+   LOG_DBG("STANDBY", "onExit free heap=%u", static_cast<unsigned>(ESP.getFreeHeap()));
+   Activity::onExit();
+ }
+--- a/src/activities/apps/standby/StandbyActivity.h
++++ b/src/activities/apps/standby/StandbyActivity.h
+@@ -46,6 +46,7 @@
+   uint32_t syncStartMs_ = 0;
+   DisplayMode mode_ = DisplayMode::Normal;
+   uint32_t lastInputMs_ = 0;
++  bool savedFrontlightOn_ = false;
+   bool inverseMode_ = false;  // Confirm toggles black-bg/white-content. Not persisted.
+ 
+   void switchFace(int8_t delta);
+--- a/lib/hal/HalAudioOutput.cpp
++++ b/lib/hal/HalAudioOutput.cpp
+@@ -1,5 +1,23 @@
+ #include "HalAudioOutput.h"
+ 
++#include <BoardConfig.h>
++#if FREEINK_DEVICE_METALIO_PLUS
++#include <PlusAudio.h>
++namespace HalAudioOutput {
++bool present() { return true; }
++bool preview(uint8_t volume) { return plus_audio::preview(volume); }
++bool playPcm(ReadCallback read, SeekCallback, uint32_t rate, uint8_t channels, uint8_t volume) {
++  return plus_audio::play(read, rate, channels, volume);
++}
++bool restart(uint8_t) { return false; }
++void setVolume(uint8_t volume) { plus_audio::setVolume(volume); }
++void shutdown() { plus_audio::shutdown(); }
++}
++#else
++namespace HalAudioOutput {
++bool present() { return false; }
++bool preview(uint8_t) { return false; }
++}
+ #if CROSSPOINT_CAP_SOUND_FEEDBACK
+ 
+ #include <AudioManager.h>
+@@ -68,3 +86,5 @@
+ }  // namespace HalAudioOutput
+ 
+ #endif
++
++#endif
+--- a/lib/hal/HalAudioOutput.h
++++ b/lib/hal/HalAudioOutput.h
+@@ -8,6 +8,9 @@
+ using ReadCallback = int (*)(uint8_t* dst, size_t length);
+ using SeekCallback = bool (*)(size_t position);
+ 
++bool present();
++bool preview(uint8_t volume);
++
+ bool playPcm(ReadCallback read, SeekCallback seek, uint32_t sampleRate, uint8_t channels, uint8_t volume);
+ bool restart(uint8_t volume);
+ void setVolume(uint8_t volume);
+--- a/src/CrossPointSettings.cpp
++++ b/src/CrossPointSettings.cpp
+@@ -277,6 +277,7 @@
+   doc["rickyGestureHome"] = rickyGestureHome;
+   doc["rickyGestureControl"] = rickyGestureControl;
+   doc["rickyGestureStatus"] = rickyGestureStatus;
++  doc["speakerVolume"] = speakerVolume;
+   doc["rickyTextWeight"] = rickyTextWeight;
+   doc["rickyStandbyFace"] = rickyStandbyFace;
+   doc["rickyAutoOffIndex"] = rickyAutoOffIndex;
+@@ -308,6 +309,7 @@
+ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
+   CrossPointSettings& s = *this;
+   bool needsResave = false;
++  speakerVolume = std::min<unsigned>(doc["speakerVolume"] | 35u, 100u);
+ 
+   auto clamp = [](uint8_t val, uint8_t maxVal, uint8_t def) -> uint8_t { return val < maxVal ? val : def; };
+ 
+--- a/src/CrossPointSettings.h
++++ b/src/CrossPointSettings.h
+@@ -555,6 +555,7 @@
+   uint8_t showReaderMenu = READER_MENU_TAP;
+   // Frontlight quick-panel state. Brightness and warmth remain persisted even
+   // when restore-on-wake is disabled.
++  uint8_t speakerVolume = 35;  // System output volume, persisted independently of button feedback.
+   uint8_t frontlightBrightness = 60;
+   uint8_t frontlightWarmth = 50;
+   uint8_t frontlightOn = 0;
