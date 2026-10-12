@@ -623,7 +623,7 @@ void ActivityManager::goToJoinNetwork() {
 }
 
 void ActivityManager::goToUsbDrive() {
-#if FREEINK_CAP_USB_MSC
+#if FREEINK_CAP_USB_MSC || defined(RICKYOS_USB_PREVIEW)
   auto activity = makeUniqueNoThrow<UsbDriveActivity>(renderer, mappedInput);
   if (!activity) {
     LOG_ERR("ACT", "OOM: USB Drive activity");

@@ -154,14 +154,14 @@ void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) 
     modeName = "Connect to Calibre";
   } else if (mode == NetworkMode::CREATE_HOTSPOT) {
     modeName = "Create Hotspot";
-#if FREEINK_CAP_USB_MSC
+#if FREEINK_CAP_USB_MSC || defined(RICKYOS_USB_PREVIEW)
   } else if (mode == NetworkMode::USB_DRIVE) {
     modeName = "USB Drive";
 #endif
   }
   LOG_DBG("WEBACT", "Network mode selected: %s", modeName);
 
-#if FREEINK_CAP_USB_MSC
+#if FREEINK_CAP_USB_MSC || defined(RICKYOS_USB_PREVIEW)
   if (mode == NetworkMode::USB_DRIVE) {
     activityManager.goToUsbDrive();
     return;

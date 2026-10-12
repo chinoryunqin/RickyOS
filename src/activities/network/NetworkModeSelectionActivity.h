@@ -21,7 +21,7 @@ class NetworkModeSelectionActivity final : public UiListActivity {
  public:
   explicit NetworkModeSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
 
-#if FREEINK_CAP_USB_MSC
+#if FREEINK_CAP_USB_MSC || defined(RICKYOS_USB_PREVIEW)
   static constexpr int MENU_ITEM_COUNT = 4;
 #else
   static constexpr int MENU_ITEM_COUNT = 3;

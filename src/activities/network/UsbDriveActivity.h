@@ -2,7 +2,7 @@
 
 #include <BoardConfig.h>
 
-#if FREEINK_CAP_USB_MSC
+#if FREEINK_CAP_USB_MSC || defined(RICKYOS_USB_PREVIEW)
 
 #include <HalStorage.h>
 
@@ -19,7 +19,13 @@ class UsbDriveActivity final : public Activity, private UiAppHost {
   void loop() override;
   void render(RenderLock&&) override;
   bool preventAutoSleep() override { return state == State::Connected || (!startFailed && state == State::IoError); }
-  bool requiresExclusiveStorageLoop() const override { return true; }
+  bool requiresExclusiveStorageLoop() const override {
+#if defined(RICKYOS_USB_PREVIEW)
+    return false;
+#else
+    return true;
+#endif
+  }
 
  private:
   using State = UsbDriveState;
@@ -45,4 +51,4 @@ class UsbDriveActivity final : public Activity, private UiAppHost {
   unsigned long hostSuspendStartedAt = 0;
 };
 
-#endif  // FREEINK_CAP_USB_MSC
+#endif  // FREEINK_CAP_USB_MSC || RICKYOS_USB_PREVIEW

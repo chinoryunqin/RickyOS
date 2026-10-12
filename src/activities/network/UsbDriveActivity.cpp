@@ -1,6 +1,6 @@
 #include "UsbDriveActivity.h"
 
-#if FREEINK_CAP_USB_MSC
+#if FREEINK_CAP_USB_MSC || defined(RICKYOS_USB_PREVIEW)
 
 #include <Arduino.h>
 #include <HalStorage.h>
@@ -15,10 +15,19 @@
 namespace fui = freeink::ui;
 
 void UsbDriveActivity::onEnter() {
+#if !defined(RICKYOS_USB_PREVIEW)
   bleinput::stop();
+#endif
   Activity::onEnter();
   resetUi();
   app.setScreen(&UsbDriveActivity::driveScreen, this);
+
+#if defined(RICKYOS_USB_PREVIEW)
+  // The browser preview must never take ownership of the host's SD storage.
+  preparing = false;
+  state = State::WaitingForHost;
+  requestUpdate();
+#else
 
   // Show the safety instructions before giving the raw SD card to the USB host.
   requestUpdateAndWait();
@@ -36,15 +45,24 @@ void UsbDriveActivity::onEnter() {
   state = State::WaitingForHost;
   hostWaitStartedAt = millis();
   requestUpdate();
+#endif
 }
 
 void UsbDriveActivity::onExit() {
+#if !defined(RICKYOS_USB_PREVIEW)
   if (!restartRequested) Storage.endUsbDrive();
   RickyStorageActivity::invalidateScan();  // files may have arrived or left
+#endif
   Activity::onExit();
 }
 
 void UsbDriveActivity::loop() {
+#if defined(RICKYOS_USB_PREVIEW)
+  if (mappedInput.wasPressed(MappedInputManager::Button::Back) ||
+      mappedInput.wasPressed(MappedInputManager::Button::Power) || mappedInput.wasHomeGesture()) {
+    activityManager.goToInxRecent();
+  }
+#else
   if (!startFailed) {
     const State nextState = Storage.usbDriveState();
     if (nextState != state) {
@@ -106,6 +124,7 @@ void UsbDriveActivity::loop() {
   if (state == State::Ejected || state == State::Disconnected || state == State::Unsupported) {
     restartToHome();
   }
+#endif
 }
 
 void UsbDriveActivity::render(RenderLock&&) {
@@ -113,7 +132,12 @@ void UsbDriveActivity::render(RenderLock&&) {
 
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int pageWidth = renderer.getScreenWidth();
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_USB_DRIVE));
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight},
+#if defined(RICKYOS_USB_PREVIEW)
+                 tr(STR_RICKY_USB_PREVIEW));
+#else
+                 tr(STR_USB_DRIVE));
+#endif
 
   renderUi();
 
@@ -132,6 +156,11 @@ void UsbDriveActivity::buildDriveScreen(UiScreen& screen) const {
   const char* message = nullptr;
   const char* detail = nullptr;
   const char* secondaryDetail = nullptr;
+#if defined(RICKYOS_USB_PREVIEW)
+  message = tr(STR_RICKY_USB_PREVIEW);
+  detail = tr(STR_RICKY_USB_PREVIEW_DESC);
+  secondaryDetail = tr(STR_RICKY_USB_PREVIEW_STEPS);
+#else
   if (preparing) {
     message = tr(STR_USB_DRIVE_PREPARING);
     detail = tr(STR_USB_DRIVE_EJECT_HINT);
@@ -154,6 +183,7 @@ void UsbDriveActivity::buildDriveScreen(UiScreen& screen) const {
         return;
     }
   }
+#endif
 
   const auto& metrics = UITheme::getInstance().getMetrics();
   screen.setContentMarginFromScreen(fui::Insets{
@@ -190,11 +220,15 @@ void UsbDriveActivity::buildDriveScreen(UiScreen& screen) const {
 }
 
 void UsbDriveActivity::restartToHome() {
+#if defined(RICKYOS_USB_PREVIEW)
+  activityManager.goToInxRecent();
+#else
   if (restartRequested) return;
   restartRequested = true;
   Storage.endUsbDrive();
   delay(20);
   restartToHomeAfterStorageHandoff();
+#endif
 }
 
-#endif  // FREEINK_CAP_USB_MSC
+#endif  // FREEINK_CAP_USB_MSC || RICKYOS_USB_PREVIEW
