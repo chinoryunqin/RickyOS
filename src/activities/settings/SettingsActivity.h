@@ -225,6 +225,7 @@ class SettingsActivity final : public UiTabListActivity {
   std::vector<SettingInfo> fontSettings;
   void reorganizeRickySettings();
   static const char* rickySettingDescription(const SettingInfo& setting);
+  static bool opensPage(const SettingInfo& setting);
   const std::vector<SettingInfo>* currentSettings = nullptr;
 
   bool preserveQuickResumeTimeoutOn = false;

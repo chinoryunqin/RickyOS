@@ -11,6 +11,7 @@
 #include "ReaderUtils.h"
 #include "components/RickyDesignUi.h"
 #include "components/RickyPageUi.h"
+#include "components/RickyRowList.h"
 #include "components/UITheme.h"
 #include "components/icons/rickyPageIcons.h"
 #include "components/themes/lyra/LyraTheme.h"
@@ -391,75 +392,20 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
   if (UiHighDpiProfile::enabled) {
     // Draw row accessories through FUI using the exact viewport geometry that
     // also drives touch and button paging. No second selection or hit model.
-    constexpr int inset = ricky::ds::space::kPageMargin - ricky::ds::space::kSelectionBleed;
-    screen.insetContent({0, inset, 0, inset});
-    props.rowHeight = ricky::ds::layout::kRowHeight;
-    props.rowGap = ricky::ds::space::kTouchSpacing;
-    props.sidePadding = ricky::ds::space::kInlineGap;
-    props.textGap = ricky::ds::space::kInlineGap;
-    props.rowInset = 0;
-    props.iconSize = 32;
+    RickyRowList::prepare(screen, props);
     screen.syncListViewport(nav, props, props.count, menuView.quickCount);
-    const auto body = screen.body();
-    int drawn = 0;
-    bool selectedDrawn = false;
-    for (int i = props.topIndex; i < props.count; ++i) {
-      const int y = body.y + drawn * (props.rowHeight + props.rowGap);
-      if (y + props.rowHeight > body.bottom()) break;
-      const fui::Rect row{body.x, static_cast<int16_t>(y), body.width, props.rowHeight};
-      const int logical = i + menuView.quickCount;
-      auto item = menuRowItems[logical];
-      const int original = menuView.indices[logical];
-      const auto& icon =
-          original == RickyReaderMenuLayout::More ? icon_ricky_row_more_32 : menuRowIcon(menuItems[original].action);
-      item.icon = fui::bitmapFromIcon(icon);
-      const bool selected = UITheme::getInstance().showSelectionCursor() && props.selectedIndex == i;
-      selectedDrawn |= props.selectedIndex == i;
-      if (item.toggle) {
-        auto one = props;
-        one.items = &item;
-        one.count = 1;
-        one.topIndex = 0;
-        one.selectedIndex = selected ? 0 : -1;
-        one.nav = nullptr;
-        one.scrollIndicator = false;
-        one.toggleKnobRadius =
-            (item.toggleChecked ? ricky::ds::layout::kToggleKnobOn : ricky::ds::layout::kToggleKnobOff) / 2;
-        one.toggleKnobInset = (one.toggleHeight - one.toggleKnobRadius * 2) / 2;
-        fui::list(screen.frame(), row, one);
-      } else {
-        fui::SettingRowProps setting;
-        setting.label = item.label;
-        setting.value = original == RickyReaderMenuLayout::More ? tr(STR_RICKY_MENU_MORE_SUMMARY) : item.value;
-        setting.icon = item.icon;
-        setting.iconSize = 32;
-        setting.textGap = ricky::ds::space::kInlineGap;
-        setting.action = ACTION_ROW;
-        setting.valueId = logical;
-        setting.inputMask = fui::InputTouch;
-        setting.labelText = props.labelText;
-        setting.valueText = screen.theme().smallText;
-        setting.valueText.color = fui::Color::DarkGray;
-        setting.styles = props.rowStyles;
-        setting.state = selected ? fui::StateSelected : fui::StateNormal;
-        setting.radius = ricky::ds::radius::kControl;
-        setting.sidePadding = props.sidePadding;
-        setting.minTouchSize = ricky::ds::layout::kTouchMin;
-        setting.drawChevron = true;
-        fui::settingRow(screen.frame(), row, setting);
-      }
-      ++drawn;
-    }
-    nav.drawnCount = props.count;
-    nav.onListRendered(props.topIndex, drawn, selectedDrawn);
-    if (drawn && props.count > drawn) {
-      const fui::Rect track{static_cast<int16_t>(body.right() - 2), body.y, 2, body.height};
-      RickyDesignUi::fill(renderer, track, ricky::ds::gray::kLine);
-      const int height = std::max(12, body.height * drawn / props.count);
-      const int y = body.y + (body.height - height) * props.topIndex / (props.count - drawn);
-      RickyDesignUi::fill(renderer, {track.x, static_cast<int16_t>(y), 2, static_cast<int16_t>(height)},
-                          ricky::ds::gray::kInk);
-    }
+    RickyRowList::draw(
+        screen, renderer, nav, props,
+        [this](const int i) {
+          const int original = menuView.indices[i + menuView.quickCount];
+          RickyRowList::RowStyle style;
+          style.icon = original == RickyReaderMenuLayout::More ? &icon_ricky_row_more_32
+                                                               : &menuRowIcon(menuItems[original].action);
+          style.chevron = true;
+          if (original == RickyReaderMenuLayout::More) style.value = tr(STR_RICKY_MENU_MORE_SUMMARY);
+          return style;
+        },
+        menuView.quickCount);
     return;
   }
   // The quick grid is fixed chrome, not part of the scrolling row count.

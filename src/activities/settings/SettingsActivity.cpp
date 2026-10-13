@@ -53,6 +53,7 @@
 #include "components/RickyDesignUi.h"
 #include "components/RickyPageUi.h"
 #include "components/RickyProfile.h"
+#include "components/RickyRowList.h"
 #include "components/SubpageLayout.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
@@ -360,6 +361,27 @@ void SettingsActivity::reorganizeRickySettings() {
       setting.nameId = StrId::STR_RICKY_COVER_FILTER;
     }
   }
+}
+
+// Rows that lead somewhere (a page, a picker, a slider, the keyboard) carry a chevron;
+// switches and in-place actions (clear cache, restore) do not.
+bool SettingsActivity::opensPage(const SettingInfo& setting) {
+  switch (setting.type) {
+    case SettingType::TOGGLE:
+      return false;
+    case SettingType::ENUM: {
+      const auto labels = setting.enumLabels();
+      const bool onOff = setting.enumStringValues.empty() && labels.size() == 2 && labels[0] == StrId::STR_STATE_OFF &&
+                         labels[1] == StrId::STR_STATE_ON;
+      return !onOff;
+    }
+    case SettingType::ACTION:
+      return setting.action != SettingAction::ClearCache && setting.action != SettingAction::RestoreSystemSettings;
+    case SettingType::VALUE:
+    case SettingType::STRING:
+      return true;
+  }
+  return false;
 }
 
 const char* SettingsActivity::rickySettingDescription(const SettingInfo& setting) {
@@ -1278,9 +1300,20 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
   productProps.subtitleText.color = fui::Color::DarkGray;
   productProps.subtitleText.maxLines = 2;
   productProps.rowGap = std::max<int16_t>(6, screen.theme().listRowGap);
+  const bool designRows = UiHighDpiProfile::enabled && !categoryRoot_;
+  if (designRows) RickyRowList::prepare(screen, productProps);
   syncListViewport(screen, productProps);
   if (usesMainTabBar() && !showMainTabContentSelection()) productProps.selectedIndex = -1;
   GfxRenderer::SyntheticBoldScope productBold(renderer, CrossPointSettings::SYNTHETIC_BOLD_OFF);
+  if (designRows) {
+    // The reader menu's rows: a chevron marks every row that opens a page or a picker.
+    RickyRowList::draw(screen, renderer, nav, productProps, [this](const int i) {
+      RickyRowList::RowStyle style;
+      style.chevron = i < settingsCount && opensPage((*currentSettings)[i]);
+      return style;
+    });
+    return;
+  }
   screen.list(productProps);
   return;
 }
