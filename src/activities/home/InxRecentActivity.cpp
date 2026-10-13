@@ -144,6 +144,7 @@ void InxRecentActivity::onEnter() {
   }
   selected = 0;
   thumbnailHeight = 0;
+  preparedHeights.fill(0);
   targetCoverStates.fill(CoverCacheState::Unchecked);
   fallbackCoverStates.fill(CoverCacheState::Unchecked);
   if (layout() == InxRecentLayout::Flow) {
@@ -386,13 +387,20 @@ bool InxRecentActivity::prepareNextMissingCover() {
         break;
     }
 
+    if (preparedHeights[index] == thumbnailHeight) {
+      state = CoverCacheState::Unavailable;  // prepared this visit and still not drawable
+      continue;
+    }
+    preparedHeights[index] = static_cast<int16_t>(thumbnailHeight);
     // The frame is already on the panel. The loan frees the framebuffer, so the
     // next frame repaints it; a failure leaves a marker and is not retried.
     {
       GfxRenderer::FrameBufferLoan loan(renderer);
-      state = BookCoverLoader::ensureThumbnail((*books)[index].path, thumbnailHeight).empty()
-                  ? CoverCacheState::Unavailable
-                  : CoverCacheState::Ready;
+      // Draw reads the recents entry's path; a thumbnail written anywhere else is no use.
+      const std::string wanted = UITheme::getCoverThumbPath((*books)[index].coverBmpPath, thumbnailHeight);
+      state = BookCoverLoader::ensureThumbnail((*books)[index].path, thumbnailHeight) == wanted
+                  ? CoverCacheState::Ready
+                  : CoverCacheState::Unavailable;
     }
     requestUpdate();
     return true;
