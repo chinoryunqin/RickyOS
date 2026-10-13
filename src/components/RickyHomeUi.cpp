@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstdio>
 
+#include "CrossPointSettings.h"
 #include "ReadingStatsStore.h"
 #include "RickyBrandMark.h"
 #include "RickyDesignTokens.h"
@@ -16,6 +17,7 @@
 #include "RickyProfile.h"
 #include "UITheme.h"
 #include "util/TimeUtils.h"
+#include "util/PanelTileCache.h"
 
 namespace fui = freeink::ui;
 namespace {
@@ -270,7 +272,15 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   const auto profile = screen.takeTop(88 + greetingHeight + 4, ds::space::k6);
   const auto avatar =
       box(profile.right() - ds::layout::kAvatarSize, profile.y, ds::layout::kAvatarSize, ds::layout::kAvatarSize);
-  RickyProfile::drawAvatar(renderer, Rect{avatar.x, avatar.y, avatar.width, avatar.height});
+  {
+    // Same picture on the same paper every visit; a custom one is otherwise read from SD.
+    char key[sizeof(SETTINGS.rickyAvatarPath) + 48];
+    snprintf(key, sizeof(key), "avatar|%s|%d,%d,%d", SETTINGS.rickyAvatarPath, avatar.x, avatar.y, avatar.width);
+    PanelTileCache::draw(renderer, key, "avatar", avatar.x, avatar.y, avatar.width, avatar.height, [&] {
+      RickyProfile::drawAvatar(renderer, Rect{avatar.x, avatar.y, avatar.width, avatar.height});
+      return true;
+    });
+  }
   screen.frame().hit(avatar, OPEN_BOOK, PROFILE, fui::InputTouch);
   const int textWidth = profile.width - avatar.width - gap;
   design::text(renderer, box(profile.x, profile.y, textWidth, 56), dateText, design::NUMERIC_DISPLAY);

@@ -22,6 +22,7 @@
 #include "components/themes/inx/InxTheme.h"
 #include "fontIds.h"
 #include "util/BookCoverLoader.h"
+#include "util/PanelTileCache.h"
 #include "util/ReadingStatsAnalytics.h"
 
 namespace {
@@ -313,20 +314,34 @@ bool InxRecentActivity::drawBookCover(const int bookIndex, const Rect& bounds) {
       bookIndex < static_cast<int>(RecentBooksStore::MAX_RECENT_BOOKS) && thumbnailHeight > 0) {
     const RecentBook& book = (*books)[bookIndex];
     if (!book.coverBmpPath.empty()) {
+      // The bounds were just filled white, so a cover tile depends only on its file and place.
+      char place[40];
+      snprintf(place, sizeof(place), "|home|%d,%d,%d,%d", bounds.x, bounds.y, bounds.width, bounds.height);
       std::string path = UITheme::getCoverThumbPath(book.coverBmpPath, thumbnailHeight);
+      if (PanelTileCache::restore(renderer, path + place)) {
+        targetCoverStates[bookIndex] = CoverCacheState::Ready;
+        return true;
+      }
 #if defined(BOARD_HAS_PSRAM) && !defined(SIMULATOR) && !defined(CROSSPOINT_EMULATED)
-      if (tryDrawBookCover(path, bounds, targetCoverStates[bookIndex], targetCoverCaches[bookIndex])) return true;
+      if (tryDrawBookCover(path, bounds, targetCoverStates[bookIndex], targetCoverCaches[bookIndex])) {
 #else
-      if (tryDrawBookCover(path, bounds, targetCoverStates[bookIndex])) return true;
+      if (tryDrawBookCover(path, bounds, targetCoverStates[bookIndex])) {
 #endif
+        PanelTileCache::store(renderer, path + place, path, bounds.x, bounds.y, bounds.width, bounds.height);
+        return true;
+      }
       if (book.coverBmpPath.find("[HEIGHT]") != std::string::npos &&
           thumbnailHeight != InxMetrics::values.homeCoverHeight) {
         path = UITheme::getCoverThumbPath(book.coverBmpPath, InxMetrics::values.homeCoverHeight);
+        if (PanelTileCache::restore(renderer, path + place)) return true;
 #if defined(BOARD_HAS_PSRAM) && !defined(SIMULATOR) && !defined(CROSSPOINT_EMULATED)
-        if (tryDrawBookCover(path, bounds, fallbackCoverStates[bookIndex], fallbackCoverCaches[bookIndex])) return true;
+        if (tryDrawBookCover(path, bounds, fallbackCoverStates[bookIndex], fallbackCoverCaches[bookIndex])) {
 #else
-        if (tryDrawBookCover(path, bounds, fallbackCoverStates[bookIndex])) return true;
+        if (tryDrawBookCover(path, bounds, fallbackCoverStates[bookIndex])) {
 #endif
+          PanelTileCache::store(renderer, path + place, path, bounds.x, bounds.y, bounds.width, bounds.height);
+          return true;
+        }
       }
     }
   }

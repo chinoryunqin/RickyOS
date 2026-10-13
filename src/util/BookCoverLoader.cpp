@@ -7,10 +7,34 @@
 #include <Logging.h>
 #include <Txt.h>
 
+#include <algorithm>
+#include <mutex>
+#include <vector>
+
+#include "PanelTileCache.h"
+
 namespace BookCoverLoader {
 namespace {
 
 enum class CachedCoverState { Missing, Ready, Terminal };
+
+// Thumbnails known to have no usable cover in this session, so a page that returns
+// does not reopen their markers. Bounded; cleared by forgetDrawnCovers().
+constexpr size_t kMaxKnownCoverless = 64;
+std::vector<std::string> knownCoverless;
+std::mutex knownCoverlessLock;
+
+bool isKnownCoverless(const std::string& path) {
+  const std::lock_guard<std::mutex> guard(knownCoverlessLock);
+  return std::find(knownCoverless.begin(), knownCoverless.end(), path) != knownCoverless.end();
+}
+
+void rememberCoverless(const std::string& path) {
+  const std::lock_guard<std::mutex> guard(knownCoverlessLock);
+  if (std::find(knownCoverless.begin(), knownCoverless.end(), path) != knownCoverless.end()) return;
+  if (knownCoverless.size() >= kMaxKnownCoverless) knownCoverless.erase(knownCoverless.begin());
+  knownCoverless.push_back(path);
+}
 
 CachedCoverState inspectCachedCover(const std::string& path, const bool emptyIsTerminal) {
   if (!Storage.exists(path.c_str())) return CachedCoverState::Missing;
@@ -26,6 +50,7 @@ CachedCoverState inspectCachedCover(const std::string& path, const bool emptyIsT
     }
   }
 
+  PanelTileCache::forget(path);
   if (!Storage.remove(path.c_str())) {
     LOG_ERR("COVER", "Failed to remove invalid cover: %s", path.c_str());
     return CachedCoverState::Terminal;
@@ -50,6 +75,7 @@ std::string ensureCachedCover(const std::string& path, const bool emptyIsTermina
     }
     return "";
   }
+  PanelTileCache::forget(path);
   if (inspectCachedCover(path, emptyIsTerminal) != CachedCoverState::Ready) return "";
   if (generated) *generated = true;
   return path;
@@ -59,16 +85,20 @@ std::string ensureCachedCover(const std::string& path, const bool emptyIsTermina
 
 std::string ensureThumbnail(const std::string& bookPath, const int height, bool* generated) {
   if (generated) *generated = false;
-  if (height <= 0 || !Storage.exists(bookPath.c_str())) return "";
+  if (height <= 0) return "";
+  if (const std::string known = thumbnailPath(bookPath, height); !known.empty() && isKnownCoverless(known)) return "";
+  if (!Storage.exists(bookPath.c_str())) return "";
 
   if (FsHelpers::hasEpubExtension(bookPath)) {
     Epub epub(bookPath, "/.crosspoint");
     const std::string path = epub.getThumbBmpPath(height);
-    return ensureCachedCover(path, !epub.hasCoverOverride(), generated, [&]() {
+    std::string result = ensureCachedCover(path, !epub.hasCoverOverride(), generated, [&]() {
       if (!epub.load(true, true)) return false;
       epub.setupCacheDir();
       return epub.generateThumbBmp(height);
     });
+    if (result.empty()) rememberCoverless(path);
+    return result;
   }
 
 
@@ -106,6 +136,19 @@ std::string ensureFullCover(const std::string& bookPath, std::string* title, std
   }
 
   return "";
+}
+
+std::string thumbnailPath(const std::string& bookPath, const int height) {
+  if (height <= 0 || !FsHelpers::hasEpubExtension(bookPath)) return "";
+  return Epub(bookPath, "/.crosspoint").getThumbBmpPath(height);
+}
+
+void forgetDrawnCovers() {
+  {
+    const std::lock_guard<std::mutex> guard(knownCoverlessLock);
+    knownCoverless.clear();
+  }
+  PanelTileCache::clear();
 }
 
 }  // namespace BookCoverLoader

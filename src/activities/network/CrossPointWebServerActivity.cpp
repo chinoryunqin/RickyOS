@@ -25,6 +25,7 @@
 #include "util/QrUtils.h"
 #include "util/TaskWatchdog.h"
 #include "activities/home/RickyStorageActivity.h"
+#include "util/BookCoverLoader.h"
 
 namespace {
 // AP Mode configuration
@@ -70,6 +71,7 @@ int barsForRssi(int rssi, int currentBars) {
 
 void CrossPointWebServerActivity::onEnter() {
   Activity::onEnter();
+  BookCoverLoader::forgetDrawnCovers();  // uploads may replace books and their caches
   NetworkStartup::logMemory("CrossPointWebServerActivity enter");
 
   LOG_DBG("WEBACT", "Free heap at onEnter: %d bytes", ESP.getFreeHeap());

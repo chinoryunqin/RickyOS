@@ -11,6 +11,7 @@
 #include "SilentRestart.h"
 #include "components/UITheme.h"
 #include "activities/home/RickyStorageActivity.h"
+#include "util/BookCoverLoader.h"
 
 namespace fui = freeink::ui;
 
@@ -19,6 +20,7 @@ void UsbDriveActivity::onEnter() {
   bleinput::stop();
 #endif
   Activity::onEnter();
+  BookCoverLoader::forgetDrawnCovers();  // the computer may change books and their caches
   resetUi();
   app.setScreen(&UsbDriveActivity::driveScreen, this);
 

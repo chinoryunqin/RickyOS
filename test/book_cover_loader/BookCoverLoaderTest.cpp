@@ -21,6 +21,7 @@ class BookCoverLoaderTest : public ::testing::Test {
     ASSERT_TRUE(std::filesystem::create_directories(root, error));
     ASSERT_EQ(setenv("CROSSPOINT_SIM_SD", root.c_str(), 1), 0);
     ASSERT_TRUE(Storage.begin());
+    BookCoverLoader::forgetDrawnCovers();
     cover_stub::epubThumbnailGenerations = 0;
     cover_stub::fullCoverGenerations = 0;
     cover_stub::overrideConversions = 0;
@@ -144,7 +145,22 @@ TEST_F(BookCoverLoaderTest, MarksFailureThatWroteNothing) {
 
   // A cover added later still replaces the marker.
   writeOverride({0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0});
+  BookCoverLoader::forgetDrawnCovers();
   EXPECT_EQ(BookCoverLoader::ensureThumbnail("/nocoverimage.epub", 226), "/.crosspoint/epub/thumb_226.bmp");
+}
+
+TEST_F(BookCoverLoaderTest, RemembersCoverlessBooksWithoutTheCard) {
+  writeBook("/coverless.epub");
+  EXPECT_TRUE(BookCoverLoader::ensureThumbnail("/coverless.epub", 226).empty());
+  // A returning page does not reopen the marker: even a vanished cache stays unread.
+  std::filesystem::remove_all(hostPath("/.crosspoint"));
+  EXPECT_TRUE(BookCoverLoader::ensureThumbnail("/coverless.epub", 226).empty());
+  EXPECT_EQ(cover_stub::epubThumbnailGenerations, 1);
+  BookCoverLoader::forgetDrawnCovers();
+  EXPECT_TRUE(BookCoverLoader::ensureThumbnail("/coverless.epub", 226).empty());
+  EXPECT_EQ(cover_stub::epubThumbnailGenerations, 2);
+  EXPECT_EQ(BookCoverLoader::thumbnailPath("/coverless.epub", 226), "/.crosspoint/epub/thumb_226.bmp");
+  EXPECT_TRUE(BookCoverLoader::thumbnailPath("/notes.txt", 226).empty());
 }
 
 TEST_F(BookCoverLoaderTest, UsesOverrideAfterInternalEpubCoverFails) {
@@ -172,6 +188,7 @@ TEST_F(BookCoverLoaderTest, RetriesEmptyMarkerWhenOverrideAppears) {
   bool generated = true;
   EXPECT_TRUE(BookCoverLoader::ensureThumbnail("/coverless.epub", 226, &generated).empty());
   writeOverride({0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0});
+  BookCoverLoader::forgetDrawnCovers();  // WeRead, which writes overrides, does this on entry
 
   EXPECT_EQ(BookCoverLoader::ensureThumbnail("/coverless.epub", 226, &generated), "/.crosspoint/epub/thumb_226.bmp");
   EXPECT_TRUE(generated);

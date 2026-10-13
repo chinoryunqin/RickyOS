@@ -644,6 +644,20 @@ class GfxRenderer {
   // the rectangle, without a rotation and two read-modify-writes per pixel: on a
   // rotated panel those walk PSRAM column-wise and dominated UI paint time.
   void fillGrayscale16Rect(int x, int y, int width, int height, uint8_t level) const;
+  // Byte-exact snapshot of a logical rectangle in both panel buffers (16-level frame and
+  // B/W proxy), so unchanged artwork such as a cover is written back row by row instead
+  // of being read, decoded and drawn again. The caller owns the storage.
+  struct PanelTile {
+    int16_t lx0 = 0, ly0 = 0, lx1 = 0, ly1 = 0;  // logical, half-open, after clipping
+    int16_t px0 = 0, py0 = 0, px1 = 0, py1 = 0;  // physical, inclusive
+    uint8_t orientation = 0;
+    size_t bytes() const;
+  };
+  // False when no 16-level frame is active or nothing of the rectangle is visible.
+  bool panelTileFor(int x, int y, int width, int height, PanelTile* tile) const;
+  void capturePanelTile(const PanelTile& tile, uint8_t* out) const;
+  // False (nothing written) unless the same pixels are visible now as at capture.
+  bool restorePanelTile(const PanelTile& tile, const uint8_t* in) const;
   void blendGrayscale16Pixel(int x, int y, uint8_t inkLevel, uint8_t coverage) const;
   // Copy a rectangle of the B/W proxy into the native 16-gray frame (ink -> black,
   // paper -> white), so text and shapes drawn with the normal B/W API can sit on a

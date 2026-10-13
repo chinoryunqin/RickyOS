@@ -33,6 +33,7 @@
 #include "components/icons/cover.h"
 #include "fontIds.h"
 #include "util/QrUtils.h"
+#include "util/BookCoverLoader.h"
 
 namespace {
 
@@ -479,6 +480,7 @@ static_assert(sizeof(WeReadChapterRangeActivity) <= 1024, "WeRead chapter select
 
 void WeReadActivity::onEnter() {
   Activity::onEnter();
+  BookCoverLoader::forgetDrawnCovers();  // downloads write books and cover overrides
   if (!WeReadBrowse::clearLegacyWorkspace()) LOG_ERR("WR", "legacy browse workspace cleanup failed");
   NetworkStartup::prepare(renderer);
   disclaimerSelected_ = 0;

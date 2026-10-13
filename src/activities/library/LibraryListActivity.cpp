@@ -34,6 +34,7 @@
 #include "fontIds.h"
 #include "util/BookCacheUtils.h"
 #include "util/BookCoverLoader.h"
+#include "util/PanelTileCache.h"
 
 namespace fui = freeink::ui;
 
@@ -1144,7 +1145,12 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
     // Existing thumbnail parsers use fallible temporary scratch, released per
     // book; a failed conversion leaves the cover placeholder usable.
     for (int i = 0; i < visible; ++i) {
-      if (!shelfPaths[i].empty()) shelfCovers[i] = BookCoverLoader::ensureThumbnail(shelfPaths[i], coverHeight);
+      if (shelfPaths[i].empty()) continue;
+      // A cover already drawn this session was a valid thumbnail: skip the card.
+      std::string drawn = BookCoverLoader::thumbnailPath(shelfPaths[i], coverHeight);
+      shelfCovers[i] = !drawn.empty() && PanelTileCache::hasOwner(drawn)
+                           ? std::move(drawn)
+                           : BookCoverLoader::ensureThumbnail(shelfPaths[i], coverHeight);
     }
     if (!index.open(library::libraryIndexPath())) {
       LOG_ERR("LIB", "cannot reopen shelf index");
@@ -1166,14 +1172,20 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
     const fui::Rect rect{static_cast<int16_t>(cell.x + (cell.width - coverWidth) / 2), static_cast<int16_t>(cell.y + 8),
                          static_cast<int16_t>(coverWidth), static_cast<int16_t>(coverHeight)};
     bool painted = false;
-    HalFile file;
-    if (!shelfCovers[slot].empty() && Storage.openFileForRead("LIB", shelfCovers[slot], file)) {
-      Bitmap bitmap(file);
-      if (bitmap.parseHeaders() == BmpReaderError::Ok &&
-          GUI.drawCoverThumbFill(renderer, bitmap, Rect{rect.x, rect.y, rect.width, rect.height})) {
-        screen.target().stroke(rect, fui::Paint::solid(fui::Color::Black), ricky::ds::stroke::kHairline);
-        painted = true;
-      }
+    if (!shelfCovers[slot].empty()) {
+      // 1-bit covers leave paper pixels undrawn, so the cell fill under them is part of the key.
+      char key[48];
+      snprintf(key, sizeof(key), "|lib|%d,%d,%d,%d|%d", rect.x, rect.y, rect.width, rect.height, picked ? 1 : 0);
+      painted = PanelTileCache::draw(renderer, shelfCovers[slot] + key, shelfCovers[slot], rect.x, rect.y, rect.width,
+                                     rect.height, [&] {
+                                       HalFile file;
+                                       if (!Storage.openFileForRead("LIB", shelfCovers[slot], file)) return false;
+                                       Bitmap bitmap(file);
+                                       return bitmap.parseHeaders() == BmpReaderError::Ok &&
+                                              GUI.drawCoverThumbFill(renderer, bitmap,
+                                                                     Rect{rect.x, rect.y, rect.width, rect.height});
+                                     });
+      if (painted) screen.target().stroke(rect, fui::Paint::solid(fui::Color::Black), ricky::ds::stroke::kHairline);
     }
     if (!painted) {
       const auto& path = shelfPaths[slot];

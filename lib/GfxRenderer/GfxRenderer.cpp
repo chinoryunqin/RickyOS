@@ -2115,6 +2115,82 @@ void GfxRenderer::fillGrayscale16Rect(const int x, const int y, const int width,
   }
 }
 
+size_t GfxRenderer::PanelTile::bytes() const {
+  const size_t rows = static_cast<size_t>(py1 - py0 + 1);
+  return rows * static_cast<size_t>(px1 / 2 - px0 / 2 + 1 + px1 / 8 - px0 / 8 + 1);
+}
+
+bool GfxRenderer::panelTileFor(const int x, const int y, const int width, const int height, PanelTile* tile) const {
+  if (!grayscale16Buffer || !frameBuffer || _stripActive || width <= 0 || height <= 0) return false;
+  const int lx0 = std::max({0, x, clipLeft_});
+  const int ly0 = std::max({0, y, clipTop_});
+  const int lx1 = std::min({getScreenWidth(), x + width, clipRight_});
+  const int ly1 = std::min({getScreenHeight(), y + height, clipBottom_});
+  if (lx0 >= lx1 || ly0 >= ly1) return false;
+  int ax, ay, bx, by;
+  rotateCoordinates(orientation, lx0, ly0, &ax, &ay, panelWidth, panelHeight);
+  rotateCoordinates(orientation, lx1 - 1, ly1 - 1, &bx, &by, panelWidth, panelHeight);
+  tile->lx0 = static_cast<int16_t>(lx0);
+  tile->ly0 = static_cast<int16_t>(ly0);
+  tile->lx1 = static_cast<int16_t>(lx1);
+  tile->ly1 = static_cast<int16_t>(ly1);
+  tile->px0 = static_cast<int16_t>(std::max(0, std::min(ax, bx)));
+  tile->px1 = static_cast<int16_t>(std::min(static_cast<int>(panelWidth) - 1, std::max(ax, bx)));
+  tile->py0 = static_cast<int16_t>(std::max(0, std::min(ay, by)));
+  tile->py1 = static_cast<int16_t>(std::min(static_cast<int>(panelHeight) - 1, std::max(ay, by)));
+  tile->orientation = static_cast<uint8_t>(orientation);
+  return tile->px0 <= tile->px1 && tile->py0 <= tile->py1;
+}
+
+void GfxRenderer::capturePanelTile(const PanelTile& tile, uint8_t* out) const {
+  const size_t grayBytes = static_cast<size_t>(tile.px1 / 2 - tile.px0 / 2 + 1);
+  const size_t bwBytes = static_cast<size_t>(tile.px1 / 8 - tile.px0 / 8 + 1);
+  for (int py = tile.py0; py <= tile.py1; ++py) {
+    memcpy(out, grayscale16Buffer + static_cast<size_t>(py) * (panelWidth / 2) + tile.px0 / 2, grayBytes);
+    out += grayBytes;
+    memcpy(out, frameBuffer + static_cast<size_t>(py) * panelWidthBytes + tile.px0 / 8, bwBytes);
+    out += bwBytes;
+  }
+}
+
+bool GfxRenderer::restorePanelTile(const PanelTile& tile, const uint8_t* in) const {
+  RICKY_PAINT_SCOPE(Image);
+  PanelTile now;
+  if (!panelTileFor(tile.lx0, tile.ly0, tile.lx1 - tile.lx0, tile.ly1 - tile.ly0, &now) ||
+      now.lx0 != tile.lx0 || now.ly0 != tile.ly0 || now.lx1 != tile.lx1 || now.ly1 != tile.ly1 ||
+      now.px0 != tile.px0 || now.py0 != tile.py0 || now.px1 != tile.px1 || now.py1 != tile.py1 ||
+      now.orientation != tile.orientation)
+    return false;
+  const int g0 = tile.px0 / 2, g1 = tile.px1 / 2;
+  const int b0 = tile.px0 / 8, b1 = tile.px1 / 8;
+  // Edge bytes are shared with neighbours: odd x is the high nibble, B/W is MSB first.
+  const uint8_t grayFirst = (tile.px0 & 1) ? 0xF0 : 0xFF;
+  const uint8_t grayLast = (tile.px1 & 1) ? 0xFF : 0x0F;
+  const uint8_t bwFirst = static_cast<uint8_t>(0xFFu >> (tile.px0 % 8));
+  const uint8_t bwLast = static_cast<uint8_t>(0xFFu << (7 - tile.px1 % 8));
+  const auto copyRow = [](uint8_t* dst, const uint8_t* src, const int count, const uint8_t first,
+                          const uint8_t last) {
+    const auto merge = [](uint8_t& byte, const uint8_t value, const uint8_t mask) {
+      byte = static_cast<uint8_t>((byte & ~mask) | (value & mask));
+    };
+    if (count == 1) {
+      merge(dst[0], src[0], static_cast<uint8_t>(first & last));
+      return;
+    }
+    merge(dst[0], src[0], first);
+    if (count > 2) memcpy(dst + 1, src + 1, static_cast<size_t>(count - 2));
+    merge(dst[count - 1], src[count - 1], last);
+  };
+  for (int py = tile.py0; py <= tile.py1; ++py) {
+    copyRow(grayscale16Buffer + static_cast<size_t>(py) * (panelWidth / 2) + g0, in, g1 - g0 + 1, grayFirst,
+            grayLast);
+    in += g1 - g0 + 1;
+    copyRow(frameBuffer + static_cast<size_t>(py) * panelWidthBytes + b0, in, b1 - b0 + 1, bwFirst, bwLast);
+    in += b1 - b0 + 1;
+  }
+  return true;
+}
+
 void GfxRenderer::writeGrayscale16Physical(const int px, const int py, const uint8_t level) const {
   // B/W proxy for popups and later partial updates: level < 8 is ink, as drawPixel(x, y,
   // level < 8) would write it.

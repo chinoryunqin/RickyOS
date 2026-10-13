@@ -352,6 +352,74 @@ int main(int argc, char** argv) {
         renderer.cancelGrayscale16();
       }
     }
+    // A captured panel tile writes back exactly the pixels it covered (nibble and B/W
+    // bit edges included) and nothing else; a changed clip refuses the restore.
+    {
+      uint32_t seed = 777u + static_cast<uint32_t>(orientation);
+      const auto next = [&seed](int bound) {
+        seed = seed * 1664525u + 1013904223u;
+        return static_cast<int>((seed >> 8) % static_cast<uint32_t>(bound));
+      };
+      const auto scramble = [&next] {
+        for (auto& byte : native) byte = static_cast<uint8_t>(next(256));
+        for (auto& byte : bw) byte = static_cast<uint8_t>(next(256));
+      };
+      const int w = renderer.getScreenWidth();
+      const int h = renderer.getScreenHeight();
+      constexpr int stride = HalDisplay::DISPLAY_WIDTH;
+      for (int round = 0; round < 60; ++round) {
+        const int x = next(w + 40) - 20, y = next(h + 40) - 20;
+        const int rw = next(90) + 1, rh = next(90) + 1;
+        const bool clipped = round % 4 == 0;
+        assert(renderer.beginGrayscale16());
+        scramble();
+        const auto originalNative = native;
+        const auto originalBw = bw;
+        GfxRenderer::PanelTile tile;
+        std::vector<uint8_t> saved;
+        bool visible;
+        {
+          std::optional<GfxRenderer::ClipScope> clip;
+          if (clipped) clip.emplace(renderer, x + 2, y + 1, rw / 2 + 1, rh / 2 + 1);
+          visible = renderer.panelTileFor(x, y, rw, rh, &tile);
+          if (visible) {
+            saved.resize(tile.bytes());
+            renderer.capturePanelTile(tile, saved.data());
+          }
+        }
+        if (!visible) {
+          renderer.cancelGrayscale16();
+          continue;
+        }
+        scramble();
+        auto expectedNative = native;
+        auto expectedBw = bw;
+        for (int ly = tile.ly0; ly < tile.ly1; ++ly)
+          for (int lx = tile.lx0; lx < tile.lx1; ++lx) {
+            const auto [px, py] = physical(orientation, lx, ly);
+            const size_t g = static_cast<size_t>(py) * (stride / 2) + px / 2;
+            const uint8_t nibble = (px & 1) ? 0xF0 : 0x0F;
+            expectedNative[g] = static_cast<uint8_t>((expectedNative[g] & ~nibble) | (originalNative[g] & nibble));
+            const size_t b = static_cast<size_t>(py) * (stride / 8) + px / 8;
+            const uint8_t bit = static_cast<uint8_t>(0x80u >> (px % 8));
+            expectedBw[b] = static_cast<uint8_t>((expectedBw[b] & ~bit) | (originalBw[b] & bit));
+          }
+        if (clipped) {
+          // Restoring needs the same clip as the capture; with none, more is visible.
+          const auto before = native;
+          if (tile.lx1 - tile.lx0 < rw || tile.ly1 - tile.ly0 < rh) {
+            const GfxRenderer::ClipScope narrower(renderer, tile.lx0 + 1, tile.ly0, 1, 1);
+            if (tile.lx1 - tile.lx0 > 1) assert(!renderer.restorePanelTile(tile, saved.data()) && native == before);
+          }
+          const GfxRenderer::ClipScope same(renderer, x + 2, y + 1, rw / 2 + 1, rh / 2 + 1);
+          assert(renderer.restorePanelTile(tile, saved.data()));
+        } else {
+          assert(renderer.restorePanelTile(tile, saved.data()));
+        }
+        assert(native == expectedNative && bw == expectedBw);
+        renderer.cancelGrayscale16();
+      }
+    }
     assert(renderer.beginGrayscale16());
     renderer.fillRect(0, 0, 3, 2);
     for (int y = 0; y < renderer.getScreenHeight(); ++y) {

@@ -18,6 +18,7 @@
 #include "UITheme.h"
 #include "icons/rickyAvatars.h"
 #include "util/TimeUtils.h"
+#include "util/PanelTileCache.h"
 
 namespace RickyProfile {
 namespace {
@@ -88,6 +89,7 @@ void drawPresetAvatar(const GfxRenderer& renderer, const Rect& rect, const int i
 }
 
 bool setAvatar(const char* value) {
+  PanelTileCache::forget("avatar");  // imports reuse two file names
   char previous[sizeof(SETTINGS.rickyAvatarPath)];
   memcpy(previous, SETTINGS.rickyAvatarPath, sizeof(previous));
   strncpy(SETTINGS.rickyAvatarPath, value, sizeof(SETTINGS.rickyAvatarPath) - 1);
