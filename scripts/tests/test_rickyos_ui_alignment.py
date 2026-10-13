@@ -271,6 +271,15 @@ int main() {
         self.assertIn('ACTION_SHELF_OPTIONS', enter)
         self.assertIn('self.optionPopup.show', enter)
 
+    def test_shelf_title_and_progress_reserve_real_font_lines(self):
+        shelf = method((ROOT / 'src/activities/library/LibraryListActivity.cpp').read_text(),
+                       'void LibraryListActivity::buildRickyShelf(')
+        self.assertIn('renderer.getLineHeight(RickyDesignUi::CAPTION)', shelf)
+        self.assertIn('renderer.getLineHeight(RickyDesignUi::BODY)', shelf)
+        self.assertIn('rowHeight - cardExtraHeight', shelf)
+        self.assertIn('titleRect.bottom() + cardTextGap', shelf)
+        self.assertNotIn('rect.bottom() + 36', shelf)
+
     def test_storage_does_not_create_or_reorganize_user_directories(self):
         source = (ROOT / 'src/activities/home/RickyStorageActivity.cpp').read_text()
         for key in ('STR_RICKY_DOWNLOADS','STR_RICKY_IMAGES','STR_FONT', 'STR_RICKY_BOOK_FILES',

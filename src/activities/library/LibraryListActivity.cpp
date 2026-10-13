@@ -1040,6 +1040,14 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
   screen.insetContent(fui::Insets{0, ricky::ds::space::kPageMargin, 0, ricky::ds::space::kPageMargin});
   const int gap = ricky::ds::space::kGutter;
   const int labelHeight = screen.target().lineHeight(theme.smallText.font);
+  // The product caption can fall back to BODY for a title with uncommon glyphs.
+  // Reserve the taller of the two actual font lines so title and progress never touch.
+  const int cardTextLineHeight =
+      std::max(renderer.getLineHeight(RickyDesignUi::CAPTION), renderer.getLineHeight(RickyDesignUi::BODY));
+  constexpr int cardInset = 8;
+  constexpr int cardTextGap = 8;
+  constexpr int cardSideInset = 6;
+  const int cardExtraHeight = 2 * cardTextLineHeight + 2 * cardInset + 2 * cardTextGap;
   const int count = bookRowCount();
   auto titleRect = screen.takeTop(ricky::ds::layout::kPageHeaderHeight, 0);
   auto countRect = titleRect;
@@ -1106,7 +1114,7 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
   const int rowHeight = std::max(1, (body.height - gap * (rows - 1)) / rows);
   // 2:3 covers, one page of six bounded records.
   const int coverHeight = std::max(
-      1, std::min(rowHeight - labelHeight * 2 - gap * 3, ((body.width - gap * (columns - 1)) / columns - 16) * 3 / 2));
+      1, std::min(rowHeight - cardExtraHeight, ((body.width - gap * (columns - 1)) / columns - 16) * 3 / 2));
   auto& n = activeNav();
   fui::ListProps paging;
   // Feed the existing atomic list-nav requests with four virtual one-pixel rows.
@@ -1165,11 +1173,12 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
   for (int slot = 0; slot < visible; ++slot) {
     const fui::Rect cell{static_cast<int16_t>(body.x + slot % columns * (cellWidth + gap)),
                          static_cast<int16_t>(body.y + slot / columns * (rowHeight + gap)),
-                         static_cast<int16_t>(cellWidth), static_cast<int16_t>(coverHeight + 72)};
+                         static_cast<int16_t>(cellWidth), static_cast<int16_t>(coverHeight + cardExtraHeight)};
     const bool picked = showMainTabContentSelection() && paging.selectedIndex == start + slot;
     if (picked) RickyDesignUi::fill(renderer, cell, ricky::ds::gray::kInk, ricky::ds::radius::kControl);
     const int coverWidth = coverHeight * 2 / 3;
-    const fui::Rect rect{static_cast<int16_t>(cell.x + (cell.width - coverWidth) / 2), static_cast<int16_t>(cell.y + 8),
+    const fui::Rect rect{static_cast<int16_t>(cell.x + (cell.width - coverWidth) / 2),
+                         static_cast<int16_t>(cell.y + cardInset),
                          static_cast<int16_t>(coverWidth), static_cast<int16_t>(coverHeight)};
     bool painted = false;
     if (!shelfCovers[slot].empty()) {
@@ -1192,10 +1201,16 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
       const char* format = FsHelpers::hasEpubExtension(path) ? "EPUB" : FsHelpers::hasTxtExtension(path) ? "TXT" : "MD";
       RickyDesignUi::cover(renderer, rect, shelfTitles[slot].c_str(), format);
     }
-    RickyDesignUi::text(renderer, {cell.x, static_cast<int16_t>(rect.bottom() + 8), cell.width, 28},
-                        shelfTitles[slot].c_str(), RickyDesignUi::CAPTION, picked, fui::TextAlign::Center);
-    RickyDesignUi::secondaryText(renderer, {cell.x, static_cast<int16_t>(rect.bottom() + 36), cell.width, 28},
-                                 shelfDetails[slot].data(), RickyDesignUi::CAPTION, picked, fui::TextAlign::Center);
+    const fui::Rect titleRect{static_cast<int16_t>(cell.x + cardSideInset),
+                              static_cast<int16_t>(rect.bottom() + cardTextGap),
+                              static_cast<int16_t>(cell.width - cardSideInset * 2),
+                              static_cast<int16_t>(cardTextLineHeight)};
+    const fui::Rect detailRect{titleRect.x, static_cast<int16_t>(titleRect.bottom() + cardTextGap), titleRect.width,
+                               titleRect.height};
+    RickyDesignUi::text(renderer, titleRect, shelfTitles[slot].c_str(), RickyDesignUi::CAPTION, picked,
+                        fui::TextAlign::Center);
+    RickyDesignUi::secondaryText(renderer, detailRect, shelfDetails[slot].data(), RickyDesignUi::CAPTION, picked,
+                                 fui::TextAlign::Center);
     screen.frame().hit(cell, ACTION_ROW, start + slot, fui::InputTouch | fui::InputLongPress);
   }
   n.drawnCount = count;
