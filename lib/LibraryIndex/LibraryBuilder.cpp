@@ -19,6 +19,8 @@
 
 namespace library {
 namespace {
+BuildProgressFn buildProgressFn = nullptr;
+void* buildProgressContext = nullptr;
 
 constexpr char INDEX_PATH[] = "/.crosspoint/library.idx";
 constexpr char NEW_PATH[] = "/.crosspoint/library.new";
@@ -439,6 +441,7 @@ int findPrior(WalkState& st, const uint64_t pathHash) {
 
   st.stageOut->write(&entry, STAGE_STRIDE);
   st.books++;
+  if (buildProgressFn) buildProgressFn(st.books, buildProgressContext);
   return true;
 }
 
@@ -1093,6 +1096,11 @@ bool markLibraryIndexDirty() {
 }
 
 bool isLibraryIndexDirty() { return dirtyInMemory || Storage.exists(DIRTY_PATH); }
+
+void setBuildProgress(const BuildProgressFn fn, void* context) {
+  buildProgressFn = fn;
+  buildProgressContext = context;
+}
 
 bool buildLibraryIndex(const char* rootPath, BuildStats& stats, const bool readMetadata) {
   const uint32_t startMs = millis();

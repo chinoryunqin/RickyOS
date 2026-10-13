@@ -54,6 +54,7 @@
 #include "util/ScreenshotUtil.h"
 #include "util/Timezones.h"
 #include "util/UserGuide.h"
+#include "util/BootPreparation.h"
 
 #if CROSSPOINT_VECTOR_FONTS
 // Rendering (incl. FreeType TTF rasterization) runs on the Arduino loop task.
@@ -891,6 +892,14 @@ void setup() {
         activityManager.goToBoot();
         break;
     }
+  }
+
+  // On a boot screen (cold boot or after an update), before any page needs it: index the
+  // library and refresh recent covers when this firmware or the card calls for it, so the
+  // first visits are not the slow ones. Wakes and silent restarts stay instant.
+  if (!recoveryFirmwareMode && !HalSystem::isRebootFromPanic() && !requiresOnboarding &&
+      (postOtaBoot || resume == BootResume::Splash)) {
+    BootPreparation::run(renderer);
   }
 
   if (recoveryFirmwareMode) {

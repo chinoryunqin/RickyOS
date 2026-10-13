@@ -68,6 +68,11 @@ struct BuildStats {
 // without building the reader's spine, TOC, CSS, or section caches.
 bool buildLibraryIndex(const char* rootPath, BuildStats& stats, bool readMetadata = false);
 
+// Optional progress for a long walk (e.g. the boot-time preparation screen): called
+// once per book staged, on the building task. Pass nullptr to clear.
+using BuildProgressFn = void (*)(uint16_t booksFound, void* context);
+void setBuildProgress(BuildProgressFn fn, void* context);
+
 // Live index path, shared by the builder and activity.
 const char* libraryIndexPath();
 
