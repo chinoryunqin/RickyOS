@@ -37,15 +37,11 @@ constexpr StrId LAYOUT_ROW_NAME_IDS[] = {StrId::STR_LINE_SPACING,      StrId::ST
                                          StrId::STR_CHARACTER_SPACING, StrId::STR_EXTRA_SPACING,
                                          StrId::STR_FIRST_LINE_INDENT, StrId::STR_PARAGRAPH_INDENTATION,
                                          StrId::STR_ALIGNMENT,         StrId::STR_SCREEN_MARGIN};
-constexpr StrId STYLE_ROW_NAME_IDS[] = {StrId::STR_FOCUS_READING,
-                                        StrId::STR_READING_GUIDE_LINE,
-                                        StrId::STR_READING_GUIDE_LINE_STYLE,
-                                        StrId::STR_READING_GUIDE_LINE_OFFSET,
-                                        StrId::STR_HYPHENATION,
-                                        StrId::STR_EMBEDDED_STYLE,
-                                        StrId::STR_RICKY_WEIGHT,
-                                        StrId::STR_FAKE_BOLD,
-                                        StrId::STR_TEXT_AA};
+constexpr StrId STYLE_ROW_NAME_IDS[] = {StrId::STR_RICKY_WEIGHT,    StrId::STR_FAKE_BOLD,
+                                        StrId::STR_FOCUS_READING,   StrId::STR_HYPHENATION,
+                                        StrId::STR_EMBEDDED_STYLE,  StrId::STR_TEXT_AA,
+                                        StrId::STR_READING_GUIDE_LINE_OFFSET};
+static_assert(std::size(STYLE_ROW_NAME_IDS) == 7, "a label per TextSettingsActivity::StyleRow");
 
 constexpr StrId LINE_SPACING_IDS[] = {StrId::STR_TIGHT, StrId::STR_NORMAL, StrId::STR_WIDE, StrId::STR_EXTRA_WIDE};
 constexpr StrId FIRST_LINE_INDENT_IDS[] = {StrId::STR_FIRST_LINE_INDENT_AUTO, StrId::STR_FIRST_LINE_INDENT_INDENT,
@@ -86,11 +82,6 @@ constexpr StrId CHARACTER_SPACING_IDS[] = {StrId::STR_SPACING_MINUS_2, StrId::ST
                                            StrId::STR_SPACING_PLUS_2};
 constexpr StrId ALIGNMENT_IDS[] = {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId::STR_CENTER, StrId::STR_ALIGN_RIGHT,
                                    StrId::STR_BOOK_S_STYLE};
-constexpr StrId GUIDE_LINE_STYLE_IDS[] = {StrId::STR_SOLID_LINE,  StrId::STR_SHORT_DASH,    StrId::STR_MEDIUM_DASH,
-                                          StrId::STR_LONG_DASH,   StrId::STR_DOTTED_LINE,   StrId::STR_WAVY_LINE,
-                                          StrId::STR_DOUBLE_LINE, StrId::STR_HIGHLIGHT_LINE};
-static_assert(std::size(GUIDE_LINE_STYLE_IDS) == static_cast<size_t>(readingGuideLine::Style::Count),
-              "a label per stored reading-line style");
 constexpr int MARGIN_MIN = CrossPointSettings::SCREEN_MARGIN_MIN;
 constexpr int MARGIN_MAX = CrossPointSettings::SCREEN_MARGIN_MAX;
 constexpr int MARGIN_STEP = CrossPointSettings::SCREEN_MARGIN_STEP;
@@ -358,9 +349,6 @@ void TextSettingsActivity::buildScreen(UiScreen& screen) {
         case StyleRow::FocusReading:
           GUI.setCheckboxRow(rowItems_[i], SETTINGS.focusReadingEnabled);
           break;
-        case StyleRow::ReadingGuideLine:
-          GUI.setCheckboxRow(rowItems_[i], SETTINGS.readingGuideLineEnabled);
-          break;
         case StyleRow::Hyphenation:
           GUI.setCheckboxRow(rowItems_[i], SETTINGS.hyphenationEnabled);
           break;
@@ -400,8 +388,7 @@ const char* TextSettingsActivity::confirmLabelText() const {
     case Tab::Style:
       if (ringPos() > 0) {
         const StyleRow row = styleRowAt(ringPos() - 1);
-        if (row == StyleRow::ReadingGuideLineStyle || row == StyleRow::ReadingGuideLineOffset ||
-            row == StyleRow::TextWeight || row == StyleRow::FakeBold) {
+        if (row == StyleRow::ReadingGuideLineOffset || row == StyleRow::TextWeight || row == StyleRow::FakeBold) {
           return tr(STR_SELECT);
         }
       }
@@ -661,19 +648,6 @@ void TextSettingsActivity::confirmStyleRow(int row) {
     case StyleRow::FocusReading:
       SETTINGS.focusReadingEnabled = !SETTINGS.focusReadingEnabled;
       break;
-    case StyleRow::ReadingGuideLine:
-      SETTINGS.readingGuideLineEnabled = !SETTINGS.readingGuideLineEnabled;
-      rebuildRowItems();
-      activeNav().selected = std::min<int>(activeNav().selected, listCount());
-      break;
-    case StyleRow::ReadingGuideLineStyle:
-      optionPopup_.show(StrId::STR_READING_GUIDE_LINE_STYLE, GUIDE_LINE_STYLE_IDS,
-                        static_cast<int>(std::size(GUIDE_LINE_STYLE_IDS)), SETTINGS.readingGuideLineStyle, [](int idx) {
-                          SETTINGS.readingGuideLineStyle = static_cast<uint8_t>(idx);
-                          SETTINGS.saveToFile();
-                        });
-      requestUpdate();
-      return;
     case StyleRow::ReadingGuideLineOffset:
       startActivityForResultWith<IntervalSelectionActivity>(
           [this](const ActivityResult& result) {
@@ -727,13 +701,6 @@ std::string TextSettingsActivity::styleValueText(int row) const {
   switch (styleRowAt(row)) {
     case StyleRow::FocusReading:
       return SETTINGS.focusReadingEnabled ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
-    case StyleRow::ReadingGuideLine:
-      return SETTINGS.readingGuideLineEnabled ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
-    case StyleRow::ReadingGuideLineStyle: {
-      const uint8_t style = SETTINGS.readingGuideLineStyle;
-      return style < std::size(GUIDE_LINE_STYLE_IDS) ? I18N.get(GUIDE_LINE_STYLE_IDS[style])
-                                                     : I18N.get(StrId::STR_SHORT_DASH);
-    }
     case StyleRow::ReadingGuideLineOffset:
       return std::to_string(SETTINGS.readingGuideLineOffset);
     case StyleRow::Hyphenation:
@@ -1010,10 +977,8 @@ void TextSettingsActivity::maybeOfferCompleteChineseFont() {
 }
 
 TextSettingsActivity::StyleRow TextSettingsActivity::styleRowAt(int visibleIndex) const {
+  // The only conditional row is last, so visible rows map straight onto StyleRow.
   if (visibleIndex < 0 || visibleIndex >= styleRowCount()) return StyleRow::Count;
-  if (!SETTINGS.readingGuideLineEnabled && visibleIndex >= static_cast<int>(StyleRow::ReadingGuideLineStyle)) {
-    visibleIndex += HIDDEN_GUIDE_ROW_COUNT;
-  }
   return static_cast<StyleRow>(visibleIndex);
 }
 

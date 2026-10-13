@@ -8,7 +8,9 @@
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "ReaderFontSizes.h"
 #include "ReaderUtils.h"
+#include "SdCardFontSystem.h"
 #include "components/RickyDesignUi.h"
 #include "components/RickyPageUi.h"
 #include "components/RickyRowList.h"
@@ -32,6 +34,9 @@ const freeink::Icon& menuRowIcon(EpubReaderMenuActivity::MenuAction action) {
       return icon_ricky_row_books_32;
     case Action::READING_LINE:
       return icon_ricky_row_lines_32;
+    case Action::FONT_SIZE:
+    case Action::TEXT_WEIGHT:
+      return icon_ricky_row_text_32;
     case Action::AUTO_PAGE_TURN:
       return icon_ricky_row_timer_32;
     case Action::GO_TO_PERCENT:
@@ -155,6 +160,8 @@ void EpubReaderMenuActivity::buildMenuItems(std::vector<MenuItem>& items, bool h
   items.push_back({MenuAction::ROTATE_SCREEN, StrId::STR_ORIENTATION});
   items.push_back({MenuAction::READING_MODE, StrId::STR_READING_MODE});
   items.push_back({MenuAction::READING_LINE, StrId::STR_READING_GUIDE_LINE});
+  items.push_back({MenuAction::FONT_SIZE, StrId::STR_FONT_SIZE});
+  items.push_back({MenuAction::TEXT_WEIGHT, StrId::STR_RICKY_WEIGHT});
   items.push_back({MenuAction::AUTO_PAGE_TURN, StrId::STR_AUTO_TURN_PAGES_PER_MIN});
   items.push_back({MenuAction::GO_TO_PERCENT, StrId::STR_GO_TO_PERCENT});
   items.push_back({MenuAction::SCREENSHOT, StrId::STR_SCREENSHOT_BUTTON});
@@ -243,6 +250,40 @@ void EpubReaderMenuActivity::activateIndex(const int index) {
                        SETTINGS.readingGuideLineEnabled = idx == 0 ? 0 : 1;
                        if (idx != 0)
                          SETTINGS.readingGuideLineStyle = static_cast<uint8_t>(readingGuideLine::kMenuStyles[idx]);
+                       SETTINGS.saveToFile();
+                       requestUpdate();
+                     });
+    requestUpdate();
+    return;
+  }
+
+  if (selectedAction == MenuAction::FONT_SIZE) {
+    // Saved now; the reader re-paginates (and offers font acceleration) when the menu closes.
+    fontSizes_ = readerFontPointSizes(&sdFontSystem.registry(), SETTINGS.sdFontFamilyName);
+    if (fontSizes_.empty()) return;
+    fontSizeLabels_.clear();
+    fontSizeLabels_.reserve(fontSizes_.size());
+    int current = 0;
+    const uint8_t snapped = snapToNearestPointSize(fontSizes_, SETTINGS.fontPointSize);
+    for (size_t i = 0; i < fontSizes_.size(); ++i) {
+      fontSizeLabels_.push_back(std::to_string(fontSizes_[i]) + " pt");
+      if (fontSizes_[i] == snapped) current = static_cast<int>(i);
+    }
+    optionPopup.show(StrId::STR_FONT_SIZE, fontSizeLabels_, current, [this](int idx) {
+      if (idx < 0 || idx >= static_cast<int>(fontSizes_.size()) || SETTINGS.fontPointSize == fontSizes_[idx]) return;
+      SETTINGS.fontPointSize = fontSizes_[idx];
+      SETTINGS.saveToFile();
+      requestUpdate();
+    });
+    requestUpdate();
+    return;
+  }
+
+  if (selectedAction == MenuAction::TEXT_WEIGHT) {
+    // Weight is drawn, not laid out: the reader redraws the page when the menu closes.
+    optionPopup.show(StrId::STR_RICKY_WEIGHT, weightLabels.data(), static_cast<int>(weightLabels.size()),
+                     SETTINGS.rickyTextWeight % weightLabels.size(), [this](int idx) {
+                       SETTINGS.rickyTextWeight = static_cast<uint8_t>(idx);
                        SETTINGS.saveToFile();
                        requestUpdate();
                      });
@@ -365,6 +406,11 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
     } else if (action == MenuAction::READING_MODE) {
       menuRowItems[i].value =
           I18N.get(readingModeLabels[SETTINGS.readingMode < readingModeLabels.size() ? SETTINGS.readingMode : 0]);
+    } else if (action == MenuAction::FONT_SIZE) {
+      snprintf(fontSizeValue_, sizeof(fontSizeValue_), "%u pt", static_cast<unsigned>(SETTINGS.fontPointSize));
+      menuRowItems[i].value = fontSizeValue_;
+    } else if (action == MenuAction::TEXT_WEIGHT) {
+      menuRowItems[i].value = I18N.get(weightLabels[SETTINGS.rickyTextWeight % weightLabels.size()]);
     } else if (action == MenuAction::NIGHT_MODE) {
       GUI.setCheckboxRow(menuRowItems[i], SETTINGS.screenInverted);
     } else if (action == MenuAction::FRONTLIGHT) {

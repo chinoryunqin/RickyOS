@@ -48,20 +48,20 @@ class TextSettingsActivity final : public UiTabListActivity {
     ScreenMargin,
     Count
   };
+  // 字重 and 加粗 first: they are what readers come here for. The reading line itself is
+  // chosen in the reader menu (阅读线); only its fine offset lives here, last, while on.
   enum class StyleRow {
-    FocusReading,
-    ReadingGuideLine,
-    ReadingGuideLineStyle,
-    ReadingGuideLineOffset,
-    Hyphenation,
-    EmbeddedStyle,
     TextWeight,
     FakeBold,
+    FocusReading,
+    Hyphenation,
+    EmbeddedStyle,
     AntiAliasing,
+    ReadingGuideLineOffset,
     Count
   };
-  static constexpr int HIDDEN_GUIDE_ROW_COUNT =
-      static_cast<int>(StyleRow::Hyphenation) - static_cast<int>(StyleRow::ReadingGuideLineStyle);
+  static constexpr int HIDDEN_GUIDE_ROW_COUNT = 1;  // the offset, while the reading line is off
+  static_assert(static_cast<int>(StyleRow::Count) == 7, "STYLE_ROW_NAME_IDS has a label per row");
   enum class FontLoadState : uint8_t { Idle, Preloading, Ready };
   enum class ExitDestination : uint8_t { Previous, Home };
   enum class ExitPrompt : uint8_t { None, Waiting, Accepted, TooLarge };

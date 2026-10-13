@@ -608,8 +608,10 @@ void EpubReaderActivity::openReaderMenu() {
   const uint8_t readingModeBefore = SETTINGS.readingMode;
   const uint8_t guideBefore =
       static_cast<uint8_t>(SETTINGS.readingGuideLineEnabled << 4 | SETTINGS.readingGuideLineStyle);
+  const uint8_t sizeBefore = SETTINGS.fontPointSize;
+  const uint8_t weightBefore = SETTINGS.rickyTextWeight;
   startActivityForResultWith<EpubReaderMenuActivity>(
-      [this, readingModeBefore, guideBefore](const ActivityResult& result) {
+      [this, readingModeBefore, guideBefore, sizeBefore, weightBefore](const ActivityResult& result) {
         READING_STATS.resumeSession();
         const auto& menu = std::get<MenuResult>(result.data);
         if (SETTINGS.orientation != menu.orientation) {
@@ -622,6 +624,13 @@ void EpubReaderActivity::openReaderMenu() {
         }
         // Reading lines are drawn, not laid out: the page cache key changes with them.
         if ((SETTINGS.readingGuideLineEnabled << 4 | SETTINGS.readingGuideLineStyle) != guideBefore) requestUpdate();
+        // 字重 is drawn too; 字号 re-paginates and may change which font file is in use.
+        if (SETTINGS.rickyTextWeight != weightBefore) {
+          discardOverlayPage();
+          requestUpdate();
+        }
+        // Only a plain close may open the acceleration prompt; a picked action goes first.
+        if (SETTINGS.fontPointSize != sizeBefore) applyFontSizeFromMenu(result.isCancelled);
         toggleAutoPageTurn(menu.pageTurnRate);
         if (!result.isCancelled) {
           onReaderMenuConfirm(static_cast<EpubReaderMenuActivity::MenuAction>(menu.action));
@@ -3969,6 +3978,39 @@ void EpubReaderActivity::applyReaderTextSettings() {
     nextPageNumber = section->currentPage;
   }
   section.reset();  // force re-pagination with the new settings
+}
+
+// A .cpfont accelerates one size per file, so a size picked in the reader menu drops the
+// flash source; a vector font's cache holds the whole file and comes back unchanged. Ask
+// as text settings would when the new size can be accelerated.
+void EpubReaderActivity::applyFontSizeFromMenu(const bool mayAsk) {
+  SETTINGS.sdFontFlashPreload = 0;
+  applyReaderTextSettings();
+  requestUpdate();
+  if (SETTINGS.sdFontFamilyName[0] == '\0') return;
+  const auto* family = sdFontSystem.registry().findFamily(SETTINGS.sdFontFamilyName);
+  const auto* file = family ? family->findNearestSize(SETTINGS.fontPointSize) : nullptr;
+  const auto check = file ? SdCardFontCache::preflight(file->path.c_str()) : SdCardFontCache::Result::InvalidFont;
+  LOG_INF("ERS", "Size %u from the menu: acceleration %s", static_cast<unsigned>(SETTINGS.fontPointSize),
+          SdCardFontCache::resultName(check));
+  if (check == SdCardFontCache::Result::AlreadyCached) {
+    SETTINGS.sdFontFlashPreload = 1;
+    SETTINGS.saveToFile();
+    RenderLock lock;
+    sdFontSystem.releaseLoadedFont(renderer, /*includeVector=*/true);
+    sdFontSystem.ensureLoaded(renderer);
+    section.reset();
+    return;
+  }
+  if (check != SdCardFontCache::Result::Ok || !mayAsk) return;
+  startActivityForResultWith<TextSettingsActivity>(
+      [this](const ActivityResult&) {
+        READING_STATS.resumeSession();
+        applyReaderTextSettings();
+        requestUpdate();
+      },
+      &sdFontSystem.registry(), TextSettingsActivity::Tab::Family, TextSettingsActivity::InitialFontState::Changed,
+      TextSettingsActivity::StartMode::AskThenExit);
 }
 
 void EpubReaderActivity::finishFontPreview() {

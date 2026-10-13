@@ -31,7 +31,9 @@ class EpubReaderMenuActivity final : public UiListActivity {
     DICTIONARY,
     IMAGE_SCALING,  // Legacy action ID; image scaling remains in Settings.
     READING_MODE,   // 原版 / 小狗伴读 / 沉浸 / 古籍; applied when the menu closes.
-    READING_LINE    // 阅读线: off or one of its looks; redrawn when the menu closes.
+    READING_LINE,   // 阅读线: off or one of its looks; redrawn when the menu closes.
+    FONT_SIZE,      // 字号: re-paginated when the menu closes.
+    TEXT_WEIGHT     // 字重: redrawn when the menu closes.
   };
 
   struct MenuItem {
@@ -97,6 +99,14 @@ class EpubReaderMenuActivity final : public UiListActivity {
   const std::vector<StrId> readingLineLabels = {StrId::STR_STATE_OFF,     StrId::STR_SOLID_LINE, StrId::STR_DASH_LINE,
                                                 StrId::STR_DOTTED_LINE,   StrId::STR_WAVY_LINE,  StrId::STR_DOUBLE_LINE,
                                                 StrId::STR_HIGHLIGHT_LINE};
+  // Body-text weight steps (readerTextWeightCurve); the middle one is the font as drawn.
+  const std::vector<StrId> weightLabels = {StrId::STR_RICKY_WEIGHT_THINNEST, StrId::STR_RICKY_WEIGHT_THIN,
+                                           StrId::STR_FAKE_BOLD_STANDARD, StrId::STR_RICKY_WEIGHT_BOLD,
+                                           StrId::STR_RICKY_WEIGHT_BOLDEST};
+  // The point sizes the active family ships, filled when 字号 is opened.
+  std::vector<uint8_t> fontSizes_;
+  std::vector<std::string> fontSizeLabels_;
+  char fontSizeValue_[8] = "";
   int currentPage = 0;
   int totalPages = 0;
   int bookProgressPercent = 0;
