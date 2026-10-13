@@ -2,7 +2,7 @@
 from pathlib import Path
 import subprocess, tempfile
 source = Path('firmware/rickyos-plus-1.2/upstream/src/network/HttpDownloader.cpp').read_text()
-start = source.index('[&rejectedRedirect, cancelFlag, &pollInput, &lastInputPoll]')
+start = source.index('[&rejectedRedirect, cancelFlag, &pollInput, &lastInputPoll, started, totalBudgetMs]')
 end = source.index('\n      });', start)
 callback = source[start:end] + '\n}'
 program = r'''
@@ -12,6 +12,7 @@ program = r'''
 uint32_t tick;
 uint32_t millis() { return tick; }
 int main() {
+ const uint32_t started=tick, totalBudgetMs=tick;
  bool rejectedRedirect=false, cancelled=false;
  const bool* cancelFlag=&cancelled;
  uint32_t lastInputPoll=uint32_t(0)-20;

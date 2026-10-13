@@ -334,6 +334,18 @@
  
  void SDCardManager::shutdown() {
    if (!initialized || !_dev) return;
+--- a/freeink-sdk/libs/network/SecureNet/include/SecureClient.h
++++ b/freeink-sdk/libs/network/SecureNet/include/SecureClient.h
+@@ -81,6 +81,9 @@
+   WiFiClient _transport;
+   AbortCallback _shouldAbort;
+   bool _aborted = false;
++#if FREEINK_DEVICE_METALIO_PLUS
++  bool _retryTls12 = false;  // Only a fatal TLS negotiation error merits a new ClientHello.
++#endif
+   const char* _rootCA = nullptr;
+   bool _insecure = false;
+   void* _ssl = nullptr;  // WOLFSSL* (opaque to keep wolfSSL headers out of here)
 --- a/freeink-sdk/libs/network/SecureNet/include/SecureHttpClient.h
 +++ b/freeink-sdk/libs/network/SecureNet/include/SecureHttpClient.h
 @@ -46,6 +46,9 @@
@@ -386,18 +398,17 @@
          if (static_cast<int32_t>(millis() - deadline) >= 0) return false;
 --- a/freeink-sdk/libs/network/SecureNet/src/SecureClient.cpp
 +++ b/freeink-sdk/libs/network/SecureNet/src/SecureClient.cpp
-@@ -1,4 +1,10 @@
+@@ -1,4 +1,9 @@
  #include "SecureClient.h"
 +#include <BoardConfig.h>
 +#if FREEINK_DEVICE_METALIO_PLUS
 +#include <Network.h>
-+#include <PlusNetworkProbe.h>
 +#include <Logging.h>
 +#endif
  
  // wolfSSL is only pulled in when explicitly enabled. This keeps the default SDK
  // build free of the wolfSSL dependency while leaving a single, well-defined
-@@ -70,7 +76,26 @@
+@@ -70,7 +75,24 @@
    const uint32_t timeoutMs = getTimeout();
    if (abortRequested()) return 0;
    _transport.setConnectionTimeout(timeoutMs);
@@ -406,8 +417,6 @@
 +  // Arduino 4 RC1 NetworkClient accepts negative DNS errors as success.
 +  // Require the resolver's success value, then keep the original host for
 +  // SNI/certificate verification while connecting TCP to the resolved IP.
-+  static bool networkProbed = false;
-+  if (!networkProbed) { networkProbed = true; metalioPlusProbeNetwork(); }
 +  LOG_INF("TLS", "Resolving %s for %s", host, label);
 +  IPAddress resolved;
 +  const int dnsResult = Network.hostByName(host, resolved);
@@ -425,7 +434,7 @@
      if (Serial) Serial.printf("[SecureClient] TCP connect failed (%s): %s:%u\n", label, host, port);
      return 0;
    }
-@@ -81,6 +106,9 @@
+@@ -81,6 +103,9 @@
  
    auto* ctx = wolfSSL_CTX_new(static_cast<WOLFSSL_METHOD*>(method));
    if (!ctx) {
@@ -435,7 +444,7 @@
      if (Serial) Serial.printf("[SecureClient] CTX alloc failed (%s), free heap %u\n", label, (unsigned)ESP.getFreeHeap());
      _transport.stop();
      return 0;
-@@ -90,14 +118,22 @@
+@@ -90,14 +115,22 @@
    if (_insecure) {
      wolfSSL_CTX_set_verify(ctx, WOLFSSL_VERIFY_NONE, nullptr);
    } else if (_rootCA) {
@@ -459,11 +468,12 @@
      if (Serial) Serial.printf("[SecureClient] SSL alloc failed (%s), free heap %u\n", label, (unsigned)ESP.getFreeHeap());
      stop();
      return 0;
-@@ -134,16 +170,30 @@
+@@ -134,16 +167,31 @@
    while ((ret = wolfSSL_connect(ssl)) != WOLFSSL_SUCCESS) {
      const int err = wolfSSL_get_error(ssl, ret);
      if (!isWantIo(err)) {
 +#if FREEINK_DEVICE_METALIO_PLUS
++      _retryTls12 = true;
 +      char description[80]{};
 +      wolfSSL_ERR_error_string(err, description);
 +      LOG_ERR("TLS", "Handshake failed (%s): error=%d %s, heap=%u largest=%u TCP=%d elapsed=%lu", label, err,
@@ -490,7 +500,7 @@
        if (Serial) {
          Serial.printf("[SecureClient] handshake timeout (%s): last err %d, transport %s, free heap %u\n", label, err,
                        _transport.connected() ? "up" : "down", (unsigned)ESP.getFreeHeap());
-@@ -154,6 +204,10 @@
+@@ -154,6 +202,10 @@
      delay(5);
    }
    _connected = true;
@@ -501,7 +511,28 @@
    if (Serial) {
      Serial.printf("[SecureClient] handshake ok (%s): %s / %s in %lu ms\n", label, wolfSSL_get_version(ssl),
                    wolfSSL_get_cipher(ssl), (unsigned long)(millis() - started));
-@@ -210,6 +264,10 @@
+@@ -169,12 +221,20 @@
+ 
+ int SecureClient::connect(const char* host, uint16_t port) {
+   _aborted = false;
++#if FREEINK_DEVICE_METALIO_PLUS
++  _retryTls12 = false;
++#endif
+   // Negotiate the highest mutually supported version rather than pinning TLS 1.3:
+   // self-hosted / Let's Encrypt nginx often tops out at TLS 1.2, and a 1.3-only
+   // client fails those handshakes outright. v23 still selects 1.3 when the peer
+   // offers it (WOLFSSL_TLS13 is enabled) and falls back to 1.2 otherwise.
+   if (connectWithMethod(host, port, wolfSSLv23_client_method(), "auto")) return 1;
+   if (_aborted) return 0;
++#if FREEINK_DEVICE_METALIO_PLUS
++  // DNS/TCP/allocation failures and timeouts happen before version negotiation;
++  // a different TLS ClientHello cannot fix them and repeats the blocking DNS wait.
++  if (!_retryTls12) return 0;
++#endif
+ 
+   // Some TLS 1.2-only servers are intolerant of a TLS 1.3-capable ClientHello
+   // and abort with a fatal handshake_failure alert. Retry with an explicit
+@@ -210,6 +270,10 @@
    // A mid-stream failure is invisible to callers (they just see the connection
    // die); the error code distinguishes an OOM (MEMORY_E -125) from a peer
    // drop or MAC failure.
@@ -608,7 +639,7 @@
  };
 --- a/lib/I18n/translations/chinese.yaml
 +++ b/lib/I18n/translations/chinese.yaml
-@@ -1585,3 +1585,43 @@
+@@ -1585,3 +1585,44 @@
  STR_RICKY_HELP_FEEDBACK_3: "通过你现有的 Ricky AI Studio 联系渠道发送反馈。本页面不会自动上传设备信息。官网入口可扫码打开。"
  STR_RICKY_MENU_AUTO_TURN: "自动翻页"
  STR_RICKY_MENU_PROGRESS: "阅读进度"
@@ -652,9 +683,10 @@
 +STR_REC_NEXT: "下一组录音"
 +STR_REC_CANCEL_PREPARING: "取消准备"
 +STR_REC_WAIT_HINT: "显示「正在录音」后再开始说话"
++STR_FONT_TRANSFERRED_KIB: "已下载 %lu / %lu KiB"
 --- a/lib/I18n/translations/english.yaml
 +++ b/lib/I18n/translations/english.yaml
-@@ -1607,3 +1607,43 @@
+@@ -1607,3 +1607,44 @@
  STR_RICKY_HELP_FEEDBACK_3: "Send feedback through your existing Ricky AI Studio contact channel. This page does not upload device information. Scan the website QR code to visit the site."
  STR_RICKY_MENU_AUTO_TURN: "Auto page turn"
  STR_RICKY_MENU_PROGRESS: "Reading progress"
@@ -698,6 +730,7 @@
 +STR_REC_NEXT: "Next recordings"
 +STR_REC_CANCEL_PREPARING: "Cancel preparation"
 +STR_REC_WAIT_HINT: "Wait for Recording before speaking"
++STR_FONT_TRANSFERRED_KIB: "Downloaded %lu / %lu KiB"
 --- a/lib/Logging/Logging.cpp
 +++ b/lib/Logging/Logging.cpp
 @@ -2,6 +2,9 @@
@@ -2176,6 +2209,60 @@
 +  const char* statusLabel() const;
 +};
 +#endif
+--- a/src/activities/apps/standby/RickyWallpaperDownloadActivity.cpp
++++ b/src/activities/apps/standby/RickyWallpaperDownloadActivity.cpp
+@@ -93,8 +93,13 @@
+ 
+ void RickyWallpaperDownloadActivity::onEnter() {
+   Activity::onEnter();
++  enteredMs_ = millis();
+   state_ = State::Connecting;
+   requestUpdate();
++  if (WiFi.status() == WL_CONNECTED) {
++    onWifiResult(true);
++    return;
++  }
+   if (!startActivityForResultWith<WifiSelectionActivity>(
+           [this](const ActivityResult& result) { onWifiResult(!result.isCancelled); })) {
+     state_ = State::Failed;
+@@ -119,13 +124,18 @@
+     return;
+   }
+   usedNetwork_ = true;
++  LOG_INF("WPDL", "Connection ready in %lu ms", static_cast<unsigned long>(millis() - enteredMs_));
+   {
+     RenderLock lock(*this);
+     state_ = State::Loading;
+   }
+   requestUpdateAndWait();
+   NetworkStartup::prepare(renderer);
+-  const bool ok = fetchManifest() && downloadAll();
++  const uint32_t manifestStarted = millis();
++  const bool manifestOk = fetchManifest();
++  LOG_INF("WPDL", "Manifest ready=%u in %lu ms, items=%zu", manifestOk,
++          static_cast<unsigned long>(millis() - manifestStarted), items_.size());
++  const bool ok = manifestOk && downloadAll();
+   if (ok) installFirstIfUnset();
+   {
+     RenderLock lock(*this);
+@@ -317,6 +327,8 @@
+   char status[64];
+   switch (state_) {
+     case State::Connecting:
++      snprintf(status, sizeof(status), "%s", tr(STR_CONNECTING_SAVED_WIFI));
++      break;
+     case State::Loading:
+       snprintf(status, sizeof(status), "%s", tr(STR_RICKY_WALLPAPER_LOADING));
+       break;
+--- a/src/activities/apps/standby/RickyWallpaperDownloadActivity.h
++++ b/src/activities/apps/standby/RickyWallpaperDownloadActivity.h
+@@ -49,5 +49,6 @@
+   uint8_t lastPercent_ = 0;
+   bool cancelRequested_ = false;
+   bool usedNetwork_ = false;
++  uint32_t enteredMs_ = 0;
+ };
+ 
 --- a/src/activities/apps/standby/StandbyActivity.cpp
 +++ b/src/activities/apps/standby/StandbyActivity.cpp
 @@ -1,8 +1,13 @@
@@ -2217,6 +2304,49 @@
    LOG_DBG("STANDBY", "onExit free heap=%u", static_cast<unsigned>(ESP.getFreeHeap()));
    Activity::onExit();
  }
+@@ -216,6 +232,7 @@
+     return;
+   }
+   currentFace_->onEnter();
++  drewFrame_ = false;
+   requestUpdate();
+ }
+ 
+@@ -507,6 +524,7 @@
+       if (action == StandbyFace::PictureAction::Download &&
+           !startActivityForResultWith<RickyWallpaperDownloadActivity>([this](const ActivityResult&) {
+             if (currentFace_) currentFace_->onEnter();
++            drewFrame_ = false;
+             requestUpdate();
+           })) {
+         LOG_ERR("STANDBY", "Cannot open the picture downloader");
+@@ -531,11 +549,17 @@
+ 
+ void StandbyActivity::render(RenderLock&&) {
+   if (!currentFace_) return;
++  // A static rest image has no status bar. Global notifications must not resend it
++  // to the glass; picture changes reset drewFrame_, while clock faces keep ticking.
++  if (drewFrame_ && !currentFace_->wantsClock() && !currentFace_->needsPicture()) return;
+   {
+     int top = 0, right = 0, bottom = 0, left = 0;
+     renderer.getOrientedViewableTRBL(&top, &right, &bottom, &left);
+     const Rect viewport{left, top, renderer.getScreenWidth() - left - right, renderer.getScreenHeight() - top - bottom};
+-    if (currentFace_->renderNative(renderer, viewport)) return;
++    if (currentFace_->renderNative(renderer, viewport)) {
++      drewFrame_ = true;
++      return;
++    }
+     renderer.clearScreen();
+     {
+       const GfxRenderer::ClipScope clip(renderer, viewport.x, viewport.y, viewport.width, viewport.height);
+@@ -649,6 +673,7 @@
+       return;
+     }
+     if (currentFace_) currentFace_->onEnter();
++    drewFrame_ = false;
+     lastInputMs_ = millis();
+     requestUpdate();
+   };
 --- a/src/activities/apps/standby/StandbyActivity.h
 +++ b/src/activities/apps/standby/StandbyActivity.h
 @@ -46,6 +46,7 @@
@@ -2251,10 +2381,43 @@
  #include <GfxRenderer.h>
  #include <HalClock.h>
  #include <I18n.h>
-@@ -549,6 +554,20 @@
+@@ -150,6 +155,13 @@
+ 
+ void WifiSelectionActivity::onEnter() {
+   Activity::onEnter();
++  inheritedConfirmPending = mappedInput.isPressed(MappedInputManager::Button::Confirm);
++  if (allowAutoConnect && WiFi.status() == WL_CONNECTED) {
++    selectedSSID = WiFi.SSID().c_str();
++    connectedIP = WiFi.localIP().toString().c_str();
++    onComplete(true);
++    return;
++  }
+   NetworkStartup::logMemory("WifiSelectionActivity enter");
+   NetworkStartup::prepare(renderer);
+ 
+@@ -513,6 +525,9 @@
+     return;
+   }
+ 
++  // One direct join failed before a fresh scan. Retry that saved network once
++  // after it is visible; the scanned pass retains the attempted set and is bounded.
++  autoAttemptedSsids.clear();
+   startWifiScan(true);
+ }
+ 
+@@ -535,7 +550,6 @@
+ 
+ void WifiSelectionActivity::attemptConnection() {
+   state = autoConnecting ? WifiSelectionState::AUTO_CONNECTING : WifiSelectionState::CONNECTING;
+-  connectionStartTime = millis();
+   connectedIP.clear();
+   connectionError.clear();
+   requestUpdate();
+@@ -548,6 +562,20 @@
+   }
    WiFi.disconnect(true, true);  // Abort any in-progress SDK auto-connect and clear NVS-saved SSID
    delay(100);
- 
++
 +#if FREEINK_DEVICE_METALIO_PLUS
 +  plusWifiDiagnosticsBegin();
 +  // Match the vendor station's default protocol negotiation for a controlled
@@ -2268,11 +2431,19 @@
 +  const esp_err_t protocolRead = esp_wifi_get_protocol(WIFI_IF_STA, &protocol);
 +  LOG_INF("WIFI", "Plus station protocol driver default: read=%d mask=0x%02x", protocolRead, protocol);
 +#endif
-+
+ 
    // Scan all channels so networks with multiple APs use the strongest matching
    // BSSID instead of the first match found by the framework's default fast scan.
-   WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
-@@ -597,6 +616,11 @@
+@@ -565,6 +593,8 @@
+     LOG_ERR("WIFI", "Failed to read station MAC for hostname");
+   }
+ 
++  // Budget the association/DHCP exchange, not mode teardown, driver startup or UI paint.
++  connectionStartTime = millis();
+   if (selectedRequiresPassword && !enteredPassword.empty()) {
+     WiFi.begin(selectedSSID.c_str(), enteredPassword.c_str());
+   } else {
+@@ -597,6 +627,11 @@
              WiFi.RSSI());
  #endif
  
@@ -2284,7 +2455,7 @@
      // Sync RTC from NTP on the first successful WiFi connection only. The DS3231
      // drifts ~2 ppm so one sync is enough; users can force a re-sync from
      // Settings > System > Clock > Sync clock now.
-@@ -606,6 +630,8 @@
+@@ -606,6 +641,8 @@
          SETTINGS.saveToFile();
        }
      }
@@ -2293,6 +2464,40 @@
  
      // Every station join is a chance to snap the loan-clock floor to real
      // time (non-blocking; see TrustedTime).
+@@ -664,6 +701,14 @@
+ }
+ 
+ void WifiSelectionActivity::loop() {
++  if (inheritedConfirmPending) {
++    if (!mappedInput.isPressed(MappedInputManager::Button::Confirm)) inheritedConfirmPending = false;
++    if (state == WifiSelectionState::CONNECTING || state == WifiSelectionState::AUTO_CONNECTING)
++      checkConnectionStatus();
++    else if (state == WifiSelectionState::SCANNING)
++      processWifiScanResults();
++    return;
++  }
+   switch (state) {
+     case WifiSelectionState::NETWORK_ERROR:
+     case WifiSelectionState::SCANNING:
+--- a/src/activities/network/WifiSelectionActivity.h
++++ b/src/activities/network/WifiSelectionActivity.h
+@@ -88,6 +88,7 @@
+ 
+   // Whether we are attempting to auto-connect or auto-scan saved networks.
+   bool autoConnecting = false;
++  bool inheritedConfirmPending = false;
+ 
+   // True from the Confirm press that stops auto-connect until that button is released.
+   bool manualNetworkListRequested = false;
+@@ -101,7 +102,7 @@
+ 
+   // Connection timeout
+   static constexpr unsigned long CONNECTION_TIMEOUT_MS = 15000;
+-  static constexpr unsigned long AUTO_CONNECTION_TIMEOUT_MS = 7000;
++  static constexpr unsigned long AUTO_CONNECTION_TIMEOUT_MS = 15000;
+   unsigned long connectionStartTime = 0;
+ 
+   // The UiAppHost app hosts the network list and the save/forget prompts
 --- a/src/activities/reader/EpubReaderActivity.cpp
 +++ b/src/activities/reader/EpubReaderActivity.cpp
 @@ -360,7 +360,7 @@
@@ -2416,7 +2621,87 @@
    void launchWifiSelection();
 --- a/src/activities/settings/FontDownloadActivity.cpp
 +++ b/src/activities/settings/FontDownloadActivity.cpp
-@@ -806,7 +806,7 @@
+@@ -46,7 +46,7 @@
+ constexpr int kFileAttempts = 3;
+ constexpr unsigned long kRetryDelayMs = 2000;
+ constexpr size_t kMaxFontFileBytes = 25 * 1024 * 1024;
+-constexpr uint8_t kDownloadProgressStepPercent = 10;
++constexpr uint32_t kDownloadProgressRefreshMs = 2000;
+ 
+ constexpr uint8_t downloadProgressPercent(const size_t completed, const size_t total) {
+   if (total == 0) return 0;
+@@ -54,15 +54,11 @@
+   return static_cast<uint8_t>(static_cast<uint64_t>(boundedCompleted) * 100 / total);
+ }
+ 
+-constexpr bool shouldRefreshDownloadProgress(const uint8_t previous, const uint8_t current) {
+-  return current < 100 && current >= previous + kDownloadProgressStepPercent;
+-}
+-
+-static_assert(downloadProgressPercent(9, 100) == 9);
+-static_assert(downloadProgressPercent(110, 100) == 100);
+-static_assert(!shouldRefreshDownloadProgress(0, 9));
+-static_assert(shouldRefreshDownloadProgress(0, 10));
+-static_assert(!shouldRefreshDownloadProgress(90, 100));  // The verified final frame is drawn synchronously.
++constexpr bool shouldRefreshDownloadProgress(const size_t previousBytes, const size_t currentBytes,
++                                              const uint32_t elapsedMs, const uint8_t percent) {
++  return percent < 100 && currentBytes / 1024 != previousBytes / 1024 &&
++         elapsedMs >= kDownloadProgressRefreshMs;
++}
+ 
+ std::atomic<bool> chineseFontPromptShownThisBoot{false};
+ 
+@@ -192,6 +188,10 @@
+ }
+ 
+ void FontDownloadActivity::startWifiSelection() {
++  if (WiFi.status() == WL_CONNECTED) {
++    onWifiSelectionComplete(true);
++    return;
++  }
+ #if defined(CONFIG_IDF_TARGET_ESP32C3)
+   if (!readingStatsReleased_) {
+     RenderLock lock(*this);
+@@ -765,20 +765,31 @@
+ void FontDownloadActivity::resetDownloadProgress(const size_t total) {
+   downloadProgress_ = 0;
+   downloadTotal_ = total;
+-  lastProgressRefreshPercent_ = 0;
++  lastProgressRefreshBytes_ = 0;
++  lastProgressRefreshMs_ = millis();
+ }
+ 
+ void FontDownloadActivity::updateDownloadProgress(const size_t completed) {
+-  downloadProgress_ = std::min(completed, downloadTotal_);
+-  const uint8_t percent = downloadProgressPercent(downloadProgress_, downloadTotal_);
+-  if (!shouldRefreshDownloadProgress(lastProgressRefreshPercent_, percent)) return;
+-  lastProgressRefreshPercent_ = percent;
+-  requestUpdate(true);
++  bool refresh = false;
++  {
++    RenderLock lock(*this);
++    downloadProgress_ = std::min(completed, downloadTotal_);
++    const uint32_t now = millis();
++    const uint8_t percent = downloadProgressPercent(downloadProgress_, downloadTotal_);
++    refresh = shouldRefreshDownloadProgress(lastProgressRefreshBytes_, downloadProgress_,
++                                           now - lastProgressRefreshMs_, percent);
++    if (refresh) {
++      lastProgressRefreshBytes_ = downloadProgress_;
++      lastProgressRefreshMs_ = now;
++    }
++  }
++  if (refresh) requestUpdate(true);
+ }
+ 
+ void FontDownloadActivity::finishDownloadProgress() {
+   downloadProgress_ = downloadTotal_;
+-  lastProgressRefreshPercent_ = 100;
++  lastProgressRefreshBytes_ = downloadTotal_;
++  lastProgressRefreshMs_ = millis();
+   requestUpdateAndWait();
+ }
+ 
+@@ -806,7 +817,7 @@
    }
  
    NetworkStartup::prepare(renderer);
@@ -2425,7 +2710,7 @@
      mappedInput.update();
      if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
        cancelRequested_ = true;
-@@ -817,6 +817,8 @@
+@@ -817,6 +828,8 @@
        goHomeRequested_ = true;
      }
      UiAppHost::routeTouch(mappedInput);
@@ -2434,7 +2719,7 @@
      updateDownloadProgress(fileStartProgress + std::min(downloaded, fileSize));
    };
    // A refused or dropped connection is retried, moving to the next host that carries
-@@ -833,9 +835,14 @@
+@@ -833,9 +846,14 @@
        delay(kRetryDelayMs);
      }
      const unsigned long started = millis();
@@ -2451,6 +2736,50 @@
    }
  
    if (result == HttpDownloader::ABORTED) {
+@@ -1411,6 +1429,11 @@
+           Rect{metrics.contentSidePadding, barY, pageWidth - metrics.contentSidePadding * 2, metrics.progressBarHeight},
+           static_cast<int>(progress * 100), 100);
+ 
++      char transferred[96];
++      snprintf(transferred, sizeof(transferred), tr(STR_FONT_TRANSFERRED_KIB),
++               static_cast<unsigned long>(downloadProgress_ / 1024),
++               static_cast<unsigned long>((downloadTotal_ + 1023) / 1024));
++      renderer.drawCenteredText(UI_10_FONT_ID, barY + metrics.progressBarHeight + metrics.verticalSpacing, transferred);
+       const auto labels = mappedInput.mapLabels(tr(STR_CANCEL), "", "", "");
+       GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+     } else if (state_ == COMPLETE) {
+@@ -1482,12 +1505,18 @@
+     const Rect content = SubpageLayout::contentRect(safeArea, metrics);
+     const Rect textBounds = SubpageLayout::insetHorizontal(content, metrics.contentSidePadding);
+     const int sectionGap = SubpageLayout::sectionGap(metrics);
+-    const int blockHeight = lineHeight + sectionGap + GUI.measureProgressBarHeight(renderer, metrics.progressBarHeight);
++    const int blockHeight = 2 * lineHeight + 2 * sectionGap + GUI.measureProgressBarHeight(renderer, metrics.progressBarHeight);
+     int y = SubpageLayout::centeredTop(content, blockHeight);
+     UITheme::drawCenteredText(renderer, textBounds, UI_10_FONT_ID, y, statusText.c_str());
+     y += lineHeight + sectionGap;
+     GUI.drawProgressBar(renderer, Rect{textBounds.x, y, textBounds.width, metrics.progressBarHeight}, downloadProgress_,
+                         downloadTotal_);
++    char transferred[96];
++    snprintf(transferred, sizeof(transferred), tr(STR_FONT_TRANSFERRED_KIB),
++             static_cast<unsigned long>(downloadProgress_ / 1024),
++             static_cast<unsigned long>((downloadTotal_ + 1023) / 1024));
++    y += GUI.measureProgressBarHeight(renderer, metrics.progressBarHeight) + sectionGap;
++    UITheme::drawCenteredText(renderer, textBounds, UI_10_FONT_ID, y, transferred);
+ 
+     const auto labels = mappedInput.mapLabels(tr(STR_CANCEL), "", "", "");
+     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+--- a/src/activities/settings/FontDownloadActivity.h
++++ b/src/activities/settings/FontDownloadActivity.h
+@@ -97,7 +97,8 @@
+   size_t currentFileTotal_ = 0;
+   size_t downloadProgress_ = 0;
+   size_t downloadTotal_ = 0;
+-  uint8_t lastProgressRefreshPercent_ = 0;
++  size_t lastProgressRefreshBytes_ = 0;
++  uint32_t lastProgressRefreshMs_ = 0;
+   int downloadingFamilyIndex_ = -1;
+   std::string errorMessage_;
+   bool cancelRequested_ = false;
 --- a/src/activities/settings/HomeButtonSettingsActivity.cpp
 +++ b/src/activities/settings/HomeButtonSettingsActivity.cpp
 @@ -3,8 +3,41 @@
@@ -3420,7 +3749,15 @@
        // X4 Pro must stay awake so USB Serial/JTAG remains available after leaving
        // USB Drive and reconnecting the cable. Paper Mono has no armable GPIO wake
        // (its button is behind the PMIC). EEGO A4's post-flash reset reads as
-@@ -1011,7 +1013,9 @@
+@@ -965,6 +967,7 @@
+     gpio.update();
+   }
+ 
++
+   // Ensure we're not still holding the power button before leaving setup
+   waitForPowerRelease();
+   allowSleepAt = millis() + 2000;
+@@ -1011,7 +1014,9 @@
      activityManager.cancelIdleRender("touch", true);
    }
  #endif
@@ -3431,6 +3768,22 @@
    gpio.updateHapticFeedback(SETTINGS.hapticFeedbackLevel);
  #endif
    updateBluetoothLifecycle();
+@@ -1272,12 +1277,13 @@
+   // flash, the AA pass re-running, and a frontlight dip under the refresh
+   // load); the reader's status bar picks the charging state up on the next
+   // page turn instead.
+-  if (gpio.wasUsbStateChanged() && !activityManager.isReaderActivity()) {
++  // Full-screen Standby has no battery icon or input hints to update.
++  if (gpio.wasUsbStateChanged() && !activityManager.isReaderActivity() && !activityManager.standbyShowing()) {
+     activityManager.requestUpdate();
+   }
+ #ifndef CROSSPOINT_EMULATED
+   if (gpio.wasInputModalityChanged() && gpio.hasTouch() && UITheme::getInstance().hasMainTabs() &&
+-      !activityManager.isReaderActivity()) {
++      !activityManager.isReaderActivity() && !activityManager.standbyShowing()) {
+     activityManager.requestUpdate();
+   }
+ #endif
 --- a/src/network/CrossPointWebServer.cpp
 +++ b/src/network/CrossPointWebServer.cpp
 @@ -2,6 +2,9 @@
@@ -3503,17 +3856,26 @@
    bool apMode = false;  // true when running in AP mode, false for STA mode
 --- a/src/network/HttpDownloader.cpp
 +++ b/src/network/HttpDownloader.cpp
-@@ -38,7 +38,8 @@
+@@ -6,6 +6,7 @@
+ #include <Logging.h>
+ #include <ResumableFetch.h>
+ 
++#include <algorithm>
+ #include <functional>
+ #include <string>
+ 
+@@ -38,7 +39,9 @@
                                             const std::vector<HttpDownloader::Header>& headers,
                                             const freeink::FetchSink& sink, const bool* cancelFlag = nullptr,
                                             size_t* bytesOut = nullptr, const bool downgradeRedirectsToHttp = false,
 -                                           const char* rootCa = nullptr, const uint32_t timeoutMs = HTTP_TIMEOUT_MS) {
 +                                           const char* rootCa = nullptr, const uint32_t timeoutMs = HTTP_TIMEOUT_MS,
-+                                           const std::function<void()>& pollInput = nullptr) {
++                                           const std::function<void()>& pollInput = nullptr,
++                                           const uint32_t totalBudgetMs = 0) {
    char userAgent[80];
    const int length =
        snprintf(userAgent, sizeof(userAgent), "CrossMux-%s-" CROSSPOINT_VERSION, HalSystem::getDeviceModel());
-@@ -47,6 +48,7 @@
+@@ -47,6 +50,7 @@
    freeink::FetchOptions options;
    options.redirectToHttp = downgradeRedirectsToHttp;
    bool rejectedRedirect = false;
@@ -3521,24 +3883,53 @@
    const unsigned long started = millis();
    const freeink::FetchResult result = freeink::fetchResumable(
        url, options,
-@@ -76,7 +78,15 @@
+@@ -58,7 +62,9 @@
+           rejectedRedirect = true;
+           return;
+         }
+-        http.setTimeout(timeoutMs);
++        const uint32_t elapsed = static_cast<uint32_t>(millis() - started);
++        const uint32_t remaining = totalBudgetMs > elapsed ? totalBudgetMs - elapsed : 1;
++        http.setTimeout(totalBudgetMs == 0 ? timeoutMs : std::min(timeoutMs, remaining));
+         if (rootCa)
+           http.setCACert(rootCa);
+         else
+@@ -76,7 +82,16 @@
          LOG_DBG("HTTP", "wolfSSL GET: %s (heap %u, max block %u)", url.c_str(), (unsigned)ESP.getFreeHeap(),
                  (unsigned)ESP.getMaxAllocHeap());
        },
 -      sink, [&rejectedRedirect, cancelFlag] { return rejectedRedirect || (cancelFlag && *cancelFlag); });
-+      sink, [&rejectedRedirect, cancelFlag, &pollInput, &lastInputPoll] {
++      sink, [&rejectedRedirect, cancelFlag, &pollInput, &lastInputPoll, started, totalBudgetMs] {
 +        // Poll even when no body bytes arrive (headers/TLS/retry waits).
 +        const uint32_t now = millis();
 +        if (pollInput && now - lastInputPoll >= 20) {
 +          lastInputPoll = now;
 +          pollInput();
 +        }
-+        return rejectedRedirect || (cancelFlag && *cancelFlag);
++        return rejectedRedirect || (cancelFlag && *cancelFlag) ||
++               (totalBudgetMs != 0 && static_cast<uint32_t>(now - started) >= totalBudgetMs);
 +      });
    if (bytesOut) *bytesOut = result.bytes;
    // Where a slow download spends its time: connecting to a dead route shows as a long
    // time with no bytes, a slow route as a low rate. Origin only: some URLs carry tokens.
-@@ -143,9 +153,10 @@
+@@ -84,7 +99,15 @@
+   LOG_INF("HTTP", "%zu B in %lu ms (%lu KB/s), status %d: %s", result.bytes, elapsed,
+           elapsed > 0 ? static_cast<unsigned long>(result.bytes / elapsed) : 0UL, result.status, originOf(url).c_str());
+ 
+-  if (result.aborted) return HttpDownloader::ABORTED;
++  if (result.aborted) {
++    // A catalog route exhausting its shared budget should fall through to the next
++    // mirror; preserve ABORTED for a user cancellation or rejected verified redirect.
++    if (totalBudgetMs != 0 && elapsed >= totalBudgetMs && !rejectedRedirect && !(cancelFlag && *cancelFlag)) {
++      LOG_ERR("HTTP", "Index route budget exhausted: %s", originOf(url).c_str());
++      return HttpDownloader::HTTP_ERROR;
++    }
++    return HttpDownloader::ABORTED;
++  }
+   if (result.stopped) return HttpDownloader::FILE_ERROR;
+   if (result.status == 401 || result.status == 403) {
+     LOG_ERR("HTTP", "wolfSSL request unauthorized: status %d: %s", result.status, url.c_str());
+@@ -143,13 +166,15 @@
                                                               ProgressCallback progress, const bool* cancelFlag,
                                                               const std::string& username, const std::string& password,
                                                               const std::vector<Header>& headers,
@@ -3551,17 +3942,24 @@
  }
  
  HttpDownloader::DownloadError HttpDownloader::downloadIndex(const std::string& url, const std::string& destPath) {
-@@ -157,7 +168,8 @@
+-  return downloadToFileWithin(url, destPath, INDEX_TIMEOUT_MS);
++  return downloadToFileWithin(url, destPath, INDEX_TIMEOUT_MS, nullptr, nullptr, "", "", {}, false, nullptr,
++                              INDEX_TIMEOUT_MS);
+ }
+ 
+ HttpDownloader::DownloadError HttpDownloader::downloadToFileWithin(const std::string& url, const std::string& destPath,
+@@ -157,7 +182,9 @@
                                                                     const bool* cancelFlag, const std::string& username,
                                                                     const std::string& password,
                                                                     const std::vector<Header>& headers,
 -                                                                   const bool downgradeRedirectsToHttp) {
 +                                                                   const bool downgradeRedirectsToHttp,
-+                                                             const std::function<void()>& pollInput) {
++                                                             const std::function<void()>& pollInput,
++                                                             const uint32_t totalBudgetMs) {
    LOG_DBG("HTTP", "Downloading: %s -> %s", url.c_str(), destPath.c_str());
  
    // Stage in <dest>.part: a failed or cancelled download never replaces an
-@@ -171,17 +183,55 @@
+@@ -171,17 +198,55 @@
    }
  
    freeink::FetchSink sink;
@@ -3607,9 +4005,9 @@
 +  const DownloadError result =
 +      runGetSecure(url, username, password, headers, sink, cancelFlag, &downloaded, downgradeRedirectsToHttp,
 +#if FREEINK_DEVICE_METALIO_PLUS
-+                   nullptr, timeoutMs, timedInput);
++                   nullptr, timeoutMs, timedInput, totalBudgetMs);
 +#else
-+                   nullptr, timeoutMs, pollInput);
++                   nullptr, timeoutMs, pollInput, totalBudgetMs);
 +#endif
 +#if FREEINK_DEVICE_METALIO_PLUS
 +  LOG_INF("HTTP", "Transfer timing: bytes=%zu totalMs=%lu writeMs=%llu inputMs=%llu writes=%zu result=%d",
@@ -3621,7 +4019,7 @@
    if (file.isOpen()) file.close();
 --- a/src/network/HttpDownloader.h
 +++ b/src/network/HttpDownloader.h
-@@ -61,7 +61,8 @@
+@@ -61,12 +61,13 @@
    static DownloadError downloadToFile(const std::string& url, const std::string& destPath,
                                        ProgressCallback progress = nullptr, const bool* cancelFlag = nullptr,
                                        const std::string& username = "", const std::string& password = "",
@@ -3630,14 +4028,23 @@
 +                                      const std::function<void()>& pollInput = nullptr);
  
    // Small catalog indexes (font and picture lists) come from one of several mirrors.
-   // Each socket wait (connect, TLS handshake, headers, a body stall) gets this long
-@@ -75,5 +76,6 @@
+-  // Each socket wait (connect, TLS handshake, headers, a body stall) gets this long
+-  // instead of a minute, so a blocked route hands over to the next mirror in seconds:
+-  // with the TLS 1.2 retry a dead route used to cost about two minutes.
++  // Socket waits and all TLS retries, redirects and body resumes share this budget.
++  // Abort polling stops a stalled route instead of restarting the budget per stage.
++  // A blocking DNS/TCP operation may return after the budget before polling resumes.
+   static constexpr uint32_t INDEX_TIMEOUT_MS = 12000;
+   static DownloadError downloadIndex(const std::string& url, const std::string& destPath);
+ 
+@@ -75,5 +76,7 @@
                                              ProgressCallback progress = nullptr, const bool* cancelFlag = nullptr,
                                              const std::string& username = "", const std::string& password = "",
                                              const std::vector<Header>& headers = {},
 -                                            bool downgradeRedirectsToHttp = false);
 +                                            bool downgradeRedirectsToHttp = false,
-+                                      const std::function<void()>& pollInput = nullptr);
++                                            const std::function<void()>& pollInput = nullptr,
++                                            uint32_t totalBudgetMs = 0);
  };
 --- a/src/network/WifiPowerSaveGuard.h
 +++ b/src/network/WifiPowerSaveGuard.h

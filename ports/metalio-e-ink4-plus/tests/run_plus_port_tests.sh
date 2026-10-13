@@ -47,3 +47,9 @@ python3 tests/test_plus_usb_remount.py
 python3 tests/test_plus_download_cancel.py
 
 python3 tests/test_plus_lcd_tail.py
+
+python3 tests/test_plus_font_reconnect_progress.py
+python3 tests/test_plus_index_budget.py
+python3 tests/test_plus_static_standby.py
+
+python3 tests/test_plus_tls_retry.py
