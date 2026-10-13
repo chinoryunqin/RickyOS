@@ -9,8 +9,9 @@
 //   Original   the page as it always was: header, text, footer.
 //   Puppy      小狗伴读: a quiet rounded frame with the logo's dog peeking over its top edge.
 //   Immersive  沉浸: text only; header and footer are gone and their space goes to the text.
-//   Ancient    古籍: a woodblock page, 四周双边 rules with a 版心 column carrying the title
-//              and the page number in Chinese numerals.
+//   Ancient    古籍: a woodblock page set vertically (columns right to left, 界行 between
+//              them), 四周双边 rules and a 版心 column on the left carrying the title and
+//              the page number in Chinese numerals.
 namespace readingMode {
 
 enum class Mode : uint8_t { Original = 0, Puppy, Immersive, Ancient, Count };
@@ -24,6 +25,9 @@ constexpr Mode modeFor(const uint8_t raw) {
 // puppy frame too; Immersive drops both and Ancient carries its own page number.
 constexpr bool showsHeader(const Mode mode) { return mode == Mode::Original; }
 constexpr bool showsFooter(const Mode mode) { return mode == Mode::Original || mode == Mode::Puppy; }
+
+// Ancient sets its text in columns (lib/Epub/Epub/VerticalText.h).
+constexpr bool setsVertically(const Mode mode) { return mode == Mode::Ancient; }
 
 // Distances from each screen edge, in logical (oriented) pixels.
 struct Margins {
@@ -63,7 +67,7 @@ inline constexpr int kPuppyStatusGap = 8;  // frame bottom to the status bar tex
 inline constexpr int kAncientRules = kEmphasis + 4 + kHairline;
 inline constexpr int kAncientTop = 40;     // 天头 outside the frame, about twice the 地脚
 inline constexpr int kAncientBottom = 16;  // 地脚
-inline constexpr int kBanxinWidth = 44;    // 版心 column between the text and the frame
+inline constexpr int kBanxinWidth = 44;    // 版心 column between the frame and the text
 
 // Margins for the text column. `base` is the original reader layout (viewable
 // inset + screen margin, plus the header and footer bands the mode keeps);
@@ -85,9 +89,9 @@ constexpr Margins textMargins(const Mode mode, const Margins& base, const Margin
       break;
     }
     case Mode::Ancient: {
-      const int side = kScreenGap + kAncientRules + kTextPad;
-      atLeast(m.left, viewable.left + side);
-      atLeast(m.right, viewable.right + kScreenGap + kAncientRules + kBanxinWidth + kHairline + kTextPad);
+      // Columns sit flush against the rules: the frame's inner rule is the first 界行.
+      atLeast(m.right, viewable.right + kScreenGap + kAncientRules);
+      atLeast(m.left, viewable.left + kScreenGap + kAncientRules + kBanxinWidth + kHairline);
       atLeast(m.top, viewable.top + kAncientTop + kAncientRules + kTextPad);
       atLeast(m.bottom, viewable.bottom + kAncientBottom + kAncientRules + kTextPad);
       break;
@@ -110,17 +114,36 @@ constexpr Box puppyFrame(const Box& text) {
   return Box{text.x - out, text.y - out, text.width + 2 * out, text.height + 2 * out};
 }
 
-// Ancient: the outer rule's outer edge. The 版心 column sits inside, right of the text.
+// Ancient: the outer rule's outer edge. Columns run right to left, so the 版心 (the
+// fold of the leaf) closes the page on the left, after the last column.
 constexpr Box ancientFrame(const Box& text) {
   const int out = kTextPad + kAncientRules;
-  return Box{text.x - out, text.y - out, text.width + 2 * out + kBanxinWidth + kHairline, text.height + 2 * out};
+  const int left = kAncientRules + kBanxinWidth + kHairline;
+  return Box{text.x - left, text.y - out, text.width + left + kAncientRules, text.height + 2 * out};
 }
 
-// The 版心 column: between the rule beside the text and the frame's inner rule.
+// The 版心 column: between the frame's inner rule and the rule beside the text.
 constexpr Box banxin(const Box& text) {
   const Box frame = ancientFrame(text);
-  const int x = frame.right() - kAncientRules - kBanxinWidth;
-  return Box{x, frame.y + kAncientRules, kBanxinWidth, frame.height - 2 * kAncientRules};
+  return Box{frame.x + kAncientRules, frame.y + kAncientRules, kBanxinWidth, frame.height - 2 * kAncientRules};
+}
+
+// Ancient: trims the text box to whole columns of `pitch` (the line height) so every
+// 界行 stays on the grid, then centres the frame on the screen with the trimmed width.
+constexpr Margins fitColumns(Margins m, const Margins& viewable, const int screenWidth, const int pitch) {
+  constexpr int kLeftChrome = kAncientRules + kBanxinWidth + kHairline;
+  const int width = screenWidth - m.left - m.right;
+  if (pitch <= 0 || width <= pitch) return m;
+  // Paper outside the frame on both sides, once the partial column is given up.
+  const int gaps = (m.left - kLeftChrome) + (m.right - kAncientRules) + width % pitch;
+  const int rightFloor = viewable.right + kScreenGap;
+  const int leftFloor = viewable.left + kScreenGap;
+  int right = gaps / 2;
+  if (right > gaps - leftFloor) right = gaps - leftFloor;
+  if (right < rightFloor) right = rightFloor;
+  m.right = right + kAncientRules;
+  m.left = gaps - right + kLeftChrome;
+  return m;
 }
 
 // Chinese numerals for a page number: 1 一, 10 十, 12 十二, 20 二十, 101 一百零一, 1010 一千零一十.

@@ -65,6 +65,7 @@ std::unique_ptr<Page> Page::deserialize(HalFile& file, bool) {
 }
 
 void PageLine::render(GfxRenderer&, int, int, int) {}
+void PageLine::renderVertical(GfxRenderer&, int, int, int, int) {}
 bool PageLine::serialize(HalFile&) { return false; }
 
 void PageImage::render(GfxRenderer&, int, int, int) {}
@@ -72,4 +73,5 @@ void PageImage::renderPlaceholder(GfxRenderer&, int, int) const {}
 bool PageImage::serialize(HalFile&) { return false; }
 
 void PageHorizontalRule::render(GfxRenderer&, int, int, int) {}
+void PageHorizontalRule::renderVertical(GfxRenderer&, int, int, int, int) {}
 bool PageHorizontalRule::serialize(HalFile&) { return false; }

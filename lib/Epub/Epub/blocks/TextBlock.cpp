@@ -10,6 +10,7 @@
 #include <cstring>
 
 #include "../../../../src/fontIds.h"
+#include "../VerticalText.h"
 
 size_t TextBlock::arenaSize(const uint16_t wordCount, const bool hasFocus, const uint16_t textBytes) {
   // Layout documented in TextBlock.h: 16-bit arrays first, then 8-bit arrays, then text.
@@ -131,6 +132,95 @@ bool TextBlock::hasRuby() const {
     if (!rt.empty()) return true;
   }
   return false;
+}
+
+void TextBlock::renderVertical(GfxRenderer& renderer, const int fontId, const int columnRight, const int top,
+                               const int columnWidth) const {
+  if (!isValid) {
+    LOG_ERR("TXB", "Vertical render skipped: invalid block");
+    return;
+  }
+  using verticalText::Placement;
+  const int8_t tracking = blockStyle.characterSpacing;
+  const int ascender = renderer.getFontAscenderSize(fontId);
+  const int centerX = columnRight - columnWidth / 2;
+  const auto orientation = renderer.getOrientation();
+  const int screenWidth = renderer.getScreenWidth();
+  const int em = renderer.getTextAdvanceX(fontId, "\xE5\x9B\xBD", EpdFontFamily::REGULAR, 0);  // 国: one em
+
+  // Turned text starting `y` down the column: drawn as plain text in the turned frame,
+  // centred across the column.
+  const auto drawTurned = [&](const char* text, const int y, const EpdFontFamily::Style style) {
+    const auto turned = verticalText::toTurned(centerX, y, screenWidth);
+    renderer.setOrientation(
+        static_cast<GfxRenderer::Orientation>(verticalText::turnedOrientation(static_cast<uint8_t>(orientation))));
+    const int baseline = turned.y + em * verticalText::kRotatedCenterPercent / 100;
+    renderer.drawText(fontId, turned.x, baseline - ascender, text, true, style, BidiUtils::BidiBaseDir::LTR, tracking);
+    renderer.setOrientation(orientation);
+  };
+
+  char glyph[8];
+  for (uint16_t i = 0; i < numWords; i++) {
+    const char* word = wordText(i);
+    const uint16_t length = wordTextLen(i);
+    const EpdFontFamily::Style style = wordStyle(i);
+    const int wordTop = top + xposArr[i];
+
+    // A word with nothing upright (Latin, digits, a dash run) turns as one run, keeping
+    // its kerning; its turned length is the advance the layout measured.
+    bool allTurned = true;
+    {
+      const auto* cursor = reinterpret_cast<const unsigned char*>(word);
+      const auto* end = cursor + length;
+      while (cursor < end) {
+        const uint32_t cp = utf8NextCodepoint(&cursor);
+        if (cp == 0) break;
+        if (verticalText::placementFor(cp) != Placement::Rotated) {
+          allTurned = false;
+          break;
+        }
+      }
+    }
+    // Words are short; a stack copy keeps the run terminated without a heap string.
+    char run[96];
+    if (allTurned && length < sizeof(run)) {
+      memcpy(run, word, length);
+      run[length] = '\0';
+      drawTurned(run, wordTop, style);
+      continue;
+    }
+
+    int y = wordTop;
+    const auto* cursor = reinterpret_cast<const unsigned char*>(word);
+    const auto* end = cursor + length;
+    while (cursor < end) {
+      const unsigned char* start = cursor;
+      const uint32_t cp = utf8NextCodepoint(&cursor);
+      if (cp == 0) break;
+      const size_t bytes = std::min<size_t>(static_cast<size_t>(cursor - start), sizeof(glyph) - 1);
+      memcpy(glyph, start, bytes);
+      glyph[bytes] = '\0';
+      const int advance = renderer.getTextAdvanceX(fontId, glyph, style, tracking);
+      switch (verticalText::placementFor(cp)) {
+        case Placement::Upright:
+          renderer.drawText(fontId, centerX - advance / 2,
+                            y + advance * verticalText::kUprightBaselinePercent / 100 - ascender, glyph, true, style,
+                            BidiUtils::BidiBaseDir::LTR, 0);
+          break;
+        case Placement::CornerTopRight: {
+          const int shift = advance * verticalText::kCornerShiftPercent / 100;
+          renderer.drawText(fontId, centerX - advance / 2 + shift,
+                            y - shift + advance * verticalText::kUprightBaselinePercent / 100 - ascender, glyph, true,
+                            style, BidiUtils::BidiBaseDir::LTR, 0);
+          break;
+        }
+        case Placement::Rotated:
+          drawTurned(glyph, y, style);
+          break;
+      }
+      y += advance;
+    }
+  }
 }
 
 void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int x, const int y) const {

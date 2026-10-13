@@ -569,9 +569,18 @@ void EpubReaderActivity::openReaderMenu() {
 }
 
 ReaderRenderSpec EpubReaderActivity::effectiveRenderSpec(const uint16_t width, const uint16_t height) const {
-  auto spec = SETTINGS.readerRenderSpec(width, height);
-  spec.collectTouchLinks = mappedInput.hasTouch();
+  const bool vertical = readingMode::setsVertically(readingMode::modeFor(SETTINGS.readingMode));
+  // Vertical setting lays its columns out as lines, so the layout sees the viewport turned.
+  auto spec = vertical ? SETTINGS.readerRenderSpec(height, width) : SETTINGS.readerRenderSpec(width, height);
+  spec.collectTouchLinks = mappedInput.hasTouch() && !vertical;
   if (stylesDisabledForSession_) spec.embeddedStyle = false;
+  if (vertical) {
+    spec.verticalText = true;
+    // Columns keep one pitch so the 界行 stay on their grid; images have no column
+    // form yet and show their alt text.
+    spec.extraParagraphSpacing = 0;
+    spec.imageRendering = 1;
+  }
   return spec;
 }
 
@@ -669,9 +678,21 @@ void EpubReaderActivity::showBuildPopup(GfxRenderer& renderer, int& pagesUntilFu
   buildPopupPending = false;
 }
 
+bool EpubReaderActivity::refuseVerticalSelect() {
+  // Word and footnote pickers hit-test horizontal lines; columns need their own geometry.
+  if (!readingMode::setsVertically(readingMode::modeFor(SETTINGS.readingMode))) return false;
+  showDictionaryMessage = true;
+  dictionaryMessageVertical = true;
+  dictionaryMessageTime = millis();
+  requestUpdate();
+  return true;
+}
+
 void EpubReaderActivity::openDictionaryWordSelect() {
+  if (refuseVerticalSelect()) return;
   if (SETTINGS.dictionaryName[0] == '\0') {
     showDictionaryMessage = true;
+    dictionaryMessageVertical = false;
     dictionaryMessageTime = millis();
     requestUpdate();
     return;
@@ -721,6 +742,7 @@ void EpubReaderActivity::openFootnoteSelect(const bool reopenMenuOnCancel) {
     navigateToHref(currentPageFootnotes[0].href, true);
     return;
   }
+  if (refuseVerticalSelect()) return;
 
   auto page = section->loadPage(section->currentPage);
   if (!page) return;
@@ -1705,7 +1727,11 @@ readingMode::Margins EpubReaderActivity::textMargins() const {
   const readingMode::Margins base{top, viewable.right + screenMargin,
                                   viewable.bottom + std::max(screenMargin, bottomReserve),
                                   viewable.left + screenMargin};
-  return readingMode::textMargins(mode, base, viewable, RickyReaderDog::kEdgeRow);
+  const readingMode::Margins margins = readingMode::textMargins(mode, base, viewable, RickyReaderDog::kEdgeRow);
+  if (!readingMode::setsVertically(mode)) return margins;
+  return readingMode::fitColumns(
+      margins, viewable, renderer.getScreenWidth(),
+      renderer.getLineHeight(SETTINGS.getReaderFontId(), SETTINGS.getReaderLineCompression()));
 }
 
 void EpubReaderActivity::renderBook() {
@@ -2092,7 +2118,7 @@ void EpubReaderActivity::renderBook() {
   }
 
   if (showDictionaryMessage) {
-    GUI.drawPopup(renderer, tr(STR_DICT_NO_DICT_SET));
+    GUI.drawPopup(renderer, dictionaryMessageVertical ? tr(STR_VERTICAL_SELECT_UNAVAILABLE) : tr(STR_DICT_NO_DICT_SET));
   }
 
   // Toolbar menu: overlay the toolbar / panel on top of the freshly rendered page.
@@ -2466,6 +2492,18 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
     fcm->resetStats();
   }
 
+  const bool vertical = key.spec.verticalText;
+  const readingMode::Box textBox = readingMode::textBox(renderer.getScreenWidth(), renderer.getScreenHeight(),
+                                                        {key.top, key.right, key.bottom, key.left});
+  const int pitch = renderer.getLineHeight(key.spec.fontId, key.spec.lineCompression);
+  const auto renderCachedElement = [&](PageElement& element) {
+    if (vertical) {
+      element.renderVertical(renderer, key.spec.fontId, textBox.right(), textBox.y, pitch);
+    } else {
+      element.render(renderer, key.spec.fontId, key.left, key.top);
+    }
+  };
+
   // Load glyphs on demand: a whole-page prewarm cannot be interrupted. Check
   // between elements instead; an individual SD read/glyph render must finish.
   const auto renderPlane = [&](const GfxRenderer::RenderMode mode, uint8_t* target) {
@@ -2478,12 +2516,13 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
                                             readerTextWeightSpread(key.textWeight));
     for (const auto& element : page->elements) {
       if (cancelled()) return false;
-      element->render(renderer, key.spec.fontId, key.left, key.top);
+      renderCachedElement(*element);
     }
+    if (vertical) readerChrome::drawColumnRules(renderer, *page, textBox, pitch);
     // Match foreground ordering: all text first, then the guide lines.
     for (const auto& element : page->elements) {
       if (cancelled()) return false;
-      if (!key.guideLine || element->getTag() != TAG_PageLine) continue;
+      if (!key.guideLine || vertical || element->getTag() != TAG_PageLine) continue;
       const auto& line = static_cast<const PageLine&>(*element);
       if (line.getBlock()->isEmpty()) continue;
       const int ascender = renderer.getFontAscenderSize(key.spec.fontId);
@@ -2516,14 +2555,15 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
                                               readerTextWeightSpread(key.textWeight));
       for (const auto& element : page->elements) {
         if (cancelled()) return false;
-        element->render(renderer, key.spec.fontId, key.left, key.top);
+        renderCachedElement(*element);
       }
+      if (vertical) readerChrome::drawColumnRules(renderer, *page, textBox, pitch);
     }
     // Rendered: keep it even if input arrived meanwhile. That input is usually the turn
     // to this very page; on a comic the element above was a ~2 s JPEG decode, and
     // throwing it away made the turn decode it all over again in the foreground.
     for (const auto& element : page->elements) {
-      if (!key.guideLine || element->getTag() != TAG_PageLine) continue;
+      if (!key.guideLine || vertical || element->getTag() != TAG_PageLine) continue;
       const auto& line = static_cast<const PageLine&>(*element);
       if (line.getBlock()->isEmpty()) continue;
       const int ascender = renderer.getFontAscenderSize(key.spec.fontId);
@@ -2558,10 +2598,20 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
                                         const int orientedMarginLeft) {
   const auto t0 = millis();
   const int fontId = SETTINGS.getReaderFontId();
+  const bool vertical = readingMode::setsVertically(readingMode::modeFor(SETTINGS.readingMode));
+  const readingMode::Box textBox =
+      readingMode::textBox(renderer.getScreenWidth(), renderer.getScreenHeight(),
+                           {orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft});
+  const int pitch = renderer.getLineHeight(fontId, SETTINGS.getReaderLineCompression());
   const auto renderPage = [&] {
     GfxRenderer::SyntheticBoldScope syntheticBold(renderer, SETTINGS.fakeBold);
     GfxRenderer::TextWeightScope textWeight(renderer, readerTextWeightCurve(readerTextWeight()),
                                             readerTextWeightSpread(readerTextWeight()));
+    if (vertical) {
+      page->renderVertical(renderer, fontId, textBox.right(), textBox.y, pitch);
+      readerChrome::drawColumnRules(renderer, *page, textBox, pitch);
+      return;
+    }
     page->render(renderer, fontId, orientedMarginLeft, orientedMarginTop);
   };
 
@@ -2677,7 +2727,8 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
 #endif
   const bool overlapRefresh = tiledGrayscale && renderer.supportsAsyncRefresh() && !pageHasImages;
   const auto drawGuideLines = [&] {
-    if (!SETTINGS.readingGuideLineEnabled) return;
+    // Columns carry their own 界行.
+    if (!SETTINGS.readingGuideLineEnabled || vertical) return;
     const int x1 = orientedMarginLeft;
     const int x2 = renderer.getScreenWidth() - orientedMarginRight - 1;
     const int contentBottom = renderer.getScreenHeight() - orientedMarginBottom;
