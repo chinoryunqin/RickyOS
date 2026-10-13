@@ -3,8 +3,10 @@
 
 Each family becomes regular-only cpfont v4 files that cover common Chinese
 (GB2312, Big5 level 1, the 3500 common list) plus Latin and punctuation. Like
-the CrossMux catalog, every file stays under the reader's Flash acceleration
-cache limit, so pages render from flash instead of streaming glyphs from SD.
+the CrossMux catalog, every everyday size (FLASH_SIZES) stays under the reader's
+Flash acceleration cache limit, so pages render from flash instead of streaming
+glyphs from SD. Large-print sizes are too big for it and stream from SD; a large
+page holds few glyphs, so that stays quick.
 
 Sources are pinned by URL and SHA256 and checked before conversion. Converted
 families never use an OFL Reserved Font Name ("Source", "Smiley", "得意黑").
@@ -26,7 +28,13 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from build_rickyos_font_pack import FLASH_CACHE_LIMIT, sha, validate_cpfont  # noqa: E402
 
 SCRIPTS = ROOT / "lib/EpdFont/scripts"
-SIZES = (12, 14, 16, 18, 20, 22)
+FLASH_SIZES = (12, 14, 16, 18, 20, 22)
+# Large print: 48 pt is 100 px on Read Pico, about 6 characters a line. Measured at 48 pt,
+# the families come to 21.5-22.6 MB per file, under the reader's 25 MB download limit
+# (kMaxFontFileBytes in FontDownloadActivity.cpp).
+LARGE_SIZES = (26, 32, 40, 48)
+MAX_FILE_BYTES = 25 * 1024 * 1024
+SIZES = FLASH_SIZES + LARGE_SIZES
 MANIFEST_VERSION = 1  # FONTS_MANIFEST_VERSION in the firmware
 MAX_INTERVALS = 4000  # the reader accepts 4096; CrossMux's catalog uses 4000
 RELEASE_REPO = "chinoryunqin/RickyOS-fonts"
@@ -154,8 +162,10 @@ def build(source_dir, output, tag):
             name = f'{spec["name"]}_{size}.cpfont'
             data = (work / name).read_bytes()
             styles = validate_cpfont(data, required, count=1)
-            if len(data) > FLASH_CACHE_LIMIT:
+            if size in FLASH_SIZES and len(data) > FLASH_CACHE_LIMIT:
                 raise ValueError(f"{name} is {len(data):,} B, over the {FLASH_CACHE_LIMIT:,} B flash cache")
+            if len(data) >= MAX_FILE_BYTES:
+                raise ValueError(f"{name} is {len(data):,} B, over the reader's {MAX_FILE_BYTES:,} B download limit")
             shutil.move(work / name, output / "fonts" / name)
             files.append({"name": name, "size": len(data), "crc32": binascii.crc32(data) & 0xFFFFFFFF})
         shutil.copy2(source_dir / spec["license"], output / "fonts" / f'{spec["name"]}-OFL.txt')

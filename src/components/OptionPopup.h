@@ -348,7 +348,10 @@ class OptionPopup {
   static constexpr freeink::ui::ActionId ACTION_CHROME = 2;
 
   void activate(int currentIndex, std::function<void(int)> onSelect) {
-    const int count = std::min<int>(ownedStrings.size(), MAX_OPTIONS);
+    // The main-tabs popup scrolls, so every option stays reachable (a font family can
+    // ship more than MAX_OPTIONS sizes); the legacy dialog shows MAX_OPTIONS at most.
+    const int total = static_cast<int>(ownedStrings.size());
+    const int count = !upstreamStyle && UITheme::getInstance().hasMainTabs() ? total : std::min(total, MAX_OPTIONS);
     selectedIndex = currentIndex >= 0 && currentIndex < count ? currentIndex : 0;
     onSelectCallback = std::move(onSelect);
     message.clear();

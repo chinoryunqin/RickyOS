@@ -15,8 +15,12 @@
 // style variants are supplied by installed SD-card font families.
 inline constexpr uint8_t BUILTIN_READER_POINT_SIZES[] = {12};
 
-// Vector (.ttf/.otf) fonts offer every whole point size from 8 through 22.
-inline constexpr uint8_t VECTOR_READER_POINT_SIZES[] = {8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22};
+// Vector (.ttf/.otf) fonts offer every whole point size from 8 through 22, then large
+// print up to 48. Sizes are at 150 DPI (TtfEpdFont): 22 pt is 46 px, about 14 CJK
+// characters across a Read Pico page; 48 pt is 100 px, about 6. Glyph metrics hold up
+// to 255 px, so the largest CJK line height (~1.45 em, 145 px) still fits advanceY.
+inline constexpr uint8_t VECTOR_READER_POINT_SIZES[] = {8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+                                                        20, 21, 22, 24, 26, 28, 32, 36, 40, 44, 48};
 
 // Point sizes selectable for the active reader font, ascending: the vector set
 // or installed .cpfont sizes for a known SD family, otherwise the built-in set.

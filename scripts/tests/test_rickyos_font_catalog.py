@@ -61,6 +61,27 @@ class RickyFontCatalogTest(unittest.TestCase):
         self.assertLessEqual(catalog.MAX_INTERVALS, 4096)
         self.assertEqual(catalog.FLASH_CACHE_LIMIT, 0x640000 - 4096)
 
+    def test_large_print_sizes_stay_within_reader_limits(self):
+        sizes = list(catalog.SIZES)
+        self.assertEqual(sizes, sorted(set(sizes)))
+        self.assertEqual(catalog.FLASH_SIZES, (12, 14, 16, 18, 20, 22))
+        self.assertEqual(max(sizes), 48)
+        download = (ROOT / "src/activities/settings/FontDownloadActivity.cpp").read_text()
+        self.assertIn(f"kMaxFilesPerFamily = {16}", download)
+        self.assertLessEqual(len(sizes), 16)
+        self.assertLessEqual(len(sizes) * len(catalog.FAMILIES), 128)  # kMaxManifestFiles
+        self.assertIn("kMaxFontFileBytes = 25 * 1024 * 1024", download)
+        self.assertEqual(catalog.MAX_FILE_BYTES, 25 * 1024 * 1024)
+        # Vector faces reach the same large-print ceiling; their size picker scrolls past 16.
+        vector = (ROOT / "src/ReaderFontSizes.h").read_text()
+        listed = re.search(r"VECTOR_READER_POINT_SIZES\[\] = \{([^}]*)\}", vector).group(1)
+        points = [int(v) for v in listed.replace("\n", " ").split(",")]
+        self.assertEqual(points, sorted(set(points)))
+        self.assertEqual(max(points), 48)
+        popup = (ROOT / "src/components/OptionPopup.h").read_text()
+        activate = popup[popup.index("void activate("):popup.index("bool active = false;")]
+        self.assertIn("hasMainTabs() ? total", activate)
+
     def test_wrong_source_stops_before_output_creation(self):
         with tempfile.TemporaryDirectory(prefix="ricky-font-catalog-") as directory:
             sources = Path(directory) / "sources"
