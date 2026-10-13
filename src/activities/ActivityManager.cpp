@@ -42,6 +42,48 @@
 
 static portMUX_TYPE activityManagerSpinlock = portMUX_INITIALIZER_UNLOCKED;
 
+#if RICKYOS_PERF_SD_LOG
+#include <HalStorage.h>
+#include <cstdio>
+#include <cstring>
+namespace {
+// Device timing for remote measurement: the render task queues one line per gray
+// frame and the main loop appends them to the SD card (SdFat is not thread-safe).
+constexpr const char* kPerfLogPath = "/rickyos-perf.log";
+char perfPending[2048];
+size_t perfPendingLen = 0;
+unsigned long perfLastFlush = 0;
+portMUX_TYPE perfSpinlock = portMUX_INITIALIZER_UNLOCKED;
+
+void queuePerfLine(const char* line) {
+  const size_t len = strnlen(line, 255);
+  taskENTER_CRITICAL(&perfSpinlock);
+  if (perfPendingLen + len <= sizeof(perfPending)) {
+    memcpy(perfPending + perfPendingLen, line, len);
+    perfPendingLen += len;
+  }
+  taskEXIT_CRITICAL(&perfSpinlock);
+}
+
+void flushPerfLog() {
+  if (millis() - perfLastFlush < 2000) return;
+  perfLastFlush = millis();
+  char chunk[sizeof(perfPending)];
+  taskENTER_CRITICAL(&perfSpinlock);
+  const size_t len = perfPendingLen;
+  memcpy(chunk, perfPending, len);
+  perfPendingLen = 0;
+  taskEXIT_CRITICAL(&perfSpinlock);
+  if (!len) return;
+  HalFile file = Storage.open(kPerfLogPath, O_WRONLY | O_CREAT | O_APPEND);
+  if (!file || !file.isOpen()) return;
+  file.write(reinterpret_cast<const uint8_t*>(chunk), len);
+  file.flush();
+  file.close();
+}
+}  // namespace
+#endif
+
 extern HalGPIO gpio;
 
 void ActivityManager::begin() {
@@ -213,6 +255,26 @@ bool ActivityManager::renderDirectGray(RenderLock&& lock) {
   if (committed) renderer.clearNextRefreshOverride();
   LOG_DBG("ACT", "Direct gray: %s paint=%lu ms submit=%lu ms total=%lu ms", committed ? "done" : "failed, B/W fallback",
           painted - started, millis() - painted, millis() - started);
+#if RICKYOS_PERF_SD_LOG
+  {
+    char line[256];
+    int n = snprintf(line, sizeof(line), "%lu %s paint=%lu submit=%lu%s", static_cast<unsigned long>(started),
+                     currentActivity ? currentActivity->name.c_str() : "?", painted - started, millis() - painted,
+                     committed ? "" : " failed");
+#if RICKYOS_PAINT_PROFILE
+    const auto& profile = GfxRenderer::paintProfile();
+    if (n > 0 && n < static_cast<int>(sizeof(line)))
+      n += snprintf(line + n, sizeof(line) - n, " fill=%lu/%lu text=%lu/%lu shape=%lu/%lu image=%lu/%lu",
+                    profile.us[0] / 1000, profile.calls[0], profile.us[1] / 1000, profile.calls[1],
+                    profile.us[2] / 1000, profile.calls[2], profile.us[3] / 1000, profile.calls[3]);
+#endif
+    if (n > 0 && n < static_cast<int>(sizeof(line)) - 1) {
+      line[n] = '\n';
+      line[n + 1] = '\0';
+      queuePerfLine(line);
+    }
+  }
+#endif
 #if RICKYOS_PAINT_PROFILE
   {
     auto& profile = GfxRenderer::paintProfile();
@@ -263,6 +325,10 @@ void ActivityManager::settleToGray(RenderLock&& lock, const uint32_t generation)
 #endif
 
 void ActivityManager::loop() {
+#if RICKYOS_PERF_SD_LOG
+  // Never write while the card is exported over USB.
+  if (!currentActivity || currentActivity->name != "UsbDrive") flushPerfLog();
+#endif
 #if FREEINK_DEVICE_READPICO && !defined(SIMULATOR)
   {
     // Page turns and UI frames leave the panel rails up so the next frame starts at once;
