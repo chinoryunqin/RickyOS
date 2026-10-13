@@ -40,11 +40,12 @@ class RickyWallpaperDownloadTest(unittest.TestCase):
         self.assertIn(f'"https://github.com/{repo}/releases/latest/download/wallpapers.json"', header)
         self.assertIn(f'"https://cdn.jsdelivr.net/gh/{repo}@latest/mirror.json"', header)
         self.assertIn(f'"https://fastly.jsdelivr.net/gh/{repo}@latest/mirror.json"', header)
-        self.assertIn('china[MANIFEST_COUNT] = {MIRROR_MANIFEST, FASTLY_MANIFEST, GITHUB_MANIFEST}', header)
+        self.assertIn('MANIFEST_ORDER[MANIFEST_COUNT] = {COS_MANIFEST, MIRROR_MANIFEST, FASTLY_MANIFEST,', header)
+        self.assertNotIn('ContentProfile', header)
         self.assertIn('FOLDER[] = "/images/待机图片"', header)
         script = SCRIPT.read_text()
         self.assertIn(f'RELEASE_REPO = "{repo}"', script)
-        self.assertIn('("mirror.json", jsdelivr, [fastly, github])', script)
+        self.assertIn('routes("wallpapers", RELEASE_REPO, args.tag, args.cos_base)', script)
 
     @unittest.skipUnless(HAVE_PIL, 'needs Pillow')
     def test_bmp_is_a_native_16_gray_4_bit_picture(self):
@@ -97,13 +98,26 @@ class RickyWallpaperDownloadTest(unittest.TestCase):
     def test_newest_manifest_wins_over_stale_cdn_caches(self):
         source = ACTIVITY.read_text()
         fetch = body(source, 'bool RickyWallpaperDownloadActivity::fetchManifest()')
-        # Every route is read; none short-circuits after the first success.
+        # Every CDN route is read; none short-circuits after the first success.
         self.assertIn('for (int attempt = 0; attempt < RickyWallpaperCatalog::MANIFEST_COUNT; ++attempt)', fetch)
         self.assertNotIn('result != HttpDownloader::OK; ++attempt', fetch)
+        # GitHub's releases/latest is authoritative: it ends the search, and in the China
+        # order (last) it is skipped once a CDN answered, since it is the slow route there.
+        self.assertIn('url == RickyWallpaperCatalog::GITHUB_MANIFEST || RickyCos::isCosUrl(url)', fetch)
+        self.assertIn('if (url == nullptr) continue;', fetch)
+        self.assertIn('if (authoritative && !items_.empty()) continue;', fetch)
+        self.assertIn('if (authoritative) break;', fetch)
+        # Index files fail over in seconds, not the minute a body transfer gets.
+        self.assertIn('HttpDownloader::downloadIndex(url, kManifestTmp)', fetch)
         self.assertIn('RickyWallpaperCatalog::releaseOf(base)', fetch)
         self.assertIn('release <= bestRelease) continue;', fetch)
         header = (ROOT / 'src/network/RickyWallpaperCatalog.h').read_text()
         self.assertIn('static_assert(releaseOf("https://cdn.jsdelivr.net/gh/x/y@v1.1.0/wallpapers/") == 0x010100);', header)
+
+    def test_progress_repaints_in_ten_percent_steps(self):
+        item = body(ACTIVITY.read_text(), 'bool RickyWallpaperDownloadActivity::downloadItem(')
+        self.assertIn('percent >= lastPercent_ + kProgressStepPercent', item)
+        self.assertIn('constexpr uint8_t kProgressStepPercent = 10;', ACTIVITY.read_text())
 
     @unittest.skipUnless(HAVE_PIL, 'needs Pillow')
     def test_published_pictures_are_small_4_bit_pngs(self):
@@ -123,6 +137,7 @@ class RickyWallpaperDownloadTest(unittest.TestCase):
         self.assertIn('SETTINGS.sleepScreen = CrossPointSettings::CUSTOM;', install)
         fetch = body(source, 'bool RickyWallpaperDownloadActivity::fetchManifest()')
         self.assertIn('host.find("jsdelivr.net") != std::string::npos', fetch)
+        self.assertIn('if (RickyCos::isCosUrl(host.c_str())) return 0;', fetch)
         self.assertIn('FsHelpers::hasPngExtension(std::string_view(file))', fetch)
         item = body(source, 'bool RickyWallpaperDownloadActivity::downloadItem(')
         self.assertIn('if (result == HttpDownloader::OK) preferredHost_ = host;', item)

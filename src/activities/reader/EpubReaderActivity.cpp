@@ -59,6 +59,7 @@
 #include "activities/settings/FontDownloadActivity.h"
 #include "activities/settings/TextSettingsActivity.h"
 #include "components/FontPreloadView.h"
+#include "components/RickyBadgeNotice.h"
 #include "components/UITheme.h"
 #include "components/icons/rickyReaderDog.h"
 #include "fontIds.h"
@@ -340,6 +341,9 @@ void EpubReaderActivity::onExit() {
   freePageCache();
 #endif
   showPendingAchievementPopups(renderer);
+#if RICKYOS_PRODUCT
+  rickyBadgeNotice::announceNew(renderer);
+#endif
   ReaderActivity::onExit();
 #if FREEINK_DEVICE_READPICO
   // The last page is 16-level; a fast B/W frame over it leaves its gray text behind,

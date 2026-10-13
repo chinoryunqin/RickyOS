@@ -62,4 +62,18 @@ class HttpDownloader {
                                       ProgressCallback progress = nullptr, const bool* cancelFlag = nullptr,
                                       const std::string& username = "", const std::string& password = "",
                                       const std::vector<Header>& headers = {}, bool downgradeRedirectsToHttp = false);
+
+  // Small catalog indexes (font and picture lists) come from one of several mirrors.
+  // Each socket wait (connect, TLS handshake, headers, a body stall) gets this long
+  // instead of a minute, so a blocked route hands over to the next mirror in seconds:
+  // with the TLS 1.2 retry a dead route used to cost about two minutes.
+  static constexpr uint32_t INDEX_TIMEOUT_MS = 12000;
+  static DownloadError downloadIndex(const std::string& url, const std::string& destPath);
+
+ private:
+  static DownloadError downloadToFileWithin(const std::string& url, const std::string& destPath, uint32_t timeoutMs,
+                                            ProgressCallback progress = nullptr, const bool* cancelFlag = nullptr,
+                                            const std::string& username = "", const std::string& password = "",
+                                            const std::vector<Header>& headers = {},
+                                            bool downgradeRedirectsToHttp = false);
 };

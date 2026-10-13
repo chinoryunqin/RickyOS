@@ -3,11 +3,12 @@
 #include <algorithm>
 #include <cstdint>
 
-#include "CrossPointSettings.h"
+#include "RickyCos.h"
 
 // RickyOS default standby pictures, github.com/chinoryunqin/RickyOS-wallpapers, built by
 // scripts/build_rickyos_wallpapers.py. Same routes as RickyFontCatalog: a GitHub release
-// manifest and a jsDelivr one (two CDN hosts); each lists the other hosts under "mirrors".
+// manifest, a jsDelivr one (two CDN hosts) and, when configured, the RickyOS COS bucket
+// (RickyCos.h); each lists the other hosts under "mirrors".
 namespace RickyWallpaperCatalog {
 
 inline constexpr char GITHUB_MANIFEST[] =
@@ -16,15 +17,19 @@ inline constexpr char MIRROR_MANIFEST[] =
     "https://cdn.jsdelivr.net/gh/chinoryunqin/RickyOS-wallpapers@latest/mirror.json";
 inline constexpr char FASTLY_MANIFEST[] =
     "https://fastly.jsdelivr.net/gh/chinoryunqin/RickyOS-wallpapers@latest/mirror.json";
-inline constexpr int MANIFEST_COUNT = 3;
+inline constexpr const char* COS_MANIFEST = RickyCos::ENABLED ? RickyCos::WALLPAPER_MANIFEST : nullptr;
+inline constexpr int MANIFEST_COUNT = 4;
 // Card folder the pictures land in; the standby picker starts in /images.
 inline constexpr char FOLDER[] = "/images/待机图片";
 
-constexpr const char* manifestFor(const CrossPointSettings::ContentProfile profile, const int attempt) {
-  constexpr const char* china[MANIFEST_COUNT] = {MIRROR_MANIFEST, FASTLY_MANIFEST, GITHUB_MANIFEST};
-  constexpr const char* global[MANIFEST_COUNT] = {GITHUB_MANIFEST, MIRROR_MANIFEST, FASTLY_MANIFEST};
-  return (profile == CrossPointSettings::ContentProfile::China ? china : global)[attempt];
-}
+// The manifest to try at each attempt, or nullptr for a route that is off (skip it).
+// One fixed order for every device (RickyOS readers are in mainland China): the
+// Guangzhou bucket, then jsDelivr, Fastly, and GitHub last.
+inline constexpr const char* MANIFEST_ORDER[MANIFEST_COUNT] = {COS_MANIFEST, MIRROR_MANIFEST, FASTLY_MANIFEST,
+                                                               GITHUB_MANIFEST};
+constexpr const char* manifestFor(const int attempt) { return MANIFEST_ORDER[attempt]; }
+static_assert(manifestFor(0) == COS_MANIFEST);
+static_assert(manifestFor(3) == GITHUB_MANIFEST);
 
 // The release in a manifest's baseUrl ("...@v1.1.0/..." or ".../download/v1.1.0/") as
 // 0xMMmmpp, 0 when absent, so manifests from routes with stale caches can be ranked.
@@ -50,5 +55,6 @@ constexpr uint32_t releaseOf(const char* url) {
 static_assert(releaseOf("https://cdn.jsdelivr.net/gh/x/y@v1.1.0/wallpapers/") == 0x010100);
 static_assert(releaseOf("https://github.com/x/y/releases/download/v1.0.0/") == 0x010000);
 static_assert(releaseOf("https://example.com/plain/") == 0);
+static_assert(releaseOf("https://rickyos-1250000000.cos.ap-guangzhou.myqcloud.com/wallpapers/v1.3.0/") == 0x010300);
 
 }  // namespace RickyWallpaperCatalog

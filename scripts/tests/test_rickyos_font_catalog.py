@@ -61,6 +61,27 @@ class RickyFontCatalogTest(unittest.TestCase):
         self.assertLessEqual(catalog.MAX_INTERVALS, 4096)
         self.assertEqual(catalog.FLASH_CACHE_LIMIT, 0x640000 - 4096)
 
+    def test_large_print_sizes_stay_within_reader_limits(self):
+        sizes = list(catalog.SIZES)
+        self.assertEqual(sizes, sorted(set(sizes)))
+        self.assertEqual(catalog.FLASH_SIZES, (12, 14, 16, 18, 20, 22))
+        self.assertEqual(max(sizes), 32)
+        download = (ROOT / "src/activities/settings/FontDownloadActivity.cpp").read_text()
+        self.assertIn(f"kMaxFilesPerFamily = {16}", download)
+        self.assertLessEqual(len(sizes), 16)
+        self.assertLessEqual(len(sizes) * len(catalog.FAMILIES), 128)  # kMaxManifestFiles
+        self.assertIn("kMaxFontFileBytes = 25 * 1024 * 1024", download)
+        self.assertEqual(catalog.MAX_FILE_BYTES, 25 * 1024 * 1024)
+        # Vector faces reach the same large-print ceiling; their size picker scrolls past 16.
+        vector = (ROOT / "src/ReaderFontSizes.h").read_text()
+        listed = re.search(r"VECTOR_READER_POINT_SIZES\[\] = \{([^}]*)\}", vector).group(1)
+        points = [int(v) for v in listed.replace("\n", " ").split(",")]
+        self.assertEqual(points, sorted(set(points)))
+        self.assertEqual(max(points), 32)
+        popup = (ROOT / "src/components/OptionPopup.h").read_text()
+        activate = popup[popup.index("void activate("):popup.index("bool active = false;")]
+        self.assertIn("hasMainTabs() ? total", activate)
+
     def test_wrong_source_stops_before_output_creation(self):
         with tempfile.TemporaryDirectory(prefix="ricky-font-catalog-") as directory:
             sources = Path(directory) / "sources"
@@ -79,14 +100,17 @@ class RickyFontCatalogTest(unittest.TestCase):
         activity = (ROOT / "src/activities/settings/FontDownloadActivity.cpp").read_text()
         block = re.search(r"  // RickyOS lists its own catalog.*?\n  \}\n", activity, re.S).group(0)
         self.assertIn("if (purpose_ != Purpose::ReaderAutoInstall)", block)  # NotoSansSC stays on CrossMux
-        self.assertIn("RickyFontCatalog::manifestFor(SETTINGS.contentProfile, attempt)", block)
+        self.assertIn("RickyFontCatalog::manifestFor(attempt)", block)  # one order, whatever the region
         self.assertIn("if (result == HttpDownloader::OK) break;", activity)
         self.assertIn(f'"https://fastly.jsdelivr.net/gh/{repo}@latest/mirror.json"', header)
+        # The Guangzhou bucket leads in China once configured; an unset route is skipped.
+        self.assertIn("MANIFEST_ORDER[MANIFEST_COUNT] = {COS_MANIFEST, MIRROR_MANIFEST, FASTLY_MANIFEST,", header)
+        self.assertNotIn("contentProfile", header)
+        self.assertIn("if (url == nullptr) continue;", activity)
 
     def test_failed_files_retry_on_mirrors(self):
         script = (ROOT / "scripts/build_rickyos_font_catalog.py").read_text()
-        self.assertIn('("mirror.json", jsdelivr, [fastly, github])', script)
-        self.assertIn('("fonts.json", github, [jsdelivr, fastly])', script)
+        self.assertIn('routes("fonts", RELEASE_REPO, tag, cos_base)', script)
         activity = (ROOT / "src/activities/settings/FontDownloadActivity.cpp").read_text()
         self.assertIn('for (JsonVariant mirror : doc["mirrors"].as<JsonArray>())', activity)
         # Only network failures retry; cancel, SD card and authorization errors stay final.

@@ -3,8 +3,10 @@
 
 Each family becomes regular-only cpfont v4 files that cover common Chinese
 (GB2312, Big5 level 1, the 3500 common list) plus Latin and punctuation. Like
-the CrossMux catalog, every file stays under the reader's Flash acceleration
-cache limit, so pages render from flash instead of streaming glyphs from SD.
+the CrossMux catalog, every everyday size (FLASH_SIZES) stays under the reader's
+Flash acceleration cache limit, so pages render from flash instead of streaming
+glyphs from SD. Large-print sizes are too big for it and stream from SD; a large
+page holds few glyphs, so that stays quick.
 
 Sources are pinned by URL and SHA256 and checked before conversion. Converted
 families never use an OFL Reserved Font Name ("Source", "Smiley", "得意黑").
@@ -12,6 +14,8 @@ The output directory is the layout of the RickyOS-fonts repository: fonts/
 holds the files, fonts.json points at the GitHub release assets of --tag and
 mirror.json at the same files through jsDelivr, both in the manifest format
 FontDownloadActivity reads; each lists the other hosts under "mirrors". Upload fonts/*.cpfont and fonts.json to the release.
+With --cos-base, cos.json serves the same files from the RickyOS COS bucket in Guangzhou, the
+first route in mainland China; publish it with scripts/publish_rickyos_assets_cos.py.
 """
 import argparse
 import binascii
@@ -24,9 +28,16 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from build_rickyos_font_pack import FLASH_CACHE_LIMIT, sha, validate_cpfont  # noqa: E402
+from rickyos_asset_routes import check_cos_base, routes  # noqa: E402
 
 SCRIPTS = ROOT / "lib/EpdFont/scripts"
-SIZES = (12, 14, 16, 18, 20, 22)
+FLASH_SIZES = (12, 14, 16, 18, 20, 22)
+# Large print: 32 pt is 67 px on Read Pico, about 9 characters a line. RickySans measures
+# 7.9 MB at 28 pt and 12.7 MB at 36 pt, so these stay well under the reader's 25 MB
+# download limit (kMaxFontFileBytes in FontDownloadActivity.cpp).
+LARGE_SIZES = (26, 32)
+MAX_FILE_BYTES = 25 * 1024 * 1024
+SIZES = FLASH_SIZES + LARGE_SIZES
 MANIFEST_VERSION = 1  # FONTS_MANIFEST_VERSION in the firmware
 MAX_INTERVALS = 4000  # the reader accepts 4096; CrossMux's catalog uses 4000
 RELEASE_REPO = "chinoryunqin/RickyOS-fonts"
@@ -129,7 +140,8 @@ def check_sources(source_dir):
             raise ValueError(f'Unzip {spec["archive"]} into {source_dir / "smiley"} first')
 
 
-def build(source_dir, output, tag):
+def build(source_dir, output, tag, cos_base=None):
+    check_cos_base(cos_base)
     check_sources(source_dir)
     if output.exists():
         raise ValueError("Output already exists; choose a new directory, never overwrite a catalog")
@@ -154,8 +166,10 @@ def build(source_dir, output, tag):
             name = f'{spec["name"]}_{size}.cpfont'
             data = (work / name).read_bytes()
             styles = validate_cpfont(data, required, count=1)
-            if len(data) > FLASH_CACHE_LIMIT:
+            if size in FLASH_SIZES and len(data) > FLASH_CACHE_LIMIT:
                 raise ValueError(f"{name} is {len(data):,} B, over the {FLASH_CACHE_LIMIT:,} B flash cache")
+            if len(data) >= MAX_FILE_BYTES:
+                raise ValueError(f"{name} is {len(data):,} B, over the reader's {MAX_FILE_BYTES:,} B download limit")
             shutil.move(work / name, output / "fonts" / name)
             files.append({"name": name, "size": len(data), "crc32": binascii.crc32(data) & 0xFFFFFFFF})
         shutil.copy2(source_dir / spec["license"], output / "fonts" / f'{spec["name"]}-OFL.txt')
@@ -170,12 +184,8 @@ def build(source_dir, output, tag):
         print(f'{spec["name"]}: {len(intervals)} intervals, {len(covered)} glyphs, '
               f'largest {sources[-1]["largest_file"]:,} B', flush=True)
     shutil.rmtree(output / ".work")
-    github = f"https://github.com/{RELEASE_REPO}/releases/download/{tag}/"
-    jsdelivr = f"https://cdn.jsdelivr.net/gh/{RELEASE_REPO}@{tag}/fonts/"
-    fastly = f"https://fastly.jsdelivr.net/gh/{RELEASE_REPO}@{tag}/fonts/"
     # "mirrors" carry the same files; the reader retries a failed file on the next one.
-    for name, base, mirrors in (("fonts.json", github, [jsdelivr, fastly]),
-                                ("mirror.json", jsdelivr, [fastly, github])):
+    for name, base, mirrors in routes("fonts", RELEASE_REPO, tag, cos_base):
         manifest = {"version": MANIFEST_VERSION, "baseUrl": base, "mirrors": mirrors, "families": families}
         (output / name).write_text(json.dumps(manifest, ensure_ascii=False, indent=1) + "\n")
     (output / "sources.json").write_text(json.dumps(
@@ -192,5 +202,7 @@ if __name__ == "__main__":
     parser.add_argument("--source-dir", type=Path, default=ROOT / ".cache/rickyos-font-sources")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--tag", required=True, help="GitHub release tag the files are uploaded to, e.g. v1.0.0")
+    parser.add_argument("--cos-base", help="RickyOS COS bucket domain (https://<bucket>-<appid>.cos.ap-guangzhou."
+                        "myqcloud.com); adds cos.json, published with scripts/publish_rickyos_assets_cos.py")
     args = parser.parse_args()
-    build(args.source_dir.resolve(), args.output.resolve(), args.tag)
+    build(args.source_dir.resolve(), args.output.resolve(), args.tag, args.cos_base)

@@ -1,4 +1,5 @@
 #include "RickyReadingStatsActivity.h"
+
 #include <GfxRenderer.h>
 #include <I18n.h>
 
@@ -8,10 +9,17 @@
 #include <vector>
 
 #include "CrossPointSettings.h"
+#include "ReadingDayDetailActivity.h"
 #include "ReadingStatsStore.h"
+#include "RickyBadgesActivity.h"
+#include "RickyMonthReportActivity.h"
+#include "components/RickyBadgeStatus.h"
+#include "components/RickyMascot.h"
+#include "components/RickyMonthSummary.h"
 #include "components/RickyPageUi.h"
+#include "components/RickyPaw.h"
+#include "components/RickyReadingStreak.h"
 #include "components/UITheme.h"
-#include "components/icons/rickyMascotIcons.h"
 #include "util/TimeUtils.h"
 
 namespace {
@@ -111,16 +119,156 @@ std::string dailyFact(const ReadingStatsStore& stats, const uint32_t today) {
   return facts[today % facts.size()];
 }
 
-void drawMascot(const GfxRenderer& renderer, const uint8_t* bits, const int x, const int y) {
-  constexpr int rowBytes = (kRickyMascotSize + 7) / 8;
-  for (int row = 0; row < kRickyMascotSize; ++row)
-    for (int column = 0; column < kRickyMascotSize; ++column)
-      if ((bits[row * rowBytes + column / 8] & (0x80U >> (column % 8))) == 0)
-        renderer.drawPixel(x + column, y + row, true);
+// The month's own story, one fact a day; falls back to all-time facts when the month is
+// too quiet to say anything.
+std::string monthFact(const ReadingStatsStore& stats, const rickyMonth::Summary& month, const uint32_t today) {
+  std::vector<std::string> facts;
+  char text[192];
+  if (month.topCount > 0 && !month.top[0].book->title.empty()) {
+    std::string title = month.top[0].book->title;
+    size_t cut = 0;
+    int characters = 0;
+    for (; cut < title.size() && characters < 10; ++characters) {
+      const auto lead = static_cast<unsigned char>(title[cut]);
+      cut += lead < 0x80 ? 1 : (lead < 0xE0 ? 2 : (lead < 0xF0 ? 3 : 4));
+    }
+    if (cut < title.size()) title = title.substr(0, cut) + "…";
+    snprintf(text, sizeof(text), tr(STR_RICKY_STATS_FACT_MONTH_BOOK), title.c_str(), duration(month.top[0].ms).c_str());
+    facts.emplace_back(text);
+  }
+  int year = 0;
+  unsigned monthNumber = 0, dayOfMonth = 0;
+  if (month.bestMs >= kMinuteMs && TimeUtils::getDateFromDayOrdinal(month.bestDay, year, monthNumber, dayOfMonth)) {
+    snprintf(text, sizeof(text), tr(STR_RICKY_STATS_FACT_MONTH_BEST), monthNumber, dayOfMonth,
+             duration(month.bestMs).c_str());
+    facts.emplace_back(text);
+  }
+  if (const int weekday = rickyMonth::busiestWeekday(month); weekday >= 0) {
+    const std::string name = nthLabel(tr(STR_RICKY_STATS_WEEKDAYS), weekday);
+    snprintf(text, sizeof(text), tr(STR_RICKY_STATS_FACT_MONTH_WEEKDAY), name.c_str(), name.c_str());
+    facts.emplace_back(text);
+  }
+  // A month still running is only compared once it is ahead; a finished one either way.
+  if (month.previousMs >= kMinuteMs && month.totalMs >= month.previousMs + kMinuteMs) {
+    snprintf(text, sizeof(text), tr(STR_RICKY_STATS_FACT_MONTH_MORE),
+             duration(month.totalMs - month.previousMs).c_str());
+    facts.emplace_back(text);
+  } else if (month.over && month.previousMs >= month.totalMs + kMinuteMs) {
+    snprintf(text, sizeof(text), tr(STR_RICKY_STATS_FACT_MONTH_LESS),
+             duration(month.previousMs - month.totalMs).c_str());
+    facts.emplace_back(text);
+  }
+  if (facts.empty()) return month.totalMs < kMinuteMs ? tr(STR_RICKY_STATS_FACT_MONTH_EMPTY) : dailyFact(stats, today);
+  return facts[today % facts.size()];
 }
+
+// A finished month's report leads the page for the next month's first three days.
+bool reportReadyDays(const uint32_t today) {
+  int year = 0;
+  unsigned month = 0, day = 0;
+  TimeUtils::getDateFromDayOrdinal(today, year, month, day);
+  return day <= 3;
+}
+
+// A chevron for the month buttons, `left` pointing back.
+void drawChevron(const GfxRenderer& renderer, const int centerX, const int centerY, const bool left) {
+  constexpr int kHalf = 10;
+  const int tipX = left ? centerX - kHalf / 2 : centerX + kHalf / 2;
+  const int tailX = left ? centerX + kHalf / 2 : centerX - kHalf / 2;
+  renderer.drawLine(tailX, centerY - kHalf, tipX, centerY, 3, true);
+  renderer.drawLine(tipX, centerY, tailX, centerY + kHalf, 3, true);
+}
+
 }  // namespace
 
 const char* RickyReadingStatsActivity::headerTitle() const { return tr(STR_READING_STATS); }
+
+void RickyReadingStatsActivity::onEnter() {
+  UiListActivity::onEnter();
+  const auto& stats = READING_STATS;
+  currentMonth_ = rickyMonth::indexOf(stats.getTodayDayOrdinal());
+  firstMonth_ = currentMonth_;
+  for (const auto& day : stats.getReadingDays())
+    if (day.dayOrdinal != 0) firstMonth_ = std::min(firstMonth_, rickyMonth::indexOf(day.dayOrdinal));
+  viewMonth_ = currentMonth_;
+  app.on(
+      ACTION_PREVIOUS_MONTH,
+      [](const fui::ActionEvent&, void* user) {
+        auto* self = static_cast<RickyReadingStatsActivity*>(user);
+        self->showMonth(self->viewMonth_ - 1);
+      },
+      this);
+  app.on(
+      ACTION_NEXT_MONTH,
+      [](const fui::ActionEvent&, void* user) {
+        auto* self = static_cast<RickyReadingStatsActivity*>(user);
+        self->showMonth(self->viewMonth_ + 1);
+      },
+      this);
+  app.on(
+      ACTION_DAY,
+      [](const fui::ActionEvent& event, void* user) {
+        static_cast<RickyReadingStatsActivity*>(user)->openDay(event.value);
+      },
+      this);
+  app.on(
+      ACTION_BADGES,
+      [](const fui::ActionEvent&, void* user) { static_cast<RickyReadingStatsActivity*>(user)->openBadges(); }, this);
+  app.on(
+      ACTION_REPORT,
+      [](const fui::ActionEvent& event, void* user) {
+        auto* self = static_cast<RickyReadingStatsActivity*>(user);
+        // value 1: the "report is ready" line, which opens last month's.
+        self->openReport(event.value == 1 ? self->viewMonth_ - 1 : self->viewMonth_);
+      },
+      this);
+}
+
+void RickyReadingStatsActivity::openBadges() {
+  app.clearTapFlash();
+  startActivityForResultWith<RickyBadgesActivity>([this](const ActivityResult&) { requestUpdate(); });
+}
+
+void RickyReadingStatsActivity::openReport(const int month) {
+  app.clearTapFlash();
+  startActivityForResultWith<RickyMonthReportActivity>([this](const ActivityResult&) { requestUpdate(); }, month);
+}
+
+void RickyReadingStatsActivity::showMonth(const int month) {
+  const int clamped = std::clamp(month, firstMonth_, currentMonth_);
+  if (clamped == viewMonth_) return;
+  viewMonth_ = clamped;
+  requestUpdate();
+}
+
+void RickyReadingStatsActivity::openDay(const int dayOfMonth) {
+  if (dayOfMonth < 1 || dayOfMonth > static_cast<int>(rickyMonth::length(viewMonth_))) return;
+  const uint32_t day = rickyMonth::firstDay(viewMonth_) + static_cast<uint32_t>(dayOfMonth - 1);
+  if (day > READING_STATS.getTodayDayOrdinal()) return;
+  app.clearTapFlash();
+  startActivityForResultWith<ReadingDayDetailActivity>([this](const ActivityResult&) { requestUpdate(); }, day);
+}
+
+bool RickyReadingStatsActivity::handleCustomInput() {
+  using Button = MappedInputManager::Button;
+  if (mappedInput.wasReleased(Button::Left) || mappedInput.wasReleased(Button::PageBack)) {
+    showMonth(viewMonth_ - 1);
+    return true;
+  }
+  if (mappedInput.wasReleased(Button::Right) || mappedInput.wasReleased(Button::PageForward)) {
+    showMonth(viewMonth_ + 1);
+    return true;
+  }
+  if (mappedInput.wasReleased(Button::Confirm)) {
+    openReport(viewMonth_);
+    return true;
+  }
+  if (mappedInput.wasReleased(Button::Down)) {
+    openBadges();
+    return true;
+  }
+  return false;
+}
 
 void RickyReadingStatsActivity::buildScreen(UiScreen& screen) {
   const auto bounds = pageContentRect();
@@ -145,6 +293,8 @@ void RickyReadingStatsActivity::buildScreen(UiScreen& screen) {
   auto big = theme.titleText;
   big.bold = true;
   big.maxLines = 1;
+  auto centered = small;
+  centered.align = fui::TextAlign::Center;
   const auto rect = [](const int x, const int y, const int w, const int h) {
     return fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(y), static_cast<int16_t>(w),
                      static_cast<int16_t>(h)};
@@ -153,100 +303,121 @@ void RickyReadingStatsActivity::buildScreen(UiScreen& screen) {
   const auto& stats = READING_STATS;
   const uint32_t today = stats.getTodayDayOrdinal();
   const uint64_t todayMs = stats.getTodayReadingMs();
-  const uint64_t goalMs = std::max<uint64_t>(kMinuteMs, getDailyReadingGoalMs());
+  const uint64_t goalMs = rickyStreak::goalMs();
   const bool reached = todayMs >= goalMs;
+  char text[160];
 
   // Today: the dog reacts to the day's reading.
-  const int heroHeight = std::max(kRickyMascotSize, smallHeight * 2 + titleHeight + gap * 2) + pad * 2;
+  const auto mood = rickyMascot::moodFor(todayMs, goalMs);
+  const int dog = kRickyMascotSmallSize;
+  const int heroHeight = std::max(dog, smallHeight * 2 + titleHeight + gap * 2) + pad * 2;
   const auto hero = screen.takeTop(heroHeight, gap);
   RickyPageUi::card(target, hero, false);
-  const uint8_t* mascot =
-      todayMs < kMinuteMs ? ricky_mascot_sleeping : (reached ? ricky_mascot_happy : ricky_mascot_reading);
-  drawMascot(renderer, mascot, hero.x + pad, hero.y + (hero.height - kRickyMascotSize) / 2);
-  const int textX = hero.x + pad + kRickyMascotSize + gap * 2;
+  rickyMascot::draw(renderer, mood, true, hero.x + pad, hero.y + (hero.height - dog) / 2);
+  const int textX = hero.x + pad + dog + gap * 2;
   const int textWidth = hero.right() - pad - textX;
   int y = hero.y + (hero.height - (smallHeight * 2 + titleHeight + gap * 2)) / 2;
   target.text(rect(textX, y, textWidth, smallHeight), tr(STR_RICKY_STATS_TODAY), small);
   y += smallHeight;
-  char text[96];
   snprintf(text, sizeof(text), tr(STR_RICKY_STATS_MINUTES), static_cast<unsigned>(minutesOf(todayMs)));
   target.text(rect(textX, y, textWidth, titleHeight), text, big);
   y += titleHeight + gap / 2;
   RickyPageUi::progressBar(target, rect(textX, y, textWidth, 8),
                            static_cast<int>(std::min<uint64_t>(100, todayMs * 100 / goalMs)));
   y += 8 + gap / 2;
-  auto line = small;
-  line.maxLines = 2;
   if (todayMs < kMinuteMs)
     snprintf(text, sizeof(text), "%s", tr(STR_RICKY_STATS_IDLE));
   else if (!reached)
     snprintf(text, sizeof(text), tr(STR_RICKY_STATS_GOING), static_cast<unsigned>(minutesOf(goalMs - todayMs) + 1));
   else
     snprintf(text, sizeof(text), "%s", tr(STR_RICKY_STATS_DONE));
-  target.text(rect(textX, y, textWidth, smallHeight * 2), text, line);
+  target.text(rect(textX, y, textWidth, smallHeight), text, small);
 
-  // This week, Monday first; days still to come stay blank.
-  // The chart takes whatever height the other cards leave, within reason.
+  // The month: one paw print per day read, a hatched one for a rest day.
+  const uint32_t monthStart = rickyMonth::firstDay(viewMonth_);
+  const unsigned monthDays = rickyMonth::length(viewMonth_);
+  readingStreak::Mark marks[31];
+  const auto streak = rickyStreak::evaluate(marks, monthStart, monthDays);
+  const int leading = weekdayOf(monthStart);
+  const int weeks = (leading + static_cast<int>(monthDays) + 6) / 7;
+
   const int tileHeight = titleHeight + smallHeight + pad * 2;
-  const int factHeight = bodyHeight * 2 + pad * 2;
-  const int weekChrome = pad * 2 + bodyHeight + gap + gap / 2 + smallHeight + gap;
-  const int chartHeight =
-      std::clamp(static_cast<int>(screen.body().height) - weekChrome - tileHeight - factHeight - gap * 2,
-                 std::max(72, bodyHeight * 3), 320);
-  const auto week = screen.takeTop(pad * 2 + bodyHeight + gap + chartHeight + gap / 2 + smallHeight + gap, gap);
-  RickyPageUi::card(target, week, false);
-  target.text(rect(week.x + pad, week.y + pad, week.width / 3, bodyHeight), tr(STR_RICKY_STATS_WEEK), strong);
-  snprintf(text, sizeof(text), tr(STR_RICKY_STATS_STREAK), static_cast<unsigned>(stats.getCurrentStreakDays()),
-           static_cast<unsigned>(stats.getMaxStreakDays()));
-  auto right = small;
-  right.align = fui::TextAlign::Right;
-  target.text(rect(week.x + week.width / 3, week.y + pad + (bodyHeight - smallHeight) / 2, week.width * 2 / 3 - pad,
-                   smallHeight),
-              text, right);
-  const uint32_t monday = today - static_cast<uint32_t>(weekdayOf(today));
-  uint64_t scale = goalMs;
-  for (int i = 0; i < 7; ++i) scale = std::max(scale, msOnDay(stats.getReadingDays(), monday + i));
-  const int chartTop = week.y + pad + bodyHeight + gap;
-  const int column = (week.width - pad * 2) / 7;
-  const int barWidth = std::max(10, column / 2);
-  auto centered = small;
-  centered.align = fui::TextAlign::Center;
-  const auto black = fui::Paint::solid(fui::Color::Black);
-  for (int i = 0; i < 7; ++i) {
-    const uint32_t day = monday + static_cast<uint32_t>(i);
-    const int x = week.x + pad + column * i + (column - barWidth) / 2;
-    const uint64_t ms = msOnDay(stats.getReadingDays(), day);
-    if (day <= today) {
-      if (ms >= kMinuteMs) {
-        const int height = std::max(6, static_cast<int>(chartHeight * ms / scale));
-        target.fill(rect(x, chartTop + chartHeight - height, barWidth, height), black, 3);
-      } else {
-        target.fill(rect(x, chartTop + chartHeight - 3, barWidth, 3), fui::Paint::dither(fui::Color::DarkGray));
-      }
-    }
-    auto label = centered;
-    label.bold = day == today;
-    const int labelY = chartTop + chartHeight + gap / 2;
-    target.text(rect(week.x + pad + column * i, labelY, column, smallHeight),
-                nthLabel(tr(STR_RICKY_STATS_WEEKDAYS), i).c_str(), label);
-    if (day == today) {
-      // A dot under today's day.
-      const int dot = 6;
-      target.fill(rect(week.x + pad + column * i + (column - dot) / 2, labelY + smallHeight + 2, dot, dot), black,
-                  dot / 2);
-    }
+  const int storyHeight = smallHeight + gap / 2 + bodyHeight * 2 + pad * 2;
+  const int headerHeight = 48;
+  const int calendarChrome = pad * 2 + headerHeight + gap / 2 + smallHeight + gap / 2 + gap + smallHeight;
+  const int rowHeight = std::clamp(
+      (static_cast<int>(screen.body().height) - calendarChrome - tileHeight - storyHeight - gap * 2) / weeks, 52, 84);
+  const auto calendar = screen.takeTop(calendarChrome + rowHeight * weeks, gap);
+  RickyPageUi::card(target, calendar, false);
+
+  // ‹ 2026 年 10 月 ›
+  const int headerY = calendar.y + pad;
+  snprintf(text, sizeof(text), tr(STR_RICKY_STATS_MONTH_TITLE), viewMonth_ / 12,
+           static_cast<unsigned>(viewMonth_ % 12) + 1);
+  auto title = strong;
+  title.align = fui::TextAlign::Center;
+  target.text(rect(calendar.x, headerY + (headerHeight - bodyHeight) / 2, calendar.width, bodyHeight), text, title);
+  const int buttonWidth = 64;
+  const auto previous = rect(calendar.x + pad / 2, headerY, buttonWidth, headerHeight);
+  const auto next = rect(calendar.right() - pad / 2 - buttonWidth, headerY, buttonWidth, headerHeight);
+  if (viewMonth_ > firstMonth_) {
+    drawChevron(renderer, previous.x + buttonWidth / 2, headerY + headerHeight / 2, true);
+    screen.frame().hit(previous, ACTION_PREVIOUS_MONTH, 0, fui::InputTouch);
+  }
+  if (viewMonth_ < currentMonth_) {
+    drawChevron(renderer, next.x + buttonWidth / 2, headerY + headerHeight / 2, false);
+    screen.frame().hit(next, ACTION_NEXT_MONTH, 0, fui::InputTouch);
   }
 
-  // Three totals.
+  const int gridX = calendar.x + pad;
+  const int column = (calendar.width - pad * 2) / 7;
+  const int labelsY = headerY + headerHeight + gap / 2;
+  for (int i = 0; i < 7; ++i)
+    target.text(rect(gridX + column * i, labelsY, column, smallHeight),
+                nthLabel(tr(STR_RICKY_STATS_WEEKDAYS), i).c_str(), centered);
+  const int gridY = labelsY + smallHeight + gap / 2;
+  const int paw = std::min({36, rowHeight - smallHeight - 6, column - 12});
+  for (unsigned d = 0; d < monthDays; ++d) {
+    const int cellIndex = leading + static_cast<int>(d);
+    const auto cell = rect(gridX + column * (cellIndex % 7), gridY + rowHeight * (cellIndex / 7), column, rowHeight);
+    const uint32_t day = monthStart + d;
+    auto number = centered;
+    if (day > today) number.color = fui::Color::DarkGray;
+    number.bold = day == today;
+    snprintf(text, sizeof(text), "%u", d + 1);
+    target.text(rect(cell.x, cell.y + 2, cell.width, smallHeight), text, number);
+    if (day <= today && marks[d] != readingStreak::Mark::None)
+      rickyPaw::draw(renderer, cell.x + (cell.width - paw) / 2, cell.y + smallHeight + 4, paw, marks[d]);
+    if (day == today) renderer.drawRoundedRect(cell.x + 2, cell.y, cell.width - 4, cell.height - 4, 2, 12, true);
+    if (day <= today && msOnDay(stats.getReadingDays(), day) >= kMinuteMs)
+      screen.frame().hit(cell, ACTION_DAY, static_cast<int16_t>(d + 1), fui::InputTouch);
+  }
+
+  // Legend: what the three prints mean.
+  const int legendY = gridY + rowHeight * weeks + gap;
+  constexpr int kLegendPaw = 22;
+  const readingStreak::Mark legendMarks[3] = {readingStreak::Mark::Goal, readingStreak::Mark::Read,
+                                              readingStreak::Mark::Rest};
+  const StrId legendNames[3] = {StrId::STR_RICKY_STATS_LEGEND_GOAL, StrId::STR_RICKY_STATS_LEGEND_READ,
+                                StrId::STR_RICKY_STATS_LEGEND_REST};
+  const int legendItem = (calendar.width - pad * 2) / 3;
+  for (int i = 0; i < 3; ++i) {
+    const int itemX = gridX + legendItem * i + (legendItem - kLegendPaw - 8 - 64) / 2;
+    rickyPaw::draw(renderer, itemX, legendY + (smallHeight - kLegendPaw) / 2, kLegendPaw, legendMarks[i]);
+    target.text(rect(itemX + kLegendPaw + 8, legendY, 64, smallHeight), I18N.get(legendNames[i]), small);
+  }
+
+  // The month's totals.
+  const auto month = rickyMonth::summarize(viewMonth_);
   const auto tiles = screen.takeTop(tileHeight, gap);
   const int tileWidth = (tiles.width - gap * 2) / 3;
   char finished[24], days[24];
-  snprintf(finished, sizeof(finished), tr(STR_RICKY_STATS_BOOKS_UNIT),
-           static_cast<unsigned>(stats.getBooksFinishedCount()));
-  snprintf(days, sizeof(days), tr(STR_RICKY_STATS_DAYS_UNIT), static_cast<unsigned>(stats.getReadingDays().size()));
-  const std::string total = compactDuration(stats.getTotalReadingMs());
-  const char* values[3] = {total.c_str(), finished, days};
-  const StrId names[3] = {StrId::STR_RICKY_STATS_TOTAL, StrId::STR_RICKY_STATS_FINISHED, StrId::STR_RICKY_STATS_DAYS};
+  snprintf(finished, sizeof(finished), tr(STR_RICKY_STATS_BOOKS_UNIT), month.finished);
+  snprintf(days, sizeof(days), tr(STR_RICKY_STATS_DAYS_UNIT), month.daysRead);
+  const std::string total = compactDuration(month.totalMs);
+  const char* values[3] = {total.c_str(), days, finished};
+  const StrId names[3] = {StrId::STR_RICKY_STATS_MONTH_TOTAL, StrId::STR_RICKY_STATS_DAYS,
+                          StrId::STR_RICKY_STATS_FINISHED};
   auto bigCentered = big;
   bigCentered.align = fui::TextAlign::Center;
   for (int i = 0; i < 3; ++i) {
@@ -256,15 +427,49 @@ void RickyReadingStatsActivity::buildScreen(UiScreen& screen) {
     target.text(rect(tile.x, tile.y + pad + titleHeight, tile.width, smallHeight), I18N.get(names[i]), centered);
   }
 
-  // One fact a day.
-  const auto factCard = screen.takeTop(factHeight, 0);
-  RickyPageUi::card(target, factCard, false);
+  // The streak and the badges; one fact about the month and its report.
+  const auto story = screen.takeTop(storyHeight, 0);
+  RickyPageUi::card(target, story, false);
+  const uint32_t streakNow = rickyStreak::evaluate().current;
+  if (streak.restCards > 0)
+    snprintf(text, sizeof(text), tr(STR_RICKY_STATS_STREAK_REST), static_cast<unsigned>(streakNow),
+             static_cast<unsigned>(streak.longest), static_cast<unsigned>(streak.restCards));
+  else
+    snprintf(text, sizeof(text), tr(STR_RICKY_STATS_STREAK), static_cast<unsigned>(streakNow),
+             static_cast<unsigned>(streak.longest));
+  constexpr int kLinkWidth = 170;
+  auto link = small;
+  link.align = fui::TextAlign::Right;
+  link.bold = true;
+  const int lineY = story.y + pad;
+  target.text(rect(story.x + pad, lineY, story.width - pad * 2 - kLinkWidth, smallHeight), text, small);
+  const auto statuses = rickyBadgeStatus::evaluate();
+  snprintf(text, sizeof(text), tr(STR_RICKY_BADGES_LINK),
+           static_cast<unsigned>(rickyBadgeStatus::earnedCount(statuses)), static_cast<unsigned>(rickyBadges::kCount));
+  const auto badgesLink = rect(story.right() - pad - kLinkWidth, lineY - gap / 2, kLinkWidth, smallHeight + gap);
+  target.text(rect(badgesLink.x, lineY, badgesLink.width, smallHeight), text, link);
+  screen.frame().hit(badgesLink, ACTION_BADGES, 0, fui::InputTouch);
+
+  // In a month's first days its predecessor's report leads; otherwise one fact a day.
+  const int factY = lineY + smallHeight + gap / 2;
+  const bool reportReady = viewMonth_ == currentMonth_ && viewMonth_ > firstMonth_ && reportReadyDays(today);
+  std::string factText;
+  if (reportReady) {
+    snprintf(text, sizeof(text), tr(STR_RICKY_REPORT_READY), rickyMonth::monthOf(viewMonth_ - 1));
+    factText = text;
+  } else {
+    factText = monthFact(stats, month, today);
+  }
   auto fact = body;
   fact.maxLines = 2;
-  const std::string factText = dailyFact(stats, today);
-  // One line sits in the middle of the card; a long fact wraps to two.
-  const bool twoLines = target.measureText(fact.font, factText.c_str(), fact).width > factCard.width - pad * 2;
-  const int factY = factCard.y + (twoLines ? pad : (factCard.height - bodyHeight) / 2);
-  target.text(rect(factCard.x + pad, factY, factCard.width - pad * 2, bodyHeight * (twoLines ? 2 : 1)),
-              factText.c_str(), fact);
+  fact.bold = reportReady;
+  const auto factRect =
+      rect(story.x + pad, factY, story.width - pad * 2 - (reportReady ? 0 : kLinkWidth / 2 + gap), bodyHeight * 2);
+  target.text(factRect, factText.c_str(), fact);
+  if (!reportReady)
+    // Centred on the fact's two-line box, as the fact itself is.
+    target.text(rect(story.right() - pad - kLinkWidth, factY + bodyHeight - smallHeight / 2, kLinkWidth, smallHeight),
+                tr(STR_RICKY_REPORT_LINK), link);
+  screen.frame().hit(rect(story.x, factY - gap / 2, story.width, story.bottom() - factY + gap / 2), ACTION_REPORT,
+                     static_cast<int16_t>(reportReady ? 1 : 0), fui::InputTouch);
 }

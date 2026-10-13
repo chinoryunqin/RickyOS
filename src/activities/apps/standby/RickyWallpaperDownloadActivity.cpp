@@ -34,6 +34,7 @@ constexpr size_t kMaxItems = 24;
 constexpr uint32_t kMaxItemBytes = 2 * 1024 * 1024;
 constexpr size_t kMaxUrlBytes = 256;
 constexpr int kFileAttempts = 3;
+constexpr uint8_t kProgressStepPercent = 10;
 
 bool validBase(const char* url) {
   const size_t length = url ? strlen(url) : 0;
@@ -139,12 +140,19 @@ bool RickyWallpaperDownloadActivity::fetchManifest() {
   baseUrl_.clear();
   if (!HttpDownloader::hasMemoryForTls()) return false;
   // CDN caches of the "@latest" manifests go stale independently (a mainland jsDelivr
-  // edge kept v1.0.0 after v1.1.0 shipped), so read every route and keep the newest
-  // release, judged by the tag in its baseUrl.
+  // edge kept v1.0.0 after v1.1.0 shipped), so read the CDN routes and keep the newest
+  // release, judged by the tag in its baseUrl. GitHub's releases/latest and the COS
+  // bucket (no cache in front) are authoritative: after one answers, a CDN copy can only
+  // match or lag, so the search stops there. From mainland China GitHub is also the slow
+  // route (two redirects to a host that is often blocked), so it comes last and is read
+  // only when nothing before it answered; COS leads the order.
   uint32_t bestRelease = 0;
   for (int attempt = 0; attempt < RickyWallpaperCatalog::MANIFEST_COUNT; ++attempt) {
-    const char* url = RickyWallpaperCatalog::manifestFor(SETTINGS.contentProfile, attempt);
-    if (HttpDownloader::downloadToFile(url, kManifestTmp, nullptr) != HttpDownloader::OK) {
+    const char* url = RickyWallpaperCatalog::manifestFor(attempt);
+    if (url == nullptr) continue;  // COS route off
+    const bool authoritative = url == RickyWallpaperCatalog::GITHUB_MANIFEST || RickyCos::isCosUrl(url);
+    if (authoritative && !items_.empty()) continue;
+    if (HttpDownloader::downloadIndex(url, kManifestTmp) != HttpDownloader::OK) {
       LOG_ERR("WPDL", "Manifest failed: %s", url);
       Storage.remove(kManifestTmp);
       continue;
@@ -187,16 +195,19 @@ bool RickyWallpaperDownloadActivity::fetchManifest() {
     for (JsonVariant mirror : doc["mirrors"].as<JsonArray>()) {
       if (validBase(mirror.as<const char*>()) && mirrors_.size() < 4) mirrors_.emplace_back(mirror.as<const char*>());
     }
+    if (authoritative) break;
   }
-  // File hosts: in China the jsDelivr hosts go first whichever manifest won (GitHub is
-  // slow or unreachable there); elsewhere the manifest's own order.
+  // File hosts: the COS bucket, then the jsDelivr hosts go first whichever manifest won
+  // (GitHub is slow or unreachable from mainland China), the same on every device.
   hosts_.clear();
   hosts_.push_back(baseUrl_);
   hosts_.insert(hosts_.end(), mirrors_.begin(), mirrors_.end());
-  if (SETTINGS.contentProfile == CrossPointSettings::ContentProfile::China) {
-    std::stable_partition(hosts_.begin(), hosts_.end(),
-                          [](const std::string& host) { return host.find("jsdelivr.net") != std::string::npos; });
-  }
+  const auto rank = [](const std::string& host) {
+    if (RickyCos::isCosUrl(host.c_str())) return 0;
+    return host.find("jsdelivr.net") != std::string::npos ? 1 : 2;
+  };
+  std::stable_sort(hosts_.begin(), hosts_.end(),
+                   [&rank](const std::string& a, const std::string& b) { return rank(a) < rank(b); });
   preferredHost_ = 0;
   return !items_.empty();
 }
@@ -208,6 +219,7 @@ bool RickyWallpaperDownloadActivity::downloadAll() {
   for (const auto& item : items_) bytesTotal_ += item.size;
   bytesDone_ = 0;
   progressBytes_ = 0;
+  lastPercent_ = 0;
   {
     RenderLock lock(*this);
     state_ = State::Downloading;
@@ -233,7 +245,9 @@ bool RickyWallpaperDownloadActivity::downloadItem(const Item& item, const std::s
     if (mappedInput.wasReleased(MappedInputManager::Button::Back)) cancelRequested_ = true;
     progressBytes_ = done + std::min<size_t>(downloaded, item.size);
     const auto percent = static_cast<uint8_t>(progressBytes_ * 100 / std::max<size_t>(1, bytesTotal_));
-    if (percent != lastPercent_) {
+    // Every repaint is a full e-ink refresh whose render competes with the transfer for
+    // the CPU; 10 % steps (as the font download) instead of one per percent.
+    if (percent >= lastPercent_ + kProgressStepPercent) {
       lastPercent_ = percent;
       requestUpdate(true);
     }

@@ -6,8 +6,9 @@ resized to 684 x 1216, error-diffused to the panel's 16 gray levels and written 
 PNG (mostly white pictures compress about 6x against a BMP, which matters on slow networks). The
 reader converts the chosen PNG to an 8-bit gray BMP for /sleep.bmp and draws it in native 16-gray.
 
-Output: wallpapers/*.png, wallpapers.json (GitHub release URLs) and mirror.json (jsDelivr), both in
-the manifest format RickyWallpaperDownloadActivity reads, plus SHA256SUMS.
+Output: wallpapers/*.png, wallpapers.json (GitHub release URLs), mirror.json (jsDelivr) and, with
+--cos-base, cos.json (the RickyOS COS bucket), all in the manifest format
+RickyWallpaperDownloadActivity reads, plus SHA256SUMS.
 
 Run: python3 scripts/build_rickyos_wallpapers.py --sources DIR --output DIR --slogan-font SmileySans-Oblique.otf [--tag v1.3.0]
 """
@@ -16,10 +17,14 @@ import hashlib
 import io
 import json
 import struct
+import sys
 import zlib
 from pathlib import Path
 
 from PIL import Image
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from rickyos_asset_routes import check_cos_base, routes  # noqa: E402
 
 RELEASE_REPO = "chinoryunqin/RickyOS-wallpapers"
 MANIFEST_VERSION = 1
@@ -151,7 +156,10 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--tag", default="v1.3.0")
     parser.add_argument("--slogan-font", type=Path, help="Smiley Sans (OFL) for the slogan pictures")
+    parser.add_argument("--cos-base", help="RickyOS COS bucket domain (https://<bucket>-<appid>.cos.ap-guangzhou."
+                        "myqcloud.com); adds cos.json, published with scripts/publish_rickyos_assets_cos.py")
     args = parser.parse_args()
+    check_cos_base(args.cos_base)
 
     out = args.output / "wallpapers"
     out.mkdir(parents=True, exist_ok=True)
@@ -170,11 +178,7 @@ def main() -> None:
         sums.append(f"{hashlib.sha256(data).hexdigest()}  wallpapers/{file}")
         print(f"{name}: {file} {len(data):,} B")
 
-    github = f"https://github.com/{RELEASE_REPO}/releases/download/{args.tag}/"
-    jsdelivr = f"https://cdn.jsdelivr.net/gh/{RELEASE_REPO}@{args.tag}/wallpapers/"
-    fastly = f"https://fastly.jsdelivr.net/gh/{RELEASE_REPO}@{args.tag}/wallpapers/"
-    for manifest, base, mirrors in (("wallpapers.json", github, [jsdelivr, fastly]),
-                                    ("mirror.json", jsdelivr, [fastly, github])):
+    for manifest, base, mirrors in routes("wallpapers", RELEASE_REPO, args.tag, args.cos_base):
         document = {"version": MANIFEST_VERSION, "baseUrl": base, "mirrors": mirrors, "items": items}
         (args.output / manifest).write_text(json.dumps(document, ensure_ascii=False, indent=1) + "\n")
     (args.output / "SHA256SUMS").write_text("\n".join(sums) + "\n")
