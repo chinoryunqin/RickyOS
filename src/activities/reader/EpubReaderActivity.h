@@ -18,6 +18,7 @@
 #include "ReaderFontPreview.h"
 #include "ReaderPageCache.h"
 #include "ReaderToolbarUi.h"
+#include "ReadingMode.h"
 #include "components/OptionPopup.h"
 
 class EpubReaderActivity final : public ReaderActivity {
@@ -264,6 +265,11 @@ class EpubReaderActivity final : public ReaderActivity {
 
   void renderContents(std::unique_ptr<Page> page, int orientedMarginTop, int orientedMarginRight,
                       int orientedMarginBottom, int orientedMarginLeft);
+  // Text column margins (top/right/bottom/left from the screen edges) for the
+  // current orientation, status bar and reading mode. Pagination, page drawing,
+  // the word picker and the footnote picker all take it from here.
+  readingMode::Margins textMargins() const;
+  // The status bar (when the reading mode keeps it) plus the reading mode's frame.
   void renderStatusBar() const;
   void applyOrientation(uint8_t orientation);
   void applyInitialOrientation() override;

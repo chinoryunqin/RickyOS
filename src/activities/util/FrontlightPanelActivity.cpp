@@ -319,8 +319,9 @@ void FrontlightPanelActivity::buildPanelScreen(UiScreen& screen) {
 }
 
 namespace {
-// Round actions: a circle per column, the label under it.
-constexpr int16_t kActionDiameter = 96;
+// Actions: the design's app tile per column (radius 12, 2 px ink, inverted when on;
+// spec §9, no circular frames), the label under it.
+constexpr int16_t kActionDiameter = ricky::ds::layout::kAppTileSize;
 constexpr int16_t kActionLabelGap = 10;
 constexpr int kActionColumns = 4;
 // Clean-refresh choices in REFRESH_FREQUENCY order (pages between clean refreshes; 0 = never).
@@ -396,13 +397,13 @@ void FrontlightPanelActivity::roundActionRow(UiScreen& screen, const RoundAction
     const fui::Rect cell{static_cast<int16_t>(row.x + i * column), row.y, column, row.height};
     const fui::Rect circle{static_cast<int16_t>(cell.x + (column - kActionDiameter) / 2), cell.y, kActionDiameter,
                            kActionDiameter};
-    constexpr uint8_t radius = kActionDiameter / 2;
-    // On = a filled disc with the icon knocked out in white; off = a hairline ring.
+    constexpr uint8_t radius = ricky::ds::radius::kControl;
+    // On = an ink tile with the icon knocked out in paper; off = a hairline outline.
     if (action.on) {
       target.fill(circle, fui::Paint::solid(fui::Color::Black), radius);
     } else {
       target.fill(circle, fui::Paint::solid(fui::Color::White), radius);
-      target.stroke(circle, fui::Paint::solid(fui::Color::Black), 2, radius);
+      target.stroke(circle, fui::Paint::solid(fui::Color::Black), ricky::ds::stroke::kHairline, radius);
     }
     const freeink::Icon& icon = *action.icon;
     target.bitmap(fui::Rect{static_cast<int16_t>(circle.x + (kActionDiameter - icon.w) / 2),
@@ -412,7 +413,7 @@ void FrontlightPanelActivity::roundActionRow(UiScreen& screen, const RoundAction
                   fui::Paint::solid(action.on ? fui::Color::White : fui::Color::Black));
     target.text(fui::Rect{cell.x, static_cast<int16_t>(circle.bottom() + kActionLabelGap), cell.width, labelHeight},
                 action.label, label);
-    // The whole column (disc and label) is the touch target.
+    // The whole column (tile and label) is the touch target.
     screen.frame().hit(cell, ACTION_TILE, static_cast<int16_t>(action.tile), fui::InputTouch);
   }
 }

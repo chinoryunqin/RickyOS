@@ -144,11 +144,13 @@ void renderPreview(const GfxRenderer& renderer, PreviewLayout& layout, int previ
   // Draw the sample twice so the paragraph gap is visible
   GfxRenderer::SyntheticBoldScope syntheticBold(renderer, SETTINGS.fakeBold);
   int y = textTop;
+  const int guideRow = readingGuideLine::rowOffset(lineAdvance, renderer.getFontAscenderSize(fontId),
+                                                   renderer.getTextWidth(fontId, "国"));
   for (int paragraph = 0; paragraph < 2; paragraph++) {
     for (const auto& line : layout.lines) {
       if (y + lineH > textBottomLimit) return;
       line->render(renderer, fontId, textLeft, y);
-      const int guideY = y + lineAdvance + SETTINGS.readingGuideLineOffset;
+      const int guideY = y + guideRow + SETTINGS.readingGuideLineOffset;
       if (SETTINGS.readingGuideLineEnabled &&
           readingGuideLine::fitsVertically(SETTINGS.readingGuideLineStyle, guideY, textTop, textBottomLimit)) {
         readingGuideLine::draw(renderer, textLeft, guideY, textLeft + textWidth - 1, SETTINGS.readingGuideLineStyle);

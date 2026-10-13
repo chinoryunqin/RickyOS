@@ -1109,7 +1109,7 @@ void BaseTheme::fillPopupProgress(const GfxRenderer& renderer, const Rect& layou
 
 void BaseTheme::drawRickyReaderChrome(GfxRenderer& renderer, const float bookProgress, const int currentPage,
                                       const int pageCount, const char* title, const bool bookmarked,
-                                      const bool estimated) {
+                                      const bool estimated, const bool header) {
   namespace ds = ricky::ds;
   const auto sb = SETTINGS.statusBarSpec();
   const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer);
@@ -1117,7 +1117,7 @@ void BaseTheme::drawRickyReaderChrome(GfxRenderer& renderer, const float bookPro
   const int right = safe.x + safe.width - ds::layout::kReaderChromeInset;
   if (right <= left) return;
   const GfxRenderer::ClipScope clip(renderer, safe.x, safe.y, safe.width, safe.height);
-  if (sb.textLaneVisible()) {
+  if (sb.textLaneVisible() && header) {
     const int y = safe.y + (ds::layout::kReaderHeaderHeight - ds::type::kCaption.lineHeight) / 2;
     int titleLeft = left, titleRight = right;
     // Retain clock visibility/12-hour policy. Its old side setting remains
@@ -1153,6 +1153,8 @@ void BaseTheme::drawRickyReaderChrome(GfxRenderer& renderer, const float bookPro
                                     static_cast<int16_t>(titleRight - titleLeft), ds::type::kBody.lineHeight},
                                    title, RickyDesignUi::CAPTION, false, freeink::ui::TextAlign::Center);
     }
+  }
+  if (sb.textLaneVisible()) {
     const int textY = safe.y + safe.height - ds::space::kBlockGap - ds::type::kCaption.lineHeight;
     int counterLeft = left;
     if (bleinput::isConnected()) {

@@ -766,7 +766,8 @@ Generation writes `reading_bg.tmp`, renames the existing cache to
 `reading_bg.bak`, and only then promotes the temporary file. A failed promotion
 restores the backup; a later read also recovers a backup when the main file is
 absent. The source PNG is converted through a short-lived BMP and is not needed
-after cache creation.
+after cache creation. The image is drawn in Original reading mode; other modes
+preserve the selected image for a later return to Original.
 
 ## SD-card font cache
 

@@ -68,10 +68,15 @@ int main() {
     def test_menu_and_help_have_real_actions_not_decorative_entries(self):
         reader = (ROOT / 'src/activities/reader/EpubReaderMenuActivity.cpp').read_text()
         self.assertIn('pageBookmarked_ ? tr(STR_RICKY_MENU_REMOVE_BOOKMARK)', reader)
-        self.assertIn('setting.drawChevron = true', reader)
-        self.assertIn('setting.valueId = logical', reader)
-        self.assertIn('one.nav = nullptr', reader)
-        self.assertIn('nav.onListRendered(props.topIndex, drawn, selectedDrawn)', reader)
+        # Rows draw through the shared design list: chevrons, the logical action id
+        # past the quick cards, one-row toggles and the measured page.
+        self.assertIn('style.chevron = true', reader)
+        self.assertIn('menuView.quickCount);', reader)
+        rows = (ROOT / 'src/components/RickyRowList.h').read_text()
+        self.assertIn('setting.drawChevron = look.chevron', rows)
+        self.assertIn('setting.valueId = static_cast<int16_t>(i + actionOffset)', rows)
+        self.assertIn('one.nav = nullptr', rows)
+        self.assertIn('nav.onListRendered(props.topIndex, drawn, selectedDrawn)', rows)
         settings = (ROOT / 'src/activities/settings/SettingsActivity.cpp').read_text()
         activate = method(settings, 'void SettingsActivity::activateIndex(')
         self.assertIn('index == categoryCount + 1', activate)

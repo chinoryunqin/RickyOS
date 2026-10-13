@@ -239,6 +239,7 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   doc["fakeBoldVersion"] = FAKE_BOLD_VERSION;
   // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
   doc["frontButtonBack"] = frontButtonBack;
+  doc["readingMode"] = readingMode;
   doc["frontButtonConfirm"] = frontButtonConfirm;
   doc["frontButtonLeft"] = frontButtonLeft;
   doc["frontButtonRight"] = frontButtonRight;
@@ -394,6 +395,10 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
       s.*(info.valuePtr) = v;
     }
   }
+
+  // Reading mode lives in the reader menu, not in SettingsList. An older
+  // reading-background setting is independent of the new mode selection.
+  readingMode = clamp(doc["readingMode"] | static_cast<uint8_t>(0), READING_MODE_COUNT, 0);
 
   if ((doc["fakeBoldVersion"] | static_cast<uint8_t>(0)) < FAKE_BOLD_VERSION) {
     if (doc["fakeBold"].is<uint8_t>()) {

@@ -16,12 +16,12 @@ class RickyInteriorUiTest(unittest.TestCase):
 #include "components/RickyReaderMenuLayout.h"
 enum class Action {SELECT_CHAPTER, FOOTNOTES, TEXT_SETTINGS, NIGHT_MODE, FRONTLIGHT,
   GO_TO_PERCENT, AUTO_PAGE_TURN, ROTATE_SCREEN, BOOKMARKS, TOGGLE_BOOKMARK,
-  SCREENSHOT, DISPLAY_QR, GO_HOME, SYNC, DELETE_CACHE, DICTIONARY};
+  SCREENSHOT, DISPLAY_QR, GO_HOME, SYNC, DELETE_CACHE, DICTIONARY, READING_MODE, READING_LINE};
 struct Item {Action action;};
 int main() {
   for(int flags=0; flags<8; ++flags) {
     std::vector<Item> items;
-    for(int action=0; action<16; ++action) {
+    for(int action=0; action<18; ++action) {
       const auto a=static_cast<Action>(action);
       if(a==Action::FOOTNOTES && !(flags&1)) continue;
       if(a==Action::BOOKMARKS && !(flags&2)) continue;
@@ -31,13 +31,13 @@ int main() {
     const auto root=RickyReaderMenuLayout::build<Action>(items,false);
     const auto more=RickyReaderMenuLayout::build<Action>(items,true);
     assert(root.quickCount==4);
-    assert(root.count<=12 && more.count<=5);
+    assert(root.count<=12 && more.count<=7);
     assert(items[root.indices[0]].action==Action::SELECT_CHAPTER);
     assert(items[root.indices[1]].action==Action::TOGGLE_BOOKMARK);
     assert(items[root.indices[2]].action==Action::TEXT_SETTINGS);
     assert(items[root.indices[3]].action==Action::DICTIONARY);
     assert(root.indices[root.count-1]==RickyReaderMenuLayout::More);
-    std::array<int,16> seen{};
+    std::array<int,RickyReaderMenuLayout::kMaxItems> seen{};
     for(const auto view : {root,more}) {
       for(int i=0; i<view.count; ++i) {
         const int index=view.indices[i];
