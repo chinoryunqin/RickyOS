@@ -91,5 +91,40 @@ class RickyReadingStatsTest(unittest.TestCase):
             self.assertEqual(missing, [], key)
 
 
+    def test_badges_and_report_are_reachable_and_translated(self):
+        page = PAGE.read_text()
+        for opener in ('void RickyReadingStatsActivity::openBadges(', 'void RickyReadingStatsActivity::openReport('):
+            self.assertIn(opener, page)
+        self.assertIn('startActivityForResultWith<RickyBadgesActivity>', page)
+        self.assertIn('startActivityForResultWith<RickyMonthReportActivity>', page)
+        reader = (ROOT / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
+        self.assertIn('rickyBadgeNotice::announceNew(renderer);', reader)
+        self.assertIn('rickyBadgeNotice::seedOnce();', (ROOT / 'src/main.cpp').read_text())
+        sources = ''.join((ROOT / path).read_text() for path in (
+            'src/activities/apps/reading-stats/RickyBadgesActivity.cpp',
+            'src/activities/apps/reading-stats/RickyMonthReportActivity.cpp',
+            'src/components/RickyBadgeStatus.h', 'src/components/RickyBadgeNotice.h',
+            'src/components/RickyMonthSummary.h'))
+        keys = set(re.findall(r'STR_RICKY_(?:BADGE|BADGES|REPORT)_\w+', sources + page))
+        self.assertGreater(len(keys), 60)
+        caption = (ROOT / 'lib/EpdFont/builtinFonts/ricky_caption_10_regular.h').read_text()
+        block = caption[caption.index('ricky_caption_10_regularIntervals[] = {'):]
+        block = block[:block.index('};')]
+        covered = set()
+        for first, last in re.findall(r'\{\s*0x([0-9A-Fa-f]+),\s*0x([0-9A-Fa-f]+)', block):
+            covered.update(range(int(first, 16), int(last, 16) + 1))
+        for language in ('chinese', 'english'):
+            strings = (ROOT / f'lib/I18n/translations/{language}.yaml').read_text()
+            for key in keys:
+                match = re.search(rf'(?m)^{key}: "(.*)"$', strings)
+                self.assertIsNotNone(match, (language, key))
+                if language == 'chinese':
+                    missing = [c for c in match.group(1) if ord(c) > 127 and ord(c) not in covered]
+                    self.assertEqual(missing, [], key)
+        # One name and one hint per badge, in the badge order.
+        status = (ROOT / 'src/components/RickyBadgeStatus.h').read_text()
+        self.assertEqual(len(re.findall(r'StrId::STR_RICKY_BADGE_\w+_HINT', status)), 19)
+
+
 if __name__ == '__main__':
     unittest.main()

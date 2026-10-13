@@ -240,6 +240,7 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
   doc["frontButtonBack"] = frontButtonBack;
   doc["readingMode"] = readingMode;
+  doc["rickyBadgesSeen"] = rickyBadgesSeen;
   doc["frontButtonConfirm"] = frontButtonConfirm;
   doc["frontButtonLeft"] = frontButtonLeft;
   doc["frontButtonRight"] = frontButtonRight;
@@ -398,6 +399,7 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
 
   // Reading mode lives in the reader menu, not in SettingsList, so it loads here.
   // The custom reading background became the puppy reading mode.
+  rickyBadgesSeen = doc["rickyBadgesSeen"] | static_cast<uint32_t>(0);
   if (doc["readingMode"].isNull()) {
     readingMode = (doc["readingBackgroundEnabled"] | static_cast<uint8_t>(0)) != 0 ? 1 : 0;  // 1 = Puppy
     if (readingMode != 0) needsResave = true;

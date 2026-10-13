@@ -142,6 +142,7 @@ static bool wakePowerReleasePending = false;
 #include <builtinFonts/ricky_headline_14_medium.h>
 #include <builtinFonts/ricky_title_16_bold.h>
 
+#include "components/RickyBadgeNotice.h"
 #include "components/RickyDesignUi.h"
 // The product's only built-in CJK reading/UI size adds GB2312 level 1 (titles,
 // author names); the shared 8/10/12pt set stays as is for other targets.
@@ -778,6 +779,9 @@ void setup() {
     RickyStorageLayout::migrateLegacyBooks();
   }
   ACHIEVEMENTS.loadFromFile();
+#if RICKYOS_PRODUCT
+  rickyBadgeNotice::seedOnce();
+#endif
   I18N.setLanguage(static_cast<Language>(SETTINGS.language));
   KOREADER_STORE.loadFromFile();
   UITheme::getInstance().reload();

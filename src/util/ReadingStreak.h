@@ -47,15 +47,12 @@ constexpr uint32_t nextMilestone(const uint32_t current) {
   return 0;
 }
 
-// `days` is any sequence of {dayOrdinal, readingMs} (the store's reading days), sorted
-// by day. `marks`, when given, receives the mark of each day in [marksFrom, marksFrom +
-// markCount): what the calendar and the home card's paw prints draw. Days after today
-// stay Mark::None.
-template <typename Days>
-Result evaluate(const Days& days, const uint32_t today, const uint64_t goalMs, Mark* marks = nullptr,
-                const uint32_t marksFrom = 0, const uint32_t markCount = 0) {
+// Walks every day from the first reading day to `today` under the rules above and calls
+// onDay(day, mark, streak) for each, where streak is the count after that day. `days` is
+// any sequence of {dayOrdinal, readingMs} (the store's reading days), best sorted by day.
+template <typename Days, typename OnDay>
+Result walk(const Days& days, const uint32_t today, const uint64_t goalMs, OnDay&& onDay) {
   Result result;
-  if (marks) std::fill(marks, marks + markCount, Mark::None);
   const auto begin = std::begin(days);
   const auto end = std::end(days);
   // The store keeps its days in order; anything else is still read correctly, slower.
@@ -98,11 +95,23 @@ Result evaluate(const Days& days, const uint32_t today, const uint64_t goalMs, M
       }
     }
     result.longest = std::max(result.longest, streak);
-    if (marks && day >= marksFrom && day - marksFrom < markCount) marks[day - marksFrom] = mark;
+    onDay(day, mark, streak);
   }
   result.current = streak;
   result.restCards = cards;
   return result;
+}
+
+// The streak today. `marks`, when given, receives the mark of each day in [marksFrom,
+// marksFrom + markCount): what the calendar and the home card's paw prints draw. Days
+// after today stay Mark::None.
+template <typename Days>
+Result evaluate(const Days& days, const uint32_t today, const uint64_t goalMs, Mark* marks = nullptr,
+                const uint32_t marksFrom = 0, const uint32_t markCount = 0) {
+  if (marks) std::fill(marks, marks + markCount, Mark::None);
+  return walk(days, today, goalMs, [&](const uint32_t day, const Mark mark, uint32_t) {
+    if (marks && day >= marksFrom && day - marksFrom < markCount) marks[day - marksFrom] = mark;
+  });
 }
 
 }  // namespace readingStreak

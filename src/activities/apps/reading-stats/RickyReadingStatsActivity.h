@@ -8,7 +8,8 @@
 // logo's dog reacting to it, the month as a calendar of paw prints (the reading streak
 // of util/ReadingStreak.h), the month's totals and one small fact that changes daily,
 // all from ReadingStatsStore. ‹ › or the page buttons move between months; a day with
-// reading opens its detail.
+// reading opens its detail. The last card links to the badges (or Down) and the month
+// report (or Confirm); in a month's first days it announces last month's report.
 class RickyReadingStatsActivity final : public UiListActivity {
  public:
   RickyReadingStatsActivity(GfxRenderer& renderer, MappedInputManager& input)
@@ -27,6 +28,8 @@ class RickyReadingStatsActivity final : public UiListActivity {
   static constexpr freeink::ui::ActionId ACTION_PREVIOUS_MONTH = ACTION_USER;
   static constexpr freeink::ui::ActionId ACTION_NEXT_MONTH = ACTION_USER + 1;
   static constexpr freeink::ui::ActionId ACTION_DAY = ACTION_USER + 2;
+  static constexpr freeink::ui::ActionId ACTION_BADGES = ACTION_USER + 3;
+  static constexpr freeink::ui::ActionId ACTION_REPORT = ACTION_USER + 4;
 
   // Months as year * 12 + (month - 1), so stepping is plain arithmetic.
   int viewMonth_ = 0;
@@ -35,4 +38,6 @@ class RickyReadingStatsActivity final : public UiListActivity {
 
   void showMonth(int month);
   void openDay(int dayOfMonth);
+  void openBadges();
+  void openReport(int month);
 };
