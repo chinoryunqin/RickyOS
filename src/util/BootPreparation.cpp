@@ -53,7 +53,16 @@ bool libraryNeedsBuild() {
 struct Status {
   GfxRenderer& renderer;
   unsigned long shownAt = 0;
+  unsigned refreshes = 0;
 };
+
+// The dog's lines while the card is walked, a new one every few refreshes so a long
+// walk on a big or unsorted card does not sit on one sentence.
+const char* sniffLine(const unsigned refreshes) {
+  static constexpr StrId kLines[] = {StrId::STR_RICKY_PREP_SNIFF, StrId::STR_RICKY_PREP_SNIFF_FOLDERS,
+                                     StrId::STR_RICKY_PREP_WAG};
+  return I18n::getInstance().get(kLines[refreshes / 3 % (sizeof(kLines) / sizeof(kLines[0]))]);
+}
 
 // Two centred lines in the lower part of whatever the boot screen shows.
 void showStatus(Status& status, const char* title, const char* detail) {
@@ -67,17 +76,18 @@ void showStatus(Status& status, const char* title, const char* detail) {
   if (detail && detail[0]) renderer.drawCenteredText(UI_10_FONT_ID, top + line * 3 / 2 + 4, detail);
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
   status.shownAt = millis();
+  ++status.refreshes;
 }
 
 void buildLibrary(Status& status) {
-  showStatus(status, tr(STR_LIBRARY_REBUILDING), "");
+  showStatus(status, sniffLine(status.refreshes), "");
   library::setBuildProgress(
       [](const uint16_t books, void* context) {
         auto& status = *static_cast<Status*>(context);
         if (millis() - status.shownAt < kStatusEveryMs) return;
         char detail[48];
         snprintf(detail, sizeof(detail), tr(STR_RICKY_PREP_BOOKS_FOUND), static_cast<unsigned>(books));
-        showStatus(status, tr(STR_LIBRARY_REBUILDING), detail);
+        showStatus(status, sniffLine(status.refreshes), detail);
       },
       &status);
   library::BuildStats stats;
