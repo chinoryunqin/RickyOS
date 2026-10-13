@@ -43,6 +43,7 @@ constexpr StrId STYLE_ROW_NAME_IDS[] = {StrId::STR_FOCUS_READING,
                                         StrId::STR_READING_GUIDE_LINE_OFFSET,
                                         StrId::STR_HYPHENATION,
                                         StrId::STR_EMBEDDED_STYLE,
+                                        StrId::STR_RICKY_WEIGHT,
                                         StrId::STR_FAKE_BOLD,
                                         StrId::STR_TEXT_AA};
 
@@ -56,6 +57,12 @@ constexpr StrId EXTRA_SPACING_IDS[] = {StrId::STR_EXTRA_SPACING_OFF,  StrId::STR
 constexpr StrId SYNTHETIC_BOLD_IDS[] = {StrId::STR_STATE_OFF, StrId::STR_FAKE_BOLD_LIGHT, StrId::STR_FAKE_BOLD_STANDARD,
                                         StrId::STR_FAKE_BOLD_HEAVY};
 static_assert(std::size(SYNTHETIC_BOLD_IDS) == CrossPointSettings::SYNTHETIC_BOLD_COUNT);
+// Body-text weight (the reader's coverage curve); the middle step is the font as drawn.
+// Read Pico reaches text settings only through this page, so 字重 lives here too.
+constexpr StrId TEXT_WEIGHT_IDS[] = {StrId::STR_RICKY_WEIGHT_THINNEST, StrId::STR_RICKY_WEIGHT_THIN,
+                                     StrId::STR_FAKE_BOLD_STANDARD, StrId::STR_RICKY_WEIGHT_BOLD,
+                                     StrId::STR_RICKY_WEIGHT_BOLDEST};
+static_assert(std::size(TEXT_WEIGHT_IDS) == CrossPointSettings::RICKY_TEXT_WEIGHT_COUNT);
 int findCurrentFontIndex(const SdCardFontRegistry* registry, const char* sdFontFamilyName, uint8_t fontFamily) {
   if (sdFontFamilyName[0] != '\0' && registry) {
     const auto& families = registry->getFamilies();
@@ -389,7 +396,7 @@ const char* TextSettingsActivity::confirmLabelText() const {
       if (ringPos() > 0) {
         const StyleRow row = styleRowAt(ringPos() - 1);
         if (row == StyleRow::ReadingGuideLineStyle || row == StyleRow::ReadingGuideLineOffset ||
-            row == StyleRow::FakeBold) {
+            row == StyleRow::TextWeight || row == StyleRow::FakeBold) {
           return tr(STR_SELECT);
         }
       }
@@ -684,6 +691,14 @@ void TextSettingsActivity::confirmStyleRow(int row) {
     case StyleRow::EmbeddedStyle:
       SETTINGS.embeddedStyle = !SETTINGS.embeddedStyle;
       break;
+    case StyleRow::TextWeight:
+      optionPopup_.show(StrId::STR_RICKY_WEIGHT, TEXT_WEIGHT_IDS, static_cast<int>(std::size(TEXT_WEIGHT_IDS)),
+                        SETTINGS.rickyTextWeight % std::size(TEXT_WEIGHT_IDS), [](int idx) {
+                          SETTINGS.rickyTextWeight = static_cast<uint8_t>(idx);
+                          SETTINGS.saveToFile();
+                        });
+      requestUpdate();
+      return;
     case StyleRow::FakeBold:
       optionPopup_.show(StrId::STR_FAKE_BOLD, SYNTHETIC_BOLD_IDS, static_cast<int>(std::size(SYNTHETIC_BOLD_IDS)),
                         SETTINGS.fakeBold, [](int idx) {
@@ -720,6 +735,8 @@ std::string TextSettingsActivity::styleValueText(int row) const {
       return SETTINGS.hyphenationEnabled ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
     case StyleRow::EmbeddedStyle:
       return SETTINGS.embeddedStyle ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
+    case StyleRow::TextWeight:
+      return I18N.get(TEXT_WEIGHT_IDS[SETTINGS.rickyTextWeight % std::size(TEXT_WEIGHT_IDS)]);
     case StyleRow::FakeBold: {
       const uint8_t value = SETTINGS.fakeBold;
       return value < std::size(SYNTHETIC_BOLD_IDS) ? I18N.get(SYNTHETIC_BOLD_IDS[value]) : tr(STR_STATE_OFF);
@@ -783,13 +800,16 @@ SdCardFontCache::Result TextSettingsActivity::preloadFont(const SdCardFontFileIn
   {
     RenderLock lock(*this);
     preloadFamilyName_ = familyName;
-    preloadPointSize_ = file.pointSize;
+    // Vector files are size-free (pointSize 0); show the reader size being set up.
+    preloadPointSize_ = file.pointSize != 0 ? file.pointSize : SETTINGS.fontPointSize;
     preloadVerifying_ = false;
     preloadCompleted_.store(0);
     preloadTotal_.store(1);
     lastPreloadPercent_ = 0;
     fontLoadState_.store(FontLoadState::Preloading);
-    sdFontSystem.releaseLoadedFont(renderer);
+    // Nothing may read the flash font cache while it is rewritten (a vector font may be
+    // streaming from it).
+    sdFontSystem.releaseLoadedFont(renderer, /*includeVector=*/true);
   }
   requestUpdateAndWait();
 
@@ -871,11 +891,9 @@ void TextSettingsActivity::exitAfterFinalFont(const ExitDestination destination)
 void TextSettingsActivity::finishFinalFont(const bool accepted) {
   SETTINGS.sdFontFlashPreload = 0;
   SETTINGS.saveToFile();
-  const auto* family = registry_ ? registry_->findFamily(SETTINGS.sdFontFamilyName) : nullptr;
-  if (family && family->vector) {
-    completeExit();
-    return;
-  }
+  // Vector (TTF/OTF) families are accelerated too: their regular file goes into the
+  // flash font cache, and FreeType reads outlines from flash instead of the SD card.
+  // fontFileForFamily() returns that regular file for them (size-free, style 0).
   const auto* file = fontFileForFamily(currentFamilyIndex_, SETTINGS.fontPointSize);
   const auto check = file ? SdCardFontCache::preflight(file->path.c_str()) : SdCardFontCache::Result::InvalidFont;
   if (check == SdCardFontCache::Result::TooLarge) {
@@ -913,7 +931,7 @@ void TextSettingsActivity::finishFinalFont(const bool accepted) {
     RenderLock lock(*this);
     fontLoadState_.store(FontLoadState::Idle);
     // ensureLoaded's same-family/size fast path otherwise retains the SD source.
-    if (succeeded) sdFontSystem.releaseLoadedFont(renderer);
+    if (succeeded) sdFontSystem.releaseLoadedFont(renderer, /*includeVector=*/true);
     sdFontSystem.ensureLoaded(renderer, succeeded);
   }
   if (succeeded) {

@@ -55,6 +55,7 @@ class TextSettingsActivity final : public UiTabListActivity {
     ReadingGuideLineOffset,
     Hyphenation,
     EmbeddedStyle,
+    TextWeight,
     FakeBold,
     AntiAliasing,
     Count

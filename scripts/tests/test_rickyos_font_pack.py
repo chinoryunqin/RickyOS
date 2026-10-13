@@ -47,7 +47,8 @@ struct SdCardFontFileInfo { std::string path="/fonts/RickySerif/RickySerif_18.cp
 struct SdSystem {
   int loads=0, releases=0;
   void ensureLoaded(int,bool) { ++loads; }
-  void releaseLoadedFont(int) { ++releases; }
+  int vectorReleases=0;
+  void releaseLoadedFont(int, bool includeVector=false) { ++releases; vectorReleases+=includeVector; }
 } sdFontSystem;
 enum class StrId { STR_FONT_PRELOAD_START, STR_FONT_PRELOAD_SKIP, STR_FONT_PRELOAD_CONFIRM };
 struct TextSettingsActivity {
@@ -77,8 +78,11 @@ using MappedInputManager=TextSettingsActivity::Input;
 ''' + method(source, 'void TextSettingsActivity::finishFinalFont(') + r'''
 int main() {
   using R=SdCardFontCache::Result;
+  // Vector (TTF) families take the same consent and acceleration path as .cpfont.
+  for(bool vector : {false,true})
   for(auto check : {R::Ok,R::AlreadyCached,R::TooLarge,R::Oom,R::InvalidFont}) {
     for(bool accepted : {false,true}) {
+      family.vector=vector;
       settings.sdFontFlashPreload=1;
       sdFontSystem={};
       SdCardFontCache::next=check;
@@ -93,11 +97,10 @@ int main() {
       assert(activity.completions==int(complete));
       assert(settings.sdFontFlashPreload==int(valid && !prompt));
       assert(sdFontSystem.releases==int(valid && !prompt));
+      // Switching to the cached source must also drop a loaded vector face.
+      assert(sdFontSystem.vectorReleases==sdFontSystem.releases);
     }
   }
-  family.vector=true; SdCardFontCache::next=R::Oom;
-  TextSettingsActivity activity; activity.finishFinalFont(false);
-  assert(activity.completions==1 && activity.errors==0 && activity.prompts==0 && activity.attempts==0);
 }
 ''', defines=('RICKYOS_PRODUCT',))
 

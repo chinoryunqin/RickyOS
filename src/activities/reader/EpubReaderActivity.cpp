@@ -27,6 +27,10 @@
 #include <functional>
 #include <iterator>
 #include <limits>
+#include <VectorFontSupport.h>
+#if CROSSPOINT_VECTOR_FONTS
+#include <TtfEpdFont.h>
+#endif
 
 #include "AchievementsStore.h"
 #include "BleInput.h"
@@ -2908,13 +2912,19 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
         // Device breakdown of a reader page (profiling builds only).
         auto& profile = GfxRenderer::paintProfile();
         LOG_INF("PERF",
-                "reader page prewarm=%lums before=%lums page=%lums status=%lums cached=%d spread=%u bold=%u "
+                "reader page prewarm=%lums before=%lums page=%lums status=%lums cached=%d weight=%u bold=%u "
                 "text=%lums/%lu fill=%lums image=%lums",
                 tPrewarm - t0, t16Begin - tPrewarm, t16Page - t16Cleared, millis() - t16Page, pageCacheHit ? 1 : 0,
-                static_cast<unsigned>(readerTextWeightSpread(readerTextWeight())), static_cast<unsigned>(SETTINGS.fakeBold), profile.us[1] / 1000,
+                static_cast<unsigned>(SETTINGS.rickyTextWeight), static_cast<unsigned>(SETTINGS.fakeBold), profile.us[1] / 1000,
                 profile.calls[1], profile.us[0] / 1000, profile.us[3] / 1000);
         profile = {};
         fcm->logStats("page");
+#if CROSSPOINT_VECTOR_FONTS
+        auto& ttf = TtfEpdFont::counters();
+        LOG_INF("PERF", "reader ttf rasterized=%lu in %lums releases=%lu", static_cast<unsigned long>(ttf.rasterized),
+                static_cast<unsigned long>(ttf.rasterUs / 1000), static_cast<unsigned long>(ttf.releases));
+        ttf = {};
+#endif
       }
 #endif
       if (activityManager.isSwitchPending()) {
@@ -3948,7 +3958,8 @@ void EpubReaderActivity::applyReaderTextSettings() {
 void EpubReaderActivity::finishFontPreview() {
   const auto* family = sdFontSystem.registry().findFamily(SETTINGS.sdFontFamilyName);
   const auto* file = family ? family->findNearestSize(SETTINGS.fontPointSize) : nullptr;
-  const bool supportsPreload = !family || !family->vector;
+  // Vector (TTF/OTF) families are accelerated too (their regular file is cached).
+  constexpr bool supportsPreload = true;
   const auto check =
       file && supportsPreload ? SdCardFontCache::preflight(file->path.c_str()) : SdCardFontCache::Result::InvalidFont;
   const auto decision = fontPreview.finish(SETTINGS.sdFontFamilyName, SETTINGS.fontPointSize,
@@ -3961,7 +3972,7 @@ void EpubReaderActivity::finishFontPreview() {
       const bool reload = SETTINGS.sdFontFlashPreload == 0;
       SETTINGS.sdFontFlashPreload = 1;
       // ensureLoaded's same-family/size fast path does not change the source.
-      if (reload) sdFontSystem.releaseLoadedFont(renderer);
+      if (reload) sdFontSystem.releaseLoadedFont(renderer, /*includeVector=*/true);
       sdFontSystem.ensureLoaded(renderer);
       break;
     }
@@ -4051,7 +4062,7 @@ void EpubReaderActivity::handleFontPreloadPrompt() {
     {
       RenderLock lock;
       // Also covers a cache that became valid between the prompt and preload.
-      sdFontSystem.releaseLoadedFont(renderer);
+      sdFontSystem.releaseLoadedFont(renderer, /*includeVector=*/true);
       sdFontSystem.ensureLoaded(renderer);
     }
     lastPageTurnTime = millis();

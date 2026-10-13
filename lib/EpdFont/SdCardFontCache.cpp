@@ -40,6 +40,27 @@ uint32_t fnv1a(const uint8_t* data, size_t length, uint32_t hash = FNV_OFFSET) {
   return hash;
 }
 
+// sfnt version tags of a single TrueType/OpenType font (collections are not cached).
+bool isSfnt(const uint8_t* data) {
+  return (data[0] == 0 && data[1] == 1 && data[2] == 0 && data[3] == 0) || memcmp(data, "OTTO", 4) == 0 ||
+         memcmp(data, "true", 4) == 0;
+}
+
+// A vector font has no small header to hash: its first 4 KB (the table directory and
+// the first tables) stand in, together with the file size. `first` holds the bytes
+// already read; reading continues forward from there.
+bool identifySfnt(HalFile& file, const uint8_t* first, const size_t firstLength, SourceIdentity& identity) {
+  constexpr size_t kIdentityBytes = 4096;
+  uint32_t hash = fnv1a(first, firstLength, fnv1a(reinterpret_cast<const uint8_t*>("sfnt"), 4));
+  auto rest = makeUniqueNoThrow<uint8_t[]>(kIdentityBytes - firstLength);
+  if (!rest) return false;
+  const int got = file.read(rest.get(), kIdentityBytes - firstLength);
+  if (got > 0) hash = fnv1a(rest.get(), static_cast<size_t>(got), hash);
+  identity.size = file.fileSize();
+  identity.contentHash = hash;
+  return identity.size >= 12;
+}
+
 bool identifySource(const char* sourcePath, SourceIdentity& identity) {
   if (!sourcePath || strlen(sourcePath) >= sizeof(Header{}.sourcePath)) return false;
 
@@ -47,8 +68,9 @@ bool identifySource(const char* sourcePath, SourceIdentity& identity) {
   if (!Storage.openFileForRead("SDFCACHE", sourcePath, file)) return false;
 
   uint8_t data[CPFONT_HEADER_SIZE];
-  if (file.read(data, sizeof(data)) != static_cast<int>(sizeof(data)) ||
-      memcmp(data, CPFONT_MAGIC, sizeof(CPFONT_MAGIC)) != 0 || readU16(data + 8) != CPFONT_VERSION || data[12] == 0 ||
+  if (file.read(data, sizeof(data)) != static_cast<int>(sizeof(data))) return false;
+  if (isSfnt(data)) return identifySfnt(file, data, sizeof(data), identity);
+  if (memcmp(data, CPFONT_MAGIC, sizeof(CPFONT_MAGIC)) != 0 || readU16(data + 8) != CPFONT_VERSION || data[12] == 0 ||
       data[12] > SdCardFont::MAX_STYLES) {
     return false;
   }

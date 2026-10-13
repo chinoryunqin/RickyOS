@@ -51,7 +51,10 @@ class SdCardFontSystem {
   void ensureLoaded(GfxRenderer& renderer, bool allowFlashCache = true);
 
   /// Release the resident SD font without changing the saved selection.
-  void releaseLoadedFont(GfxRenderer& renderer);
+  // Unloads the .cpfont faces. includeVector also unloads the vector (TTF) family,
+  // whose glyph cache otherwise outlives settings pages: needed before anything
+  // writes the flash font cache it may be reading, and to switch its source.
+  void releaseLoadedFont(GfxRenderer& renderer, bool includeVector = false);
 
   /// Resolve an SD card font ID from family name + reader point size.
   /// Returns 0 if not found. Used by CrossPointSettings::getReaderFontId().
@@ -107,7 +110,8 @@ class SdCardFontSystem {
   // Load/refresh the selected TTF family at the current reader size, register
   // it with the renderer, and track it so ensureSdCardFontReady() rebuilds its
   // glyph set per page. registryWasDirty forces a reload even if unchanged.
-  void loadTtfFamily(const SdCardFontFamilyInfo& family, GfxRenderer& renderer, bool registryWasDirty);
+  void loadTtfFamily(const SdCardFontFamilyInfo& family, GfxRenderer& renderer, bool registryWasDirty,
+                     bool preferFlash);
   // Unregister + free the active TTF font (and its UI-size fallbacks), if any.
   void unloadTtf(GfxRenderer& renderer);
   // Register the loaded TTF at each built-in UI size as a script fallback, so UI
@@ -116,13 +120,15 @@ class SdCardFontSystem {
   void setupTtfUiFallbacks(GfxRenderer& renderer);
   // Open one style source file (resident if small, streamed if large) into
   // ttfSources_[style]. Returns false on open/read failure.
-  bool openTtfSource(uint8_t style, const std::string& path);
+  bool openTtfSource(uint8_t style, const std::string& path, bool preferFlash);
   // Register every present source with `font` (shared bytes / file handles).
   void addTtfSources(TtfEpdFont& font);
   // Close/free all style sources.
   void freeTtfSources();
   // ReadFn for streamed sources: serves the PSRAM prefix cache first, SD after.
   static unsigned long prefixRead(void* ctx, unsigned long offset, unsigned char* buffer, unsigned long count);
+  // ReadFn for a source preloaded into the flash font cache (font acceleration).
+  static unsigned long flashRead(void* ctx, unsigned long offset, unsigned char* buffer, unsigned long count);
 #endif  // CROSSPOINT_VECTOR_FONTS
 
   SdCardFontRegistry registry_;
@@ -139,6 +145,7 @@ class SdCardFontSystem {
     freeink::font::PsramVector<uint8_t> bytes;
     HalFile file;  // open handle (streamed form)
     bool streamed = false;
+    bool flash = false;  // read from the flash font cache instead of the SD card
     unsigned long size = 0;
     bool present = false;
   };
