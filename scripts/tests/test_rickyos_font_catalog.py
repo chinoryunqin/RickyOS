@@ -65,7 +65,7 @@ class RickyFontCatalogTest(unittest.TestCase):
         sizes = list(catalog.SIZES)
         self.assertEqual(sizes, sorted(set(sizes)))
         self.assertEqual(catalog.FLASH_SIZES, (12, 14, 16, 18, 20, 22))
-        self.assertEqual(max(sizes), 48)
+        self.assertEqual(max(sizes), 32)
         download = (ROOT / "src/activities/settings/FontDownloadActivity.cpp").read_text()
         self.assertIn(f"kMaxFilesPerFamily = {16}", download)
         self.assertLessEqual(len(sizes), 16)
@@ -77,7 +77,7 @@ class RickyFontCatalogTest(unittest.TestCase):
         listed = re.search(r"VECTOR_READER_POINT_SIZES\[\] = \{([^}]*)\}", vector).group(1)
         points = [int(v) for v in listed.replace("\n", " ").split(",")]
         self.assertEqual(points, sorted(set(points)))
-        self.assertEqual(max(points), 48)
+        self.assertEqual(max(points), 32)
         popup = (ROOT / "src/components/OptionPopup.h").read_text()
         activate = popup[popup.index("void activate("):popup.index("bool active = false;")]
         self.assertIn("hasMainTabs() ? total", activate)

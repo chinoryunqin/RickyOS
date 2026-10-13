@@ -29,10 +29,10 @@ from build_rickyos_font_pack import FLASH_CACHE_LIMIT, sha, validate_cpfont  # n
 
 SCRIPTS = ROOT / "lib/EpdFont/scripts"
 FLASH_SIZES = (12, 14, 16, 18, 20, 22)
-# Large print: 48 pt is 100 px on Read Pico, about 6 characters a line. Measured at 48 pt,
-# the families come to 21.5-22.6 MB per file, under the reader's 25 MB download limit
-# (kMaxFontFileBytes in FontDownloadActivity.cpp).
-LARGE_SIZES = (26, 32, 40, 48)
+# Large print: 32 pt is 67 px on Read Pico, about 9 characters a line. RickySans measures
+# 7.9 MB at 28 pt and 12.7 MB at 36 pt, so these stay well under the reader's 25 MB
+# download limit (kMaxFontFileBytes in FontDownloadActivity.cpp).
+LARGE_SIZES = (26, 32)
 MAX_FILE_BYTES = 25 * 1024 * 1024
 SIZES = FLASH_SIZES + LARGE_SIZES
 MANIFEST_VERSION = 1  # FONTS_MANIFEST_VERSION in the firmware

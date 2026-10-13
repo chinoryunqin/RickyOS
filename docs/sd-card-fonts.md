@@ -88,8 +88,7 @@ the two formats in separate folders. If both font roots contain the same family
 name, the copy in `/.fonts/` takes priority.
 
 Direct fonts offer every reader size from 8 to 22 pt, plus large print at 24, 26,
-28, 32, 36, 40, 44 and 48 pt (sizes are at 150 DPI; 48 pt is about 100 px on Read
-Pico). The **Fonts** tab in File Transfer accepts `.cpfont` files only. Copy
+28, 30 and 32 pt (sizes are at 150 DPI; 32 pt is about 67 px on Read Pico). The **Fonts** tab in File Transfer accepts `.cpfont` files only. Copy
 direct fonts to the SD card instead. To remove a loose font file, delete that file from the SD card.
 The Fonts page can delete families stored in subfolders.
 
