@@ -68,6 +68,17 @@
  #include <I18n.h>
  
  #include <algorithm>
+@@ -104,8 +104,10 @@
+   const auto now = HalRecorder::state();
+   const uint32_t seconds = HalRecorder::seconds();
+   const bool preparing = HalRecorder::preparing();
++#if FREEINK_DEVICE_METALIO_PLUS
+   if (shownPreparing && !preparing && now == HalRecorder::State::Recording && SETTINGS.plusTouchFeedback)
+     mappedInput.pulseHapticFeedback();
++#endif
+   if (now != before || now != shownState || preparing != shownPreparing) {
+     shownPreparing = preparing;
+     if (!HalRecorder::active())
 --- a/src/activities/apps/recorder/RecorderActivity.h
 +++ b/src/activities/apps/recorder/RecorderActivity.h
 @@ -1,5 +1,5 @@
@@ -142,7 +153,7 @@
    <footer><span>Ricky AI Studio</span><span>预览用于布局与交互。残影、功耗、联网及设备内存仍需实机验证。</span><span id="build-time"></span></footer>
 --- /dev/null
 +++ b/src/platform/PlusRecorderPreview.cpp
-@@ -0,0 +1,31 @@
+@@ -0,0 +1,35 @@
 +#ifdef RICKYOS_SIMULATOR_PLUS
 +#include <HalRecorder.h>
 +#include <HalAudioOutput.h>
@@ -157,7 +168,11 @@
 +static std::array<Entry, 12> entries{};
 +static size_t count = 0;
 +bool active() { return current == State::Recording || current == State::Playing; }
-+uint32_t seconds() { return active() ? (millis() - started) / 1000 : duration; }
++bool preparing() { return current == State::Recording && millis() - started < 1200; }
++uint32_t seconds() {
++  if (current == State::Recording) return preparing() ? 0 : (millis() - started - 1200) / 1000;
++  return active() ? (millis() - started) / 1000 : duration;
++}
 +State state() { return current; }
 +bool startRecording() { if(active()) return false; current=State::Recording; started=millis(); duration=0; return true; }
 +bool play(const char* name, uint8_t) { if(active()) return false; for(size_t i=0;i<count;++i) if(!strcmp(name,entries[i].name)) { duration=entries[i].seconds; current=State::Playing; started=millis(); return true; } return false; }

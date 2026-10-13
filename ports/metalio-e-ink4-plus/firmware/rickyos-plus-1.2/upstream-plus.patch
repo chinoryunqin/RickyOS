@@ -116,7 +116,7 @@
    inputBegun = true;
    LOG_INF("HW", "Starting input backends");
    inputMgr.begin();
-@@ -282,7 +294,19 @@
+@@ -282,7 +294,20 @@
  
  uint8_t HalGPIO::physicalPressedMask() const { return inputMgr.physicalPressedMask(); }
  
@@ -133,11 +133,12 @@
 +  if (key || (inputMgr.wasTouchTap(x, y) && inputMgr.lastTouchHeldMs() < 500)) plus_haptic::pulse();
 +}
 +void HalGPIO::stopHapticFeedback() { plus_haptic::stop(); }
++void HalGPIO::pulseHapticFeedback() { plus_haptic::pulse(); }
 +#elif FREEINK_CAP_HAPTIC
  bool HalGPIO::wasTouchContactPressed() const { return inputMgr.wasTouchContactPressed(); }
  void HalGPIO::updateHapticFeedback(uint8_t level) {
    const uint16_t duration = freeink::haptic::pulseDuration(level);
-@@ -350,7 +374,9 @@
+@@ -350,7 +375,9 @@
  void HalGPIO::clearTouchTapEvent() { inputMgr.clearTouchTapEvent(); }
  
  void HalGPIO::prepareForDeepSleep() {
@@ -2426,7 +2427,7 @@
    static void onBrightnessEvent(const freeink::ui::ActionEvent& event, void* user);
 --- a/lib/I18n/translations/english.yaml
 +++ b/lib/I18n/translations/english.yaml
-@@ -1500,3 +1500,48 @@
+@@ -1500,3 +1500,50 @@
  STR_RICKY_HELP_FEEDBACK_3: "Send feedback through your existing Ricky AI Studio contact channel. This page does not upload device information. Scan the website QR code to visit the site."
  STR_RICKY_MENU_AUTO_TURN: "Auto page turn"
  STR_RICKY_MENU_PROGRESS: "Reading progress"
@@ -2475,9 +2476,11 @@
 +STR_REC_TAP_PLAY: "Tap to play"
 +STR_REC_PREVIOUS: "Previous recordings"
 +STR_REC_NEXT: "Next recordings"
++STR_REC_CANCEL_PREPARING: "Cancel preparation"
++STR_REC_WAIT_HINT: "Wait for Recording before speaking"
 --- a/lib/I18n/translations/chinese.yaml
 +++ b/lib/I18n/translations/chinese.yaml
-@@ -1478,3 +1478,48 @@
+@@ -1478,3 +1478,50 @@
  STR_RICKY_HELP_FEEDBACK_3: "通过你现有的 Ricky AI Studio 联系渠道发送反馈。本页面不会自动上传设备信息。官网入口可扫码打开。"
  STR_RICKY_MENU_AUTO_TURN: "自动翻页"
  STR_RICKY_MENU_PROGRESS: "阅读进度"
@@ -2526,6 +2529,8 @@
 +STR_REC_TAP_PLAY: "点击回放"
 +STR_REC_PREVIOUS: "上一组录音"
 +STR_REC_NEXT: "下一组录音"
++STR_REC_CANCEL_PREPARING: "取消准备"
++STR_REC_WAIT_HINT: "显示「正在录音」后再开始说话"
 --- a/src/activities/apps/standby/StandbyActivity.cpp
 +++ b/src/activities/apps/standby/StandbyActivity.cpp
 @@ -1,8 +1,13 @@
@@ -5576,17 +5581,18 @@
      deferredHomeAction = HomeButtonAction::Ignore;
    }
    bool wasMenuGesture() const;
-@@ -131,6 +137,9 @@
+@@ -131,6 +137,10 @@
    // Returns the raw front button index that was pressed this frame (or -1 if none).
    int getPressedFrontButton() const;
  
 +#if FREEINK_DEVICE_METALIO_PLUS
 +  void stopHapticFeedback() const { gpio.stopHapticFeedback(); }
++  void pulseHapticFeedback() const { gpio.pulseHapticFeedback(); }
 +#endif
    void setBleCaptureMode(bool enabled);
    bool takeCapturedBleKey(uint8_t& kind, uint8_t& value);
  
-@@ -168,6 +177,14 @@
+@@ -168,6 +178,14 @@
    void rememberTouchHeldTime() const;
    void suppressNextRelease(Button button) const;
  
@@ -5947,7 +5953,7 @@
          // black/white pairs are DC-balanced and drive every pixel through both
 --- a/lib/hal/HalGPIO.h
 +++ b/lib/hal/HalGPIO.h
-@@ -91,7 +91,7 @@
+@@ -91,10 +91,13 @@
    bool isPressed(uint8_t buttonIndex) const;
    bool wasPressed(uint8_t buttonIndex) const;
    uint8_t physicalPressedMask() const;
@@ -5956,6 +5962,12 @@
    bool wasTouchContactPressed() const;
    void updateHapticFeedback(uint8_t level);
    void stopHapticFeedback();
++#if FREEINK_DEVICE_METALIO_PLUS
++  void pulseHapticFeedback();
++#endif
+ #endif
+   bool wasAnyPressed() const;
+   bool wasReleased(uint8_t buttonIndex) const;
 --- a/src/activities/settings/RickyOptionListActivity.cpp
 +++ b/src/activities/settings/RickyOptionListActivity.cpp
 @@ -50,6 +50,9 @@
@@ -5970,7 +5982,7 @@
         countOf(kLongPressLabels)},
 --- /dev/null
 +++ b/lib/hal/HalRecorder.h
-@@ -0,0 +1,19 @@
+@@ -0,0 +1,21 @@
 +#pragma once
 +#include <cstddef>
 +#include <cstdint>
@@ -5986,13 +5998,15 @@
 +void poll();
 +State state();
 +bool active();
++// True until the first PCM block has been saved; independent of whole-second timing.
++bool preparing();
 +uint32_t seconds();
 +// Fixed-capacity, paged enumeration; no whole-directory vector.
 +size_t list(size_t offset, Entry* entries, size_t capacity, bool& more);
 +}  // namespace HalRecorder
 --- /dev/null
 +++ b/lib/hal/HalRecorder.cpp
-@@ -0,0 +1,190 @@
+@@ -0,0 +1,191 @@
 +#include "HalRecorder.h"
 +#if FREEINK_DEVICE_METALIO_PLUS
 +#include <HalAudioOutput.h>
@@ -6078,6 +6092,7 @@
 +}  // namespace
 +State state() { return current; }
 +bool active() { return current == State::Recording || current == State::Playing; }
++bool preparing() { return current == State::Recording && bytes.load() == 0; }
 +uint32_t seconds() { return bytes.load() / (recorder_wav::rate * 2); }
 +void poll() {
 +  if (!active()) return;
@@ -6223,7 +6238,7 @@
 +}  // namespace recorder_wav
 --- /dev/null
 +++ b/src/activities/apps/recorder/RecorderActivity.h
-@@ -0,0 +1,37 @@
+@@ -0,0 +1,38 @@
 +#pragma once
 +#if FREEINK_DEVICE_METALIO_PLUS
 +#include <HalRecorder.h>
@@ -6257,13 +6272,14 @@
 +  bool more = false, waitRelease = false;
 +  HalRecorder::State shownState = HalRecorder::State::Idle;
 +  uint32_t shownSeconds = 0;
++  bool shownPreparing = false;
 +  char status[160]{};
 +  const char* statusLabel() const;
 +};
 +#endif
 --- /dev/null
 +++ b/src/activities/apps/recorder/RecorderActivity.cpp
-@@ -0,0 +1,148 @@
+@@ -0,0 +1,159 @@
 +#include "RecorderActivity.h"
 +#if FREEINK_DEVICE_METALIO_PLUS
 +#include <I18n.h>
@@ -6278,6 +6294,7 @@
 +  UiListActivity::onEnter();
 +  waitRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
 +  reload();
++  shownPreparing = HalRecorder::preparing();
 +  shownState = HalRecorder::state();
 +  shownSeconds = HalRecorder::seconds();
 +}
@@ -6308,7 +6325,7 @@
 +const char* RecorderActivity::statusLabel() const {
 +  switch (HalRecorder::state()) {
 +    case HalRecorder::State::Recording:
-+      return (HalRecorder::seconds() ? tr(STR_REC_RECORDING) : tr(STR_REC_PREPARING));
++      return (HalRecorder::preparing() ? tr(STR_REC_PREPARING) : tr(STR_REC_RECORDING));
 +    case HalRecorder::State::Playing:
 +      return tr(STR_REC_PLAYING);
 +    case HalRecorder::State::Saved:
@@ -6322,7 +6339,10 @@
 +void RecorderActivity::drawChrome() {
 +  const auto& m = UITheme::getInstance().getMetrics();
 +  const uint32_t seconds = HalRecorder::seconds();
-+  snprintf(status, sizeof(status), "%s  %02u:%02u", statusLabel(), unsigned(seconds / 60), unsigned(seconds % 60));
++  if (HalRecorder::preparing())
++    snprintf(status, sizeof(status), "%s", statusLabel());
++  else
++    snprintf(status, sizeof(status), "%s  %02u:%02u", statusLabel(), unsigned(seconds / 60), unsigned(seconds % 60));
 +  GUI.drawHeader(renderer, Rect{0, m.topPadding, renderer.getScreenWidth(), m.headerHeight}, tr(STR_REC_TITLE), status);
 +}
 +void RecorderActivity::buildScreen(UiScreen& screen) {
@@ -6332,8 +6352,9 @@
 +  screen.spacer(static_cast<int16_t>(m.verticalSpacing));
 +  rows = {};
 +  const bool active = HalRecorder::active();
-+  rows[0].label = (active ? tr(STR_REC_STOP) : tr(STR_REC_START));
-+  rows[0].subtitle = tr(STR_REC_FORMAT);
++  const bool preparing = HalRecorder::preparing();
++  rows[0].label = preparing ? tr(STR_REC_CANCEL_PREPARING) : (active ? tr(STR_REC_STOP) : tr(STR_REC_START));
++  rows[0].subtitle = preparing ? tr(STR_REC_WAIT_HINT) : tr(STR_REC_FORMAT);
 +  if (!active) {
 +    for (size_t i = 0; i < count; ++i) {
 +      rows[i + 1].label = files[i].name;
@@ -6364,7 +6385,11 @@
 +  HalRecorder::poll();
 +  const auto now = HalRecorder::state();
 +  const uint32_t seconds = HalRecorder::seconds();
-+  if (now != before || now != shownState) {
++  const bool preparing = HalRecorder::preparing();
++  if (shownPreparing && !preparing && now == HalRecorder::State::Recording && SETTINGS.plusTouchFeedback)
++    mappedInput.pulseHapticFeedback();
++  if (now != before || now != shownState || preparing != shownPreparing) {
++    shownPreparing = preparing;
 +    if (!HalRecorder::active())
 +      reload();
 +    else
@@ -6397,6 +6422,7 @@
 +    reload();
 +  }
 +  nav.reset();
++  shownPreparing = HalRecorder::preparing();
 +  shownState = HalRecorder::state();
 +  shownSeconds = HalRecorder::seconds();
 +  requestUpdate();
@@ -6406,6 +6432,7 @@
 +    RenderLock lock(*this);
 +    HalRecorder::stop();
 +    reload();
++    shownPreparing = HalRecorder::preparing();
 +    shownState = HalRecorder::state();
 +    shownSeconds = HalRecorder::seconds();
 +  } else

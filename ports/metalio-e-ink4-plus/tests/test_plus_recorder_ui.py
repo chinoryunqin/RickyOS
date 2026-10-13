@@ -13,17 +13,19 @@ namespace HalRecorder {
 enum class State:uint8_t { Idle,Recording,Playing,Saved,Error };
 struct Entry { char name[40]{};uint32_t seconds=0; };
 inline State current=State::Idle;
+inline bool waiting=false;
 inline int starts=0,plays=0,stops=0;inline uint32_t elapsed=0;inline bool complete=false;inline size_t total=12;
 inline State state(){return current;} inline bool active(){return current==State::Recording||current==State::Playing;}
 inline uint32_t seconds(){return elapsed;}
-inline bool startRecording(){++starts;current=State::Recording;return true;}
+inline bool preparing(){return current==State::Recording && waiting;}
+inline bool startRecording(){++starts;current=State::Recording;waiting=true;elapsed=0;return true;}
 inline bool play(const char*,uint8_t){++plays;current=State::Playing;return true;}
 inline void stop(){if(active()){++stops;current=State::Saved;}}
 inline void poll(){if(complete){current=State::Saved;complete=false;}}
 inline size_t list(size_t offset,Entry* e,size_t cap,bool& more){size_t n=0;while(offset+n<total&&n<cap){snprintf(e[n].name,40,"REC_%03zu.wav",offset+n);e[n].seconds=offset+n;++n;}more=offset+n<total;return n;}
 }
 ''')
- (d/'CrossPointSettings.h').write_text('#pragma once\ninline struct { uint8_t speakerVolume=35; } settings;\n#define SETTINGS settings\n')
+ (d/'CrossPointSettings.h').write_text('#pragma once\nstruct FakeSettings { uint8_t speakerVolume=35,plusTouchFeedback=1; }; inline FakeSettings settings;\n#define SETTINGS settings\n')
  ids=re.findall(r'^(STR_REC_\w+):', (u/'lib/I18n/translations/english.yaml').read_text(),re.M)
  (d/'I18n.h').write_text('#pragma once\nenum class StrId {'+','.join(ids)+'};\ninline const char* trans(StrId){return "localized";}\n#define tr(id) trans(StrId::id)\n')
  (d/'components/UITheme.h').write_text('''#pragma once
@@ -44,7 +46,7 @@ struct ListItem {const char* label=nullptr;const char* subtitle=nullptr;const ch
 struct ListProps{const ListItem* items=nullptr;uint16_t count=0;int action=0,inputMask=0;};
 }
 struct UiScreen {freeink::ui::ListProps props;void setContentMargin(freeink::ui::Insets){}void spacer(int16_t){}void list(freeink::ui::ListProps p){props=p;}};
-struct MappedInputManager {enum class Button {Confirm};bool held=false;bool isPressed(Button){return held;}};
+struct MappedInputManager {enum class Button {Confirm};bool held=false;int pulses=0;void pulseHapticFeedback(){++pulses;}bool isPressed(Button){return held;}};
 struct FakeActivityManager { int appVisits=0;void goToApps(){++appVisits;} }; inline FakeActivityManager activityManager;
 struct RenderLock {
  enum class Mode{Try}; inline static bool held=false;bool owned=false;
@@ -76,6 +78,7 @@ class UiListActivity:public Activity {
  start=source.index('int AppsMenuActivity::iconIndexFromPoint(');end=source.index('\nvoid AppsMenuActivity::openSelected()',start)
  hit=source[start:end]
  (d/'test.cpp').write_text('''#include <RecorderActivity.h>
+#include <CrossPointSettings.h>
 #include <cassert>
 #include <algorithm>
 #include <RickyPageLayout.h>
@@ -93,6 +96,11 @@ int main(){
  a.select(1);assert(HalRecorder::plays==1); // stale file index cannot start playback while active
  a.back();assert(!a.preventAutoSleep() && activityManager.appVisits==0);
  a.select(0);int requests=renderRequests;a.tick();assert(renderRequests==requests);assert(HalRecorder::starts==1 && a.rowCount()==1);{RenderLock held;a.prepareForSleep();assert(a.tick());}a.tick();assert(!a.preventAutoSleep());
+ a.select(0);assert(HalRecorder::preparing());requests=renderRequests;a.tick();assert(renderRequests==requests);assert(i.pulses==0);
+ HalRecorder::waiting=false;a.tick();assert(renderRequests==requests+1 && i.pulses==1 && HalRecorder::seconds()==0);a.tick();assert(i.pulses==1);a.back();
+ a.select(0);a.back();a.tick();assert(i.pulses==1); // preparation cancellation never signals ready
+ a.select(0);HalRecorder::current=HalRecorder::State::Error;a.tick();assert(i.pulses==1); // setup failure never signals ready
+ SETTINGS.plusTouchFeedback=0;a.select(0);HalRecorder::waiting=false;a.tick();assert(i.pulses==1);a.back();SETTINGS.plusTouchFeedback=1;
  a.select(0);HalRecorder::complete=true;a.tick();assert(!a.preventAutoSleep() && a.rowCount()>1);
  a.select(0);{RenderLock held;a.onExit();}assert(!HalRecorder::active());a.back();assert(activityManager.appVisits==1);
  AppsMenuActivity grid;

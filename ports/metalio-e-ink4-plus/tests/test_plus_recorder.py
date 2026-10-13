@@ -78,8 +78,8 @@ int main() {
  freeSpace=1; assert(!startRecording());freeSpace=100000000;
  failOpen=true;assert(!startRecording());failOpen=false;
  plus_audio::failStart=true;assert(!startRecording());assert(data.empty());plus_audio::failStart=false;
- assert(startRecording()); stop(); assert(state()==State::Idle && data.empty());
- assert(startRecording() && active()); feed(); stop(); assert(state()==State::Saved && !active());
+ assert(startRecording() && preparing() && seconds()==0); poll(); assert(preparing()); stop(); assert(state()==State::Idle && data.empty());
+ assert(startRecording() && active() && preparing()); feed(); assert(!preparing() && seconds()==0); stop(); assert(state()==State::Saved && !active());
  Entry e[2];bool more;assert(list(0,e,2,more)==1 && !more);assert(e[0].seconds==0);
  auto saved=data.begin()->second;assert(saved.size()==52 && recorder_wav::valid(saved.data(),52));
  assert(play(e[0].name,35) && state()==State::Playing);

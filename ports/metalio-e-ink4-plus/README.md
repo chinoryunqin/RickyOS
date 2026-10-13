@@ -10,7 +10,7 @@
 
 - RickyOS 来源：`codex/rickyos-1.2-design` 的 `24c05ff7ffb06254879d9928d8531db6839e7ad1`。
 - SDK 来源：`96de1be6ce08eb732909e6e8149af8f892b9a2c5`；来源清单与 89 项 Plus 修改独立记录，不使用原工作区 SDK 的未提交改动。
-- 已构建并安装：录音机版，5,210,416 bytes；SHA256 `2da7581634509158d0ecac4a370ac219ac5184d7ffcdac94d4b2b20c1c993319`。用户确认基础录音回放正常、触控震动正常、Tab 叠影恢复；USB 1 MiB 写入／读回 SHA256、安全弹出和调试口恢复通过。
+- 已构建并安装：录音准备提示版，5,210,800 bytes；SHA256 `c1ba15f9870da9e274a7bea80618e5d68f446ae9395b24fe09422bf7c3c20c34`。用户确认基础录音回放正常、触控震动正常、Tab 叠影恢复；USB 1 MiB 写入／读回 SHA256、安全弹出和调试口恢复通过。
 - 当前代码包含显示、触控及盖板键、SD、前光、电量、RTC、网络迁移修改，以及本轮音量输出和试听。
 - 基础录音回放与触控震动已获用户确认。音量曲线、录音时待机保存等场景尚未单独验收；网络排查按用户要求搁置。蓝牙配对和自动旋转尚未接入。
 - 选择性接入设计提交 6e1d0ea7 的拼音、局部灰阶和透明待机；USB MSC 已新增 S31 后端并构建，安装／实机状态见 [USB 接入记录](docs/rickyos-1.2-plus-usb.md)。详见 [接入记录](docs/rickyos-1.2-plus-new-features-integration.md)。
@@ -72,3 +72,5 @@ Plus 按键设置已实现并通过分类／逻辑映射及 JSON 持久化主机
 先按上文还原源码并生成资源，再运行 `python3 scripts/prepare_plus_recorder_preview.py`。在生成的 `.local/plus-recorder-simulator/` 目录运行 `pio run -e simulator_rickyos`，随后运行 `python3 tools/rickyos-browser/server.py --port 8783`，打开 http://127.0.0.1:8783/ 的「应用 → 录音机」。需要 macOS、SDL2 和 PlatformIO。
 
 使用实际 RecorderActivity 的 684×1216 帧缓冲；采集和回放由内存状态模拟，不调用电脑麦克风或扬声器，重启清空模拟录音。不会操作 USB 或修改实机固件。
+
+录音准备状态现由首批 PCM 判定，采集就绪时立即切换状态并短震一次；短震沿用触控震动开关，用户已确认「可以了」。

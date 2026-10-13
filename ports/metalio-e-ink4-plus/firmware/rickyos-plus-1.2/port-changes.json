@@ -20,7 +20,7 @@
     {
       "path": "lib/hal/HalGPIO.cpp",
       "baseline_sha256": "12c4c18ac3586866d8b2551e016c4cc6d85f727dfd5c15ddb7625efc1022fe77",
-      "ported_sha256": "fa5018503ef4dcd498068baabf192e9c11ad664632d268f3469e1eddb2e7f7a6"
+      "ported_sha256": "4682aee6bd75ead128d66eb75c236e93fd9f7ea5d0ef929e6db2e2dd6acc1fe0"
     },
     {
       "path": "src/activities/ActivityManager.cpp",
@@ -190,12 +190,12 @@
     {
       "path": "lib/I18n/translations/english.yaml",
       "baseline_sha256": "681900ea71fbb31de22e46a254df1c3a30a267cf1e45b3914aecef7827a4f99c",
-      "ported_sha256": "29361aa717c2280a87d7a56c69ddb3fefb85736b6a5e7d8b41408781355e64b3"
+      "ported_sha256": "1e6fb3781ff60fa36d1a1519d312eff05c6018d54a33143818d3d6dbdfc142d8"
     },
     {
       "path": "lib/I18n/translations/chinese.yaml",
       "baseline_sha256": "1a08d260f1e6da688733a956a90607bba1dd56dff746a5975470add5a13562dc",
-      "ported_sha256": "2ae858905aae1540031329f845442fad33530e04158f5e08822eb8c9a4498ed7"
+      "ported_sha256": "3ff6d122396c1a8c4bdf02cb1715922849f8ced708edeb44fad6293a6eb5a835"
     },
     {
       "path": "src/activities/apps/standby/StandbyActivity.cpp",
@@ -355,7 +355,7 @@
     {
       "path": "src/MappedInputManager.h",
       "baseline_sha256": "f463ca3c5112b4f0c510513c96d384aecd87ebce778545982cdc13d8024be352",
-      "ported_sha256": "792f99e83a828c205ea07b48844d8f4ef3c7447a9fef59a52c6dfe410b242d0f"
+      "ported_sha256": "e3982d0844219d052d1e60bd7bca3164b4fd91c9101ae71188ce3c0cb878621d"
     },
     {
       "path": "src/MappedInputManager.cpp",
@@ -380,7 +380,7 @@
     {
       "path": "lib/hal/HalGPIO.h",
       "baseline_sha256": "69f039fca010004dd61aa05b4c584e9d12c36aeda36f7168a1edfd958d0f759c",
-      "ported_sha256": "74aabd44e1ed63f10b80b4a9e3d775096b511f504516fc699b2b2d6054d8eb60"
+      "ported_sha256": "988232cf588c26351d785842513c43733a8b83e22557ef2bd4bd0f25493f3d0f"
     },
     {
       "path": "src/activities/settings/RickyOptionListActivity.cpp",
@@ -390,12 +390,12 @@
     {
       "path": "lib/hal/HalRecorder.h",
       "baseline_sha256": null,
-      "ported_sha256": "a856def8babe5382a401b8f98c8e7e97b0c780a68a5e97299109352fd0bb29ef"
+      "ported_sha256": "ee462af3202a45c632e11975748d849a32729e4a0f8fba9d33deb7d7cc6860af"
     },
     {
       "path": "lib/hal/HalRecorder.cpp",
       "baseline_sha256": null,
-      "ported_sha256": "85ec975f41c082d465b414c2070a993eecd5159fd4ba8b7185409369b3d8ad0c"
+      "ported_sha256": "f89018fc39515d52dd3f23c9034871da6e8e0126ffb9fbf23c49d1d63afc83db"
     },
     {
       "path": "lib/hal/RecorderWav.h",
@@ -405,12 +405,12 @@
     {
       "path": "src/activities/apps/recorder/RecorderActivity.h",
       "baseline_sha256": null,
-      "ported_sha256": "39382ab0f1107340fceb7a1bd38bf808c9a79aad3f6c0c055201acd5d775df84"
+      "ported_sha256": "bbc61f87a51590c7b62a4589ca8358e5e99846731d11ab344393e43e4eba9d42"
     },
     {
       "path": "src/activities/apps/recorder/RecorderActivity.cpp",
       "baseline_sha256": null,
-      "ported_sha256": "9a1e94ff6ba7e17be9e2a8a8e78e178b82ea0a1cbaf5a24cbbb863b5c5ce13ae"
+      "ported_sha256": "175a8e6df9c35a802d1e47ab259e60aa697e0a64174217cefd7af92489c6fbd5"
     },
     {
       "path": "src/AppVisibility.h",
