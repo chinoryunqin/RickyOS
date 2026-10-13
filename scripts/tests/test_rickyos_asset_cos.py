@@ -8,6 +8,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
+import package_rickyos_cos_upload as packager  # noqa: E402
 import publish_rickyos_assets_cos as publish  # noqa: E402
 from rickyos_asset_routes import check_cos_base, routes  # noqa: E402
 
@@ -73,6 +74,36 @@ class PublishTest(unittest.TestCase):
         source = (ROOT / "scripts/publish_rickyos_assets_cos.py").read_text()
         self.assertIn('os.environ.get("COS_SECRET_KEY"', source)
         self.assertNotIn("--secret", source)
+
+
+class ConsolePackageTest(unittest.TestCase):
+    def catalog(self, directory, data=b"picture"):
+        root = Path(directory) / "catalog"
+        (root / "wallpapers").mkdir(parents=True)
+        (root / "wallpapers" / "00-rest.png").write_bytes(b"picture")
+        import binascii
+        manifest = {"version": 1, "baseUrl": "https://cdn.jsdelivr.net/gh/x/RickyOS-wallpapers@v1.3.0/wallpapers/",
+                    "mirrors": ["https://github.com/x/RickyOS-wallpapers/releases/download/v1.3.0/"],
+                    "items": [{"name": "休息一下", "file": "00-rest.png", "size": len(data),
+                               "crc32": binascii.crc32(data) & 0xFFFFFFFF}]}
+        (root / "mirror.json").write_text(json.dumps(manifest, ensure_ascii=False))
+        return root
+
+    def test_package_is_the_bucket_layout_with_cos_first(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "out"
+            tag, count = packager.package(self.catalog(directory), "wallpapers", output, COS)
+            self.assertEqual((tag, count), ("v1.3.0", 1))
+            self.assertTrue((output / "wallpapers" / "v1.3.0" / "00-rest.png").is_file())
+            cos = json.loads((output / "wallpapers" / "cos.json").read_text())
+        self.assertEqual(cos["baseUrl"], f"{COS}/wallpapers/v1.3.0/")
+        self.assertEqual(cos["mirrors"][0], "https://cdn.jsdelivr.net/gh/x/RickyOS-wallpapers@v1.3.0/wallpapers/")
+        self.assertEqual(cos["items"][0]["name"], "休息一下")
+
+    def test_a_file_that_does_not_match_its_manifest_is_refused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(ValueError):
+                packager.package(self.catalog(directory, data=b"other"), "wallpapers", Path(directory) / "out", COS)
 
 
 class FirmwareSwitchTest(unittest.TestCase):

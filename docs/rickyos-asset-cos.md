@@ -27,6 +27,19 @@
 默认域名支持 HTTPS，不需要备案。以后想换自定义域名并加 CDN 加速，域名要先做 ICP 备案；
 固件改 `RickyCos.h` 里的域名，脚本里的 `--cos-base` 同步换掉。
 
+## 不用命令行：网页控制台上传
+
+`scripts/package_rickyos_cos_upload.py` 把已发布的目录（RickyOS-fonts / RickyOS-wallpapers
+仓库的一个版本）整理成桶里的目录结构，并生成 `cos.json`，逐个文件按清单核对大小和 CRC32：
+
+```bash
+python3 scripts/package_rickyos_cos_upload.py --catalog ../RickyOS-fonts --kind fonts --output out/cos
+python3 scripts/package_rickyos_cos_upload.py --catalog ../RickyOS-wallpapers --kind wallpapers --output out/cos
+```
+
+在腾讯云控制台打开存储桶 →「文件列表」→「上传文件」→「选择文件夹」，依次选 `out/cos/fonts` 和
+`out/cos/wallpapers`，保持目录结构上传到桶的根目录。
+
 ## 每次发布
 
 先按原流程构建，加上 `--cos-base`（产出多一份 `cos.json`，其他清单的备用列表也会带上 COS）：
