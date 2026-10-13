@@ -23,6 +23,8 @@ class ReadPicoUsbProfileTest(unittest.TestCase):
         self.assertIn("CONFIG_TINYUSB_MSC_ENABLED=y", trial["custom_sdkconfig"])
         self.assertIn("CONFIG_TINYUSB_CDC_ENABLED=n", trial["custom_sdkconfig"])
         self.assertIn("pre:scripts/prepare_readpico_usb_component.py", trial["extra_scripts"])
+        self.assertIn("-fno-lto", trial["build_unflags"])
+        self.assertIn("-flto=auto", trial["build_flags"])
 
     def test_browser_preview_is_simulator_only(self):
         config = configparser.ConfigParser(interpolation=None)
@@ -39,6 +41,11 @@ class ReadPicoUsbProfileTest(unittest.TestCase):
         self.assertIn("#if defined(RICKYOS_USB_PREVIEW)", activity)
         self.assertIn("#if !defined(RICKYOS_USB_PREVIEW)\n  if (!restartRequested) Storage.endUsbDrive();", activity)
         self.assertIn("#else\n\n  // Show the safety instructions", activity)
+
+    def test_host_suspend_does_not_eject_mounted_disk(self):
+        activity = (ROOT / "src/activities/network/UsbDriveActivity.cpp").read_text()
+        self.assertNotIn("Storage.usbDriveHostSuspended()", activity)
+        self.assertIn("state == State::Ejected || state == State::Disconnected", activity)
 
     def test_component_is_pinned_and_untracked(self):
         source = (ROOT / "scripts/prepare_readpico_usb_component.py").read_text()
