@@ -1,7 +1,9 @@
 #include <Arduino.h>
+#include <BidiUtils.h>
 #include <Bitmap.h>
 #include <BuildScratch.h>
 #include <FontCacheManager.h>
+#include <FontDecompressor.h>
 #include <GfxRenderer.h>
 #include <HalMemory.h>
 #include <HalStorage.h>
@@ -9,6 +11,7 @@
 #include <JpegToBmpConverter.h>
 #include <PNGdec.h>
 #include <SdCardFont.h>
+#include <builtinFonts/ricky_caption_10_regular.h>
 
 #include <algorithm>
 #include <array>
@@ -51,6 +54,19 @@ void* operator new(size_t size, const std::nothrow_t&) noexcept {
 bool FontCacheManager::isScanning() const { return false; }
 void FontCacheManager::clearCache() {}
 void SdCardFont::clearCache() {}
+// drawText() reaches these only for SD/compressed fonts; the glyph test uses a built-in one.
+void FontCacheManager::recordText(const char*, int, EpdFontFamily::Style) {}
+void FontCacheManager::reportMissingChineseCodepoint(int, uint32_t) {}
+// Left-to-right test strings only: no RTL bytes reach the shaper.
+namespace BidiUtils {
+bool isTransparentMark(uint32_t) { return false; }
+bool applyBidiVisual(const char*, std::string&, int) { return false; }
+}  // namespace BidiUtils
+SdCardFont* SdCardFont::fromMissCtx(void*) { return nullptr; }
+bool SdCardFont::isOverflowGlyph(const EpdGlyph*) const { return false; }
+const uint8_t* SdCardFont::getOverflowBitmap(const EpdGlyph*) const { return nullptr; }
+int SdCardFont::prewarm(const char*, uint8_t, bool, bool, bool) { return 0; }
+const uint8_t* FontDecompressor::getBitmap(const EpdFontData*, const EpdGlyph*, uint32_t) { return nullptr; }
 ESPMock ESP;
 namespace {
 std::array<uint8_t, HalDisplay::BUFFER_SIZE> bw;
@@ -675,4 +691,47 @@ int main(int argc, char** argv) {
   assert(commits == beforeFiltered);  // Existing filters must not enter native output.
   SETTINGS.sleepScreenCoverFilter = CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER;
   assert(commits > 0 && cancels > 0);
+
+  // Portrait panels walk glyphs column by column (panel memory order); landscape keeps
+  // the row walk. Text is laid out in logical coordinates, so the same text over the
+  // same striped background must give the same logical pixels and B/W proxy in both:
+  // 4-bit coverage, white-on-ink text, synthetic bold (dilated 2-bit path), clipping.
+  {
+    EpdFont captionFont(&ricky_caption_10_regular);
+    renderer.insertFont(77, EpdFontFamily(&captionFont));
+    struct Case {
+      const char* text;
+      int x, y;
+      bool black;
+      uint8_t bold;
+    };
+    const Case cases[] = {{"\xe4\xb9\xa6g", 0, 0, true, 0}, {"Ag", -5, 3, true, 0}, {"\xe4\xb9\xa6", 2, 1, false, 0},
+                          {"Wy", 1, 0, true, 2}, {"\xe4\xb9\xa6", -3, 2, false, 3}};
+    for (const auto& item : cases) {
+      std::array<uint8_t, 32 * 32> tone[2];
+      std::array<bool, 32 * 32> ink[2];
+      const GfxRenderer::Orientation orientations[2] = {GfxRenderer::Portrait, GfxRenderer::LandscapeClockwise};
+      for (int k = 0; k < 2; ++k) {
+        renderer.setOrientation(orientations[k]);
+        assert(renderer.beginGrayscale16());
+        const GfxRenderer::ClipScope clip(renderer, 0, 0, 32, 32);
+        for (int x = 0; x < 32; ++x) renderer.fillGrayscale16Rect(x, 0, 1, 32, static_cast<uint8_t>((x * 7) % 16));
+        {
+          const GfxRenderer::SyntheticBoldScope bold(renderer, item.bold);
+          renderer.drawText(77, item.x, item.y, item.text, item.black);
+        }
+        for (int y = 0; y < 32; ++y)
+          for (int x = 0; x < 32; ++x) {
+            const auto [px, py] = physical(orientations[k], x, y);
+            tone[k][y * 32 + x] = renderer.grayscale16Level(x, y);
+            ink[k][y * 32 + x] = (bw[static_cast<size_t>(py) * (128 / 8) + px / 8] & (0x80 >> (px % 8))) == 0;
+          }
+        renderer.cancelGrayscale16();
+      }
+      assert(tone[0] == tone[1] && ink[0] == ink[1]);
+      bool drew = false;
+      for (int i = 0; i < 32 * 32; ++i) drew |= tone[0][i] != static_cast<uint8_t>(((i % 32) * 7) % 16);
+      assert(drew);  // the case really put glyph pixels on the stripes
+    }
+  }
 }

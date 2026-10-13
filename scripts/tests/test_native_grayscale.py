@@ -121,7 +121,8 @@ def main():
             'lib/Epub/Epub/converters/ImageDimsProbe.cpp',
             'src/activities/apps/airpage/AirPageImageRenderer.cpp',
             'src/activities/apps/airpage/AirPageImageStore.cpp',
-            'src/activities/apps/airpage/AirPageWallpaper.cpp')]
+            'src/activities/apps/airpage/AirPageWallpaper.cpp',
+            'lib/EpdFont/EpdFont.cpp', 'lib/EpdFont/EpdFontFamily.cpp', 'lib/Utf8/Utf8.cpp')]
         sources += [JPEG / 'JPEGDEC.cpp', SIM / 'src/HalStorage.cpp']
         sources += [PNG / 'PNGdec.cpp']
         flags = ['-std=c++20', '-O1', '-ffunction-sections', '-fdata-sections', '-DCROSSPOINT_EMULATED=1',

@@ -793,6 +793,42 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
           }
         }
       }
+    } else if (rotation == TextRotation::None && (is2Bit || is4Bit) && renderer.isGrayscale16Active() &&
+               renderer.grayscale16PrefersColumns()) {
+      // On a portrait panel a logical row is a panel column: walking the glyph row by row
+      // strode a whole panel row (a PSRAM cache miss in both buffers) per pixel, and glyphs
+      // were most of a page's paint time. Walk it column by column instead, so consecutive
+      // pixels are adjacent in panel memory. Every pixel is blended once and independently,
+      // so the frame is the same byte for byte as the row walks below.
+      const uint8_t ink = renderer.textInkLevel(pixelState);
+      const int outputWidth = width + syntheticBoldPixels;
+      const auto coverage2 = [&](const int glyphX, const int glyphY) -> uint8_t {
+        return glyphX >= 0 && glyphX < width ? weighted2BitCoverage(curve, bitmap, glyphY * width + glyphX, is4Bit)
+                                             : 0;
+      };
+      for (int glyphX = 0; glyphX < outputWidth; glyphX++) {
+        const int screenX = innerBase + glyphX;
+        for (int glyphY = 0; glyphY < height; glyphY++) {
+          const int screenY = outerBase + glyphY;
+          if (is4Bit && syntheticBoldPixels == 0) {
+            // Preserve all coverage steps for both ink and selected paper glyphs.
+            renderer.blendGrayscale16Pixel(screenX, screenY, ink,
+                                           weigh4BitCoverage(curve, get4BitCoverage(bitmap, glyphY * width + glyphX)));
+            continue;
+          }
+          const uint8_t current = coverage2(glyphX, glyphY);
+          const uint8_t coverage =
+              syntheticBoldPixels == 0
+                  ? current
+                  : dilate2BitCoverage(current, coverage2(glyphX - 1, glyphY), coverage2(glyphX - 2, glyphY),
+                                       coverage2(glyphX - 3, glyphY), syntheticBoldPixels);
+          if (pixelState) {
+            draw4BitGlyphPixel(renderer, screenX, screenY, static_cast<uint8_t>(coverage * 5));
+          } else if (coverage != 0) {
+            renderer.blendGrayscale16Pixel(screenX, screenY, 15, static_cast<uint8_t>(coverage * 5));
+          }
+        }
+      }
     } else if (is4Bit && renderer.isGrayscale16Active() && syntheticBoldPixels == 0) {
       // Preserve all coverage steps for both ink and selected paper glyphs.
       for (int glyphY = 0; glyphY < height; glyphY++) {
