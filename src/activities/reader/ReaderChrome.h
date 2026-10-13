@@ -13,6 +13,8 @@ namespace readerChrome {
 
 struct PageInfo {
   const char* bookTitle = nullptr;
+  // 古籍 版心 label: the chapter when the table of contents names one, else the book.
+  const char* chapterTitle = nullptr;
   int pageInChapter = 1;  // 1-based
 };
 

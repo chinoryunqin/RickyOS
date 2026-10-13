@@ -1965,7 +1965,16 @@ void EpubReaderActivity::renderBook() {
           // demand after the build. Skipped for cpfont/builtin reading: the
           // release drops the persistent advance table and mini tables, which
           // would force SD metric re-reads on every fresh chapter for no gain.
-          if (!renderer.getTtfFonts().empty()) {
+          // With PSRAM the TTF arenas are not internal heap: dropping them freed nothing
+          // the build needs and re-rasterized every glyph of the next page (device: 1.7-2.5 s
+          // after each chapter or settings change). Shed them there only when internal
+          // memory is actually short, as Section's own layout reclaim does.
+#if defined(BOARD_HAS_PSRAM)
+          const bool shedTtf = ESP.getFreeHeap() < 48 * 1024 || ESP.getMaxAllocHeap() < 16 * 1024;
+#else
+          constexpr bool shedTtf = true;
+#endif
+          if (shedTtf && !renderer.getTtfFonts().empty()) {
             if (auto* fcm = renderer.getFontCacheManager()) {
               fcm->releaseSdFontCaches();
             }
@@ -3198,6 +3207,13 @@ void EpubReaderActivity::renderStatusBar() const {
   if (mode != readingMode::Mode::Original && mode != readingMode::Mode::Immersive) {
     readerChrome::PageInfo info;
     info.bookTitle = epub ? epub->getTitle().c_str() : nullptr;
+    // A chapter the table of contents names, not currentChapterTitle()'s "unnamed".
+    std::string chapter;
+    if (epub) {
+      const int tocIndex = currentTocIndex();
+      if (tocIndex != -1) chapter = epub->getTocItem(tocIndex).title;
+    }
+    info.chapterTitle = chapter.c_str();
     info.pageInChapter = currentPage;
     readerChrome::draw(renderer, mode,
                        readingMode::textBox(renderer.getScreenWidth(), renderer.getScreenHeight(), textMargins()),

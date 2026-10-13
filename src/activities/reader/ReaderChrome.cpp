@@ -142,7 +142,8 @@ void drawAncient(const GfxRenderer& renderer, const Box& text, const PageInfo& p
   readingMode::chineseNumeral(std::max(1, page.pageInChapter), number, sizeof(number));
   const int numberTop = lowerTail - kGap - verticalHeight(number, step);
   drawVertical(renderer, number, centerX, numberTop, step, lowerTail);
-  drawVertical(renderer, page.bookTitle, centerX, upperTail + kTail + kGap, step, numberTop - 2 * kGap);
+  const char* label = page.chapterTitle && page.chapterTitle[0] ? page.chapterTitle : page.bookTitle;
+  drawVertical(renderer, label, centerX, upperTail + kTail + kGap, step, numberTop - 2 * kGap);
 }
 
 // One 界行: a gray hairline on the 16-level frame (never lightening ink), ink in B/W.
