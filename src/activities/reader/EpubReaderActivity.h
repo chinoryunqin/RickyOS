@@ -49,6 +49,7 @@ class EpubReaderActivity final : public ReaderActivity {
   bool showBookmarkMessage = false;
   bool showDictionaryMessage = false;
   unsigned long dictionaryMessageTime = 0UL;
+  bool dictionaryMessageVertical = false;  // the message explains why selection is off in vertical text
   bool currentPageBookmarked = false;
   int idlePrewarmSpine = -1;
   int idlePrewarmPage = -1;
@@ -269,6 +270,8 @@ class EpubReaderActivity final : public ReaderActivity {
   // current orientation, status bar and reading mode. Pagination, page drawing,
   // the word picker and the footnote picker all take it from here.
   readingMode::Margins textMargins() const;
+  // Vertical (古籍) pages have no selection geometry yet: shows why and returns true.
+  bool refuseVerticalSelect();
   // The status bar (when the reading mode keeps it) plus the reading mode's frame.
   void renderStatusBar() const;
   void applyOrientation(uint8_t orientation);

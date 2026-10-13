@@ -106,6 +106,10 @@ class TextBlock final : public Block {
   std::vector<LinkSpan> takeLinkSpans() { return std::move(linkSpans); }
 
   void render(const GfxRenderer& renderer, int fontId, int x, int y) const;
+  // Vertical setting (see VerticalText.h): this line is the column whose right edge is
+  // `columnRight` and which starts at `top`; the layout's x becomes the distance down
+  // the column. Turned runs briefly switch the renderer's orientation, hence non-const.
+  void renderVertical(GfxRenderer& renderer, int fontId, int columnRight, int top, int columnWidth) const;
   BlockType getType() override { return TEXT_BLOCK; }
   bool serialize(HalFile& file) const;
   static std::unique_ptr<TextBlock> deserialize(HalFile& file);

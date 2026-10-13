@@ -31,6 +31,7 @@ class ReaderPageCacheTest(unittest.TestCase):
 #include <vector>
 #include "ReaderPageCache.h"
 #include "CancelCheck.h"
+#include "ReadingMode.h"
 template<class F> struct ScopedCleanup {F fn;~ScopedCleanup(){fn();}};
 struct ImageBlock {static void releaseRenderCache() {}};
 int imageWarms=0;bool cancelImage=false;
@@ -115,7 +116,9 @@ struct PageLine {
     renderer.fonts.missing=missing;
     if (++renders == cancelAt) activityManager.cancelled=true;
   }
+  void renderVertical(GfxRenderer& renderer,int fontId,int,int,int) {render(renderer,fontId,0,0);}
 };
+using PageElement=PageLine;
 namespace readingGuideLine {
 constexpr int rowOffset(int lineHeight,int,int) {return lineHeight;}
 bool fitsVertically(uint8_t,int,int,int) {return true;}
@@ -133,6 +136,9 @@ struct Page {
     return !c.isCancelled();
   }
 };
+namespace readerChrome {
+void drawColumnRules(GfxRenderer&,const Page&,const readingMode::Box&,int) {}
+}
 struct Section {
   int currentPage=4, pageCount=20, loads=0;
   bool building=false, images=false, fail=false, cancelOnLoad=false;

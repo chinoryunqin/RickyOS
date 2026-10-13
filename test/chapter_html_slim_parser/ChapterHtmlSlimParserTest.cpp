@@ -589,19 +589,20 @@ TEST_F(SectionMemoryTest, MixedChapterCacheMatchesVerifiedLayout) {
   EXPECT_EQ(static_cast<uint8_t>(bytes.front()), SECTION_VERSION_UNDER_TEST);
   ASSERT_EQ(static_cast<uint8_t>(bytes[11]), 3);
   bytes.erase(11, 1);  // Western indent width appended to the preserved tri-state schema.
-  // Normalize the two new spacing bytes and their absolute file offsets back
+  // Normalize the two spacing bytes, the vertical-text flag and their absolute file offsets back
   // to the historical v70 layout; keep its verified digest unchanged.
   constexpr size_t spacingOffset = 21;
   ASSERT_EQ(static_cast<uint8_t>(bytes[spacingOffset]), 0);
   ASSERT_EQ(static_cast<uint8_t>(bytes[spacingOffset + 1]), 100);
-  bytes.erase(spacingOffset, 2);
+  ASSERT_EQ(static_cast<uint8_t>(bytes[spacingOffset + 2]), 0);  // verticalText (v79), horizontal here
+  bytes.erase(spacingOffset, 3);
   const auto readOffset = [&bytes](size_t position) {
     uint32_t value;
     std::memcpy(&value, bytes.data() + position, sizeof(value));
     return value;
   };
   const auto adjustOffset = [&bytes, &readOffset](size_t position) {
-    const uint32_t value = readOffset(position) - 3;
+    const uint32_t value = readOffset(position) - 4;
     std::memcpy(bytes.data() + position, &value, sizeof(value));
   };
   // pageCount follows spacing; the next five fields address tables in the file.

@@ -59,6 +59,11 @@ void PageLine::render(GfxRenderer& renderer, const int fontId, const int xOffset
   block->render(renderer, fontId, xPos + xOffset, yPos + yOffset);
 }
 
+void PageLine::renderVertical(GfxRenderer& renderer, const int fontId, const int right, const int top,
+                              const int columnWidth) {
+  block->renderVertical(renderer, fontId, right - yPos, top + xPos, columnWidth);
+}
+
 bool PageLine::serialize(HalFile& file) {
   serialization::writePod(file, xPos);
   serialization::writePod(file, yPos);
@@ -130,6 +135,14 @@ void PageHorizontalRule::render(GfxRenderer& renderer, const int fontId, const i
   renderer.drawLine(xPos + xOffset, yPos + yOffset, xPos + xOffset + width - 1, yPos + yOffset, thickness, true);
 }
 
+void PageHorizontalRule::renderVertical(GfxRenderer& renderer, const int fontId, const int right, const int top,
+                                        const int columnWidth) {
+  (void)fontId;
+  if (width == 0 || thickness == 0) return;
+  const int x = right - yPos - columnWidth / 2;
+  renderer.drawLine(x, top + xPos, x, top + xPos + width - 1, thickness, true);
+}
+
 bool PageHorizontalRule::serialize(HalFile& file) {
   serialization::writePod(file, xPos);
   serialization::writePod(file, yPos);
@@ -164,6 +177,11 @@ std::unique_ptr<PageHorizontalRule> PageHorizontalRule::deserialize(HalFile& fil
 
 void Page::render(GfxRenderer& renderer, const int fontId, const int xOffset, const int yOffset) const {
   renderFilteredPageElements(elements, renderer, fontId, xOffset, yOffset, [](const PageElement&) { return true; });
+}
+
+void Page::renderVertical(GfxRenderer& renderer, const int fontId, const int right, const int top,
+                          const int columnWidth) const {
+  for (const auto& element : elements) element->renderVertical(renderer, fontId, right, top, columnWidth);
 }
 
 void Page::renderImages(GfxRenderer& renderer, const int fontId, const int xOffset, const int yOffset) const {

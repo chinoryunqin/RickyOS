@@ -1,5 +1,7 @@
 #include "ReaderChrome.h"
 
+#include <Epub/Page.h>
+#include <Epub/blocks/TextBlock.h>
 #include <GfxRenderer.h>
 #include <Utf8.h>
 
@@ -9,6 +11,7 @@
 #include "SdCardFontSystem.h"
 #include "components/icons/rickyReaderDog.h"
 #include "fontIds.h"
+#include "util/ReadingGuideLine.h"
 
 namespace readerChrome {
 namespace {
@@ -116,8 +119,8 @@ void drawAncient(const GfxRenderer& renderer, const Box& text, const PageInfo& p
   renderer.drawRect(frame.x + inner, frame.y + inner, frame.width - 2 * inner, frame.height - 2 * inner, kHairline,
                     true);
   const Box column = banxin(text);
-  // The rule between the text and the 版心.
-  renderer.fillRect(column.x - kHairline, column.y, kHairline, column.height, true);
+  // The rule between the 版心 and the text.
+  renderer.fillRect(column.right(), column.y, kHairline, column.height, true);
 
   // 黑口 at both ends, then the fish tails facing each other.
   constexpr int kMouth = 28;
@@ -142,7 +145,41 @@ void drawAncient(const GfxRenderer& renderer, const Box& text, const PageInfo& p
   drawVertical(renderer, page.bookTitle, centerX, upperTail + kTail + kGap, step, numberTop - 2 * kGap);
 }
 
+// One 界行: a gray hairline on the 16-level frame (never lightening ink), ink in B/W.
+void drawColumnRule(const GfxRenderer& renderer, const int x, const int top, const int bottom) {
+  const bool gray = renderer.isGrayscale16Active();
+  for (int dx = 0; dx < readingMode::kHairline; ++dx) {
+    for (int y = top; y < bottom; ++y) {
+      readingGuideLine::detail::plot(renderer, x + dx, y, readingGuideLine::kLineGray, gray);
+    }
+  }
+}
+
 }  // namespace
+
+void drawColumnRules(const GfxRenderer& renderer, const Page& page, const readingMode::Box& text, const int pitch) {
+  if (pitch <= 0 || text.width <= 0) return;
+  const int top = text.y - readingMode::kTextPad;
+  const int bottom = text.bottom() + readingMode::kTextPad;
+  const int right = text.right();
+  // The frame's rules close both ends; a 界行 sits on every column edge between them,
+  // centred on the edge.
+  const auto rule = [&](const int edge) {
+    if (edge > text.x + readingMode::kHairline && edge < right - readingMode::kHairline) {
+      drawColumnRule(renderer, edge - readingMode::kHairline / 2, top, bottom);
+    }
+  };
+  int leftmost = right;
+  for (const auto& element : page.elements) {
+    if (element->getTag() != TAG_PageLine && element->getTag() != TAG_PageHorizontalRule) continue;
+    const int columnRight = right - element->yPos;
+    rule(columnRight);
+    rule(columnRight - pitch);
+    leftmost = std::min(leftmost, columnRight - pitch);
+  }
+  // Empty columns after the text keep the grid, as on a printed leaf.
+  for (int edge = leftmost - pitch; edge > text.x; edge -= pitch) rule(edge);
+}
 
 void draw(const GfxRenderer& renderer, const readingMode::Mode mode, const readingMode::Box& text,
           const PageInfo& page) {

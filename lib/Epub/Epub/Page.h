@@ -27,6 +27,9 @@ class PageElement {
   explicit PageElement(const int16_t xPos, const int16_t yPos) : xPos(xPos), yPos(yPos) {}
   virtual ~PageElement() = default;
   virtual void render(GfxRenderer& renderer, int fontId, int xOffset, int yOffset) = 0;
+  // Vertical setting (VerticalText.h): yPos counts columns leftwards from `right`, xPos
+  // runs down from `top`. Elements without a vertical form draw nothing.
+  virtual void renderVertical(GfxRenderer&, int /*fontId*/, int /*right*/, int /*top*/, int /*columnWidth*/) {}
   virtual bool serialize(HalFile& file) = 0;
   virtual PageElementTag getTag() const = 0;  // Add type identification
 };
@@ -40,6 +43,7 @@ class PageLine final : public PageElement {
       : PageElement(xPos, yPos), block(std::move(block)) {}
   const std::unique_ptr<TextBlock>& getBlock() const { return block; }
   void render(GfxRenderer& renderer, int fontId, int xOffset, int yOffset) override;
+  void renderVertical(GfxRenderer& renderer, int fontId, int right, int top, int columnWidth) override;
   bool serialize(HalFile& file) override;
   PageElementTag getTag() const override { return TAG_PageLine; }
   static std::unique_ptr<PageLine> deserialize(HalFile& file);
@@ -70,6 +74,7 @@ class PageHorizontalRule final : public PageElement {
       : PageElement(xPos, yPos), width(width), thickness(thickness) {}
 
   void render(GfxRenderer& renderer, int fontId, int xOffset, int yOffset) override;
+  void renderVertical(GfxRenderer& renderer, int fontId, int right, int top, int columnWidth) override;
   bool serialize(HalFile& file) override;
   PageElementTag getTag() const override { return TAG_PageHorizontalRule; }
   static std::unique_ptr<PageHorizontalRule> deserialize(HalFile& file);
@@ -95,6 +100,8 @@ class Page {
   bool addLink(const char* href, int16_t x, int16_t y, int16_t width, int16_t height);
 
   void render(GfxRenderer& renderer, int fontId, int xOffset, int yOffset) const;
+  // Lines as columns, right to left from `right`, each `columnWidth` wide (VerticalText.h).
+  void renderVertical(GfxRenderer& renderer, int fontId, int right, int top, int columnWidth) const;
   void renderImages(GfxRenderer& renderer, int fontId, int xOffset, int yOffset) const;
   void renderWithImagePlaceholders(GfxRenderer& renderer, int fontId, int xOffset, int yOffset) const;
   void extractImagesNeedingDecode();

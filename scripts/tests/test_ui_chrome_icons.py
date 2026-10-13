@@ -213,11 +213,15 @@ struct Settings {
    bool showsProgressBar() const {return progress;}
  } spec;
  Spec statusBarSpec() const {return spec;}
+ int getReaderFontId() const {return 1;}
+ float getReaderLineCompression() const {return 1.0f;}
 } SETTINGS;
 struct GfxRenderer {
  int width=684,height=1216,top=5,right=5,bottom=8,left=5;
  int textHeight=34, numericHeight=34;
  int getLineHeight(int font) const {return font==BaseTheme::STATUS_NUMERIC_FONT_ID?numericHeight:textHeight;}
+ int getLineHeight(int font,float) const {return getLineHeight(font);}
+ int getScreenWidth() const {return width;}
  void getOrientedViewableTRBL(int* t,int* r,int* b,int* l) const {*t=top;*r=right;*b=bottom;*l=left;}
 };
 struct UITheme {

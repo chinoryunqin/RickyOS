@@ -33,6 +33,9 @@ struct ReaderRenderSpec {
   uint8_t imageRendering = 0;
   bool focusReadingEnabled = false;
   bool collectTouchLinks = false;
+  // Lines are laid out as columns (VerticalText.h): the caller swaps the viewport so
+  // viewportWidth is the column height and viewportHeight the width the columns fill.
+  bool verticalText = false;
 
   bool operator==(const ReaderRenderSpec& other) const {
     return fontId == other.fontId && lineCompression == other.lineCompression &&
@@ -42,6 +45,6 @@ struct ReaderRenderSpec {
            viewportWidth == other.viewportWidth && viewportHeight == other.viewportHeight &&
            hyphenationEnabled == other.hyphenationEnabled && embeddedStyle == other.embeddedStyle &&
            imageRendering == other.imageRendering && focusReadingEnabled == other.focusReadingEnabled &&
-           collectTouchLinks == other.collectTouchLinks;
+           collectTouchLinks == other.collectTouchLinks && verticalText == other.verticalText;
   }
 };

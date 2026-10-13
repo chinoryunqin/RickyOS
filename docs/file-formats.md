@@ -100,6 +100,16 @@ if (parsedSize != fileSize) {
 
 ## `section.bin`
 
+### Versions 78 / 79
+
+Adds a `verticalText` byte (bool) after `wordSpacingPercent`, before `pageCount`.
+A vertical cache lays lines out as columns: the reader swaps the viewport, so the
+stored `viewportWidth` is the column height and `viewportHeight` the width the
+columns fill, and turns paragraph spacing and images (alt text) off. Page bodies
+are unchanged; only drawing differs (`Page::renderVertical`). Horizontal and
+vertical caches of a chapter are told apart by the flag and rebuild on a switch.
+The partial sentinels are 204/203.
+
 ### Versions 76 / 77
 
 Adds `paragraphIndentSpaces` (0–5, default 3) immediately after the retained

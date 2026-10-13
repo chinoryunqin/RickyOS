@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <cstdlib>
 #include <string>
 
 #include "activities/reader/ReadingMode.h"
@@ -88,11 +89,36 @@ TEST(ReadingMode, AncientFrameHoldsTheTextAndTheBanxinColumn) {
   EXPECT_GE(kWidth - frame.right(), readingMode::kScreenGap);
   EXPECT_TRUE(inside(column, frame));
   EXPECT_EQ(column.width, readingMode::kBanxinWidth);
-  // The column sits right of the text, past the text pad and its own rule.
-  EXPECT_GE(column.x - readingMode::kHairline, text.right() + readingMode::kTextPad);
-  EXPECT_EQ(column.right(), frame.right() - readingMode::kAncientRules);
+  // Columns run right to left: the first starts at the frame's inner rule, and the
+  // 版心 closes the page on the left, its own rule between it and the text.
+  EXPECT_EQ(text.right(), frame.right() - readingMode::kAncientRules);
+  EXPECT_EQ(column.x, frame.x + readingMode::kAncientRules);
+  EXPECT_EQ(column.right() + readingMode::kHairline, text.x);
   // 天头 is taller than 地脚.
   EXPECT_GT(frame.y, kHeight - frame.bottom());
+}
+
+TEST(ReadingMode, AncientHoldsWholeColumnsAndCentresTheFrame) {
+  EXPECT_FALSE(readingMode::setsVertically(Mode::Original));
+  EXPECT_TRUE(readingMode::setsVertically(Mode::Ancient));
+  const Margins base{25, 25, 25, 25};
+  const Margins raw = readingMode::textMargins(Mode::Ancient, base, kViewable, 0);
+  for (const int pitch : {37, 48, 53, 61}) {
+    const Margins m = readingMode::fitColumns(raw, kViewable, kWidth, pitch);
+    const Box text = readingMode::textBox(kWidth, kHeight, m);
+    const Box frame = readingMode::ancientFrame(text);
+    EXPECT_EQ(text.width % pitch, 0) << pitch;
+    // Only the partial column is given up.
+    EXPECT_GT(text.width + pitch, kWidth - raw.left - raw.right) << pitch;
+    const int leftGap = frame.x;
+    const int rightGap = kWidth - frame.right();
+    EXPECT_LE(std::abs(leftGap - rightGap), 1) << pitch;
+    EXPECT_GE(std::min(leftGap, rightGap), readingMode::kScreenGap) << pitch;
+    EXPECT_EQ(m.top, raw.top);
+    EXPECT_EQ(m.bottom, raw.bottom);
+  }
+  // A pitch wider than the text leaves the margins alone.
+  EXPECT_EQ(readingMode::fitColumns(raw, kViewable, kWidth, 2000), raw);
 }
 
 TEST(ReadingMode, ChineseNumerals) {
