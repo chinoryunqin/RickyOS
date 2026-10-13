@@ -343,6 +343,11 @@ void TextSettingsActivity::buildScreen(UiScreen& screen) {
       case Tab::Layout:
         rowValues_[i] = layoutValueText(i);
         break;
+      case Tab::Style:
+        // Choice rows (字重, 加粗, line style, offset) show their setting; toggles show a
+        // checkbox below instead.
+        rowValues_[i] = styleValueText(i);
+        break;
       default:
         break;
     }
@@ -896,8 +901,15 @@ void TextSettingsActivity::finishFinalFont(const bool accepted) {
   // fontFileForFamily() returns that regular file for them (size-free, style 0).
   const auto* file = fontFileForFamily(currentFamilyIndex_, SETTINGS.fontPointSize);
   const auto check = file ? SdCardFontCache::preflight(file->path.c_str()) : SdCardFontCache::Result::InvalidFont;
+  LOG_INF("FSET", "Font acceleration check %s: %s", file ? file->path.c_str() : "-", SdCardFontCache::resultName(check));
   if (check == SdCardFontCache::Result::TooLarge) {
-    LOG_DBG("FSET", "Font exceeds cache capacity; keeping SD backend");
+    // A .cpfont over the cache is rare and leaves quietly. Vector fonts are routinely
+    // larger (CJK TTF/OTF: 8-25 MB): say why the expected acceleration did not happen.
+    const auto* family = registry_ ? registry_->findFamily(SETTINGS.sdFontFamilyName) : nullptr;
+    if (family && family->vector) {
+      showPreloadFailure(check);
+      return;
+    }
     completeExit();
     return;
   }

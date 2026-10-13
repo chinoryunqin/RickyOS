@@ -30,8 +30,10 @@ class RickyFontPackTest(unittest.TestCase):
 #include <iterator>
 #include <string>
 #define LOG_DBG(...) ((void)0)
+#define LOG_INF(...) ((void)0)
 namespace SdCardFontCache {
 enum class Result { Ok, AlreadyCached, TooLarge, Oom, InvalidFont };
+const char* resultName(Result) { return ""; }
 Result next=Result::Ok;
 Result preflight(const char*) { return next; }
 }
@@ -90,10 +92,12 @@ int main() {
       activity.finishFinalFont(accepted);
       bool valid=check==R::Ok || check==R::AlreadyCached;
       bool prompt=check==R::Ok && !accepted;
-      bool complete=check==R::TooLarge || (valid && !prompt);
+      // An oversized .cpfont leaves quietly; an oversized vector font says why.
+      bool tooLargeNotice=check==R::TooLarge && vector;
+      bool complete=(check==R::TooLarge && !vector) || (valid && !prompt);
       assert(activity.attempts==int(check==R::Ok && accepted));
       assert(activity.prompts==int(prompt));
-      assert(activity.errors==int(!valid && check!=R::TooLarge));
+      assert(activity.errors==int((!valid && check!=R::TooLarge) || tooLargeNotice));
       assert(activity.completions==int(complete));
       assert(settings.sdFontFlashPreload==int(valid && !prompt));
       assert(sdFontSystem.releases==int(valid && !prompt));

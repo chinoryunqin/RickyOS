@@ -30,6 +30,7 @@ def enum(name):
 
 harness = r'''
 #define LOG_DBG(...) ((void)0)
+#define LOG_INF(...) ((void)0)
 #include <atomic>
 #include <cassert>
 #include <cstdint>
@@ -73,7 +74,10 @@ struct {
 } sdFontSystem;
 Result check = Result::Ok, outcome = Result::Ok;
 int checks = 0;
-namespace SdCardFontCache { Result preflight(const char*) { ++checks; return check; } }
+namespace SdCardFontCache {
+Result preflight(const char*) { ++checks; return check; }
+const char* resultName(Result) { return ""; }
+}
 struct Popup {
   bool active = false;
   int selected = -1, action = -2, shows = 0;
