@@ -387,8 +387,11 @@ bool InxRecentActivity::prepareNextMissingCover() {
         break;
     }
 
-    if (preparedHeights[index] == thumbnailHeight) {
-      state = CoverCacheState::Unavailable;  // prepared this visit and still not drawable
+    if (preparedHeights[index] == thumbnailHeight ||
+        !BookCoverLoader::canMakeThumbnail((*books)[index].path, thumbnailHeight)) {
+      // Prepared this visit and still not drawable, or nothing to prepare (TXT/MD books
+      // keep a thumbnail path too): the placeholder stays, without a repaint.
+      state = CoverCacheState::Unavailable;
       continue;
     }
     preparedHeights[index] = static_cast<int16_t>(thumbnailHeight);

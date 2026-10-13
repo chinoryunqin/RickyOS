@@ -154,6 +154,11 @@ bool isOutdatedThumbnail(const Bitmap& bitmap) {
 #endif
 }
 
+bool canMakeThumbnail(const std::string& bookPath, const int height) {
+  const std::string path = thumbnailPath(bookPath, height);
+  return !path.empty() && !isKnownCoverless(path);
+}
+
 void forgetDrawnCovers() {
   {
     const std::lock_guard<std::mutex> guard(knownCoverlessLock);
