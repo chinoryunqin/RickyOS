@@ -255,8 +255,7 @@ bool TxtToHtml::stream(std::string_view filename, void* readerCtx, int (*readFn)
   finishSpaces(false);
   map(source, 0, 0);  // EOF sentinel; no footer whitespace belongs to the source file.
   if (readError || !outputOk) {
-    LOG_ERR("TXT", "Failed TXT/MD conversion (input, index or output): %.*s", static_cast<int>(filename.size()),
-            filename.data());
+    LOG_ERR("TXT", "TXT/MD conversion failed: %.*s", static_cast<int>(filename.size()), filename.data());
     return false;
   }
   writeStr("\n</body>\n</html>\n");
