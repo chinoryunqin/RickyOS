@@ -119,6 +119,7 @@ class SDCardManager {
   // USB-MSC owner. The caller must reinitialize the manager (begin()) after the
   // owner releases the card. Returns null when nothing is mounted.
   FsBlockDeviceInterface* detachFilesystemForRawAccess();
+  bool remountFilesystemAfterRawAccess();
 #if FREEINK_SD_SDMMC
   // Stop the card for deep sleep: unmount the volume, stop the SDMMC host, and
   // float the bus pads so their pull-ups stop back-feeding the card's VDD net

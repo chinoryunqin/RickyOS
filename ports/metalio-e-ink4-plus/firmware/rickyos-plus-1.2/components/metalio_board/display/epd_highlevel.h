@@ -166,3 +166,11 @@ void epd_hl_waveform(EpdiyHighlevelState* state, const EpdWaveform* waveform);
 #ifdef __cplusplus
 }
 #endif
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+enum EpdDrawError epd_hl_update_area_full(EpdiyHighlevelState* state, enum EpdDrawMode mode, int temperature, EpdRect area);
+#ifdef __cplusplus
+}
+#endif

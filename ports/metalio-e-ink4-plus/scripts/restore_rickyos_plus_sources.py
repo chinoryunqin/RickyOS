@@ -71,6 +71,12 @@ for name, baseline in manifest['files'].items():
     target = PROJECT / overrides[name] if name in overrides else staging / name
     if hashlib.sha256(target.read_bytes()).hexdigest() != ported.get(name, baseline):
         raise SystemExit(f'Restored Plus source mismatch: {name}')
+for name, change in ((c['path'], c) for c in changes['changes']):
+    if name in manifest['files']:
+        continue
+    target = staging / name
+    if change.get('baseline_sha256') is not None or not target.is_file() or hashlib.sha256(target.read_bytes()).hexdigest() != change['ported_sha256']:
+        raise SystemExit(f'Restored added source mismatch: {name}')
 staging.rename(final)
 subprocess.run(['python3', str(ROOT / 'scripts/check_rickyos_plus_sources.py')], check=True)
 print('Pinned Plus sources restored and port patch verified')

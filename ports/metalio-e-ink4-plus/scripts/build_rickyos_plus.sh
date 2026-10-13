@@ -2,6 +2,7 @@
 set -euo pipefail
 TASK_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 python3 "$TASK_ROOT/scripts/check_rickyos_plus_sources.py"
+"$TASK_ROOT/.local/espressif/python_env/idf6.1_py3.14_env/bin/python" "$TASK_ROOT/scripts/prepare_plus_usb.py"
 export IDF_TOOLS_PATH="$TASK_ROOT/.local/espressif"
 export IDF_COMPONENT_MANAGER=0
 PIO_TOOL_ROOT="${PLATFORMIO_CORE_DIR:-$HOME/.platformio}/packages"

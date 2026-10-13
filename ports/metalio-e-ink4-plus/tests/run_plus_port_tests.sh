@@ -27,3 +27,21 @@ python3 tests/test_plus_clock_radio.py
 
 clang++ -std=c++17 -Wall -Wextra -Werror tests/test_plus_http_date.cpp -o .local/test_plus_http_date
 .local/test_plus_http_date
+
+# Plus peripherals, shared input, display and recorder regression suites.
+python3 tests/test_plus_audio.py
+python3 tests/test_plus_frontlight_panel.py
+python3 tests/test_plus_standby_frontlight.py
+python3 tests/test_plus_button_mapping.py
+python3 tests/test_plus_button_settings.py
+python3 tests/test_plus_control_center_layout.py
+python3 tests/test_plus_haptic.py
+python3 tests/test_plus_haptic_input.py
+python3 tests/test_plus_recorder.py
+python3 tests/test_plus_recorder_ui.py
+python3 tests/test_plus_regional_gray.py
+python3 tests/test_plus_regional_raster.py
+python3 tests/test_plus_transparent_wallpaper.py
+python3 tests/test_plus_usb.py
+python3 tests/test_plus_usb_remount.py
+python3 tests/test_plus_download_cancel.py

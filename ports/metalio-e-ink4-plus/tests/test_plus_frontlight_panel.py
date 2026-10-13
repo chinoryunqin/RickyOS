@@ -30,8 +30,8 @@ program = r'''
 #include <cassert>
 #include <cstdint>
 constexpr uint8_t MIN_BRIGHTNESS = 1;
-constexpr int kVolumeStep=101, kVolumePreview=200;
-constexpr int kSliderRowHeight=96, kActionDiameter=96, kActionLabelGap=10, kGrabberHeight=5;
+constexpr int kVolumeStep=101, kVolumePreview=200, kPanelClose=202;
+constexpr int kActionDiameter=88, kActionLabelGap=8;
 namespace HalAudioOutput {
  bool available=false; int current=0, previews=0;
  bool present() { return available; }
@@ -77,6 +77,7 @@ public:
  uint8_t brightness=60, warmth=50;
  bool lightOn=false, lightOnChanged=false, overReader=false;
  int updates=0;
+ struct App {void clearTapFlash(){}} app;void close() {}
  Target uiTarget; Renderer renderer; Input mappedInput;
  void requestUpdate() { ++updates; }
  static void onBrightnessEvent(const fui::ActionEvent&,void*);

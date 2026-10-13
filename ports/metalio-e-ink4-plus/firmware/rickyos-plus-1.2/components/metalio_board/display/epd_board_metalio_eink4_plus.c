@@ -186,8 +186,7 @@ void epd_board_metalio_eink4_plus_motor_set(bool on) {
     if (!s_ioexp_ok) {
         return;
     }
-    s_motor_on = on ? CFG_PIN_MOTOR : 0;
-    p0_write();
+    pca9555_set_motor(on);
 }
 
 void epd_board_metalio_eink4_plus_pa_set(bool on) {
@@ -527,6 +526,7 @@ static bool probe_and_init_ioexp(i2c_port_t port, bool panel_rail) {
 
         s_cam_scr_on = panel_rail ? CFG_PIN_CAM_SCR : 0;
         s_motor_on = 0;
+        pca9555_set_motor(false);
         s_pa_on = 0;
         if (pca9555_set_value(port, p0_output_value(), CFG_PORT_CTRL) != ESP_OK) {
             continue;
@@ -637,6 +637,7 @@ static void epd_board_deinit(void) {
         config_reg.pwrup = false;
         config_reg.wakeup = false;
         s_motor_on = 0;
+        pca9555_set_motor(false);
         s_pa_on = 0;
         s_cam_scr_on = 0;
         // Keep the TPS enable pins actively low; input mode has pull-ups.

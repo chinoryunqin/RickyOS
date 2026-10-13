@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS "src/FreeInkDisplay.cpp" "src/bus/EpdBus.cpp" "src/driver/MetalioPlusDriver.cpp"
     INCLUDE_DIRS "include"
+    PRIV_INCLUDE_DIRS "../../upstream/lib/hal"
     REQUIRES rickyos_platform metalio_board
 )
 target_compile_features(${COMPONENT_LIB} PUBLIC cxx_std_20)

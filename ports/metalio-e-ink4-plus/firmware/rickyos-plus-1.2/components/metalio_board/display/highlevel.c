@@ -200,94 +200,58 @@ EpdRect _inverse_rotated_area(uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
     return rotated;
 }
 
-enum EpdDrawError epd_hl_update_area(EpdiyHighlevelState* state, enum EpdDrawMode mode, int temperature, EpdRect area) {
+// Plus regional transactions: mask columns outside the 32-pixel aligned area,
+// and publish only pixels physically submitted after a successful waveform.
+static enum EpdDrawError update_region(EpdiyHighlevelState* state, enum EpdDrawMode mode,
+                                      int temperature, EpdRect area, bool cleanup) {
     assert(state != NULL);
-    // Not right to rotate here since this copies part of buffer directly
-
-    // Check rotation FIX
-    EpdRect rotated_area = _inverse_rotated_area(area.x, area.y, area.width, area.height);
-    area.x = rotated_area.x;
-    area.y = rotated_area.y;
-    area.width = rotated_area.width;
-    area.height = rotated_area.height;
-
-    uint32_t ts = esp_timer_get_time() / 1000;
-
-    // FIXME: use crop information here, if available
-    EpdRect diff_area = epd_difference_image_cropped(
-        state->front_fb,
-        state->back_fb,
-        area,
-        state->difference_fb,
-        state->dirty_lines,
-        state->dirty_columns
-    );
-
-    if (diff_area.height == 0 || diff_area.width == 0) {
-        return EPD_DRAW_SUCCESS;
+    area = _inverse_rotated_area(area.x, area.y, area.width, area.height);
+    int x0 = area.x < 0 ? 0 : area.x;
+    int y0 = area.y < 0 ? 0 : area.y;
+    int x1 = area.x + area.width;
+    int y1 = area.y + area.height;
+    if (x1 > epd_width()) x1 = epd_width();
+    if (y1 > epd_height()) y1 = epd_height();
+    if (x1 <= x0 || y1 <= y0) return EPD_DRAW_SUCCESS;
+    x0 &= ~31;
+    x1 = (x1 + 31) & ~31;
+    if (x1 > epd_width()) x1 = epd_width();
+    area = (EpdRect){x0, y0, x1-x0, y1-y0};
+    EpdRect diff = epd_difference_image_cropped(state->front_fb, state->back_fb, area,
+                            state->difference_fb, state->dirty_lines, state->dirty_columns);
+    if (!cleanup && (diff.width == 0 || diff.height == 0)) return EPD_DRAW_SUCCESS;
+    // The vendor difference routine interlaces whole rows. Its outside-column
+    // dirtiness must never drive the other policy zone.
+    memset(state->dirty_columns, 0, x0 / 2);
+    memset(state->dirty_columns + x1 / 2, 0, (epd_width() - x1) / 2);
+    if (cleanup) {
+        memset(state->dirty_columns + x0 / 2, 0xff, (x1-x0) / 2);
+        for (int y=y0; y<y1; ++y) state->dirty_lines[y] = true;
     }
-
-    uint32_t t1 = esp_timer_get_time() / 1000;
-
-    diff_area.x = 0;
-    diff_area.y = 0;
-    diff_area.width = epd_width();
-    diff_area.height = epd_height();
-
-    enum EpdDrawError err = EPD_DRAW_SUCCESS;
-    err = epd_draw_base(
-        epd_full_screen(),
-        state->difference_fb,
-        diff_area,
-        MODE_PACKING_1PPB_DIFFERENCE | mode,
-        temperature,
-        state->dirty_lines,
-        state->dirty_columns,
-        state->waveform
-    );
-
-    uint32_t t2 = esp_timer_get_time() / 1000;
-
-    diff_area.x = 0;
-    diff_area.y = 0;
-    diff_area.width = epd_width();
-    diff_area.height = epd_height();
-
-    int buf_width = epd_width();
-
-    for (int l = diff_area.y; err == EPD_DRAW_SUCCESS && l < diff_area.y + diff_area.height; l++) {
-        if (state->dirty_lines[l] > 0) {
-            uint8_t* lfb = state->front_fb + buf_width / 2 * l;
-            uint8_t* lbb = state->back_fb + buf_width / 2 * l;
-
-            int x = diff_area.x;
-            int x_last = diff_area.x + diff_area.width - 1;
-
-            if (x % 2) {
-                *(lbb + x / 2) = (*(lfb + x / 2) & 0xF0) | (*(lbb + x / 2) & 0x0F);
-                x += 1;
-            }
-
-            if (!(x_last % 2)) {
-                *(lbb + x_last / 2) = (*(lfb + x_last / 2) & 0x0F) | (*(lbb + x_last / 2) & 0xF0);
-                x_last -= 1;
-            }
-
-            memcpy(lbb + (x / 2), lfb + (x / 2), (x_last - x + 1) / 2);
+    // Vendor get_buffer_params shifts the input pointer for a nonzero crop x,
+    // while the LCD kernel still decodes a whole physical row. Keep the full
+    // raster address/stride; dirty lines and masked columns define the region.
+    enum EpdDrawError err = epd_draw_base(epd_full_screen(), state->difference_fb, epd_full_screen(),
+                 MODE_PACKING_1PPB_DIFFERENCE | mode, temperature, state->dirty_lines,
+                 state->dirty_columns, state->waveform);
+    if (err == EPD_DRAW_SUCCESS) {
+        for (int y=y0; y<y1; ++y) {
+            if (!state->dirty_lines[y]) continue;
+            size_t offset = (size_t)y * epd_width() / 2 + x0 / 2;
+            memcpy(state->back_fb + offset, state->front_fb + offset, (x1-x0) / 2);
         }
     }
-
-    uint32_t t3 = esp_timer_get_time() / 1000;
-
-    ESP_LOGI(
-        "epdiy",
-        "diff: %dms, draw: %dms, buffer update: %dms, total: %dms",
-        t1 - ts,
-        t2 - t1,
-        t3 - t2,
-        t3 - ts
-    );
     return err;
+}
+
+enum EpdDrawError epd_hl_update_area(EpdiyHighlevelState* state, enum EpdDrawMode mode,
+                                   int temperature, EpdRect area) {
+    return update_region(state, mode, temperature, area, false);
+}
+
+enum EpdDrawError epd_hl_update_area_full(EpdiyHighlevelState* state, enum EpdDrawMode mode,
+                                        int temperature, EpdRect area) {
+    return update_region(state, mode, temperature, area, true);
 }
 
 void epd_hl_set_all_white(EpdiyHighlevelState* state) {

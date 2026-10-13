@@ -23,6 +23,11 @@
 #define REG_CONFIG_PORT0 6
 #define REG_CONFIG_PORT1 7
 
+// Port-0 writes and motor expiry share one bus lock. Merge the motor bit
+// after locking, so a stale display/PA snapshot cannot restart an expired pulse.
+static bool s_motor_enabled;
+static uint8_t s_port0_latch;
+static bool s_port0_valid;
 static uint8_t s_pca9555_addr = EPDIY_PCA9555_ADDR;
 
 void pca9555_set_addr(uint8_t addr_7bit) {
@@ -44,7 +49,16 @@ static esp_err_t i2c_master_read_slave(i2c_port_t i2c_num, uint8_t* data_rd, siz
 static esp_err_t i2c_master_write_slave(i2c_port_t i2c_num, uint8_t ctrl, uint8_t* data_wr, size_t size) {
     (void)i2c_num;
     if (!metalio_i2c1_lock(I2C1_LOCK_MS)) return ESP_ERR_TIMEOUT;
+    uint8_t merged = 0;
+    if (ctrl == REG_OUTPUT_PORT0 && size == 1) {
+        merged = (data_wr[0] & (uint8_t)~PCA_PIN_P03) | (s_motor_enabled ? PCA_PIN_P03 : 0);
+        data_wr = &merged;
+    }
     esp_err_t result = plus_i2c_write(s_pca9555_addr, ctrl, data_wr, size);
+    if (ctrl == REG_OUTPUT_PORT0 && size == 1 && result == ESP_OK) {
+        s_port0_latch = merged;
+        s_port0_valid = true;
+    }
     metalio_i2c1_unlock();
     return result;
 }
@@ -83,4 +97,20 @@ esp_err_t pca9555_read_input_ex(i2c_port_t i2c_port, int high_port, uint8_t* out
         ESP_LOGD("PCA9555", "%s failed: %s", __func__, esp_err_to_name(err));
     }
     return err;
+}
+
+// Task context only. Cache is established by safe board initialization. Motor
+// writes change only P0.3, preserving the most recent display/PA/panel outputs.
+esp_err_t pca9555_set_motor(bool on) {
+    if (!metalio_i2c1_lock(I2C1_LOCK_MS)) return ESP_ERR_TIMEOUT;
+    s_motor_enabled = on;
+    esp_err_t result = ESP_ERR_INVALID_STATE;
+    if (s_port0_valid) {
+        uint8_t value = (s_port0_latch & (uint8_t)~PCA_PIN_P03) | (on ? PCA_PIN_P03 : 0);
+        result = plus_i2c_write(s_pca9555_addr, REG_OUTPUT_PORT0, &value, 1);
+        if (result == ESP_OK) s_port0_latch = value;
+    }
+    if (result != ESP_OK) s_motor_enabled = false; // subsequent port writes favor OFF
+    metalio_i2c1_unlock();
+    return result;
 }

@@ -3,10 +3,14 @@
 #include <metalio_epd.h>
 #include <epd_board_metalio_eink4_plus.h>
 #include <esp_log.h>
+#include <NativeGrayRefreshPolicy.h>
+#include <cstring>
 
 namespace freeink {
 namespace {
 uint8_t nextGrayProfile = 0;
+ricky::gray::Area nextNavigation;
+uint8_t contentEvery = 8, smallEvery = 32;
 // No additional framebuffer allocation: EPDiy owns its front/back buffers in
 // PSRAM; FreeInk's original native 1-bit buffer remains the application surface.
 class MetalioPlusDriver final : public PanelDriver {
@@ -25,6 +29,8 @@ class MetalioPlusDriver final : public PanelDriver {
   }
   OpticalState opticalState() const override { return state_; }
   void display(EpdBus&, const uint8_t* fb, const uint8_t*, RefreshMode mode, bool turnOff) override {
+    nextGrayProfile = 0;
+    ledger_ = {};
     if (!ready_ || !fb) return;
     auto* hl = MetalioEpd_Hl();
     if (!hl || !hl->front_fb) return;
@@ -43,16 +49,73 @@ class MetalioPlusDriver final : public PanelDriver {
     plus::clearGrayscale(hl->front_fb, geometry().bufferSize * 4);
     return hl->front_fb;
   }
-  bool commitGrayscale16(const uint8_t*) override {
-    if (!ready_) return false;
-    const bool full = nextGrayProfile != 1;
-    nextGrayProfile = 0; // One-shot reader refresh-cycle decision.
-    const auto result = refresh(MetalioEpd_Hl(), full ? MODE_GC16 : MODE_GL16, full);
-    state_ = result == EPD_DRAW_SUCCESS ? OpticalState::Gray : OpticalState::Unknown;
-    return result == EPD_DRAW_SUCCESS;
+  bool restoreBaseline(uint8_t* proxy) {
+    auto* hl = ready_ ? MetalioEpd_Hl() : nullptr;
+    if (!hl || !hl->front_fb || !hl->back_fb || !proxy || state_ == OpticalState::Unknown) return false;
+    memcpy(hl->front_fb, hl->back_fb, geometry().bufferSize * 4);
+    restoreProxy(proxy);
+    return true;
   }
-  void requestResync(uint8_t) override { state_ = OpticalState::Unknown; }
+  bool commitGrayscale16(const uint8_t* proxy) override {
+    const uint8_t profile = nextGrayProfile;
+    nextGrayProfile = 0;
+    if (!ready_) return false;
+    bool success;
+    if (profile == 4 && state_ != OpticalState::Unknown) {
+      success = refreshUi();
+    } else {
+      ledger_ = {};
+      const bool full = profile != 1;
+      success = refresh(MetalioEpd_Hl(), full ? MODE_GC16 : MODE_GL16, full) == EPD_DRAW_SUCCESS;
+    }
+    state_ = success ? OpticalState::Gray : OpticalState::Unknown;
+    if (success && proxy) lastProxy_ = const_cast<uint8_t*>(proxy);  // Facade-owned stable BW surface.
+    if (!success) ledger_ = {};
+    return success;
+  }
+  void cancelGrayscale16() override {
+    nextGrayProfile = 0;
+    if (lastProxy_ && state_ != OpticalState::Unknown) restoreBaseline(lastProxy_);
+  }
+  void requestResync(uint8_t) override { state_ = OpticalState::Unknown; ledger_ = {}; nextGrayProfile = 0; }
  private:
+  void restoreProxy(uint8_t* proxy) {
+    const auto* gray = MetalioEpd_Hl()->back_fb;
+    for (size_t i = 0; i < geometry().bufferSize; ++i) {
+      uint8_t value = 0;
+      for (unsigned pair = 0; pair < 4; ++pair) {
+        const uint8_t pixels = gray[i * 4 + pair];
+        if ((pixels & 15) >= 8) value |= 0x80u >> (pair * 2);
+        if ((pixels >> 4) >= 8) value |= 0x40u >> (pair * 2);
+      }
+      proxy[i] = value;
+    }
+  }
+  bool refreshUi() {
+    auto* hl = MetalioEpd_Hl();
+    if (!hl || !hl->front_fb || !hl->back_fb) return false;
+    const auto nav = ricky::gray::navigationZone(nextNavigation, geometry().width, geometry().height);
+    const auto damage = ricky::gray::difference(hl->front_fb, hl->back_fb, geometry().width, geometry().height, nav);
+    auto candidate = ledger_;
+    const auto plan = candidate.advance(damage, nav, contentEvery, smallEvery);
+    if (!plan.count) return true;  // Identical native frame: no rails and no aging.
+    epd_poweron();
+    auto result = EPD_DRAW_EMPTY_LINE_QUEUE;
+    if (epd_board_metalio_eink4_plus_tps_ok()) {
+      for (uint8_t i = 0; i < plan.count; ++i) {
+        const auto& step = plan.steps[i];
+        EpdRect area = {step.area.x, step.area.y, step.area.width, step.area.height};
+        result = step.cleanup ? epd_hl_update_area_full(hl, MODE_GC16, 25, area)
+                              : epd_hl_update_area(hl, MODE_GL16, 25, area);
+        if (result != EPD_DRAW_SUCCESS) break;
+      }
+    }
+    epd_poweroff();
+    ESP_LOGI("PlusDisplay", "regional steps=%u result=0x%x", plan.count, result);
+    if (result != EPD_DRAW_SUCCESS) return false;
+    ledger_ = candidate;
+    return true;
+  }
   EpdDrawError refresh(EpdiyHighlevelState* hl, EpdDrawMode waveform, bool full) {
     // A native gray frame and a full application/page change need a clean
     // optical baseline, not only a RAM diff against the previous UI image.
@@ -78,6 +141,8 @@ class MetalioPlusDriver final : public PanelDriver {
              waveform, full, clean, static_cast<int>(state_), result);
     return result;
   }
+  ricky::gray::Ledger ledger_;
+  uint8_t* lastProxy_ = nullptr;
   bool ready_ = false;
   OpticalState state_ = OpticalState::Unknown;
 };
@@ -87,4 +152,13 @@ PanelDriver& metalioPlusDriver() {
   return driver;
 }
 void metalioPlusSetGray16Profile(uint8_t profile) { nextGrayProfile = profile; }
+void metalioPlusSetGray16UiRefresh(int x, int y, int width, int height, uint8_t content, uint8_t small) {
+  nextNavigation = {x, y, width, height};
+  contentEvery = content ? content : 8;
+  smallEvery = small ? small : 32;
+  nextGrayProfile = 4;
+}
+bool metalioPlusRestoreGray16Baseline(uint8_t* proxy) {
+  return static_cast<MetalioPlusDriver&>(metalioPlusDriver()).restoreBaseline(proxy);
+}
 }

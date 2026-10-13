@@ -167,6 +167,9 @@ idf_component_register(
   "${DEPENDENCY_ROOT}/WebSockets/src/libsha1/libsha1.c"
   "port/PlusBoard.cpp"
   "port/PlusAudio.cpp"
+  "${APP_ROOT}/lib/hal/HalRecorder.cpp"
+  "${APP_ROOT}/src/activities/apps/recorder/RecorderActivity.cpp"
+  "port/PlusHaptic.cpp"
   "${APP_ROOT}/freeink-sdk/libs/assets/ImageToneMapper/src/ImageToneMapper.cpp"
   "${APP_ROOT}/freeink-sdk/libs/book/ContentProtection/src/ProtectedBook.cpp"
   "${APP_ROOT}/freeink-sdk/libs/book/ContentProtection/src/WolfsslCrypto.cpp"
@@ -343,6 +346,7 @@ idf_component_register(
   "${APP_ROOT}/src/activities/home/FileBrowserActivity.cpp"
   "${APP_ROOT}/src/activities/home/RecentBooksActivity.cpp"
   "${APP_ROOT}/src/activities/util/ImageViewerActivity.cpp"
+  "${APP_ROOT}/src/util/PinyinInput.cpp"
   "${APP_ROOT}/src/activities/util/KeyboardEntryActivity.cpp"
   "${APP_ROOT}/src/activities/util/FullScreenMessageActivity.cpp"
   "${APP_ROOT}/src/activities/util/FrontlightPanelActivity.cpp"
@@ -618,3 +622,6 @@ set_source_files_properties("${DEPENDENCY_ROOT}/QRCode/src/qrcode.c" PROPERTIES 
 # Limit LTO to application/component sources; IDF and radio drivers remain separate.
 target_compile_options(${COMPONENT_LIB} PRIVATE -flto=auto)
 idf_build_set_property(LINK_OPTIONS "-flto=auto;-fuse-linker-plugin" APPEND)
+# Keep all applications and glyphs when USB is enabled; GCC 15 size optimization.
+# Hardware timing and radio/IDF driver compilation are unchanged.
+target_compile_options(${COMPONENT_LIB} PRIVATE -Oz)

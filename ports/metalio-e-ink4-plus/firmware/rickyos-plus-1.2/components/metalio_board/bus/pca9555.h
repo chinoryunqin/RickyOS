@@ -3,6 +3,9 @@
 
 #include <driver/i2c.h>
 #include <esp_err.h>
+#include <stdbool.h>
+
+esp_err_t pca9555_set_motor(bool on);
 
 #define PCA_PIN_P00 0x0001
 #define PCA_PIN_P01 0x0002

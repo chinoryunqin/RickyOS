@@ -9,11 +9,11 @@
 ## 当前基线与设备状态
 
 - RickyOS 来源：`codex/rickyos-1.2-design` 的 `24c05ff7ffb06254879d9928d8531db6839e7ad1`。
-- SDK 来源：`96de1be6ce08eb732909e6e8149af8f892b9a2c5`；来源清单与 45 项 Plus 修改独立记录，不使用原工作区 SDK 的未提交改动。
-- 已构建并安装：控制中心音量版，5,186,400 字节；SHA256 `78b8ab9b6f8174a0013ee104e3097371210fc21ccb5e2fcb64dfccc67ea70b4e`。
+- SDK 来源：`96de1be6ce08eb732909e6e8149af8f892b9a2c5`；来源清单与 89 项 Plus 修改独立记录，不使用原工作区 SDK 的未提交改动。
+- 已构建并安装：录音机版，5,210,416 bytes；SHA256 `2da7581634509158d0ecac4a370ac219ac5184d7ffcdac94d4b2b20c1c993319`。用户确认基础录音回放正常、触控震动正常、Tab 叠影恢复；USB 1 MiB 写入／读回 SHA256、安全弹出和调试口恢复通过。
 - 当前代码包含显示、触控及盖板键、SD、前光、电量、RTC、网络迁移修改，以及本轮音量输出和试听。
-- 扬声器实际出声／音量曲线、待机关灯的物理验收待完成；网络故障仍待排查。麦克风、蓝牙配对、震动、自动旋转、USB MSC 未全部接入。
-- 远程设计分支已有后续更新。本设备分支先保存上述已上机基线，未自动合并更新。
+- 基础录音回放与触控震动已获用户确认。音量曲线、录音时待机保存等场景尚未单独验收；网络排查按用户要求搁置。蓝牙配对和自动旋转尚未接入。
+- 选择性接入设计提交 6e1d0ea7 的拼音、局部灰阶和透明待机；USB MSC 已新增 S31 后端并构建，安装／实机状态见 [USB 接入记录](docs/rickyos-1.2-plus-usb.md)。详见 [接入记录](docs/rickyos-1.2-plus-new-features-integration.md)。
 
 ## 还原和验证源码
 
@@ -56,3 +56,19 @@ bash tests/run_plus_port_tests.sh
 共享功能更新从设计分支显式引入，并在 Plus 上重新构建和验收；其他设备的引脚、波形、音频、电源配置不合入本目录。
 
 厂商代码保留原版权声明，MIT 许可见 `firmware/rickyos-plus-1.2/components/metalio_board/LICENSE.vendor`。RickyOS 与 SDK 的许可随固定来源还原保留。
+
+本地新增 [控制中心重设计](docs/rickyos-1.2-plus-control-center-design.md)：依据设计规范，矩形快捷键、前光／音量分组、横竖屏布局和收起按钮。构建及 32 组真实 FUI 几何测试通过，设备视觉验收待完成。
+
+Plus 按键设置已实现并通过分类／逻辑映射及 JSON 持久化主机测试；本轮完整固件构建通过，实机按键验收待确认。见 [按键自定义](docs/rickyos-1.2-plus-buttons.md)。
+
+按键入口已统一为「设置 → 系统 → 按键」，原有三项按键偏好保留在同一页；不再新增独立入口。
+
+触控震动短脉冲和设置开关已完成，主机测试与完整构建通过；用户已确认正常。见 [触控震动](docs/rickyos-1.2-plus-haptic.md)。
+
+2026-10-13：Plus 专用「应用 → 录音机」已实现麦克风采集、PCM WAV 保存和回放，主机与完整固件构建通过，用户已确认基础录音回放正常；待机保存、分页和故障场景仍待单独验收。见 [实现记录](docs/rickyos-1.2-plus-recorder.md)。
+
+## 本机录音机界面预览
+
+先按上文还原源码并生成资源，再运行 `python3 scripts/prepare_plus_recorder_preview.py`。在生成的 `.local/plus-recorder-simulator/` 目录运行 `pio run -e simulator_rickyos`，随后运行 `python3 tools/rickyos-browser/server.py --port 8783`，打开 http://127.0.0.1:8783/ 的「应用 → 录音机」。需要 macOS、SDL2 和 PlatformIO。
+
+使用实际 RecorderActivity 的 684×1216 帧缓冲；采集和回放由内存状态模拟，不调用电脑麦克风或扬声器，重启清空模拟录音。不会操作 USB 或修改实机固件。

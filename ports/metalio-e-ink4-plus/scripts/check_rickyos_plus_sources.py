@@ -14,6 +14,12 @@ for name, baseline in manifest['files'].items():
     expected = changes.get(name, {}).get('ported_sha256', baseline)
     if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
         errors.append(name)
+for name, change in changes.items():
+    if name in manifest['files']:
+        continue
+    path = root / 'upstream' / name
+    if change.get('baseline_sha256') is not None or not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != change['ported_sha256']:
+        errors.append(name)
 if errors:
     raise SystemExit('Unrecorded source changes: ' + ', '.join(errors))
 touch = 'freeink-sdk/libs/hardware/InputManager/src/InputManager.cpp'
