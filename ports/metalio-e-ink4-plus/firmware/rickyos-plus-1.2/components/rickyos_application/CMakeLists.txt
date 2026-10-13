@@ -3,6 +3,10 @@ set(DEPENDENCY_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../../../.local/dependencies")
 # Full original RickyOS 1.2 application and its pinned dependencies.
 idf_component_register(
  SRCS
+  "${APP_ROOT}/src/util/PanelTileCache.cpp"
+  "${APP_ROOT}/src/activities/reader/ReaderChrome.cpp"
+  "${APP_ROOT}/src/activities/apps/reading-stats/RickyMonthReportActivity.cpp"
+  "${APP_ROOT}/src/activities/apps/reading-stats/RickyBadgesActivity.cpp"
   "port/LoggingProxy.cpp"
   "${APP_ROOT}/lib/Txt/TxtEncoding.cpp"
   "${APP_ROOT}/lib/Utf8/Utf8.cpp"
@@ -255,7 +259,6 @@ idf_component_register(
   "${APP_ROOT}/src/util/DictHtmlPages.cpp"
   "${APP_ROOT}/src/util/RickyStorageLayout.cpp"
   "${APP_ROOT}/src/util/UserGuide.cpp"
-  "${APP_ROOT}/src/util/ReadingBackground.cpp"
   "${APP_ROOT}/src/util/Timezones.cpp"
   "${APP_ROOT}/src/util/FileEditUtils.cpp"
   "${APP_ROOT}/src/util/StringUtils.cpp"

@@ -161,7 +161,7 @@ typedef struct {
     size_t bb_size;
     size_t batches;
     size_t bb_eof_count; // EOF 次序选 bounce，勿用 desc 指针比较（AXI 地址可能不一致）
-    size_t lines_fed; // 本帧已喂行数，用于无 VSYNC 时收尾
+    size_t lines_fed; // 本帧已填行数，不代表已经输出到面板
     bool frame_finishing; // 防止重复 stop/回调
     bool bb_behind_cache; // bounce 在 cacheable 区时需 msync
 
@@ -244,7 +244,7 @@ static IRAM_ATTR bool fill_bounce_buffer(uint8_t* buffer) {
     for (int i = 0; i < BOUNCE_BUF_LINES; i++) {
         // 8bit 时 dummy 占前 1 字节；仍走 line_source 以免队列饿死。
         int buffer_offset = i * (lcd.line_bytes + lcd.dummy_bytes) + (lcd.dummy_bytes % 2);
-        if (lcd.line_source_cb != NULL) {
+        if (lcd.line_source_cb != NULL && lcd.lines_fed < (size_t)lcd.display_lines) {
             task_awoken |= lcd.line_source_cb(lcd.line_cb_payload, &buffer[buffer_offset]);
         } else {
             memset(&buffer[buffer_offset], 0x00, lcd.line_bytes);
@@ -267,10 +267,8 @@ static IRAM_ATTR bool fill_bounce_buffer(uint8_t* buffer) {
     }
 #endif
 
-    // VSYNC 未到时靠行计数收尾，避免 GDMA 环链 EOF 在 ISR 里空转触发 INT WDT
-    if (!lcd.frame_finishing && lcd.lines_fed >= (size_t)lcd.display_lines) {
-        lcd_finish_frame_from_isr();
-    }
+    // Filling both bounce buffers runs ahead of the physical scan. Completion is
+    // checked by the DMA EOF consumer below, never by this producer counter.
     return task_awoken;
 }
 
@@ -476,6 +474,13 @@ static IRAM_ATTR bool lcd_rgb_panel_eof_handler(
     // 与 esp_lcd RGB 一致：用 EOF 计数选 buffer，AXI 下 desc 指针不可靠
     int bb = (int)(lcd.bb_eof_count & 1u);
     lcd.bb_eof_count += 1;
+    // Only completed DMA buffers count toward the frame. The old producer-side
+    // check stopped while up to two buffers (16 rows) were still pending, which
+    // clips the logical left edge in portrait. Padded trailing rows are HOLD.
+    if (lcd.bb_eof_count * BOUNCE_BUF_LINES >= (size_t)lcd.display_lines) {
+        lcd_finish_frame_from_isr();
+        return false;
+    }
     const bool awoken = fill_bounce_buffer(lcd.bounce_buffer[bb]);
     // AXI-GDMA：补数后交还 DMA，否则 check_owner 时描述符停在 CPU
     lcd.dma_nodes[bb].dw0.owner = DMA_DESCRIPTOR_BUFFER_OWNER_DMA;

@@ -45,3 +45,5 @@ python3 tests/test_plus_transparent_wallpaper.py
 python3 tests/test_plus_usb.py
 python3 tests/test_plus_usb_remount.py
 python3 tests/test_plus_download_cancel.py
+
+python3 tests/test_plus_lcd_tail.py

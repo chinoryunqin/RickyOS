@@ -14,9 +14,9 @@
    -DRICKYOS_PRODUCT=1
 +  -DRICKYOS_SIMULATOR_PLUS=1
 +  -Ipreview-generated
+   -DRICKYOS_USB_PREVIEW=1
    -DCROSSPOINT_PRODUCT_NAME=\"RickyOS\"
  custom_i18n_builtin_langs = ${rickyos_flash_trim.custom_i18n_builtin_langs}
- 
 --- a/src/activities/ActivityManager.cpp
 +++ b/src/activities/ActivityManager.cpp
 @@ -15,7 +15,7 @@
@@ -28,7 +28,7 @@
  #include "apps/recorder/RecorderActivity.h"
  #endif
  #include "apps/gomoku/GomokuMenuActivity.h"
-@@ -732,7 +732,7 @@
+@@ -808,7 +808,7 @@
  void ActivityManager::goToGomoku() { replaceActivityWith<GomokuMenuActivity>(); }
  
  void ActivityManager::goToCalculator() { replaceActivityWith<CalculatorActivity>(); }

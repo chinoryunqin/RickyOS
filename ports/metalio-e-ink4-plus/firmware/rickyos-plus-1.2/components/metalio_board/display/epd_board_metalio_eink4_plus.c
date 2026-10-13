@@ -311,7 +311,7 @@ static void epd_lcd_reinit(void) {
         .bus_width = display->bus_width,
         .bus = lcd_config,
         .dummy_clocks_after_data = 10, // E0470A14-AF section 6.3.1.
-        .white_border_pixels = 8,
+        .white_border_pixels = DISPLAY_WHITE_BORDER_PIXELS,
     };
     epd_lcd_init(&config, display->width, display->height);
 }

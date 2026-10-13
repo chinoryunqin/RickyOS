@@ -79,3 +79,11 @@ clock-radio 已安装，ELF c033d125e，RTC 重启恢复通过。实机日志在
 用户暂时无法切换网络，并认为当前网络无问题。保持当前网络继续排查，不能把无回复直接归因路由器。clock-https 增加现有 wolfSSL + OTA 站点信任根的备用校时，NTP 持续 20 秒未完成且已有可信运行时间时，向固件已有的 https://chinoryunqin.github.io/RickyOS-site/ota.json 发验证证书的 GET；不跟随重定向，流式丢弃正文（上限 4 KiB），12 秒中止窗口，不额外引入 TLS 栈、任务或应用 new/malloc。现有 TLS/HTTP 库内部连接和头部缓冲为这一次临时请求持有，栈上客户端析构释放。Date GMT + Age 缓存秒数转换 UTC，Age 限 3600 秒，支持月份/闰年/星期/非法输入校验；缓存时间含义依据 RFC9111 4.2.3 https://www.rfc-editor.org/rfc/rfc9111.html#section-4.2.3 。该方式用于分钟级设备时钟，不宣称具有 NTP 毫秒精度。若 HTTP 期间 SNTP 已完成，优先使用 NTP；成功后统一写入/读回 RTC、持久化时间下限、恢复无线省电。首次运行完全没有有效 RTC/NVS 时间时不跳过证书有效期校验，HTTPS 备用不可自举。
 
 主机测试用同一 OTA 根证书验证连接成功；Date 解析测试覆盖九年每日往返、Age 导致跨日、闰日、无效日期和当前 TZ 不被改写；现有 radio 生命周期回归通过。clock-https 编译/触控/真实对象校时归属检查通过；5,214,880 字节，SHA256 8eab67946ffc37448226a88ddaf2baef6a72c82f95ab0253d5fcd9f700ff2a19，备用槽余 28,000 字节。上机 HTTPS 校时结果待验证。
+
+## 厂商白边建议（2026-10-13）
+
+根据用户提供的厂商截图，将板级 `DISPLAY_WHITE_BORDER_PIXELS` 从 8 改为 0，`epd_lcd_reinit()` 的 `.white_border_pixels` 改为引用该宏。当前 `epd_filter_white_border()` 在 border<=0 时直接返回，不再对四边输出强制 hold/whitening。保留四个 `DISPLAY_CONTENT_*_INSET=8`，未改 UI 布局留白、触控坐标、波形、VCOM 或行时序。此变更用于按厂商建议恢复边缘正常扫描，不据此声称改善中央灰阶或闪烁。
+
+原有区域显示 ASan/UBSan 回归通过；构建及上机状态见固件 manifest。边缘显示体验待用户确认。
+
+白边 0 版已写入 ota_1，镜像 SHA256 bafd694a…，原厂槽／写入校验通过；ELF 08b63b37…，完整和区域显示刷新 result=0x0。串口采集已结束。四周边缘与切页体验待用户验收，日志 `logs/plus-border-zero-*.log`。

@@ -8,9 +8,9 @@
 
 ## 当前基线与设备状态
 
-- RickyOS 来源：`codex/rickyos-1.2-design` 的 `24c05ff7ffb06254879d9928d8531db6839e7ad1`。
-- SDK 来源：`96de1be6ce08eb732909e6e8149af8f892b9a2c5`；来源清单与 89 项 Plus 修改独立记录，不使用原工作区 SDK 的未提交改动。
-- 已构建并安装：录音准备提示版，5,210,800 bytes；SHA256 `c1ba15f9870da9e274a7bea80618e5d68f446ae9395b24fe09422bf7c3c20c34`。用户确认基础录音回放正常、触控震动正常、Tab 叠影恢复；USB 1 MiB 写入／读回 SHA256、安全弹出和调试口恢复通过。
+- RickyOS 来源：`codex/rickyos-1.2-design` 的 `73901ae83945d7fdf53d89967dff3750bf8235c0`。
+- SDK 来源：`96de1be6ce08eb732909e6e8149af8f892b9a2c5`；来源清单与 67 项 Plus 修改独立记录，不使用原工作区 SDK 的未提交改动。
+- 已构建并安装：design 73901ae8 整合版，5,221,216 bytes；SHA256 `2befbc8afcb6ec1905b62da52cbe79b9af0a1fb7f42131849ba463428046508f`。用户确认基础录音回放正常、触控震动正常、Tab 叠影恢复；USB 1 MiB 写入／读回 SHA256、安全弹出和调试口恢复通过。
 - 当前代码包含显示、触控及盖板键、SD、前光、电量、RTC、网络迁移修改，以及本轮音量输出和试听。
 - 基础录音回放与触控震动已获用户确认。音量曲线、录音时待机保存等场景尚未单独验收；网络排查按用户要求搁置。蓝牙配对和自动旋转尚未接入。
 - 选择性接入设计提交 6e1d0ea7 的拼音、局部灰阶和透明待机；USB MSC 已新增 S31 后端并构建，安装／实机状态见 [USB 接入记录](docs/rickyos-1.2-plus-usb.md)。详见 [接入记录](docs/rickyos-1.2-plus-new-features-integration.md)。
@@ -27,7 +27,7 @@ python3 tests/test_plus_frontlight_panel.py
 python3 tests/test_plus_standby_frontlight.py
 ```
 
-还原脚本读取固定 Git 提交、逐文件核对 SHA256，再应用 `firmware/rickyos-plus-1.2/upstream-plus.patch`，重新核对全部 2,758 个文件。它不会使用其他设备的工作区修改；已存在的源码只校验，不覆盖。也可通过 `--source-repo` 和 `--sdk-repo` 使用本地 Git 对象进行离线还原。
+还原脚本读取固定 Git 提交、逐文件核对 SHA256，再应用 `firmware/rickyos-plus-1.2/upstream-plus.patch`，重新核对全部 2,822 个文件。它不会使用其他设备的工作区修改；已存在的源码只校验，不覆盖。也可通过 `--source-repo` 和 `--sdk-repo` 使用本地 Git 对象进行离线还原。
 
 完整应用源码还原到 `firmware/rickyos-plus-1.2/upstream/`；Plus 自有板级组件位于 `firmware/rickyos-plus-1.2/components/`。生成文件、源码还原目录、二进制、设备私有备份和日志均不提交。
 
@@ -74,3 +74,5 @@ Plus 按键设置已实现并通过分类／逻辑映射及 JSON 持久化主机
 使用实际 RecorderActivity 的 684×1216 帧缓冲；采集和回放由内存状态模拟，不调用电脑麦克风或扬声器，重启清空模拟录音。不会操作 USB 或修改实机固件。
 
 录音准备状态现由首批 PCM 判定，采集就绪时立即切换状态并短震一次；短震沿用触控震动开关，用户已确认「可以了」。
+
+2026-10-13 已整合并上机 design 73901ae8 的阅读模式、阅读线、字重/TTF、统计月报、下载线路及绘制优化。无损字体压缩保持原 5MiB 槽；详见 [整合与验证记录](docs/rickyos-1.2-plus-design-73901ae8.md)。新功能实机交互待验收；小狗伴读左边框缺失已通过 DMA 完成判断修正，用户确认恢复。
