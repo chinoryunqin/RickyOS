@@ -140,6 +140,17 @@ Flash 预加载会提示改从 SD 卡加载；真实预加载与设备直连（M
 `mirrors`（目录 v1.0.2：jsDelivr、fastly.jsdelivr、GitHub Release），单个文件失败后最多再试两次并依次换源，
 SD 卡、取消和鉴权错误不重试；清单本身也按 jsDelivr → fastly → GitHub（中文区域）顺序尝试。
 
+### 国内下载源与换源提速（2026-10-13）
+
+国内下载字体和待机图片仍慢：列表要等很久，下载也慢。原因还是线路，RickyOS 的目录全在海外（GitHub、jsDelivr）。
+- **国内源：** 加入腾讯云 COS（广州，桶 `rickyos-1309217881`，域名写在 `src/network/RickyCos.h`）。中文区域
+  先读 COS，再依次退到 jsDelivr、Fastly、GitHub；桶里还没有目录时 404 立即换源。构建脚本加 `--cos-base` 会多产出 `cos.json`，
+  用 `scripts/publish_rickyos_assets_cos.py` 发布；步骤见 [rickyos-asset-cos.md](rickyos-asset-cos.md)。
+- **快速换源：** 列表请求每一步最多等 12 秒（原来 60 秒，被墙线路连同 TLS 1.2 重试可拖约两分钟）。
+- **待机图片清单：** 不再三条线路全读；COS 或 GitHub 应答后即停，中文区域在 CDN 已应答时不再请求 GitHub。
+  下载进度每 10% 刷屏一次（原来每 1% 一次）。
+- **日志：** 每个请求记录字节数、耗时、KB/s 和域名。
+
 ### 翻页预渲染（2026-10-05）
 
 实机对比：RickySans（Flash 缓存）与 CrossMux 的 NotoSansSC 翻页同为约 1.1 秒（黑白约 210 ms、两遍灰度约 300 ms、

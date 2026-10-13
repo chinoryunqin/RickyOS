@@ -14,6 +14,8 @@ The output directory is the layout of the RickyOS-fonts repository: fonts/
 holds the files, fonts.json points at the GitHub release assets of --tag and
 mirror.json at the same files through jsDelivr, both in the manifest format
 FontDownloadActivity reads; each lists the other hosts under "mirrors". Upload fonts/*.cpfont and fonts.json to the release.
+With --cos-base, cos.json serves the same files from the RickyOS COS bucket in Guangzhou, the
+first route in mainland China; publish it with scripts/publish_rickyos_assets_cos.py.
 """
 import argparse
 import binascii
@@ -26,6 +28,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from build_rickyos_font_pack import FLASH_CACHE_LIMIT, sha, validate_cpfont  # noqa: E402
+from rickyos_asset_routes import check_cos_base, routes  # noqa: E402
 
 SCRIPTS = ROOT / "lib/EpdFont/scripts"
 FLASH_SIZES = (12, 14, 16, 18, 20, 22)
@@ -137,7 +140,8 @@ def check_sources(source_dir):
             raise ValueError(f'Unzip {spec["archive"]} into {source_dir / "smiley"} first')
 
 
-def build(source_dir, output, tag):
+def build(source_dir, output, tag, cos_base=None):
+    check_cos_base(cos_base)
     check_sources(source_dir)
     if output.exists():
         raise ValueError("Output already exists; choose a new directory, never overwrite a catalog")
@@ -180,12 +184,8 @@ def build(source_dir, output, tag):
         print(f'{spec["name"]}: {len(intervals)} intervals, {len(covered)} glyphs, '
               f'largest {sources[-1]["largest_file"]:,} B', flush=True)
     shutil.rmtree(output / ".work")
-    github = f"https://github.com/{RELEASE_REPO}/releases/download/{tag}/"
-    jsdelivr = f"https://cdn.jsdelivr.net/gh/{RELEASE_REPO}@{tag}/fonts/"
-    fastly = f"https://fastly.jsdelivr.net/gh/{RELEASE_REPO}@{tag}/fonts/"
     # "mirrors" carry the same files; the reader retries a failed file on the next one.
-    for name, base, mirrors in (("fonts.json", github, [jsdelivr, fastly]),
-                                ("mirror.json", jsdelivr, [fastly, github])):
+    for name, base, mirrors in routes("fonts", RELEASE_REPO, tag, cos_base):
         manifest = {"version": MANIFEST_VERSION, "baseUrl": base, "mirrors": mirrors, "families": families}
         (output / name).write_text(json.dumps(manifest, ensure_ascii=False, indent=1) + "\n")
     (output / "sources.json").write_text(json.dumps(
@@ -202,5 +202,7 @@ if __name__ == "__main__":
     parser.add_argument("--source-dir", type=Path, default=ROOT / ".cache/rickyos-font-sources")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--tag", required=True, help="GitHub release tag the files are uploaded to, e.g. v1.0.0")
+    parser.add_argument("--cos-base", help="RickyOS COS bucket domain (https://<bucket>-<appid>.cos.ap-guangzhou."
+                        "myqcloud.com); adds cos.json, published with scripts/publish_rickyos_assets_cos.py")
     args = parser.parse_args()
-    build(args.source_dir.resolve(), args.output.resolve(), args.tag)
+    build(args.source_dir.resolve(), args.output.resolve(), args.tag, args.cos_base)

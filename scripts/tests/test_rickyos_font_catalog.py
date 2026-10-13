@@ -103,11 +103,14 @@ class RickyFontCatalogTest(unittest.TestCase):
         self.assertIn("RickyFontCatalog::manifestFor(SETTINGS.contentProfile, attempt)", block)
         self.assertIn("if (result == HttpDownloader::OK) break;", activity)
         self.assertIn(f'"https://fastly.jsdelivr.net/gh/{repo}@latest/mirror.json"', header)
+        # The Guangzhou bucket leads in China once configured; an unset route is skipped.
+        self.assertIn("china[MANIFEST_COUNT] = {COS_MANIFEST, MIRROR_MANIFEST, FASTLY_MANIFEST, GITHUB_MANIFEST}",
+                      header)
+        self.assertIn("if (url == nullptr) continue;", activity)
 
     def test_failed_files_retry_on_mirrors(self):
         script = (ROOT / "scripts/build_rickyos_font_catalog.py").read_text()
-        self.assertIn('("mirror.json", jsdelivr, [fastly, github])', script)
-        self.assertIn('("fonts.json", github, [jsdelivr, fastly])', script)
+        self.assertIn('routes("fonts", RELEASE_REPO, tag, cos_base)', script)
         activity = (ROOT / "src/activities/settings/FontDownloadActivity.cpp").read_text()
         self.assertIn('for (JsonVariant mirror : doc["mirrors"].as<JsonArray>())', activity)
         # Only network failures retry; cancel, SD card and authorization errors stay final.

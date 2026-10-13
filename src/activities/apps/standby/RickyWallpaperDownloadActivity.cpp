@@ -141,14 +141,16 @@ bool RickyWallpaperDownloadActivity::fetchManifest() {
   if (!HttpDownloader::hasMemoryForTls()) return false;
   // CDN caches of the "@latest" manifests go stale independently (a mainland jsDelivr
   // edge kept v1.0.0 after v1.1.0 shipped), so read the CDN routes and keep the newest
-  // release, judged by the tag in its baseUrl. GitHub's releases/latest is authoritative:
-  // after it answers, a CDN copy can only match or lag, so the search stops there. From
-  // mainland China it is also the slow route (two redirects to a host that is often
-  // blocked), so with the China order it is read only when no CDN answered.
+  // release, judged by the tag in its baseUrl. GitHub's releases/latest and the COS
+  // bucket (no cache in front) are authoritative: after one answers, a CDN copy can only
+  // match or lag, so the search stops there. From mainland China GitHub is also the slow
+  // route (two redirects to a host that is often blocked), so with the China order it is
+  // read only when nothing before it answered; COS leads that order.
   uint32_t bestRelease = 0;
   for (int attempt = 0; attempt < RickyWallpaperCatalog::MANIFEST_COUNT; ++attempt) {
     const char* url = RickyWallpaperCatalog::manifestFor(SETTINGS.contentProfile, attempt);
-    const bool authoritative = url == RickyWallpaperCatalog::GITHUB_MANIFEST;
+    if (url == nullptr) continue;  // COS route off
+    const bool authoritative = url == RickyWallpaperCatalog::GITHUB_MANIFEST || RickyCos::isCosUrl(url);
     if (authoritative && !items_.empty()) continue;
     if (HttpDownloader::downloadIndex(url, kManifestTmp) != HttpDownloader::OK) {
       LOG_ERR("WPDL", "Manifest failed: %s", url);
@@ -195,14 +197,18 @@ bool RickyWallpaperDownloadActivity::fetchManifest() {
     }
     if (authoritative) break;
   }
-  // File hosts: in China the jsDelivr hosts go first whichever manifest won (GitHub is
-  // slow or unreachable there); elsewhere the manifest's own order.
+  // File hosts: in China the COS bucket, then the jsDelivr hosts go first whichever
+  // manifest won (GitHub is slow or unreachable there); elsewhere the manifest's order.
   hosts_.clear();
   hosts_.push_back(baseUrl_);
   hosts_.insert(hosts_.end(), mirrors_.begin(), mirrors_.end());
   if (SETTINGS.contentProfile == CrossPointSettings::ContentProfile::China) {
-    std::stable_partition(hosts_.begin(), hosts_.end(),
-                          [](const std::string& host) { return host.find("jsdelivr.net") != std::string::npos; });
+    const auto rank = [](const std::string& host) {
+      if (RickyCos::isCosUrl(host.c_str())) return 0;
+      return host.find("jsdelivr.net") != std::string::npos ? 1 : 2;
+    };
+    std::stable_sort(hosts_.begin(), hosts_.end(),
+                     [&rank](const std::string& a, const std::string& b) { return rank(a) < rank(b); });
   }
   preferredHost_ = 0;
   return !items_.empty();

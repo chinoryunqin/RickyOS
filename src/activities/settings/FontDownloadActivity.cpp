@@ -367,17 +367,16 @@ bool FontDownloadActivity::fetchAndParseManifest() {
     errorMessage_ = "Failed to fetch font list";
     return false;
   }
-  const char* manifestUrls[3] = {manifestUrl, nullptr, nullptr};
+  const char* manifestUrls[RickyFontCatalog::MANIFEST_COUNT] = {manifestUrl};
   // RickyOS lists its own catalog; the reader's automatic NotoSansSC install stays on CrossMux.
   if (purpose_ != Purpose::ReaderAutoInstall) {
-    static_assert(RickyFontCatalog::MANIFEST_COUNT == 3);
     for (int attempt = 0; attempt < RickyFontCatalog::MANIFEST_COUNT; ++attempt)
       manifestUrls[attempt] = RickyFontCatalog::manifestFor(SETTINGS.contentProfile, attempt);
   }
   NetworkStartup::logMemory("font manifest request");
   auto result = HttpDownloader::HTTP_ERROR;
   for (const char* url : manifestUrls) {
-    if (url == nullptr) break;
+    if (url == nullptr) continue;  // a route that is off (COS unconfigured), or past CrossMux's one
     result = HttpDownloader::downloadIndex(url, MANIFEST_TMP);
     if (result == HttpDownloader::OK) break;
     LOG_ERR("FONT", "Failed to fetch manifest from %s", url);
