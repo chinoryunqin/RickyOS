@@ -965,6 +965,11 @@ void ActivityManager::requestUpdateAndWait() {
   // Cannot call while holding RenderLock or it will cause a deadlock
   assert(!holdingRenderLock && "Cannot call requestUpdateAndWait() while holding RenderLock");
 
+  // This render draws the current state, so it also serves a deferred requestUpdate()
+  // made earlier in this loop pass. Left set, that flag marks every frame of a long
+  // synchronous job (font acceleration: two minutes) as superseded, and the direct-gray
+  // path discards them all: the progress screen never appeared.
+  requestedUpdate = false;
   xTaskNotify(renderTaskHandle, 1, eIncrement);
   ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 }
