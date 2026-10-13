@@ -18,6 +18,7 @@ class Bitmap {
 
   int getWidth() const { return valid ? 1 : 0; }
   int getHeight() const { return valid ? 1 : 0; }
+  bool is1Bit() const { return false; }
 
  private:
   HalFile& file;

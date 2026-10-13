@@ -1113,3 +1113,12 @@ bool PngToBmpConverter::pngFileTo1BitBmpStreamWithSize(HalFile& pngFile, Print& 
                                                        int targetMaxHeight) {
   return pngFileToBmpStreamInternal(pngFile, bmpOut, targetMaxWidth, targetMaxHeight, true, true);
 }
+
+bool PngToBmpConverter::pngFileToThumbBmpStreamWithSize(HalFile& pngFile, Print& bmpOut, int targetMaxWidth,
+                                                        int targetMaxHeight) {
+#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
+  return pngFileToBmpStreamInternal(pngFile, bmpOut, targetMaxWidth, targetMaxHeight, false, true, false, false, true);
+#else
+  return pngFileTo1BitBmpStreamWithSize(pngFile, bmpOut, targetMaxWidth, targetMaxHeight);
+#endif
+}

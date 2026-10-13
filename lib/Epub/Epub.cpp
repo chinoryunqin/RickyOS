@@ -905,10 +905,10 @@ bool Epub::generateThumbBmpForCover(int height, const std::string& coverImageHre
   if (convertOverrideCover(
           *this, outputPath, "thumbnail",
           [targetWidth, height](HalFile& source, HalFile& output) {
-            return JpegToBmpConverter::jpegFileTo1BitBmpStreamWithSize(source, output, targetWidth, height);
+            return JpegToBmpConverter::jpegFileToThumbBmpStreamWithSize(source, output, targetWidth, height);
           },
           [targetWidth, height](HalFile& source, HalFile& output) {
-            return PngToBmpConverter::pngFileTo1BitBmpStreamWithSize(source, output, targetWidth, height);
+            return PngToBmpConverter::pngFileToThumbBmpStreamWithSize(source, output, targetWidth, height);
           })) {
     return true;
   }
@@ -925,10 +925,10 @@ bool Epub::generateThumbBmpForCover(int height, const std::string& coverImageHre
     if (convertExtractedCover(
             *this, coverImageHref, outputPath, "thumbnail",
             [targetWidth, height](HalFile& source, HalFile& output) {
-              return JpegToBmpConverter::jpegFileTo1BitBmpStreamWithSize(source, output, targetWidth, height);
+              return JpegToBmpConverter::jpegFileToThumbBmpStreamWithSize(source, output, targetWidth, height);
             },
             [targetWidth, height](HalFile& source, HalFile& output) {
-              return PngToBmpConverter::pngFileTo1BitBmpStreamWithSize(source, output, targetWidth, height);
+              return PngToBmpConverter::pngFileToThumbBmpStreamWithSize(source, output, targetWidth, height);
             })) {
       return true;
     }

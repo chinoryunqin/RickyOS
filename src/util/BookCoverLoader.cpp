@@ -36,7 +36,8 @@ void rememberCoverless(const std::string& path) {
   knownCoverless.push_back(path);
 }
 
-CachedCoverState inspectCachedCover(const std::string& path, const bool emptyIsTerminal) {
+CachedCoverState inspectCachedCover(const std::string& path, const bool emptyIsTerminal,
+                                    const bool thumbnail = false) {
   if (!Storage.exists(path.c_str())) return CachedCoverState::Missing;
 
   {
@@ -45,7 +46,8 @@ CachedCoverState inspectCachedCover(const std::string& path, const bool emptyIsT
     if (file.fileSize() == 0 && emptyIsTerminal) return CachedCoverState::Terminal;
 
     Bitmap bitmap(file);
-    if (bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() > 0 && bitmap.getHeight() > 0) {
+    if (bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() > 0 && bitmap.getHeight() > 0 &&
+        !(thumbnail && isOutdatedThumbnail(bitmap))) {
       return CachedCoverState::Ready;
     }
   }
@@ -60,9 +62,9 @@ CachedCoverState inspectCachedCover(const std::string& path, const bool emptyIsT
 
 template <typename Generate>
 std::string ensureCachedCover(const std::string& path, const bool emptyIsTerminal, bool* generated,
-                              Generate&& generate) {
+                              Generate&& generate, const bool thumbnail = false) {
   if (generated) *generated = false;
-  const CachedCoverState state = inspectCachedCover(path, emptyIsTerminal);
+  const CachedCoverState state = inspectCachedCover(path, emptyIsTerminal, thumbnail);
   if (state == CachedCoverState::Ready) return path;
   if (state == CachedCoverState::Terminal) return "";
   if (!generate()) {
@@ -76,7 +78,7 @@ std::string ensureCachedCover(const std::string& path, const bool emptyIsTermina
     return "";
   }
   PanelTileCache::forget(path);
-  if (inspectCachedCover(path, emptyIsTerminal) != CachedCoverState::Ready) return "";
+  if (inspectCachedCover(path, emptyIsTerminal, thumbnail) != CachedCoverState::Ready) return "";
   if (generated) *generated = true;
   return path;
 }
@@ -96,7 +98,7 @@ std::string ensureThumbnail(const std::string& bookPath, const int height, bool*
       if (!epub.load(true, true)) return false;
       epub.setupCacheDir();
       return epub.generateThumbBmp(height);
-    });
+    }, /*thumbnail=*/true);
     if (result.empty()) rememberCoverless(path);
     return result;
   }
@@ -141,6 +143,15 @@ std::string ensureFullCover(const std::string& bookPath, std::string* title, std
 std::string thumbnailPath(const std::string& bookPath, const int height) {
   if (height <= 0 || !FsHelpers::hasEpubExtension(bookPath)) return "";
   return Epub(bookPath, "/.crosspoint").getThumbBmpPath(height);
+}
+
+bool isOutdatedThumbnail(const Bitmap& bitmap) {
+#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
+  return bitmap.is1Bit();
+#else
+  (void)bitmap;
+  return false;
+#endif
 }
 
 void forgetDrawnCovers() {

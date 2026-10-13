@@ -110,9 +110,9 @@ bool Txt::convertCoverImageToBmp(const std::string& imagePath, const std::string
     const int targetWidth = thumbHeight * 0.6;
     const int targetHeight = thumbHeight;
     if (isJpg) {
-      success = JpegToBmpConverter::jpegFileTo1BitBmpStreamWithSize(src, dst, targetWidth, targetHeight);
+      success = JpegToBmpConverter::jpegFileToThumbBmpStreamWithSize(src, dst, targetWidth, targetHeight);
     } else if (isPng) {
-      success = PngToBmpConverter::pngFileTo1BitBmpStreamWithSize(src, dst, targetWidth, targetHeight);
+      success = PngToBmpConverter::pngFileToThumbBmpStreamWithSize(src, dst, targetWidth, targetHeight);
     }
   } else {
     if (isJpg) {

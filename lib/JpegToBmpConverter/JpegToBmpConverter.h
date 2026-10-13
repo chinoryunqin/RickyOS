@@ -23,4 +23,8 @@ class JpegToBmpConverter {
   // Convert to 1-bit BMP (black and white only, no grays) for fast home screen rendering
   static bool jpegFileTo1BitBmpStreamWithSize(HalFile& jpegFile, Print& bmpOut, int targetMaxWidth,
                                               int targetMaxHeight);
+  // Cover thumbnails: 8-bit gray where the panel shows 16 levels (a 1-bit thumbnail turns
+  // dark covers into black blocks), 1-bit elsewhere.
+  static bool jpegFileToThumbBmpStreamWithSize(HalFile& jpegFile, Print& bmpOut, int targetMaxWidth,
+                                               int targetMaxHeight);
 };

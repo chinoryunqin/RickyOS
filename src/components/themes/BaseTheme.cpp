@@ -250,7 +250,10 @@ bool BaseTheme::drawCoverThumbFill(const GfxRenderer& renderer, const Bitmap& bi
   const int top = std::max(slot.y, clip[1]);
   renderer.setClipRect(left, top, std::max(0, std::min(slot.x + slot.width, clip[0] + clip[2]) - left),
                        std::max(0, std::min(slot.y + slot.height, clip[1] + clip[3]) - top));
-  const bool drawn = renderer.drawBitmap(bitmap, x, y, bitmap.getWidth(), bitmap.getHeight());
+  // Gray thumbnails keep their tones on a 16-level frame; the 2-bit path would dither them.
+  const bool drawn = renderer.isGrayscale16Active() && !bitmap.is1Bit()
+                         ? renderer.drawBitmapGrayscale16(bitmap, x, y, bitmap.getWidth(), bitmap.getHeight())
+                         : renderer.drawBitmap(bitmap, x, y, bitmap.getWidth(), bitmap.getHeight());
   renderer.setClipRect(clip[0], clip[1], clip[2], clip[3]);
   return drawn;
 }

@@ -35,8 +35,11 @@ const char* titleOf(const RecentBook& book) { return book.title.empty() ? book.p
 bool drawRecentCover(const GfxRenderer& renderer, const Bitmap& bitmap, const Rect& bounds) {
   const auto fit = RickyHomeLayout::fitBitmap(bitmap.getWidth(), bitmap.getHeight(), bounds.width, bounds.height);
   if (fit.width <= 0 || fit.height <= 0) return false;
-  return renderer.drawBitmap(bitmap, bounds.x + (bounds.width - fit.width) / 2,
-                             bounds.y + (bounds.height - fit.height) / 2, fit.width, fit.height);
+  const int x = bounds.x + (bounds.width - fit.width) / 2;
+  const int y = bounds.y + (bounds.height - fit.height) / 2;
+  if (renderer.isGrayscale16Active() && !bitmap.is1Bit())
+    return renderer.drawBitmapGrayscale16(bitmap, x, y, fit.width, fit.height);
+  return renderer.drawBitmap(bitmap, x, y, fit.width, fit.height);
 }
 
 void drawMiniProgress(const GfxRenderer& renderer, const Rect rect, const uint8_t percent) {
@@ -266,7 +269,8 @@ bool InxRecentActivity::tryDrawBookCover(const std::string& path, const Rect& bo
 #if defined(BOARD_HAS_PSRAM) && !defined(SIMULATOR) && !defined(CROSSPOINT_EMULATED)
   const auto drawCached = [this, &bounds, &state, &cache] {
     Bitmap bitmap(cache.bytes.get(), cache.size);
-    if (bitmap.parseHeaders() != BmpReaderError::Ok || bitmap.getWidth() <= 0 || bitmap.getHeight() <= 0) {
+    if (bitmap.parseHeaders() != BmpReaderError::Ok || bitmap.getWidth() <= 0 || bitmap.getHeight() <= 0 ||
+        BookCoverLoader::isOutdatedThumbnail(bitmap)) {
       cachedCoverBytes -= cache.size;
       cache = {};
       state = CoverCacheState::Missing;
@@ -301,8 +305,9 @@ bool InxRecentActivity::tryDrawBookCover(const std::string& path, const Rect& bo
 #endif
 
   Bitmap bitmap(file);
-  if (bitmap.parseHeaders() != BmpReaderError::Ok || bitmap.getWidth() <= 0 || bitmap.getHeight() <= 0) {
-    state = CoverCacheState::Missing;
+  if (bitmap.parseHeaders() != BmpReaderError::Ok || bitmap.getWidth() <= 0 || bitmap.getHeight() <= 0 ||
+      BookCoverLoader::isOutdatedThumbnail(bitmap)) {
+    state = CoverCacheState::Missing;  // prepareNextMissingCover() regenerates it
     return false;
   }
   return drawRecentCover(renderer, bitmap, bounds);
