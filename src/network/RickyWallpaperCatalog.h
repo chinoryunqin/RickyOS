@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cstdint>
 
-#include "CrossPointSettings.h"
 #include "RickyCos.h"
 
 // RickyOS default standby pictures, github.com/chinoryunqin/RickyOS-wallpapers, built by
@@ -24,11 +23,13 @@ inline constexpr int MANIFEST_COUNT = 4;
 inline constexpr char FOLDER[] = "/images/待机图片";
 
 // The manifest to try at each attempt, or nullptr for a route that is off (skip it).
-constexpr const char* manifestFor(const CrossPointSettings::ContentProfile profile, const int attempt) {
-  constexpr const char* china[MANIFEST_COUNT] = {COS_MANIFEST, MIRROR_MANIFEST, FASTLY_MANIFEST, GITHUB_MANIFEST};
-  constexpr const char* global[MANIFEST_COUNT] = {GITHUB_MANIFEST, MIRROR_MANIFEST, FASTLY_MANIFEST, COS_MANIFEST};
-  return (profile == CrossPointSettings::ContentProfile::China ? china : global)[attempt];
-}
+// One fixed order for every device (RickyOS readers are in mainland China): the
+// Guangzhou bucket, then jsDelivr, Fastly, and GitHub last.
+inline constexpr const char* MANIFEST_ORDER[MANIFEST_COUNT] = {COS_MANIFEST, MIRROR_MANIFEST, FASTLY_MANIFEST,
+                                                               GITHUB_MANIFEST};
+constexpr const char* manifestFor(const int attempt) { return MANIFEST_ORDER[attempt]; }
+static_assert(manifestFor(0) == COS_MANIFEST);
+static_assert(manifestFor(3) == GITHUB_MANIFEST);
 
 // The release in a manifest's baseUrl ("...@v1.1.0/..." or ".../download/v1.1.0/") as
 // 0xMMmmpp, 0 when absent, so manifests from routes with stale caches can be ranked.

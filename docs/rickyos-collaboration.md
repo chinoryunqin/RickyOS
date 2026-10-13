@@ -143,11 +143,11 @@ SD 卡、取消和鉴权错误不重试；清单本身也按 jsDelivr → fastly
 ### 国内下载源与换源提速（2026-10-13）
 
 国内下载字体和待机图片仍慢：列表要等很久，下载也慢。原因还是线路，RickyOS 的目录全在海外（GitHub、jsDelivr）。
-- **国内源：** 加入腾讯云 COS（广州，桶 `rickyos-1309217881`，域名写在 `src/network/RickyCos.h`）。中文区域
-  先读 COS，再依次退到 jsDelivr、Fastly、GitHub；桶里还没有目录时 404 立即换源。构建脚本加 `--cos-base` 会多产出 `cos.json`，
+- **国内源：** 加入腾讯云 COS（广州，桶 `rickyos-1309217881`，域名写在 `src/network/RickyCos.h`）。所有设备
+  （不看内容区域设置）先读 COS，再依次退到 jsDelivr、Fastly、GitHub；桶里还没有目录时 404 立即换源。构建脚本加 `--cos-base` 会多产出 `cos.json`，
   用 `scripts/publish_rickyos_assets_cos.py` 发布；步骤见 [rickyos-asset-cos.md](rickyos-asset-cos.md)。
 - **快速换源：** 列表请求每一步最多等 12 秒（原来 60 秒，被墙线路连同 TLS 1.2 重试可拖约两分钟）。
-- **待机图片清单：** 不再三条线路全读；COS 或 GitHub 应答后即停，中文区域在 CDN 已应答时不再请求 GitHub。
+- **待机图片清单：** 不再三条线路全读；COS 或 GitHub 应答后即停，GitHub 排在最后，前面有线路应答就不再请求。
   下载进度每 10% 刷屏一次（原来每 1% 一次）。
 - **日志：** 每个请求记录字节数、耗时、KB/s 和域名。
 

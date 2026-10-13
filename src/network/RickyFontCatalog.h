@@ -1,6 +1,5 @@
 #pragma once
 
-#include "CrossPointSettings.h"
 #include "RickyCos.h"
 
 // RickyOS downloads fonts from its own catalog, github.com/chinoryunqin/RickyOS-fonts,
@@ -22,17 +21,14 @@ inline constexpr const char* COS_MANIFEST = RickyCos::ENABLED ? RickyCos::FONT_M
 inline constexpr int MANIFEST_COUNT = 4;
 
 // The manifest to try at each attempt, or nullptr for a route that is off (skip it).
-// China starts on the Guangzhou bucket, then jsDelivr; elsewhere GitHub leads.
-constexpr const char* manifestFor(const CrossPointSettings::ContentProfile profile, const int attempt) {
-  constexpr const char* china[MANIFEST_COUNT] = {COS_MANIFEST, MIRROR_MANIFEST, FASTLY_MANIFEST, GITHUB_MANIFEST};
-  constexpr const char* global[MANIFEST_COUNT] = {GITHUB_MANIFEST, MIRROR_MANIFEST, FASTLY_MANIFEST, COS_MANIFEST};
-  return (profile == CrossPointSettings::ContentProfile::China ? china : global)[attempt];
-}
+// RickyOS readers are in mainland China, so one fixed order for every device, whatever
+// its content region: the Guangzhou bucket, then jsDelivr, Fastly, and GitHub last.
+inline constexpr const char* MANIFEST_ORDER[MANIFEST_COUNT] = {COS_MANIFEST, MIRROR_MANIFEST, FASTLY_MANIFEST,
+                                                               GITHUB_MANIFEST};
+constexpr const char* manifestFor(const int attempt) { return MANIFEST_ORDER[attempt]; }
 
-static_assert(manifestFor(CrossPointSettings::ContentProfile::China, 0) == COS_MANIFEST);
-static_assert(manifestFor(CrossPointSettings::ContentProfile::China, 1) == MIRROR_MANIFEST);
-static_assert(manifestFor(CrossPointSettings::ContentProfile::China, 3) == GITHUB_MANIFEST);
-static_assert(manifestFor(CrossPointSettings::ContentProfile::Global, 0) == GITHUB_MANIFEST);
-static_assert(manifestFor(CrossPointSettings::ContentProfile::Global, 3) == COS_MANIFEST);
+static_assert(manifestFor(0) == COS_MANIFEST);
+static_assert(manifestFor(1) == MIRROR_MANIFEST);
+static_assert(manifestFor(3) == GITHUB_MANIFEST);
 
 }  // namespace RickyFontCatalog

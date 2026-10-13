@@ -144,11 +144,11 @@ bool RickyWallpaperDownloadActivity::fetchManifest() {
   // release, judged by the tag in its baseUrl. GitHub's releases/latest and the COS
   // bucket (no cache in front) are authoritative: after one answers, a CDN copy can only
   // match or lag, so the search stops there. From mainland China GitHub is also the slow
-  // route (two redirects to a host that is often blocked), so with the China order it is
-  // read only when nothing before it answered; COS leads that order.
+  // route (two redirects to a host that is often blocked), so it comes last and is read
+  // only when nothing before it answered; COS leads the order.
   uint32_t bestRelease = 0;
   for (int attempt = 0; attempt < RickyWallpaperCatalog::MANIFEST_COUNT; ++attempt) {
-    const char* url = RickyWallpaperCatalog::manifestFor(SETTINGS.contentProfile, attempt);
+    const char* url = RickyWallpaperCatalog::manifestFor(attempt);
     if (url == nullptr) continue;  // COS route off
     const bool authoritative = url == RickyWallpaperCatalog::GITHUB_MANIFEST || RickyCos::isCosUrl(url);
     if (authoritative && !items_.empty()) continue;
@@ -197,19 +197,17 @@ bool RickyWallpaperDownloadActivity::fetchManifest() {
     }
     if (authoritative) break;
   }
-  // File hosts: in China the COS bucket, then the jsDelivr hosts go first whichever
-  // manifest won (GitHub is slow or unreachable there); elsewhere the manifest's order.
+  // File hosts: the COS bucket, then the jsDelivr hosts go first whichever manifest won
+  // (GitHub is slow or unreachable from mainland China), the same on every device.
   hosts_.clear();
   hosts_.push_back(baseUrl_);
   hosts_.insert(hosts_.end(), mirrors_.begin(), mirrors_.end());
-  if (SETTINGS.contentProfile == CrossPointSettings::ContentProfile::China) {
-    const auto rank = [](const std::string& host) {
-      if (RickyCos::isCosUrl(host.c_str())) return 0;
-      return host.find("jsdelivr.net") != std::string::npos ? 1 : 2;
-    };
-    std::stable_sort(hosts_.begin(), hosts_.end(),
-                     [&rank](const std::string& a, const std::string& b) { return rank(a) < rank(b); });
-  }
+  const auto rank = [](const std::string& host) {
+    if (RickyCos::isCosUrl(host.c_str())) return 0;
+    return host.find("jsdelivr.net") != std::string::npos ? 1 : 2;
+  };
+  std::stable_sort(hosts_.begin(), hosts_.end(),
+                   [&rank](const std::string& a, const std::string& b) { return rank(a) < rank(b); });
   preferredHost_ = 0;
   return !items_.empty();
 }

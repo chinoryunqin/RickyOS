@@ -100,12 +100,12 @@ class RickyFontCatalogTest(unittest.TestCase):
         activity = (ROOT / "src/activities/settings/FontDownloadActivity.cpp").read_text()
         block = re.search(r"  // RickyOS lists its own catalog.*?\n  \}\n", activity, re.S).group(0)
         self.assertIn("if (purpose_ != Purpose::ReaderAutoInstall)", block)  # NotoSansSC stays on CrossMux
-        self.assertIn("RickyFontCatalog::manifestFor(SETTINGS.contentProfile, attempt)", block)
+        self.assertIn("RickyFontCatalog::manifestFor(attempt)", block)  # one order, whatever the region
         self.assertIn("if (result == HttpDownloader::OK) break;", activity)
         self.assertIn(f'"https://fastly.jsdelivr.net/gh/{repo}@latest/mirror.json"', header)
         # The Guangzhou bucket leads in China once configured; an unset route is skipped.
-        self.assertIn("china[MANIFEST_COUNT] = {COS_MANIFEST, MIRROR_MANIFEST, FASTLY_MANIFEST, GITHUB_MANIFEST}",
-                      header)
+        self.assertIn("MANIFEST_ORDER[MANIFEST_COUNT] = {COS_MANIFEST, MIRROR_MANIFEST, FASTLY_MANIFEST,", header)
+        self.assertNotIn("contentProfile", header)
         self.assertIn("if (url == nullptr) continue;", activity)
 
     def test_failed_files_retry_on_mirrors(self):

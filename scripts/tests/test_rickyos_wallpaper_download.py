@@ -40,8 +40,8 @@ class RickyWallpaperDownloadTest(unittest.TestCase):
         self.assertIn(f'"https://github.com/{repo}/releases/latest/download/wallpapers.json"', header)
         self.assertIn(f'"https://cdn.jsdelivr.net/gh/{repo}@latest/mirror.json"', header)
         self.assertIn(f'"https://fastly.jsdelivr.net/gh/{repo}@latest/mirror.json"', header)
-        self.assertIn('china[MANIFEST_COUNT] = {COS_MANIFEST, MIRROR_MANIFEST, FASTLY_MANIFEST, GITHUB_MANIFEST}',
-                      header)
+        self.assertIn('MANIFEST_ORDER[MANIFEST_COUNT] = {COS_MANIFEST, MIRROR_MANIFEST, FASTLY_MANIFEST,', header)
+        self.assertNotIn('ContentProfile', header)
         self.assertIn('FOLDER[] = "/images/待机图片"', header)
         script = SCRIPT.read_text()
         self.assertIn(f'RELEASE_REPO = "{repo}"', script)

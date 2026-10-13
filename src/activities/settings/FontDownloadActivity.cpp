@@ -371,7 +371,7 @@ bool FontDownloadActivity::fetchAndParseManifest() {
   // RickyOS lists its own catalog; the reader's automatic NotoSansSC install stays on CrossMux.
   if (purpose_ != Purpose::ReaderAutoInstall) {
     for (int attempt = 0; attempt < RickyFontCatalog::MANIFEST_COUNT; ++attempt)
-      manifestUrls[attempt] = RickyFontCatalog::manifestFor(SETTINGS.contentProfile, attempt);
+      manifestUrls[attempt] = RickyFontCatalog::manifestFor(attempt);
   }
   NetworkStartup::logMemory("font manifest request");
   auto result = HttpDownloader::HTTP_ERROR;
