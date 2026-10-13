@@ -25,6 +25,8 @@ class Epub {
   bool generateThumbBmp(int height) const {
     ++cover_stub::epubThumbnailGenerations;
     const std::string output = getThumbBmpPath(height);
+    // Like the real generator for an EPUB with no cover image: fails and writes nothing.
+    if (path.find("nocoverimage") != std::string::npos && !hasCoverOverride()) return false;
     if (path.find("coverless") == std::string::npos) return cover_stub::writeBmp(output);
     if (hasCoverOverride()) {
       ++cover_stub::overrideConversions;

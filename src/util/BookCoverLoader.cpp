@@ -39,7 +39,17 @@ std::string ensureCachedCover(const std::string& path, const bool emptyIsTermina
   if (generated) *generated = false;
   const CachedCoverState state = inspectCachedCover(path, emptyIsTerminal);
   if (state == CachedCoverState::Ready) return path;
-  if (state == CachedCoverState::Terminal || !generate()) return "";
+  if (state == CachedCoverState::Terminal) return "";
+  if (!generate()) {
+    // Books without a usable cover would otherwise reload their metadata on every
+    // request. An empty file is the terminal marker inspectCachedCover() honours;
+    // clearing the reading cache removes it.
+    if (emptyIsTerminal && !Storage.exists(path.c_str())) {
+      HalFile marker;
+      Storage.openFileForWrite("COVER", path, marker);
+    }
+    return "";
+  }
   if (inspectCachedCover(path, emptyIsTerminal) != CachedCoverState::Ready) return "";
   if (generated) *generated = true;
   return path;

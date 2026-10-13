@@ -3,6 +3,7 @@
 #include <BoardConfig.h>
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -52,6 +53,9 @@ class InxRecentActivity final : public Activity {
 #endif
   int selected = 0;
   int thumbnailHeight = 0;
+  // Set by render() when a cover may still need a thumbnail; loop() prepares it
+  // after that frame is on the panel instead of holding the frame back.
+  std::atomic<bool> coverWorkPending{false};
   std::unique_ptr<RickyHomeUi> rickyHome;
 
   InxRecentLayout layout() const;
@@ -78,7 +82,7 @@ class InxRecentActivity final : public Activity {
 
  public:
 #if FREEINK_DEVICE_READPICO
-  // render() redraws the whole home screen from state; a cover still to prepare queues
+  // render() redraws the whole home screen from state; a newly prepared cover queues
   // its own update, which cancels the settle.
   bool wantsGraySettle() const override { return true; }
 #endif

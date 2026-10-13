@@ -282,6 +282,10 @@ bool InxRecentActivity::tryDrawBookCover(const std::string& path, const Rect& bo
     state = CoverCacheState::Missing;
     return false;
   }
+  if (file.fileSize() == 0) {
+    state = CoverCacheState::Unavailable;  // BookCoverLoader's marker: this book has no usable cover
+    return false;
+  }
 
 #if defined(BOARD_HAS_PSRAM) && !defined(SIMULATOR) && !defined(CROSSPOINT_EMULATED)
   switch (tryLoadCoverCache(file, cache)) {
@@ -362,7 +366,8 @@ bool InxRecentActivity::prepareNextMissingCover() {
         break;
     }
 
-    renderer.displayBuffer();
+    // The frame is already on the panel. The loan frees the framebuffer, so the
+    // next frame repaints it; a failure leaves a marker and is not retried.
     {
       GfxRenderer::FrameBufferLoan loan(renderer);
       state = BookCoverLoader::ensureThumbnail((*books)[index].path, thumbnailHeight).empty()
@@ -381,6 +386,13 @@ int InxRecentActivity::indexFromPoint(const int x, const int y) const {
 }
 
 void InxRecentActivity::loop() {
+  if (coverWorkPending.exchange(false)) {
+    // Waits for the render task to finish the current frame, then prepares at most
+    // one missing thumbnail; its update brings the next one.
+    RenderLock lock;
+    prepareNextMissingCover();
+    return;
+  }
   if (rickyHome) {
     const int action = rickyHome->selectedAction(mappedInput);
     if (action == RickyHomeUi::LIBRARY) {
@@ -668,6 +680,6 @@ void InxRecentActivity::render(RenderLock&&) {
     GUI.drawBatteryRight(renderer, battery,
                          SETTINGS.hideBatteryPercentage != CrossPointSettings::HIDE_BATTERY_PERCENTAGE::HIDE_ALWAYS);
   }
-  if (prepareNextMissingCover()) return;
   renderer.displayBuffer();
+  coverWorkPending = true;
 }

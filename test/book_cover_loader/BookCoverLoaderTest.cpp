@@ -131,6 +131,22 @@ TEST_F(BookCoverLoaderTest, PreservesCoverlessEpubMarker) {
   EXPECT_EQ(cover_stub::epubThumbnailGenerations, 1);
 }
 
+TEST_F(BookCoverLoaderTest, MarksFailureThatWroteNothing) {
+  // The home screen asks on every visit; without a marker each visit reloaded the
+  // book's metadata and repainted the whole screen.
+  writeBook("/nocoverimage.epub");
+  EXPECT_TRUE(BookCoverLoader::ensureThumbnail("/nocoverimage.epub", 226).empty());
+  ASSERT_TRUE(std::filesystem::exists(hostPath("/.crosspoint/epub/thumb_226.bmp")));
+  EXPECT_EQ(std::filesystem::file_size(hostPath("/.crosspoint/epub/thumb_226.bmp")), 0U);
+  for (int visit = 0; visit < 3; ++visit)
+    EXPECT_TRUE(BookCoverLoader::ensureThumbnail("/nocoverimage.epub", 226).empty());
+  EXPECT_EQ(cover_stub::epubThumbnailGenerations, 1);
+
+  // A cover added later still replaces the marker.
+  writeOverride({0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0});
+  EXPECT_EQ(BookCoverLoader::ensureThumbnail("/nocoverimage.epub", 226), "/.crosspoint/epub/thumb_226.bmp");
+}
+
 TEST_F(BookCoverLoaderTest, UsesOverrideAfterInternalEpubCoverFails) {
   writeBook("/coverless.epub");
   writeOverride({0xFF, 0xD8, 0xFF, 0xE0, 0, 0, 0, 0, 0});
