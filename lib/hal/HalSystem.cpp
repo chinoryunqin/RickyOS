@@ -93,7 +93,21 @@ void IRAM_ATTR __wrap_panic_print_backtrace(const void* frame, int core) {
 
 namespace HalSystem {
 
+namespace {
+std::string previousSessionLogs;
+}  // namespace
+
+std::string takePreviousSessionLogs() {
+  std::string logs;
+  logs.swap(previousSessionLogs);
+  return logs;
+}
+
 void begin() {
+  // A software restart keeps the RTC log ring; keep its text before it is cleared.
+  if (!isRebootFromPanic() && esp_reset_reason() == ESP_RST_SW && !sanitizeLogHead()) {
+    previousSessionLogs = getLastLogs();
+  }
   // On a panic reboot, preserve diagnostics until checkPanic() has tried to write them to the SD card.
   // Ordinary boots clear any stale retained diagnostics.
   if (!isRebootFromPanic()) {

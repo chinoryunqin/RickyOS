@@ -35,4 +35,8 @@ HeapInfo getHeapInfo();
 
 std::string getPanicInfo(bool full = false);
 bool isRebootFromPanic();
+// The retained log ring of the session before a software restart (e.g. USB 传书 ending
+// in an error, when the serial port was the USB disk), taken at begin(); empty otherwise.
+// Printing it is the caller's choice, once a serial host can be listening.
+std::string takePreviousSessionLogs();
 }  // namespace HalSystem

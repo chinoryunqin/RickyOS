@@ -9,6 +9,8 @@
 #include <UsbMassStorage.h>
 #endif
 
+#include <atomic>
+#include <cstring>
 #include <cassert>
 
 #if FREEINK_DEVICE_READPICO
@@ -20,8 +22,153 @@
 namespace {
 #if FREEINK_CAP_USB_MSC
 freeink::UsbMassStorage usbMassStorage;
+
+// USB 传书 hands the raw card to the host. A failed sector transfer ends the session
+// (the activity disconnects and restarts), and with the serial port taken by USB it
+// left no trace. Each failure is logged (it reaches the retained log ring, printed on
+// the next boot) and retried: a transient card or bus error then costs a retry instead
+// of the whole transfer.
+class RetryingBlockDevice final : public FsBlockDeviceInterface {
+ public:
+  void attach(FsBlockDeviceInterface* inner) { inner_ = inner; }
+  void end() override { inner_->end(); }
+  bool isBusy() override { return inner_->isBusy(); }
+  Sector_t sectorCount() override { return inner_->sectorCount(); }
+  bool syncDevice() override { return inner_->syncDevice(); }
+  bool readSector(Sector_t sector, uint8_t* dst) override {
+    return retry("read", sector, 1, [&] { return inner_->readSector(sector, dst); });
+  }
+  bool readSectors(Sector_t sector, uint8_t* dst, size_t ns) override {
+    return retry("read", sector, ns, [&] { return inner_->readSectors(sector, dst, ns); });
+  }
+  bool writeSector(Sector_t sector, const uint8_t* src) override {
+    return retry("write", sector, 1, [&] { return inner_->writeSector(sector, src); });
+  }
+  bool writeSectors(Sector_t sector, const uint8_t* src, size_t ns) override {
+    return retry("write", sector, ns, [&] { return inner_->writeSectors(sector, src, ns); });
+  }
+
+  UsbDriveStats stats() const {
+    UsbDriveStats s;
+    s.reads = reads_.load();
+    s.writes = writes_.load();
+    s.sectorsWritten = sectorsWritten_.load();
+    s.retries = retries_.load();
+    s.failures = failures_.load();
+    s.maxOpMs = maxOpMs_.load();
+    const uint32_t started = opStartedAt_.load();
+    s.inFlightMs = started ? millis() - started : 0;
+    const uint32_t last = lastOpAt_.load();
+    s.idleMs = last ? millis() - last : 0;
+    return s;
+  }
+  void resetStats() {
+    for (auto* counter : {&reads_, &writes_, &sectorsWritten_, &retries_, &failures_, &maxOpMs_, &opStartedAt_, &lastOpAt_})
+      counter->store(0);
+  }
+
+ private:
+  template <typename Op>
+  bool retry(const char* what, const Sector_t sector, const size_t count, Op&& op) {
+    constexpr int kAttempts = 4;
+    const bool write = what[0] == 'w';
+    (write ? writes_ : reads_).fetch_add(1);
+    for (int attempt = 1; attempt <= kAttempts; ++attempt) {
+      const uint32_t started = millis();
+      opStartedAt_.store(started ? started : 1);
+      const bool ok = op();
+      opStartedAt_.store(0);
+      lastOpAt_.store(millis());
+      const uint32_t took = millis() - started;
+      if (took > maxOpMs_.load()) maxOpMs_.store(took);
+      if (took >= 1000) {
+        LOG_ERR("USB", "%s sector %lu x%u took %lu ms", what, static_cast<unsigned long>(sector),
+                static_cast<unsigned>(count), static_cast<unsigned long>(took));
+      }
+      if (ok) {
+        if (write) sectorsWritten_.fetch_add(static_cast<uint32_t>(count));
+        if (attempt > 1) {
+          LOG_ERR("USB", "%s sector %lu x%u ok on attempt %d", what, static_cast<unsigned long>(sector),
+                  static_cast<unsigned>(count), attempt);
+        }
+        return true;
+      }
+      LOG_ERR("USB", "%s sector %lu x%u failed (attempt %d)", what, static_cast<unsigned long>(sector),
+              static_cast<unsigned>(count), attempt);
+      retries_.fetch_add(1);
+      delay(attempt * 20);
+    }
+    failures_.fetch_add(1);
+    return false;
+  }
+
+  FsBlockDeviceInterface* inner_ = nullptr;
+  std::atomic<uint32_t> reads_{0}, writes_{0}, sectorsWritten_{0}, retries_{0}, failures_{0}, maxOpMs_{0};
+  std::atomic<uint32_t> opStartedAt_{0}, lastOpAt_{0};
+};
+RetryingBlockDevice usbBlockDevice;
+
+// Every SCSI command the host sends, polls included: a host that dropped the disk
+// (macOS does when a power transition times out behind a long read burst) sends
+// none, and nothing else tells that apart from a quiet but mounted disk.
+std::atomic<uint32_t> lastHostCommandAt{0};
+std::atomic<uint32_t> hostStartStops{0};
+std::atomic<uint8_t> lastStartStop{0};
+void noteHostCommand() {
+  const uint32_t now = millis();
+  lastHostCommandAt.store(now ? now : 1);
+}
 #endif
 }  // namespace
+
+#if FREEINK_CAP_USB_MSC
+// TinyUSB's MSC callbacks, wrapped at link time (-Wl,--wrap in the env) around the
+// Arduino core's definitions.
+extern "C" {
+bool __real_tud_msc_test_unit_ready_cb(uint8_t lun);
+bool __real_tud_msc_start_stop_cb(uint8_t lun, uint8_t power_condition, bool start, bool load_eject);
+int32_t __real_tud_msc_scsi_cb(uint8_t lun, uint8_t const scsi_cmd[16], void* buffer, uint16_t bufsize);
+bool tud_msc_set_sense(uint8_t lun, uint8_t sense_key, uint8_t add_sense_code, uint8_t add_sense_qualifier);
+
+bool __wrap_tud_msc_test_unit_ready_cb(uint8_t lun) {
+  noteHostCommand();
+  return __real_tud_msc_test_unit_ready_cb(lun);
+}
+
+bool __wrap_tud_msc_start_stop_cb(uint8_t lun, uint8_t power_condition, bool start, bool load_eject) {
+  noteHostCommand();
+  hostStartStops.fetch_add(1);
+  lastStartStop.store(static_cast<uint8_t>((power_condition << 2) | (start ? 1 : 0) | (load_eject ? 2 : 0)));
+  return __real_tud_msc_start_stop_cb(lun, power_condition, start, load_eject);
+}
+
+// The core answers every command it does not know with a buffer of garbage (its
+// error code is stored in a uint16_t), so SYNCHRONIZE CACHE and MODE SENSE(10),
+// both of which macOS sends, are answered here.
+int32_t __wrap_tud_msc_scsi_cb(uint8_t lun, uint8_t const scsi_cmd[16], void* buffer, uint16_t bufsize) {
+  noteHostCommand();
+  switch (scsi_cmd[0]) {
+    case 0x35:  // SYNCHRONIZE CACHE(10): every write reaches the card before it completes
+    case 0x91:  // SYNCHRONIZE CACHE(16)
+      return 0;
+    case 0x5A: {  // MODE SENSE(10): header only, writable, no block descriptors
+      const uint8_t header[8] = {0, 6, 0, 0, 0, 0, 0, 0};
+      const uint16_t length = bufsize < sizeof(header) ? bufsize : sizeof(header);
+      memcpy(buffer, header, length);
+      return length;
+    }
+    default:
+      break;
+  }
+  const int32_t result = __real_tud_msc_scsi_cb(lun, scsi_cmd, buffer, bufsize);
+  if (result != 0) {
+    tud_msc_set_sense(lun, 0x05, 0x20, 0x00);  // ILLEGAL REQUEST, invalid command
+    return -1;
+  }
+  return 0;
+}
+}
+#endif
 
 HalStorage HalStorage::instance;
 
@@ -90,13 +237,24 @@ void HalStorage::prepareForDeepSleep() {
 bool HalStorage::beginUsbDrive() {
 #if FREEINK_CAP_USB_MSC
   StorageLock lock;
+  // Spotlight would otherwise index every book over the slow USB link, reading the
+  // card at full speed in the background for as long as the disk stays mounted.
+  constexpr char kNeverIndex[] = "/.metadata_never_index";
+  if (!SDCard.exists(kNeverIndex)) {
+    HalFile marker;
+    if (openFileForWrite("USB", kNeverIndex, marker)) marker.close();
+  }
   auto* const blockDevice = SDCard.detachFilesystemForRawAccess();
   if (!blockDevice) {
     LOG_ERR("USB", "USB Drive requires a mounted SDMMC filesystem");
     return false;
   }
 
-  if (!usbMassStorage.begin(blockDevice)) {
+  usbBlockDevice.attach(blockDevice);
+  usbBlockDevice.resetStats();
+  lastHostCommandAt.store(0);
+  hostStartStops.store(0);
+  if (!usbMassStorage.begin(&usbBlockDevice)) {
     LOG_ERR("USB", "USB Drive MSC initialization failed");
     if (!SDCard.begin()) {
       LOG_ERR("USB", "Unable to remount SD card after USB Drive startup failure");
@@ -130,7 +288,26 @@ bool HalStorage::usbDriveHostSuspended() const {
 void HalStorage::endUsbDrive() {
 #if FREEINK_CAP_USB_MSC
   StorageLock lock;
+  const UsbDriveStats s = usbBlockDevice.stats();
+  LOG_INF("USB", "session: %lu reads, %lu writes, %lu retries, %lu failures, slowest %lu ms",
+          static_cast<unsigned long>(s.reads), static_cast<unsigned long>(s.writes),
+          static_cast<unsigned long>(s.retries), static_cast<unsigned long>(s.failures),
+          static_cast<unsigned long>(s.maxOpMs));
   usbMassStorage.end();
+#endif
+}
+
+UsbDriveStats HalStorage::usbDriveStats() const {
+#if FREEINK_CAP_USB_MSC
+  UsbDriveStats s = usbBlockDevice.stats();
+  s.suspended = usbMassStorage.hostSuspended();
+  const uint32_t lastCommand = lastHostCommandAt.load();
+  s.hostQuietMs = lastCommand ? millis() - lastCommand : 0;
+  s.startStops = hostStartStops.load();
+  s.lastStartStop = lastStartStop.load();
+  return s;
+#else
+  return {};
 #endif
 }
 

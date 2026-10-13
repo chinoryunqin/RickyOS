@@ -46,6 +46,12 @@ class UsbDriveActivity final : public Activity, private UiAppHost {
   unsigned long hostWaitStartedAt = 0;
   unsigned long startFailureStartedAt = 0;
   unsigned long forcedDisconnectRequestedAt = 0;
+#if RICKYOS_USB_DIAG
+  char diagText_[140] = "";
+  bool diagSuspended_ = false;
+  uint32_t diagStartStops_ = 0;
+  unsigned long diagShownAt_ = 0;
+#endif
 };
 
 #endif  // FREEINK_CAP_USB_MSC || RICKYOS_USB_PREVIEW

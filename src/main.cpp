@@ -328,10 +328,12 @@ void restartToHomeAfterStorageHandoff() {
   silentRebootFontPointSize = 0;
   silentRebootPayload = Frontlight.isOn() ? SILENT_REBOOT_LIGHT_ON : 0;
   silentRebootMagic = SILENT_REBOOT_MAGIC;
-  LOG_DBG("MAIN", "Restart after storage handoff (target=home)");
+  const unsigned long started = millis();
   GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
+  LOG_INF("MAIN", "storage handoff popup %lu ms", millis() - started);
   delay(50);
   handoffUsbOtgToSerialJtag();
+  LOG_INF("MAIN", "storage handoff USB switch %lu ms, restarting", millis() - started);
   ESP.restart();
 }
 
@@ -982,6 +984,21 @@ void setup() {
 void loop() {
 #ifdef RICKYOS_STANDBY_DIAG
   standby_diag::dumpWhenAwake();
+#endif
+#if !defined(SIMULATOR)
+  {
+    // After a software restart, replay the previous session's last log lines once a
+    // serial host has had time to reconnect (USB 传书 owned the port during that session).
+    static bool previousLogsShown = false;
+    if (!previousLogsShown && millis() > 8000) {
+      previousLogsShown = true;
+      const std::string previous = HalSystem::takePreviousSessionLogs();
+      if (!previous.empty()) {
+        LOG_INF("MAIN", "previous session's last logs:");
+        logSerial.print(previous.c_str());
+      }
+    }
+  }
 #endif
   static unsigned long maxLoopDuration = 0;
   const unsigned long loopStartTime = millis();

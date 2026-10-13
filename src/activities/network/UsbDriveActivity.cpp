@@ -68,10 +68,40 @@ void UsbDriveActivity::loop() {
   if (!startFailed) {
     const State nextState = Storage.usbDriveState();
     if (nextState != state) {
+      LOG_INF("USB", "state %d -> %d", static_cast<int>(state), static_cast<int>(nextState));
       state = nextState;
       requestUpdate();
     }
   }
+#if RICKYOS_USB_DIAG
+  // Diagnostics build: the serial port is the USB disk now, so show the sector traffic
+  // on the panel. A transfer that never finishes shows as a growing "now" figure.
+  if (millis() - diagShownAt_ >= 3000) {
+    diagShownAt_ = millis();
+    const UsbDriveStats s = Storage.usbDriveStats();
+    char text[sizeof(diagText_)];
+    // Idle time in whole 10 s steps, so a quiet bus does not repaint every 3 s.
+    snprintf(text, sizeof(text), "W %lu  %lu.%lu MB  R %lu\nretry %lu  fail %lu  max %lu ms  now %lu ms\nidle %lu s  host %lu s  ss %lu/%u%s",
+             static_cast<unsigned long>(s.writes), static_cast<unsigned long>(s.sectorsWritten / 2048),
+             static_cast<unsigned long>(s.sectorsWritten % 2048 * 10 / 2048), static_cast<unsigned long>(s.reads),
+             static_cast<unsigned long>(s.retries), static_cast<unsigned long>(s.failures),
+             static_cast<unsigned long>(s.maxOpMs), static_cast<unsigned long>(s.inFlightMs),
+             static_cast<unsigned long>(s.idleMs / 10000 * 10), static_cast<unsigned long>(s.hostQuietMs / 10000 * 10),
+             static_cast<unsigned long>(s.startStops), static_cast<unsigned>(s.lastStartStop),
+             s.suspended ? "  suspended" : "");
+    if (s.startStops != diagStartStops_) {
+      diagStartStops_ = s.startStops;
+      LOG_INF("USB", "start/stop #%lu code %u", static_cast<unsigned long>(s.startStops),
+              static_cast<unsigned>(s.lastStartStop));
+    }
+    if (strcmp(text, diagText_) != 0) {
+      if (s.suspended != diagSuspended_) LOG_INF("USB", "host %s", s.suspended ? "suspended" : "resumed");
+      diagSuspended_ = s.suspended;
+      memcpy(diagText_, text, sizeof(diagText_));
+      requestUpdate();
+    }
+  }
+#endif
 
   // USB suspend is a normal host power-saving state, not an eject or cable
   // removal. Keep the SD card owned by MSC until the host actually ejects or
@@ -110,6 +140,14 @@ void UsbDriveActivity::loop() {
     restartToHome();
     return;
   }
+  // macOS drops a disk without ejecting it when a power transition times out behind a
+  // long read burst (Finder previewing a folder of large books over this slow link),
+  // and then sends nothing at all, so no state change ever comes. Back always leaves.
+  if (state == State::Connected && mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+    LOG_INF("USB", "left by Back while connected");
+    restartToHome();
+    return;
+  }
 
   if (state == State::Ejected || state == State::Disconnected || state == State::Unsupported) {
     restartToHome();
@@ -131,7 +169,7 @@ void UsbDriveActivity::render(RenderLock&&) {
 
   renderUi();
 
-  if (state == State::WaitingForHost || startFailed) {
+  if (state == State::WaitingForHost || state == State::Connected || startFailed) {
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   }
@@ -163,6 +201,9 @@ void UsbDriveActivity::buildDriveScreen(UiScreen& screen) const {
         message = tr(STR_USB_DRIVE_CONNECTED);
         detail = tr(STR_USB_DRIVE_CONNECT_DELAY);
         secondaryDetail = tr(STR_USB_DRIVE_EJECT_HINT);
+#if RICKYOS_USB_DIAG
+        secondaryDetail = diagText_;
+#endif
         break;
       case State::IoError:
         message = startFailed ? tr(STR_USB_DRIVE_START_ERROR) : tr(STR_USB_DRIVE_ERROR);
@@ -215,7 +256,9 @@ void UsbDriveActivity::restartToHome() {
 #else
   if (restartRequested) return;
   restartRequested = true;
+  const unsigned long started = millis();
   Storage.endUsbDrive();
+  LOG_INF("USB", "drive released in %lu ms", millis() - started);
   delay(20);
   restartToHomeAfterStorageHandoff();
 #endif
