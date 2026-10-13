@@ -17,7 +17,17 @@ namespace {
 // Per-socket-op timeout. Some OPDS download endpoints are slow to send headers
 // (>15s) and chunked catalogs stall mid-body, so 15s killed them. 60s gives
 // slow servers room.
-constexpr int HTTP_TIMEOUT_MS = 60000;
+constexpr uint32_t HTTP_TIMEOUT_MS = 60000;
+
+// scheme://host[:port] of a URL for logs: paths, queries and userinfo can carry tokens.
+std::string originOf(const std::string& url) {
+  const size_t hostStart = url.find("://");
+  if (hostStart == std::string::npos) return {};
+  std::string origin = url.substr(0, url.find_first_of("/?#", hostStart + 3));
+  const size_t at = origin.rfind('@');
+  if (at != std::string::npos && at > hostStart) origin.erase(hostStart + 3, at + 1 - (hostStart + 3));
+  return origin;
+}
 
 // All HTTP(S) fetches go through wolfSSL (the firmware's only TLS stack: it
 // speaks TLS 1.3 and reads large bodies reliably). Plain-http URLs still use a
@@ -28,7 +38,7 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
                                            const std::vector<HttpDownloader::Header>& headers,
                                            const freeink::FetchSink& sink, const bool* cancelFlag = nullptr,
                                            size_t* bytesOut = nullptr, const bool downgradeRedirectsToHttp = false,
-                                           const char* rootCa = nullptr) {
+                                           const char* rootCa = nullptr, const uint32_t timeoutMs = HTTP_TIMEOUT_MS) {
   char userAgent[80];
   const int length =
       snprintf(userAgent, sizeof(userAgent), "CrossMux-%s-" CROSSPOINT_VERSION, HalSystem::getDeviceModel());
@@ -37,6 +47,7 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
   freeink::FetchOptions options;
   options.redirectToHttp = downgradeRedirectsToHttp;
   bool rejectedRedirect = false;
+  const unsigned long started = millis();
   const freeink::FetchResult result = freeink::fetchResumable(
       url, options,
       [&](freeink::SecureHttpClient& http, const bool sameOrigin) {
@@ -47,7 +58,7 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
           rejectedRedirect = true;
           return;
         }
-        http.setTimeout(HTTP_TIMEOUT_MS);
+        http.setTimeout(timeoutMs);
         if (rootCa)
           http.setCACert(rootCa);
         else
@@ -67,6 +78,11 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
       },
       sink, [&rejectedRedirect, cancelFlag] { return rejectedRedirect || (cancelFlag && *cancelFlag); });
   if (bytesOut) *bytesOut = result.bytes;
+  // Where a slow download spends its time: connecting to a dead route shows as a long
+  // time with no bytes, a slow route as a low rate. Origin only: some URLs carry tokens.
+  const unsigned long elapsed = millis() - started;
+  LOG_INF("HTTP", "%zu B in %lu ms (%lu KB/s), status %d: %s", result.bytes, elapsed,
+          elapsed > 0 ? static_cast<unsigned long>(result.bytes / elapsed) : 0UL, result.status, originOf(url).c_str());
 
   if (result.aborted) return HttpDownloader::ABORTED;
   if (result.stopped) return HttpDownloader::FILE_ERROR;
@@ -128,6 +144,20 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
                                                              const std::string& username, const std::string& password,
                                                              const std::vector<Header>& headers,
                                                              bool downgradeRedirectsToHttp) {
+  return downloadToFileWithin(url, destPath, HTTP_TIMEOUT_MS, progress, cancelFlag, username, password, headers,
+                              downgradeRedirectsToHttp);
+}
+
+HttpDownloader::DownloadError HttpDownloader::downloadIndex(const std::string& url, const std::string& destPath) {
+  return downloadToFileWithin(url, destPath, INDEX_TIMEOUT_MS);
+}
+
+HttpDownloader::DownloadError HttpDownloader::downloadToFileWithin(const std::string& url, const std::string& destPath,
+                                                                   const uint32_t timeoutMs, ProgressCallback progress,
+                                                                   const bool* cancelFlag, const std::string& username,
+                                                                   const std::string& password,
+                                                                   const std::vector<Header>& headers,
+                                                                   const bool downgradeRedirectsToHttp) {
   LOG_DBG("HTTP", "Downloading: %s -> %s", url.c_str(), destPath.c_str());
 
   // Stage in <dest>.part: a failed or cancelled download never replaces an
@@ -150,8 +180,8 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
   sink.progress = progress;
 
   size_t downloaded = 0;
-  const DownloadError result =
-      runGetSecure(url, username, password, headers, sink, cancelFlag, &downloaded, downgradeRedirectsToHttp);
+  const DownloadError result = runGetSecure(url, username, password, headers, sink, cancelFlag, &downloaded,
+                                            downgradeRedirectsToHttp, nullptr, timeoutMs);
   // Close before any remove() on the same path; DESTRUCTOR_CLOSES_FILE would
   // otherwise close only after the remove. A failed rewind leaves no open handle.
   if (file.isOpen()) file.close();

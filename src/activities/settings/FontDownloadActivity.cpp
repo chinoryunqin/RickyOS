@@ -378,7 +378,7 @@ bool FontDownloadActivity::fetchAndParseManifest() {
   auto result = HttpDownloader::HTTP_ERROR;
   for (const char* url : manifestUrls) {
     if (url == nullptr) break;
-    result = HttpDownloader::downloadToFile(url, MANIFEST_TMP, nullptr);
+    result = HttpDownloader::downloadIndex(url, MANIFEST_TMP);
     if (result == HttpDownloader::OK) break;
     LOG_ERR("FONT", "Failed to fetch manifest from %s", url);
     Storage.remove(MANIFEST_TMP);
