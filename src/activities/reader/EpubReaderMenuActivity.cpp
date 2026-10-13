@@ -27,6 +27,8 @@ const freeink::Icon& menuRowIcon(EpubReaderMenuActivity::MenuAction action) {
       return icon_ricky_row_light_32;
     case Action::ROTATE_SCREEN:
       return icon_ricky_row_rotate_32;
+    case Action::READING_MODE:
+      return icon_ricky_row_books_32;
     case Action::AUTO_PAGE_TURN:
       return icon_ricky_row_timer_32;
     case Action::GO_TO_PERCENT:
@@ -148,6 +150,7 @@ void EpubReaderMenuActivity::buildMenuItems(std::vector<MenuItem>& items, bool h
   }
   items.push_back({MenuAction::DICTIONARY, StrId::STR_LOOKUP});
   items.push_back({MenuAction::ROTATE_SCREEN, StrId::STR_ORIENTATION});
+  items.push_back({MenuAction::READING_MODE, StrId::STR_READING_MODE});
   items.push_back({MenuAction::AUTO_PAGE_TURN, StrId::STR_AUTO_TURN_PAGES_PER_MIN});
   items.push_back({MenuAction::GO_TO_PERCENT, StrId::STR_GO_TO_PERCENT});
   items.push_back({MenuAction::SCREENSHOT, StrId::STR_SCREENSHOT_BUTTON});
@@ -208,6 +211,18 @@ void EpubReaderMenuActivity::activateIndex(const int index) {
     optionPopup.show(I18N.get(StrId::STR_AUTO_TURN_PAGES_PER_MIN), pageTurnLabels.data(),
                      static_cast<int>(pageTurnLabels.size()), selectedPageTurnOption, [this](int idx) {
                        selectedPageTurnOption = idx;
+                       requestUpdate();
+                     });
+    requestUpdate();
+    return;
+  }
+
+  if (selectedAction == MenuAction::READING_MODE) {
+    // Saved now; the reader re-paginates when the menu closes (its frame moves the text).
+    optionPopup.show(StrId::STR_READING_MODE, readingModeLabels.data(), static_cast<int>(readingModeLabels.size()),
+                     SETTINGS.readingMode < readingModeLabels.size() ? SETTINGS.readingMode : 0, [this](int idx) {
+                       SETTINGS.readingMode = static_cast<uint8_t>(idx);
+                       SETTINGS.saveToFile();
                        requestUpdate();
                      });
     requestUpdate();
@@ -323,6 +338,9 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
       menuRowItems[i].value = I18N.get(orientationLabels[pendingOrientation]);
     } else if (action == MenuAction::AUTO_PAGE_TURN) {
       menuRowItems[i].value = pageTurnLabels[selectedPageTurnOption];
+    } else if (action == MenuAction::READING_MODE) {
+      menuRowItems[i].value =
+          I18N.get(readingModeLabels[SETTINGS.readingMode < readingModeLabels.size() ? SETTINGS.readingMode : 0]);
     } else if (action == MenuAction::NIGHT_MODE) {
       GUI.setCheckboxRow(menuRowItems[i], SETTINGS.screenInverted);
     } else if (action == MenuAction::FRONTLIGHT) {

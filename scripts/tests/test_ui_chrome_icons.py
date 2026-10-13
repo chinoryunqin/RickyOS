@@ -187,9 +187,10 @@ int main() {
     def test_reader_content_reserves_product_chrome_and_preserves_legacy_geometry(self):
         layout_source = (ROOT / 'src/components/UITheme.cpp').read_text()
         reader_source = (ROOT / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
-        render = method(reader_source, 'void EpubReaderActivity::renderBook(')
-        start = render.index('  int orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft;')
-        end = render.index('  const uint16_t viewportWidth', start)
+        # renderBook and the pickers share textMargins(); compile its body for the
+        # Original reading mode, which must keep the product chrome geometry.
+        margins = method(reader_source, 'readingMode::Margins EpubReaderActivity::textMargins(')
+        body = margins[margins.index('{') + 1:margins.rindex('}')]
         program = r'''
 #include <algorithm>
 #include <cassert>
@@ -200,8 +201,11 @@ int main() {
 struct BaseTheme { static constexpr int STATUS_NUMERIC_FONT_ID=3; };
 struct Metrics { int statusBarVerticalMargin=UiHighDpiProfile::enabled?48:19, progressBarMarginTop=1; };
 using ThemeMetrics=Metrics;
+#include "activities/reader/ReadingMode.h"
+#include "components/icons/rickyReaderDog.h"
 struct Settings {
  uint8_t screenMargin=25;
+ uint8_t readingMode=0;
  struct Spec {
    bool text=true, progress=false;
    int progressBarHeightPx=4;
@@ -224,9 +228,11 @@ struct UITheme {
  static int getStatusBarTextTopPadding(const GfxRenderer&);
 };
 ''' + method(layout_source, 'int UITheme::getStatusBarHeight(') + method(layout_source, 'int UITheme::getProgressBarHeight(') + method(layout_source, 'int UITheme::getStatusBarTextTopPadding(') + r'''
+readingMode::Margins textMargins(const GfxRenderer& renderer,bool automaticPageTurnActive) {
+''' + body + r'''
+}
 int contentBottom(const GfxRenderer& renderer,bool automaticPageTurnActive) {
-''' + render[start:end] + r'''
- return renderer.height-orientedMarginBottom;
+ return renderer.height-textMargins(renderer,automaticPageTurnActive).bottom;
 }
 int main() {
  for (int orientation=0;orientation<4;++orientation)
@@ -255,7 +261,7 @@ int main() {
 '''
         for defines in (('CROSSMUX_UI_PROFILE_HIGH_DPI=1', 'FREEINK_DEVICE_READPICO=1'),
                         ('CROSSMUX_UI_PROFILE_HIGH_DPI=0', 'FREEINK_DEVICE_READPICO=0')):
-            run_cpp(program, defines=defines)
+            run_cpp(program, include_dirs=(ROOT / "src",), defines=defines)
 
 
 if __name__ == '__main__':

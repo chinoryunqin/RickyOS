@@ -362,7 +362,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   int8_t getCharacterSpacing() const { return static_cast<int8_t>(characterSpacing - CHARACTER_SPACING_OFFSET); }
   uint8_t textAntiAliasing = 1;
   uint8_t fakeBold = SYNTHETIC_BOLD_STANDARD;
-  uint8_t readingBackgroundEnabled = 0;
+  // readingMode::Mode: Original, Puppy (小狗伴读), Immersive (沉浸), Ancient (古籍).
+  // Chosen in the reader menu; persisted outside SettingsList.
+  static constexpr uint8_t READING_MODE_COUNT = 4;
+  uint8_t readingMode = 0;
   uint8_t readingGuideLineEnabled = 0;
   uint8_t readingGuideLineStyle = static_cast<uint8_t>(readingGuideLine::Style::ShortDash);
   int8_t readingGuideLineOffset = READING_GUIDE_LINE_OFFSET_DEFAULT;

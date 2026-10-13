@@ -73,7 +73,7 @@ void progress(GfxRenderer& g,Rect r,int percent) {
 }
 }
 struct BaseTheme {
-  static void drawRickyReaderChrome(GfxRenderer&,float,int,int,const char*,bool,bool);
+  static void drawRickyReaderChrome(GfxRenderer&,float,int,int,const char*,bool,bool,bool=true);
   static void drawBluetoothStatusIcon(GfxRenderer&,int,int) {}
   static void drawBookmarkStatusIcon(GfxRenderer&,int,int) {}
   static void drawBatteryLeft(GfxRenderer&,Rect,bool) {}
@@ -107,6 +107,12 @@ int main() {
         } else assert(track.r.y+track.r.height==r.h-8);
       }
     }
+    // Footer only (the puppy reading mode): the header's title run is not drawn.
+    settings.spec=Spec{};
+    RickyDesignUi::runs.clear();
+    BaseTheme::drawRickyReaderChrome(r,42.0f,3,11,"章节",false,false,false);
+    assert(static_cast<int>(RickyDesignUi::runs.size())==3);
+    for(const auto& run : RickyDesignUi::runs) assert(run.r.y>=r.h-8-ricky::ds::layout::kReaderFooterHeight);
     settings.spec.lane=false;
     settings.spec.bar=true;
     settings.spec.progressBarMode=1;
@@ -121,10 +127,16 @@ int main() {
 
     def test_reservation_and_render_share_tokens_without_forcing_reader_preferences(self):
         reader = (ROOT / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
+        # One margin source: renderBook and the pickers take textMargins(), which
+        # reserves the header and footer bands the reading mode keeps.
+        margins = method(reader, 'readingMode::Margins EpubReaderActivity::textMargins(')
+        self.assertIn('kReaderHeaderHeight + ricky::ds::layout::kReaderHeaderGap', margins)
+        self.assertIn('kReaderFooterHeight', margins)
+        self.assertIn('SETTINGS.statusBarSpec().textLaneVisible()', margins)
+        self.assertIn('readingMode::showsHeader(mode)', margins)
+        self.assertIn('readingMode::showsFooter(mode)', margins)
         book = method(reader, 'void EpubReaderActivity::renderBook(')
-        self.assertIn('kReaderHeaderHeight + ricky::ds::layout::kReaderHeaderGap', book)
-        self.assertIn('kReaderFooterHeight', book)
-        self.assertIn('SETTINGS.statusBarSpec().textLaneVisible()', book)
+        self.assertIn('textMargins()', book)
         status = method(reader, 'void EpubReaderActivity::renderStatusBar(')
         self.assertIn('GUI.drawRickyReaderChrome', status)
         self.assertIn('GUI.drawStatusBar', status)  # legacy/auto-turn compatibility
@@ -136,8 +148,8 @@ int main() {
         for entry in ('void EpubReaderActivity::openDictionaryWordSelect(',
                       'void EpubReaderActivity::openFootnoteSelect('):
             selection = method(reader, entry)
-            self.assertIn('SETTINGS.statusBarSpec().textLaneVisible()', selection)
-            self.assertIn('kReaderHeaderHeight + ricky::ds::layout::kReaderHeaderGap', selection)
+            self.assertIn('textMargins()', selection)
+            self.assertNotIn('getOrientedViewableTRBL', selection)
 
     def test_toolbar_keeps_action_ids_and_uses_one_icon_weight_and_selection_language(self):
         toolbar = (ROOT / 'src/activities/reader/ReaderToolbarUi.cpp').read_text()

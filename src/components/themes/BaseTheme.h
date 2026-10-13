@@ -351,8 +351,9 @@ class BaseTheme {
   // A small framed label in the bottom-right corner over whatever the screen shows
   // ("Standby", or "Off" on the power-off screen); returns where it drew.
   static Rect drawRickyStandbyIndicator(const GfxRenderer& renderer, bool poweredOff = false);
+  // `header` false draws only the footer (the puppy reading mode puts its dog where the header sits).
   static void drawRickyReaderChrome(GfxRenderer& renderer, float bookProgress, int currentPage, int pageCount,
-                                    const char* title, bool bookmarked, bool estimated);
+                                    const char* title, bool bookmarked, bool estimated, bool header = true);
   // Also draws the wall clock opposite the battery when the user enabled
   // SETTINGS.clockShowInHeader and system time is valid. On touch boards a
   // tappable back button leads the band (see HeaderBackTapTarget); root
