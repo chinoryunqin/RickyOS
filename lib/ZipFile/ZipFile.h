@@ -56,6 +56,9 @@ class ZipFile {
   bool lastCentralDirPosValid = false;
 
   bool loadFileStatSlim(const char* filename, FileStatSlim* fileStat);
+  // Sorted name-hash index of the central directory, shared by every ZipFile on the same
+  // archive (EPUB code opens a fresh ZipFile per item). 1 found, 0 absent, -1 no index.
+  int findInCentralIndex(const char* filename, FileStatSlim* fileStat);
   long getDataOffset(const FileStatSlim& fileStat);
   bool loadZipDetails();
   bool readCentralEntry(CentralEntry& entry, char* name, size_t nameCapacity);

@@ -7,7 +7,10 @@
 #include <Memory.h>
 
 #include <algorithm>
+#include <cstdlib>
+#include <cstring>
 #include <limits>
+#include <mutex>
 
 #include "ZipParsing.h"
 
@@ -144,11 +147,110 @@ bool streamDeflatedPrefix(HalFile& file, Print& out, const size_t chunkSize, con
 }
 }  // namespace
 
+namespace {
+// Central directory index. A lookup used to walk the directory from the start (each
+// EPUB item opens a fresh ZipFile, so the resume cursor never survived): with 2,300
+// entries that is ~80 KB of small SD reads per stylesheet, chapter or image.
+struct CentralIndexEntry {
+  uint64_t hash;      // ZipFile::fnvHash64 of the entry name
+  uint32_t cdOffset;  // start of its central directory record
+};
+struct CentralIndex {
+  std::string path;
+  size_t fileSize = 0;
+  uint32_t centralDirOffset = 0;
+  uint16_t totalEntries = 0;
+  memory::ByteBuffer storage;
+  uint16_t count = 0;
+  uint32_t lastUse = 0;
+  const CentralIndexEntry* entries() const { return reinterpret_cast<const CentralIndexEntry*>(storage.get()); }
+};
+CentralIndex centralIndexes[2];  // the open book and, e.g., one whose cover is being made
+uint32_t centralIndexClock = 0;
+std::mutex centralIndexLock;
+
+memory::ByteBuffer allocateCentralIndex(const size_t bytes) {
+#if defined(SIMULATOR) || defined(CROSSPOINT_EMULATED)
+  return memory::ByteBuffer{static_cast<uint8_t*>(std::malloc(bytes))};
+#else
+  if (auto psram = memory::makePsramByteBufferUninitializedNoThrow(bytes)) return psram;
+  // Without PSRAM keep only small books' indexes in internal RAM; others scan as before.
+  constexpr size_t kInternalLimit = 4 * 1024;
+  return bytes <= kInternalLimit ? memory::ByteBuffer{static_cast<uint8_t*>(std::malloc(bytes))}
+                                 : memory::ByteBuffer{};
+#endif
+}
+}  // namespace
+
+int ZipFile::findInCentralIndex(const char* filename, FileStatSlim* fileStat) {
+  if (zipDetails.totalEntries == 0) return -1;
+  const std::lock_guard<std::mutex> guard(centralIndexLock);
+  const size_t fileSize = file.size();
+  CentralIndex* index = nullptr;
+  for (auto& candidate : centralIndexes) {
+    if (candidate.storage && candidate.path == filePath && candidate.fileSize == fileSize &&
+        candidate.centralDirOffset == zipDetails.centralDirOffset &&
+        candidate.totalEntries == zipDetails.totalEntries) {
+      index = &candidate;
+    }
+  }
+  if (!index) {
+    index = &centralIndexes[0];
+    for (auto& candidate : centralIndexes)
+      if (!candidate.storage || candidate.lastUse < index->lastUse) index = &candidate;
+    *index = CentralIndex{};
+    auto storage = allocateCentralIndex(sizeof(CentralIndexEntry) * zipDetails.totalEntries);
+    if (!storage || !file.seek(zipDetails.centralDirOffset)) return -1;
+    auto* entries = reinterpret_cast<CentralIndexEntry*>(storage.get());
+    char name[256];
+    uint16_t count = 0;
+    for (uint16_t i = 0; i < zipDetails.totalEntries; ++i) {
+      const uint32_t offset = file.position();
+      CentralEntry entry;
+      if (!readCentralEntry(entry, name, sizeof(name))) return -1;
+      if (entry.nameLength >= sizeof(name)) continue;  // never matched by the linear scan either
+      entries[count++] = {fnvHash64(name, entry.nameLength), offset};
+    }
+    std::sort(entries, entries + count,
+              [](const CentralIndexEntry& a, const CentralIndexEntry& b) { return a.hash < b.hash; });
+    index->path = filePath;
+    index->fileSize = fileSize;
+    index->centralDirOffset = zipDetails.centralDirOffset;
+    index->totalEntries = zipDetails.totalEntries;
+    index->storage = std::move(storage);
+    index->count = count;
+  }
+  index->lastUse = ++centralIndexClock;
+
+  const size_t length = strlen(filename);
+  if (length >= 256) return 0;
+  const uint64_t hash = fnvHash64(filename, length);
+  const CentralIndexEntry* begin = index->entries();
+  const CentralIndexEntry* end = begin + index->count;
+  const CentralIndexEntry* it = std::lower_bound(
+      begin, end, hash, [](const CentralIndexEntry& entry, const uint64_t value) { return entry.hash < value; });
+  // Equal hashes are confirmed against the stored name, so a collision cannot misresolve.
+  for (; it != end && it->hash == hash; ++it) {
+    char name[256];
+    CentralEntry entry;
+    if (!file.seek(it->cdOffset) || !readCentralEntry(entry, name, sizeof(name))) return -1;
+    if (entry.nameLength == length && memcmp(name, filename, length) == 0) {
+      fileStat->method = entry.method;
+      fileStat->compressedSize = entry.compressedSize;
+      fileStat->uncompressedSize = entry.uncompressedSize;
+      fileStat->localHeaderOffset = entry.localHeaderOffset;
+      return 1;
+    }
+  }
+  return 0;
+}
+
 bool ZipFile::loadFileStatSlim(const char* filename, FileStatSlim* fileStat) {
   const ScopedOpenClose zip{*this};
   if (!zip) return false;
 
   if (!loadZipDetails()) return false;
+  if (const int indexed = findInCentralIndex(filename, fileStat); indexed >= 0) return indexed == 1;
 
   // Phase 1: Try scanning from cursor position first
   uint32_t startPos = lastCentralDirPosValid ? lastCentralDirPos : zipDetails.centralDirOffset;
