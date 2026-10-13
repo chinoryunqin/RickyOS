@@ -1412,10 +1412,19 @@ void GfxRenderer::fillRectImpl(const int x, const int y, const int width, const 
   // entirely (it is a filled rect). With that buffer active this walks pixel by pixel so
   // the mirroring applies. Only this path slows down, and only during the 16-level pass;
   // every other render path keeps the byte-level fill below.
-  if (grayscale16Buffer != nullptr) {
+  if (grayscale16Buffer != nullptr && !_stripActive) {
+    // The 16-level frame has real grays: a smooth tone instead of the B/W dot pattern
+    // (and treating these as white made light-gray tracks vanish once a screen settled).
+    // Black/white write the levels drawPixel() mirrors (0 and 15).
+    const uint8_t level = C == Color::LightGray                             ? 11
+                          : C == Color::DarkGray                            ? 7
+                          : framebufferState(renderMode, C == Color::Black) ? 0
+                                                                            : 15;
+    fillGrayscale16Rect(lx0, ly0, lx1 - lx0, ly1 - ly0, level);
+    return;
+  }
+  if (grayscale16Buffer != nullptr) {  // strip target: the per-pixel path clips to the band
     if constexpr (C == Color::LightGray || C == Color::DarkGray) {
-      // The 16-level frame has real grays: a smooth tone instead of the B/W dot pattern
-      // (and treating these as white made light-gray tracks vanish once a screen settled).
       constexpr uint8_t gray = C == Color::LightGray ? 187 : 119;  // levels 11 and 7
       for (int px = lx0; px < lx1; ++px) {
         for (int py = ly0; py < ly1; ++py) drawGrayscale16Pixel(px, py, gray);
@@ -2018,6 +2027,61 @@ void GfxRenderer::drawGrayscale16Pixel(const int x, const int y, const uint8_t g
   if (px < 0 || px >= panelWidth || py < 0 || py >= panelHeight) return;
   const uint8_t level = (static_cast<unsigned>(gray) + 8) / 17;
   writeGrayscale16Physical(px, py, level);
+}
+
+void GfxRenderer::fillGrayscale16Rect(const int x, const int y, const int width, const int height,
+                                      const uint8_t level) const {
+  if (!grayscale16Buffer || width <= 0 || height <= 0 || level > 15) return;
+  const int lx0 = std::max({0, x, clipLeft_});
+  const int ly0 = std::max({0, y, clipTop_});
+  const int lx1 = std::min({getScreenWidth(), x + width, clipRight_});
+  const int ly1 = std::min({getScreenHeight(), y + height, clipBottom_});
+  if (lx0 >= lx1 || ly0 >= ly1) return;
+  // Rotation is rigid, so the two opposite corners bound the physical rectangle.
+  int ax, ay, bx, by;
+  rotateCoordinates(orientation, lx0, ly0, &ax, &ay, panelWidth, panelHeight);
+  rotateCoordinates(orientation, lx1 - 1, ly1 - 1, &bx, &by, panelWidth, panelHeight);
+  const int px0 = std::max(0, std::min(ax, bx));
+  const int px1 = std::min(static_cast<int>(panelWidth) - 1, std::max(ax, bx));
+  const int py0 = std::max(0, std::min(ay, by));
+  const int py1 = std::min(static_cast<int>(panelHeight) - 1, std::max(ay, by));
+  if (px0 > px1 || py0 > py1) return;
+
+  const bool ink = framebufferState(renderMode, level < 8);
+  const uint8_t pair = static_cast<uint8_t>(level | (level << 4));
+  const size_t grayStride = panelWidth / 2;
+  // B/W proxy: MSB-first bits, ink clears a bit. Partial edge bytes are masked.
+  const int firstByte = px0 / 8;
+  const int lastByte = px1 / 8;
+  const uint8_t firstMask = static_cast<uint8_t>(0xFFu >> (px0 % 8));
+  const uint8_t lastMask = static_cast<uint8_t>(0xFFu << (7 - px1 % 8));
+  for (int py = py0; py <= py1; ++py) {
+    uint8_t* gray = grayscale16Buffer + static_cast<size_t>(py) * grayStride;
+    int a = px0;
+    int b = px1;
+    if (a & 1) {  // odd x is the high nibble of its byte
+      gray[a / 2] = static_cast<uint8_t>((gray[a / 2] & 0x0F) | (level << 4));
+      ++a;
+    }
+    if (a <= b && !(b & 1)) {  // even x is the low nibble
+      gray[b / 2] = static_cast<uint8_t>((gray[b / 2] & 0xF0) | level);
+      --b;
+    }
+    if (a <= b) memset(gray + a / 2, pair, static_cast<size_t>(b - a + 1) / 2);
+
+    uint8_t* bw = frameBuffer + static_cast<size_t>(py) * panelWidthBytes;
+    const auto apply = [ink](uint8_t& byte, const uint8_t mask) {
+      byte = ink ? static_cast<uint8_t>(byte & ~mask) : static_cast<uint8_t>(byte | mask);
+    };
+    if (firstByte == lastByte) {
+      apply(bw[firstByte], static_cast<uint8_t>(firstMask & lastMask));
+    } else {
+      apply(bw[firstByte], firstMask);
+      if (lastByte - firstByte > 1)
+        memset(bw + firstByte + 1, ink ? 0x00 : 0xFF, static_cast<size_t>(lastByte - firstByte - 1));
+      apply(bw[lastByte], lastMask);
+    }
+  }
 }
 
 void GfxRenderer::writeGrayscale16Physical(const int px, const int py, const uint8_t level) const {

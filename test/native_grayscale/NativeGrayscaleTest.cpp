@@ -17,6 +17,7 @@
 #include <cstring>
 #include <fstream>
 #include <new>
+#include <optional>
 #include <vector>
 
 #include "AirPageImageRenderer.h"
@@ -298,6 +299,58 @@ int main(int argc, char** argv) {
       assert(!png.decodeToFramebuffer(path, renderer, cfg));
       availableHeap = heap;
       renderer.cancelGrayscale16();
+    }
+    // Row-wise fast fills match the per-pixel paths byte for byte (both buffers), with
+    // odd/even nibble edges, partial B/W bytes, clipping and off-screen parts.
+    {
+      uint32_t seed = 12345u + static_cast<uint32_t>(orientation);
+      const auto next = [&seed](int bound) {
+        seed = seed * 1664525u + 1013904223u;
+        return static_cast<int>((seed >> 8) % static_cast<uint32_t>(bound));
+      };
+      const int w = renderer.getScreenWidth();
+      const int h = renderer.getScreenHeight();
+      for (int round = 0; round < 40; ++round) {
+        const int x = next(w + 40) - 20, y = next(h + 40) - 20;
+        const int rw = next(70) + 1, rh = next(70) + 1;
+        const uint8_t level = static_cast<uint8_t>(next(16));
+        const bool clipped = round % 5 == 0;
+        assert(renderer.beginGrayscale16());
+        native.fill(0x5A);
+        bw.fill(0x96);
+        {
+          std::optional<GfxRenderer::ClipScope> clip;
+          if (clipped) clip.emplace(renderer, x + 3, y + 2, rw / 2 + 1, rh / 2 + 1);
+          for (int px = x; px < x + rw; ++px)
+            for (int py = y; py < y + rh; ++py)
+              if (px >= 0 && py >= 0 && px < w && py < h) renderer.drawGrayscale16Pixel(px, py, level * 17);
+        }
+        const auto expectedNative = native;
+        const auto expectedBw = bw;
+        native.fill(0x5A);
+        bw.fill(0x96);
+        {
+          std::optional<GfxRenderer::ClipScope> clip;
+          if (clipped) clip.emplace(renderer, x + 3, y + 2, rw / 2 + 1, rh / 2 + 1);
+          renderer.fillGrayscale16Rect(x, y, rw, rh, level);
+        }
+        assert(native == expectedNative && bw == expectedBw);
+        // fillRect black/white matches drawPixel's mirrored 0/15.
+        for (const bool black : {true, false}) {
+          native.fill(0x5A);
+          bw.fill(0x96);
+          for (int py = y; py < y + rh; ++py)
+            for (int px = x; px < x + rw; ++px)
+              if (px >= 0 && py >= 0 && px < w && py < h) renderer.drawPixel(px, py, black);
+          const auto pixelNative = native;
+          const auto pixelBw = bw;
+          native.fill(0x5A);
+          bw.fill(0x96);
+          renderer.fillRect(x, y, rw, rh, black);
+          assert(native == pixelNative && bw == pixelBw);
+        }
+        renderer.cancelGrayscale16();
+      }
     }
     assert(renderer.beginGrayscale16());
     renderer.fillRect(0, 0, 3, 2);

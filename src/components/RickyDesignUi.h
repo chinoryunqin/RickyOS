@@ -38,15 +38,23 @@ inline void fill(const GfxRenderer& renderer, fui::Rect r, ds::gray::Level tone,
                              ds::gray::oneBitInk(tone) ? Color::Black : Color::White);
     return;
   }
-  radius = std::min({radius, r.width / 2, r.height / 2});
-  // No frame/scratch allocation. Restricted to small UI fills and thin tracks.
-  for (int x = 0; x < r.width; ++x)
+  radius = std::max(0, std::min({radius, r.width / 2, r.height / 2}));
+  // Straight parts go row by row in panel memory; only the four corner squares are
+  // per-pixel. No frame/scratch allocation.
+  renderer.fillGrayscale16Rect(r.x, r.y + radius, r.width, r.height - 2 * radius, tone);
+  renderer.fillGrayscale16Rect(r.x + radius, r.y, r.width - 2 * radius, radius, tone);
+  renderer.fillGrayscale16Rect(r.x + radius, r.y + r.height - radius, r.width - 2 * radius, radius, tone);
+  if (radius == 0) return;
+  for (int x = 0; x < r.width; ++x) {
+    if (x == radius) x = r.width - radius;  // skip the middle columns, already filled
     for (int y = 0; y < r.height; ++y) {
+      if (y == radius) y = r.height - radius;
       const int dx = x < radius ? radius - x : x >= r.width - radius ? x - (r.width - radius - 1) : 0;
       const int dy = y < radius ? radius - y : y >= r.height - radius ? y - (r.height - radius - 1) : 0;
       if (dx && dy && dx * dx + dy * dy > radius * radius) continue;
       renderer.drawGrayscale16Pixel(r.x + x, r.y + y, ds::gray::toRgb8(tone));
     }
+  }
 }
 
 inline void card(const GfxRenderer& renderer, fui::Rect r, bool selected) {

@@ -611,6 +611,11 @@ class GfxRenderer {
   uint8_t* grayscale16Frame() const { return grayscale16Buffer; }
   size_t grayscale16FrameBytes() const { return static_cast<size_t>(panelWidth / 2) * panelHeight; }
   void drawGrayscale16Pixel(int x, int y, uint8_t gray) const;
+  // Fill a logical rectangle with one 16-level tone (0 = black ... 15 = white) and its
+  // B/W proxy, row by row in panel memory. Same pixels as drawGrayscale16Pixel() over
+  // the rectangle, without a rotation and two read-modify-writes per pixel: on a
+  // rotated panel those walk PSRAM column-wise and dominated UI paint time.
+  void fillGrayscale16Rect(int x, int y, int width, int height, uint8_t level) const;
   void blendGrayscale16Pixel(int x, int y, uint8_t inkLevel, uint8_t coverage) const;
   // Copy a rectangle of the B/W proxy into the native 16-gray frame (ink -> black,
   // paper -> white), so text and shapes drawn with the normal B/W API can sit on a
