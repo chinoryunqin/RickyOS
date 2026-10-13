@@ -30,6 +30,8 @@ const freeink::Icon& menuRowIcon(EpubReaderMenuActivity::MenuAction action) {
       return icon_ricky_row_rotate_32;
     case Action::READING_MODE:
       return icon_ricky_row_books_32;
+    case Action::READING_LINE:
+      return icon_ricky_row_lines_32;
     case Action::AUTO_PAGE_TURN:
       return icon_ricky_row_timer_32;
     case Action::GO_TO_PERCENT:
@@ -152,6 +154,7 @@ void EpubReaderMenuActivity::buildMenuItems(std::vector<MenuItem>& items, bool h
   items.push_back({MenuAction::DICTIONARY, StrId::STR_LOOKUP});
   items.push_back({MenuAction::ROTATE_SCREEN, StrId::STR_ORIENTATION});
   items.push_back({MenuAction::READING_MODE, StrId::STR_READING_MODE});
+  items.push_back({MenuAction::READING_LINE, StrId::STR_READING_GUIDE_LINE});
   items.push_back({MenuAction::AUTO_PAGE_TURN, StrId::STR_AUTO_TURN_PAGES_PER_MIN});
   items.push_back({MenuAction::GO_TO_PERCENT, StrId::STR_GO_TO_PERCENT});
   items.push_back({MenuAction::SCREENSHOT, StrId::STR_SCREENSHOT_BUTTON});
@@ -223,6 +226,23 @@ void EpubReaderMenuActivity::activateIndex(const int index) {
     optionPopup.show(StrId::STR_READING_MODE, readingModeLabels.data(), static_cast<int>(readingModeLabels.size()),
                      SETTINGS.readingMode < readingModeLabels.size() ? SETTINGS.readingMode : 0, [this](int idx) {
                        SETTINGS.readingMode = static_cast<uint8_t>(idx);
+                       SETTINGS.saveToFile();
+                       requestUpdate();
+                     });
+    requestUpdate();
+    return;
+  }
+
+  if (selectedAction == MenuAction::READING_LINE) {
+    static_assert(readingGuideLine::kMenuChoices == 7, "one label per reading-line choice");
+    optionPopup.show(StrId::STR_READING_GUIDE_LINE, readingLineLabels.data(),
+                     static_cast<int>(readingLineLabels.size()),
+                     readingGuideLine::menuIndexFor(SETTINGS.readingGuideLineEnabled, SETTINGS.readingGuideLineStyle),
+                     [this](int idx) {
+                       if (idx < 0 || idx >= readingGuideLine::kMenuChoices) return;
+                       SETTINGS.readingGuideLineEnabled = idx == 0 ? 0 : 1;
+                       if (idx != 0)
+                         SETTINGS.readingGuideLineStyle = static_cast<uint8_t>(readingGuideLine::kMenuStyles[idx]);
                        SETTINGS.saveToFile();
                        requestUpdate();
                      });
@@ -339,6 +359,9 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
       menuRowItems[i].value = I18N.get(orientationLabels[pendingOrientation]);
     } else if (action == MenuAction::AUTO_PAGE_TURN) {
       menuRowItems[i].value = pageTurnLabels[selectedPageTurnOption];
+    } else if (action == MenuAction::READING_LINE) {
+      menuRowItems[i].value = I18N.get(readingLineLabels[readingGuideLine::menuIndexFor(
+          SETTINGS.readingGuideLineEnabled, SETTINGS.readingGuideLineStyle)]);
     } else if (action == MenuAction::READING_MODE) {
       menuRowItems[i].value =
           I18N.get(readingModeLabels[SETTINGS.readingMode < readingModeLabels.size() ? SETTINGS.readingMode : 0]);

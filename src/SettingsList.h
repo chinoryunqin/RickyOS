@@ -294,10 +294,11 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
         SettingInfo::Toggle(StrId::STR_READING_GUIDE_LINE, &CrossPointSettings::readingGuideLineEnabled,
                             "readingGuideLineEnabled", StrId::STR_CAT_READER)
             .withTextSettings(),
-        SettingInfo::Enum(StrId::STR_READING_GUIDE_LINE_STYLE, &CrossPointSettings::readingGuideLineStyle,
-                          {StrId::STR_SOLID_LINE, StrId::STR_SHORT_DASH, StrId::STR_MEDIUM_DASH, StrId::STR_LONG_DASH,
-                           StrId::STR_DOTTED_LINE, StrId::STR_WAVY_LINE},
-                          "readingGuideLineStyle", StrId::STR_CAT_READER)
+        SettingInfo::Enum(
+            StrId::STR_READING_GUIDE_LINE_STYLE, &CrossPointSettings::readingGuideLineStyle,
+            {StrId::STR_SOLID_LINE, StrId::STR_SHORT_DASH, StrId::STR_MEDIUM_DASH, StrId::STR_LONG_DASH,
+             StrId::STR_DOTTED_LINE, StrId::STR_WAVY_LINE, StrId::STR_DOUBLE_LINE, StrId::STR_HIGHLIGHT_LINE},
+            "readingGuideLineStyle", StrId::STR_CAT_READER)
             .withTextSettings(),
         SettingInfo::SignedValue(
             StrId::STR_READING_GUIDE_LINE_OFFSET, &CrossPointSettings::readingGuideLineOffset,

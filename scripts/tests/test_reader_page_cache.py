@@ -92,6 +92,7 @@ struct GfxRenderer {
   void setRenderMode(RenderMode m) {mode=m;}
   int getLineHeight(int,float) const {return 1;}
   int getFontAscenderSize(int) const {return 1;}
+  int getTextWidth(int,const char*) const {return 1;}
   struct FrameBufferLoan {explicit FrameBufferLoan(GfxRenderer&) {}};
   struct SyntheticBoldScope {SyntheticBoldScope(GfxRenderer&,uint8_t) {}};
   struct TextWeightScope {TextWeightScope(GfxRenderer&,const uint8_t*,uint8_t=0) {}};
@@ -116,6 +117,7 @@ struct PageLine {
   }
 };
 namespace readingGuideLine {
+constexpr int rowOffset(int lineHeight,int,int) {return lineHeight;}
 bool fitsVertically(uint8_t,int,int,int) {return true;}
 void draw(GfxRenderer& renderer,int,int,int,uint8_t) {renderer.frame[15]=0x55;}
 }

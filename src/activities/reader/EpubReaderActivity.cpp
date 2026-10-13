@@ -542,8 +542,10 @@ void EpubReaderActivity::openReaderMenu() {
   const int totalPages = position.totalPages;
   const int bookProgressPercent = bookPercentFor(position);
   const uint8_t readingModeBefore = SETTINGS.readingMode;
+  const uint8_t guideBefore =
+      static_cast<uint8_t>(SETTINGS.readingGuideLineEnabled << 4 | SETTINGS.readingGuideLineStyle);
   startActivityForResultWith<EpubReaderMenuActivity>(
-      [this, readingModeBefore](const ActivityResult& result) {
+      [this, readingModeBefore, guideBefore](const ActivityResult& result) {
         READING_STATS.resumeSession();
         const auto& menu = std::get<MenuResult>(result.data);
         if (SETTINGS.orientation != menu.orientation) {
@@ -554,6 +556,8 @@ void EpubReaderActivity::openReaderMenu() {
           applyReaderTextSettings();
           requestUpdate();
         }
+        // Reading lines are drawn, not laid out: the page cache key changes with them.
+        if ((SETTINGS.readingGuideLineEnabled << 4 | SETTINGS.readingGuideLineStyle) != guideBefore) requestUpdate();
         toggleAutoPageTurn(menu.pageTurnRate);
         if (!result.isCancelled) {
           onReaderMenuConfirm(static_cast<EpubReaderMenuActivity::MenuAction>(menu.action));
@@ -2482,9 +2486,13 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
       if (!key.guideLine || element->getTag() != TAG_PageLine) continue;
       const auto& line = static_cast<const PageLine&>(*element);
       if (line.getBlock()->isEmpty()) continue;
-      const int lineHeight = renderer.getLineHeight(key.spec.fontId, key.spec.lineCompression) +
-                             line.getBlock()->getRubyShift(renderer.getFontAscenderSize(key.spec.fontId));
-      const int guideY = key.top + line.yPos + lineHeight + key.guideOffset;
+      const int ascender = renderer.getFontAscenderSize(key.spec.fontId);
+      const int lineHeight =
+          renderer.getLineHeight(key.spec.fontId, key.spec.lineCompression) + line.getBlock()->getRubyShift(ascender);
+      const int guideY =
+          key.top + line.yPos +
+          readingGuideLine::rowOffset(lineHeight, ascender, renderer.getTextWidth(key.spec.fontId, "国")) +
+          key.guideOffset;
       if (readingGuideLine::fitsVertically(key.guideStyle, guideY, key.top, renderer.getScreenHeight() - key.bottom)) {
         readingGuideLine::draw(renderer, key.left, guideY, renderer.getScreenWidth() - key.right - 1, key.guideStyle);
       }
@@ -2518,9 +2526,13 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
       if (!key.guideLine || element->getTag() != TAG_PageLine) continue;
       const auto& line = static_cast<const PageLine&>(*element);
       if (line.getBlock()->isEmpty()) continue;
-      const int lineHeight = renderer.getLineHeight(key.spec.fontId, key.spec.lineCompression) +
-                             line.getBlock()->getRubyShift(renderer.getFontAscenderSize(key.spec.fontId));
-      const int guideY = key.top + line.yPos + lineHeight + key.guideOffset;
+      const int ascender = renderer.getFontAscenderSize(key.spec.fontId);
+      const int lineHeight =
+          renderer.getLineHeight(key.spec.fontId, key.spec.lineCompression) + line.getBlock()->getRubyShift(ascender);
+      const int guideY =
+          key.top + line.yPos +
+          readingGuideLine::rowOffset(lineHeight, ascender, renderer.getTextWidth(key.spec.fontId, "国")) +
+          key.guideOffset;
       if (readingGuideLine::fitsVertically(key.guideStyle, guideY, key.top, renderer.getScreenHeight() - key.bottom)) {
         readingGuideLine::draw(renderer, key.left, guideY, renderer.getScreenWidth() - key.right - 1, key.guideStyle);
       }
@@ -2671,12 +2683,14 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     const int contentBottom = renderer.getScreenHeight() - orientedMarginBottom;
     const int baseLineHeight = renderer.getLineHeight(fontId, SETTINGS.getReaderLineCompression());
     const int ascender = renderer.getFontAscenderSize(fontId);
+    const int em = renderer.getTextWidth(fontId, "国");
     for (const auto& element : page->elements) {
       if (element->getTag() != TAG_PageLine) continue;
       const auto& line = static_cast<const PageLine&>(*element);
       if (line.getBlock()->isEmpty()) continue;
       const int lineHeight = baseLineHeight + line.getBlock()->getRubyShift(ascender);
-      const int guideY = orientedMarginTop + line.yPos + lineHeight + SETTINGS.readingGuideLineOffset;
+      const int guideY = orientedMarginTop + line.yPos + readingGuideLine::rowOffset(lineHeight, ascender, em) +
+                         SETTINGS.readingGuideLineOffset;
       if (readingGuideLine::fitsVertically(SETTINGS.readingGuideLineStyle, guideY, orientedMarginTop, contentBottom)) {
         readingGuideLine::draw(renderer, x1, guideY, x2, SETTINGS.readingGuideLineStyle);
       }
@@ -3116,6 +3130,11 @@ constexpr int kTextRowAntiAliasing = kTextRowIndent + 1;
 constexpr StrId kReadingModeIds[] = {StrId::STR_READING_MODE_ORIGINAL, StrId::STR_READING_MODE_PUPPY,
                                      StrId::STR_READING_MODE_IMMERSIVE, StrId::STR_READING_MODE_ANCIENT};
 static_assert(std::size(kReadingModeIds) == static_cast<size_t>(readingMode::Mode::Count), "reading mode labels");
+// 关, then readingGuideLine::kMenuStyles[1..].
+constexpr StrId kReadingLineIds[] = {StrId::STR_STATE_OFF,     StrId::STR_SOLID_LINE, StrId::STR_DASH_LINE,
+                                     StrId::STR_DOTTED_LINE,   StrId::STR_WAVY_LINE,  StrId::STR_DOUBLE_LINE,
+                                     StrId::STR_HIGHLIGHT_LINE};
+static_assert(std::size(kReadingLineIds) == readingGuideLine::kMenuChoices, "reading line labels");
 // Body-text weight (readerTextWeightCurve); the middle step is the font as drawn.
 constexpr StrId kWeightIds[] = {StrId::STR_RICKY_WEIGHT_THINNEST, StrId::STR_RICKY_WEIGHT_THIN,
                                 StrId::STR_FAKE_BOLD_STANDARD, StrId::STR_RICKY_WEIGHT_BOLD,
@@ -4018,6 +4037,9 @@ std::string EpubReaderActivity::moreRowValue(int row) const {
       return SETTINGS.screenInverted ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
     case MA::READING_MODE:
       return I18N.get(kReadingModeIds[static_cast<uint8_t>(readingMode::modeFor(SETTINGS.readingMode))]);
+    case MA::READING_LINE:
+      return I18N.get(kReadingLineIds[readingGuideLine::menuIndexFor(SETTINGS.readingGuideLineEnabled,
+                                                                     SETTINGS.readingGuideLineStyle)]);
     case MA::FRONTLIGHT:
       return Frontlight.isOn() ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
     case MA::IMAGE_SCALING: {
@@ -4108,6 +4130,23 @@ void EpubReaderActivity::activateMoreRow(int row) {
                           // The frame and the header/footer bands move the text column: re-paginate.
                           applyTextSettingLive();
                         });
+      paintOverlayPopup();
+      return;
+    case MA::READING_LINE:
+      overlayPopup.show(
+          StrId::STR_READING_GUIDE_LINE, kReadingLineIds, static_cast<int>(std::size(kReadingLineIds)),
+          readingGuideLine::menuIndexFor(SETTINGS.readingGuideLineEnabled, SETTINGS.readingGuideLineStyle),
+          [this](int idx) {
+            if (idx < 0 || idx >= readingGuideLine::kMenuChoices) return;
+            SETTINGS.readingGuideLineEnabled = idx == 0 ? 0 : 1;
+            if (idx != 0) {
+              SETTINGS.readingGuideLineStyle = static_cast<uint8_t>(readingGuideLine::kMenuStyles[idx]);
+            }
+            // Drawn, not laid out: redraw the page under the panel, no re-pagination.
+            SETTINGS.saveToFile();
+            discardOverlayPage();
+            requestUpdate();
+          });
       paintOverlayPopup();
       return;
     case MA::FRONTLIGHT: {

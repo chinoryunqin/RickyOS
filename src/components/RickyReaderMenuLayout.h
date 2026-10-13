@@ -9,7 +9,7 @@
 // ListItems; the only extra residency is this bounded index map.
 namespace RickyReaderMenuLayout {
 inline constexpr int8_t More = -1;
-// Every action the reader can list (17 with reading mode) plus the More row.
+// Every action the reader can list (18 with reading mode and lines) plus the More row.
 inline constexpr size_t kMaxItems = 20;
 struct View {
   std::array<int8_t, kMaxItems> indices{};
@@ -30,17 +30,18 @@ View build(const Items& items, bool more) {
     }
   };
   if (more) {
-    for (auto action :
-         {Action::FOOTNOTES, Action::SYNC, Action::SCREENSHOT, Action::DISPLAY_QR, Action::GO_HOME, Action::DELETE_CACHE})
+    for (auto action : {Action::FOOTNOTES, Action::AUTO_PAGE_TURN, Action::SYNC, Action::SCREENSHOT, Action::DISPLAY_QR,
+                        Action::GO_HOME, Action::DELETE_CACHE})
       add(action);
     return view;
   }
   for (auto action : {Action::SELECT_CHAPTER, Action::TOGGLE_BOOKMARK, Action::TEXT_SETTINGS, Action::DICTIONARY})
     add(action);
   view.quickCount = view.count;
-  // Reading mode joins the first page; sync moves to More so the page still fits one screen.
-  for (auto action : {Action::NIGHT_MODE, Action::FRONTLIGHT, Action::READING_MODE, Action::ROTATE_SCREEN,
-                      Action::AUTO_PAGE_TURN, Action::GO_TO_PERCENT, Action::BOOKMARKS})
+  // Reading mode and reading lines join the first page; sync and auto turn move to More
+  // so the page still fits one screen.
+  for (auto action : {Action::NIGHT_MODE, Action::FRONTLIGHT, Action::READING_MODE, Action::READING_LINE,
+                      Action::ROTATE_SCREEN, Action::GO_TO_PERCENT, Action::BOOKMARKS})
     add(action);
   if (view.count < view.indices.size()) view.indices[view.count++] = More;
   return view;

@@ -30,7 +30,8 @@ class EpubReaderMenuActivity final : public UiListActivity {
     DELETE_CACHE,
     DICTIONARY,
     IMAGE_SCALING,  // Legacy action ID; image scaling remains in Settings.
-    READING_MODE    // 原版 / 小狗伴读 / 沉浸 / 古籍; applied when the menu closes.
+    READING_MODE,   // 原版 / 小狗伴读 / 沉浸 / 古籍; applied when the menu closes.
+    READING_LINE    // 阅读线: off or one of its looks; redrawn when the menu closes.
   };
 
   struct MenuItem {
@@ -92,6 +93,10 @@ class EpubReaderMenuActivity final : public UiListActivity {
   const std::vector<const char*> pageTurnLabels = {I18N.get(StrId::STR_STATE_OFF), "1", "3", "6", "12"};
   const std::vector<StrId> readingModeLabels = {StrId::STR_READING_MODE_ORIGINAL, StrId::STR_READING_MODE_PUPPY,
                                                 StrId::STR_READING_MODE_IMMERSIVE, StrId::STR_READING_MODE_ANCIENT};
+  // readingGuideLine::kMenuStyles order, with 关 first.
+  const std::vector<StrId> readingLineLabels = {StrId::STR_STATE_OFF,     StrId::STR_SOLID_LINE, StrId::STR_DASH_LINE,
+                                                StrId::STR_DOTTED_LINE,   StrId::STR_WAVY_LINE,  StrId::STR_DOUBLE_LINE,
+                                                StrId::STR_HIGHLIGHT_LINE};
   int currentPage = 0;
   int totalPages = 0;
   int bookProgressPercent = 0;

@@ -79,8 +79,11 @@ constexpr StrId CHARACTER_SPACING_IDS[] = {StrId::STR_SPACING_MINUS_2, StrId::ST
                                            StrId::STR_SPACING_PLUS_2};
 constexpr StrId ALIGNMENT_IDS[] = {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId::STR_CENTER, StrId::STR_ALIGN_RIGHT,
                                    StrId::STR_BOOK_S_STYLE};
-constexpr StrId GUIDE_LINE_STYLE_IDS[] = {StrId::STR_SOLID_LINE, StrId::STR_SHORT_DASH,  StrId::STR_MEDIUM_DASH,
-                                          StrId::STR_LONG_DASH,  StrId::STR_DOTTED_LINE, StrId::STR_WAVY_LINE};
+constexpr StrId GUIDE_LINE_STYLE_IDS[] = {StrId::STR_SOLID_LINE,  StrId::STR_SHORT_DASH,    StrId::STR_MEDIUM_DASH,
+                                          StrId::STR_LONG_DASH,   StrId::STR_DOTTED_LINE,   StrId::STR_WAVY_LINE,
+                                          StrId::STR_DOUBLE_LINE, StrId::STR_HIGHLIGHT_LINE};
+static_assert(std::size(GUIDE_LINE_STYLE_IDS) == static_cast<size_t>(readingGuideLine::Style::Count),
+              "a label per stored reading-line style");
 constexpr int MARGIN_MIN = CrossPointSettings::SCREEN_MARGIN_MIN;
 constexpr int MARGIN_MAX = CrossPointSettings::SCREEN_MARGIN_MAX;
 constexpr int MARGIN_STEP = CrossPointSettings::SCREEN_MARGIN_STEP;

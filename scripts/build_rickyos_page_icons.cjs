@@ -40,6 +40,7 @@ const ROW_ICONS = [
   ['row_file', 'file', 32], ['row_home', 'house', 32],
   ['row_folder', 'folder', 32], ['row_books', 'book-open', 32],
   ['row_text', 'file-text', 32], ['row_image', 'image', 32],
+  ['row_lines', 'underline', 32],
 ];
 
 let output = path.join(root, 'src/components/icons/rickyPageIcons.h');

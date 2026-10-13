@@ -37,7 +37,7 @@ class RickyPageIconTest(unittest.TestCase):
     def test_reader_rows_have_native_32_px_resources(self):
         text = HEADER.read_text()
         aliases = re.findall(r"\['(row_\w+)', '[\w-]+', 32\]", SCRIPT.read_text())
-        self.assertEqual(len(aliases), 14)
+        self.assertEqual(len(aliases), 15)
         for alias in aliases:
             body = re.search(rf'icon_ricky_{alias}_32_bits\[\] = \{{([^}}]+)\}}', text).group(1)
             self.assertEqual(len(re.findall(r'0x[0-9A-F]{2}', body)), 4 * 32)
