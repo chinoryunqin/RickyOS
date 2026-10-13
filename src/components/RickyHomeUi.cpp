@@ -12,8 +12,11 @@
 #include "RickyDesignTokens.h"
 #include "RickyDesignUi.h"
 #include "RickyHomeLayout.h"
+#include "RickyMascot.h"
 #include "RickyPageUi.h"
+#include "RickyPaw.h"
 #include "RickyProfile.h"
+#include "RickyReadingStreak.h"
 #include "UITheme.h"
 #include "util/TimeUtils.h"
 
@@ -138,7 +141,7 @@ void RickyHomeUi::draw(UiScreen& screen) {
   const auto statsRect = screen.takeBottom(labelHeight + gap * 2, gap * 2);
   snprintf(statsText, sizeof(statsText), tr(STR_RICKY_HOME_STATS),
            static_cast<unsigned>(READING_STATS.getTodayReadingMs() / 60000),
-           static_cast<unsigned>(READING_STATS.getCurrentStreakDays()));
+           static_cast<unsigned>(rickyStreak::evaluate().current));
   auto statsStyle = theme.smallText;
   statsStyle.align = fui::TextAlign::Center;
   screen.target().text(statsRect, statsText, statsStyle);
@@ -256,7 +259,7 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
              static_cast<unsigned>(local.tm_mday));
     snprintf(statsText, sizeof(statsText), tr(STR_RICKY_HOME_WEEK_STREAK),
              I18N.get(weekdays[std::clamp(local.tm_wday, 0, 6)]),
-             static_cast<unsigned>(READING_STATS.getCurrentStreakDays()));
+             static_cast<unsigned>(rickyStreak::evaluate().current));
   } else {
     snprintf(dateText, sizeof(dateText), "%s", tr(STR_RICKY_DATE_UNSET));
     statsText[0] = 0;
@@ -351,41 +354,65 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   design::text(renderer, button, tr(STR_CONTINUE_READING), design::BODY, !selectedCard, fui::TextAlign::Center);
   screen.frame().hit(main, OPEN_BOOK, start, fui::InputTouch);
 
+  // Today and the streak. The dog reacts to today against the goal; the streak card
+  // shows the last seven days as paw prints and the next milestone.
   const auto stats = screen.takeTop(184, ds::space::k6);
-  const unsigned todayMinutes = READING_STATS.getTodayReadingMs() / 60000;
-  const unsigned streak = READING_STATS.getCurrentStreakDays();
-  const unsigned goal = getDailyReadingGoalMs() / 60000;
+  const uint64_t todayMs = READING_STATS.getTodayReadingMs();
+  const unsigned todayMinutes = todayMs / 60000;
+  const uint64_t goalMs = rickyStreak::goalMs();
+  const unsigned goal = goalMs / 60000;
+  readingStreak::Mark week[7];
+  const uint32_t today = READING_STATS.getTodayDayOrdinal();
+  const auto streak = rickyStreak::evaluate(week, today >= 6 ? today - 6 : 0, 7);
   const int col = (stats.width - gap) / 2;
   for (int i = 0; i < 2; ++i) {
     const auto cell = box(stats.x + i * (col + gap), stats.y, col, stats.height);
     design::card(renderer, cell, false);
     design::secondaryText(renderer, box(cell.x + pad, cell.y + 12, col - pad * 2, 28),
                           i == 0 ? tr(STR_RICKY_TODAY_READING) : tr(STR_RICKY_STREAK_READING), design::CAPTION);
-    snprintf(statsText, sizeof(statsText), "%u", i == 0 ? todayMinutes : streak);
-    design::text(renderer, box(cell.x + pad, cell.y + 40, 136, 56), statsText, design::NUMERIC_DISPLAY);
-    design::secondaryText(renderer, box(cell.x + 160, cell.y + 64, col - 160 - pad, 28),
+    snprintf(statsText, sizeof(statsText), "%u", i == 0 ? todayMinutes : static_cast<unsigned>(streak.current));
+    const int numberFont = design::fontFor(renderer, design::NUMERIC_DISPLAY, statsText);
+    const int numberWidth = renderer.getTextWidth(numberFont, statsText);
+    design::text(renderer, box(cell.x + pad, cell.y + 40, numberWidth + 8, 56), statsText, design::NUMERIC_DISPLAY);
+    design::secondaryText(renderer, box(cell.x + pad + numberWidth + 8, cell.y + 64, 64, 28),
                           i == 0 ? tr(STR_RICKY_HOME_MINUTES_UNIT) : tr(STR_RICKY_HOME_DAYS_UNIT), design::CAPTION);
     if (i == 0) {
+      const int dog = kRickyMascotSmallSize;
+      rickyMascot::draw(renderer, rickyMascot::moodFor(todayMs, goalMs), true, cell.right() - pad - dog + 8,
+                        cell.y + 16);
       design::progress(renderer, box(cell.x + pad, cell.y + 128, col - pad * 2, 8),
                        goal ? std::min<uint64_t>(100, uint64_t(todayMinutes) * 100 / goal) : 0);
-      snprintf(statsText, sizeof(statsText), tr(STR_RICKY_HOME_GOAL_LINE), goal);
+      if (todayMs < 60000)
+        snprintf(statsText, sizeof(statsText), "%s", tr(STR_RICKY_HOME_TODAY_IDLE));
+      else if (todayMs < goalMs)
+        snprintf(statsText, sizeof(statsText), tr(STR_RICKY_HOME_TODAY_TO_GOAL),
+                 static_cast<unsigned>((goalMs - todayMs + 59999) / 60000));
+      else
+        snprintf(statsText, sizeof(statsText), "%s", tr(STR_RICKY_HOME_TODAY_DONE));
       design::secondaryText(renderer, box(cell.x + pad, cell.y + 148, col - pad * 2, 28), statsText, design::CAPTION);
     } else {
-      const uint32_t today = TimeUtils::getLocalDayOrdinal(static_cast<uint32_t>(halClock.nowUtc()));
-      uint64_t samples[7]{};
-      uint64_t peak = 1;
-      if (today)
-        for (const auto& day : READING_STATS.getReadingDays())
-          if (day.dayOrdinal <= today && today - day.dayOrdinal <= 6) {
-            samples[6 - (today - day.dayOrdinal)] = day.readingMs;
-            peak = std::max(peak, day.readingMs);
-          }
-      for (int b = 0; b < 7; ++b) {
-        const int h = samples[b] ? std::max<int>(2, 32 * samples[b] / peak) : 2;
-        design::fill(renderer, box(cell.x + pad + b * 22, cell.y + 144 - h, 12, h), ds::gray::kInk);
+      if (streak.restCards > 0) {
+        snprintf(statsText, sizeof(statsText), tr(STR_RICKY_HOME_REST_CARDS), static_cast<unsigned>(streak.restCards));
+        design::secondaryText(renderer, box(cell.x + col / 2, cell.y + 12, col / 2 - pad, 28), statsText,
+                              design::CAPTION, false, fui::TextAlign::Right);
       }
-      design::secondaryText(renderer, box(cell.x + pad, cell.y + 148, col - pad * 2, 28), tr(STR_RICKY_LAST_SEVEN_DAYS),
-                            design::CAPTION);
+      // Oldest on the left; today last, with a dot under it.
+      constexpr int kPaw = 26;
+      const int step = (col - pad * 2 - kPaw) / 6;
+      for (int d = 0; d < 7; ++d) {
+        const int x = cell.x + pad + d * step;
+        rickyPaw::draw(renderer, x, cell.y + 100, kPaw, week[d]);
+        if (d == 6) design::fill(renderer, box(x + kPaw / 2 - 2, cell.y + 130, 4, 4), ds::gray::kInk, 2);
+      }
+      const uint32_t next = readingStreak::nextMilestone(streak.current);
+      if (streak.current == 0)
+        snprintf(statsText, sizeof(statsText), "%s", tr(STR_RICKY_HOME_STREAK_START));
+      else if (next == 0)
+        snprintf(statsText, sizeof(statsText), "%s", tr(STR_RICKY_HOME_STREAK_BEYOND));
+      else
+        snprintf(statsText, sizeof(statsText), tr(STR_RICKY_HOME_STREAK_NEXT),
+                 static_cast<unsigned>(next - streak.current), static_cast<unsigned>(next));
+      design::secondaryText(renderer, box(cell.x + pad, cell.y + 148, col - pad * 2, 28), statsText, design::CAPTION);
     }
     screen.frame().hit(cell, OPEN_BOOK, STATISTICS, fui::InputTouch);
   }

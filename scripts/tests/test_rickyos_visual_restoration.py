@@ -34,11 +34,12 @@ int main() {
         self.assertIn('design::secondaryText(renderer, box(profile.x, profile.y + 56', home)
         self.assertIn('design::secondaryText(renderer, box(cell.x, cover.bottom() + 84', home)
         self.assertIn('screen.takeTop(184, ds::space::k6)', home)
-        self.assertIn('cell.y + 144 - h', home)
+        self.assertIn('rickyPaw::draw(renderer, x, cell.y + 100, kPaw, week[d])', home)
+        self.assertIn('constexpr int kPaw = 26;', home)
         self.assertIn('cell.y + 148', home)
-        # Numeric line ends at 96, bars start at 112, caption starts at 148.
-        self.assertGreaterEqual(144 - 32 - (40 + 56), 8)
-        self.assertGreaterEqual(148 - 144, 4)
+        # Numeric line ends at 96, paw prints run 100-126, today's dot 130-134, caption at 148.
+        self.assertGreaterEqual(100 - (40 + 56), 4)
+        self.assertGreaterEqual(148 - (130 + 4), 8)
 
     def test_gray_adapter_is_scoped_and_no_checkerboard_or_scratch(self):
         adapter = (ROOT / 'src/components/RickyUiTarget.h').read_text()
