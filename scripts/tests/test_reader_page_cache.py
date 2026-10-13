@@ -49,7 +49,6 @@ const uint8_t* readerTextWeightCurve(uint8_t) {return nullptr;}
 uint8_t readerTextWeightSpread(uint8_t) {return 0;}
 struct Settings {
   uint8_t textAntiAliasing=1, orientation=0, fakeBold=0;
-  uint8_t readingBackgroundEnabled=0, readingMode=0;
   uint8_t readingGuideLineEnabled=0, readingGuideLineStyle=0;
   int8_t readingGuideLineOffset=0;
   ReaderRenderSpec spec;
@@ -223,7 +222,7 @@ int main() {
     CHANGE(top,2); CHANGE(right,2); CHANGE(bottom,2); CHANGE(left,2);
     CHANGE(page,0); CHANGE(spine,0); CHANGE(sectionGeneration,2); CHANGE(renderEpoch,2);
     CHANGE(orientation,1); CHANGE(fakeBold,1); CHANGE(textWeight,0); CHANGE(antiAliasing,false); CHANGE(inverted,true);
-    CHANGE(background,true); CHANGE(guideLine,true); CHANGE(guideStyle,1); CHANGE(guideOffset,1);
+    CHANGE(guideLine,true); CHANGE(guideStyle,1); CHANGE(guideOffset,1);
     CHANGE(spec.fontId,2); CHANGE(spec.lineCompression,2); CHANGE(spec.extraParagraphSpacing,1);
     CHANGE(spec.firstLineIndent,2); CHANGE(spec.characterSpacing,1); CHANGE(spec.wordSpacingPercent,120);
     CHANGE(spec.paragraphAlignment,2); CHANGE(spec.viewportWidth,2); CHANGE(spec.viewportHeight,2);
@@ -290,11 +289,6 @@ int main() {
    r.renderIdle(0); assert(r.section->loads==1 && r.pageCache_[1].key.page==18);}
   reset();
   {EpubReaderActivity r; r.overlay=EpubReaderActivity::Overlay::Menu; r.renderIdle(0); assert(r.section->loads==0);}
-  reset();
-  {EpubReaderActivity r; SETTINGS.readingBackgroundEnabled=1;
-   assert(!r.pageCacheEligible() && r.pageCacheKey(1,1,1,1,1).background);
-   SETTINGS.readingMode=1;
-   assert(r.pageCacheEligible() && !r.pageCacheKey(1,1,1,1,1).background);}
   reset();
 }
 '''

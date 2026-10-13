@@ -362,9 +362,6 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   int8_t getCharacterSpacing() const { return static_cast<int8_t>(characterSpacing - CHARACTER_SPACING_OFFSET); }
   uint8_t textAntiAliasing = 1;
   uint8_t fakeBold = SYNTHETIC_BOLD_STANDARD;
-  // The optional PNG paper remains available in Original mode. Other reading
-  // modes retain this choice but draw their own background and chrome.
-  uint8_t readingBackgroundEnabled = 0;
   // readingMode::Mode: Original, Puppy (小狗伴读), Immersive (沉浸), Ancient (古籍).
   // Chosen in the reader menu; persisted outside SettingsList.
   static constexpr uint8_t READING_MODE_COUNT = 4;

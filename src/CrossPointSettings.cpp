@@ -396,9 +396,14 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     }
   }
 
-  // Reading mode lives in the reader menu, not in SettingsList. An older
-  // reading-background setting is independent of the new mode selection.
-  readingMode = clamp(doc["readingMode"] | static_cast<uint8_t>(0), READING_MODE_COUNT, 0);
+  // Reading mode lives in the reader menu, not in SettingsList, so it loads here.
+  // The custom reading background became the puppy reading mode.
+  if (doc["readingMode"].isNull()) {
+    readingMode = (doc["readingBackgroundEnabled"] | static_cast<uint8_t>(0)) != 0 ? 1 : 0;  // 1 = Puppy
+    if (readingMode != 0) needsResave = true;
+  } else {
+    readingMode = clamp(doc["readingMode"] | static_cast<uint8_t>(0), READING_MODE_COUNT, 0);
+  }
 
   if ((doc["fakeBoldVersion"] | static_cast<uint8_t>(0)) < FAKE_BOLD_VERSION) {
     if (doc["fakeBold"].is<uint8_t>()) {

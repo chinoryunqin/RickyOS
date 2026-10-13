@@ -741,34 +741,6 @@ no marker and remain compatible through the approximate fallback.
 Manual progress sync refreshes only an old or invalid TOC; an existing
 `/WeRead/*.epub` is retained.
 
-## Reading background cache
-
-`/.crosspoint/background/reading_bg.bin` stores a versioned 1-bit framebuffer
-for each reader orientation. Its packed 18-byte header is:
-
-| Offset | Field |
-|--------|-------|
-| 0 | `uint32 magic` (`0x47425243`, bytes `CRBG`) |
-| 4 | `uint16 version` (`1`) |
-| 6 | `uint16 orientationCount` (`4`) |
-| 8 | `uint16 displayWidth` |
-| 10 | `uint16 displayHeight` |
-| 12 | `uint32 frameSize` |
-| 16 | `uint16 reserved` (`0`) |
-
-Four `frameSize`-byte frames follow in `GfxRenderer::Orientation` order:
-Portrait, Landscape Clockwise, Portrait Inverted, then Landscape Counter
-Clockwise. A cache is accepted only when its magic, version, orientation count,
-display dimensions, frame size, reserved field, and exact file length
-(`18 + 4 * frameSize`) all match the running device.
-
-Generation writes `reading_bg.tmp`, renames the existing cache to
-`reading_bg.bak`, and only then promotes the temporary file. A failed promotion
-restores the backup; a later read also recovers a backup when the main file is
-absent. The source PNG is converted through a short-lived BMP and is not needed
-after cache creation. The image is drawn in Original reading mode; other modes
-preserve the selected image for a later return to Original.
-
 ## SD-card font cache
 
 For the runtime read path, OTA/rollback lifecycle, rebuild triggers, progress

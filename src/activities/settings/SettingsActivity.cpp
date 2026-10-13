@@ -45,7 +45,6 @@
 #include "SilentRestart.h"
 #include "StatusBarSettingsActivity.h"
 #include "TextSettingsActivity.h"
-#include "activities/home/FileBrowserActivity.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/settings/RickyOptionListActivity.h"
 #include "activities/util/ConfirmationActivity.h"
@@ -62,15 +61,11 @@
 #include "components/icons/rickyPageIcons.h"
 #include "fontIds.h"
 #include "util/ButtonNavigator.h"
-#include "util/ReadingBackground.h"
-#include "util/RickyStorageLayout.h"
 #include "util/SystemSettingsReset.h"
 
 namespace fui = freeink::ui;
 
 namespace {
-// Image pickers open where RickyOS keeps pictures; other builds start at the root.
-constexpr const char* kImagePickerStart = RickyStorageLayout::IMAGES;
 constexpr StrId OK_OPTION[] = {StrId::STR_OK_BUTTON};
 constexpr uint64_t BYTES_PER_TENTH_GB = 100000000ULL;
 
@@ -816,11 +811,6 @@ void SettingsActivity::toggleCurrentSetting() {
     return;
   }
 
-  if (setting.valuePtr == &CrossPointSettings::readingBackgroundEnabled) {
-    openReadingBackgroundMenu();
-    return;
-  }
-
   if (setting.type == SettingType::TOGGLE && setting.valuePtr != nullptr) {
     // Toggle the boolean value using the member pointer
     const bool currentValue = SETTINGS.*(setting.valuePtr);
@@ -1175,54 +1165,7 @@ void SettingsActivity::openSleepTimeoutPicker() {
       StrId::STR_SLEEP_TIMER_VALUE_FORMAT, false, StrId::STR_SLEEP_NEVER);
 }
 
-void SettingsActivity::openReadingBackgroundMenu() {
-  static constexpr StrId OPTIONS[] = {StrId::STR_STATE_OFF, StrId::STR_CUSTOM_IMAGE};
-  optionPopup.show(StrId::STR_READING_BACKGROUND, OPTIONS, static_cast<int>(std::size(OPTIONS)),
-                   SETTINGS.readingBackgroundEnabled ? 1 : 0, [this](const int selected) {
-                     if (selected == 0) {
-                       SETTINGS.readingBackgroundEnabled = 0;
-                       SETTINGS.saveToFile();
-                       requestUpdate();
-                       return;
-                     }
-                     openReadingBackgroundPicker();
-                   });
-  requestUpdate();
-}
-
-void SettingsActivity::openReadingBackgroundPicker() {
-  const bool started = startActivityForResultWith<FileBrowserActivity>(
-      [this](const ActivityResult& result) {
-        if (result.isCancelled) return;
-        const auto* selected = std::get_if<FilePathResult>(&result.data);
-        if (!selected) {
-          LOG_ERR("SET", "PNG picker returned no path");
-          return;
-        }
-
-        GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
-        if (readingBackground::createCacheFromPng(renderer, selected->path.c_str())) {
-          SETTINGS.readingBackgroundEnabled = 1;
-          // Custom paper is an Original-mode feature; keep the other modes
-          // available without silently discarding this installed image.
-          SETTINGS.readingMode = 0;
-          SETTINGS.saveToFile();
-          requestUpdate();
-        } else {
-          optionPopup.show(StrId::STR_FAILED_LOWER, OK_OPTION, static_cast<int>(std::size(OK_OPTION)), 0, [](int) {});
-        }
-      },
-      kImagePickerStart, FileBrowserActivity::Mode::PickPng);
-  if (!started) {
-    optionPopup.show(StrId::STR_MEMORY_ERROR, OK_OPTION, static_cast<int>(std::size(OK_OPTION)), 0, [](int) {});
-    requestUpdate();
-  }
-}
-
 std::string SettingsActivity::settingValueText(const SettingInfo& setting) {
-  if (setting.valuePtr == &CrossPointSettings::readingBackgroundEnabled) {
-    return SETTINGS.readingBackgroundEnabled ? tr(STR_CUSTOM_IMAGE) : tr(STR_STATE_OFF);
-  }
   if (setting.action == SettingAction::HomeButton) return tr(STR_CONFIGURE);
   if (setting.type == SettingType::ENUM && setting.valuePtr != nullptr) {
     // Guard like the valueGetter branch below: a corrupt/migrated settings

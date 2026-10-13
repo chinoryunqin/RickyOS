@@ -281,8 +281,6 @@ class SettingsActivity final : public UiTabListActivity {
   std::array<int, categoryCount> accordionSettingCounts() const;
   void openOtaUpdate();
   void openSleepTimeoutPicker();
-  void openReadingBackgroundMenu();
-  void openReadingBackgroundPicker();
   void confirmRestoreSystemSettings();
   void releaseListsForMemoryHungryChild();
   void rebuildSettingsLists();

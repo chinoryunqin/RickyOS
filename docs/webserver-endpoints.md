@@ -280,17 +280,10 @@ Reader display settings include:
 
 | Key | Type | Behavior |
 |-----|------|----------|
-| `readingBackgroundEnabled` | toggle | Uses the custom background cache in Original reading mode |
 | `readingGuideLineEnabled` | toggle | Enables line guides for EPUB and TXT |
 | `readingGuideLineStyle` | enum | Solid, three dash lengths, dotted, or wavy |
 | `readingGuideLineOffset` | value | Signed vertical offset from `-30` to `30` pixels |
 | `inxTabPosition` | enum | Places the Inx main tabs at the top (`0`) or bottom (`1`) |
-
-The API can enable or disable an existing reading background, but selecting and
-converting a PNG is a device workflow under **Settings > Reader > Reading
-Background > Custom Image**. Choosing a new image also selects Original mode;
-switching to another mode leaves the installed image available. Disabling the
-setting does not delete the cache.
 
 ### `POST /api/settings`
 

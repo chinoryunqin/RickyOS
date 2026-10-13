@@ -67,7 +67,6 @@
 #include "util/BookmarkFile.h"
 #include "util/BookmarkUtil.h"
 #include "util/ButtonNavigator.h"
-#include "util/ReadingBackground.h"
 #include "util/ReadingGuideLine.h"
 #include "util/ScreenshotUtil.h"
 #include "util/TimeUtils.h"
@@ -2204,7 +2203,7 @@ void EpubReaderActivity::rememberCurrentContentOffset() {
 // only JPEG ones (they decode straight into the frame). Must match use16LevelText.
 bool EpubReaderActivity::nativeGray16Page(const Page& page) const {
   return SETTINGS.textAntiAliasing && !renderer.isInverted() && renderer.getGrayscaleLevels() == 16 &&
-         !(SETTINGS.readingBackgroundEnabled && SETTINGS.readingMode == 0) && page.imagesAreAllJpeg();
+         page.imagesAreAllJpeg();
 }
 
 bool EpubReaderActivity::pageCacheEligible() const {
@@ -2220,8 +2219,7 @@ bool EpubReaderActivity::pageCacheEligible() const {
   // engages at all -- every turn is a full render instead of the cached one.
   return !pageCacheFailed_ && section && renderer.hasFrameBuffer() && !activityManager.isSwitchPending() &&
          overlay == Overlay::None && fontPromptState == FontPromptState::Idle && !renderer.isInverted() &&
-         SETTINGS.textAntiAliasing && !(SETTINGS.readingBackgroundEnabled && SETTINGS.readingMode == 0) &&
-         !renderer.supportsStripGrayscale() && renderer.supportsTextOnlyCombinedBase();
+         SETTINGS.textAntiAliasing && !renderer.supportsStripGrayscale() && renderer.supportsTextOnlyCombinedBase();
 }
 
 ReaderPageCacheKey EpubReaderActivity::pageCacheKey(const int page, const int top, const int right, const int bottom,
@@ -2241,7 +2239,6 @@ ReaderPageCacheKey EpubReaderActivity::pageCacheKey(const int page, const int to
       .textWeight = readerTextWeight(),
       .antiAliasing = SETTINGS.textAntiAliasing != 0,
       .inverted = renderer.isInverted(),
-      .background = SETTINGS.readingBackgroundEnabled && SETTINGS.readingMode == 0,
       .guideLine = SETTINGS.readingGuideLineEnabled != 0,
       .guideStyle = SETTINGS.readingGuideLineStyle,
       .guideOffset = SETTINGS.readingGuideLineOffset};
@@ -2644,15 +2641,13 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   const bool cleanImageBasePending = manualRefreshPending || pagesUntilFullRefresh <= 1;
   // Night mode renders crisp B/W; the SDK disables every grayscale display path.
   const bool grayscaleEnabled = !renderer.isInverted();
-  const bool customBackground = SETTINGS.readingBackgroundEnabled && SETTINGS.readingMode == 0;
   const bool needsTextGrayscale = grayscaleEnabled && SETTINGS.textAntiAliasing;
   // Images write the BW buffer directly; keep them, backgrounds and faux bold on the existing path.
   // RickyOS: every text face (2-bit downloaded fonts too) and synthetic bold draw straight
   // into the 16-level frame, and JPEG illustrations decode into it, so anti-aliased pages
   // take the single-render path.
   const bool use16LevelText =
-      needsTextGrayscale && (!pageHasImages || page->imagesAreAllJpeg()) && renderer.getGrayscaleLevels() == 16 &&
-      !customBackground;
+      needsTextGrayscale && (!pageHasImages || page->imagesAreAllJpeg()) && renderer.getGrayscaleLevels() == 16;
   const bool needsAnyGrayscale = grayscaleEnabled && (SETTINGS.textAntiAliasing || pageHasImages);
   const bool absoluteImageGrayscale = grayscaleEnabled && pageHasImages && !gpio.deviceIsX3() &&
                                       display.getController() == HalDisplay::Controller::UC8279 &&
@@ -2676,9 +2671,9 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       // affected strip to build the base; this whole-plane path stashes the entire
       // framebuffer, illustration and all, so displayGrayBuffer() composes the page
       // from it either way and the panel is still driven exactly once.
-      needsAnyGrayscale && !customBackground && renderer.supportsTextOnlyCombinedBase();
+      needsAnyGrayscale && renderer.supportsTextOnlyCombinedBase();
 #else
-      tiledGrayscale && !pageHasImages && !customBackground && renderer.supportsTextOnlyCombinedBase();
+      tiledGrayscale && !pageHasImages && renderer.supportsTextOnlyCombinedBase();
 #endif
   const bool overlapRefresh = tiledGrayscale && renderer.supportsAsyncRefresh() && !pageHasImages;
   const auto drawGuideLines = [&] {
@@ -2714,7 +2709,6 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     if (absoluteImageGrayscale) renderStatusBar();
   };
 
-  if (customBackground && !readingBackground::load(renderer)) renderer.clearScreen();
   unsigned long cacheBaseMs = 0;
 #if FREEINK_DEVICE_READPICO
   if (use16LevelText) {
