@@ -237,7 +237,7 @@ int main() {
 constexpr bool hasBle = FREEINK_CAP_BLE_HID_HOST;
 constexpr bool keepBle = hasBle && (CONFIG_IDF_TARGET_ESP32C3 || CROSSPOINT_BLE_HOST_PSRAM);
 bool running=false, cacheExists=false, borrowed=false, loadSuccess=true;
-int stops=0, loads=0, popups=0, refreshDisables=0, progressUpdates=0;
+int stops=0, loads=0, popups=0, refreshDisables=0, progressUpdates=0, openings=0;
 #ifdef BOARD_HAS_PSRAM
 constexpr bool boardPsram = true;
 #else
@@ -288,6 +288,7 @@ struct EpubReaderActivity {
  std::string bookPath="test.epub";
  bool loadBook();
  void disableFastInitialRefresh() { ++refreshDisables; }
+ void showOpeningPopup() { assert(!borrowed); ++openings; }
 };
 '''
         checks = r'''
@@ -295,12 +296,14 @@ int main() {
  EpubReaderActivity reader;
  for(bool cached : {false,true}) for(bool success : {false,true}) {
   cacheExists=cached; loadSuccess=success; running=hasBle;
-  stops=loads=popups=refreshDisables=progressUpdates=0;
+  stops=loads=popups=refreshDisables=progressUpdates=openings=0;
   assert(reader.loadBook()==success);
   assert(!borrowed && loads==1);
   assert(stops==(!cached && hasBle && !keepBle ? 1 : 0));
   // A cached book whose style cache exists shows no popup (Storage.exists answers both).
   assert(popups==(!cached ? 1 : 0) && refreshDisables==popups);
+  // A book with its caches gets the quick opening notice instead of the build popup.
+  assert(openings==(cached ? 1 : 0));
   // Steps under 5 points apart are not worth a panel refresh: 10,25,45,70,95.
   assert(progressUpdates==(boardPsram && !cached ? 5 : 0));
  }

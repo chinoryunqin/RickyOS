@@ -353,6 +353,24 @@ void EpubReaderActivity::onExit() {
 #endif
 }
 
+void EpubReaderActivity::showOpeningPopup() {
+  // Even a cached book takes a few seconds on device to its first page (measured
+  // 2.7-3.6 s), with the tapped screen unchanged meanwhile. Say so at once.
+#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
+  // Drawn into the retained 16-level frame: the screen keeps its grays and only the
+  // popup's area is driven, instead of a B/W refresh of the whole screen.
+  if (renderer.beginRetainedGrayscale16()) {
+    renderer.setDisplayCapture(true);
+    GUI.drawPopup(renderer, tr(STR_RICKY_OPENING_BOOK));
+    renderer.setDisplayCapture(false);
+    renderer.commitGrayscale16();
+    renderer.cancelGrayscale16();
+    return;
+  }
+#endif
+  GUI.drawPopup(renderer, tr(STR_RICKY_OPENING_BOOK));
+}
+
 bool EpubReaderActivity::loadBook() {
   auto loadedEpub = makeUniqueNoThrow<Epub>(bookPath, "/.crosspoint");
   if (!loadedEpub) {
@@ -382,6 +400,8 @@ bool EpubReaderActivity::loadBook() {
     // A book without its style cache parses every stylesheet once (seconds for books
     // with hundreds of them): say so instead of looking frozen.
     popup = preparingPopup();
+  } else {
+    showOpeningPopup();
   }
 
   bool loaded;
@@ -2883,6 +2903,20 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       renderStatusBar();
       LOG_DBG("ERS", "16-level timing: before=%lums begin=%lums page=%lums status=%lums", t16Begin - t0,
               t16Cleared - t16Begin, t16Page - t16Cleared, millis() - t16Page);
+#if RICKYOS_PAINT_PROFILE
+      {
+        // Device breakdown of a reader page (profiling builds only).
+        auto& profile = GfxRenderer::paintProfile();
+        LOG_INF("PERF",
+                "reader page prewarm=%lums before=%lums page=%lums status=%lums cached=%d spread=%u bold=%u "
+                "text=%lums/%lu fill=%lums image=%lums",
+                tPrewarm - t0, t16Begin - tPrewarm, t16Page - t16Cleared, millis() - t16Page, pageCacheHit ? 1 : 0,
+                static_cast<unsigned>(readerTextWeightSpread(readerTextWeight())), static_cast<unsigned>(SETTINGS.fakeBold), profile.us[1] / 1000,
+                profile.calls[1], profile.us[0] / 1000, profile.us[3] / 1000);
+        profile = {};
+        fcm->logStats("page");
+      }
+#endif
       if (activityManager.isSwitchPending()) {
         renderer.cancelGrayscale16();
         return;
@@ -2894,9 +2928,13 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       const auto refresh = ReaderUtils::consumeRefreshMode(pagesUntilFullRefresh);
       display.setNextGray16Profile(refresh == HalDisplay::FAST_REFRESH ? 1 : 2);
 #endif
+      const auto tCommit = millis();
       if (renderer.commitGrayscale16()) {
         const auto tEnd = millis();
         LOG_DBG("ERS", "Page render: 16-level text total=%lums", tEnd - t0);
+#if RICKYOS_PAINT_PROFILE
+        LOG_INF("PERF", "reader commit=%lums total=%lums", tEnd - tCommit, tEnd - t0);
+#endif
 #if defined(SIMULATOR)
         pagesUntilFullRefresh = 1;
 #endif
