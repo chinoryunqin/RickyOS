@@ -26,6 +26,9 @@ bool draw(const GfxRenderer& renderer, const uint8_t* bits, const int width, con
     }
   }
   if (!twin) return false;
+#if RICKYOS_PAINT_PROFILE
+  const GfxRenderer::PaintScope profile(GfxRenderer::PaintKind::Image);
+#endif
   const int target = ink ? 0 : 15;
   int pixel = 0;
   const int total = width * height;

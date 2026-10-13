@@ -411,6 +411,29 @@ void GfxRenderer::ensureSdGlyphsResident(int fontId, const char* text, const Epd
 
 // Translate logical (x,y) coordinates to physical panel coordinates based on current orientation
 // This should always be inlined for better performance
+#if RICKYOS_PAINT_PROFILE
+#define RICKY_PAINT_SCOPE(kind) const GfxRenderer::PaintScope paintScope_(GfxRenderer::PaintKind::kind)
+namespace {
+uint8_t g_paintDepth = 0;
+}  // namespace
+GfxRenderer::PaintProfile& GfxRenderer::paintProfile() {
+  static PaintProfile profile;
+  return profile;
+}
+GfxRenderer::PaintScope::PaintScope(const PaintKind kind) : kind_(kind), outer_(g_paintDepth++ == 0) {
+  if (outer_) start_ = micros();
+}
+GfxRenderer::PaintScope::~PaintScope() {
+  --g_paintDepth;
+  if (!outer_) return;
+  auto& profile = paintProfile();
+  profile.us[static_cast<int>(kind_)] += micros() - start_;
+  ++profile.calls[static_cast<int>(kind_)];
+}
+#else
+#define RICKY_PAINT_SCOPE(kind) ((void)0)
+#endif
+
 static inline void rotateCoordinates(const GfxRenderer::Orientation orientation, const int x, const int y, int* phyX,
                                      int* phyY, const uint16_t panelWidth, const uint16_t panelHeight) {
   switch (orientation) {
@@ -1028,6 +1051,7 @@ void GfxRenderer::drawCenteredText(const int fontId, const int y, const char* te
 void GfxRenderer::drawText(const int fontId, const int x, const int y, const char* text, const bool black,
                            const EpdFontFamily::Style style, const BidiUtils::BidiBaseDir baseDir,
                            const int8_t tracking) const {
+  RICKY_PAINT_SCOPE(Text);
   // cannot draw a NULL / empty string
   if (text == nullptr || *text == '\0') {
     return;
@@ -1279,6 +1303,7 @@ void GfxRenderer::drawRoundedRect(const int x, const int y, const int width, con
 void GfxRenderer::drawRoundedRect(const int x, const int y, const int width, const int height, const int lineWidth,
                                   const int cornerRadius, bool roundTopLeft, bool roundTopRight, bool roundBottomLeft,
                                   bool roundBottomRight, bool state) const {
+  RICKY_PAINT_SCOPE(Shape);
   if (lineWidth <= 0 || width <= 0 || height <= 0) {
     return;
   }
@@ -1384,6 +1409,7 @@ void GfxRenderer::fillRectDither(const int x, const int y, const int width, cons
 
 template <Color C>
 void GfxRenderer::fillRectImpl(const int x, const int y, const int width, const int height) const {
+  RICKY_PAINT_SCOPE(Fill);
   if constexpr (C == Color::Clear) return;
   if (width <= 0 || height <= 0) return;
   if (fontCacheManager_ && fontCacheManager_->isScanning()) return;
@@ -1683,6 +1709,7 @@ void GfxRenderer::fillRoundedRect(const int x, const int y, const int width, con
 void GfxRenderer::fillRoundedRect(const int x, const int y, const int width, const int height, const int cornerRadius,
                                   bool roundTopLeft, bool roundTopRight, bool roundBottomLeft, bool roundBottomRight,
                                   const Color color) const {
+  RICKY_PAINT_SCOPE(Fill);
   if (width <= 0 || height <= 0) {
     return;
   }
@@ -1749,6 +1776,7 @@ void GfxRenderer::fillRoundedRect(const int x, const int y, const int width, con
 }
 
 void GfxRenderer::drawImage(const uint8_t bitmap[], const int x, const int y, const int width, const int height) const {
+  RICKY_PAINT_SCOPE(Image);
   int rotatedX = 0;
   int rotatedY = 0;
   rotateCoordinates(orientation, x, y, &rotatedX, &rotatedY, panelWidth, panelHeight);
@@ -1772,6 +1800,7 @@ void GfxRenderer::drawImage(const uint8_t bitmap[], const int x, const int y, co
 }
 
 void GfxRenderer::drawIcon(const uint8_t bitmap[], const int x, const int y, const int size) const {
+  RICKY_PAINT_SCOPE(Image);
   // Plot the icon pixel-by-pixel through drawPixel (which applies the orientation
   // transform) instead of the byte-aligned framebuffer blit. The blit snaps the
   // icon's position to 8px (one byte) along the rotated axis, which prevents it
@@ -1792,6 +1821,7 @@ void GfxRenderer::drawIcon(const uint8_t bitmap[], const int x, const int y, con
 }
 
 void GfxRenderer::drawIconInverted(const uint8_t bitmap[], const int x, const int y, const int size) const {
+  RICKY_PAINT_SCOPE(Image);
   const int rowBytes = (size + 7) / 8;
   for (int row = 0; row < size; row++) {
     for (int col = 0; col < size; col++) {
@@ -2031,6 +2061,7 @@ void GfxRenderer::drawGrayscale16Pixel(const int x, const int y, const uint8_t g
 
 void GfxRenderer::fillGrayscale16Rect(const int x, const int y, const int width, const int height,
                                       const uint8_t level) const {
+  RICKY_PAINT_SCOPE(Fill);
   if (!grayscale16Buffer || width <= 0 || height <= 0 || level > 15) return;
   const int lx0 = std::max({0, x, clipLeft_});
   const int ly0 = std::max({0, y, clipTop_});
@@ -3062,6 +3093,7 @@ int GfxRenderer::getTextHeight(int fontId) const {
 
 void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y, const char* text, const bool black,
                                       const EpdFontFamily::Style style) const {
+  RICKY_PAINT_SCOPE(Text);
   // Cannot draw a NULL / empty string
   if (text == nullptr || *text == '\0') {
     return;

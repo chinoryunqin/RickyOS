@@ -213,6 +213,16 @@ bool ActivityManager::renderDirectGray(RenderLock&& lock) {
   if (committed) renderer.clearNextRefreshOverride();
   LOG_DBG("ACT", "Direct gray: %s paint=%lu ms submit=%lu ms total=%lu ms", committed ? "done" : "failed, B/W fallback",
           painted - started, millis() - painted, millis() - started);
+#if RICKYOS_PAINT_PROFILE
+  {
+    auto& profile = GfxRenderer::paintProfile();
+    LOG_INF("PERF", "paint %s: fill=%lums/%lu text=%lums/%lu shape=%lums/%lu image=%lums/%lu",
+            currentActivity ? currentActivity->name.c_str() : "?", profile.us[0] / 1000, profile.calls[0],
+            profile.us[1] / 1000, profile.calls[1], profile.us[2] / 1000, profile.calls[2], profile.us[3] / 1000,
+            profile.calls[3]);
+    profile = {};
+  }
+#endif
 #if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
   const auto internal = HalMemory::getInternalHeap();
   const auto dma = HalMemory::getInternalDmaHeap();

@@ -67,24 +67,43 @@ class FontDecompressor {
   PageSlot pageSlots[MAX_PAGE_SLOTS] = {};
   uint8_t pageSlotCount = 0;
 
-  // Hot group: last decompressed group (byte-aligned) for non-prewarmed fallback path.
-  // Kept in byte-aligned format; individual glyphs are compacted on demand into hotGlyphBuf.
-  // Nothrow high-water malloc buffers, NOT std::vector: getBitmap() runs on the render path,
-  // and under -fno-exceptions a vector resize that hits OOM abort()s the firmware instead of
-  // failing (field crash: hotGroup.resize() -> std::bad_alloc -> abort with ~11 KB free).
-  // ensureCapacity() returns false on OOM so the caller can skip the glyph gracefully.
-  const EpdFontData* hotGroupFont = nullptr;
-  uint16_t hotGroupIndex = UINT16_MAX;
-  uint8_t* hotGroup = nullptr;  // owned; freed in freeHotGroup()/dtor
-  uint32_t hotGroupCapacity = 0;
+  // Hot groups: recently decompressed groups (byte-aligned) for the non-prewarmed path,
+  // which is every UI screen (only reader-like activities prewarm). With one slot, text
+  // that mixes glyphs from a few groups re-inflated a whole group (~16 KB) per glyph
+  // change; built-in UI fonts packed this way made a menu paint take over a second.
+  // Least-recently-used slots are reused. Each slot owns nothrow high-water malloc
+  // buffers, NOT std::vector: getBitmap() runs on the render path, and under
+  // -fno-exceptions a vector resize that hits OOM abort()s the firmware instead of failing
+  // (field crash: hotGroup.resize() -> std::bad_alloc -> abort with ~11 KB free).
+#ifdef RICKYOS_PRODUCT
+  static constexpr uint8_t HOT_GROUP_SLOTS = 8;  // <= 8 x ~16 KB, PSRAM-preferred (fiFontMalloc)
+#else
+  static constexpr uint8_t HOT_GROUP_SLOTS = 1;  // no-PSRAM targets keep the single group
+#endif
+  struct HotGroup {
+    const EpdFontData* font = nullptr;
+    uint16_t index = UINT16_MAX;
+    uint8_t* data = nullptr;
+    uint32_t capacity = 0;
+    // Aligned byte offset of each glyph in the group, so a fetch is a lookup instead of a
+    // walk over every preceding glyph (getAlignedOffset()). Entry 0 is 0 by construction.
+    uint32_t* offsets = nullptr;
+    uint32_t offsetsCapacity = 0;
+    bool offsetsValid = false;
+    uint32_t lastUse = 0;
+  };
+  HotGroup hotGroups[HOT_GROUP_SLOTS] = {};
+  uint32_t hotGroupClock = 0;
 
   // Scratch buffer for compacting a single glyph from the hot group.
   // Valid until the next getBitmap() call. Same ownership/OOM contract as hotGroup.
   uint8_t* hotGlyphBuf = nullptr;
   uint32_t hotGlyphBufCapacity = 0;
 
-  // Grow (never shrink) an owned buffer to at least `needed` bytes; false on OOM, buffer freed.
-  static bool ensureCapacity(uint8_t*& buf, uint32_t& capacity, uint32_t needed);
+  // Grow (never shrink) an owned buffer to at least `needed` elements; false on OOM, buffer freed.
+  // Templated on the element type so the glyph offset table shares the same grow-only contract.
+  template <typename T>
+  static bool ensureCapacity(T*& buf, uint32_t& capacity, uint32_t needed);
 
   void freePageBuffer();
   void freeHotGroup();

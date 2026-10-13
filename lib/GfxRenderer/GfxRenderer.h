@@ -33,8 +33,36 @@ struct Frame;
 // 0 = transparent, 1-16 = gray levels (white to black)
 enum Color : uint8_t { Clear = 0x00, White = 0x01, LightGray = 0x05, DarkGray = 0x0A, Black = 0x10 };
 
+// Paint-time breakdown for device measurement: -DRICKYOS_PAINT_PROFILE=1 times the
+// outermost fill / text / shape / image call of each kind; off in shipped firmware.
+#ifndef RICKYOS_PAINT_PROFILE
+#define RICKYOS_PAINT_PROFILE 0
+#endif
+
 class GfxRenderer {
  public:
+  enum class PaintKind : uint8_t { Fill, Text, Shape, Image, Count };
+  struct PaintProfile {
+    uint32_t us[static_cast<int>(PaintKind::Count)] = {};
+    uint32_t calls[static_cast<int>(PaintKind::Count)] = {};
+  };
+#if RICKYOS_PAINT_PROFILE
+  static PaintProfile& paintProfile();
+  // Times only the outermost profiled call, so nested fills inside a rounded fill or
+  // text inside a centered draw are not counted twice.
+  class PaintScope {
+   public:
+    explicit PaintScope(PaintKind kind);
+    ~PaintScope();
+    PaintScope(const PaintScope&) = delete;
+    PaintScope& operator=(const PaintScope&) = delete;
+
+   private:
+    PaintKind kind_;
+    uint32_t start_ = 0;
+    bool outer_ = false;
+  };
+#endif
   enum RenderMode { BW, GRAYSCALE_LSB, GRAYSCALE_MSB };
 
   struct TwoBitPixel {

@@ -19,6 +19,7 @@ class GfxFillClipTest(unittest.TestCase):
 #include <cstdint>
 #include <cstring>
 enum class Color { Clear, Black, White, LightGray, DarkGray };
+#define RICKY_PAINT_SCOPE(kind) ((void)0)
 struct FontCacheManager { bool isScanning() const { return false; } };
 struct GfxRenderer {
   enum Orientation { Portrait, LandscapeClockwise, PortraitInverted, LandscapeCounterClockwise };
@@ -39,8 +40,12 @@ struct GfxRenderer {
   // needs drawPixel. Both stay at their defaults here, so that branch is never taken
   // and the expectations below still describe the byte-level fill.
   const uint8_t* grayscale16Buffer = nullptr;
+  bool _stripActive = false;
+  int renderMode = 0;
+  static constexpr bool framebufferState(int, bool state) { return state; }
   void drawPixel(int, int, bool) const {}
   void drawGrayscale16Pixel(int, int, uint8_t) const {}  // 16-level gray fills (not exercised here)
+  void fillGrayscale16Rect(int, int, int, int, uint8_t) const {}  // native_grayscale covers it
   template<Color C> void fillRectImpl(int, int, int, int) const;
 };
 ''' + rotate + "\ntemplate<Color C>\n" + fill + r'''
