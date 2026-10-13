@@ -44,7 +44,24 @@ class Epub {
   bool parseTocNcxFile() const;
   bool parseTocNavFile() const;
   void discoverCssFilesFromZip();
-  CssParser::ParseResult parseCssFiles(CssParser::CacheStatus existingCacheStatus) const;
+  CssParser::ParseResult parseCssFiles(CssParser::CacheStatus existingCacheStatus, int progressFrom = 0,
+                                       int progressTo = 0) const;
+
+ public:
+  // Optional progress of load() (0-100) while it builds missing caches, reported
+  // between steps on the calling task. Reported values never decrease.
+  using LoadProgressFn = void (*)(void* context, int percent);
+  void setLoadProgress(LoadProgressFn fn, void* context) {
+    loadProgress = fn;
+    loadProgressContext = context;
+  }
+
+ private:
+  LoadProgressFn loadProgress = nullptr;
+  void* loadProgressContext = nullptr;
+  void reportLoad(const int percent) const {
+    if (loadProgress) loadProgress(loadProgressContext, percent);
+  }
 
  public:
   explicit Epub(std::string filepath, const std::string& cacheDir);

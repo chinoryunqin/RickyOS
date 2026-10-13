@@ -1052,6 +1052,25 @@ void BaseTheme::drawHomeMenu(GfxRenderer& renderer, Rect rect, const int buttonC
 }
 
 Rect BaseTheme::drawPopup(const GfxRenderer& renderer, const char* message) const {
+  return drawPopupBox(renderer, message, 0);
+}
+
+Rect BaseTheme::drawProgressPopup(const GfxRenderer& renderer, const char* message) const {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  return drawPopupBox(renderer, message, metrics.popupProgressBarHeight + metrics.popupMarginY);
+}
+
+Rect BaseTheme::popupProgressBar(const Rect& layout) {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int barHeight = metrics.popupProgressBarHeight;
+  const int barWidth =
+      std::max(0, layout.width - metrics.popupMarginX * 2);  // twice the margin in drawPopup to match text width
+  const int barX = layout.x + (layout.width - barWidth) / 2;
+  const int barY = layout.y + layout.height - metrics.popupMarginY / 2 - barHeight / 2 - 1;
+  return Rect{barX, barY, barWidth, barHeight};
+}
+
+Rect BaseTheme::drawPopupBox(const GfxRenderer& renderer, const char* message, const int extraHeight) const {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int marginX = metrics.popupMarginX;
   const int marginY = metrics.popupMarginY;
@@ -1062,7 +1081,7 @@ Rect BaseTheme::drawPopup(const GfxRenderer& renderer, const char* message) cons
   const int textWidth = renderer.getTextWidth(UI_12_FONT_ID, message, popupFontFamily);
   const int textHeight = renderer.getLineHeight(UI_12_FONT_ID);
   const int w = textWidth + marginX * 2;
-  const int h = textHeight + marginY * 2;
+  const int h = textHeight + marginY * 2 + extraHeight;
   const int x = (renderer.getScreenWidth() - w) / 2;
 
   const bool useRoundedPopup = metrics.popupCornerRadius > 0;
@@ -1078,17 +1097,20 @@ Rect BaseTheme::drawPopup(const GfxRenderer& renderer, const char* message) cons
   const int textX = x + (w - textWidth) / 2;
   const int textY = y + marginY + metrics.popupTextBaselineOffsetY;
   renderer.drawText(UI_12_FONT_ID, textX, textY, message, metrics.popupTextInverted, popupFontFamily);
+  if (extraHeight > 0) {
+    // The empty track, in the fill's tone, so 0% already shows the whole length.
+    const Rect bar = popupProgressBar(Rect{x, y, w, h});
+    if (bar.width > 2 && bar.height > 0)
+      renderer.drawRect(bar.x, bar.y, bar.width, bar.height, 1, metrics.popupProgressFillInverted);
+  }
   renderer.displayBuffer();
   return Rect{x, y, w, h};
 }
 
 void BaseTheme::fillPopupProgress(const GfxRenderer& renderer, const Rect& layout, const int progress) const {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const int barHeight = metrics.popupProgressBarHeight;
-  const int barWidth =
-      std::max(0, layout.width - metrics.popupMarginX * 2);  // twice the margin in drawPopup to match text width
-  const int barX = layout.x + (layout.width - barWidth) / 2;
-  const int barY = layout.y + layout.height - metrics.popupMarginY / 2 - barHeight / 2 - 1;
+  const Rect bar = popupProgressBar(layout);
+  const int barHeight = bar.height, barWidth = bar.width, barX = bar.x, barY = bar.y;
   if (barWidth <= 0 || barHeight <= 0) {
     renderer.displayBuffer(HalDisplay::FAST_REFRESH);
     return;

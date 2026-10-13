@@ -357,24 +357,60 @@ bool EpubReaderActivity::loadBook() {
   }
 
   const bool uncached = !Storage.exists((loadedEpub->getCachePath() + "/book.bin").c_str());
+#if defined(BOARD_HAS_PSRAM) || defined(SIMULATOR)
+  constexpr bool kLoadProgress = true;  // see the loan below
+#else
+  constexpr bool kLoadProgress = false;
+#endif
+  const auto preparingPopup = [this] {
+    return kLoadProgress ? GUI.drawProgressPopup(renderer, tr(STR_RICKY_PREPARING_BOOK))
+                         : GUI.drawPopup(renderer, tr(STR_RICKY_PREPARING_BOOK));
+  };
+  Rect popup{};
   if (uncached) {
 #if FREEINK_CAP_BLE_HID_HOST && !CROSSPOINT_BLE_HOST_PSRAM && !CONFIG_IDF_TARGET_ESP32C3
     bleinput::stop();
 #endif
     disableFastInitialRefresh();
-    GUI.drawPopup(renderer, tr(STR_INDEXING));
+    popup = preparingPopup();
   } else if (SETTINGS.embeddedStyle != 0 &&
              !Storage.exists((loadedEpub->getCachePath() + "/css_rules.cache").c_str())) {
     // A book without its style cache parses every stylesheet once (seconds for books
     // with hundreds of them): say so instead of looking frozen.
-    GUI.drawPopup(renderer, tr(STR_INDEXING));
+    popup = preparingPopup();
   }
 
   bool loaded;
   {
+#if defined(BOARD_HAS_PSRAM) || defined(SIMULATOR)
+    // With PSRAM the build does not need the framebuffer's bytes, so the popup keeps it
+    // and shows progress: a first open of a large book takes many seconds on device.
+    struct Progress {
+      const GfxRenderer& renderer;
+      Rect popup;
+      int shown = 0;
+      unsigned long shownAt = 0;
+    } progress{renderer, popup, 0, millis()};
+    if (popup.width > 0) {
+      loadedEpub->setLoadProgress(
+          [](void* context, const int percent) {
+            auto& state = *static_cast<Progress*>(context);
+            // Each update is a panel refresh: only for visible steps, at most every 1.2 s.
+            if (percent < state.shown + 5 || millis() - state.shownAt < 1200) return;
+            state.shown = percent;
+            state.shownAt = millis();
+            GUI.fillPopupProgress(state.renderer, state.popup, percent);
+          },
+          &progress);
+    }
+    std::optional<GfxRenderer::FrameBufferLoan> loan;
+    if (uncached && popup.width <= 0) loan.emplace(renderer);
+#else
     std::optional<GfxRenderer::FrameBufferLoan> loan;
     if (uncached) loan.emplace(renderer);
+#endif
     loaded = loadedEpub->load(true, SETTINGS.embeddedStyle == 0);
+    loadedEpub->setLoadProgress(nullptr, nullptr);
   }
   if (!loaded) {
     // Surfaced by handleLoadFailure() as a dialog; loadedEpub dies with this

@@ -322,7 +322,8 @@ void Epub::discoverCssFilesFromZip() {
   }
 }
 
-CssParser::ParseResult Epub::parseCssFiles(const CssParser::CacheStatus existingCacheStatus) const {
+CssParser::ParseResult Epub::parseCssFiles(const CssParser::CacheStatus existingCacheStatus, const int progressFrom,
+                                           const int progressTo) const {
   // Maximum CSS file size we'll attempt to parse (uncompressed)
   // Larger files risk memory exhaustion on ESP32
   constexpr size_t MAX_CSS_FILE_SIZE = 128 * 1024;  // 128KB
@@ -397,6 +398,8 @@ CssParser::ParseResult Epub::parseCssFiles(const CssParser::CacheStatus existing
 
   // No cache yet - parse CSS files
   for (size_t cssIndex = 0; cssIndex < cssFiles.size(); cssIndex++) {
+    if (progressTo > progressFrom)
+      reportLoad(progressFrom + static_cast<int>((progressTo - progressFrom) * cssIndex / cssFiles.size()));
     const auto& cssPath = cssFiles[cssIndex];
     const uint64_t dedupKey = dedupEntries ? dedupEntries[cssIndex].contentKey : 0;
     if (dedupKey != 0) {
@@ -578,7 +581,7 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
         } else {
           discoverCssFilesFromZip();
           bookMetadataCache.reset();
-          cssParseResult = parseCssFiles(cacheStatus);
+          cssParseResult = parseCssFiles(cacheStatus, 5, 95);
         }
         bookMetadataCache.reset();
         bookMetadataCache = makeUniqueNoThrow<BookMetadataCache>(cachePath);
@@ -646,6 +649,7 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
     return false;
   }
   LOG_DBG("EBP", "OPF pass completed in %lu ms", millis() - opfStart);
+  reportLoad(10);
 
   // TOC Pass - try EPUB 3 nav first, fall back to NCX
   const uint32_t tocStart = millis();
@@ -678,6 +682,7 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
     return false;
   }
   LOG_DBG("EBP", "TOC pass completed in %lu ms", millis() - tocStart);
+  reportLoad(25);
 
   // Close the cache files
   if (!bookMetadataCache->endWrite()) {
@@ -692,6 +697,7 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
     return false;
   }
   LOG_DBG("EBP", "buildBookBin completed in %lu ms", millis() - buildStart);
+  reportLoad(45);
   LOG_DBG("EBP", "Total indexing completed in %lu ms", millis() - indexingStart);
 
   if (!bookMetadataCache->cleanupTmpFiles()) {
@@ -701,7 +707,7 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
   if (!skipLoadingCss) {
     // Parse CSS before reloading book.bin to leave more heap for CSS rule-table growth.
     bookMetadataCache.reset();
-    if (parseCssFiles(cssParser->inspectCache()) != CssParser::ParseResult::Error) {
+    if (parseCssFiles(cssParser->inspectCache(), 45, 95) != CssParser::ParseResult::Error) {
       Storage.removeDir((cachePath + "/sections").c_str());
     }
   }

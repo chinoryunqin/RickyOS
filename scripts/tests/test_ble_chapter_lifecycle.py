@@ -22,14 +22,14 @@ def method(source, signature):
     return source[start:end]
 
 
-def execute(source, c3=1, ble=1, psram=0):
+def execute(source, c3=1, ble=1, psram=0, extra=()):
     with tempfile.TemporaryDirectory() as directory:
         cpp = Path(directory) / 'check.cpp'
         exe = Path(directory) / 'check'
         cpp.write_text(source)
         result = subprocess.run(shlex.split(os.environ.get('CXX', 'c++')) + [
             '-std=c++17', f'-DCONFIG_IDF_TARGET_ESP32C3={c3}',
-            f'-DFREEINK_CAP_BLE_HID_HOST={ble}', f'-DCROSSPOINT_BLE_HOST_PSRAM={psram}',
+            f'-DFREEINK_CAP_BLE_HID_HOST={ble}', f'-DCROSSPOINT_BLE_HOST_PSRAM={psram}', *extra,
             str(cpp), '-o', str(exe)],
             capture_output=True, text=True)
         if result.returncode:
@@ -237,7 +237,14 @@ int main() {
 constexpr bool hasBle = FREEINK_CAP_BLE_HID_HOST;
 constexpr bool keepBle = hasBle && (CONFIG_IDF_TARGET_ESP32C3 || CROSSPOINT_BLE_HOST_PSRAM);
 bool running=false, cacheExists=false, borrowed=false, loadSuccess=true;
-int stops=0, loads=0, popups=0, refreshDisables=0;
+int stops=0, loads=0, popups=0, refreshDisables=0, progressUpdates=0;
+#ifdef BOARD_HAS_PSRAM
+constexpr bool boardPsram = true;
+#else
+constexpr bool boardPsram = false;
+#endif
+unsigned long now=0;
+unsigned long millis() { return now; }
 namespace bleinput {
  void stop() { ++stops; running=false; }
  void logDiagnostics(const char*) {}
@@ -249,16 +256,27 @@ struct GfxRenderer {
   ~FrameBufferLoan() { assert(borrowed); borrowed=false; }
  };
 } renderer;
-constexpr int STR_INDEXING=1;
+constexpr int STR_INDEXING=1, STR_RICKY_PREPARING_BOOK=2;
 int tr(int value) { return value; }
-struct { void drawPopup(GfxRenderer&,int) { assert(!borrowed); ++popups; } } GUI;
+struct Rect { int x=0,y=0,width=0,height=0; };
+struct {
+ Rect drawPopup(GfxRenderer&,int) { assert(!borrowed); ++popups; return {1,1,10,10}; }
+ Rect drawProgressPopup(GfxRenderer&,int) { assert(!borrowed); ++popups; return {1,1,10,12}; }
+ void fillPopupProgress(const GfxRenderer&,const Rect&,int) { assert(!borrowed); ++progressUpdates; }
+} GUI;
 struct { int embeddedStyle=1; } SETTINGS;
 struct Epub {
  Epub(const std::string&,const char*) {}
  std::string getCachePath() { return "/test"; }
+ using LoadProgressFn = void (*)(void*, int);
+ LoadProgressFn progress=nullptr; void* context=nullptr;
+ void setLoadProgress(LoadProgressFn fn, void* ctx) { progress=fn; context=ctx; }
  bool load(bool,bool) {
   ++loads;
-  assert(borrowed==!cacheExists);
+  // With board PSRAM the popup keeps the framebuffer and shows progress instead.
+  assert(borrowed==(!cacheExists && !boardPsram));
+  assert((progress!=nullptr)==(boardPsram && !cacheExists));
+  for(int percent : {10,12,25,45,70,95}) { now+=1500; if(progress) progress(context,percent); }
   assert(running==(cacheExists ? hasBle : keepBle));
   return loadSuccess;
  }
@@ -277,17 +295,22 @@ int main() {
  EpubReaderActivity reader;
  for(bool cached : {false,true}) for(bool success : {false,true}) {
   cacheExists=cached; loadSuccess=success; running=hasBle;
-  stops=loads=popups=refreshDisables=0;
+  stops=loads=popups=refreshDisables=progressUpdates=0;
   assert(reader.loadBook()==success);
   assert(!borrowed && loads==1);
   assert(stops==(!cached && hasBle && !keepBle ? 1 : 0));
+  // A cached book whose style cache exists shows no popup (Storage.exists answers both).
   assert(popups==(!cached ? 1 : 0) && refreshDisables==popups);
+  // Steps under 5 points apart are not worth a panel refresh: 10,25,45,70,95.
+  assert(progressUpdates==(boardPsram && !cached ? 5 : 0));
  }
 }
 '''
         for c3, ble, psram in ((1, 1, 0), (0, 1, 0), (0, 1, 1), (1, 0, 0)):
             with self.subTest(c3=c3, ble=ble, psram=psram):
                 execute(harness + source + checks, c3, ble, psram)
+        with self.subTest(board_psram=1):
+            execute(harness + source + checks, 0, 1, 1, ('-DBOARD_HAS_PSRAM',))
 
     def test_every_build_entry_prepares_before_allocating(self):
         for match in re.finditer(r'section->(?:startBuild|createSectionFile)\(', EPUB):
