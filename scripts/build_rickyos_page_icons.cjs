@@ -74,13 +74,13 @@ async function main() {
     }
     const center = ink ? Math.round(inkRows / ink) : SIZE >> 1;
     lines.push(`// ${alias} (lucide: ${name})`);
-    lines.push(`static const uint8_t icon_ricky_${alias}_${SIZE}_bits[] = {`);
+    lines.push(`inline constexpr uint8_t icon_ricky_${alias}_${SIZE}_bits[] = {`);
     for (let offset = 0; offset < bits.length; offset += 19) {  // clang-format packs 19 per 120-column line
       lines.push('    ' + [...bits.subarray(offset, offset + 19)]
         .map(byte => '0x' + byte.toString(16).padStart(2, '0').toUpperCase()).join(', ') + ',');
     }
     lines.push('};');
-    lines.push(`static const freeink::Icon icon_ricky_${alias}_${SIZE} = {${SIZE}, ${SIZE}, ${center}, icon_ricky_${alias}_${SIZE}_bits};`, '');
+    lines.push(`inline constexpr freeink::Icon icon_ricky_${alias}_${SIZE} = {${SIZE}, ${SIZE}, ${center}, icon_ricky_${alias}_${SIZE}_bits};`, '');
   }
   fs.writeFileSync(output, lines.join('\n'));
   console.log(`wrote ${output}: ${ICONS.length + ROW_ICONS.length} icons`);

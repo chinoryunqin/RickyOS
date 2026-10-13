@@ -403,6 +403,10 @@ void SettingsActivity::rebuildSettingsLists() {
   std::vector<DictionaryEntry> dictionaries;
   if (!usesAccordion() || dictionariesLoaded) DictionaryRegistry::discover(dictionaries);
 
+  // getSettingsList() returns a temporary that this loop owns, and no element is
+  // read after it is filed, so move rather than deep-copy. SettingInfo owns two
+  // vectors, a span and four std::function members (~144 B), so copying each
+  // selected entry re-allocates all of that storage on every rebuild.
   for (auto& setting : getSettingsList(&sdFontSystem.registry(), &dictionaries)) {
     if (setting.category == StrId::STR_NONE_OPT || home_button::isSetting(setting.valuePtr)) continue;
     if (!usesAccordion() && (setting.valuePtr == &CrossPointSettings::inxRecentLayout ||
@@ -417,19 +421,19 @@ void SettingsActivity::rebuildSettingsLists() {
       if (setting.valuePtr == &CrossPointSettings::fadingFix && (BoardConfig::isX4Pro() || FREEINK_DEVICE_X4CLASSIC)) {
         continue;
       }
-      displaySettings.push_back(setting);
+      displaySettings.push_back(std::move(setting));
     } else if (setting.category == StrId::STR_CAT_READER) {
       // Settings merged into "Text Settings"
       // (they stay in the shared list for the web settings API)
       if (setting.inTextSettings || setting.inReadingStatsSettings) continue;
-      readerSettings.push_back(setting);
+      readerSettings.push_back(std::move(setting));
     } else if (setting.category == StrId::STR_CAT_CONTROLS) {
       if (BoardConfig::hasHomeKey() && setting.valuePtr == &CrossPointSettings::longPressMenuFunction) continue;
       if (setting.valuePtr == &CrossPointSettings::pwrBtnFootnoteBack &&
           SETTINGS.shortPwrBtn != CrossPointSettings::SHORT_PWRBTN::FOOTNOTES) {
         continue;
       }
-      controlsSettings.push_back(setting);
+      controlsSettings.push_back(std::move(setting));
     } else if (setting.category == StrId::STR_CAT_SYSTEM) {
       // These stay in the shared list for persistence and the web API, but the
       // device UI owns them in the Date & Time submenu.
@@ -438,7 +442,7 @@ void SettingsActivity::rebuildSettingsLists() {
           setting.valuePtr == &CrossPointSettings::clockFormat) {
         continue;
       }
-      systemSettings.push_back(setting);
+      systemSettings.push_back(std::move(setting));
     }
   }
 

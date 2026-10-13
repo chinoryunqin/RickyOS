@@ -519,34 +519,37 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
     wordVisibleOffsetDeltas.reserve(newCapacity);
   };
 
-  if (auto breakOffsets = cjkCharacterBreakByteOffsets(word); !breakOffsets.empty()) {
-    // CJK-heavy paragraphs can push hundreds of tiny tokens quickly when CSS toggles
-    // inline styles. Reserve once up front to avoid repeated vector growth reallocations.
-    ensureTokenCapacity(breakOffsets.size() + 1);
-    bool firstToken = true;
-    size_t tokenStart = 0;
-    uint32_t tokenVisibleOffset = visibleTextOffset;
-    for (const size_t breakOffset : breakOffsets) {
-      if (breakOffset <= tokenStart || breakOffset > word.size()) continue;
-      const std::string_view token(word.data() + tokenStart, breakOffset - tokenStart);
-      pushToken(token, firstToken ? effectiveAttachToPrevious : false, firstToken ? effectiveNoSpaceBefore : true,
-                /*focusBoundary=*/0, tokenVisibleOffset);
-      tokenVisibleOffset += countCodepoints(token);
-      firstToken = false;
-      tokenStart = breakOffset;
-    }
-    if (tokenStart < word.size()) {
-      pushToken(std::string_view(word).substr(tokenStart), firstToken ? effectiveAttachToPrevious : false,
-                firstToken ? effectiveNoSpaceBefore : true, /*focusBoundary=*/0, tokenVisibleOffset);
-    }
-    if (wordStartsRtl) {
-      hasRtlWord = true;
-    }
-    return;
-  }
-
+  // Gate on the allocation-free scan first: cjkCharacterBreakByteOffsets() builds a
+  // codepoint vector sized to the word before it can decide the word is not CJK, so
+  // without this every Latin word laid out would malloc and free that vector for
+  // nothing. The two functions use the same utf8IsCjkBreakable predicate, so a word
+  // that fails this test is handled exactly as it was before.
   if (containsCjkBreakableCodepoint(word)) {
-    pushToken(word, effectiveAttachToPrevious, effectiveNoSpaceBefore, /*focusBoundary=*/0, visibleTextOffset);
+    auto breakOffsets = cjkCharacterBreakByteOffsets(word);
+    if (breakOffsets.empty()) {
+      // A CJK word with no allowed internal break stays one token.
+      pushToken(word, effectiveAttachToPrevious, effectiveNoSpaceBefore, /*focusBoundary=*/0, visibleTextOffset);
+    } else {
+      // CJK-heavy paragraphs can push hundreds of tiny tokens quickly when CSS toggles
+      // inline styles. Reserve once up front to avoid repeated vector growth reallocations.
+      ensureTokenCapacity(breakOffsets.size() + 1);
+      bool firstToken = true;
+      size_t tokenStart = 0;
+      uint32_t tokenVisibleOffset = visibleTextOffset;
+      for (const size_t breakOffset : breakOffsets) {
+        if (breakOffset <= tokenStart || breakOffset > word.size()) continue;
+        const std::string_view token(word.data() + tokenStart, breakOffset - tokenStart);
+        pushToken(token, firstToken ? effectiveAttachToPrevious : false, firstToken ? effectiveNoSpaceBefore : true,
+                  /*focusBoundary=*/0, tokenVisibleOffset);
+        tokenVisibleOffset += countCodepoints(token);
+        firstToken = false;
+        tokenStart = breakOffset;
+      }
+      if (tokenStart < word.size()) {
+        pushToken(std::string_view(word).substr(tokenStart), firstToken ? effectiveAttachToPrevious : false,
+                  firstToken ? effectiveNoSpaceBefore : true, /*focusBoundary=*/0, tokenVisibleOffset);
+      }
+    }
     if (wordStartsRtl) {
       hasRtlWord = true;
     }
@@ -1401,9 +1404,13 @@ bool ParsedText::extractLine(const size_t lineIndex, const size_t lineBreak, con
 
   const int firstLineIndent = resolveFirstLineIndent(lineIndex == 0, renderer, fontId);
 
-  std::vector<std::string> lineRubyTexts(lineWordCount);
+  // Sized only when this line actually has ruby. Ruby is CJK-only, so for most
+  // books resizing here would construct lineWordCount empty strings and then free
+  // the block again: TextBlock's constructor drops an all-empty rubyTexts anyway.
+  std::vector<std::string> lineRubyTexts;
   if (!rubyTexts.empty() && lastBreakAt < rubyTexts.size()) {
     const size_t copyCount = std::min(lineBreak, rubyTexts.size()) - lastBreakAt;
+    lineRubyTexts.resize(lineWordCount);
     std::copy(rubyTexts.begin() + lastBreakAt, rubyTexts.begin() + lastBreakAt + copyCount, lineRubyTexts.begin());
   }
 

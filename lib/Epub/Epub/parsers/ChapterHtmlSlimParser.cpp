@@ -752,10 +752,15 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
     self->xpathListItemIndex++;
   }
 
-  // Extract class, style, id, dir and hidden attributes for CSS/RTL processing
-  std::string classAttr;
-  std::string styleAttr;
-  std::string dirAttr;
+  // Extract class, style, id, dir and hidden attributes for CSS/RTL processing.
+  // Views, not owned strings: every consumer below takes a string_view (or compares the
+  // C string), and expat's attribute array stays alive for the whole handler call. As
+  // std::string these were three owning allocations per element whenever the value
+  // exceeded the 15-byte SSO buffer, on the chapter-build path where heap headroom is
+  // checked before parsing.
+  std::string_view classAttr;
+  std::string_view styleAttr;
+  const char* dirAttrValue = nullptr;
   bool hasHiddenAttr = false;
   if (atts != nullptr) {
     for (int i = 0; atts[i]; i += 2) {
@@ -788,7 +793,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
           self->pendingAnchorId = idValue;
         }
       } else if (strcmp(atts[i], "dir") == 0) {
-        dirAttr = atts[i + 1];
+        dirAttrValue = atts[i + 1];
       } else if (strcmp(atts[i], "hidden") == 0) {
         hasHiddenAttr = true;
       }
@@ -816,12 +821,14 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
     cssStyle.defined.display = 1;
   }
 
-  // HTML dir attribute overrides CSS direction (case-insensitive per HTML spec)
-  if (!dirAttr.empty()) {
-    if (strcasecmp(dirAttr.c_str(), "rtl") == 0) {
+  // HTML dir attribute overrides CSS direction (case-insensitive per HTML spec).
+  // Compare the raw attribute (still NUL-terminated) rather than materialising an
+  // owning string just to call strcasecmp on it.
+  if (dirAttrValue != nullptr) {
+    if (strcasecmp(dirAttrValue, "rtl") == 0) {
       cssStyle.direction = CssTextDirection::Rtl;
       cssStyle.defined.direction = 1;
-    } else if (strcasecmp(dirAttr.c_str(), "ltr") == 0) {
+    } else if (strcasecmp(dirAttrValue, "ltr") == 0) {
       cssStyle.direction = CssTextDirection::Ltr;
       cssStyle.defined.direction = 1;
     }

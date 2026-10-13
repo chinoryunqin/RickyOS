@@ -10,6 +10,19 @@ add_executable(ChapterHtmlSlimParserTest
   ${REPO_ROOT}/lib/Utf8/Utf8.cpp
 )
 
+# The section cache is a binary format: the test normalizes it back to a pinned
+# v70 digest and must also assert the live version byte. Read that byte from the
+# production declaration instead of restating it, so bumping SECTION_FILE_VERSION
+# updates the test automatically rather than leaving a stale magic number.
+file(READ ${REPO_ROOT}/lib/Epub/Epub/Section.cpp SECTION_CPP_SOURCE)
+string(REGEX MATCH "constexpr uint8_t SECTION_FILE_VERSION = ([0-9]+);" _section_version_match "${SECTION_CPP_SOURCE}")
+if(NOT CMAKE_MATCH_1)
+  message(FATAL_ERROR "Could not read SECTION_FILE_VERSION from lib/Epub/Epub/Section.cpp")
+endif()
+target_compile_definitions(ChapterHtmlSlimParserTest PRIVATE
+  SECTION_VERSION_UNDER_TEST=${CMAKE_MATCH_1}
+)
+
 target_include_directories(ChapterHtmlSlimParserTest PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/stubs
   ${REPO_ROOT}/lib

@@ -38,16 +38,16 @@ def generate(output):
         alias = f'settings_2_{size}'
         bits = f'icon_{alias}_bits'
         text += f'\n// lucide: settings-2; {size}px' + ('; legacy CCW layout' if size == 32 else '') + '\n'
-        text += f'static const uint8_t {bits}[] = {{'
+        text += f'inline constexpr uint8_t {bits}[] = {{'
         text += ', '.join(f'0x{byte:02X}' for byte in data) + '};\n'
-        text += f'static const freeink::Icon icon_{alias} = {{{size}, {size}, {center}, {bits}}};\n'
+        text += f'inline constexpr freeink::Icon icon_{alias} = {{{size}, {size}, {center}, {bits}}};\n'
     text += '\n// Battery: 32px SVG raster, rows [6,26); no bitmap resizing.\n'
     for alias in ('bookmark', 'bluetooth'):
         data, center = generator.pack(generator.rasterize(str(SVG_DIR / (alias + '.svg')), 24), 24)
         bits = f'icon_reader_{alias}_24_bits'
-        text += f'\n// lucide: {alias}; reader footer 24px\nstatic const uint8_t {bits}[] = {{'
+        text += f'\n// lucide: {alias}; reader footer 24px\ninline constexpr uint8_t {bits}[] = {{'
         text += ', '.join(f'0x{byte:02X}' for byte in data) + '};\n'
-        text += f'static const freeink::Icon icon_reader_{alias}_24 = {{24, 24, {center}, {bits}}};\n'
+        text += f'inline constexpr freeink::Icon icon_reader_{alias}_24 = {{24, 24, {center}, {bits}}};\n'
     with tempfile.TemporaryDirectory(prefix='ui-chrome-icons-') as directory:
         for alias, source in (('battery', 'battery'), ('charging', 'battery-charging')):
             svg = SVG_DIR / (source + '.svg')
@@ -66,9 +66,9 @@ def generate(output):
             assert len(data) == 80
             name = 'battery_32x20' if alias == 'battery' else 'battery_charging_32x20'
             bits = f'icon_{name}_bits'
-            text += f'// lucide: {source}\nstatic const uint8_t {bits}[] = {{'
+            text += f'// lucide: {source}\ninline constexpr uint8_t {bits}[] = {{'
             text += ', '.join(f'0x{byte:02X}' for byte in data) + '};\n'
-            text += f'static const freeink::Icon icon_{name} = {{32, 20, 10, {bits}}};\n'
+            text += f'inline constexpr freeink::Icon icon_{name} = {{32, 20, 10, {bits}}};\n'
     output.write_text(text)
 
 

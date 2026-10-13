@@ -583,7 +583,10 @@ TEST_F(SectionMemoryTest, MixedChapterCacheMatchesVerifiedLayout) {
     for (const unsigned char byte : value) digest = (digest ^ byte) * 1099511628211ULL;
   };
   ASSERT_FALSE(bytes.empty());
-  EXPECT_EQ(static_cast<uint8_t>(bytes.front()), 76);
+  // SECTION_VERSION_UNDER_TEST is extracted from Section.cpp's declarations by
+  // test/chapter_html_slim_parser/CMakeLists.txt, so a version bump cannot leave
+  // this pinned expectation behind.
+  EXPECT_EQ(static_cast<uint8_t>(bytes.front()), SECTION_VERSION_UNDER_TEST);
   ASSERT_EQ(static_cast<uint8_t>(bytes[11]), 3);
   bytes.erase(11, 1);  // Western indent width appended to the preserved tri-state schema.
   // Normalize the two new spacing bytes and their absolute file offsets back
@@ -606,14 +609,15 @@ TEST_F(SectionMemoryTest, MixedChapterCacheMatchesVerifiedLayout) {
   const uint32_t pageLut = readOffset(spacingOffset + 2);
   const uint32_t anchorMap = readOffset(spacingOffset + 6);
   for (size_t position = pageLut; position < anchorMap; position += 4) adjustOffset(position);
+  // Overwrite the live version byte with the historical 70 so the digest covers
+  // this v70 normalization rather than the current SECTION_FILE_VERSION.
   bytes.front() = 70;
   append(bytes);
   for (const auto& word : laidOutWords) append(word);
   for (const auto& href : collectedFootnotes) append(href);
-  // Pre-refactor cache, text and footnotes. The expected value tracks
-  // SECTION_FILE_VERSION, whose byte is the first thing in the file: the digest
-  // moved when the version went 64 -> 66 for the versioned image cache prefix,
-  // then 66 -> 68 for first-line indent and 68 -> 70 for paragraph spacing.
+  // Pre-refactor cache, text and footnotes. The digest is pinned to the v70
+  // layout normalized above and therefore does not move when
+  // SECTION_FILE_VERSION changes; the live version byte is asserted separately.
   EXPECT_EQ(digest, 9535508317497758948ULL);  // v71/v70 cache (paragraph spacing levels), text and footnotes.
 }
 

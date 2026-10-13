@@ -9,6 +9,7 @@
 #include <cctype>
 #include <charconv>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <string_view>
 
@@ -85,7 +86,7 @@ void forEachDelimitedToken(std::string_view s, Pred isDelimiter, F&& fn) {
   }
 }
 
-// Parse the entirety of s as a number into `out`. Accepts an optional leading
+// Parse the entirety of s as an integer into `out`. Accepts an optional leading
 // '+' (which std::from_chars rejects by spec) so callers can pass CSS-style
 // signed numbers without manual trimming. Returns false on empty input, a
 // non-numeric suffix, or any from_chars error.
@@ -96,6 +97,42 @@ bool tryParseNumber(std::string_view s, T& out) {
   if (begin < end && *begin == '+') ++begin;
   const auto r = std::from_chars(begin, end, out);
   return r.ec == std::errc{} && r.ptr == end;
+}
+
+// Float companion to tryParseNumber. std::from_chars(float) instantiates libstdc++'s
+// Eisel-Lemire path, which links a 10 KB power-of-five table for a single call site;
+// strtod costs a fraction of that and parses the same values exactly. To keep the two
+// interchangeable, this reproduces from_chars' contract: no leading whitespace, an
+// optional '+'/'-', digits with at most one '.', at least one digit overall, and the
+// entire view consumed.
+bool tryParseFloat(std::string_view s, float& out) {
+  if (s.empty()) return false;
+
+  size_t i = 0;
+  if (s[i] == '+' || s[i] == '-') ++i;
+
+  bool anyDigit = false;
+  for (; i < s.size() && std::isdigit(static_cast<unsigned char>(s[i])); ++i) anyDigit = true;
+  if (i < s.size() && s[i] == '.') {
+    ++i;
+    for (; i < s.size() && std::isdigit(static_cast<unsigned char>(s[i])); ++i) anyDigit = true;
+  }
+  if (!anyDigit || i != s.size()) return false;
+
+  // digits are ASCII, so the view can be handed to strtod once copied into a
+  // NUL-terminated buffer. A CSS length is short; a bounded stack copy avoids the
+  // allocation a std::string would need on this parser's section-build path.
+  constexpr size_t MAX_NUMBER_LENGTH = 32;
+  if (s.size() >= MAX_NUMBER_LENGTH) return false;
+  char buffer[MAX_NUMBER_LENGTH];
+  std::memcpy(buffer, s.data(), s.size());
+  buffer[s.size()] = '\0';
+
+  char* parseEnd = nullptr;
+  const double value = std::strtod(buffer, &parseEnd);
+  if (parseEnd != buffer + s.size()) return false;
+  out = static_cast<float>(value);
+  return true;
 }
 
 // Collect up to 4 whitespace-separated tokens for a CSS edge-value shorthand
@@ -505,7 +542,7 @@ bool CssParser::tryInterpretLength(std::string_view val, CssLength& out) {
   }
 
   float numericValue;
-  if (!tryParseNumber(val.substr(0, unitStart), numericValue)) {
+  if (!tryParseFloat(val.substr(0, unitStart), numericValue)) {
     out = CssLength{};
     return false;  // No number parsed (e.g. auto, inherit, initial)
   }
