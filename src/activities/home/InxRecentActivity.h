@@ -46,6 +46,9 @@ class InxRecentActivity final : public Activity {
   std::array<const ReadingBookStats*, RecentBooksStore::MAX_RECENT_BOOKS> bookStats{};
   std::array<CoverCacheState, RecentBooksStore::MAX_RECENT_BOOKS> targetCoverStates{};
   std::array<CoverCacheState, RecentBooksStore::MAX_RECENT_BOOKS> fallbackCoverStates{};
+  // Thumbnail height already prepared per book during this visit: one attempt each, so a
+  // cover that still cannot be drawn afterwards never loops prepare -> repaint.
+  std::array<int16_t, RecentBooksStore::MAX_RECENT_BOOKS> preparedHeights{};
 #if defined(BOARD_HAS_PSRAM) && !defined(SIMULATOR) && !defined(CROSSPOINT_EMULATED)
   std::array<CoverRamCache, RecentBooksStore::MAX_RECENT_BOOKS> targetCoverCaches{};
   std::array<CoverRamCache, RecentBooksStore::MAX_RECENT_BOOKS> fallbackCoverCaches{};
