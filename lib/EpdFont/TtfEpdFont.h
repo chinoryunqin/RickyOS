@@ -54,6 +54,16 @@
 
 class TtfEpdFont {
  public:
+  // Profiling builds: glyphs rasterized and cache releases since the last reset.
+  struct Counters {
+    uint32_t rasterized = 0;
+    uint32_t rasterUs = 0;
+    uint32_t releases = 0;
+  };
+  static Counters& counters() {
+    static Counters value;
+    return value;
+  }
   // Style roles for source slots.
   enum Style : uint8_t { Regular = 0, Bold = 1, Italic = 2, BoldItalic = 3 };
 

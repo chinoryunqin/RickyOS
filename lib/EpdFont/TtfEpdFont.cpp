@@ -5,6 +5,9 @@
 #if CROSSPOINT_VECTOR_FONTS
 
 #include <Logging.h>
+#if RICKYOS_PAINT_PROFILE
+#include <Arduino.h>
+#endif
 #include <MemoryManager.h>
 #include <Utf8.h>
 #include <esp_heap_caps.h>
@@ -266,6 +269,11 @@ void TtfEpdFont::clearCache() {
 
 void TtfEpdFont::releaseResidentCaches() {
   if (evictionLocked_) return;  // mid-fault: this font's faces are live
+#if RICKYOS_PAINT_PROFILE
+  ++counters().releases;
+  LOG_INF("TTF", "release resident caches (free=%u max=%u)", static_cast<unsigned>(ESP.getFreeHeap()),
+          static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
   for (int i = 0; i < 4; ++i) {
     Face& f = faces_[i];
     // Actually RELEASE the caches (swap-with-empty frees capacity; clear() alone
@@ -473,7 +481,14 @@ const TtfEpdFont::GlyphMetricsEntry* TtfEpdFont::metricsFor(Face& f, const uint3
 const uint8_t* TtfEpdFont::rasterizeInto(Face& f, EpdGlyph& glyph) {
   const size_t index = static_cast<size_t>(&glyph - f.glyphs.data());
   if (index >= f.glyphs.size() || index >= f.gids.size()) return nullptr;
+#if RICKYOS_PAINT_PROFILE
+  const uint32_t rasterStart = micros();
   const freeink::font::GlyphBitmap* g = f.ft.rasterizeGlyph26_6(f.gids[index], size26_6_);
+  ++counters().rasterized;
+  counters().rasterUs += micros() - rasterStart;
+#else
+  const freeink::font::GlyphBitmap* g = f.ft.rasterizeGlyph26_6(f.gids[index], size26_6_);
+#endif
   if (glyph.dataOffset == kPendingBox) {
     // Advance came from hmtx; the raster supplies the box.
     glyph.dataOffset = 0;
