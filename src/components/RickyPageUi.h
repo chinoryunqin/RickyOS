@@ -48,7 +48,8 @@ inline void arrow(fui::DrawTarget& target, fui::Rect r) {
 constexpr uint8_t CARD_RADIUS = ricky::ds::radius::kContainer;
 inline void card(fui::DrawTarget& target, fui::Rect rect, bool focused) {
   target.fill(rect, fui::Paint::solid(focused ? fui::Color::Black : fui::Color::White), CARD_RADIUS);
-  if (!focused) target.stroke(rect, fui::Paint::solid(fui::Color::Black), ricky::ds::stroke::kHairline, CARD_RADIUS);
+  // At rest a light-gray edge (exact on a 16-gray frame, ink on a B/W one).
+  if (!focused) target.stroke(rect, fui::Paint::solid(fui::Color::LightGray), ricky::ds::stroke::kHairline, CARD_RADIUS);
 }
 
 // Pre-rendered Lucide icon (rickyPageIcons.h), optically centred on `centerY`.

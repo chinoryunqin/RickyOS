@@ -324,6 +324,19 @@ void ActivityManager::settleToGray(RenderLock&& lock, const uint32_t generation)
 }
 #endif
 
+void ActivityManager::trackInputMode() {
+  if (!mappedInput.hasTouch()) return;
+  if (mappedInput.wasAnyPressed()) {
+    if (!keyFocusShown) {
+      keyFocusShown = true;
+      requestUpdate();
+    }
+  } else if (keyFocusShown && mappedInput.wasScreenTouchReleased()) {
+    keyFocusShown = false;
+    requestUpdate();  // a touch on empty space produces no frame of its own
+  }
+}
+
 void ActivityManager::loop() {
 #if RICKYOS_PERF_SD_LOG
   // Never write while the card is exported over USB.
@@ -354,6 +367,8 @@ void ActivityManager::loop() {
     }
     return;
   }
+
+  trackInputMode();
 
   if (currentActivity && pendingAction.load() == PendingAction::None) {
     if (handleMainTabInput()) {

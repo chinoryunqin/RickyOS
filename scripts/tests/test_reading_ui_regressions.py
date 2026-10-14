@@ -399,6 +399,7 @@ struct ActivityManager {
     replaceActivity(std::move(p));
   }
   void resetHomeStandbyInput();
+  void trackInputMode() {}  // touch/key focus visibility, covered by its own tests
   bool handleHomeStandbyInput();
   bool handleMainTabInput();
   void replaceActivity(std::unique_ptr<Activity>&&);

@@ -45,6 +45,8 @@ class ActivityManager {
   std::vector<std::unique_ptr<Activity>> stackActivities;
   std::unique_ptr<Activity> currentActivity;
   MainTabFocus mainTabFocus = MainTabFocus::Tabs;
+  bool keyFocusShown = false;
+  void trackInputMode();
   bool mainTabEntryReleasePending = false;
 
  private:
@@ -175,6 +177,9 @@ class ActivityManager {
   void goToWeRead();
   void goHome(HomeMenuItem initialMenuItem = HomeMenuItem::NONE);
   MainTabFocus getMainTabFocus() const { return mainTabFocus; }
+  // Touch boards show the content focus only while the keys are in use: a finger on
+  // the glass hides it, the next key press brings it back.
+  bool keyFocusVisible() const { return keyFocusShown; }
 
   // This will move current activity to stack instead of deleting it
   void pushActivity(std::unique_ptr<Activity>&& activity);

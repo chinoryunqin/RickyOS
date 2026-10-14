@@ -39,7 +39,8 @@ MappedInputManager::Labels Activity::mainTabButtonLabels(const char* back, const
 
 bool Activity::showMainTabContentSelection() const {
   return UITheme::getInstance().showSelectionCursor() &&
-         (!usesMainTabBar() || activityManager.getMainTabFocus() == MainTabFocus::Content);
+         (!usesMainTabBar() || activityManager.getMainTabFocus() == MainTabFocus::Content) &&
+         (!mappedInput.hasTouch() || activityManager.keyFocusVisible());
 }
 
 // Retain the instance-facing Activity layout API.

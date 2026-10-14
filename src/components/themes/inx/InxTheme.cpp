@@ -465,10 +465,12 @@ void InxTheme::drawMainTabBar(const GfxRenderer& renderer, const Rect rect, cons
   renderer.fillRect(rect.x, rect.y, rect.width, rect.height, false);
   const bool tabsAtBottom = SETTINGS.inxTabPosition == CrossPointSettings::INX_TAB_BOTTOM;
   const int separatorY = tabsAtBottom ? rect.y : rect.y + rect.height - 1;
-  // A light rule, not an ink line: the bar sits under the page without boxing it in.
-  RickyDesignUi::fill(renderer, {static_cast<int16_t>(rect.x), static_cast<int16_t>(separatorY),
-                                 static_cast<int16_t>(rect.width), 1},
-                      renderer.isGrayscale16Active() ? ricky::ds::gray::kLine : ricky::ds::gray::kInk);
+  // A light rule, not an ink line: the bar sits under the page without boxing it in
+  // (ink on a B/W frame, the 1-bit fallback for the line gray).
+  if (renderer.isGrayscale16Active())
+    renderer.fillGrayscale16Rect(rect.x, separatorY, rect.width, 1, ricky::ds::gray::kLine);
+  else
+    renderer.fillRect(rect.x, separatorY, rect.width, 1, true);
   // Rows are laid out for the capsule so it never touches the separator or labels.
   auto rows = RickyPageLayout::navigationRows(rect, kPillHeight, renderer.getLineHeight(SMALL_FONT_ID));
   rows.iconY += (kPillHeight - kIconSize) / 2;

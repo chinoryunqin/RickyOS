@@ -77,7 +77,7 @@ int main() {
         home = method((ROOT / 'src/components/RickyHomeUi.cpp').read_text(), 'void RickyHomeUi::drawPortrait(')
         self.assertIn('measureWrappedText(target, greetingText, greetingStyle', home)
         self.assertIn('design::BODY, false, fui::TextAlign::Left, 2)', re.sub(r'\s+', ' ', home))
-        self.assertIn('titleOf(item), design::CAPTION, selectedBook', re.sub(r'\s+', ' ', home))
+        self.assertIn('titleOf(item), design::BODY, selectedBook, fui::TextAlign::Center', re.sub(r'\s+', ' ', home))
 
     def test_portrait_follows_the_quiet_home_layout(self):
         source = method((ROOT / 'src/components/RickyHomeUi.cpp').read_text(),

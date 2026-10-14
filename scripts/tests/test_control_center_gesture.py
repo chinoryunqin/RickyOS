@@ -67,6 +67,7 @@ struct ActivityManager {
   bool standbyShowing() const { return currentActivity && currentActivity->name == "Standby"; }
   bool handleHomeStandbyInput() { return false; }
   void resetHomeStandbyInput() {}
+  void trackInputMode() {}  // touch/key focus visibility, covered by its own tests
   void goHome() { assert(false); }
   void pushActivity(std::unique_ptr<FrontlightPanelActivity>) {
     ++pushes; pendingAction = PendingAction::Push;

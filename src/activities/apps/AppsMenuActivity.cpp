@@ -1,3 +1,4 @@
+#include "components/RickyGrayStroke.h"
 #include "AppsMenuActivity.h"
 
 #include <I18n.h>
@@ -120,7 +121,8 @@ void drawRickyAppIcon(const GfxRenderer& renderer, const uint8_t* icon, const in
   if (selected) {
     renderer.fillRoundedRect(tileX, tileY, kAppTileSize, kAppTileSize, kAppTileRadius, Color::Black);
   } else {
-    renderer.drawRoundedRect(tileX, tileY, kAppTileSize, kAppTileSize, kAppTileStroke, kAppTileRadius, true);
+    RickyGrayStroke::ring(renderer, tileX, tileY, kAppTileSize, kAppTileSize, kAppTileStroke, kAppTileRadius,
+                          ricky::ds::gray::kLine);
   }
   if (RickyAaIcons::draw(renderer, icon, kRickyAppIconSize, kRickyAppIconSize, x, y, !selected)) return;
   constexpr int rowBytes = (kRickyAppIconSize + 7) / 8;

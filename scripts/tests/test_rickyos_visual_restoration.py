@@ -32,7 +32,7 @@ int main() {
     def test_home_secondary_metadata_and_stat_lanes_are_explicit(self):
         home = (ROOT / 'src/components/RickyHomeUi.cpp').read_text()
         self.assertIn('design::secondaryText(renderer, box(profile.x, profile.y + 56', home)
-        self.assertIn('design::secondaryText(renderer, box(cell.x, cover.bottom() + 84', home)
+        self.assertIn('design::secondaryText(renderer, box(cell.x, cover.bottom() + 52', home)
         self.assertIn('screen.takeTop(184, ds::space::k6)', home)
         self.assertIn('rickyPaw::draw(renderer, x, cell.y + 100, kPaw, week[d])', home)
         self.assertIn('constexpr int kPaw = 26;', home)

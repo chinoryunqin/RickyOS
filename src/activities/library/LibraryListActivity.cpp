@@ -1092,7 +1092,7 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
     if (picked)
       screen.target().fill(labelRect, fui::Paint::solid(fui::Color::Black), labelRect.height / 2);
     else
-      screen.target().stroke(labelRect, fui::Paint::solid(fui::Color::Black), ricky::ds::stroke::kHairline,
+      screen.target().stroke(labelRect, fui::Paint::solid(fui::Color::LightGray), ricky::ds::stroke::kHairline,
                              labelRect.height / 2);
     auto label = theme.smallText;
     label.bold = false;
@@ -1207,7 +1207,9 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
                               static_cast<int16_t>(cardTextLineHeight)};
     const fui::Rect detailRect{titleRect.x, static_cast<int16_t>(titleRect.bottom() + cardTextGap), titleRect.width,
                                titleRect.height};
-    RickyDesignUi::text(renderer, titleRect, shelfTitles[slot].c_str(), RickyDesignUi::CAPTION, picked,
+    // Titles are any text: the full-coverage body face for all of them, so a shelf row
+    // never mixes the caption and body sizes.
+    RickyDesignUi::text(renderer, titleRect, shelfTitles[slot].c_str(), RickyDesignUi::BODY, picked,
                         fui::TextAlign::Center);
     RickyDesignUi::secondaryText(renderer, detailRect, shelfDetails[slot].data(), RickyDesignUi::CAPTION, picked,
                                  fui::TextAlign::Center);

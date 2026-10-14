@@ -39,6 +39,10 @@ struct GfxRenderer {
  void drawText(int f,int x,int y,const char* s,bool) const {
   ++labels;blocks.emplace_back(x,y,getTextWidth(f,s),lineHeight);
  }
+ bool gray=false;
+ bool isGrayscale16Active() const {return gray;}
+ void fillGrayscale16Rect(int x,int y,int w,int h,uint8_t) const {++separators;blocks.emplace_back(x,y,w,h);}
+ struct TextInkScope {TextInkScope(const GfxRenderer&,uint8_t){}};
 };
 const uint8_t* iconForTab(MainTab) {static uint8_t ink=0;return &ink;}
 void drawInxIcon(const GfxRenderer& r,const uint8_t*,int x,int y) {++r.icons;r.blocks.emplace_back(x,y,kIconSize,kIconSize);}
@@ -54,8 +58,9 @@ int main() {
   GfxRenderer renderer; SETTINGS.inxTabPosition=placement;
   Rect bar{5,17,width,MainTabs::bottomBarHeight};
   InxTheme{}.drawMainTabBar(renderer,bar,selected);
-  assert(renderer.separators==1 && renderer.icons==4 && renderer.labels==5);
-  assert(renderer.selectedIcons==1);
+  // The rule and the current tab's mark; every icon plain (no capsule), every label.
+  assert(renderer.separators==2 && renderer.icons==5 && renderer.labels==5);
+  assert(renderer.selectedIcons==0);
   for(auto b:renderer.blocks) {
    assert(b.x>=bar.x && b.y>=bar.y);
    assert(b.x+b.width<=bar.x+bar.width && b.y+b.height<=bar.y+bar.height);
