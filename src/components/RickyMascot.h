@@ -27,7 +27,7 @@ inline const uint8_t* bitsFor(const Mood mood, const bool small) {
     case Mood::Reading:
       break;
   }
-  return small ? ricky_mascot_small_reading : ricky_mascot_reading;
+  return small ? ricky_mascot_small_cheering : ricky_mascot_cheering;  // cheering the reader on
 }
 
 inline void draw(const GfxRenderer& renderer, const Mood mood, const bool small, const int x, const int y) {

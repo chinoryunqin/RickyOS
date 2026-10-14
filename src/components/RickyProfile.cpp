@@ -12,7 +12,6 @@
 #include <cstring>
 
 #include "CrossPointSettings.h"
-#include "RickyBrandMark.h"
 #include "RickyDesignUi.h"
 #include "RickyPageUi.h"
 #include "UITheme.h"
@@ -54,6 +53,7 @@ constexpr char PRESET_PREFIX[] = "@avatar:";
 }  // namespace
 
 int presetAvatarIndex() {
+  if (SETTINGS.rickyAvatarPath[0] == '\0') return DEFAULT_AVATAR;
   const size_t length = sizeof(PRESET_PREFIX) - 1;
   if (strncmp(SETTINGS.rickyAvatarPath, PRESET_PREFIX, length) != 0) return -1;
   const char* digits = SETTINGS.rickyAvatarPath + length;
@@ -99,16 +99,6 @@ bool setAvatar(const char* value) {
   return false;
 }
 
-void drawBrandAvatar(const GfxRenderer& renderer, const Rect& rect) {
-  // Approved portrait/dog badge as the initial avatar; changing this personal
-  // image never replaces the immutable full boot/standby brand mark. The
-  // badge's own ring is the avatar edge, so no second outline is drawn.
-  const int size = std::max(0, std::min(rect.width, rect.height));
-  if (!size) return;
-  RickyBrandMark::drawBadge(renderer, Rect{rect.x, rect.y, size, size});
-  renderer.maskRoundedRectOutsideCorners(rect.x, rect.y, size, size, size / 2);
-}
-
 void drawAvatar(const GfxRenderer& renderer, const Rect& rect) {
   const int size = std::max(0, std::min(rect.width, rect.height));
   if (!size) return;
@@ -128,7 +118,9 @@ void drawAvatar(const GfxRenderer& renderer, const Rect& rect) {
     }
   }
   if (!painted) {
-    drawBrandAvatar(renderer, rect);
+    // The brand badge stays the product's mark (boot, standby); a user's avatar falls
+    // back to the default puppy.
+    drawPresetAvatar(renderer, rect, DEFAULT_AVATAR);
     return;
   }
   // Imported photos get one even ring, scaled with the avatar.

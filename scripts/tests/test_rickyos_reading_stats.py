@@ -1,4 +1,4 @@
-"""RickyOS reading statistics: one page, the logo's dog reacting to today's reading."""
+"""RickyOS reading statistics: one page, the brand puppy reacting to today's reading."""
 from pathlib import Path
 import re
 import unittest
@@ -35,7 +35,7 @@ class RickyReadingStatsTest(unittest.TestCase):
         self.assertIn('rickyMascot::moodFor(todayMs, goalMs), true', home)
         icons = (ROOT / 'src/components/icons/rickyMascotIcons.h').read_text()
         for prefix, size in (('ricky_mascot', 150), ('ricky_mascot_small', 88)):
-            for name in ('sleeping', 'reading', 'happy'):
+            for name in ('sleeping', 'cheering', 'happy'):
                 data = re.search(rf'{prefix}_{name}\[\] = \{{([^}}]+)\}}', icons).group(1)
                 self.assertEqual(len(re.findall(r'0x[0-9A-F]{2}', data)), (size + 7) // 8 * size)
 

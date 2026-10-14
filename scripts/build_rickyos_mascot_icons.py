@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""RickyOS reading-stats mascot (the logo's dog in three moods) -> 1-bpp Flash icons.
+"""RickyOS reading-stats mascot (the brand puppy in three moods) -> 1-bpp Flash icons.
 
-Sources: src/components/icons/sources/rickyos/mascot/{sleeping,reading,happy}.png, drawn with
-codex image generation from the RickyOS logo. Each is trimmed to its ink, centered on a square,
-resized to SIZE and thresholded; light gray fills become paper, outlines and patches stay ink.
+Sources: src/components/icons/sources/rickyos/mascot/{sleeping,cheering,happy}.png, drawn with
+codex image generation against the character sheets (docs/brand/rickyos-characters.md): asleep
+before today's reading, cheering the reader on, jumping for joy at the goal. The puppy never
+holds a book. Each is trimmed to its ink, centered on a square, resized to SIZE and thresholded; light gray fills become paper, outlines and patches stay ink.
 Run: python3 scripts/build_rickyos_mascot_icons.py [--out header.h]
 """
 import argparse
@@ -13,7 +14,7 @@ from PIL import Image, ImageOps
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = ROOT / "src/components/icons/sources/rickyos/mascot"
-NAMES = ("sleeping", "reading", "happy")
+NAMES = ("sleeping", "cheering", "happy")
 SIZE = 150
 SMALL_SIZE = 88  # the home page's today card
 THRESHOLD = 110

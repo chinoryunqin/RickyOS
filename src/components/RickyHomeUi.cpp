@@ -296,7 +296,9 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   const bool empty = !books || books->empty();
   const int cardH = empty ? 256 : std::min(288, screen.body().height - 184 - 24 - 40 - 12 - 200);
   const auto main = screen.takeTop(std::max(256, cardH), ds::space::k6);
-  RickyBrandMark::drawDogPeek(renderer, Rect{main.right() - 250, main.y - 78, 126, 84});
+  // The puppy's paws rest on the card's top edge, drawn over them next.
+  RickyBrandMark::drawDogPeek(renderer, Rect{main.right() - 124 - RickyDogAsset::width, main.y - RickyDogAsset::height + 1,
+                                             RickyDogAsset::width, RickyDogAsset::height});
   const bool selectedCard = !empty && showSelection && selected == start;
   design::card(renderer, main, selectedCard);
   const int coverH = main.height - pad * 2;

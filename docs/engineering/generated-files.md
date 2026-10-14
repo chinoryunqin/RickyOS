@@ -168,11 +168,14 @@ via `build-rickyos-cjk-font.sh`; follow their pinned font inputs and keep the
 updated character lists/headers with source changes. Regenerating only the
 I18n headers is insufficient to make the new characters available in UI fonts.
 
-`scripts/build_rickyos_dog_asset.py` uses Pillow to encode the approved
-`docs/design-system/mockup-src/dog.png` into `src/images/RickyDog.h`. Commit the
-generated header with its source/generator changes. It stores 150×100 pixels as
-7,500 bytes of 4-bit coverage in Flash, without a runtime heap buffer.
-Edit approved source assets or generators, never hand-edit generated pixels.
+The brand puppy's UI art follows the character sheets in `docs/brand/`:
+`scripts/build_rickyos_puppy_peek.py` turns `src/images/sources/rickyos/puppy-peek.png`
+into the home card's peek (`src/images/RickyDog.h`, 4-bit coverage) and the 小狗伴读
+frame's peek (`src/components/icons/rickyReaderDog.h`, 2-bit gray plus a mask);
+`scripts/build_rickyos_mascot_icons.py` builds the reading-stats moods and
+`scripts/build_rickyos_avatars.py` the default avatars. All live in Flash without a
+runtime heap buffer. Commit generated headers with their source/generator changes;
+edit source drawings or generators, never hand-edit generated pixels.
 
 **To change HTML pages**:
 1. Edit source: `src/network/html/<locale>/<pagename>.html`

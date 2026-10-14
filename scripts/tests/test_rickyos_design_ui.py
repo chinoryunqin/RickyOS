@@ -181,8 +181,8 @@ int main() {
 #include <cassert>
 #include "images/RickyDog.h"
 int main() {
-  assert(RickyDogAsset::width==150 && RickyDogAsset::height==100);
-  assert(sizeof(RickyDogAsset::coverage)==7500);
+  assert(RickyDogAsset::width>60 && RickyDogAsset::height>60);
+  assert(sizeof(RickyDogAsset::coverage)==(RickyDogAsset::width*RickyDogAsset::height+1)/2);
   unsigned seen=0;
   for(auto byte:RickyDogAsset::coverage) {seen|=1u<<(byte>>4);seen|=1u<<(byte&15);}
   assert(seen==65535);
