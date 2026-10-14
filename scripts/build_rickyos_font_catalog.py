@@ -33,10 +33,10 @@ from rickyos_asset_routes import check_cos_base, routes  # noqa: E402
 
 SCRIPTS = ROOT / "lib/EpdFont/scripts"
 FLASH_SIZES = (12, 14, 16, 18, 20, 22)
-# Large print: 32 pt is 67 px on Read Pico, about 9 characters a line. RickySans measures
-# 7.9 MB at 28 pt and 12.7 MB at 36 pt, so these stay well under the reader's 25 MB
-# download limit (kMaxFontFileBytes in FontDownloadActivity.cpp).
-LARGE_SIZES = (26, 32)
+# Large print, every step the reader offers above 22 pt (VECTOR_READER_POINT_SIZES): 32 pt
+# is 67 px on Read Pico, about 9 characters a line. RickySans measures 10.1 MB at 32 pt,
+# well under the reader's 25 MB download limit (kMaxFontFileBytes in FontDownloadActivity.cpp).
+LARGE_SIZES = (24, 26, 28, 30, 32)
 MAX_FILE_BYTES = 25 * 1024 * 1024
 SIZES = FLASH_SIZES + LARGE_SIZES
 MANIFEST_VERSION = 1  # FONTS_MANIFEST_VERSION in the firmware
