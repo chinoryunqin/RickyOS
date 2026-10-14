@@ -21,6 +21,9 @@ inline constexpr const char* COS_MANIFEST = RickyCos::ENABLED ? RickyCos::WALLPA
 inline constexpr int MANIFEST_COUNT = 4;
 // Card folder the pictures land in; the standby picker starts in /images.
 inline constexpr char FOLDER[] = "/images/待机图片";
+// Transparent stickers (the manifest's "stickers" list, PNG with alpha laid over the
+// kept page). Older firmware reads only "items", so it never mistakes one for a picture.
+inline constexpr char STICKER_FOLDER[] = "/images/透明壁纸";
 
 // The manifest to try at each attempt, or nullptr for a route that is off (skip it).
 // One fixed order for every device (RickyOS readers are in mainland China): the

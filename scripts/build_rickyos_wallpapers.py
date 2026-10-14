@@ -6,11 +6,17 @@ resized to 684 x 1216, error-diffused to the panel's 16 gray levels and written 
 PNG (mostly white pictures compress about 6x against a BMP, which matters on slow networks). The
 reader converts the chosen PNG to an 8-bit gray BMP for /sleep.bmp and draws it in native 16-gray.
 
+Transparent stickers (--sticker-sources) are finished 684 x 1216 RGBA pictures laid over the
+page kept on screen in Standby: they are snapped to hard alpha and written as gray + alpha PNGs
+under the manifest's "stickers" list, which only firmware that knows them reads (it saves them
+in /images/透明壁纸); older firmware reads "items" alone.
+
 Output: wallpapers/*.png, wallpapers.json (GitHub release URLs), mirror.json (jsDelivr) and, with
 --cos-base, cos.json (the RickyOS COS bucket), all in the manifest format
 RickyWallpaperDownloadActivity reads, plus SHA256SUMS.
 
-Run: python3 scripts/build_rickyos_wallpapers.py --sources DIR --output DIR --slogan-font SmileySans-Oblique.otf [--tag v1.3.0]
+Run: python3 scripts/build_rickyos_wallpapers.py --sources DIR --output DIR --slogan-font SmileySans-Oblique.otf \
+       [--sticker-sources DIR] [--tag v1.4.0]
 """
 import argparse
 import hashlib
@@ -53,6 +59,25 @@ WALLPAPERS = [
     ("13-whale-clouds", "云上鲸鱼", "13-whale-clouds.png"),
     ("14-hedgehog-library", "刺猬去图书馆", "14-hedgehog-library.png"),
     ("15-fox-tree", "树上的狐狸", "15-fox-tree.png"),
+]
+# (finished sticker file in --sticker-sources, SD file name, published ASCII file name)
+STICKERS = [
+    ("wp-tear.png", "破纸而出", "s01-tear.png"),
+    ("wp-peekup.png", "巨型探头", "s02-peek-up.png"),
+    ("wp-bellyup.png", "累趴了", "s03-belly-up.png"),
+    ("wp-squish.png", "贴脸", "s04-squish.png"),
+    ("wp-blanket.png", "盖被子", "s05-blanket.png"),
+    ("wp-sleep.png", "趴着睡", "s06-sleep.png"),
+    ("wp-hang.png", "扒住顶边", "s07-hang.png"),
+    ("wp-peek.png", "侧边偷看", "s08-peek-side.png"),
+    ("wp-paws.png", "脚印", "s09-paws.png"),
+    ("wp-gang-pile.png", "动物帮睡成一堆", "s10-gang-pile.png"),
+    ("wp-gang-peek.png", "动物帮一排探头", "s11-gang-peek.png"),
+    ("wp-gang-tower.png", "动物帮叠罗汉", "s12-gang-tower.png"),
+    ("wp-brand-badge.png", "工牌", "s13-badge.png"),
+    ("wp-brand-credits.png", "片尾字幕", "s14-credits.png"),
+    ("wp-brand-vertical.png", "竖排字标", "s15-wordmark.png"),
+    ("wp-brand-stamp.png", "印章", "s16-stamp.png"),
 ]
 # Logo-style line art is fitted into the upper band so it never meets the time corner.
 LOGO_STYLE = {"31-reading-together", "32-dog-nap", "33-moon-reading", "34-dog-fetch", "35-book-nap", "36-peek"}
@@ -150,12 +175,27 @@ def bmp4(indexed: Image.Image) -> bytes:
     return header + info + palette + image
 
 
+def sticker_png(image: Image.Image) -> bytes:
+    """A finished sticker as an 8-bit gray + alpha PNG: hard alpha, exact panel grays."""
+    rgba = image.convert("RGBA")
+    if rgba.size != (WIDTH, HEIGHT):
+        raise SystemExit(f"sticker is {rgba.size[0]}x{rgba.size[1]}, expected {WIDTH}x{HEIGHT}")
+    gray = rgba.convert("L").point(lambda v: round(v * (LEVELS - 1) / 255) * 255 // (LEVELS - 1))
+    alpha = rgba.getchannel("A").point(lambda v: 255 if v >= 128 else 0)
+    out = io.BytesIO()
+    Image.merge("LA", (gray, alpha)).save(out, "PNG", optimize=True)
+    return out.getvalue()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--sources", type=Path, required=True)
+    parser.add_argument("--sources", type=Path, help="source pictures to build the standby pictures from")
+    parser.add_argument("--items-from", type=Path,
+                        help="a published release folder (cos.json and its files): reuse its standby pictures as-is")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--tag", default="v1.3.0")
     parser.add_argument("--slogan-font", type=Path, help="Smiley Sans (OFL) for the slogan pictures")
+    parser.add_argument("--sticker-sources", type=Path, help="finished transparent stickers (wp-*.png)")
     parser.add_argument("--cos-base", help="RickyOS COS bucket domain (https://<bucket>-<appid>.cos.ap-guangzhou."
                         "myqcloud.com); adds cos.json, published with scripts/publish_rickyos_assets_cos.py")
     args = parser.parse_args()
@@ -164,7 +204,19 @@ def main() -> None:
     out = args.output / "wallpapers"
     out.mkdir(parents=True, exist_ok=True)
     items, sums = [], []
-    for stem, name, file, *slogan in WALLPAPERS:
+    if bool(args.sources) == bool(args.items_from):
+        parser.error("pass exactly one of --sources and --items-from")
+    if args.items_from:
+        # The published pictures are already final: copy them byte for byte.
+        manifest = json.loads((args.items_from / "cos.json").read_text())
+        for item in manifest["items"]:
+            data = (args.items_from / item["file"]).read_bytes()
+            if len(data) != item["size"] or zlib.crc32(data) & 0xFFFFFFFF != item["crc32"]:
+                raise SystemExit(f"{item['file']} does not match {args.items_from / 'cos.json'}")
+            (out / item["file"]).write_bytes(data)
+            items.append({key: item[key] for key in ("name", "file", "size", "crc32")})
+            sums.append(f"{hashlib.sha256(data).hexdigest()}  wallpapers/{item['file']}")
+    for stem, name, file, *slogan in WALLPAPERS if args.sources else []:
         gray = fit_to_screen(Image.open(args.sources / f"{stem}.png"), CROP_ANCHOR.get(stem, 0.5))
         if stem in LOGO_STYLE:
             gray = fit_to_band(gray)
@@ -178,8 +230,18 @@ def main() -> None:
         sums.append(f"{hashlib.sha256(data).hexdigest()}  wallpapers/{file}")
         print(f"{name}: {file} {len(data):,} B")
 
+    stickers = []
+    for source, name, file in STICKERS if args.sticker_sources else []:
+        data = sticker_png(Image.open(args.sticker_sources / source))
+        (out / file).write_bytes(data)
+        stickers.append({"name": name, "file": file, "size": len(data), "crc32": zlib.crc32(data) & 0xFFFFFFFF})
+        sums.append(f"{hashlib.sha256(data).hexdigest()}  wallpapers/{file}")
+        print(f"{name}: {file} {len(data):,} B (sticker)")
+
     for manifest, base, mirrors in routes("wallpapers", RELEASE_REPO, args.tag, args.cos_base):
         document = {"version": MANIFEST_VERSION, "baseUrl": base, "mirrors": mirrors, "items": items}
+        if stickers:
+            document["stickers"] = stickers
         (args.output / manifest).write_text(json.dumps(document, ensure_ascii=False, indent=1) + "\n")
     (args.output / "SHA256SUMS").write_text("\n".join(sums) + "\n")
     print(f"Ready: {args.output}")

@@ -28,6 +28,7 @@ class RickyWallpaperDownloadActivity final : public Activity {
     std::string file;  // published ASCII file name
     uint32_t size = 0;
     uint32_t crc32 = 0;
+    bool sticker = false;  // a transparent sticker, kept apart from the standby pictures
   };
 
   void onWifiResult(bool connected);

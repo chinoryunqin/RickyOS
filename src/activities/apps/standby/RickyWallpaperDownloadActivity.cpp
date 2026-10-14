@@ -30,7 +30,7 @@ namespace {
 constexpr char kManifestTmp[] = "/wallpapers_manifest.tmp";
 constexpr char kStandbyPicture[] = "/sleep.bmp";
 constexpr size_t kMaxManifestBytes = 8 * 1024;
-constexpr size_t kMaxItems = 24;
+constexpr size_t kMaxItems = 48;  // pictures and stickers together
 constexpr uint32_t kMaxItemBytes = 2 * 1024 * 1024;
 constexpr size_t kMaxUrlBytes = 256;
 constexpr int kFileAttempts = 3;
@@ -174,18 +174,21 @@ bool RickyWallpaperDownloadActivity::fetchManifest() {
     LOG_INF("WPDL", "Manifest %s: release %06x", url, static_cast<unsigned>(release));
     if (!items_.empty() && release <= bestRelease) continue;
     std::vector<Item> items;
-    for (JsonVariant entry : doc["items"].as<JsonArray>()) {
-      const char* name = entry["name"] | "";
-      const char* file = entry["file"] | "";
-      const uint32_t size = entry["size"] | 0u;
-      const bool picture =
-          FsHelpers::hasPngExtension(std::string_view(file)) || FsHelpers::hasBmpExtension(std::string_view(file));
-      if (!validName(name) || !validName(file) || !picture || size == 0 || size > kMaxItemBytes ||
-          items.size() >= kMaxItems) {
-        LOG_ERR("WPDL", "Skipping invalid manifest item");
-        continue;
+    for (const bool sticker : {false, true}) {
+      for (JsonVariant entry : doc[sticker ? "stickers" : "items"].as<JsonArray>()) {
+        const char* name = entry["name"] | "";
+        const char* file = entry["file"] | "";
+        const uint32_t size = entry["size"] | 0u;
+        // Stickers need their alpha, so PNG only; pictures may also be BMP.
+        const bool picture = FsHelpers::hasPngExtension(std::string_view(file)) ||
+                             (!sticker && FsHelpers::hasBmpExtension(std::string_view(file)));
+        if (!validName(name) || !validName(file) || !picture || size == 0 || size > kMaxItemBytes ||
+            items.size() >= kMaxItems) {
+          LOG_ERR("WPDL", "Skipping invalid manifest item");
+          continue;
+        }
+        items.push_back(Item{name, file, size, entry["crc32"] | 0u, sticker});
       }
-      items.push_back(Item{name, file, size, entry["crc32"] | 0u});
     }
     if (items.empty()) continue;
     bestRelease = release;
@@ -215,6 +218,8 @@ bool RickyWallpaperDownloadActivity::fetchManifest() {
 bool RickyWallpaperDownloadActivity::downloadAll() {
   if (!Storage.ensureDirectoryExists("/images") || !Storage.ensureDirectoryExists(RickyWallpaperCatalog::FOLDER))
     return false;
+  const bool anySticker = std::any_of(items_.begin(), items_.end(), [](const Item& item) { return item.sticker; });
+  if (anySticker && !Storage.ensureDirectoryExists(RickyWallpaperCatalog::STICKER_FOLDER)) return false;
   bytesTotal_ = 0;
   for (const auto& item : items_) bytesTotal_ += item.size;
   bytesDone_ = 0;
@@ -227,7 +232,9 @@ bool RickyWallpaperDownloadActivity::downloadAll() {
   requestUpdate();
   for (currentItem_ = 0; currentItem_ < items_.size(); ++currentItem_) {
     const Item& item = items_[currentItem_];
-    const std::string dest = std::string(RickyWallpaperCatalog::FOLDER) + "/" + item.name + extensionOf(item.file);
+    const std::string dest = std::string(item.sticker ? RickyWallpaperCatalog::STICKER_FOLDER
+                                                      : RickyWallpaperCatalog::FOLDER) +
+                             "/" + item.name + extensionOf(item.file);
     if (!downloadItem(item, dest)) return false;
     bytesDone_ += item.size;
   }
@@ -268,6 +275,7 @@ bool RickyWallpaperDownloadActivity::downloadItem(const Item& item, const std::s
   Storage.remove(dest.c_str());
   if (!Storage.rename(part.c_str(), dest.c_str())) return false;
   // An earlier release shipped this picture as a BMP; keep one copy in the folder.
+  if (item.sticker) return true;
   const std::string older = std::string(RickyWallpaperCatalog::FOLDER) + "/" + item.name + ".bmp";
   if (older != dest && Storage.exists(older.c_str())) Storage.remove(older.c_str());
   return true;
@@ -275,9 +283,10 @@ bool RickyWallpaperDownloadActivity::downloadItem(const Item& item, const std::s
 
 void RickyWallpaperDownloadActivity::installFirstIfUnset() {
   // Never replace a picture the user chose.
-  if (items_.empty() || Storage.exists(kStandbyPicture)) return;
-  const std::string first =
-      std::string(RickyWallpaperCatalog::FOLDER) + "/" + items_.front().name + extensionOf(items_.front().file);
+  // The first standby picture, never a sticker (its alpha needs the kept page under it).
+  const auto picture = std::find_if(items_.begin(), items_.end(), [](const Item& item) { return !item.sticker; });
+  if (picture == items_.end() || Storage.exists(kStandbyPicture)) return;
+  const std::string first = std::string(RickyWallpaperCatalog::FOLDER) + "/" + picture->name + extensionOf(picture->file);
   bool installed = false;
   if (FsHelpers::hasPngExtension(first)) {
     // Same conversion the picture preview uses: an 8-bit gray BMP keeps all 16 grays.

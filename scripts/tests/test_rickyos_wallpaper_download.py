@@ -114,6 +114,19 @@ class RickyWallpaperDownloadTest(unittest.TestCase):
         header = (ROOT / 'src/network/RickyWallpaperCatalog.h').read_text()
         self.assertIn('static_assert(releaseOf("https://cdn.jsdelivr.net/gh/x/y@v1.1.0/wallpapers/") == 0x010100);', header)
 
+    def test_stickers_land_in_their_own_folder_and_never_become_the_standby_picture(self):
+        source = ACTIVITY.read_text()
+        catalog = (ROOT / 'src/network/RickyWallpaperCatalog.h').read_text()
+        self.assertIn('inline constexpr char STICKER_FOLDER[] = "/images/透明壁纸";', catalog)
+        # Older firmware reads only "items"; stickers ride in their own list, PNG only.
+        self.assertIn('doc[sticker ? "stickers" : "items"]', source)
+        self.assertIn('(!sticker && FsHelpers::hasBmpExtension(std::string_view(file)))', source)
+        self.assertIn('item.sticker ? RickyWallpaperCatalog::STICKER_FOLDER', source)
+        self.assertIn('[](const Item& item) { return !item.sticker; }', source)
+        script = (ROOT / 'scripts/build_rickyos_wallpapers.py').read_text()
+        self.assertIn('document["stickers"] = stickers', script)
+        self.assertIn('Image.merge("LA", (gray, alpha))', script)
+
     def test_progress_repaints_in_ten_percent_steps(self):
         item = body(ACTIVITY.read_text(), 'bool RickyWallpaperDownloadActivity::downloadItem(')
         self.assertIn('percent >= lastPercent_ + kProgressStepPercent', item)
