@@ -71,3 +71,7 @@ CONFIG_LWIP_TCP_SACK_OUT=y
 # The Pico's TCP receive window (32 KB) instead of 5760, experiment 2026-10-15.
 CONFIG_LWIP_TCP_WND_DEFAULT=32768
 CONFIG_LWIP_TCP_RECVMBOX_SIZE=32
+# The S31 station fails WPA3-SAE authentication (auth -> init at once, reason 202) on
+# WPA2/WPA3 transition networks such as macOS Internet Sharing; joining them as WPA2
+# works. 2026-10-15.
+# CONFIG_ESP_WIFI_ENABLE_WPA3_SAE is not set
