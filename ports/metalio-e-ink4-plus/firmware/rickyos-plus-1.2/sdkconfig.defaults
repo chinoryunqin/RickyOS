@@ -75,3 +75,8 @@ CONFIG_LWIP_TCP_RECVMBOX_SIZE=32
 # WPA2/WPA3 transition networks such as macOS Internet Sharing; joining them as WPA2
 # works. 2026-10-15.
 # CONFIG_ESP_WIFI_ENABLE_WPA3_SAE is not set
+# Bursts from nearby servers (the TLS reply from WeRead/Tencent) were lost with 10 RX buffers
+# and a 6-frame BA window: the handshake timed out with TCP up. With these it completes.
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=24
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=64
+CONFIG_ESP_WIFI_RX_BA_WIN=16
