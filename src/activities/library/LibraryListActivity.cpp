@@ -1136,16 +1136,16 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
       RickyPageUi::stripBookExtension(shelfTitles[i]);
       if (!entryPath(start + i, shelfPaths[i])) shelfPaths[i].clear();
       const auto& path = shelfPaths[i];
-      const char* format = FsHelpers::hasEpubExtension(path)       ? "EPUB"
-                           : FsHelpers::hasTxtExtension(path)      ? "TXT"
-                           : FsHelpers::hasMarkdownExtension(path) ? "MD"
-                                                                   : "";
+      // Reading state only: "EPUB · 已读 12%" overflowed a three-column card, and the
+      // format already shows on generated covers.
       const auto* stats = READING_STATS.findMatchingBookForPath(path);
-      if (stats)
-        snprintf(shelfDetails[i].data(), shelfDetails[i].size(), tr(STR_RICKY_BOOK_PROGRESS), format,
+      if (stats && stats->lastProgressPercent >= 100)
+        snprintf(shelfDetails[i].data(), shelfDetails[i].size(), "%s", tr(STR_RICKY_BOOK_FINISHED));
+      else if (stats)
+        snprintf(shelfDetails[i].data(), shelfDetails[i].size(), tr(STR_RICKY_BOOK_PROGRESS),
                  static_cast<unsigned>(stats->lastProgressPercent));
       else
-        snprintf(shelfDetails[i].data(), shelfDetails[i].size(), tr(STR_RICKY_BOOK_UNREAD), format);
+        snprintf(shelfDetails[i].data(), shelfDetails[i].size(), "%s", tr(STR_RICKY_BOOK_UNREAD));
       shelfCovers[i].clear();
     }
     index.close();
