@@ -53,3 +53,7 @@ python3 tests/test_plus_index_budget.py
 python3 tests/test_plus_static_standby.py
 
 python3 tests/test_plus_tls_retry.py
+python3 tests/test_plus_font_source.py
+python3 tests/test_plus_boot_identity.py
+python3 tests/test_plus_reader_page_cache.py
+python3 tests/test_plus_usb_retry.py

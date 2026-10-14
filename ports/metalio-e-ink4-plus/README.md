@@ -8,9 +8,9 @@
 
 ## 当前基线与设备状态
 
-- RickyOS 来源：`codex/rickyos-1.2-design` 的 `73901ae83945d7fdf53d89967dff3750bf8235c0`。
-- SDK 来源：`96de1be6ce08eb732909e6e8149af8f892b9a2c5`；来源清单与 72 项 Plus 修改独立记录，不使用原工作区 SDK 的未提交改动。
-- 已构建并安装：design 73901ae8 联网入口／进度／待机修正版，5,222,544 bytes；SHA256 `2f5af4d1f560ff27c00832685fb977b4b83c0082222c12da5a6d355bc9f07d46`。用户确认基础录音回放正常、触控震动正常、Tab 叠影恢复；USB 1 MiB 写入／读回 SHA256、安全弹出和调试口恢复通过。
+- RickyOS 来源：`codex/rickyos-1.2-design` 的 `d091adbef9f03a54cdc9e0ca0708cdd090aee6f2`。
+- SDK 来源：`96de1be6ce08eb732909e6e8149af8f892b9a2c5`；来源清单与 77 项 Plus 修改独立记录，不使用原工作区 SDK 的未提交改动。
+- 已构建并安装：design d091adbe 优化／应用页完整高度修正版，5,235,456 bytes；SHA256 `e86755f8a03a6e23ff1b9101c536477b3623cd7b5f080f679b8570e3c00498ec`。原厂 2.0.62 槽保持一致，用户确认基础阅读可用、七个应用入口同页及屏保点选正常。此前用户确认基础录音回放、触控震动和 Tab 叠影修复；USB 1 MiB 写入／读回 SHA256、安全弹出和调试口恢复在此前镜像验证，本轮 USB 重试/SCSI 修改尚未重新做实机传输验收。
 - 当前代码包含显示、触控及盖板键、SD、前光、电量、RTC、网络迁移修改，以及本轮音量输出和试听。
 - 基础录音回放与触控震动已获用户确认。音量曲线、录音时待机保存等场景尚未单独验收；网络稳定性尚未解决，热点对照改善 DNS 但屏保目录仍失败。蓝牙配对和自动旋转尚未接入。
 - 选择性接入设计提交 6e1d0ea7 的拼音、局部灰阶和透明待机；USB MSC 已新增 S31 后端并构建，安装／实机状态见 [USB 接入记录](docs/rickyos-1.2-plus-usb.md)。详见 [接入记录](docs/rickyos-1.2-plus-new-features-integration.md)。
@@ -27,7 +27,7 @@ python3 tests/test_plus_frontlight_panel.py
 python3 tests/test_plus_standby_frontlight.py
 ```
 
-还原脚本读取固定 Git 提交、逐文件核对 SHA256，再应用 `firmware/rickyos-plus-1.2/upstream-plus.patch`，重新核对全部 2,822 个文件。它不会使用其他设备的工作区修改；已存在的源码只校验，不覆盖。也可通过 `--source-repo` 和 `--sdk-repo` 使用本地 Git 对象进行离线还原。
+还原脚本读取固定 Git 提交、逐文件核对 SHA256，再应用 `firmware/rickyos-plus-1.2/upstream-plus.patch`，重新核对全部 2,824 个文件。它不会使用其他设备的工作区修改；已存在的源码只校验，不覆盖。也可通过 `--source-repo` 和 `--sdk-repo` 使用本地 Git 对象进行离线还原。
 
 完整应用源码还原到 `firmware/rickyos-plus-1.2/upstream/`；Plus 自有板级组件位于 `firmware/rickyos-plus-1.2/components/`。生成文件、源码还原目录、二进制、设备私有备份和日志均不提交。
 
@@ -78,3 +78,5 @@ Plus 按键设置已实现并通过分类／逻辑映射及 JSON 持久化主机
 2026-10-13 已整合并上机 design 73901ae8 的阅读模式、阅读线、字重/TTF、统计月报、下载线路及绘制优化。无损字体压缩保持原 5MiB 槽；详见 [整合与验证记录](docs/rickyos-1.2-plus-design-73901ae8.md)。新功能实机交互待验收；小狗伴读左边框缺失已通过 DMA 完成判断修正，用户确认恢复。
 
 2026-10-14：提交联网入口复用、15 秒自动连接等待、继承按键防护、字体容量进度和两秒更新、小目录共享请求预算、TLS 回退条件及静态待机重画抑制。正式候选已构建、安装并正常进入主页；新增主机回归通过，列表联网和静态待机的实机验收仍未完成。详见 [修复与网络对照记录](docs/rickyos-plus-network-ui-standby.md)。
+
+2026-10-14：整合 design d091adbe 的字号／字重菜单、开机准备和 USB 传书改进，补齐 Plus 原生 16 级相邻页缓存与小章节预取，避免重复黑白正文绘制；可选缓存约 1.19 MiB，内存不足时回退，未单独测量实机缓存命中速度。字体下载显示实际请求来源，包含 Fastly 和重定向站点。应用页按可用高度排列，竖屏七入口同页，用户确认正常。完整构建、主机回归和匹配 ELF 首启通过，见 [整合与验收记录](docs/rickyos-1.2-plus-design-d091adbe.md)。网络稳定性仍待解决。

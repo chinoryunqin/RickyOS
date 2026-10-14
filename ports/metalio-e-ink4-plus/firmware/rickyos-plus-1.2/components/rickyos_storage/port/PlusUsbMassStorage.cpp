@@ -280,9 +280,18 @@ bool tud_msc_start_stop_cb(uint8_t lun,uint8_t,bool start,bool eject) {
  if(eject&&!start)if(auto* owner=freeink::gOwner.load())owner->markEjected();
  return true;
 }
-int32_t tud_msc_scsi_cb(uint8_t lun,const uint8_t command[16],void*,uint16_t) {
+int32_t tud_msc_scsi_cb(uint8_t lun,const uint8_t command[16],void* buffer,uint16_t size) {
  freeink::CallbackLock lock;
- if(lun==0 && command[0]==0x35)return freeink::syncMedia()?0:-1; // SYNCHRONIZE CACHE(10)
+ if(lun==0) {
+  if(command[0]==0x35 || command[0]==0x91)return freeink::syncMedia()?0:-1;
+  if(command[0]==0x5a && freeink::mediaReady()) {
+   const uint8_t header[8]={0,6,0,0,0,0,0,0};
+   const uint16_t count=std::min<uint16_t>(size,sizeof(header));
+   if(count && !buffer)return -1;
+   if(count)memcpy(buffer,header,count);
+   return count;
+  }
+ }
  tud_msc_set_sense(lun,SCSI_SENSE_ILLEGAL_REQUEST,0x20,0);return -1;
 }
 }

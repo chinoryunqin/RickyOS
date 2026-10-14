@@ -74,7 +74,9 @@ class UiListActivity:public Activity {
 };
 ''')
  source=(u/'src/activities/apps/AppsMenuActivity.cpp').read_text()
- helper=source[source.index('constexpr int kAppGridPageSize'):source.index('constexpr int kAppCount')]
+ helper=source[source.index('constexpr int appGridPageStart'):source.index('constexpr int kAppCount')]
+ size_start=source.index('int appGridPageSize(')
+ helper+=source[size_start:source.index('\nvoid drawRickyAppIcon(',size_start)]
  start=source.index('int AppsMenuActivity::iconIndexFromPoint(');end=source.index('\nvoid AppsMenuActivity::openSelected()',start)
  hit=source[start:end]
  (d/'test.cpp').write_text('''#include <RecorderActivity.h>
@@ -82,7 +84,8 @@ class UiListActivity:public Activity {
 #include <cassert>
 #include <algorithm>
 #include <RickyPageLayout.h>
-namespace ricky::ds::space { constexpr int kGutter=16; }
+namespace ricky::ds::space { constexpr int kGutter=20; }
+constexpr int kAppPillHeight=112;
 '''+helper+'''
 class AppsMenuActivity {public:struct {int selected=0;}nav;int count=7;Rect rect{40,160,604,448};Rect appContentRect()const{return rect;}int getVisibleAppCount()const{return count;}int iconIndexFromPoint(int,int)const;};
 '''+hit+'''
@@ -104,13 +107,22 @@ int main(){
  a.select(0);HalRecorder::complete=true;a.tick();assert(!a.preventAutoSleep() && a.rowCount()>1);
  a.select(0);{RenderLock held;a.onExit();}assert(!HalRecorder::active());a.back();assert(activityManager.appVisits==1);
  AppsMenuActivity grid;
- for(int width:{604,1136})for(int count=1;count<=20;++count)for(int selected=0;selected<count;++selected){
-   grid.rect=Rect{40,160,width,448};grid.count=count;grid.nav.selected=selected;const int start=appGridPageStart(selected,count);
-   for(int slot=0;slot<6;++slot){auto cell=RickyPageLayout::cell(grid.rect,slot,6,16,3);int got=grid.iconIndexFromPoint(cell.x+cell.width/2,cell.y+cell.height/2);assert(got==(start+slot<count?start+slot:-1));}
+ assert(appGridPageSize(Rect{40,160,604,976},7)==9); // all Plus entries on the portrait page
+ assert(appGridPageSize(Rect{40,160,1136,448},7)==6); // constrained height still paginates
+ for(int width:{604,1136})for(int height:{448,976})for(int count=1;count<=20;++count)for(int selected=0;selected<count;++selected){
+   grid.rect=Rect{40,160,width,height};grid.count=count;grid.nav.selected=selected;
+   const int capacity=appGridPageSize(grid.rect,count);const int start=appGridPageStart(selected,count,capacity);
+   assert(start<=selected && selected<start+capacity);
+   for(int slot=0;slot<capacity;++slot){
+     auto cell=RickyPageLayout::cell(grid.rect,slot,capacity,20,3);
+     assert(cell.x>=grid.rect.x && cell.y>=grid.rect.y && cell.x+cell.width<=grid.rect.x+grid.rect.width && cell.y+cell.height<=grid.rect.y+grid.rect.height);
+     int got=grid.iconIndexFromPoint(cell.x+cell.width/2,cell.y+cell.height/2);assert(got==(start+slot<count?start+slot:-1));
+     if(slot%3<2)assert(grid.iconIndexFromPoint(cell.x+cell.width+10,cell.y+cell.height/2)==-1);
+   }
    assert(grid.iconIndexFromPoint(0,0)==-1);
  }
 }
 ''')
  subprocess.run(['c++','-std=c++20','-DFREEINK_DEVICE_METALIO_PLUS=1','-fsanitize=address,undefined','-g',f'-I{d}',f'-I{u}/src/components',f'-I{u}/src/activities/apps/recorder',str(d/'test.cpp'),str(u/'src/activities/apps/recorder/RecorderActivity.cpp'),'-o',str(d/'test')],check=True)
  subprocess.run([str(d/'test')],check=True)
-print('Recorder UI: inherited Confirm gate, start/stop/back/sleep/completion, stale file taps, paged list; actual app-grid hit geometry for 1..20 apps/portrait/landscape passed')
+print('Recorder UI: inherited Confirm gate, start/stop/back/sleep/completion, stale file taps, paged list; actual adaptive app-grid hit geometry, gap rejection and seven-entry portrait page for 1..20 apps/portrait/landscape passed')

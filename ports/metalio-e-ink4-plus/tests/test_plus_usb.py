@@ -86,6 +86,12 @@ int main(){
  uint8_t block[512];assert(tud_msc_read10_cb(0,0,0,block,512)==512);
  assert(usb.state()==UsbMassStorageState::Accessed);
  uint8_t command[16]={0x35};assert(tud_msc_scsi_cb(0,command,nullptr,0)==0);
+ command[0]=0x91;int beforeSync=dev.syncs;assert(tud_msc_scsi_cb(0,command,nullptr,0)==0 && dev.syncs==beforeSync+1);
+ command[0]=0x5a;uint8_t mode[16];memset(mode,0xcc,sizeof(mode));
+ assert(tud_msc_scsi_cb(0,command,mode,sizeof(mode))==8 && mode[0]==0 && mode[1]==6 && mode[7]==0 && mode[8]==0xcc);
+ memset(mode,0xcc,sizeof(mode));assert(tud_msc_scsi_cb(0,command,mode,4)==4 && mode[4]==0xcc);
+ assert(tud_msc_scsi_cb(0,command,nullptr,0)==0 && tud_msc_scsi_cb(1,command,mode,8)==-1);
+
  dev.failSync=true;assert(!tud_msc_start_stop_cb(0,0,false,true));assert(usb.state()==UsbMassStorageState::IoError);
  dev.failSync=false;usb.end();assert(!usb.active() && !installed && routeDebug && !gDev.load());
  assert(events[events.size()-3]==4 && events[events.size()-2]==5 && events.back()==3);

@@ -3,6 +3,7 @@ set(DEPENDENCY_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../../../.local/dependencies")
 # Full original RickyOS 1.2 application and its pinned dependencies.
 idf_component_register(
  SRCS
+  "${APP_ROOT}/src/util/BootPreparation.cpp"
   "${APP_ROOT}/src/util/PanelTileCache.cpp"
   "${APP_ROOT}/src/activities/reader/ReaderChrome.cpp"
   "${APP_ROOT}/src/activities/apps/reading-stats/RickyMonthReportActivity.cpp"

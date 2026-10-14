@@ -17,6 +17,11 @@ idf_component_register(
     REQUIRES rickyos_platform arduino-esp32-4.0.0-RC1 esp_driver_sdmmc sdmmc plus_usb metalio_board
 )
 target_compile_features(${COMPONENT_LIB} PUBLIC cxx_std_20)
+target_link_options(${COMPONENT_LIB} INTERFACE
+    "-Wl,--wrap=tud_msc_test_unit_ready_cb"
+    "-Wl,--wrap=tud_msc_start_stop_cb"
+    "-Wl,--wrap=tud_msc_scsi_cb"
+)
 target_compile_definitions(${COMPONENT_LIB} PUBLIC
     FREEINK_SD_SDMMC=1 USE_BLOCK_DEVICE_INTERFACE=1 USE_UTF8_LONG_NAMES=1
     DESTRUCTOR_CLOSES_FILE=1 DISABLE_FS_H_WARNING=1 BOARD_HAS_PSRAM=1 ARDUINO_USB_MODE=1

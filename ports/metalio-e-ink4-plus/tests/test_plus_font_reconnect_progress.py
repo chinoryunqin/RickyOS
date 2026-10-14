@@ -56,7 +56,7 @@ struct FontDownloadActivity {
  enum class Purpose{Manage,ReaderAutoInstall};enum class ExitRoute{ReaderSuppressPrompt};
  Purpose purpose_=Purpose::Manage;
  size_t downloadProgress_=0,downloadTotal_=0,lastProgressRefreshBytes_=0;
- uint32_t lastProgressRefreshMs_=0;int frames=0,selectors=0,connected=0,waitFrames=0;
+ char downloadSourceHost_[256]{}; uint32_t lastProgressRefreshMs_=0;int frames=0,selectors=0,connected=0,waitFrames=0;
  void resetDownloadProgress(size_t);void updateDownloadProgress(size_t);void finishDownloadProgress();void startWifiSelection();
  void requestUpdate(bool immediate){assert(immediate && !RenderLock::held);++frames;}
  void requestUpdateAndWait(){assert(!RenderLock::held);++waitFrames;}

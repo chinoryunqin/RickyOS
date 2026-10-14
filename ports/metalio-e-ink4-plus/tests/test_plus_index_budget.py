@@ -22,13 +22,15 @@ struct HalSystem{static const char* getDeviceModel(){return "test";}};
 struct WifiPowerSaveGuard{};
 struct HttpDownloader {
  using Header=std::pair<std::string,std::string>;
+ using SourceCallback=void (*)(const char*,void*);
  enum DownloadError{OK,HTTP_ERROR,FILE_ERROR,ABORTED,UNAUTHORIZED};
 };
 namespace freeink {
 struct FetchOptions{bool redirectToHttp=false;};
 struct FetchSink{};
 struct SecureHttpClient {
- uint32_t timeout=0;
+ uint32_t timeout=0; std::string host="example.com";
+ const std::string& getHost() const{return host;}
  void setTimeout(uint32_t value){timeout=value;}
  void setCACert(const char*){} void setInsecure(){} void setUserAgent(const char*){}
  void setBasicAuth(const std::string&, const std::string&){}
@@ -40,6 +42,7 @@ FetchResult fetchResumable(const std::string&,const FetchOptions&,
  const std::function<void(SecureHttpClient&,bool)>& configure,const FetchSink&,const std::function<bool()>& abort){
  SecureHttpClient http;FetchResult result;
  configure(http,true);waits.push_back(http.timeout);
+ if(scenario==4){http.host="release-assets.githubusercontent.com";configure(http,false);result.aborted=abort();return result;}
  if(scenario==0){now+=100;assert(!abort());result.bytes=2252;return result;}
  if(scenario==3){configure(http,false);result.aborted=abort();return result;}
  now+=8000;assert(!abort());
@@ -52,6 +55,14 @@ FetchResult fetchResumable(const std::string&,const FetchOptions&,
 }
 '''+body+r'''
 int main(){
+ std::vector<std::string> sources;
+ const auto observer=+[](const char* host,void* ctx){static_cast<std::vector<std::string>*>(ctx)->emplace_back(host);};
+ freeink::scenario=4;now=0;
+ assert(runGetSecure("https://example.com/font","","",{},freeink::FetchSink{},nullptr,nullptr,false,nullptr,60000,nullptr,0,observer,&sources)==HttpDownloader::OK);
+ assert((sources==std::vector<std::string>{"example.com","release-assets.githubusercontent.com"}));
+ sources.clear();now=0;
+ assert(runGetSecure("https://example.com/firmware","","",{},freeink::FetchSink{},nullptr,nullptr,false,"trusted-ca",60000,nullptr,0,observer,&sources)==HttpDownloader::ABORTED);
+ assert((sources==std::vector<std::string>{"example.com"}));
  const freeink::FetchSink sink{};
  now=0;freeink::scenario=0;
  assert(runGetSecure("https://example.com/list","","",{},sink,nullptr,nullptr,false,nullptr,12000,nullptr,12000)==HttpDownloader::OK);
