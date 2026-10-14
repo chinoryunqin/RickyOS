@@ -21,7 +21,6 @@
 #include "SdCardFontSystem.h"
 #include "activities/RenderLock.h"
 #include "activities/settings/FontLibraryActivity.h"
-#include "components/RickyDesignUi.h"
 #include "components/RickyPageUi.h"
 #include "components/UITheme.h"
 #include "components/icons/rickyPageIcons.h"
@@ -470,11 +469,6 @@ void RickyStorageActivity::buildScreen(UiScreen& screen) {
                           static_cast<int16_t>(smallHeight)},
                 text, small);
   }
-  screen.takeTop(section, 0);
-  const auto browse = screen.takeTop(ricky::ds::layout::kRowHeight, 0);
-  RickyDesignUi::text(renderer, browse, tr(STR_RICKY_BROWSE_FILES));
-  RickyPageUi::chevron(target, {static_cast<int16_t>(browse.right() - 24), browse.y, 24, browse.height});
-  screen.frame().hit(browse, ACTION_ROW, 4, fui::InputTouch);
 }
 
 void RickyStorageActivity::activateIndex(int index) {

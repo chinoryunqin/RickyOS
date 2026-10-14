@@ -24,9 +24,11 @@ class RickyAvatarTest(unittest.TestCase):
             self.assertTrue((SOURCES / f'{name}.png').exists(), name)
             body = re.search(rf'uint8_t {name}\[\] = \{{([^}}]+)\}}', text).group(1)
             data = bytes(int(value, 16) for value in re.findall(r'0x([0-9A-F]{2})', body))
-            self.assertEqual(len(data), 160 * 20, name)
-            ink = sum(bin(byte ^ 0xFF).count('1') for byte in data)
+            # Run-length coded 4-bit coverage: the runs cover the whole 160x160 picture.
+            self.assertEqual(sum((byte >> 4) + 1 for byte in data), 160 * 160, name)
+            ink = sum(((byte >> 4) + 1) * (byte & 0x0F) for byte in data) / 15
             self.assertTrue(2000 < ink < 16000, name)  # line art, not a blank or a filled disc
+            self.assertLess(len(data), 6000, name)  # about what a 1-bit copy would take
 
     def test_regeneration_matches_checked_in_header(self):
         with tempfile.TemporaryDirectory(prefix='ricky-avatars-') as directory:
@@ -43,7 +45,9 @@ class RickyAvatarTest(unittest.TestCase):
         self.assertNotIn('drawBrandAvatar', profile)
         # Area-sampled like the brand badge, never enlarged past the source.
         self.assertIn('const int drawn = std::min(size, SOURCE);', profile)
-        self.assertIn('covered * 16 >= 7 * (sy1 - sy0) * (sx1 - sx0)', profile)
+        # 16-level frames grade the edges by coverage; B/W keeps the 7/16 ink threshold.
+        self.assertIn('if (coverage) blendInk(renderer, x0 + x, y0 + y, coverage);', profile)
+        self.assertIn('total * 16 >= 7 * 15 * area', profile)
         self.assertIn('return setAvatar(target);', profile)  # imports share the rollback path
         picker = (ROOT / 'src/activities/settings/RickyAvatarPickerActivity.cpp').read_text()
         self.assertIn('snprintf(value, sizeof(value), "@avatar:%d", index)', picker)

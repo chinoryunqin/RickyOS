@@ -13,7 +13,7 @@
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "ReadingStatsStore.h"
-#include "activities/settings/RickyProfileActivity.h"
+#include "activities/apps/reading-stats/RickyBadgesActivity.h"
 #include "components/RickyDesignTokens.h"
 #include "components/RickyHomeLayout.h"
 #include "components/SubpageLayout.h"
@@ -435,7 +435,8 @@ void InxRecentActivity::loop() {
       return;
     }
     if (action == RickyHomeUi::PROFILE) {
-      startActivityForResultWith<RickyProfileActivity>([this](const ActivityResult&) { requestUpdate(); });
+      // The avatar opens the badges; the profile itself is edited from Settings.
+      startActivityForResultWith<RickyBadgesActivity>([this](const ActivityResult&) { requestUpdate(); });
       return;
     }
     if (action == RickyHomeUi::TRANSFER) {

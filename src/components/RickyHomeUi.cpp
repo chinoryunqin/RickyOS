@@ -342,32 +342,45 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   }
   const auto& book = (*books)[start];
   paint(art, start);
-  design::secondaryText(renderer, box(x, main.y + pad, width, 28), tr(STR_RICKY_HOME_NOW), design::CAPTION,
+  // Every row is as tall as its face really is: on Read Pico the UI follows the chosen
+  // reading font, which can be taller than the built-in one, and a short box cuts glyphs.
+  const int captionHeight = std::max(28, renderer.getLineHeight(design::CAPTION));
+  design::secondaryText(renderer, box(x, main.y + pad, width, captionHeight), tr(STR_RICKY_HOME_NOW), design::CAPTION,
                         selectedCard);
   const int titleFont = design::fontFor(renderer, design::HEADLINE, titleOf(book));
+  const int titleLine = std::max(40, renderer.getLineHeight(titleFont));
   const bool singleTitle = renderer.getTextWidth(titleFont, titleOf(book)) <= width;
-  design::text(renderer, box(x, main.y + pad + 32, width, singleTitle ? 40 : 80), titleOf(book), design::HEADLINE,
-               selectedCard, fui::TextAlign::Left, 2);
+  const int titleY = main.y + pad + captionHeight + 4;
+  design::text(renderer, box(x, titleY, width, singleTitle ? titleLine : titleLine * 2), titleOf(book),
+               design::HEADLINE, selectedCard, fui::TextAlign::Left, 2);
   // Reserve the author row only when the title fits one line. Two title lines
   // otherwise share that space; neither may collide with progress or the CTA.
-  if (!book.author.empty() && singleTitle)
-    design::secondaryText(renderer, box(x, main.y + pad + 80, width, 28), book.author.c_str(), design::CAPTION,
-                          selectedCard);
+  int upperBottom = titleY + (singleTitle ? titleLine : titleLine * 2);
+  if (!book.author.empty() && singleTitle) {
+    design::secondaryText(renderer, box(x, upperBottom + 8, width, captionHeight), book.author.c_str(),
+                          design::CAPTION, selectedCard);
+    upperBottom += 8 + captionHeight;
+  }
   // The card itself opens the book; its last row says so in words instead of a black
   // button: the progress on the left, "继续阅读 ›" on the right.
-  const int linkY = main.bottom() - pad - 36;
+  const int linkHeight = std::max(36, renderer.getLineHeight(design::BODY));
+  const int linkY = main.bottom() - pad - linkHeight;
   const int barY = linkY - 20;
   design::progress(renderer, box(x, barY, width, 4), progress, selectedCard);
   const auto* saved = READING_STATS.findMatchingBookForPath(book.path);
-  if (saved && !saved->chapterTitle.empty())
-    design::secondaryText(renderer, box(x, barY - 36, width, 28), saved->chapterTitle.c_str(), design::CAPTION,
-                          selectedCard);
+  const int chapterY = barY - 8 - captionHeight;
+  if (saved && !saved->chapterTitle.empty() && chapterY >= upperBottom + 4)
+    design::secondaryText(renderer, box(x, chapterY, width, captionHeight), saved->chapterTitle.c_str(),
+                          design::CAPTION, selectedCard);
   snprintf(statsText, sizeof(statsText), tr(STR_RICKY_READ_PROGRESS), static_cast<unsigned>(progress));
-  design::secondaryText(renderer, box(x, linkY, width / 2, 36), statsText, design::CAPTION, selectedCard);
+  // Both sides share the row's bottom so the caption and the link sit on one line.
+  const int progressHeight = std::min(linkHeight, captionHeight);
+  design::secondaryText(renderer, box(x, linkY + linkHeight - progressHeight, width / 2, progressHeight), statsText,
+                        design::CAPTION, selectedCard);
   constexpr int kChevron = 24;
-  design::text(renderer, box(x + width / 2, linkY, width - width / 2 - kChevron - 4, 36), tr(STR_CONTINUE_READING),
-               design::BODY, selectedCard, fui::TextAlign::Right);
-  if (!selectedCard) RickyPageUi::chevron(target, box(x + width - kChevron, linkY, kChevron, 36));
+  design::text(renderer, box(x + width / 2, linkY, width - width / 2 - kChevron - 4, linkHeight),
+               tr(STR_CONTINUE_READING), design::BODY, selectedCard, fui::TextAlign::Right);
+  if (!selectedCard) RickyPageUi::chevron(target, box(x + width - kChevron, linkY, kChevron, linkHeight));
   screen.frame().hit(main, OPEN_BOOK, start, fui::InputTouch);
 
   // Today and the streak. The dog reacts to today against the goal; the streak card

@@ -111,12 +111,18 @@ inline void text(const GfxRenderer& renderer, fui::Rect r, const char* value, in
   style.maxLines = lines;
   const int height = target.lineHeight(style.font);
   if (height <= 0 || r.empty()) return;
-  const GfxRenderer::ClipScope clip(renderer, r.x, r.y, r.width, r.height);
   if (r.height < height) {
+    // A box shorter than the face (an SD reading font can be taller than the built-in
+    // one the layout was measured with) gets one whole line centred on it, never
+    // glyphs cut in half.
+    const fui::Rect line{r.x, static_cast<int16_t>(r.y - (height - r.height) / 2), r.width,
+                         static_cast<int16_t>(height)};
+    const GfxRenderer::ClipScope clip(renderer, line.x, line.y, line.width, line.height);
     style.maxLines = 1;
-    target.text(r, value, style);
+    target.text(line, value, style);
     return;
   }
+  const GfxRenderer::ClipScope clip(renderer, r.x, r.y, r.width, r.height);
   style.maxLines = std::min<int>(style.maxLines, r.height / height);
   fui::layoutText(target, r, value, style, [&](const char* run, fui::Rect bounds) {
     auto single = style;

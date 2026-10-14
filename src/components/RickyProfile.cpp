@@ -9,6 +9,7 @@
 #include <PngToBmpConverter.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 #include "CrossPointSettings.h"
@@ -62,30 +63,85 @@ int presetAvatarIndex() {
   return index < RickyAvatars::COUNT ? index : -1;
 }
 
+namespace {
+// `coverage` (0..15) of ink over what is already on the 16-level frame.
+void blendInk(const GfxRenderer& renderer, const int x, const int y, const int coverage) {
+  const int paper = renderer.grayscale16Level(x, y);
+  const int delta = -paper * coverage;  // toward 0 (ink), over 15
+  const int level = paper - ((7 - delta) / 15);
+  renderer.drawGrayscale16Pixel(x, y, static_cast<uint8_t>(level * 17));
+}
+
+// The avatar's circular frame. On a 16-level frame its edges are graded by how much of
+// each pixel the ring covers (distance to the circle, one pixel of falloff each side).
+void avatarRing(const GfxRenderer& renderer, const Rect& rect, const int size) {
+  const int thickness = std::max(2, size / 48);
+  if (!renderer.isGrayscale16Active()) {
+    renderer.drawRoundedRect(rect.x, rect.y, size, size, thickness, size / 2, true);
+    return;
+  }
+  const float centre = size / 2.0f, outer = size / 2.0f, inner = outer - thickness;
+  for (int y = 0; y < size; ++y) {
+    for (int x = 0; x < size; ++x) {
+      const float dx = x + 0.5f - centre, dy = y + 0.5f - centre;
+      const float d2 = dx * dx + dy * dy;
+      if (d2 < (inner - 1) * (inner - 1) || d2 > (outer + 1) * (outer + 1)) continue;
+      const float d = std::sqrt(d2);
+      const float in = std::clamp(outer + 0.5f - d, 0.0f, 1.0f) - std::clamp(inner + 0.5f - d, 0.0f, 1.0f);
+      const int coverage = static_cast<int>(in * 15 + 0.5f);
+      if (coverage) blendInk(renderer, rect.x + x, rect.y + y, coverage);
+    }
+  }
+}
+}  // namespace
+
 void drawPresetAvatar(const GfxRenderer& renderer, const Rect& rect, const int index) {
   const int size = std::max(0, std::min(rect.width, rect.height));
   if (!size || index < 0 || index >= RickyAvatars::COUNT) return;
-  // Line art like the brand badge: 1:1 at the source size, area-sampled below it
-  // so strokes stay even instead of breaking up.
+  // Line art like the brand badge: 1:1 at the source size, area-sampled below it. The
+  // source is run-length coded ink coverage, read once front to back: each drawn row
+  // adds up the source rows it covers, so nothing but two stack rows is needed.
   constexpr int SOURCE = RickyAvatars::SIZE;
   const int drawn = std::min(size, SOURCE);
   const int x0 = rect.x + (size - drawn) / 2, y0 = rect.y + (size - drawn) / 2;
-  const uint8_t* bits = RickyAvatars::ALL[index];
-  const auto ink = [bits](const int x, const int y) {
-    return (bits[y * (SOURCE / 8) + x / 8] & (0x80 >> (x % 8))) == 0;
-  };
+  const uint8_t* rle = RickyAvatars::ALL[index];
+  const int rleBytes = RickyAvatars::BYTES[index];
+  const bool gray = renderer.isGrayscale16Active();
+  uint16_t columns[SOURCE];
+  int next = 0, run = 0, level = 0, sourceY = 0;
+  // Only inside the circle: a portrait's shoulders may run past it.
+  const float centre = drawn / 2.0f, radius2 = centre * centre;
   for (int y = 0; y < drawn; ++y) {
     const int sy0 = y * SOURCE / drawn, sy1 = std::max(sy0 + 1, (y + 1) * SOURCE / drawn);
+    std::fill(columns, columns + SOURCE, 0);
+    for (; sourceY < sy1; ++sourceY) {
+      for (int sx = 0; sx < SOURCE; ++sx) {
+        if (run == 0) {
+          run = next < rleBytes ? (rle[next] >> 4) + 1 : SOURCE * SOURCE;
+          level = next < rleBytes ? rle[next] & 0x0F : 0;
+          ++next;
+        }
+        --run;
+        if (sourceY >= sy0) columns[sx] += level;
+      }
+    }
+    const float dy = y + 0.5f - centre;
     for (int x = 0; x < drawn; ++x) {
+      const float dx = x + 0.5f - centre;
+      if (dx * dx + dy * dy > radius2) continue;
       const int sx0 = x * SOURCE / drawn, sx1 = std::max(sx0 + 1, (x + 1) * SOURCE / drawn);
-      int covered = 0;
-      for (int sy = sy0; sy < sy1; ++sy)
-        for (int sx = sx0; sx < sx1; ++sx) covered += ink(sx, sy) ? 1 : 0;
-      if (covered * 16 >= 7 * (sy1 - sy0) * (sx1 - sx0)) renderer.drawPixel(x0 + x, y0 + y, true);
+      int total = 0;
+      for (int sx = sx0; sx < sx1; ++sx) total += columns[sx];
+      const int area = (sy1 - sy0) * (sx1 - sx0);
+      if (gray) {
+        const int coverage = (total + area / 2) / area;
+        if (coverage) blendInk(renderer, x0 + x, y0 + y, coverage);
+      } else if (total * 16 >= 7 * 15 * area) {  // ink where 7/16 of the source is ink
+        renderer.drawPixel(x0 + x, y0 + y, true);
+      }
     }
   }
-  renderer.maskRoundedRectOutsideCorners(rect.x, rect.y, size, size, size / 2);
-  renderer.drawRoundedRect(rect.x, rect.y, size, size, std::max(2, size / 48), size / 2, true);
+  avatarRing(renderer, Rect{x0, y0, drawn, drawn}, drawn);
 }
 
 bool setAvatar(const char* value) {
@@ -125,7 +181,7 @@ void drawAvatar(const GfxRenderer& renderer, const Rect& rect) {
   }
   // Imported photos get one even ring, scaled with the avatar.
   renderer.maskRoundedRectOutsideCorners(rect.x, rect.y, size, size, size / 2);
-  renderer.drawRoundedRect(rect.x, rect.y, size, size, std::max(2, size / 48), size / 2, true);
+  avatarRing(renderer, rect, size);
 }
 
 void drawCard(UiScreen& screen, const GfxRenderer& renderer, freeink::ui::Rect rect, freeink::ui::ActionId action,
