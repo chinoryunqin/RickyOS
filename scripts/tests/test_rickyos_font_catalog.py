@@ -45,6 +45,22 @@ class RickyFontCatalogTest(unittest.TestCase):
         finally:
             catalog.MAX_INTERVALS = original
 
+    def test_a_fragmented_family_drops_only_optional_runs(self):
+        original = catalog.MAX_INTERVALS
+        try:
+            # Four Han runs with holes; ASCII is one more run. 0x4E10 is essential.
+            cmap = {cp: "g" for cp in list(range(0x20, 0x7F)) + [0x4E00, 0x4E02, 0x4E04, 0x4E10]}
+            han = {0x4E00, 0x4E02, 0x4E04, 0x4E10}
+            catalog.MAX_INTERVALS = 3
+            with self.assertRaises(ValueError):
+                catalog.plan_intervals(cmap, han)  # no essential set: refuse as before
+            intervals, covered = catalog.plan_intervals(cmap, han, essential={0x4E10})
+            self.assertEqual(len(intervals), 3)
+            self.assertIn(0x4E10, covered)
+            self.assertTrue(set(range(0x20, 0x7F)) <= covered)  # punctuation and Latin stay
+        finally:
+            catalog.MAX_INTERVALS = original
+
     def test_families_fit_the_firmware_manifest_and_licenses(self):
         names = [family["name"] for family in catalog.FAMILIES]
         self.assertEqual(names, ["RickySans", "RickySerif", "LXGWWenKai", "RickyGrin", "RickyBookSong",

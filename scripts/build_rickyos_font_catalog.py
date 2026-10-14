@@ -135,6 +135,19 @@ def common_han():
     return {ord(c) for c in chars if 0x3400 <= ord(c) <= 0x9FFF or 0xF900 <= ord(c) <= 0xFAFF}
 
 
+def essential_han():
+    """The simplified core every family must keep whole: GB2312 and the 3500 common list."""
+    chars = set()
+    for lead in range(0xB0, 0xF8):
+        for trail in range(0xA1, 0xFF):
+            try:
+                chars.add(bytes((lead, trail)).decode("gb2312"))
+            except UnicodeDecodeError:
+                pass
+    chars.update((SCRIPTS / "cn_common_chars.txt").read_text().strip())
+    return {ord(c) for c in chars if 0x3400 <= ord(c) <= 0x9FFF or 0xF900 <= ord(c) <= 0xFAFF}
+
+
 def to_intervals(codepoints):
     intervals = []
     for cp in sorted(codepoints):
@@ -145,11 +158,15 @@ def to_intervals(codepoints):
     return intervals
 
 
-def plan_intervals(cmap, han):
+def plan_intervals(cmap, han, essential=None):
     """Wanted codepoints the font has, with the smallest gaps filled until it fits.
 
     Only gaps the font fully covers are filled, so the converter never splits
     them again; the extra glyphs are neighbouring, mostly rarer characters.
+    A family that misses many traditional characters (Big5) can still be too
+    fragmented: given `essential` (codepoints that must stay), the shortest runs
+    made only of other characters are dropped until it fits. Families that fit
+    after filling are unchanged by this.
     """
     wanted = {cp for first, last in NON_HAN for cp in range(first, last + 1)} | han
     covered = {cp for cp in wanted if cp in cmap}
@@ -160,6 +177,12 @@ def plan_intervals(cmap, han):
     for _, i in gaps[:max(fill, 0)]:
         covered.update(range(intervals[i][1] + 1, intervals[i + 1][0]))
     intervals = to_intervals(covered)
+    if len(intervals) > MAX_INTERVALS and essential is not None:
+        keep = essential | {cp for first, last in NON_HAN for cp in range(first, last + 1)}
+        optional = sorted((b - a, a, b) for a, b in intervals if not any(cp in keep for cp in range(a, b + 1)))
+        for _, a, b in optional[:len(intervals) - MAX_INTERVALS]:
+            covered.difference_update(range(a, b + 1))
+        intervals = to_intervals(covered)
     if len(intervals) > MAX_INTERVALS:
         raise ValueError(f"{len(intervals)} intervals after filling; the reader accepts {MAX_INTERVALS}")
     return intervals, covered
@@ -184,12 +207,13 @@ def build(source_dir, output, tag, cos_base=None):
     from fontTools.ttLib import TTFont  # font tooling venv only; checks above need none
 
     han = common_han()
+    essential = essential_han()
     required = set(range(0x20, 0x7F))
     (output / "fonts").mkdir(parents=True)
     families, sources = [], []
     for spec in FAMILIES:
         font = source_dir / spec["font"]
-        intervals, covered = plan_intervals(TTFont(font, lazy=True).getBestCmap(), han)
+        intervals, covered = plan_intervals(TTFont(font, lazy=True).getBestCmap(), han, essential)
         work = output / ".work" / spec["name"]
         work.mkdir(parents=True)
         with (output / ".work" / f'{spec["name"]}.log').open("w") as log:
