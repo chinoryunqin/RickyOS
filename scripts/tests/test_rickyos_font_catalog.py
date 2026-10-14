@@ -47,10 +47,14 @@ class RickyFontCatalogTest(unittest.TestCase):
 
     def test_families_fit_the_firmware_manifest_and_licenses(self):
         names = [family["name"] for family in catalog.FAMILIES]
-        self.assertEqual(names, ["RickySans", "RickySerif", "LXGWWenKai", "RickyGrin"])
+        self.assertEqual(names, ["RickySans", "RickySerif", "LXGWWenKai", "RickyGrin", "RickyBookSong",
+                                 "ZhuqueFangsong", "RickyRound"])
         for family in catalog.FAMILIES:
             self.assertRegex(family["name"], r"^[A-Za-z0-9_-]{1,64}$")
             self.assertNotRegex(family["name"], "Source|Smiley")  # OFL Reserved Font Names
+            self.assertNotRegex(family["name"], "(?i)LXGW.*Neo|ZhiSong")  # IPA: not the original's name
+            if family.get("license_kind") == "IPA":
+                self.assertIn("notice", family)  # how to get the original back
             self.assertTrue(0 < len(family["description"].encode()) <= 160)
             self.assertRegex(family["font_sha256"], r"^[0-9a-f]{64}$")
         # The download list draws descriptions in the built-in UI font, which lacks rarer Han.

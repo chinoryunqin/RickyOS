@@ -9,7 +9,8 @@ glyphs from SD. Large-print sizes are too big for it and stream from SD; a large
 page holds few glyphs, so that stays quick.
 
 Sources are pinned by URL and SHA256 and checked before conversion. Converted
-families never use an OFL Reserved Font Name ("Source", "Smiley", "得意黑").
+families never use an OFL Reserved Font Name ("Source", "Smiley", "得意黑") or, for
+the IPA-licensed LXGW Neo ZhiSong, any part of the original's name.
 The output directory is the layout of the RickyOS-fonts repository: fonts/
 holds the files, fonts.json points at the GitHub release assets of --tag and
 mirror.json at the same files through jsDelivr, both in the manifest format
@@ -83,6 +84,40 @@ FAMILIES = (
      "license": "OFL-SmileySans.txt",
      "license_url": "https://raw.githubusercontent.com/atelier-anchor/smiley-sans/v2.0.1/LICENSE",
      "license_sha256": "9401f4050f1b66c26b6ccdc8b0e14a3c1cc37aac122eda84386f25854a9bec72"},
+    # IPA Font License 1.0: a derived font's program, font and file names must not contain
+    # the original's name, ships under the same license, and says how to get the original.
+    {"name": "RickyBookSong", "description": "基于 LXGW 新致宋 · 书卷气的宋体，适合长篇阅读",
+     "origin": "LXGW Neo ZhiSong v1.067 (LXGW, IPA Font License 1.0)",
+     "font": "LXGWNeoZhiSong.ttf",
+     "font_url": "https://github.com/lxgw/LxgwNeoZhiSong/releases/download/v1.067/LXGWNeoZhiSong.ttf",
+     "font_sha256": "32b398f9c6278c4ed34f413077add2c2f3c84034d463af2b9cb98f12c4c2c6cd",
+     "license": "LICENSE-NeoZhiSong.md", "license_kind": "IPA",
+     "license_url": "https://raw.githubusercontent.com/lxgw/LxgwNeoZhiSong/v1.067/LICENSE.md",
+     "license_sha256": "1483c7de02dcf8b9c54b3b1aacabf7d6bdf32d412ca6724c0292ea68e862d8cf",
+     "notice": "RickyBookSong 是 LXGW Neo ZhiSong v1.067 的衍生字体：只把常用汉字、拉丁字母和标点转换为"
+               "RickyOS 的 cpfont 位图格式，字形未作改动，按 IPA Font License 1.0 授权。原始字体："
+               "https://github.com/lxgw/LxgwNeoZhiSong/releases/tag/v1.067 ，在阅读器的字体设置中"
+               "删除本字体并改用原始字体即可替换回去。\n"},
+    {"name": "ZhuqueFangsong", "description": "朱雀仿宋 · 古雅清秀的仿宋，适合小说散文",
+     "origin": "Zhuque Fangsong v0.212 (TrionesType)",
+     "font": "zhuque/ZhuqueFangsong-Regular.ttf",
+     "font_url": "https://github.com/TrionesType/zhuque/releases/download/v0.212/ZhuqueFangsong-v0.212.zip",
+     "archive": "ZhuqueFangsong-v0.212.zip",
+     "font_sha256": "bb8b661a7643d2296a72d9d10530a00949419c4e527fb61783f73c2ba1a8c062",
+     "license": "OFL-Zhuque.txt",
+     "license_url": "https://raw.githubusercontent.com/TrionesType/zhuque/v0.212/LICENSE.txt",
+     "license_sha256": "66cc01ad4df62fca6936431a426104cb32a52ce8da49de9a7d643e02d7659043"},
+    # Built on Source Han Sans, so it carries Adobe's Reserved Font Name "Source".
+    {"name": "RickyRound", "description": "基于思源柔黑 · 圆润柔和的圆体",
+     "origin": "Resource Han Rounded CN v0.990 (CyanoHao)",
+     "font": "rhr/ResourceHanRoundedCN-Regular.ttf",
+     "font_url": "https://github.com/CyanoHao/Resource-Han-Rounded/releases/download/v0.990/RHR-CN-0.990.7z",
+     "archive": "RHR-CN-0.990.7z",
+     "font_sha256": "e7005f7b4a7a0b8352d32c4a1358ff47564eb73be7fdb2db00d9f792755e9dc7",
+     "license": "OFL-RHR.txt",
+     "license_url": "https://raw.githubusercontent.com/CyanoHao/Resource-Han-Rounded/"
+                    "be90fee7a031c1297da5a260ccfb91756088d51c/OFL-License.txt",
+     "license_sha256": "586a072c53a12f6e4389f0eb6034f9780afcb9f0a49558e9ed299664ab1107d8"},
 )
 
 
@@ -137,7 +172,8 @@ def check_sources(source_dir):
             if sha((source_dir / path).read_bytes()) != expected:
                 raise ValueError(f"Source SHA256 mismatch: {source_dir / path}")
         if "archive" in spec and not (source_dir / spec["font"]).is_file():
-            raise ValueError(f'Unzip {spec["archive"]} into {source_dir / "smiley"} first')
+            folder = source_dir / Path(spec["font"]).parent
+            raise ValueError(f'Extract {spec["archive"]} into {folder} first (bsdtar -xf ... -C {folder})')
 
 
 def build(source_dir, output, tag, cos_base=None):
@@ -172,7 +208,10 @@ def build(source_dir, output, tag, cos_base=None):
                 raise ValueError(f"{name} is {len(data):,} B, over the reader's {MAX_FILE_BYTES:,} B download limit")
             shutil.move(work / name, output / "fonts" / name)
             files.append({"name": name, "size": len(data), "crc32": binascii.crc32(data) & 0xFFFFFFFF})
-        shutil.copy2(source_dir / spec["license"], output / "fonts" / f'{spec["name"]}-OFL.txt')
+        kind = spec.get("license_kind", "OFL")
+        shutil.copy2(source_dir / spec["license"], output / "fonts" / f'{spec["name"]}-{kind}.txt')
+        if "notice" in spec:
+            (output / "fonts" / f'{spec["name"]}-NOTICE.txt').write_text(spec["notice"])
         families.append({"name": spec["name"], "description": spec["description"],
                          "styles": ["regular"], "files": files})
         sources.append({"family": spec["name"], "origin": spec["origin"],
