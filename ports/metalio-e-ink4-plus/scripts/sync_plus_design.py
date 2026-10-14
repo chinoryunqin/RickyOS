@@ -11,7 +11,11 @@ adaptations and upstream-plus.patch are rewritten against the new pin.
 Conflicts stop the run with the conflicted paths left marked in upstream/; resolve them
 and rerun with --resume to finish the bookkeeping.
 
+After editing Plus sources in upstream/, record them (adaptations and patch) against the
+current pin with --record.
+
 Usage: python3 scripts/sync_plus_design.py --repo /path/to/RickyOS --to <commit> [--resume]
+       python3 scripts/sync_plus_design.py --repo /path/to/RickyOS --record
 """
 import argparse
 import difflib
@@ -93,7 +97,8 @@ def stage(repo, old, new, manifest, changes):
 
 
 def finish(repo, new, manifest, changes, files):
-    manifest['previous_commit'] = manifest['commit']
+    if manifest['commit'] != new:
+        manifest['previous_commit'] = manifest['commit']
     manifest['commit'] = new
     manifest['files'] = dict(sorted(files.items()))
     manifest['file_count'] = len(files)
@@ -129,11 +134,17 @@ def finish(repo, new, manifest, changes, files):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--repo', required=True, type=Path, help='RickyOS repository holding both commits')
-    parser.add_argument('--to', required=True, help='design commit to pin')
+    parser.add_argument('--to', help='design commit to pin')
+    parser.add_argument('--record', action='store_true', help='record edited Plus sources against the current pin')
     parser.add_argument('--resume', action='store_true', help='finish after resolving conflicts')
     args = parser.parse_args()
     manifest = json.loads(MANIFEST.read_text())
     changes = json.loads(CHANGES.read_text())
+    if args.record:
+        finish(args.repo, manifest['commit'], manifest, changes, manifest['files'])
+        return
+    if not args.to:
+        parser.error('--to or --record is required')
     new = git(args.repo, 'rev-parse', args.to, text=True).strip()
     sdk = git(args.repo, 'rev-parse', f'{new}:freeink-sdk', text=True).strip()
     if sdk != manifest['sdk_commit']:

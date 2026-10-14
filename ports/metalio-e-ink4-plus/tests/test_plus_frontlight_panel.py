@@ -30,8 +30,8 @@ program = r'''
 #include <cassert>
 #include <cstdint>
 constexpr uint8_t MIN_BRIGHTNESS = 1;
-constexpr int kVolumeStep=101, kVolumePreview=200, kPanelClose=202;
-constexpr int kActionDiameter=88, kActionLabelGap=8;
+constexpr int kVolumeStep=101, kVolumePreview=200;
+constexpr int kActionSize=112, kActionLabelGap=10, kTouch=88, kHeadHeight=64, kBareBandGap=20, kGrabberHeight=5;
 namespace HalAudioOutput {
  bool available=false; int current=0, previews=0;
  bool present() { return available; }
@@ -59,7 +59,7 @@ struct Target {
  int lineHeight(int font) const { return font==1 ? 28 : 44; }
 };
 struct Tokens {
- int spaceMd=18, spaceXs=9, spaceLg=27;
+ int spaceMd=16, spaceXs=2, spaceLg=24;  // the RickyOS high-DPI theme (UIThemeTokens.cpp)
  struct Text { int font; } smallText{1}, titleText{2};
 };
 Tokens uiThemeTokens(const Target&, bool) { return {}; }
@@ -122,7 +122,9 @@ int main() {
    Frontlight.dual=dual; p.mappedInput.touch=touch; p.overReader=reader;
    p.renderer={684,1216}; int portrait=p.rickyPanelHeight(); assert(portrait<=1216);
    p.renderer={1216,684}; int landscape=p.rickyPanelHeight(); assert(landscape<=684);
-   if(dual) assert(landscape<portrait);
+   // Without touch the sheet is only the clock, as on the Pico; with it landscape packs into columns.
+   if(touch && dual) assert(landscape<portrait);
+   if(!touch) assert(landscape==portrait);
  }
  Frontlight.available=false; p.renderer={684,1216};
  int withoutLight=p.rickyPanelHeight(); Frontlight.available=true;

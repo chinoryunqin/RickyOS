@@ -3384,21 +3384,21 @@
          // black/white pairs are DC-balanced and drive every pixel through both
 --- a/src/activities/util/FrontlightPanelActivity.cpp
 +++ b/src/activities/util/FrontlightPanelActivity.cpp
-@@ -2,7 +2,8 @@
+@@ -2,7 +2,9 @@
  
  #include <FreeInkUIIcon.h>
  #include <GfxRenderer.h>
--#include <HalClock.h>
 +#include <HalAudioOutput.h>
+ #include <HalClock.h>
 +#include <array>
  #include <HalDisplay.h>
  #include <HalFrontlight.h>
  #include <HalGPIO.h>
-@@ -18,12 +19,11 @@
- #include "components/UIThemeTokens.h"
+@@ -19,11 +21,12 @@
  #include "components/icons/customListIcons.h"
  #include "components/icons/listIcons.h"
--#include "ReadingStatsStore.h"
+ #include "ReadingStatsStore.h"
++#include "util/TimeUtils.h"
 +
  #include "activities/ActivityManager.h"
  #include "activities/apps/standby/StandbyActivity.h"
@@ -3408,7 +3408,7 @@
  
  namespace fui = freeink::ui;
  
-@@ -35,16 +35,8 @@
+@@ -35,16 +38,8 @@
  constexpr fui::ActionId ACTION_WARMTH_STEP = 5;
  constexpr fui::ActionId ACTION_TILE = 6;  // value = tile index
  
@@ -3427,18 +3427,33 @@
  // One percent per press, on the -/+ buttons and on the physical Left/Right keys
  // alike (both repeat while held), so a level can be set exactly.
  constexpr int BRIGHTNESS_STEP = 1;
-@@ -52,6 +44,19 @@
+@@ -52,6 +47,34 @@
  // button next to the slider is for, so a 0% "on" level would only be a second,
  // worse way to reach the same place.
  constexpr uint8_t MIN_BRIGHTNESS = 1;
 +constexpr int kVolumeStep = 101;
 +constexpr int kVolumePreview = 200;
-+constexpr int kPanelClose = 202;
++constexpr int kVolumeDrag = 203;  // ACTION_TILE value of the volume track
++constexpr int16_t kGrabberHeight = 5;  // fui::SheetProps default, mirrored here
++// Light and volume rows: a head line (name, then the switch or the sound test at the
++// right) and a band of [-] [track] [+]. Every control sits in an 88 px touch square.
++constexpr int16_t kTouch = ricky::ds::layout::kTouchMin;
++constexpr int16_t kHeadHeight = 64;  // the switch and the sound test still get 88 px touch boxes
++constexpr int kHeadNone = 0, kHeadSwitch = 1, kHeadPreview = 2;
++constexpr int16_t kSwitchWidth = 80;
++constexpr int16_t kSwitchHeight = 44;
++constexpr int16_t kPreviewSize = 60;
++constexpr int16_t kTrackHeight = 8;
++constexpr int16_t kKnobSize = 40;
++constexpr int16_t kKnobStroke = 3;
++// A head's control box reaches (kTouch - kHeadHeight) / 2 below the head; a band
++// right under it (no caption line) starts this much lower so the boxes keep 8 px.
++constexpr int16_t kBareBandGap = (kTouch - kHeadHeight) / 2 + 8;
 +constexpr auto kPlayBits = [] {
 +  std::array<uint8_t, 128> bits{};
 +  for (auto& b : bits) b = 0xff;
 +  for (int y = 6; y < 26; ++y) {
-+    const int extent = 20 - 2 * std::abs(y - 16);
++    const int extent = 20 - 2 * (y < 16 ? 16 - y : y - 16);
 +    for (int x = 9; x < 9 + extent; ++x) bits[y * 4 + x / 8] &= ~(0x80 >> (x % 8));
 +  }
 +  return bits;
@@ -3447,7 +3462,7 @@
  
  uint8_t percentFromPermille(const int16_t permille) {
    int value = (static_cast<int>(permille) * 100 + 500) / 1000;
-@@ -73,10 +78,13 @@
+@@ -73,10 +96,13 @@
    // A stored 0% predates the 1% floor (or came from the web settings): show it
    // as the floor rather than a level the slider can no longer produce. onExit
    // persists that, which is the intent — 0 is not a brightness any more.
@@ -3461,7 +3476,7 @@
  
    // Seed the touch tile's restore mode from the live setting, so toggling off
    // and back on within this session returns to the mode the user had.
-@@ -85,8 +93,7 @@
+@@ -85,8 +111,7 @@
    }
  
    resetUi();
@@ -3471,7 +3486,7 @@
    if (!Frontlight.present()) {
      app.on(ACTION_TILE, &FrontlightPanelActivity::onTileEvent, this);
      app.setScreen(&FrontlightPanelActivity::panelScreen, this);
-@@ -109,9 +116,10 @@
+@@ -109,9 +134,10 @@
    // against SETTINGS here only fires on a genuine user change. lightOn has
    // no such guarantee (see lightOnChanged's declaration), so it's gated on
    // the user actually having touched it this session instead.
@@ -3483,7 +3498,7 @@
      SETTINGS.frontlightBrightness = brightness;
      SETTINGS.frontlightWarmth = warmth;
      if (lightOnChanged) SETTINGS.frontlightOn = lightOn ? 1 : 0;
-@@ -127,7 +135,9 @@
+@@ -127,7 +153,9 @@
  void FrontlightPanelActivity::onBrightnessEvent(const fui::ActionEvent& event, void* user) {
    auto* self = static_cast<FrontlightPanelActivity*>(user);
    if (event.dragPermille < 0) return;
@@ -3494,7 +3509,7 @@
    Frontlight.setBrightness(self->brightness);
    if (!self->lightOn) {
      self->lightOn = true;
-@@ -139,7 +149,9 @@
+@@ -139,7 +167,9 @@
  void FrontlightPanelActivity::onWarmthEvent(const fui::ActionEvent& event, void* user) {
    auto* self = static_cast<FrontlightPanelActivity*>(user);
    if (event.dragPermille < 0) return;
@@ -3505,7 +3520,7 @@
    Frontlight.setWarmth(self->warmth);
  }
  
-@@ -156,7 +168,19 @@
+@@ -156,7 +186,16 @@
  }
  
  void FrontlightPanelActivity::onTileEvent(const fui::ActionEvent& event, void* user) {
@@ -3515,9 +3530,6 @@
 +    self->volume = event.dragPermille >= 0 ? percentFromPermille(event.dragPermille)
 +        : static_cast<uint8_t>(std::clamp<int>(self->volume + (event.value > 0 ? 1 : -1), 0, 100));
 +    HalAudioOutput::setVolume(self->volume);
-+  } else if (event.value == kPanelClose) {
-+    self->app.clearTapFlash();
-+    self->close();
 +  } else if (event.value == kVolumePreview) {
 +    HalAudioOutput::preview(self->volume);
 +  } else {
@@ -3526,7 +3538,7 @@
  }
  
  void FrontlightPanelActivity::runTile(const int idx) {
-@@ -206,7 +230,7 @@
+@@ -206,7 +245,7 @@
  void FrontlightPanelActivity::loop() {
    const auto touch = routeTouch(mappedInput, false, /*routeHeld=*/true);
    if (touch.routed) {
@@ -3535,7 +3547,7 @@
      if (touch) {
        if (touch.event.dragPermille >= 0) draggingSlider = true;
        return;
-@@ -241,37 +265,14 @@
+@@ -241,76 +280,136 @@
      return;
    }
  
@@ -3576,58 +3588,171 @@
  }
  
  void FrontlightPanelActivity::panelScreen(UiScreen& screen, void* user) {
-@@ -307,10 +308,35 @@
-     rowProps.toggleAction = fui::NO_ACTION;
-     rowProps.toggleIcon = fui::BitmapRef{};
-   }
+   static_cast<FrontlightPanelActivity*>(user)->buildPanelScreen(screen);
+ }
+ 
+-void FrontlightPanelActivity::addSliderRow(UiScreen& screen, const char* label, const uint8_t value,
+-                                           const fui::ActionId sliderAction, const fui::ActionId stepAction,
+-                                           const bool showToggle) {
+-  // Live percentage readout. The row draws before this call returns
+-  // (immediate mode), so borrowing a stack buffer is safe.
+-  char pct[8];
+-  snprintf(pct, sizeof(pct), "%u%%", static_cast<unsigned>(value));
+-
+-  // rowProps is a member (fui::SliderRowProps embeds a 324-byte StyleSet, well
+-  // past the 256-byte budget a local gets — AGENTS.md). Every field that
+-  // varies between the two rows is reassigned here; the rest keep their
+-  // constructed defaults, which already match the panel's card language.
+-  rowProps.label = label;
+-  rowProps.value = pct;
+-  rowProps.sliderValue = value;
+-  rowProps.sliderAction = sliderAction;
+-  rowProps.decrement = stepAction;
+-  rowProps.increment = stepAction;
+-  rowProps.decrementValue = -BRIGHTNESS_STEP;
+-  rowProps.incrementValue = BRIGHTNESS_STEP;
+-  if (showToggle) {
+-    // Lamp on/off after the +: the sliders set the level, this kills the light
+-    // outright. Filled glyph = on, outline = off.
+-    rowProps.toggleAction = ACTION_TOGGLE;
+-    rowProps.toggleIcon = fui::bitmapFromIcon(lightOn ? icon_sun_filled_32 : icon_sun_32);
++void FrontlightPanelActivity::sectionHead(UiScreen& screen, const char* name, const int control, const int value) {
++  const auto& theme = screen.theme();
++  auto& target = screen.target();
++  const auto row = screen.takeTop(kHeadHeight, 0);
++  auto label = theme.bodyText;
++  label.maxLines = 1;
++  const int16_t labelHeight = target.lineHeight(label.font);
++  const int16_t controlWidth = control == kHeadNone ? 0 : kTouch;
++  target.text(fui::Rect{row.x, static_cast<int16_t>(row.y + (row.height - labelHeight) / 2),
++                        static_cast<int16_t>(row.width - controlWidth - theme.spaceMd), labelHeight},
++              name, label);
++  if (value >= 0) {
++    // A slider without its own caption shows its level here, left of the control.
++    char percent[8];
++    snprintf(percent, sizeof(percent), "%d%%", value);
++    auto level = theme.smallText;
++    level.maxLines = 1;
++    level.align = fui::TextAlign::Right;
++    const int16_t levelHeight = target.lineHeight(level.font);
++    target.text(fui::Rect{row.x, static_cast<int16_t>(row.y + (row.height - levelHeight) / 2),
++                          static_cast<int16_t>(row.width - controlWidth - theme.spaceLg), levelHeight},
++                percent, level);
++  }
++  if (control == kHeadSwitch) {
++    // The light switch: a pill with a round knob, ink when on. Its touch box is the
++    // row's right touch square, clear of the [+] in the band below.
++    fui::ToggleProps toggle;
++    toggle.checked = lightOn;
++    toggle.action = ACTION_TOGGLE;
++    toggle.inputMask = fui::InputTouch;
++    toggle.width = kSwitchWidth;
++    toggle.height = kSwitchHeight;
++    toggle.radius = kSwitchHeight / 2;
++    toggle.knobRadius = (kSwitchHeight - 8) / 2;
++    toggle.knobInset = 4;
++    toggle.borderWidth = ricky::ds::stroke::kHairline;
++    toggle.minTouchSize = kTouch;
++    fui::toggle(screen.frame(),
++                fui::Rect{static_cast<int16_t>(row.right() - kSwitchWidth),
++                          static_cast<int16_t>(row.y + (row.height - kSwitchHeight) / 2), kSwitchWidth, kSwitchHeight},
++                toggle);
++  } else if (control == kHeadPreview) {
++    // The sound test: a round outline button with a play mark, ink while pressed.
++    const fui::Rect hit{static_cast<int16_t>(row.right() - kTouch), static_cast<int16_t>(row.y + (row.height - kTouch) / 2),
++                        kTouch, kTouch};
++    const fui::Rect disc{static_cast<int16_t>(hit.right() - kPreviewSize), static_cast<int16_t>(hit.y + (kTouch - kPreviewSize) / 2),
++                         kPreviewSize, kPreviewSize};
++    const bool pressed = fui::hasState(screen.frame().stateFor(ACTION_TILE, kVolumePreview), fui::StateActive);
++    target.fill(disc, fui::Paint::solid(pressed ? fui::Color::Black : fui::Color::White), kPreviewSize / 2);
++    if (!pressed) target.stroke(disc, fui::Paint::solid(fui::Color::Black), ricky::ds::stroke::kHairline, kPreviewSize / 2);
++    target.bitmap(fui::Rect{static_cast<int16_t>(disc.x + (kPreviewSize - 32) / 2 + 2),
++                            static_cast<int16_t>(disc.y + (kPreviewSize - 32) / 2), 32, 32},
++                  fui::bitmapFromIcon(kPlayIcon), fui::BitmapMode::Center,
++                  fui::Paint::solid(pressed ? fui::Color::White : fui::Color::Black));
++    screen.frame().hit(hit, ACTION_TILE, kVolumePreview, fui::InputTouch);
++  }
++}
++
++void FrontlightPanelActivity::sliderRow(UiScreen& screen, const char* name, const uint8_t value,
++                                        const fui::ActionId dragAction, const fui::ActionId stepAction,
++                                        const int stepValue) {
++  const auto& theme = screen.theme();
++  auto& target = screen.target();
++  const auto ink = fui::Paint::solid(fui::Color::Black);
++  const auto paper = fui::Paint::solid(fui::Color::White);
++  if (name && name[0]) {
++    // Caption: the name, then the live percentage at the right edge. The text is
++    // drawn before this returns (immediate mode), so a stack buffer is fine.
++    auto caption = theme.smallText;
++    caption.maxLines = 1;
++    const auto line = screen.takeTop(target.lineHeight(caption.font), 0);
++    target.text(line, name, caption);
++    char percent[8];
++    snprintf(percent, sizeof(percent), "%u%%", static_cast<unsigned>(value));
++    caption.align = fui::TextAlign::Right;
++    target.text(line, percent, caption);
+   } else {
+-    rowProps.toggleAction = fui::NO_ACTION;
+-    rowProps.toggleIcon = fui::BitmapRef{};
+-  }
 -  screen.sliderRow(rowProps, kSliderRowHeight);
 -  // The wrapper's own trailing gap is one spaceMd; double it so the rows
 -  // breathe — a control band this tall reads cramped at the list cadence.
 -  screen.spacer(screen.theme().spaceMd);
-+  if (sliderAction == ACTION_TILE) {
-+    // Share the tile dispatcher so the six-handler host needs no extra allocation.
-+    rowProps.decrementValue = -kVolumeStep;
-+    rowProps.incrementValue = kVolumeStep;
-+    rowProps.toggleAction = ACTION_TILE;
-+    rowProps.toggleValue = kVolumePreview;
-+    rowProps.toggleIcon = fui::bitmapFromIcon(kPlayIcon);
-+  } else {
-+    rowProps.toggleValue = 0;
++    screen.spacer(kBareBandGap);
 +  }
-+  // Shared FUI control, exact spec spacing; no copied StyleSet on the stack.
-+  rowProps.labelText = screen.theme().smallText;
-+  rowProps.valueText = screen.theme().smallText;
-+  rowProps.buttonText = screen.theme().titleText;
-+  rowProps.captionGap = 8;
-+  rowProps.gap = 8;
-+  rowProps.buttonRadius = 12;
-+  rowProps.capsuleRadius = 44;
-+  if (renderer.getScreenWidth() > renderer.getScreenHeight()) rowProps.toggleAction = fui::NO_ACTION;
-+  const auto row = screen.takeTop(static_cast<int16_t>(screen.target().lineHeight(rowProps.labelText.font) + 8 + 88), 16);
-+  fui::sliderRow(screen.frame(), row, rowProps);
-+  if (showToggle && lightOn && renderer.getScreenHeight() >= renderer.getScreenWidth()) {
-+    // Use the same toggle rectangle emitted by sliderRow; On is inverse white.
-+    const fui::Rect lamp{static_cast<int16_t>(row.right()-88),static_cast<int16_t>(row.bottom()-88),88,88};
-+    screen.target().fill(lamp,fui::Paint::solid(fui::Color::Black),12);
-+    screen.target().bitmap({static_cast<int16_t>(lamp.x+28),static_cast<int16_t>(lamp.y+28),32,32},
-+      fui::bitmapFromIcon(icon_sun_32),fui::BitmapMode::Center,fui::Paint::solid(fui::Color::White));
-+  }
++  const auto band = screen.takeTop(kTouch, theme.spaceMd);
 +
++  // [-] and [+]: bare marks in a full touch square, an ink tile while pressed.
++  auto mark = theme.titleText;
++  mark.align = fui::TextAlign::Center;
++  mark.maxLines = 1;
++  const int16_t markHeight = target.lineHeight(mark.font);
++  const auto step = [&](const fui::Rect cell, const int16_t delta, const char* glyph) {
++    const bool pressed = fui::hasState(screen.frame().stateFor(stepAction, delta), fui::StateActive);
++    if (pressed) target.fill(cell, ink, ricky::ds::radius::kControl);
++    mark.color = pressed ? fui::Color::White : fui::Color::Black;
++    target.text(fui::Rect{cell.x, static_cast<int16_t>(cell.y + (cell.height - markHeight) / 2), cell.width, markHeight},
++                glyph, mark);
++    screen.frame().hit(cell, stepAction, delta, fui::InputTouch);
++  };
++  step(fui::Rect{band.x, band.y, kTouch, kTouch}, static_cast<int16_t>(-stepValue), "−");
++  step(fui::Rect{static_cast<int16_t>(band.right() - kTouch), band.y, kTouch, kTouch}, static_cast<int16_t>(stepValue), "+");
++
++  // The track runs between the knob's two end positions, so the drag position
++  // (0..1000 across the hit box) and the knob always agree.
++  const int16_t left = static_cast<int16_t>(band.x + kTouch + kKnobSize / 2);
++  const int16_t right = static_cast<int16_t>(band.right() - kTouch - kKnobSize / 2);
++  if (right <= left) return;
++  const int16_t width = static_cast<int16_t>(right - left);
++  const int16_t middle = static_cast<int16_t>(band.y + kTouch / 2);
++  const fui::Rect track{left, static_cast<int16_t>(middle - kTrackHeight / 2), width, kTrackHeight};
++  const int16_t knobX = static_cast<int16_t>(left + width * std::min<int>(value, 100) / 100);
++  target.fill(track, paper, kTrackHeight / 2);
++  target.stroke(track, ink, ricky::ds::stroke::kHairline, kTrackHeight / 2);
++  if (knobX > left)
++    target.fill(fui::Rect{left, track.y, static_cast<int16_t>(knobX - left), kTrackHeight}, ink, kTrackHeight / 2);
++  const fui::Rect knob{static_cast<int16_t>(knobX - kKnobSize / 2), static_cast<int16_t>(middle - kKnobSize / 2),
++                       kKnobSize, kKnobSize};
++  target.fill(knob, paper, kKnobSize / 2);
++  target.stroke(knob, ink, kKnobStroke, kKnobSize / 2);
++  screen.frame().hit(fui::Rect{left, band.y, width, kTouch}, dragAction,
++                     static_cast<int16_t>(dragAction == ACTION_TILE ? kVolumeDrag : 0), fui::InputTouch | fui::InputDrag);
  }
  
  void FrontlightPanelActivity::buildPanelScreen(UiScreen& screen) {
-@@ -319,16 +345,15 @@
- }
+@@ -320,15 +419,17 @@
  
  namespace {
--// Actions: the design's app tile per column (radius 12, 2 px ink, inverted when on;
+ // Actions: the design's app tile per column (radius 12, 2 px ink, inverted when on;
 -// spec §9, no circular frames), the label under it.
 -constexpr int16_t kActionDiameter = ricky::ds::layout::kAppTileSize;
--constexpr int16_t kActionLabelGap = 10;
--constexpr int kActionColumns = 4;
-+// Round actions: a circle per column, the label under it.
-+constexpr int16_t kActionDiameter = ricky::ds::layout::kTouchMin;
-+constexpr int16_t kActionLabelGap = ricky::ds::space::k2;
++// spec §9, no circular frames), the label under it. Same as the Pico's sheet.
++constexpr int16_t kActionSize = ricky::ds::layout::kAppTileSize;
+ constexpr int16_t kActionLabelGap = 10;
+ constexpr int kActionColumns = 4;
++constexpr int16_t kActionHitInset = 4;  // 8 px between neighbouring columns' touch boxes
  // Clean-refresh choices in REFRESH_FREQUENCY order (pages between clean refreshes; 0 = never).
  constexpr int kRefreshPages[] = {1, 5, 10, 15, 30, 0};
  }  // namespace
@@ -3637,7 +3762,7 @@
    switch (tile) {
      case Tile::Night:
        SETTINGS.screenInverted = SETTINGS.screenInverted ? 0 : 1;
-@@ -356,6 +381,11 @@
+@@ -356,6 +457,11 @@
      case Tile::Clean:
        cycleCleanRefresh();
        break;
@@ -3649,267 +3774,211 @@
    }
  }
  
-@@ -369,139 +399,134 @@
- // Mirrors buildRickyPanel() band by band so the sheet is sized before it is drawn.
- int FrontlightPanelActivity::rickyPanelHeight() const {
-   const auto tokens = uiThemeTokens(uiTarget, true);
--  const auto& metrics = uiThemeMetrics(true);
+@@ -372,12 +478,22 @@
+   const auto& metrics = uiThemeMetrics(true);
    const int small = uiTarget.lineHeight(tokens.smallText.font);
--  const int title = uiTarget.lineHeight(tokens.titleText.font);
+   const int title = uiTarget.lineHeight(tokens.titleText.font);
 -  const int actionRow = kActionDiameter + kActionLabelGap + small;
 -  int y = tokens.spaceMd + std::max<int>(metrics.batteryHeight, title) + tokens.spaceXs;  // clock and battery
 -  y += small;                                                                             // date line
--  if (mappedInput.hasTouch()) {
++  const bool landscape = renderer.getScreenWidth() > renderer.getScreenHeight();
++  const int rule = 2 * tokens.spaceLg + 1;
++  const int actionRow = kActionSize + kActionLabelGap + small;
++  const int slider = small + kTouch + tokens.spaceMd;  // caption and band
++  int y = tokens.spaceMd + std::max<int>(metrics.batteryHeight, title) + tokens.spaceXs + small;  // clock, date
+   if (mappedInput.hasTouch()) {
 -    y += 2 * tokens.spaceLg + actionRow;
 -    if (overReader) y += 2 * tokens.spaceLg + small + tokens.spaceMd + actionRow;
--  }
--  y += tokens.spaceLg + kGrabberHeight + tokens.spaceLg + tokens.spaceMd;  // grabber band
--  return y;
-+  const bool portrait = renderer.getScreenHeight() >= renderer.getScreenWidth();
-+  const int row = small + 8 + 88 + 16;
-+  const int action = kActionDiameter + kActionLabelGap + small;
-+  int y = 48 + 88 + 16;
-+  if (mappedInput.hasTouch()) y += action + 24;
-+  if (portrait) {
-+    if (Frontlight.present()) y += 48 + small + 16 + row * (Frontlight.hasColorTemperature() ? 2 : 1) + 24;
-+    if (HalAudioOutput::present()) y += 48 + row + 24;
-+    if (overReader && mappedInput.hasTouch()) y += small + 16 + action + 24;
-+  } else if (Frontlight.present() || HalAudioOutput::present()) {
-+    y += 48 + row + 24;
-+  }
-+  return y + 48;
- }
- 
- void FrontlightPanelActivity::roundActionRow(UiScreen& screen, const RoundAction* actions, const int count) {
-+  auto& target = screen.target();
-+  auto label = screen.theme().smallText;
-+  label.maxLines = 1;
-+  label.align = fui::TextAlign::Center;
-+  const int16_t textHeight = target.lineHeight(label.font);
-+  const auto row = screen.takeTop(kActionDiameter + kActionLabelGap + textHeight, 0);
-+  const int16_t width = (row.width - (count - 1) * 8) / count;
-+  for (int i = 0; i < count; ++i) {
-+    const auto& action = actions[i];
-+    const fui::Rect cell{static_cast<int16_t>(row.x + i * (width + 8)), row.y, width, row.height};
-+    const bool selected = action.on || fui::hasState(screen.frame().stateFor(ACTION_TILE, static_cast<int16_t>(action.tile)), fui::StateActive);
-+    target.fill(cell, fui::Paint::solid(selected ? fui::Color::Black : fui::Color::White), 12);
-+    if (!selected) target.stroke(cell, fui::Paint::solid(fui::Color::Black), 2, 12);
-+    const auto& icon = *action.icon;
-+    target.bitmap({static_cast<int16_t>(cell.x + (width-icon.w)/2),
-+                   static_cast<int16_t>(cell.y + 40-icon.opticalCenterY),
-+                   static_cast<int16_t>(icon.w), static_cast<int16_t>(icon.h)},
-+                  fui::bitmapFromIcon(icon), fui::BitmapMode::Center,
-+                  fui::Paint::solid(selected ? fui::Color::White : fui::Color::Black));
-+    label.color = selected ? fui::Color::White : fui::Color::Black;
-+    target.text({cell.x, static_cast<int16_t>(cell.bottom()-textHeight-16), width, textHeight}, action.label, label);
-+    screen.frame().hit(cell, ACTION_TILE, static_cast<int16_t>(action.tile), fui::InputTouch);
-+  }
-+}
-+
-+void FrontlightPanelActivity::buildRickyPanel(UiScreen& screen) {
-   const auto& theme = screen.theme();
-   auto& target = screen.target();
--  auto label = theme.smallText;
--  label.maxLines = 1;
--  label.align = fui::TextAlign::Center;
--  const int16_t labelHeight = target.lineHeight(theme.smallText.font);
++    y += rule + actionRow;
++    if (!landscape && overReader) y += rule + small + tokens.spaceMd + actionRow;
++    const bool light = Frontlight.present();
++    const bool sound = HalAudioOutput::present();
++    if (landscape) {
++      if (light || sound) y += rule + kHeadHeight + kBareBandGap + kTouch + tokens.spaceMd;
++    } else {
++      if (light) y += rule + kHeadHeight + slider * (Frontlight.hasColorTemperature() ? 2 : 1);
++      if (sound) y += rule + kHeadHeight + kBareBandGap + kTouch + tokens.spaceMd;
++    }
+   }
+   y += tokens.spaceLg + kGrabberHeight + tokens.spaceLg + tokens.spaceMd;  // grabber band
+   return y;
+@@ -390,31 +506,30 @@
+   label.maxLines = 1;
+   label.align = fui::TextAlign::Center;
+   const int16_t labelHeight = target.lineHeight(theme.smallText.font);
 -  const auto row = screen.takeTop(static_cast<int16_t>(kActionDiameter + kActionLabelGap + labelHeight), 0);
 -  const int16_t column = static_cast<int16_t>(row.width / kActionColumns);
--  for (int i = 0; i < count; ++i) {
--    const RoundAction& action = actions[i];
--    const fui::Rect cell{static_cast<int16_t>(row.x + i * column), row.y, column, row.height};
++  const auto row = screen.takeTop(static_cast<int16_t>(kActionSize + kActionLabelGap + labelHeight), 0);
++  const int16_t column = static_cast<int16_t>(row.width / std::max(kActionColumns, count));
+   for (int i = 0; i < count; ++i) {
+     const RoundAction& action = actions[i];
+     const fui::Rect cell{static_cast<int16_t>(row.x + i * column), row.y, column, row.height};
 -    const fui::Rect circle{static_cast<int16_t>(cell.x + (column - kActionDiameter) / 2), cell.y, kActionDiameter,
 -                           kActionDiameter};
--    constexpr uint8_t radius = ricky::ds::radius::kControl;
++    const fui::Rect tile{static_cast<int16_t>(cell.x + (column - kActionSize) / 2), cell.y, kActionSize, kActionSize};
+     constexpr uint8_t radius = ricky::ds::radius::kControl;
 -    // On = an ink tile with the icon knocked out in paper; off = a hairline outline.
 -    if (action.on) {
 -      target.fill(circle, fui::Paint::solid(fui::Color::Black), radius);
 -    } else {
 -      target.fill(circle, fui::Paint::solid(fui::Color::White), radius);
 -      target.stroke(circle, fui::Paint::solid(fui::Color::Black), ricky::ds::stroke::kHairline, radius);
-+  fui::SheetProps sheet;
-+  sheet.grabberMargin = 16;
-+  sheet.grabberInset = 16;
-+  screen.sheet(sheet, panelBottom);
-+  screen.insetContent({0,40,0,40});
-+  const int16_t small = target.lineHeight(theme.smallText.font);
-+  const bool landscape = renderer.getScreenWidth() > renderer.getScreenHeight();
-+  const auto& metrics = uiThemeMetrics(true);
-+  GUI.drawHeaderWithStyle(renderer, Rect{0,metrics.topPadding,renderer.getScreenWidth(),48}, nullptr,nullptr,true,true);
-+  screen.spacer(48);
-+  const auto header = screen.takeTop(88,16);
-+  target.text({header.x,static_cast<int16_t>(header.y+22),static_cast<int16_t>(header.width-104),44},
-+              tr(STR_RICKY_CC_TITLE), theme.titleText);
-+  const fui::Rect closeButton{static_cast<int16_t>(header.right()-88),header.y,88,88};
-+  const bool closing = fui::hasState(screen.frame().stateFor(ACTION_TILE,kPanelClose),fui::StateActive);
-+  target.fill(closeButton,fui::Paint::solid(closing?fui::Color::Black:fui::Color::White),12);
-+  if(!closing)target.stroke(closeButton,fui::Paint::solid(fui::Color::Black),2,12);
-+  auto caption = theme.smallText;
-+  caption.align = fui::TextAlign::Center;
-+  caption.color = closing?fui::Color::White:fui::Color::Black;
-+  target.text({closeButton.x,static_cast<int16_t>(closeButton.y+(88-small)/2),88,small},tr(STR_RICKY_CC_CLOSE),caption);
-+  screen.frame().hit(closeButton,ACTION_TILE,kPanelClose,fui::InputTouch);
-+
-+  RoundAction actions[8] = {
-+    {Tile::Night,&icon_ricky_night_40,tr(STR_NIGHT_MODE),SETTINGS.screenInverted!=0},
-+    {Tile::Refresh,&icon_ricky_refresh_40,tr(STR_FORCE_REFRESH),false},
-+    {Tile::Standby,&icon_ricky_standby_40,tr(STR_RICKY_STANDBY_NOW),false},
-+    {Tile::Transfer,&icon_ricky_transfer_40,tr(STR_FILE_TRANSFER),false},
-+  };
-+  int count = 4;
-+  if (landscape && Frontlight.present()) actions[count++]={Tile::Light,&icon_sun_32,tr(STR_FRONTLIGHT),lightOn};
-+  if (landscape && HalAudioOutput::present()) actions[count++]={Tile::Preview,&kPlayIcon,tr(STR_RICKY_CC_PREVIEW),false};
-+  static constexpr StrId orientations[]={StrId::STR_PORTRAIT,StrId::STR_LANDSCAPE_CW,
-+    StrId::STR_ORIENTATION_INVERTED,StrId::STR_LANDSCAPE_CCW};
-+  const int orientation=SETTINGS.orientation%4;
-+  const int pages=kRefreshPages[std::min<int>(SETTINGS.refreshFrequency,std::size(kRefreshPages)-1)];
-+  if(pages) snprintf(refreshText,sizeof(refreshText),tr(STR_RICKY_CC_FULL_REFRESH),pages);
-+  else snprintf(refreshText,sizeof(refreshText),"%s",tr(STR_RICKY_CC_FULL_REFRESH_OFF));
-+  const RoundAction reading[]={
-+    {Tile::Orientation,(orientation%2)?&icon_ricky_landscape_40:&icon_ricky_portrait_40,I18N.get(orientations[orientation]),false},
-+    {Tile::Clean,&icon_ricky_clean_40,refreshText,false},
-+  };
-+  if (landscape && overReader) {actions[count++]=reading[0];actions[count++]=reading[1];}
-+  if (mappedInput.hasTouch()) {roundActionRow(screen,actions,count);screen.spacer(24);}
-+
-+  const int rowHeight=small+8+88+16;
-+  const auto controls = [&](UiScreen& area,int kind) {
-+    if(kind==0) addSliderRow(area,tr(STR_BRIGHTNESS),brightness,ACTION_BRIGHTNESS,ACTION_BRIGHTNESS_STEP,true);
-+    else if(kind==1) addSliderRow(area,tr(STR_RICKY_CC_WARMTH),warmth,ACTION_WARMTH,ACTION_WARMTH_STEP,false);
-+    else addSliderRow(area,tr(STR_RICKY_CC_VOLUME),volume,ACTION_TILE,ACTION_TILE,false);
-+  };
-+  const auto group = [&](UiScreen& area,int rows,bool lightGroup) {
-+    const auto box=area.takeTop(48+rowHeight*rows+(lightGroup?small+16:0),24);
-+    target.stroke(box,fui::Paint::solid(fui::Color::Black),2,24);
-+    UiScreen child(area.frame(),theme);
-+    const auto all=child.contentRect();
-+    child.insetContent({static_cast<int16_t>(box.y+24-all.y),static_cast<int16_t>(all.right()-box.right()+24),
-+      static_cast<int16_t>(all.bottom()-box.bottom()+24),static_cast<int16_t>(box.x+24-all.x)});
-+    if(lightGroup) {target.text(child.takeTop(small,16),tr(STR_FRONTLIGHT),theme.smallText);controls(child,0);if(rows>1)controls(child,1);}
-+    else controls(child,2);
-+  };
-+  if(!landscape) {
-+    if(Frontlight.present())group(screen,Frontlight.hasColorTemperature()?2:1,true);
-+    if(HalAudioOutput::present())group(screen,1,false);
-+    if(overReader && mappedInput.hasTouch()) {
-+      target.text(screen.takeTop(small,16),tr(STR_RICKY_CC_READING),theme.smallText);
-+      roundActionRow(screen,reading,2);screen.spacer(24);
-     }
--    const freeink::Icon& icon = *action.icon;
+-    }
++    // On (or pressed) = an ink tile with the icon knocked out in paper; off = a hairline outline.
++    const bool on = action.on ||
++                    fui::hasState(screen.frame().stateFor(ACTION_TILE, static_cast<int16_t>(action.tile)), fui::StateActive);
++    target.fill(tile, fui::Paint::solid(on ? fui::Color::Black : fui::Color::White), radius);
++    if (!on) target.stroke(tile, fui::Paint::solid(fui::Color::Black), ricky::ds::stroke::kHairline, radius);
+     const freeink::Icon& icon = *action.icon;
 -    target.bitmap(fui::Rect{static_cast<int16_t>(circle.x + (kActionDiameter - icon.w) / 2),
 -                            static_cast<int16_t>(circle.y + kActionDiameter / 2 - icon.opticalCenterY),
--                            static_cast<int16_t>(icon.w), static_cast<int16_t>(icon.h)},
--                  fui::bitmapFromIcon(icon), fui::BitmapMode::Center,
++    target.bitmap(fui::Rect{static_cast<int16_t>(tile.x + (kActionSize - icon.w) / 2),
++                            static_cast<int16_t>(tile.y + kActionSize / 2 - icon.opticalCenterY),
+                             static_cast<int16_t>(icon.w), static_cast<int16_t>(icon.h)},
+                   fui::bitmapFromIcon(icon), fui::BitmapMode::Center,
 -                  fui::Paint::solid(action.on ? fui::Color::White : fui::Color::Black));
 -    target.text(fui::Rect{cell.x, static_cast<int16_t>(circle.bottom() + kActionLabelGap), cell.width, labelHeight},
--                action.label, label);
++                  fui::Paint::solid(on ? fui::Color::White : fui::Color::Black));
++    target.text(fui::Rect{cell.x, static_cast<int16_t>(tile.bottom() + kActionLabelGap), cell.width, labelHeight},
+                 action.label, label);
 -    // The whole column (tile and label) is the touch target.
 -    screen.frame().hit(cell, ACTION_TILE, static_cast<int16_t>(action.tile), fui::InputTouch);
--  }
--}
--
--void FrontlightPanelActivity::buildRickyPanel(UiScreen& screen) {
--  const auto& theme = screen.theme();
--  fui::SheetProps sheetProps;
--  sheetProps.grabberMargin = theme.spaceLg;
--  sheetProps.grabberInset = static_cast<int16_t>(theme.spaceLg + theme.spaceMd);
--  screen.sheet(sheetProps, static_cast<int16_t>(panelBottom));
--  screen.insetContent(fui::Insets{0, theme.spaceLg, 0, theme.spaceLg});
--  auto& target = screen.target();
--  RickyPageUi::Bold bold(renderer, 1);
--  auto small = theme.smallText;
--  small.maxLines = 1;
--  const int16_t smallHeight = target.lineHeight(theme.smallText.font);
--
--  // Clock on the left of the status band, battery on the right where Home draws it.
--  const auto& metrics = uiThemeMetrics(true);
--  screen.spacer(theme.spaceMd);
--  const auto band = screen.takeTop(
--      std::max<int16_t>(static_cast<int16_t>(metrics.batteryHeight), target.lineHeight(theme.titleText.font)),
--      theme.spaceXs);
--  GUI.drawHeaderWithStyle(
--      renderer, Rect{0, metrics.topPadding, renderer.getScreenWidth(), metrics.homeTopPadding - metrics.topPadding},
--      nullptr, nullptr, true, true);
--  std::tm local{};
--  const bool haveTime = halClock.localTime(local);
--  if (!haveTime || !TimeUtils::formatCurrentTime(timeText, sizeof(timeText), SETTINGS.clockFormat == 1)) {
--    snprintf(timeText, sizeof(timeText), "--:--");
--  }
--  auto clock = theme.titleText;
--  clock.bold = true;
--  clock.maxLines = 1;
--  target.text(fui::Rect{band.x, band.y, static_cast<int16_t>(band.width / 2), band.height}, timeText, clock);
--  char date[40] = {};
--  if (haveTime) {
--    static constexpr StrId weekdays[] = {
--        StrId::STR_CAL_WEEKDAY_SUN, StrId::STR_CAL_WEEKDAY_MON, StrId::STR_CAL_WEEKDAY_TUE, StrId::STR_CAL_WEEKDAY_WED,
--        StrId::STR_CAL_WEEKDAY_THU, StrId::STR_CAL_WEEKDAY_FRI, StrId::STR_CAL_WEEKDAY_SAT};
--    snprintf(date, sizeof(date), tr(STR_RICKY_HOME_DATE), static_cast<unsigned>(local.tm_mon + 1),
--             static_cast<unsigned>(local.tm_mday), I18N.get(weekdays[std::clamp(local.tm_wday, 0, 6)]));
--  }
--  char today[40];
--  snprintf(today, sizeof(today), tr(STR_RICKY_HOME_TODAY),
--           static_cast<unsigned>(READING_STATS.getTodayReadingMs() / 60000));
--  snprintf(infoText, sizeof(infoText), haveTime ? "%s · %s" : "%s%s", date, today);
--  target.text(screen.takeTop(smallHeight, 0), infoText, small);
--
++    // The column (tile and label) is the touch target, inset so neighbours keep a gap.
++    screen.frame().hit(fui::Rect{static_cast<int16_t>(cell.x + kActionHitInset), cell.y,
++                                 static_cast<int16_t>(cell.width - 2 * kActionHitInset), cell.height},
++                       ACTION_TILE, static_cast<int16_t>(action.tile), fui::InputTouch);
+   }
+ }
+ 
+@@ -430,6 +545,7 @@
+   auto small = theme.smallText;
+   small.maxLines = 1;
+   const int16_t smallHeight = target.lineHeight(theme.smallText.font);
++  const bool landscape = renderer.getScreenWidth() > renderer.getScreenHeight();
+ 
+   // Clock on the left of the status band, battery on the right where Home draws it.
+   const auto& metrics = uiThemeMetrics(true);
+@@ -463,33 +579,24 @@
+   snprintf(infoText, sizeof(infoText), haveTime ? "%s · %s" : "%s%s", date, today);
+   target.text(screen.takeTop(smallHeight, 0), infoText, small);
+ 
 -  // Round actions are touch targets; a buttons-only board keeps just the clock.
--  if (!mappedInput.hasTouch()) return;
++  // Every control below is a touch target; a buttons-only board keeps just the clock.
+   if (!mappedInput.hasTouch()) return;
 -  const auto rule = [&] {
 -    screen.spacer(theme.spaceLg);
 -    const auto line = screen.takeTop(1, 0);
 -    target.fill(line, fui::Paint::solid(fui::Color::Black));
 -    screen.spacer(theme.spaceLg);
--  };
--
++  const auto rule = [&](UiScreen& area) {
++    area.spacer(theme.spaceLg);
++    target.fill(area.takeTop(1, 0), fui::Paint::solid(fui::Color::Black));
++    area.spacer(theme.spaceLg);
+   };
+ 
 -  rule();
 -  const bool night = SETTINGS.screenInverted != 0;
 -  const RoundAction common[] = {
 -      {Tile::Night, &icon_ricky_night_40, tr(STR_NIGHT_MODE), night},
--      {Tile::Refresh, &icon_ricky_refresh_40, tr(STR_FORCE_REFRESH), false},
--      {Tile::Standby, &icon_ricky_standby_40, tr(STR_RICKY_STANDBY_NOW), false},
--      {Tile::Transfer, &icon_ricky_transfer_40, tr(STR_FILE_TRANSFER), false},
--  };
++  rule(screen);
++  RoundAction actions[6] = {
++      {Tile::Night, &icon_ricky_night_40, tr(STR_NIGHT_MODE), SETTINGS.screenInverted != 0},
+       {Tile::Refresh, &icon_ricky_refresh_40, tr(STR_FORCE_REFRESH), false},
+       {Tile::Standby, &icon_ricky_standby_40, tr(STR_RICKY_STANDBY_NOW), false},
+       {Tile::Transfer, &icon_ricky_transfer_40, tr(STR_FILE_TRANSFER), false},
+   };
 -  roundActionRow(screen, common, static_cast<int>(std::size(common)));
 -
 -  if (!overReader) return;
 -  // Reading: only over a book, where each of these changes the page underneath.
 -  rule();
 -  target.text(screen.takeTop(smallHeight, theme.spaceMd), tr(STR_RICKY_CC_READING), small);
--  static constexpr StrId kOrientNames[4] = {StrId::STR_PORTRAIT, StrId::STR_LANDSCAPE_CW,
--                                            StrId::STR_ORIENTATION_INVERTED, StrId::STR_LANDSCAPE_CCW};
--  const uint8_t orientation = SETTINGS.orientation % 4;
+   static constexpr StrId kOrientNames[4] = {StrId::STR_PORTRAIT, StrId::STR_LANDSCAPE_CW,
+                                             StrId::STR_ORIENTATION_INVERTED, StrId::STR_LANDSCAPE_CCW};
+   const uint8_t orientation = SETTINGS.orientation % 4;
 -  const bool portrait = orientation == 0 || orientation == 2;
--  const int refreshIndex = std::min<int>(SETTINGS.refreshFrequency, static_cast<int>(std::size(kRefreshPages)) - 1);
--  if (kRefreshPages[refreshIndex] == 0) {
--    snprintf(refreshText, sizeof(refreshText), "%s", tr(STR_RICKY_CC_FULL_REFRESH_OFF));
-   } else {
--    snprintf(refreshText, sizeof(refreshText), tr(STR_RICKY_CC_FULL_REFRESH), kRefreshPages[refreshIndex]);
--  }
--  const RoundAction reading[] = {
+   const int refreshIndex = std::min<int>(SETTINGS.refreshFrequency, static_cast<int>(std::size(kRefreshPages)) - 1);
+   if (kRefreshPages[refreshIndex] == 0) {
+     snprintf(refreshText, sizeof(refreshText), "%s", tr(STR_RICKY_CC_FULL_REFRESH_OFF));
+@@ -497,11 +604,75 @@
+     snprintf(refreshText, sizeof(refreshText), tr(STR_RICKY_CC_FULL_REFRESH), kRefreshPages[refreshIndex]);
+   }
+   const RoundAction reading[] = {
 -      {Tile::Orientation, portrait ? &icon_ricky_portrait_40 : &icon_ricky_landscape_40,
--       I18N.get(kOrientNames[orientation]), false},
--      {Tile::Clean, &icon_ricky_clean_40, refreshText, false},
--  };
++      {Tile::Orientation, orientation % 2 ? &icon_ricky_landscape_40 : &icon_ricky_portrait_40,
+        I18N.get(kOrientNames[orientation]), false},
+       {Tile::Clean, &icon_ricky_clean_40, refreshText, false},
+   };
 -  roundActionRow(screen, reading, static_cast<int>(std::size(reading)));
-+    const int columns=(Frontlight.present()?(Frontlight.hasColorTemperature()?2:1):0)+(HalAudioOutput::present()?1:0);
-+    if(columns) {
-+      const auto band=screen.takeTop(48+rowHeight,24);
-+      const int16_t width=(band.width-(columns-1)*20)/columns;
-+      for(int i=0;i<columns;++i) {
-+        const fui::Rect box{static_cast<int16_t>(band.x+i*(width+20)),band.y,width,band.height};
-+        target.stroke(box,fui::Paint::solid(fui::Color::Black),2,24);
-+        UiScreen child(screen.frame(),theme);const auto all=child.contentRect();
-+        child.insetContent({static_cast<int16_t>(box.y+24-all.y),static_cast<int16_t>(all.right()-box.right()+24),
-+          static_cast<int16_t>(all.bottom()-box.bottom()+24),static_cast<int16_t>(box.x+24-all.x)});
-+        controls(child,Frontlight.present() && i==0 ? 0 : Frontlight.present() && Frontlight.hasColorTemperature() && i==1 ? 1 : 2);
-+      }
++  int count = 4;
++  // Landscape has room for the reading actions in the same row.
++  if (landscape && overReader) {
++    actions[count++] = reading[0];
++    actions[count++] = reading[1];
++  }
++  roundActionRow(screen, actions, count);
++
++  if (!landscape && overReader) {
++    // Reading: only over a book, where each of these changes the page underneath.
++    rule(screen);
++    target.text(screen.takeTop(smallHeight, theme.spaceMd), tr(STR_RICKY_CC_READING), small);
++    roundActionRow(screen, reading, static_cast<int>(std::size(reading)));
++  }
++
++  const bool light = Frontlight.present();
++  const bool warm = light && Frontlight.hasColorTemperature();
++  const bool sound = HalAudioOutput::present();
++  if (!landscape) {
++    if (light) {
++      rule(screen);
++      sectionHead(screen, tr(STR_FRONTLIGHT), kHeadSwitch);
++      sliderRow(screen, tr(STR_BRIGHTNESS), brightness, ACTION_BRIGHTNESS, ACTION_BRIGHTNESS_STEP, BRIGHTNESS_STEP);
++      if (warm) sliderRow(screen, tr(STR_RICKY_CC_WARMTH), warmth, ACTION_WARMTH, ACTION_WARMTH_STEP, 1);
 +    }
++    if (sound) {
++      rule(screen);
++      sectionHead(screen, tr(STR_RICKY_CC_VOLUME), kHeadPreview, volume);
++      sliderRow(screen, nullptr, volume, ACTION_TILE, ACTION_TILE, kVolumeStep);
++    }
++    return;
++  }
++  // Landscape: one column per slider under a shared rule, each with its head.
++  const int columns = (light ? 1 : 0) + (warm ? 1 : 0) + (sound ? 1 : 0);
++  if (!columns) return;
++  rule(screen);
++  // Each column is a head (name, level, control) over its band, so the bands line up.
++  const int16_t height = static_cast<int16_t>(kHeadHeight + kBareBandGap + kTouch + theme.spaceMd);
++  const auto area = screen.takeTop(height, 0);
++  constexpr int16_t kGap = 32;
++  const int16_t width = static_cast<int16_t>((area.width - (columns - 1) * kGap) / columns);
++  int column = 0;
++  const auto next = [&]() {
++    UiScreen child(screen.frame(), theme);
++    const auto all = child.contentRect();
++    const int16_t x = static_cast<int16_t>(area.x + column++ * (width + kGap));
++    child.insetContent(fui::Insets{static_cast<int16_t>(area.y - all.y), static_cast<int16_t>(all.right() - x - width),
++                                   static_cast<int16_t>(all.bottom() - area.bottom()), static_cast<int16_t>(x - all.x)});
++    return child;
++  };
++  if (light) {
++    auto child = next();
++    sectionHead(child, tr(STR_BRIGHTNESS), kHeadSwitch, brightness);
++    sliderRow(child, nullptr, brightness, ACTION_BRIGHTNESS, ACTION_BRIGHTNESS_STEP, BRIGHTNESS_STEP);
++  }
++  if (warm) {
++    auto child = next();
++    sectionHead(child, tr(STR_RICKY_CC_WARMTH), kHeadNone, warmth);
++    sliderRow(child, nullptr, warmth, ACTION_WARMTH, ACTION_WARMTH_STEP, 1);
++  }
++  if (sound) {
++    auto child = next();
++    sectionHead(child, tr(STR_RICKY_CC_VOLUME), kHeadPreview, volume);
++    sliderRow(child, nullptr, volume, ACTION_TILE, ACTION_TILE, kVolumeStep);
 +  }
  }
  
  void FrontlightPanelActivity::render(RenderLock&&) {
-@@ -518,4 +543,5 @@
+@@ -518,4 +689,5 @@
    // or the next scheduled clean refresh.
    renderer.displayBuffer(cleanRefreshPending ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH);
    cleanRefreshPending = false;
@@ -3940,7 +4009,7 @@
    uint8_t brightness = 60;
    uint8_t warmth = 50;
    bool lightOn = false;
-@@ -31,19 +27,17 @@
+@@ -31,19 +27,16 @@
    // reflected user intent in the first place.
    bool lightOnChanged = false;
    bool draggingSlider = false;
@@ -3955,15 +4024,16 @@
 -  // orientation, touch. Fixed set — shown on touch boards, absent elsewhere.
 -  static constexpr int kTileCount = 4;
 -  // RickyOS: a clock header, a row of round actions that work anywhere, and a
-+  // RickyOS: a clock header, a row of rectangular actions that work anywhere, and a
-   // reading row (orientation, clean-refresh interval) only over a book, so no
-   // control is shown where it has nothing to change.
+-  // reading row (orientation, clean-refresh interval) only over a book, so no
+-  // control is shown where it has nothing to change.
 -  enum class Tile : uint8_t { Night, Refresh, Standby, Transfer, Orientation, Clean };
++  // RickyOS: the Pico's sheet (clock header, one row of actions, a reading row only
++  // over a book) plus the Plus front light (switch, brightness, warmth) and volume.
 +  enum class Tile : uint8_t { Night, Refresh, Standby, Transfer, Orientation, Clean, Light, Preview = 200 };
    struct RoundAction {
      Tile tile;
      const freeink::Icon* icon;
-@@ -51,8 +45,6 @@
+@@ -51,8 +44,6 @@
      bool on;
    };
    bool overReader = false;
@@ -3972,23 +4042,43 @@
    char refreshText[24] = {};
    void runRickyTile(Tile tile);
    void cycleCleanRefresh();
-@@ -60,15 +52,13 @@
+@@ -60,15 +51,8 @@
    void buildRickyPanel(UiScreen& screen);
    void roundActionRow(UiScreen& screen, const RoundAction* actions, int count);
  
 -  // fui::SliderRowProps and fui::TileGridProps embed a 324-byte fui::StyleSet,
-+  // fui::SliderRowProps embeds a 324-byte fui::StyleSet,
-   // so the props the render path fills in live here instead of on the stack
-   // (AGENTS.md: locals stay under 256 bytes). The components take them by
-   // const reference and draw immediately, so one instance per call site is
-   // enough — every field either is reassigned on each use or keeps its
-   // constructed default.
-   freeink::ui::SliderRowProps rowProps;
+-  // so the props the render path fills in live here instead of on the stack
+-  // (AGENTS.md: locals stay under 256 bytes). The components take them by
+-  // const reference and draw immediately, so one instance per call site is
+-  // enough — every field either is reassigned on each use or keeps its
+-  // constructed default.
+-  freeink::ui::SliderRowProps rowProps;
 -  freeink::ui::TileGridProps gridProps;
 -  freeink::ui::TileGridItem gridItems[kTileCount];
++  char timeText[12] = {};
++  char infoText[80] = {};
  
    static void panelScreen(UiScreen& screen, void* user);
    static void onBrightnessEvent(const freeink::ui::ActionEvent& event, void* user);
+@@ -79,11 +63,13 @@
+   static void onTileEvent(const freeink::ui::ActionEvent& event, void* user);
+ 
+   void buildPanelScreen(UiScreen& screen);
+-  // One slider row: a caption line (name + live percentage) above
+-  // [-] [draggable 1-bit capsule] [+], plus a lamp on/off button after the +
+-  // when showToggle is set (the brightness row).
+-  void addSliderRow(UiScreen& screen, const char* label, uint8_t value, freeink::ui::ActionId sliderAction,
+-                    freeink::ui::ActionId stepAction, bool showToggle);
++  // A section head: the name on the left, an optional control (the light switch, the
++  // sound test) on the right, and the level (value >= 0) beside the control.
++  void sectionHead(UiScreen& screen, const char* name, int control, int value = -1);
++  // One slider: a caption line (name, live percentage) above a touch band of
++  // [-] [thin track with a round knob] [+]. The track is the drag target.
++  void sliderRow(UiScreen& screen, const char* name, uint8_t value, freeink::ui::ActionId dragAction,
++                 freeink::ui::ActionId stepAction, int stepValue);
+   int computePanelBottom() const;
+   void adjustBrightness(int delta);
+   void adjustWarmth(int delta);
 --- a/src/components/UITheme.cpp
 +++ b/src/components/UITheme.cpp
 @@ -124,7 +124,7 @@

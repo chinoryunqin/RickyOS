@@ -310,12 +310,12 @@
     {
       "path": "src/activities/util/FrontlightPanelActivity.cpp",
       "baseline_sha256": "3b032b72a9d4e568d587e0686816fa143775397cbb14f626a579eb4501c41115",
-      "ported_sha256": "813aca6fbb344c60638b959bbd67ab8e424c3f0848e2d340c670b1a9a5866fa2"
+      "ported_sha256": "e08df836eeb12802ba6ef5c441a69a21cf9cae82cf909bfa797bd85cc03f1d67"
     },
     {
       "path": "src/activities/util/FrontlightPanelActivity.h",
       "baseline_sha256": "28f273626ec6d605dd24764a8b99c856289cb7d8b27664e6e839d7689486f779",
-      "ported_sha256": "6ca8b578b1812a7fea59f78bb7ba8340040595b91a0d55b88c92982732b88f50"
+      "ported_sha256": "bf7fe5d8526e3637face903c4778d7ef6d4e454505a71ba1e9d177204a2fa0d4"
     },
     {
       "path": "src/components/UITheme.cpp",
