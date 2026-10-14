@@ -64,3 +64,10 @@ CONFIG_TINYUSB_MODE_DMA=y
 
 CONFIG_ESP_WIFI_NVS_ENABLED=y
 
+
+# SYN with SACK-permitted, like the Pico and every desktop OS: without it the COS
+# bucket (Tencent edge) never answers the Plus SYN. Experiment 2026-10-15.
+CONFIG_LWIP_TCP_SACK_OUT=y
+# The Pico's TCP receive window (32 KB) instead of 5760, experiment 2026-10-15.
+CONFIG_LWIP_TCP_WND_DEFAULT=32768
+CONFIG_LWIP_TCP_RECVMBOX_SIZE=32
