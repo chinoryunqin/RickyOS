@@ -74,8 +74,21 @@ USB 传书在 Mac 上拷书时，尽量直接拖到磁盘根目录；电脑没�
 3. 更新 `releases.json`（版本、文件名、字节数、sha256、notes、各段文件名）和 `ota-notes.txt`。
 4. `tools/rickyos-flasher` 下 `npm test`、`npm run build`。
 5. 同步到网站仓库 `gh-pages` 分支，提交推送，核对线上 `ota.json`。
+6. 同一天发布下载内容（用户决定：等固件 1.2.0 一起发，2026-10-14）：
+   - 字体 v1.1.0：新增 RickyBookSong（霞鹜新致宋，IPA）、ZhuqueFangsong（朱雀仿宋，OFL）、
+     RickyRound（思源柔黑，OFL）；全部 7 款补齐 24/28/30，共 12–22 双数号 + 24–32。
+     构建产物在 `perf/fonts-release-v1.1.0`，旧的 24 个文件与线上 v1.0.2 逐字节一致。
+   - 壁纸 v1.4.0：原 17 张待机图原样沿用（含「叼书小狗」，用户决定保留）+ 16 张透明壁纸
+     （manifest 的 `stickers` 列表，1.2.0 存到 `/images/透明壁纸`；旧固件只读 `items`）。
+     构建产物在 `perf/wallpapers/release-v1.4.0`。
+   - COS：凭据在 `~/.config/rickyos/cos.env`（先只核对格式，别直接 source），用
+     `scripts/publish_rickyos_assets_cos.py --kind fonts|wallpapers --output <目录> --tag <版本>`，
+     先 `--dry-run`；它先传版本目录、最后传 `cos.json`。
+   - GitHub 备用线路：`chinoryunqin/RickyOS-fonts` 发 v1.1.0、`chinoryunqin/RickyOS-wallpapers` 发 v1.4.0
+     （文件 + `fonts.json`/`wallpapers.json`，仓库里更新 `mirror.json` 给 jsDelivr）。
+   - 发布说明写一句：已下载过的字体，到「字体管理 → 在线下载字体」再点一次即可补下新字号。
 
-每一步对外操作（推网站、改 OTA）之前先问用户。
+每一步对外操作（推网站、改 OTA、传 COS、发 GitHub Release）之前先问用户。
 
 ## 5. 已知问题（不阻塞）
 
