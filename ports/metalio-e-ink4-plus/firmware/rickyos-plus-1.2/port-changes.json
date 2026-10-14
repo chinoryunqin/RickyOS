@@ -1,5 +1,5 @@
 {
-  "baseline": "d091adbef9f03a54cdc9e0ca0708cdd090aee6f2",
+  "baseline": "674a8e3ed91a2dda1ac8e109d194bc1c245ae745",
   "sdk_baseline": "96de1be6ce08eb732909e6e8149af8f892b9a2c5",
   "changes": [
     {
@@ -64,13 +64,13 @@
     },
     {
       "path": "lib/I18n/translations/chinese.yaml",
-      "baseline_sha256": "1d12bee9c1dd0b94d82726c41d77bbda03fc5d9310af9a9cc605314e0950e34b",
-      "ported_sha256": "799db99ca87ef3c51dd5100520b808fdb2be9e9f8868e45a9ef438e5da7d542f"
+      "baseline_sha256": "d85a22f478199f63ec6a783f29c1b14e4dd3dae0a57ecf008055e8cce34247eb",
+      "ported_sha256": "d9f13d8bc33453551b3193a3dfd3cbcd7d793b1e3d4305d42c53698b37daded7"
     },
     {
       "path": "lib/I18n/translations/english.yaml",
-      "baseline_sha256": "1fca32e99eb701a51c5c5dd9d2796c4b8f13d0690bfdf1abc5d249a8e128115c",
-      "ported_sha256": "b5872cdba558bc6f65c28e41784d0f2b2ecdcfa431696127b6a555521cbb043b"
+      "baseline_sha256": "cf6dc9f83dd16a7aa15916eb38b3ed64d44ba577c61cc558dc0a3f8f250e22ba",
+      "ported_sha256": "f18e2d8220181998cb5583479653c3921aa1ee05c4b597f120e7445f60800d5b"
     },
     {
       "path": "lib/Logging/Logging.cpp",

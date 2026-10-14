@@ -8,7 +8,7 @@
 
 ## 当前基线与设备状态
 
-- RickyOS 来源：`codex/rickyos-1.2-design` 的 `d091adbef9f03a54cdc9e0ca0708cdd090aee6f2`。
+- RickyOS 来源：`codex/rickyos-1.2-design` 的 `674a8e3ed91a2dda1ac8e109d194bc1c245ae745`（书库卡片阅读状态、动物默认头像、新小狗图）。升级来源用 `python3 scripts/sync_plus_design.py --repo <RickyOS> --to <commit>`：三方合并 Plus 修改并重写清单与补丁。
 - SDK 来源：`96de1be6ce08eb732909e6e8149af8f892b9a2c5`；来源清单与 77 项 Plus 修改独立记录，不使用原工作区 SDK 的未提交改动。
 - 已构建并安装：design d091adbe 优化／应用页完整高度修正版，5,235,456 bytes；SHA256 `e86755f8a03a6e23ff1b9101c536477b3623cd7b5f080f679b8570e3c00498ec`。原厂 2.0.62 槽保持一致，用户确认基础阅读可用、七个应用入口同页及屏保点选正常。此前用户确认基础录音回放、触控震动和 Tab 叠影修复；USB 1 MiB 写入／读回 SHA256、安全弹出和调试口恢复在此前镜像验证，本轮 USB 重试/SCSI 修改尚未重新做实机传输验收。
 - 当前代码包含显示、触控及盖板键、SD、前光、电量、RTC、网络迁移修改，以及本轮音量输出和试听。
