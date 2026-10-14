@@ -1,5 +1,5 @@
 {
-  "baseline": "674a8e3ed91a2dda1ac8e109d194bc1c245ae745",
+  "baseline": "12d1d95e7d7ff17134eb29082209df2aa9810722",
   "sdk_baseline": "96de1be6ce08eb732909e6e8149af8f892b9a2c5",
   "changes": [
     {
@@ -50,7 +50,7 @@
     {
       "path": "freeink-sdk/libs/network/SecureNet/src/SecureClient.cpp",
       "baseline_sha256": "544d404e40b81e254a418118623c01a207897b72f7297fd2275b1fe44160dfd5",
-      "ported_sha256": "3ab5bfeb906b85874f11b7b1b808de51370f5c9d3dfbd30378de6082eae97da3"
+      "ported_sha256": "8a904537534d4eb2b95c6d6fd07d41833349b69c011c762d0be7e43ef4f1f373"
     },
     {
       "path": "lib/EpdFont/FontDecompressor.cpp",
@@ -194,13 +194,13 @@
     },
     {
       "path": "src/activities/ActivityManager.cpp",
-      "baseline_sha256": "3456b6124fa952b97bba3dcae722602f261f06b5acab91d4bac8a8e9fcd081da",
-      "ported_sha256": "aa839833a86b37c0f62fa519f7529ce19c23714a15d0b313ffe3eca5cb019f1d"
+      "baseline_sha256": "e97372dc858385e6ac21bac9d545abadd7bcd9ca036feb7c3dc8ed8bf8cb9ada",
+      "ported_sha256": "f4638c4908eed70d60ae5985713f5802786c39ec2f85b376bce9fbb695812fc2"
     },
     {
       "path": "src/activities/ActivityManager.h",
-      "baseline_sha256": "093336acabe5134c6b2ab5436cd0bd9c307d4bcd8cf909ef397049014c64d615",
-      "ported_sha256": "8d837e1b7dd83c419247f2cae79c58ac45f9dd337934cce0b523b56c82daccf7"
+      "baseline_sha256": "01c40530f8ee1ae4a1cd07ba1c02d2a8c494992c72ed0bafd12c4924bf65ff80",
+      "ported_sha256": "2bda95e8ade298d892c5a974bda92f8dd5880cc7aed88cd1d2ca783e9c65e4fa"
     },
     {
       "path": "src/activities/UiListActivity.h",
@@ -209,8 +209,8 @@
     },
     {
       "path": "src/activities/apps/AppsMenuActivity.cpp",
-      "baseline_sha256": "469ebaf5a98ec67f08245342f9012b42f33af1285637ab29a9f2db2c799f19f5",
-      "ported_sha256": "8936ce87f3824ab715acf99dc5e0f282f70891872bd323092912d1b873ff8401"
+      "baseline_sha256": "aee473e42f7d5e8545965aa5d6be38ce36966fa25e1122e28984f65c40c093e6",
+      "ported_sha256": "c3948133b98f25e9185f00d4390c19ffa7df0dcebe88954b1f47bfc0f9083d32"
     },
     {
       "path": "src/activities/apps/recorder/RecorderActivity.cpp",
@@ -224,13 +224,13 @@
     },
     {
       "path": "src/activities/apps/standby/RickyWallpaperDownloadActivity.cpp",
-      "baseline_sha256": "bca0f6d0c83c60e280be4e15ba2f1cd2d5f94d4c5e9b5ae20e1dcebadad4d48e",
-      "ported_sha256": "9a3ec82157b23eaef796ad990eeaec8f6b7f3042486b791a21f2fe36fd1ed9d4"
+      "baseline_sha256": "93b97e40e79147da72f4fec6914b7c70d73546c72a792728e5ee47ce1c7807db",
+      "ported_sha256": "67e3aca3ef65d483364267129d7cdda1901979999dbc056b4759d5253f12b01d"
     },
     {
       "path": "src/activities/apps/standby/RickyWallpaperDownloadActivity.h",
-      "baseline_sha256": "dc6ece048d930a3893a555ac5bf30f20e340b736e3bcf06d50e711d9f862f30a",
-      "ported_sha256": "4550a84578467066ace513dd428106d726a762f7a660c2a43ad87cb25024fcb3"
+      "baseline_sha256": "97b7e67742dd2e780141c4ea5cdf49d8b6b843104e3417e9872a1f1a59dc9056",
+      "ported_sha256": "8ef67db994ef9adda4db5c8d3f465647d469c7c0fe8be6ee7ffc476bb54e5327"
     },
     {
       "path": "src/activities/apps/standby/StandbyActivity.cpp",
@@ -250,7 +250,7 @@
     {
       "path": "src/activities/network/WifiSelectionActivity.cpp",
       "baseline_sha256": "09017f99c91da12bfeb162063ef047cad46c71a588de955acbd4d08f06e25432",
-      "ported_sha256": "1b6553691bdcba44a8b8455bf89113b392c10e29d6319ae7f6ffbecafc71d730"
+      "ported_sha256": "82da5c0baa9f315909dfd77cb72ea1fdc5e0f46b798e7238b36b9839146fb55d"
     },
     {
       "path": "src/activities/network/WifiSelectionActivity.h",

@@ -417,7 +417,7 @@
  
  // wolfSSL is only pulled in when explicitly enabled. This keeps the default SDK
  // build free of the wolfSSL dependency while leaving a single, well-defined
-@@ -70,7 +75,24 @@
+@@ -70,7 +75,25 @@
    const uint32_t timeoutMs = getTimeout();
    if (abortRequested()) return 0;
    _transport.setConnectionTimeout(timeoutMs);
@@ -429,13 +429,14 @@
 +  LOG_INF("TLS", "Resolving %s for %s", host, label);
 +  IPAddress resolved;
 +  const int dnsResult = Network.hostByName(host, resolved);
-+  LOG_INF("TLS", "DNS result=%d for %s", dnsResult, host);
++  LOG_INF("TLS", "DNS result=%d for %s -> %s (v%d) in %lu ms", dnsResult, host, resolved.toString().c_str(),
++          resolved.type() == IPv6 ? 6 : 4, (unsigned long)(millis() - started));
 +  if (dnsResult != 1) {
 +    if (Serial) Serial.printf("[SecureClient] DNS failed: %s result=%d\n", host, dnsResult);
 +    return 0;
 +  }
 +  const bool tcpConnected = _transport.connect(resolved, port);
-+  LOG_INF("TLS", "TCP result=%d for %s:%u", tcpConnected, host, port);
++  LOG_INF("TLS", "TCP result=%d for %s:%u at %lu ms", tcpConnected, host, port, (unsigned long)(millis() - started));
 +#else
 +  const bool tcpConnected = _transport.connect(host, port);
 +#endif
@@ -443,7 +444,7 @@
      if (Serial) Serial.printf("[SecureClient] TCP connect failed (%s): %s:%u\n", label, host, port);
      return 0;
    }
-@@ -81,6 +103,9 @@
+@@ -81,6 +104,9 @@
  
    auto* ctx = wolfSSL_CTX_new(static_cast<WOLFSSL_METHOD*>(method));
    if (!ctx) {
@@ -453,7 +454,7 @@
      if (Serial) Serial.printf("[SecureClient] CTX alloc failed (%s), free heap %u\n", label, (unsigned)ESP.getFreeHeap());
      _transport.stop();
      return 0;
-@@ -90,14 +115,22 @@
+@@ -90,14 +116,22 @@
    if (_insecure) {
      wolfSSL_CTX_set_verify(ctx, WOLFSSL_VERIFY_NONE, nullptr);
    } else if (_rootCA) {
@@ -477,7 +478,7 @@
      if (Serial) Serial.printf("[SecureClient] SSL alloc failed (%s), free heap %u\n", label, (unsigned)ESP.getFreeHeap());
      stop();
      return 0;
-@@ -134,16 +167,31 @@
+@@ -134,16 +168,31 @@
    while ((ret = wolfSSL_connect(ssl)) != WOLFSSL_SUCCESS) {
      const int err = wolfSSL_get_error(ssl, ret);
      if (!isWantIo(err)) {
@@ -509,7 +510,7 @@
        if (Serial) {
          Serial.printf("[SecureClient] handshake timeout (%s): last err %d, transport %s, free heap %u\n", label, err,
                        _transport.connected() ? "up" : "down", (unsigned)ESP.getFreeHeap());
-@@ -154,6 +202,10 @@
+@@ -154,6 +203,10 @@
      delay(5);
    }
    _connected = true;
@@ -520,7 +521,7 @@
    if (Serial) {
      Serial.printf("[SecureClient] handshake ok (%s): %s / %s in %lu ms\n", label, wolfSSL_get_version(ssl),
                    wolfSSL_get_cipher(ssl), (unsigned long)(millis() - started));
-@@ -169,12 +221,20 @@
+@@ -169,12 +222,20 @@
  
  int SecureClient::connect(const char* host, uint16_t port) {
    _aborted = false;
@@ -541,7 +542,7 @@
  
    // Some TLS 1.2-only servers are intolerant of a TLS 1.3-capable ClientHello
    // and abort with a fatal handshake_failure alert. Retry with an explicit
-@@ -210,6 +270,10 @@
+@@ -210,6 +271,10 @@
    // A mid-stream failure is invisible to callers (they just see the connection
    // die); the error code distinguishes an OOM (MEMORY_E -125) from a peer
    // drop or MAC failure.
@@ -1991,7 +1992,7 @@
  bool ActivityManager::renderDirectGray(RenderLock&& lock) {
    if (!renderer.beginGrayscale16()) {
      LOG_DBG("ACT", "Direct gray: unavailable, B/W fallback");
-@@ -805,6 +808,9 @@
+@@ -820,6 +823,9 @@
  void ActivityManager::goToGomoku() { replaceActivityWith<GomokuMenuActivity>(); }
  
  void ActivityManager::goToCalculator() { replaceActivityWith<CalculatorActivity>(); }
@@ -2001,7 +2002,7 @@
  
  void ActivityManager::goToStandby() { replaceActivityWith<StandbyActivity>(); }
  
-@@ -881,7 +887,7 @@
+@@ -896,7 +902,7 @@
    cancelIdleRender();
    if (!currentActivity) return false;
    if (currentActivity->handleForcedRefresh()) return true;
@@ -2010,7 +2011,7 @@
    if (ricky::ds::refresh::kDirectGrayUi && currentActivity->wantsGraySettle() &&
        currentActivity->idleRenderDelayMs() == 0) {
      // Refresh the real gray UI, not its approximate 1-bit proxy.
-@@ -916,7 +922,7 @@
+@@ -931,7 +937,7 @@
  #endif
  
  void ActivityManager::requestUpdate(bool immediate) {
@@ -2019,7 +2020,7 @@
    renderRequestGeneration.fetch_add(1, std::memory_order_relaxed);
  #endif
  #if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
-@@ -934,7 +940,7 @@
+@@ -949,7 +955,7 @@
    }
  }
  void ActivityManager::requestUpdateAndWait() {
@@ -2030,7 +2031,7 @@
  #if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
 --- a/src/activities/ActivityManager.h
 +++ b/src/activities/ActivityManager.h
-@@ -68,7 +68,7 @@
+@@ -70,7 +70,7 @@
    TaskHandle_t renderTaskHandle = nullptr;
    static void renderTaskTrampoline(void* param);
    [[noreturn]] virtual void renderTaskLoop();
@@ -2039,7 +2040,7 @@
    bool renderDirectGray(RenderLock&& lock);
    void settleToGray(RenderLock&& lock, uint32_t generation);
  #endif
-@@ -83,7 +83,7 @@
+@@ -85,7 +85,7 @@
    // Cross-task render request flag. requestUpdate() may set it from any task;
    // loop() consumes and clears it with exchange(false).
    std::atomic<bool> requestedUpdate{false};
@@ -2048,7 +2049,7 @@
    // Unlike requestedUpdate, this survives loop() consuming the notification.
    std::atomic<uint32_t> renderRequestGeneration{0};
  #endif
-@@ -158,6 +158,9 @@
+@@ -160,6 +160,9 @@
    void goToApps();
    void goToGomoku();
    void goToCalculator();
@@ -2071,7 +2072,7 @@
  #endif
 --- a/src/activities/apps/AppsMenuActivity.cpp
 +++ b/src/activities/apps/AppsMenuActivity.cpp
-@@ -37,10 +37,17 @@
+@@ -38,10 +38,17 @@
      {AppId::ReadingStats, StrId::STR_READING_STATS, UIIcon::ReadingStats, &ActivityManager::goToRickyReadingStats},
      {AppId::Gomoku, StrId::STR_GOMOKU_TITLE, UIIcon::Gomoku, &ActivityManager::goToGomoku},
      {AppId::Calculator, StrId::STR_CALCULATOR_TITLE, UIIcon::Calculator, &ActivityManager::goToCalculator},
@@ -2089,7 +2090,7 @@
  constexpr int kAppCount = static_cast<int>(sizeof(kAppEntries) / sizeof(kAppEntries[0]));
  
  constexpr int visibleAppCount(const uint32_t hiddenMask) {
-@@ -100,6 +107,8 @@
+@@ -101,6 +108,8 @@
        return ricky_app_calculator_40;
      case UIIcon::Standby:
        return ricky_app_standby_40;
@@ -2098,7 +2099,7 @@
      default:
        return nullptr;
    }
-@@ -113,6 +122,21 @@
+@@ -114,6 +123,21 @@
  constexpr int kAppTileStroke = ricky::ds::stroke::kHairline;
  constexpr int kAppPillWidth = kAppTileSize;  // the tile's footprint in the cell layout
  constexpr int kAppPillHeight = kAppTileSize;
@@ -2120,7 +2121,7 @@
  
  void drawRickyAppIcon(const GfxRenderer& renderer, const uint8_t* icon, const int x, const int y, const bool selected) {
    const int tileX = x + (kRickyAppIconSize - kAppTileSize) / 2;
-@@ -199,15 +223,20 @@
+@@ -201,15 +225,20 @@
    content.width -= ricky::ds::space::kPageMargin * 2;
    content.y += ricky::ds::layout::kPageHeaderHeight;
    content.height -= ricky::ds::layout::kPageHeaderHeight;
@@ -2144,7 +2145,7 @@
    }
    return -1;
  }
-@@ -246,13 +275,18 @@
+@@ -248,13 +277,18 @@
      return true;
    }
    const auto swipe = mappedInput.wasSwipe();
@@ -2165,7 +2166,7 @@
      requestUpdate();
      return true;
    }
-@@ -260,14 +294,15 @@
+@@ -262,14 +296,15 @@
  }
  
  void AppsMenuActivity::drawIconGrid(const Rect& rect, const int visibleCount, const bool showSelection) const {
@@ -2184,7 +2185,7 @@
      const bool isSelected = showSelection && visibleIndex == nav.selected;
      const std::string label =
          renderer.truncatedText(UI_10_FONT_ID, I18N.get(kAppEntries[appIndex].titleId), std::max(1, cell.width - 8));
-@@ -305,7 +340,7 @@
+@@ -307,7 +342,7 @@
      renderer.drawText(UI_10_FONT_ID, labelX, iconY + iconSize + 8, label.c_str(), !isSelected);
    }
  
@@ -2432,7 +2433,7 @@
    if (ok) installFirstIfUnset();
    {
      RenderLock lock(*this);
-@@ -317,6 +327,8 @@
+@@ -326,6 +336,8 @@
    char status[64];
    switch (state_) {
      case State::Connecting:
@@ -2443,7 +2444,7 @@
        break;
 --- a/src/activities/apps/standby/RickyWallpaperDownloadActivity.h
 +++ b/src/activities/apps/standby/RickyWallpaperDownloadActivity.h
-@@ -49,5 +49,6 @@
+@@ -50,5 +50,6 @@
    uint8_t lastPercent_ = 0;
    bool cancelRequested_ = false;
    bool usedNetwork_ = false;
@@ -2600,7 +2601,7 @@
    connectedIP.clear();
    connectionError.clear();
    requestUpdate();
-@@ -548,6 +562,20 @@
+@@ -548,6 +562,26 @@
    }
    WiFi.disconnect(true, true);  // Abort any in-progress SDK auto-connect and clear NVS-saved SSID
    delay(100);
@@ -2617,11 +2618,17 @@
 +  uint8_t protocol = 0;
 +  const esp_err_t protocolRead = esp_wifi_get_protocol(WIFI_IF_STA, &protocol);
 +  LOG_INF("WIFI", "Plus station protocol driver default: read=%d mask=0x%02x", protocolRead, protocol);
++  // On an 802.11ax (HE) association the S31 joins and gets a DHCP lease, but unicast
++  // traffic then goes unanswered (DNS to the gateway and to public resolvers, NTP and
++  // raw TCP all time out). Joining as 802.11n avoids HE; a reader needs little bandwidth.
++  constexpr uint8_t kStationProtocols = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N;
++  const esp_err_t protocolSet = esp_wifi_set_protocol(WIFI_IF_STA, kStationProtocols);
++  LOG_INF("WIFI", "Plus station protocols set: result=%d mask=0x%02x", protocolSet, kStationProtocols);
 +#endif
  
    // Scan all channels so networks with multiple APs use the strongest matching
    // BSSID instead of the first match found by the framework's default fast scan.
-@@ -565,6 +593,8 @@
+@@ -565,6 +599,8 @@
      LOG_ERR("WIFI", "Failed to read station MAC for hostname");
    }
  
@@ -2630,7 +2637,7 @@
    if (selectedRequiresPassword && !enteredPassword.empty()) {
      WiFi.begin(selectedSSID.c_str(), enteredPassword.c_str());
    } else {
-@@ -597,6 +627,11 @@
+@@ -597,6 +633,11 @@
              WiFi.RSSI());
  #endif
  
@@ -2642,7 +2649,7 @@
      // Sync RTC from NTP on the first successful WiFi connection only. The DS3231
      // drifts ~2 ppm so one sync is enough; users can force a re-sync from
      // Settings > System > Clock > Sync clock now.
-@@ -606,6 +641,8 @@
+@@ -606,6 +647,8 @@
          SETTINGS.saveToFile();
        }
      }
@@ -2651,7 +2658,7 @@
  
      // Every station join is a chance to snap the loan-clock floor to real
      // time (non-blocking; see TrustedTime).
-@@ -664,6 +701,14 @@
+@@ -664,6 +707,14 @@
  }
  
  void WifiSelectionActivity::loop() {
