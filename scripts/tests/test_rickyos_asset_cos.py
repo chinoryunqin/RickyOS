@@ -119,5 +119,29 @@ class FirmwareSwitchTest(unittest.TestCase):
             self.assertIn(": nullptr;", text)
 
 
+    def test_ota_mirrors_the_site_image_notes_then_offer(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as folder:
+            site = Path(folder)
+            (site / "firmware").mkdir()
+            image = b"RickyOS image" * 100
+            (site / "firmware/RickyOS-1.2.0.bin").write_bytes(image)
+            (site / "ota-notes.txt").write_text("1.2.0\n更快\n")
+            offer = {"status": "update_available", "version": "1.2.0", "file": "firmware/RickyOS-1.2.0.bin",
+                     "bytes": len(image), "sha256": hashlib.sha256(image).hexdigest()}
+            (site / "ota.json").write_text(json.dumps(offer))
+            copies = publish.plan("ota", site, "1.2.0", "rickyos-1309217881", "ap-guangzhou")
+            self.assertEqual([target for _, target, _ in copies],
+                             ["cos://rickyos-1309217881/ota/firmware/RickyOS-1.2.0.bin",
+                              "cos://rickyos-1309217881/ota/ota-notes.txt",
+                              "cos://rickyos-1309217881/ota/ota.json"])  # the offer goes last
+            self.assertIn("--forbid-overwrite", copies[0][2])
+            self.assertIn(publish.ROLLING, copies[2][2])
+            with self.assertRaises(ValueError):
+                publish.plan("ota", site, "1.2.1", "rickyos-1309217881", "ap-guangzhou")  # not what it offers
+            (site / "firmware/RickyOS-1.2.0.bin").write_bytes(image + b"x")
+            with self.assertRaises(ValueError):
+                publish.plan("ota", site, "1.2.0", "rickyos-1309217881", "ap-guangzhou")  # not the hashed image
+
 if __name__ == "__main__":
     unittest.main()

@@ -45,7 +45,8 @@ int main() {
         source = (ROOT / 'src/network/OtaUpdater.cpp').read_text()
         product = source[source.index('  (void)requestedChannel;'):]
         product = product[:product.index('\n}\n')]
-        self.assertLess(product.index('updateAvailable = true;'), product.index('ricky_ota::NOTES_URL'))
+        # Notes come from the route that made the offer, only after the offer stands.
+        self.assertLess(product.index('updateAvailable = true;'), product.index('route->notes'))
         self.assertIn('releaseNoteCount = notes.count();', product)
         manifest = (ROOT / 'src/network/RickyOtaManifest.h').read_text()
         self.assertNotIn('"notes"', manifest)

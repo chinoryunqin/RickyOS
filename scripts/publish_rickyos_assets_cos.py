@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publish a built RickyOS catalog (fonts or standby pictures) to the RickyOS COS bucket.
+"""Publish a built RickyOS catalog (fonts, standby pictures or the OTA offer) to the RickyOS COS bucket.
 
 Takes the output directory of build_rickyos_font_catalog.py or build_rickyos_wallpapers.py,
 built with --cos-base, and uploads with coscli (https://github.com/tencentyun/coscli):
@@ -10,6 +10,15 @@ built with --cos-base, and uploads with coscli (https://github.com/tencentyun/co
 The manifest goes last, so a reader never sees a list whose files are not there yet;
 the release folders are immutable, so a reader mid-download keeps its files.
 
+--kind ota takes the flasher site's built dist/ (tools/rickyos-flasher, npm run build) and
+mirrors the device's OTA files under cos://<bucket>/ota/, laid out like the site:
+  1. dist/<file named by ota.json>  ->  ota/firmware/<name>.bin  immutable, never overwritten
+  2. dist/ota-notes.txt              ->  ota/ota-notes.txt         no-cache
+  3. dist/ota.json                   ->  ota/ota.json              no-cache, last
+The image is checked against ota.json's bytes and sha256 first. --tag is the offered
+version. Devices from 1.2.0 ask the bucket first (RickyOtaPolicy.h); older ones only the
+site, so every release goes to both.
+
 Credentials come from the environment, never the command line or the repository:
 COS_SECRET_ID, COS_SECRET_KEY, COS_BUCKET (<bucket>-<appid>), COS_REGION (ap-guangzhou)
 and optionally COS_SESSION_TOKEN.
@@ -17,7 +26,9 @@ and optionally COS_SESSION_TOKEN.
 Run: python3 scripts/publish_rickyos_assets_cos.py --kind fonts --output DIR --tag v1.1.0 [--coscli PATH] [--dry-run]
 """
 import argparse
+import hashlib
 import json
+import re
 import os
 from pathlib import Path
 import subprocess
@@ -26,15 +37,38 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from rickyos_asset_routes import check_cos_base  # noqa: E402
 
-KINDS = ("fonts", "wallpapers")
+KINDS = ("fonts", "wallpapers", "ota")
 IMMUTABLE = "Cache-Control:public,max-age=31536000,immutable"
 ROLLING = "Cache-Control:no-cache"
+
+
+def plan_ota(site, version, bucket):
+    """The OTA copies: image, notes, then the offer; checked against ota.json first."""
+    offer = json.loads((site / "ota.json").read_text())
+    if offer.get("status") != "update_available" or offer.get("version") != version:
+        raise ValueError(f"{site / 'ota.json'} does not offer {version}")
+    file = offer["file"]
+    if not re.fullmatch(r"firmware/[A-Za-z0-9._-]+\.bin", file):
+        raise ValueError(f"unexpected OTA file {file}")
+    image = (site / file).read_bytes()
+    if len(image) != offer["bytes"] or hashlib.sha256(image).hexdigest() != offer["sha256"]:
+        raise ValueError(f"{site / file} does not match ota.json (bytes / sha256)")
+    notes = site / "ota-notes.txt"
+    if not notes.read_text().startswith(version + "\n"):
+        raise ValueError(f"{notes} is not for {version}")
+    return [
+        (str(site / file), f"cos://{bucket}/ota/{file}", ["--forbid-overwrite", "--meta", IMMUTABLE]),
+        (str(notes), f"cos://{bucket}/ota/ota-notes.txt", ["--meta", ROLLING]),
+        (str(site / "ota.json"), f"cos://{bucket}/ota/ota.json", ["--meta", ROLLING]),
+    ]
 
 
 def plan(kind, output, tag, bucket, region):
     """The coscli copies to run, in order, after checking the build output."""
     if kind not in KINDS:
         raise ValueError(f"kind must be one of {KINDS}")
+    if kind == "ota":
+        return plan_ota(output, tag, bucket)
     files = output / kind
     manifest = output / "cos.json"
     if not files.is_dir() or not any(files.iterdir()):
@@ -57,8 +91,9 @@ def plan(kind, output, tag, bucket, region):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--kind", choices=KINDS, required=True)
-    parser.add_argument("--output", type=Path, required=True, help="the build script's output directory")
-    parser.add_argument("--tag", required=True, help="the release tag the catalog was built with")
+    parser.add_argument("--output", type=Path, required=True,
+                        help="the build script's output directory (ota: the flasher site's dist/)")
+    parser.add_argument("--tag", required=True, help="the release tag the catalog was built with (ota: the version)")
     parser.add_argument("--coscli", default="coscli")
     parser.add_argument("--dry-run", action="store_true", help="print the copies without credentials or uploads")
     args = parser.parse_args()
@@ -84,7 +119,8 @@ def main():
     for source, target, options in copies:
         print(f"Uploading {source} -> {target}", flush=True)
         subprocess.run([args.coscli, "cp", *credentials, source, target, *options], check=True)
-    print(f"Published: https://{bucket}.cos.{region}.myqcloud.com/{args.kind}/cos.json")
+    manifest = "ota.json" if args.kind == "ota" else "cos.json"
+    print(f"Published: https://{bucket}.cos.{region}.myqcloud.com/{args.kind}/{manifest}")
 
 
 if __name__ == "__main__":

@@ -74,6 +74,10 @@ USB 传书在 Mac 上拷书时，尽量直接拖到磁盘根目录；电脑没�
 3. 更新 `releases.json`（版本、文件名、字节数、sha256、notes、各段文件名）和 `ota-notes.txt`。
 4. `tools/rickyos-flasher` 下 `npm test`、`npm run build`。
 5. 同步到网站仓库 `gh-pages` 分支，提交推送，核对线上 `ota.json`。
+5b. OTA 同步到 COS（用户决定：以后固件更新都走 COS，2026-10-14）：1.2.0 起设备先查
+   `<COS>/ota/ota.json`（GlobalSign R3 锁定），连不上再查网站；旧设备只查网站，所以两边都要传。
+   `python3 scripts/publish_rickyos_assets_cos.py --kind ota --output tools/rickyos-flasher/dist --tag 1.2.0`
+   （先 `--dry-run`；脚本核对镜像字节数和 sha256，按 镜像 → 说明 → ota.json 的顺序上传）。
 6. 同一天发布下载内容（用户决定：等固件 1.2.0 一起发，2026-10-14）：
    - 字体 v1.1.0：新增 RickyBookSong（霞鹜新致宋，IPA）、ZhuqueFangsong（朱雀仿宋，OFL）、
      RickyRound（思源柔黑，OFL）；全部 7 款补齐 24/28/30，共 12–22 双数号 + 24–32。
@@ -89,6 +93,7 @@ USB 传书在 Mac 上拷书时，尽量直接拖到磁盘根目录；电脑没�
    - 发布说明写一句：已下载过的字体，到「字体管理 → 在线下载字体」再点一次即可补下新字号。
 
 每一步对外操作（推网站、改 OTA、传 COS、发 GitHub Release）之前先问用户。
+网站和 COS 的 OTA 要同一次发布里一起更新，先网站后 COS 都可以，但不要只更新一边。
 
 ## 5. 已知问题（不阻塞）
 

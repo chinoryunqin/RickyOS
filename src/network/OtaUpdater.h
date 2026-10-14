@@ -19,6 +19,7 @@ class OtaUpdater {
   Channel channel = Channel::Stable;
   std::string latestVersion;
   std::string otaUrl;
+  const char* otaRootCa = nullptr;  // the pinned root of the route that made the offer
   size_t otaSize = 0;
   size_t processedSize = 0;
   size_t totalSize = 0;
