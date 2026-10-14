@@ -12,6 +12,7 @@
 #include "I18n.h"
 #include "InxItemLayout.h"
 #include "components/RickyAaIcons.h"
+#include "components/RickyDesignUi.h"
 #include "components/RickyPageLayout.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
@@ -464,7 +465,10 @@ void InxTheme::drawMainTabBar(const GfxRenderer& renderer, const Rect rect, cons
   renderer.fillRect(rect.x, rect.y, rect.width, rect.height, false);
   const bool tabsAtBottom = SETTINGS.inxTabPosition == CrossPointSettings::INX_TAB_BOTTOM;
   const int separatorY = tabsAtBottom ? rect.y : rect.y + rect.height - 1;
-  renderer.fillRect(rect.x, separatorY, rect.width, 1, true);
+  // A light rule, not an ink line: the bar sits under the page without boxing it in.
+  RickyDesignUi::fill(renderer, {static_cast<int16_t>(rect.x), static_cast<int16_t>(separatorY),
+                                 static_cast<int16_t>(rect.width), 1},
+                      renderer.isGrayscale16Active() ? ricky::ds::gray::kLine : ricky::ds::gray::kInk);
   // Rows are laid out for the capsule so it never touches the separator or labels.
   auto rows = RickyPageLayout::navigationRows(rect, kPillHeight, renderer.getLineHeight(SMALL_FONT_ID));
   rows.iconY += (kPillHeight - kIconSize) / 2;
@@ -489,16 +493,17 @@ void InxTheme::drawMainTabBar(const GfxRenderer& renderer, const Rect rect, cons
     const int width = bounds.right - bounds.left;
     const GfxRenderer::ClipScope clip(renderer, left, rect.y, width, rect.height);
     const int iconX = left + (width - kIconSize) / 2;
-    if (const uint8_t* icon = iconForTab(tab)) {
-      if (tab == selected)
-        drawSelectedInxIcon(renderer, icon, iconX, rows.iconY, width);
-      else
-        drawInxIcon(renderer, icon, iconX, rows.iconY);
+    if (const uint8_t* icon = iconForTab(tab)) drawInxIcon(renderer, icon, iconX, rows.iconY);
+    // The current tab: a short ink bar on the bar's edge above it and an ink label; the
+    // others keep ink icons over secondary labels. No capsule.
+    if (tab == selected) {
+      constexpr int kMarkWidth = 48, kMarkHeight = 4;
+      const int markY = tabsAtBottom ? rect.y : rect.y + rect.height - kMarkHeight;
+      renderer.fillRect(left + (width - kMarkWidth) / 2, markY, kMarkWidth, kMarkHeight, true);
     }
-    // Labels stay regular: the capsule marks the tab, and the embedded CJK face has
-    // no bold to switch to.
     const char* label = I18N.get(labelFor(tab));
     const int textX = left + std::max(0, (width - renderer.getTextWidth(SMALL_FONT_ID, label)) / 2);
+    const GfxRenderer::TextInkScope ink(renderer, tab == selected ? ricky::ds::gray::kInk : ricky::ds::gray::kInk2);
     renderer.drawText(SMALL_FONT_ID, textX, rows.labelY, label, true);
   }
 }

@@ -63,6 +63,26 @@ inline void card(const GfxRenderer& renderer, fui::Rect r, bool selected) {
     renderer.drawRoundedRect(r.x, r.y, r.width, r.height, ds::stroke::kHairline, ds::radius::kContainer, true);
 }
 
+// A resting card: paper with a light-gray hairline edge (exact kLine on a 16-gray frame,
+// the 1-bit fallback ink on a fast B/W frame). Selected stays the inverted ink card.
+inline void softCard(const GfxRenderer& renderer, fui::Rect r, bool selected) {
+  if (selected || !renderer.isGrayscale16Active()) {
+    card(renderer, r, selected);
+    return;
+  }
+  constexpr int edge = ds::stroke::kHairline;
+  fill(renderer, r, ds::gray::kLine, ds::radius::kContainer);
+  fill(renderer,
+       {static_cast<int16_t>(r.x + edge), static_cast<int16_t>(r.y + edge), static_cast<int16_t>(r.width - 2 * edge),
+        static_cast<int16_t>(r.height - 2 * edge)},
+       ds::gray::kPaper, ds::radius::kContainer - edge);
+}
+
+// A section rule: one light-gray hairline instead of a box around the section.
+inline void rule(const GfxRenderer& renderer, fui::Rect r) {
+  fill(renderer, {r.x, r.y, r.width, ds::stroke::kHairline}, ds::gray::kLine);
+}
+
 inline void progress(const GfxRenderer& renderer, fui::Rect r, int percent, bool inverted = false) {
   const auto ink = inverted ? ds::gray::kPaper : ds::gray::kInk;
   if (renderer.isGrayscale16Active() && !inverted)

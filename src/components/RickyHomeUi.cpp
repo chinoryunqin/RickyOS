@@ -300,7 +300,7 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   RickyBrandMark::drawDogPeek(renderer, Rect{main.right() - 124 - RickyDogAsset::width, main.y - RickyDogAsset::height + 1,
                                              RickyDogAsset::width, RickyDogAsset::height});
   const bool selectedCard = !empty && showSelection && selected == start;
-  design::card(renderer, main, selectedCard);
+  design::softCard(renderer, main, selectedCard);
   const int coverH = main.height - pad * 2;
   const int coverW = coverH * ds::layout::kCoverAspectW / ds::layout::kCoverAspectH;
   thumbnailHeight = coverH;
@@ -353,17 +353,21 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   if (!book.author.empty() && singleTitle)
     design::secondaryText(renderer, box(x, main.y + pad + 80, width, 28), book.author.c_str(), design::CAPTION,
                           selectedCard);
-  const int barY = button.y - 48;
-  design::progress(renderer, box(x, barY, width, ds::layout::kProgressHeight), progress, selectedCard);
-  snprintf(progressText, sizeof(progressText), "%d%%", progress);
+  // The card itself opens the book; its last row says so in words instead of a black
+  // button: the progress on the left, "继续阅读 ›" on the right.
+  const int linkY = main.bottom() - pad - 36;
+  const int barY = linkY - 20;
+  design::progress(renderer, box(x, barY, width, 4), progress, selectedCard);
   const auto* saved = READING_STATS.findMatchingBookForPath(book.path);
   if (saved && !saved->chapterTitle.empty())
-    design::secondaryText(renderer, box(x, barY + 12, width - 80, 28), saved->chapterTitle.c_str(), design::CAPTION,
+    design::secondaryText(renderer, box(x, barY - 36, width, 28), saved->chapterTitle.c_str(), design::CAPTION,
                           selectedCard);
-  design::secondaryText(renderer, box(x + width - 80, barY + 12, 80, 28), progressText, design::CAPTION, selectedCard,
-                        fui::TextAlign::Right);
-  design::fill(renderer, button, selectedCard ? ds::gray::kPaper : ds::gray::kInk, ds::radius::kControl);
-  design::text(renderer, button, tr(STR_CONTINUE_READING), design::BODY, !selectedCard, fui::TextAlign::Center);
+  snprintf(statsText, sizeof(statsText), tr(STR_RICKY_READ_PROGRESS), static_cast<unsigned>(progress));
+  design::secondaryText(renderer, box(x, linkY, width / 2, 36), statsText, design::CAPTION, selectedCard);
+  constexpr int kChevron = 24;
+  design::text(renderer, box(x + width / 2, linkY, width - width / 2 - kChevron - 4, 36), tr(STR_CONTINUE_READING),
+               design::BODY, selectedCard, fui::TextAlign::Right);
+  if (!selectedCard) RickyPageUi::chevron(target, box(x + width - kChevron, linkY, kChevron, 36));
   screen.frame().hit(main, OPEN_BOOK, start, fui::InputTouch);
 
   // Today and the streak. The dog reacts to today against the goal; the streak card
@@ -377,9 +381,14 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   const uint32_t today = READING_STATS.getTodayDayOrdinal();
   const auto streak = rickyStreak::evaluate(week, today >= 6 ? today - 6 : 0, 7);
   const int col = (stats.width - gap) / 2;
+  // No boxes: one light rule over the section and a light divider between the columns.
+  design::rule(renderer, box(stats.x, stats.y, stats.width, 0));
+  design::fill(renderer, box(stats.x + col + gap / 2 - 1, stats.y + 24, ds::stroke::kHairline, stats.height - 32),
+               ds::gray::kLine);
   for (int i = 0; i < 2; ++i) {
-    const auto cell = box(stats.x + i * (col + gap), stats.y, col, stats.height);
-    design::card(renderer, cell, false);
+    // The left column lines up with the page edge; the right one starts after the divider.
+    const auto cell = box(stats.x + i * (col + gap) - (i == 0 ? pad : 0), stats.y, col + (i == 0 ? pad : 0),
+                          stats.height);
     design::secondaryText(renderer, box(cell.x + pad, cell.y + 12, col - pad * 2, 28),
                           i == 0 ? tr(STR_RICKY_TODAY_READING) : tr(STR_RICKY_STREAK_READING), design::CAPTION);
     snprintf(statsText, sizeof(statsText), "%u", i == 0 ? todayMinutes : static_cast<unsigned>(streak.current));
@@ -449,17 +458,19 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
       design::fill(renderer, box(cell.x - 4, cell.y - 8, cell.width + 8, cell.height + 8), ds::gray::kInk,
                    ds::radius::kControl);
     paint(cover, index);
-    design::text(renderer, box(cell.x, cover.bottom() + 8, cell.width, 72), titleOf(item), design::CAPTION,
-                 selectedBook, fui::TextAlign::Left, 2);
+    // Titles are any text: the full-coverage body face for every one, so a row never
+    // mixes two sizes (the caption face covers UI strings only).
+    design::text(renderer, box(cell.x, cover.bottom() + 12, cell.width, 36), titleOf(item), design::BODY,
+                 selectedBook, fui::TextAlign::Center);
     const auto* reading = READING_STATS.findMatchingBookForPath(item.path);
-    if (reading && reading->lastProgressPercent)
-      snprintf(statsText, sizeof(statsText), "%s · %u%%", formatOf(item.path) ? formatOf(item.path) : "",
-               unsigned(reading->lastProgressPercent));
+    if (reading && reading->lastProgressPercent >= 100)
+      snprintf(statsText, sizeof(statsText), "%s", tr(STR_RICKY_BOOK_FINISHED));
+    else if (reading && reading->lastProgressPercent)
+      snprintf(statsText, sizeof(statsText), tr(STR_RICKY_READ_PROGRESS), unsigned(reading->lastProgressPercent));
     else
-      snprintf(statsText, sizeof(statsText), "%s · %s", formatOf(item.path) ? formatOf(item.path) : "",
-               tr(STR_RICKY_READ_UNREAD));
-    design::secondaryText(renderer, box(cell.x, cover.bottom() + 84, cell.width, 36), statsText, design::CAPTION,
-                          selectedBook);
+      snprintf(statsText, sizeof(statsText), "%s", tr(STR_RICKY_READ_UNREAD));
+    design::secondaryText(renderer, box(cell.x, cover.bottom() + 52, cell.width, 32), statsText, design::CAPTION,
+                          selectedBook, fui::TextAlign::Center);
     screen.frame().hit(cell, OPEN_BOOK, index, fui::InputTouch);
   }
 }
