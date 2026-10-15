@@ -1,7 +1,9 @@
 import json,shlex,subprocess
 from pathlib import Path
 root=Path(__file__).resolve().parents[1]
-commands=json.loads((root / '.local/build-rickyos-plus-1.2/compile_commands.json').read_text())
+import os
+build=Path(os.environ.get('RICKYOS_BUILD_DIR', root / '.local/build-rickyos-plus-1.2'))
+commands=json.loads((build / 'compile_commands.json').read_text())
 for filename in ['TrustedTime.cpp','WifiSelectionActivity.cpp']:
  entry=next(x for x in commands if x['file'].endswith('/'+filename)); args=shlex.split(entry['command']); compiler=Path(args[0]); nm=compiler.with_name(compiler.name.replace('g++','nm'))
  obj=Path(entry['directory'])/args[args.index('-o')+1]

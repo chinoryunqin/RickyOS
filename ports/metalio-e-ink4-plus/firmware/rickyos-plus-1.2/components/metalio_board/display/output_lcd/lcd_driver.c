@@ -794,8 +794,18 @@ static esp_err_t init_lcd_peripheral() {
         if (ref_count == 0) {
             lcd_ll_enable_bus_clock(0, true);
             lcd_ll_reset_register(0);
+#ifdef lcd_ll_select_core_clk_src
+            // IDF 6.1's release branch splits out a shared LCD_CAM core clock that must be
+            // selected and divided before the LCD runs (as esp_lcd's i80/RGB drivers do);
+            // without it the panel stays black and the frame-done wait never ends.
+            lcd_ll_select_core_clk_src(0, LCD_CORE_CLK_SRC_DEFAULT);
+            lcd_ll_set_core_clock_divider(0, 2, 0, 0);
+#endif
         }
     }
+#ifdef lcd_ll_select_core_clk_src
+    esp_clk_tree_enable_src((soc_module_clk_t)LCD_CORE_CLK_SRC_DEFAULT, true);
+#endif
     lcd_hal_init(&lcd.hal, 0);
     PERIPH_RCC_ATOMIC() {
         lcd_ll_enable_clock(lcd.hal.dev, true);
@@ -806,7 +816,9 @@ static esp_err_t init_lcd_peripheral() {
     lcd_ll_enable_trans_buffer(lcd.hal.dev, true);
     esp_clk_tree_enable_src((soc_module_clk_t)LCD_CLK_SRC_DEFAULT, true);
     PERIPH_RCC_ATOMIC() {
-        lcd_ll_select_clk_src(lcd.hal.dev, LCD_CLK_SRC_DEFAULT);
+        // The S31 LL ignores its first argument, a device pointer before IDF 6.1's
+        // release branch and a group id after it; a literal 0 suits both.
+        lcd_ll_select_clk_src(0, LCD_CLK_SRC_DEFAULT);
     }
 #else
     // enable APB to access LCD registers
@@ -1003,7 +1015,7 @@ void epd_lcd_set_pixel_clock_MHz(int frequency) {
 #if defined(CONFIG_IDF_TARGET_ESP32S31)
     PERIPH_RCC_ATOMIC() {
         lcd_ll_set_group_clock_coeff(
-            lcd.hal.dev, (int)clk_div.integer, (int)clk_div.denominator, (int)clk_div.numerator
+            0, (int)clk_div.integer, (int)clk_div.denominator, (int)clk_div.numerator
         );
     }
     // HAL 只写了 HP 分频。LCD 寄存器里 clk_en 默认 0（时钟门关闭），

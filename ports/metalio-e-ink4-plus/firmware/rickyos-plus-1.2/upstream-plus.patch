@@ -2570,6 +2570,64 @@
    bool inverseMode_ = false;  // Confirm toggles black-bg/white-content. Not persisted.
  
    void switchFace(int8_t delta);
+--- a/src/activities/apps/standby/WallpaperFace.cpp
++++ b/src/activities/apps/standby/WallpaperFace.cpp
+@@ -99,6 +99,7 @@
+   hasPicture_ = Storage.exists(path_.c_str());
+   lastMinute_ = -1;
+   lastDay_ = -1;
++  grayShown_ = false;
+ }
+ 
+ StandbyFace::TickResult WallpaperFace::tick() {
+@@ -109,6 +110,10 @@
+   const bool dayChanged = local.tm_yday != lastDay_;
+   if (!showsTime() && !dayChanged) return TickResult::None;
+   if (showsTime() && minute == lastMinute_ && !dayChanged) return TickResult::None;
++  // Claim the minute now: the 16-gray redraw takes ~2 s, and the loop ticking again
++  // before it lands queued a second full redraw of the same minute.
++  lastMinute_ = minute;
++  lastDay_ = local.tm_yday;
+   return TickResult::Redraw;
+ }
+ 
+@@ -191,9 +196,11 @@
+   std::tm local{};
+   const bool clock = halClock.localTime(local);
+ 
+-  // Every update redraws the whole 16-gray frame. This panel has no partial
+-  // refresh: a B/W refresh after a 16-gray frame drives every gray pixel to black
+-  // or white, which collapsed the picture after the first minute.
++  // Every update redraws the whole 16-gray frame: a B/W refresh after a 16-gray
++  // frame drives every gray pixel to black or white, which collapsed the picture
++  // after the first minute. Once a full frame is shown, the panel diffs the new
++  // frame against it and drives only the changed clock/date area (no full flash),
++  // with a clean pass over that area every kClockCleanupEvery minutes.
+   // A filter is a B/W look: render() draws it.
+   if (renderer.getGrayscaleLevels() != 16 || filtered()) return false;
+   HalFile file;
+@@ -214,9 +221,12 @@
+                renderer.drawBitmapGrayscale16(bitmap, at.x, at.y, screenWidth, screenHeight, at.cropX, at.cropY);
+   if (shown) {
+     drawCorner(renderer, viewport, true);
++    constexpr uint8_t kClockCleanupEvery = 30;
++    if (grayShown_) renderer.setNextGray16UiRefresh(0, 0, 0, 0, kClockCleanupEvery, kClockCleanupEvery);
+     shown = renderer.commitGrayscale16();
+   }
+   renderer.cancelGrayscale16();
++  grayShown_ = shown;
+   if (!shown) {
+     LOG_ERR("STANDBY", "16-gray standby picture failed");
+     return false;
+--- a/src/activities/apps/standby/WallpaperFace.h
++++ b/src/activities/apps/standby/WallpaperFace.h
+@@ -32,5 +32,6 @@
+   bool hasPicture_ = false;
+   int32_t lastMinute_ = -1;  // local minute of day last drawn, -1 before the first draw
+   int32_t lastDay_ = -1;     // local day of year last drawn
++  bool grayShown_ = false;   // a full 16-gray frame is on the glass; minute updates can be regional
+ };
+ 
 --- a/src/activities/home/InxRecentActivity.h
 +++ b/src/activities/home/InxRecentActivity.h
 @@ -84,7 +84,7 @@
@@ -4268,7 +4326,7 @@
        // X4 Pro must stay awake so USB Serial/JTAG remains available after leaving
        // USB Drive and reconnecting the cable. Paper Mono has no armable GPIO wake
        // (its button is behind the PMIC). EEGO A4's post-flash reset reads as
-@@ -976,6 +978,7 @@
+@@ -976,9 +978,14 @@
      gpio.update();
    }
  
@@ -4276,7 +4334,14 @@
    // Ensure we're not still holding the power button before leaving setup
    waitForPowerRelease();
    allowSleepAt = millis() + 2000;
-@@ -1037,7 +1040,9 @@
++#if RICKYOS_PLUS_NETTEST
++  extern void plusNetSelfTestStart();
++  plusNetSelfTestStart();
++#endif
+ }
+ 
+ void loop() {
+@@ -1037,7 +1044,9 @@
      activityManager.cancelIdleRender("touch", true);
    }
  #endif
@@ -4287,7 +4352,18 @@
    gpio.updateHapticFeedback(SETTINGS.hapticFeedbackLevel);
  #endif
    updateBluetoothLifecycle();
-@@ -1298,12 +1303,13 @@
+@@ -1196,6 +1205,10 @@
+     return;
+   }
+   const unsigned long sleepTimeoutMs = SETTINGS.getSleepTimeoutMs();
++#if RICKYOS_PLUS_NETTEST
++  extern bool plusNetSelfTestActive();
++  if (plusNetSelfTestActive()) lastActivityTime = millis();  // the radio test must not light-sleep
++#endif
+   if (sleepTimeoutMs > 0 && !activityManager.preventAutoSleep() && millis() - lastActivityTime >= sleepTimeoutMs) {
+     LOG_DBG("SLP", "Auto-standby after %lu ms of inactivity", sleepTimeoutMs);
+     STANDBY_DIAG("auto-standby after %lus idle", sleepTimeoutMs / 1000);
+@@ -1298,12 +1311,13 @@
    // flash, the AA pass re-running, and a frontlight dip under the refresh
    // load); the reader's status bar picks the charging state up on the next
    // page turn instead.

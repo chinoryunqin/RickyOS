@@ -280,6 +280,7 @@ idf_component_register(
   "port/OtaUpdater.cpp"
   "port/PlusHttpsClock.cpp"
   "port/PlusNetworkProbe.cpp"
+  "port/PlusNetSelfTest.cpp"
   "port/HalWifiDiagnostics.cpp"
   "${APP_ROOT}/src/network/CrossPointWebServer.cpp"
   "${APP_ROOT}/src/network/OtaBootSwitch.cpp"
@@ -629,3 +630,11 @@ idf_build_set_property(LINK_OPTIONS "-flto=auto;-fuse-linker-plugin" APPEND)
 # Keep all applications and glyphs when USB is enabled; GCC 15 size optimization.
 # Hardware timing and radio/IDF driver compilation are unchanged.
 target_compile_options(${COMPONENT_LIB} PRIVATE -Oz)
+
+# Unattended network self-test (port/PlusNetSelfTest.cpp): build with RICKYOS_PLUS_NETTEST=1.
+if(DEFINED ENV{RICKYOS_PLUS_NETTEST})
+  target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_NETTEST=1)
+endif()
+if(DEFINED ENV{RICKYOS_PLUS_NETTEST_AX})
+  target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_NETTEST_AX=1)
+endif()

@@ -243,6 +243,16 @@
       "ported_sha256": "88bd3f256ae38d18c6eb0fb0fafa50017efe0c97c35d680463bc71ab9fa24b0e"
     },
     {
+      "path": "src/activities/apps/standby/WallpaperFace.cpp",
+      "baseline_sha256": "d0339a0c29cca2eaaf57cb422aaa40edac7f4a9b4163c18fc0faee020be1b665",
+      "ported_sha256": "6fbb6505211516dc86b910160f4922f1796eb850e7edc864c80b5cb6a5e1c116"
+    },
+    {
+      "path": "src/activities/apps/standby/WallpaperFace.h",
+      "baseline_sha256": "c50ff0d86623d105384a6a1009c372eb2e8da86347006d4113f33dade08adbae",
+      "ported_sha256": "648b89b5013aaafdf5e7ab8ad705c3e124dbcf1ff0015d85523148f5f99b1e27"
+    },
+    {
       "path": "src/activities/home/InxRecentActivity.h",
       "baseline_sha256": "ec56f474c57f95ba1bc7d3fc64b3e87a67d9d3598a89b7c89d6550b6607336f1",
       "ported_sha256": "d7578f4916c036540d1429eb5b52ad99ad2b3b19c02f030b5078dc6c7d3d4e09"
@@ -345,7 +355,7 @@
     {
       "path": "src/main.cpp",
       "baseline_sha256": "7cf64beb1a459737cd03024fd09b02d8568e43928623181d780c8d3075aa187f",
-      "ported_sha256": "9a9f6bd616ec55059d25381a68e2cc54024de00c65791e46b906eb67bfa5ed18"
+      "ported_sha256": "0ce40bdb30af47286628df3e9e72ae563b37daf6c59c6fed247e5d46593af89b"
     },
     {
       "path": "src/network/CrossPointWebServer.cpp",
