@@ -435,7 +435,7 @@ void WifiSelectionActivity::promptPasswordEntry() {
           // state will be updated in next loop iteration
         }
       },
-      tr(STR_ENTER_WIFI_PASSWORD), "", 64, InputType::Text);
+      tr(STR_ENTER_WIFI_PASSWORD), "", 64, InputType::Latin);
 }
 
 void WifiSelectionActivity::promptHiddenSsid() {
@@ -459,7 +459,7 @@ void WifiSelectionActivity::promptHiddenSsid() {
         }
         // Otherwise stay in HIDDEN_SSID_ENTRY; loop() continues the flow.
       },
-      tr(STR_ENTER_WIFI_SSID), "", 32, InputType::Text);
+      tr(STR_ENTER_WIFI_SSID), "", 32, InputType::Latin);
 }
 
 bool WifiSelectionActivity::hasAttemptedAutoSsid(const std::string& ssid) const {

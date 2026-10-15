@@ -64,7 +64,7 @@ void tracePrintf(const char* format, ...) {
 }
 @TRACE@
 namespace fui = freeink::ui;
-enum class InputType { Text, Password, Url };
+enum class InputType { Text, Password, Url, Latin };
 struct CrossPointSettings {
   enum class UI_THEME { CLASSIC, LYRA, LYRA_3_COVERS, ROUNDEDRAFF, LYRA_CAROUSEL, INX };
   UI_THEME uiTheme = UI_THEME::CLASSIC;

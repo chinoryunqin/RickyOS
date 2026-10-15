@@ -13,7 +13,9 @@
 #include "util/PinyinInput.h"
 #endif
 
-enum class InputType { Text, Password, Url };
+// Latin: visible text that is never Chinese (Wi-Fi passwords, SSIDs, account names),
+// so the pinyin keyboard must not turn the letters typed into characters.
+enum class InputType { Text, Password, Url, Latin };
 
 // Text entry on the FreeInkUI keyboard component: the SDK layout tables and
 // keyboard() do the key rendering and hit-rect registration, InteractionBuffer

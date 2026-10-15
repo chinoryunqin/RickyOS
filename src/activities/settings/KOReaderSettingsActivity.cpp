@@ -48,7 +48,7 @@ void KOReaderSettingsActivity::activateIndex(const int index) {
             KOREADER_STORE.saveToFile();
           }
         },
-        tr(STR_KOREADER_USERNAME), KOREADER_STORE.getUsername(), 64, InputType::Text);
+        tr(STR_KOREADER_USERNAME), KOREADER_STORE.getUsername(), 64, InputType::Latin);
   } else if (index == 1) {
     // Password
     startActivityForResultWith<KeyboardEntryActivity>(
@@ -59,7 +59,7 @@ void KOReaderSettingsActivity::activateIndex(const int index) {
             KOREADER_STORE.saveToFile();
           }
         },
-        tr(STR_KOREADER_PASSWORD), KOREADER_STORE.getPassword(), 64, InputType::Text);
+        tr(STR_KOREADER_PASSWORD), KOREADER_STORE.getPassword(), 64, InputType::Latin);
   } else if (index == 2) {
     // Sync Server URL - prefill with https:// if empty to save typing
     const std::string currentUrl = KOREADER_STORE.getServerUrl();
