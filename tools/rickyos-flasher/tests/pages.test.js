@@ -69,10 +69,13 @@ test('site navigation is the studio, RickyOS, developer program, RickyVerse and 
   assert.match(await read('27.html'), /url=\.\/verse\.html/);
 });
 test('installer offers a device choice with only Read Pico available', async () => {
+  // Unreleased devices are not named or hinted at anywhere on the site.
+  for (const file of ['index.html', 'rickyos.html', 'developers.html', 'verse.html', 'install.html'])
+    assert.doesNotMatch(await read(file), /不愿意透露姓名|一位朋友|正在赶来|f-emblem|dp-friend/, file);
   const html = await read('install.html');
   const picker = html.match(/<section class="device-picker"[\s\S]*?<\/section>/)?.[0] ?? '';
-  assert.equal((picker.match(/class="dp-option/g) ?? []).length, 3);
+  assert.equal((picker.match(/class="dp-option/g) ?? []).length, 2);
   assert.equal((picker.match(/dp-active/g) ?? []).length, 1);
   assert.match(picker, /dp-active[^>]*>[\s\S]*?Read Pico/);
-  assert.equal((picker.match(/aria-disabled="true"/g) ?? []).length, 2);
+  assert.equal((picker.match(/aria-disabled="true"/g) ?? []).length, 1);
 });

@@ -18,14 +18,12 @@
 .done-dialog{width:min(420px,calc(100% - 32px));border:0;border-radius:12px;padding:32px 30px 26px;text-align:center;color:#17181b;box-shadow:0 20px 48px #0f172a2e}.done-dialog::backdrop{background:#0f172a59}.done-mark{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:50%;background:#e8effc;color:#2266db;font-size:22px}.done-dialog h2{font-size:18px;font-weight:600;margin:14px 0 10px}.done-dialog p{font-size:12px;line-height:1.9;color:#4b515c;margin:0}.done-dialog .done-hint{color:#7a8290;margin-top:8px}.done-dialog button{margin-top:22px;min-width:140px;justify-content:center}
 
 /* Device picker: one row of devices above the workspace. Only available devices are live. */
-.device-picker{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:0 0 22px}
+.device-picker{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin:0 0 22px}
 .dp-option{display:flex;align-items:center;gap:14px;background:#fff;border:1px solid #dfe2e7;border-radius:10px;padding:14px 16px;min-width:0}
 .dp-active{border-color:#16171a;box-shadow:0 0 0 1px #16171a}
 .dp-soon{background:#f8f8f9;color:#8a8f98}
 .dp-thumb{flex:none;width:34px;height:52px;border-radius:6px;display:grid;place-items:center;position:relative}
 .dp-pico{background:#efeee9 url('./assets/device-pico.jpg') center/cover;border:1px solid #e1e0dc}
-.dp-friend{background:#fff;border:1px solid #dcdcdc;box-shadow:0 2px 8px #0000000d}
-.dp-friend:after{content:'';position:absolute;left:5px;bottom:5px;width:9px;height:9px;border-radius:50%;background:#e8691f}
 .dp-more{border:1px dashed #c6cad1;color:#a0a5ad;font-size:18px}
 .dp-text{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
 .dp-text b{font-size:13px;font-weight:600;color:#17181b}
