@@ -8,5 +8,7 @@ export default defineConfig({
     install: resolve(import.meta.dirname, 'install.html'),
     licenses: resolve(import.meta.dirname, 'licenses.html'),
     r27: resolve(import.meta.dirname, '27.html'),
+    developers: resolve(import.meta.dirname, 'developers.html'),
+    verse: resolve(import.meta.dirname, 'verse.html'),
   } } },
 });

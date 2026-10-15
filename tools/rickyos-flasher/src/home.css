@@ -1,0 +1,109 @@
+/* Product site (home, developer program, RickyVerse). System fonts only: no font CDN. */
+:root{--ink:#16171a;--muted:#6c7079;--line:#e7e6e3;--paper:#fbfaf7;--card:#ffffff;--accent:#e8691f;--accent-soft:#fdf0e6;--navy:#141a33;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--ink);background:var(--paper);font-synthesis:none;font-size:15px;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper)}
+a{color:inherit;text-decoration:none}
+img{max-width:100%;display:block}
+h1,h2,h3,p,figure{margin:0}
+p{line-height:1.85}
+[hidden]{display:none!important}
+a:focus-visible,summary:focus-visible{outline:3px solid #6594ee;outline-offset:4px;border-radius:4px}
+summary{cursor:pointer;list-style:none}
+summary::-webkit-details-marker{display:none}
+.skip{position:absolute;left:-999px}
+.skip:focus{left:16px;top:12px;background:#fff;padding:8px 12px;z-index:10}
+.wrap{width:min(1160px,calc(100% - 64px));margin-inline:auto}
+
+/* Header: logo, two new destinations, one install button. */
+.h-header{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--paper) 88%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid transparent}
+.h-header .wrap{height:74px;display:flex;align-items:center;justify-content:space-between;gap:20px}
+.h-brand{display:flex;align-items:center;gap:11px;font-weight:750;font-size:21px;letter-spacing:-.6px}
+.h-brand img{width:38px;height:38px}
+.h-nav{display:flex;align-items:center;gap:30px;font-size:14px}
+.h-nav a:not(.h-cta){color:#3d4047}
+.h-nav a:not(.h-cta):hover,.h-nav a[aria-current=page]{color:var(--ink)}
+.h-nav a[aria-current=page]{font-weight:600}
+.h-cta{background:var(--ink);color:#fff;border-radius:999px;padding:10px 18px;font-size:13px;font-weight:600}
+.h-cta:hover{filter:brightness(1.25)}
+
+/* Buttons and small labels shared by the three pages. */
+.btn{display:inline-flex;align-items:center;gap:14px;border-radius:999px;padding:14px 24px;font-size:14px;font-weight:600}
+.btn-dark{background:var(--ink);color:#fff}
+.btn-dark:hover{filter:brightness(1.25)}
+.btn-ghost{color:var(--ink);border:1px solid #d9d8d4;background:#fff}
+.btn-ghost:hover{border-color:#bdbcb7}
+.tag{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--accent);background:var(--accent-soft);border-radius:999px;padding:6px 12px;letter-spacing:.2px}
+.tag:before{content:'';width:7px;height:7px;border-radius:50%;background:var(--accent)}
+
+/* Home hero: words on the left, a real device photo on the right. */
+.h-hero{display:grid;grid-template-columns:minmax(0,.95fr) minmax(0,1.15fr);gap:56px;align-items:center;padding:64px 0 40px}
+.h-hero h1{font-size:clamp(40px,5.4vw,66px);line-height:1.15;letter-spacing:-2px;font-weight:700;margin:22px 0 22px}
+.h-hero h1 em{font-style:normal;color:var(--accent)}
+.h-lead{font-size:17px;color:var(--muted);max-width:30em}
+.h-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:34px}
+.h-update{margin-top:22px;font-size:13px;color:var(--muted)}
+.h-update b{color:var(--ink);font-weight:600}
+.h-photo{border-radius:22px;overflow:hidden;background:#f1efea}
+.h-photo img{width:100%;height:auto}
+.h-photo-caption{font-size:11px;color:#9a9da3;margin-top:12px;text-align:right}
+
+/* Three doors: install, developer program, RickyVerse. */
+.h-doors{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;padding:44px 0 24px}
+.h-door{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:20px;overflow:hidden;transition:transform .18s ease,box-shadow .18s ease}
+.h-door:hover{transform:translateY(-3px);box-shadow:0 18px 40px #1d1a1410}
+.h-door-art{aspect-ratio:4/3;overflow:hidden;background:#f1efea}
+.h-door-art img{width:100%;height:100%;object-fit:cover}
+.h-door-art.install{display:grid;place-items:center;background:linear-gradient(160deg,#f6f4ef,#ebe8e1)}
+.h-door-art.install svg{width:84px;stroke:var(--ink);stroke-width:1.4;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.h-door-body{padding:24px 24px 26px;display:flex;flex-direction:column;gap:10px;flex:1}
+.h-door-body small{font-size:12px;color:var(--accent);font-weight:600;letter-spacing:.3px}
+.h-door-body h2{font-size:22px;letter-spacing:-.4px;font-weight:650}
+.h-door-body p{font-size:14px;color:var(--muted);line-height:1.75;flex:1}
+.h-door-body span{font-size:14px;font-weight:600;margin-top:6px}
+
+/* FAQ, kept short. */
+.h-faq{max-width:760px;padding:56px 0 64px}
+.h-faq h2{font-size:24px;letter-spacing:-.4px;margin-bottom:18px}
+.h-faq details{border-bottom:1px solid var(--line);padding:20px 0}
+.h-faq summary{display:flex;justify-content:space-between;gap:20px;font-size:15px;font-weight:550}
+.h-faq summary span{color:var(--muted)}
+.h-faq details[open] summary span{transform:rotate(45deg)}
+.h-faq details p{padding-top:12px;color:var(--muted);font-size:14px}
+
+/* Feature pages (developer program, RickyVerse): a big statement and one image. */
+.f-hero{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:56px;align-items:center;padding:60px 0 56px}
+.f-hero h1{font-size:clamp(32px,4.2vw,52px);line-height:1.18;letter-spacing:-1.8px;font-weight:700;margin:22px 0 24px}
+.f-hero h1 .line{white-space:nowrap}
+.f-hero h1 .mark{background:var(--accent);color:#fff;padding:0 .18em;border-radius:10px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+.f-hero p{font-size:17px;color:var(--muted);max-width:30em}
+.f-art{border-radius:24px;overflow:hidden;box-shadow:0 30px 60px #1d1a1418}
+.f-art img{width:100%;height:auto}
+.f-note{font-size:13px;color:var(--muted);margin-top:28px}
+.f-note a{color:var(--ink);font-weight:600;border-bottom:1px solid #cfcdc8}
+
+/* The unnamed friend: white body, one orange dot, nothing else. */
+.f-friend{margin:8px 0 72px;border-radius:28px;background:radial-gradient(120% 140% at 30% 0%,#26305a 0%,var(--navy) 55%,#0b0f22 100%);color:#fff;display:grid;grid-template-columns:auto 1fr;gap:56px;align-items:center;padding:56px 64px;overflow:hidden}
+.f-emblem{width:150px;aspect-ratio:1/1.72;border-radius:22px;background:#f6f4ef;position:relative;box-shadow:0 0 0 1px #ffffff30,0 0 60px #ffffff40,0 0 140px #e8691f30}
+.f-emblem:after{content:'';position:absolute;left:14%;bottom:7%;width:22%;aspect-ratio:1;border-radius:50%;background:var(--accent);box-shadow:0 0 24px #ff8a3d}
+.f-friend small{font-size:12px;letter-spacing:4px;color:#ffffffa0}
+.f-friend h2{font-size:clamp(28px,3.4vw,42px);line-height:1.3;letter-spacing:-.8px;margin:14px 0 0;font-weight:650}
+.f-friend h2 em{font-style:normal;color:#ff8a3d}
+
+/* Footer. */
+.h-footer{border-top:1px solid var(--line)}
+.h-footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:14px;padding:26px 0 36px;font-size:12px;color:#8b8e94}
+.h-footer a:hover{color:var(--ink)}
+
+@media (max-width:860px){
+  .wrap{width:calc(100% - 32px)}
+  .h-header .wrap{height:64px}
+  .h-brand{font-size:0;gap:0}
+  .h-nav{gap:14px;font-size:13px}
+  .h-nav a{white-space:nowrap}
+  .h-cta{padding:8px 13px;font-size:12px}
+  .h-hero,.f-hero{grid-template-columns:1fr;gap:32px;padding:36px 0 24px}
+  .h-doors{grid-template-columns:1fr}
+  .f-friend{grid-template-columns:1fr;gap:28px;padding:40px 28px;justify-items:start}
+  .f-emblem{width:110px}
+}

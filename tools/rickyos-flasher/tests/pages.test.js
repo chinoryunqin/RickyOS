@@ -23,16 +23,16 @@ test('installer preserves every controller element and all stage indicators', as
 });
 test('production pages label their device images and contain no prototype controls', async () => {
   const home = await read('index.html'), install = await read('install.html');
-  // The home hero is a product image made from a photo of a real device; say so.
-  assert.match(home, /src="\.\/src\/assets\/launch\.jpg"/);
-  assert.match(home, /据实拍照片制作/);
-  assert.match(install, /src="\.\/src\/assets\/device\.jpg"/);
-  assert.match(install, /据实拍照片制作/);
+  // Device images are real photos; the pages say so.
+  assert.match(home, /src="\.\/src\/assets\/home\/product\.jpg"/);
+  assert.match(home, /实拍照片/);
+  assert.match(install, /src="\.\/src\/assets\/device-pico\.jpg"/);
+  assert.match(install, /实拍照片/);
   for (const html of [home, install])
     assert.doesNotMatch(html, /design-preview|concepts\.js|proposal-bar|查看方案 [AB]|预览检查后的界面/);
 });
 test('all production page links are relative and license page is reachable', async () => {
-  for (const file of ['index.html', 'install.html', 'licenses.html']) {
+  for (const file of ['index.html', 'install.html', 'licenses.html', 'developers.html', 'verse.html']) {
     const html = await read(file);
     assert.doesNotMatch(html, /(?:src|href)="http:\/\/127\.0\.0\.1|(?:src|href)="\//);
   }
@@ -49,4 +49,26 @@ test('installer is built as a separate entry and keeps release and risk gates vi
   assert.match(html, /正式安装包尚未开放/);
   assert.match(html, /网站不操作 SD 卡/);
   assert.match(html, /id="backup-opt"/);
+});
+
+test('site navigation is home, developer program, RickyVerse and one install button', async () => {
+  for (const file of ['index.html', 'developers.html', 'verse.html']) {
+    const html = await read(file);
+    const nav = html.match(/<nav class="h-nav"[^>]*>(.*?)<\/nav>/s)?.[1] ?? '';
+    const links = [...nav.matchAll(/href="([^"]+)"/g)].map(match => match[1]);
+    assert.deepEqual(links, ['./developers.html', './verse.html', './install.html'], file);
+    assert.match(html, /href="\.\/licenses\.html"/);
+    assert.match(html, /src="\.\/src\/site\.js"/);
+    assert.doesNotMatch(html, /src="[^"\n]*app\.js"/);
+  }
+  assert.match(await read('vite.config.js'), /developers: resolve[\s\S]*verse: resolve/);
+  assert.match(await read('27.html'), /url=\.\/verse\.html/);
+});
+test('installer offers a device choice with only Read Pico available', async () => {
+  const html = await read('install.html');
+  const picker = html.match(/<section class="device-picker"[\s\S]*?<\/section>/)?.[0] ?? '';
+  assert.equal((picker.match(/class="dp-option/g) ?? []).length, 3);
+  assert.equal((picker.match(/dp-active/g) ?? []).length, 1);
+  assert.match(picker, /dp-active[^>]*>[\s\S]*?Read Pico/);
+  assert.equal((picker.match(/aria-disabled="true"/g) ?? []).length, 2);
 });
