@@ -22,7 +22,7 @@ test('installer preserves every controller element and all stage indicators', as
   assert.doesNotMatch(html, /role="tab"|data-stage|data-show-finish|preview-next/);
 });
 test('production pages label their device images and contain no prototype controls', async () => {
-  const home = await read('index.html'), install = await read('install.html');
+  const home = await read('rickyos.html'), install = await read('install.html');
   // Device images are real photos; the pages say so.
   assert.match(home, /src="\.\/src\/assets\/home\/product\.jpg"/);
   assert.match(home, /实拍照片/);
@@ -32,7 +32,7 @@ test('production pages label their device images and contain no prototype contro
     assert.doesNotMatch(html, /design-preview|concepts\.js|proposal-bar|查看方案 [AB]|预览检查后的界面/);
 });
 test('all production page links are relative and license page is reachable', async () => {
-  for (const file of ['index.html', 'install.html', 'licenses.html', 'developers.html', 'verse.html']) {
+  for (const file of ['index.html', 'rickyos.html', 'install.html', 'licenses.html', 'developers.html', 'verse.html']) {
     const html = await read(file);
     assert.doesNotMatch(html, /(?:src|href)="http:\/\/127\.0\.0\.1|(?:src|href)="\//);
   }
@@ -51,17 +51,20 @@ test('installer is built as a separate entry and keeps release and risk gates vi
   assert.match(html, /id="backup-opt"/);
 });
 
-test('site navigation is home, developer program, RickyVerse and one install button', async () => {
-  for (const file of ['index.html', 'developers.html', 'verse.html']) {
+test('site navigation is the studio, RickyOS, developer program, RickyVerse and one install button', async () => {
+  for (const file of ['index.html', 'rickyos.html', 'developers.html', 'verse.html']) {
     const html = await read(file);
     const nav = html.match(/<nav class="h-nav"[^>]*>(.*?)<\/nav>/s)?.[1] ?? '';
     const links = [...nav.matchAll(/href="([^"]+)"/g)].map(match => match[1]);
-    assert.deepEqual(links, ['./developers.html', './verse.html', './install.html'], file);
+    assert.deepEqual(links, ['./rickyos.html', './developers.html', './verse.html', './install.html'], file);
+    assert.match(html, /class="h-brand" href="\.\/"[^>]*>.*Ricky AI Studio<\/a>/s);
     assert.match(html, /href="\.\/licenses\.html"/);
     assert.match(html, /src="\.\/src\/site\.js"/);
     assert.doesNotMatch(html, /src="[^"\n]*app\.js"/);
   }
-  assert.match(await read('vite.config.js'), /developers: resolve[\s\S]*verse: resolve/);
+  assert.match(await read('vite.config.js'), /rickyos: resolve[\s\S]*developers: resolve[\s\S]*verse: resolve/);
+  assert.match(await read('index.html'), /<title>Ricky AI Studio<\/title>/);
+  assert.match(await read('index.html'), /href="\.\/rickyos\.html"/);
   assert.match(await read('27.html'), /url=\.\/verse\.html/);
 });
 test('installer offers a device choice with only Read Pico available', async () => {

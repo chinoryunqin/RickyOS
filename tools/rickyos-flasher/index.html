@@ -4,37 +4,30 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<meta name="description" content="RickyOS：Ricky AI Studio 打造的阅读系统。现已支持 MindReset 小纸 Read Pico，开发者计划与 RickyVerse 正在路上。">
+<meta name="description" content="Ricky AI Studio：Ricky 和他的小狗，在做 RickyOS、开发者计划和 RickyVerse。">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
-<title>RickyOS · 阅读，回到主角</title>
+<title>Ricky AI Studio</title>
 <link rel="stylesheet" href="./src/home.css">
 </head>
 <body class="concept-a">
 <a class="skip" href="#main">跳到正文</a>
 <header class="h-header"><div class="wrap">
-<a class="h-brand" href="./" aria-label="RickyOS 首页"><img data-brand-logo width="38" height="38" alt="">RickyOS</a>
-<nav class="h-nav" aria-label="网站导航"><a href="./developers.html">开发者计划</a><a href="./verse.html">RickyVerse</a><a class="h-cta" href="./install.html">安装 RickyOS</a></nav>
+<a class="h-brand" href="./" aria-label="Ricky AI Studio 首页"><img data-brand-logo width="38" height="38" alt="">Ricky AI Studio</a>
+<nav class="h-nav" aria-label="网站导航"><a href="./rickyos.html">RickyOS</a><a href="./developers.html">开发者计划</a><a href="./verse.html">RickyVerse</a><a class="h-cta" href="./install.html">安装 RickyOS</a></nav>
 </div></header>
 
 <main id="main">
-<section class="wrap h-hero">
-<div>
-<span class="tag">RickyOS 1.2.0</span>
-<h1>阅读，<br>回到<em>主角</em>。</h1>
-<p class="h-lead">Ricky AI Studio 打造的阅读系统。打开一本书，留一点时间给自己。</p>
-<div class="h-actions"><a class="btn btn-dark" href="./install.html">安装 RickyOS <span aria-hidden="true">→</span></a><a class="btn btn-ghost" href="./install.html?demo=1">先看看安装流程</a></div>
-<p class="h-update">已经装好？在设备上打开 <b>设置 → 系统 → RickyOS 更新</b>。</p>
-</div>
-<figure>
-<div class="h-photo"><img src="./src/assets/home/product.jpg" width="1600" height="1000" alt="横放的小纸 Read Pico，屏幕上是 RickyOS 的古籍竖排阅读页面"></div>
-<figcaption class="h-photo-caption">实拍照片 · 小纸 Read Pico</figcaption>
-</figure>
+<section class="wrap s-hero">
+<span class="tag">Ricky AI Studio</span>
+<h1>Ricky 和他的小狗，<br>在给小屏幕<em>造宇宙</em>。</h1>
+<p class="h-lead">我们做墨水屏上的系统，也在把它带进更多设备。慢一点，好用一点，有趣一点。</p>
+<figure class="s-banner"><img src="./src/assets/home/studio.jpg" width="1536" height="864" alt="Ricky、柯基和动物伙伴们坐在悬崖边，看着远处漂浮的岛屿和一扇发光的传送门"></figure>
 </section>
 
-<section class="wrap h-doors" aria-label="从这里开始">
-<a class="h-door" href="./install.html">
-<div class="h-door-art install" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M24 42V8m0 0-5 6m5-6 5 6M24 28l-10-8v-5m10 20 11-8v-7"/><circle cx="14" cy="12" r="3"/><path d="M32 14h6v6h-6z"/><circle cx="24" cy="42" r="3"/></svg></div>
-<div class="h-door-body"><small>现在可用</small><h2>安装 RickyOS</h2><p>用电脑上的 Chrome 或 Edge 连接设备，几分钟装好。原厂系统也能直接装。</p><span>进入安装页 →</span></div>
+<section class="wrap h-doors" aria-label="我们在做">
+<a class="h-door" href="./rickyos.html">
+<div class="h-door-art"><img src="./src/assets/home/product.jpg" width="1600" height="1000" alt="横放的小纸 Read Pico，屏幕上是 RickyOS 的古籍竖排阅读页面" loading="lazy"></div>
+<div class="h-door-body"><small>现在可用 · 1.2.0</small><h2>RickyOS</h2><p>为墨水屏打造的阅读系统，现已支持小纸 Read Pico。</p><span>了解 RickyOS →</span></div>
 </a>
 <a class="h-door" href="./developers.html">
 <div class="h-door-art"><img src="./src/assets/home/developers.jpg" width="1000" height="1206" alt="动物伙伴们戴着安全帽，在一台巨大的阅读器上搭建应用市场" loading="lazy"></div>
@@ -46,16 +39,19 @@
 </a>
 </section>
 
-<section class="wrap h-faq">
-<h2>安装前，你只需要知道这些。</h2>
-<details><summary>需要先安装其他系统吗？<span aria-hidden="true">＋</span></summary><p>不需要。原厂系统、CrossMux 或其他系统都可以直接安装：网站会先识别设备，已装有 CrossMux 或 RickyOS 的只更新应用，其余完整安装。</p></details>
-<details><summary>我的书籍会受到影响吗？<span aria-hidden="true">＋</span></summary><p>SD 卡上的书不受影响，网站不操作 SD 卡。从原厂或其他系统完整安装时，会清理设备内部文件，原来的设置不保证沿用。安装页可以先备份完整 Flash。</p></details>
+<section class="wrap s-about">
+<img src="./src/assets/home/duo.jpg" width="900" height="600" alt="戴眼镜的 Ricky 拿着墨水屏阅读器，小狗坐在他脚边" loading="lazy">
+<div>
+<h2>关于我们</h2>
+<p>Ricky AI Studio 是一个很小的工作室。戴眼镜的是 Ricky，旁边那只是他的小狗，它负责催进度，偶尔也负责记 bug。</p>
+<p>我们相信设备不必越来越吵。先把一块墨水屏上的阅读做好，再一点点走向更多屏幕。</p>
+</div>
 </section>
 </main>
 
 <footer class="h-footer"><div class="wrap">
-<span>RickyOS · Ricky AI Studio</span>
-<span>第三方系统，非 MindReset 官方发布</span>
+<span>© Ricky AI Studio</span>
+<span>小红书 · Ricky AI Studio</span>
 <a href="./licenses.html">使用授权与隐私 ↗</a>
 </div></footer>
 <script type="module" src="./src/site.js"></script>
