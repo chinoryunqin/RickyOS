@@ -4,7 +4,7 @@
 
 ## 安装与更新
 
-- 网页安装：[RickyOS 安装工作台](https://chinoryunqin.github.io/RickyOS-site/install.html)。
+- 网页安装：[RickyOS 安装工作台](https://rickyaistudio.com/install.html)。
   使用电脑 Chrome / Edge，原厂系统、CrossMux 或其他系统均可直接安装，完整备份可选。
 - 已装 RickyOS：设置 → 系统 → RickyOS 更新。
 - 1.1.5 的 Markdown 排版、表格、标题目录和中间键待机修复都保留在 1.2 里。
@@ -53,8 +53,8 @@
 
 ## 固件校验
 
-- 应用镜像：`RickyOS-1.2.0.bin`，（发布时填写）字节。
-- SHA-256：（发布时填写）。
+- 应用镜像：`RickyOS-1.2.0.bin`，5,768,304 字节。
+- SHA-256：`7ebce952d3d2821a192c16bdb45f958279f92f6edf27898e31d2fdb32569a99b`。
 - 网页发行目录和设备 OTA 目录由同一份元数据生成，使用同一镜像。
 
 ## 许可
