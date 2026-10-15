@@ -73,7 +73,16 @@ USB 传书在 Mac 上拷书时，尽量直接拖到磁盘根目录；电脑没�
    `tools/rickyos-flasher/public/firmware`。
 3. 更新 `releases.json`（版本、文件名、字节数、sha256、notes、各段文件名）和 `ota-notes.txt`。
 4. `tools/rickyos-flasher` 下 `npm test`、`npm run build`。
-5. 同步到网站仓库 `gh-pages` 分支，提交推送，核对线上 `ota.json`。
+5. 同步两个网站仓库（2026-10-15 起拆开，见下），提交推送，核对两处线上 `ota.json`：
+   - 官网 `chinoryunqin/RickyOS-web`（`rickyaistudio.com`，本地 clone 目录仍叫
+     `repository-publish/RickyOS-site`）：放完整 `dist/`。`gh-pages` 上的 `CNAME` 和
+     `assets/install-entry-guard.js`（及 `install.html` 里对它的引用）不在网页源码里，
+     `rsync --delete` 时必须排除或先补进源码，否则域名和安装页入口检查会被删。
+   - 设备 OTA `chinoryunqin/RickyOS-site`（`chinoryunqin.github.io/RickyOS-site/`，**不能绑域名**，
+     本地 clone 在 `repository-publish/RickyOS-ota-site`）：只放 `ota.json`、`ota-notes.txt`、
+     `firmware/RickyOS-<版本>.bin`，删掉旧版 bin。所有已发固件都写死这个地址，而 OTA 下载
+     拒绝跨域跳转；官网绑了域名后 github.io 会 301，所以设备更新必须由这个仓库提供。
+   - 核对：github.io 的三个文件直接 200（无跳转），bin 的字节数和 sha256 与 `ota.json` 一致。
 5b. OTA 同步到 COS（用户决定：以后固件更新都走 COS，2026-10-14）：1.2.0 起设备先查
    `<COS>/ota/ota.json`（GlobalSign R3 锁定），连不上再查网站；旧设备只查网站，所以两边都要传。
    `python3 scripts/publish_rickyos_assets_cos.py --kind ota --output tools/rickyos-flasher/dist --tag 1.2.0`
