@@ -24,8 +24,8 @@ test('installer preserves every controller element and all stage indicators', as
 test('production pages label their device images and contain no prototype controls', async () => {
   const home = await read('rickyos.html'), install = await read('install.html');
   // Device images are real photos; the pages say so.
-  assert.match(home, /src="\.\/src\/assets\/home\/product\.jpg"/);
-  assert.match(home, /实拍照片/);
+  assert.match(home, /src="\.\/src\/assets\/home\/pico-landscape\.jpg"/);
+  assert.match(home, /alt="[^"]*小纸 Read Pico/);
   assert.match(install, /src="\.\/src\/assets\/device-pico\.jpg"/);
   assert.match(install, /实拍照片/);
   for (const html of [home, install])
@@ -57,7 +57,8 @@ test('site navigation is the studio, RickyOS, developer program, RickyVerse and 
     const nav = html.match(/<nav class="h-nav"[^>]*>(.*?)<\/nav>/s)?.[1] ?? '';
     const links = [...nav.matchAll(/href="([^"]+)"/g)].map(match => match[1]);
     assert.deepEqual(links, ['./rickyos.html', './developers.html', './verse.html', './install.html'], file);
-    assert.match(html, /class="h-brand" href="\.\/"[^>]*>.*Ricky AI Studio<\/a>/s);
+    assert.match(html, /class="h-brand" href="\.\/">RICKY AI STUDIO<\/a>/);
+    assert.doesNotMatch(html, /data-brand-logo|assets\/home\/(?:studio|duo|developers|verse)\.jpg/);
     assert.match(html, /href="\.\/licenses\.html"/);
     assert.match(html, /src="\.\/src\/site\.js"/);
     assert.doesNotMatch(html, /src="[^"\n]*app\.js"/);

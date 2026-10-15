@@ -37,3 +37,5 @@
 .b-screen.b-photo{border:0;padding:0;width:150px}
 @media (max-width:860px){.device-picker{grid-template-columns:1fr}}
 @media (max-width:720px){.b-screen.b-photo{width:76px}}
+
+.b-word{font-size:13px!important;font-weight:600;letter-spacing:.14em!important}
