@@ -183,10 +183,14 @@ EpdFontFamily designDisplayFamily(&designDisplayFont);
 EpdFontFamily cjk10FontFamily(&designCaptionFont);
 EpdFontFamily ui14FallbackFamily(&cjk14Font);
 EpdFontFamily ui16FallbackFamily(&cjk16Font);
+#ifndef RICKYOS_PRODUCT
+// Hebrew/Arabic fallback. The RickyOS product leaves it out to fit the OTA slot (~125 KB):
+// its UI is Chinese/English, and an RTL book title draws with the replacement glyph.
 static EpdFont rtlRegularFont(&ubuntu_12_regular);
 static EpdFont rtlBoldFont(&ubuntu_12_bold);
 static EpdFontFamily rtlFontFamily(&rtlRegularFont, &rtlBoldFont);
 static constexpr int kRtlFontId = 0x52544C0C;
+#endif
 EpdFont cjk12Font(&cjk12Data);
 EpdFontFamily cjk12FontFamily(&cjk12Font);
 
@@ -524,21 +528,29 @@ bool setupDisplayAndFonts(bool seamless = false, bool logSdFontLoadHeap = false)
   renderer.setFallbackFont(UI_12_FONT_ID, CJK_UI_16_FONT_ID);
   renderer.setFallbackFont(NOTOSANS_18_FONT_ID, CJK_UI_16_FONT_ID);
   renderer.setFallbackFont(CONTROL_18_FONT_ID, CJK_UI_16_FONT_ID);
+#ifndef RICKYOS_PRODUCT
   renderer.insertFont(kRtlFontId, rtlFontFamily);
+#endif
   renderer.setFallbackFont(CJK_UI_14_FONT_ID, CJK_UI_12_FONT_ID);
   renderer.setFallbackFont(CJK_UI_16_FONT_ID, CJK_UI_12_FONT_ID);
+#ifndef RICKYOS_PRODUCT
   renderer.setFallbackFont(CJK_UI_12_FONT_ID, kRtlFontId);
+#endif
   renderer.insertFont(RickyDesignUi::BODY, cjk12FontFamily);
   renderer.insertFont(RickyDesignUi::CAPTION, designCaptionFamily);
   renderer.insertFont(RickyDesignUi::HEADLINE, ui14FallbackFamily);
   renderer.insertFont(RickyDesignUi::TITLE, ui16FallbackFamily);
   renderer.insertFont(RickyDesignUi::NUMERIC_DISPLAY, designDisplayFamily);
+#ifndef RICKYOS_PRODUCT
   renderer.setFallbackFont(RickyDesignUi::BODY, kRtlFontId);
+#endif
   renderer.setFallbackFont(RickyDesignUi::CAPTION, RickyDesignUi::BODY);
   // Existing functional pages keep their stable IDs, but use the same Noto
   // family as the redesigned pages. Reader families are not rebound.
   renderer.setFallbackFont(SMALL_FONT_ID, RickyDesignUi::BODY);
+#ifndef RICKYOS_PRODUCT
   renderer.setFallbackFont(UI_10_FONT_ID, kRtlFontId);
+#endif
   renderer.setFallbackFont(UI_12_FONT_ID, RickyDesignUi::BODY);
   renderer.insertFont(CHINESE_CHESS_FONT_ID, chineseChessPieceFontFamily);
 

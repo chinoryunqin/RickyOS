@@ -78,5 +78,8 @@ if [ ! -s "$tmp_path" ]; then
   rm -f "$tmp_path"
   exit 1
 fi
+# Frequency-ordered compressed groups (UI characters and common text in few groups);
+# glyph order, metrics and intervals stay as fontconvert wrote them.
+"$PYTHON" ../../../scripts/pack_rickyos_cjk_font.py "$tmp_path" --order cn_rickyos_group_order.txt
 mv "$tmp_path" "$OUTPUT_PATH"
 echo "  $(wc -c < "$OUTPUT_PATH") bytes ($(grep -E "Bitmaps\[" "$OUTPUT_PATH" | head -1))"

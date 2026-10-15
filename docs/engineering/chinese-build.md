@@ -279,6 +279,29 @@ On the shared characters the bitmaps are byte-identical to `notosans_cjk_12.h`.
 GB2312 level-2 characters (e.g. 佚) and the 300 rarest Big5 level-1 characters
 are not included.
 
+#### Frequency-grouped compression
+
+Since 1.2.0 the face is stored compressed (950 KB of bitmaps → 582 KB + 15 KB of
+tables), which brings the product image back under the OTA limit that every shipped
+release enforces: 0x640000 slot − 512 KiB reserve = 6,029,312 bytes. The last step of
+`build-rickyos-cjk-font.sh` runs `scripts/pack_rickyos_cjk_font.py`, which keeps glyph
+order, metrics and intervals, and fills raw-DEFLATE groups of at most 16 KB in the
+priority order of `cn_rickyos_group_order.txt`: ASCII and common punctuation, then the
+characters of the Chinese UI strings, then Chinese text frequency. Each glyph's group is
+in a `glyphToGroup` table; `FontDecompressor` already reads that layout (its hot-slot
+offset table looks members up by glyph index, since a group's members are scattered).
+
+Why not `fontconvert.py --compress`: it cuts groups in code point order, which spreads
+common characters over every group. Simulated on wordfreq-sampled text (550 characters a
+page, 14 UI strings a screen, 8 hot slots), code point groups inflated ~913 KB per book
+page and ~1 MB per UI screen (63 hot-slot misses); frequency groups ~383 KB and ~109 KB
+(7 misses). 16 KB keeps the UI's characters in about eight groups, the hot-slot count.
+
+`cn_rickyos_group_order.txt` is committed; regenerate it with
+`.venv/bin/python scripts/build_rickyos_cjk_group_order.py` (needs wordfreq) only when the
+UI strings change a lot. A stale order costs speed, never correctness: unlisted characters
+are packed last, and the packer checks every glyph's pixels after decompression.
+
 ## Force-including feature-specific glyphs
 
 Each feature that needs CJK glyphs not already covered by the natural source

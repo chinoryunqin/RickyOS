@@ -5,6 +5,7 @@
 #include <Logging.h>
 #include <Utf8.h>
 
+#include <algorithm>
 #include <cstdlib>
 
 // Decompressed-glyph page slots and the hot-group buffers are placed in PSRAM
@@ -42,6 +43,7 @@ void FontDecompressor::freeHotGroup() {
   for (auto& slot : hotGroups) {
     fiFontFree(slot.data);
     fiFontFree(slot.offsets);
+    fiFontFree(slot.members);
     slot = {};
   }
   hotGroupClock = 0;
@@ -64,6 +66,12 @@ bool FontDecompressor::ensureCapacity(T*& buf, uint32_t& capacity, uint32_t need
 // Explicit instantiations: this is a private helper and both element types are used here.
 template bool FontDecompressor::ensureCapacity<uint8_t>(uint8_t*&, uint32_t&, uint32_t);
 template bool FontDecompressor::ensureCapacity<uint32_t>(uint32_t*&, uint32_t&, uint32_t);
+
+uint32_t FontDecompressor::totalGlyphs(const EpdFontData* fontData) {
+  if (fontData->intervalCount == 0) return 0;
+  const auto& lastInterval = fontData->intervals[fontData->intervalCount - 1];
+  return lastInterval.offset + (lastInterval.last - lastInterval.first + 1);
+}
 
 uint16_t FontDecompressor::getGroupIndex(const EpdFontData* fontData, uint32_t glyphIndex) {
   // O(1) path for frequency-grouped fonts with glyphToGroup mapping
@@ -245,7 +253,24 @@ const uint8_t* FontDecompressor::getBitmap(const EpdFontData* fontData, const Ep
     // Record where each glyph of this group starts, so the fetch below is a table lookup
     // instead of a walk over every preceding glyph. Entry 0 is 0 by construction, which is
     // also the right fallback when the table cannot be built (see the lookup).
-    if (ensureCapacity(slot->offsets, slot->offsetsCapacity, group.glyphCount)) {
+    if (fontData->glyphToGroup) {
+      // Frequency-grouped: one pass over the mapping collects the members in glyph order,
+      // the order their bitmaps were concatenated in.
+      if (ensureCapacity(slot->offsets, slot->offsetsCapacity, group.glyphCount) &&
+          ensureCapacity(slot->members, slot->membersCapacity, group.glyphCount)) {
+        const uint32_t total = totalGlyphs(fontData);
+        uint32_t offset = 0;
+        uint32_t count = 0;
+        for (uint32_t i = 0; i < total && count < group.glyphCount; ++i) {
+          if (fontData->glyphToGroup[i] != groupIndex) continue;
+          slot->members[count] = i;
+          slot->offsets[count++] = offset;
+          const EpdGlyph& g = fontData->glyph[i];
+          if (g.width > 0 && g.height > 0) offset += ((g.width + 3) / 4) * g.height;
+        }
+        slot->offsetsValid = count == group.glyphCount;
+      }
+    } else if (ensureCapacity(slot->offsets, slot->offsetsCapacity, group.glyphCount)) {
       uint32_t offset = 0;
       for (uint32_t i = 0; i < group.glyphCount; ++i) {
         slot->offsets[i] = offset;
@@ -264,14 +289,19 @@ const uint8_t* FontDecompressor::getBitmap(const EpdFontData* fontData, const Ep
     return nullptr;
   }
 
-  uint32_t alignedOff;
+  uint32_t alignedOff = UINT32_MAX;
   const EpdFontGroup& hotGroupInfo = fontData->groups[groupIndex];
-  if (slot->offsetsValid && glyphIndex >= hotGroupInfo.firstGlyphIndex &&
-      glyphIndex - hotGroupInfo.firstGlyphIndex < hotGroupInfo.glyphCount) {
+  if (slot->offsetsValid && fontData->glyphToGroup) {
+    const uint32_t* first = slot->members;
+    const uint32_t* end = first + hotGroupInfo.glyphCount;
+    const uint32_t* found = std::lower_bound(first, end, glyphIndex);
+    if (found != end && *found == glyphIndex) alignedOff = slot->offsets[found - first];
+  } else if (slot->offsetsValid && glyphIndex >= hotGroupInfo.firstGlyphIndex &&
+             glyphIndex - hotGroupInfo.firstGlyphIndex < hotGroupInfo.glyphCount) {
     alignedOff = slot->offsets[glyphIndex - hotGroupInfo.firstGlyphIndex];
-  } else {
-    // Frequency-grouped fonts (no table) or a table that could not be built: keep the
-    // original walk so behaviour is unchanged.
+  }
+  if (alignedOff == UINT32_MAX) {
+    // A table that could not be built: keep the original walk so behaviour is unchanged.
     alignedOff = getAlignedOffset(fontData, groupIndex, glyphIndex);
   }
   compactSingleGlyph(&slot->data[alignedOff], hotGlyphBuf, glyph->width, glyph->height);
@@ -455,10 +485,8 @@ int FontDecompressor::prewarmCache(const EpdFontData* fontData, const char* utf8
 
   if (fontData->glyphToGroup) {
     // Frequency-grouped: single O(totalGlyphs) pass through glyphToGroup
-    const auto& lastInterval = fontData->intervals[fontData->intervalCount - 1];
-    const uint32_t totalGlyphs = lastInterval.offset + (lastInterval.last - lastInterval.first + 1);
-
-    for (uint32_t i = 0; i < totalGlyphs; i++) {
+    const uint32_t glyphTotal = totalGlyphs(fontData);
+    for (uint32_t i = 0; i < glyphTotal; i++) {
       const uint16_t gi = fontData->glyphToGroup[i];
       // Find this glyph's group position in neededGroups
       uint8_t gpPos = groupCount;

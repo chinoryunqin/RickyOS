@@ -16,7 +16,12 @@ class RickyDesignUiTest(unittest.TestCase):
                                 ("SMALL_FONT_ID", "designCaptionFamily")]:
             self.assertEqual(source.count(f"renderer.insertFont({font_id},"), 1)
             self.assertIn(f"renderer.insertFont({font_id}, {family});", source)
-        self.assertIn("renderer.setFallbackFont(RickyDesignUi::BODY, kRtlFontId)", source)
+        # The Hebrew/Arabic (Ubuntu) fallback stays out of the product image (OTA slot size).
+        body_rtl = "renderer.setFallbackFont(RickyDesignUi::BODY, kRtlFontId);"
+        self.assertIn("#ifndef RICKYOS_PRODUCT\n  " + body_rtl + "\n#endif", source)
+        for use in ("renderer.insertFont(kRtlFontId", "static EpdFont rtlRegularFont"):
+            before = source[:source.index(use)]
+            self.assertGreater(before.rindex("#ifndef RICKYOS_PRODUCT"), before.rfind("#endif"), use)
 
     def test_whole_string_font_fallback_uses_actual_unicode_decoder(self):
         source = UI.read_text()

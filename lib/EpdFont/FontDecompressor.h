@@ -89,6 +89,10 @@ class FontDecompressor {
     // walk over every preceding glyph (getAlignedOffset()). Entry 0 is 0 by construction.
     uint32_t* offsets = nullptr;
     uint32_t offsetsCapacity = 0;
+    // Frequency-grouped fonts only: the group's glyph indices in ascending order, parallel
+    // to offsets (members are scattered over the glyph array, so position != index - first).
+    uint32_t* members = nullptr;
+    uint32_t membersCapacity = 0;
     bool offsetsValid = false;
     uint32_t lastUse = 0;
   };
@@ -107,6 +111,7 @@ class FontDecompressor {
 
   void freePageBuffer();
   void freeHotGroup();
+  static uint32_t totalGlyphs(const EpdFontData* fontData);
   uint16_t getGroupIndex(const EpdFontData* fontData, uint32_t glyphIndex);
   uint32_t getAlignedOffset(const EpdFontData* fontData, uint16_t groupIndex, uint32_t glyphIndex);
   bool decompressGroup(const EpdFontData* fontData, uint16_t groupIndex, uint8_t* outBuf, uint32_t outSize);
