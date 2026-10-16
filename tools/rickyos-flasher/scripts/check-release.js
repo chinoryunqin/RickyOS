@@ -2,7 +2,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { checkFirmware, checkInstallAssets, requireThat } from '../src/policy.js';
 import { catalogReleases, releaseFiles } from '../src/catalog.js';
-import { PLUS, checkPlusFirmware, checkPlusBootloader } from '../src/plus.js';
+import { PLUS, checkPlusFirmware, checkPlusBootloader, checkPlusTable } from '../src/plus.js';
 
 const root = resolve(import.meta.dirname, '../public');
 const catalog = JSON.parse(await readFile(resolve(root, 'releases.json'), 'utf8'));
@@ -27,6 +27,7 @@ for (const release of catalog.releases) {
   if (release.board === PLUS.board) {
     await checkPlusFirmware(new Uint8Array(await readFile(resolve(root, release.file))), release);
     await checkPlusBootloader(new Uint8Array(await readFile(resolve(root, release.bootloader.file))), release);
+    await checkPlusTable(new Uint8Array(await readFile(resolve(root, release.partitions.file))), release);
     continue;
   }
   await checkFirmware(new Uint8Array(await readFile(resolve(root, release.file))), release);

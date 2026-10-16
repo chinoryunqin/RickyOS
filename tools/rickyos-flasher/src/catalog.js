@@ -19,6 +19,6 @@ export function catalogReleases(catalog) {
 
 // Files a release publishes, in the order the installer downloads them.
 export function releaseFiles(release) {
-  if (release.board === PLUS.board) return [release.file, release.bootloader.file];
+  if (release.board === PLUS.board) return [release.file, release.bootloader.file, release.partitions.file];
   return [release.file, ...(release.fullInstall?.segments ?? []).map(segment => segment.file)];
 }
