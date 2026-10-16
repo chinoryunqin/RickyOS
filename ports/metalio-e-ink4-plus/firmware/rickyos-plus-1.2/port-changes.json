@@ -358,9 +358,24 @@
       "ported_sha256": "dd6287337ea229541718ff35db348331d43eea100b6f9db76af3b70b257be9a2"
     },
     {
+      "path": "src/components/RickyDesignUi.h",
+      "baseline_sha256": "6b93d634e3e603d58ae092060e200c48aab6d102ef8f1d19b5405b07a246d477",
+      "ported_sha256": "631fc27d265a7c3b17bf73e4663ec00efa1762aa04070de9d2bc1358d7d17f71"
+    },
+    {
       "path": "src/components/RickyHomeUi.cpp",
       "baseline_sha256": "490da79c0d2ff3db0e1d0006899477498138d429905e360b30ada20e79e352a1",
       "ported_sha256": "b18eb77d6bd3766cd511678ffd42653f22db6193f9069ce4f6d1891bd8547a89"
+    },
+    {
+      "path": "src/components/RickyPageUi.h",
+      "baseline_sha256": "ec74b79eeaf9c99e754cd6766eac8c813ae5693476bab8b8bb4c4ce592f48a33",
+      "ported_sha256": "5286ab1ef55f3a6879e16a14ff00fc836f4dadd18c8e2ff40ba0869e318f362b"
+    },
+    {
+      "path": "src/components/RickyProfile.cpp",
+      "baseline_sha256": "8b87843d8717dd56e174a117afdcd00602880ca638e0dcd93f33d93cd824e086",
+      "ported_sha256": "9b4051fb1131f9f33013f97ba80af71e5ca37af7af39adf16b5dbf63877d44f1"
     },
     {
       "path": "src/components/UITheme.cpp",
