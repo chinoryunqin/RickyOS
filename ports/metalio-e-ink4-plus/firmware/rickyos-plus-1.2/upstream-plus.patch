@@ -2810,6 +2810,17 @@
    // render() redraws the whole home screen from state; a newly prepared cover queues
    // its own update, which cancels the settle.
    bool wantsGraySettle() const override { return true; }
+--- a/src/activities/library/LibraryListActivity.cpp
++++ b/src/activities/library/LibraryListActivity.cpp
+@@ -1194,7 +1194,7 @@
+                                               GUI.drawCoverThumbFill(renderer, bitmap,
+                                                                      Rect{rect.x, rect.y, rect.width, rect.height});
+                                      });
+-      if (painted) screen.target().stroke(rect, fui::Paint::solid(fui::Color::Black), ricky::ds::stroke::kHairline);
++      if (painted) screen.target().stroke(rect, fui::Paint::solid(fui::Color::LightGray), ricky::ds::stroke::kCoverEdge);
+     }
+     if (!painted) {
+       const auto& path = shelfPaths[slot];
 --- a/src/activities/network/WifiSelectionActivity.cpp
 +++ b/src/activities/network/WifiSelectionActivity.cpp
 @@ -1,5 +1,10 @@
@@ -4369,7 +4380,7 @@
  inline constexpr Level kPaper = 15;  // #FFFFFF 背景/反白文字
  
  // 8-bit sRGB 近似值，供模拟器 / 截图对比使用。
-@@ -189,7 +198,11 @@
+@@ -189,8 +198,14 @@
  // 5. 线宽（§7）：2 个值。图标线宽见 icon::strokeFor()。
  // -----------------------------------------------------------------------------
  namespace stroke {
@@ -4379,8 +4390,26 @@
  inline constexpr uint8_t kHairline = 2;        // 卡片描边、分隔线、次按钮、进度轨(1-bit)
 +#endif
  inline constexpr uint8_t kEmphasis = 4;        // 弹窗边框、按下态主按钮、强调线
++// 真实封面图的外沿：浅灰（gray::kLine）细边，只为让浅色封面不融进纸面；黑框会压过灰度封面。
++inline constexpr uint8_t kCoverEdge = 2;
  enum class Divider : uint8_t { None, Solid };  // 无 Dotted
  inline constexpr Divider kDefaultListDivider = Divider::None;
+ }  // namespace stroke
+--- a/src/components/RickyHomeUi.cpp
++++ b/src/components/RickyHomeUi.cpp
+@@ -77,9 +77,9 @@
+ 
+ bool RickyHomeUi::paint(fui::Rect rect, int index) {
+   if (painter && painter(owner, index, Rect{rect.x, rect.y, rect.width, rect.height})) {
+-    // Real artwork gets the same hairline edge as generated covers; pale covers
+-    // would otherwise dissolve into the page.
+-    uiTarget.stroke(rect, fui::Paint::solid(fui::Color::Black), ricky::ds::stroke::kHairline);
++    // Real artwork gets a light gray edge so pale covers do not dissolve into the
++    // page; a black frame overpowered the gray artwork.
++    uiTarget.stroke(rect, fui::Paint::solid(fui::Color::LightGray), ricky::ds::stroke::kCoverEdge);
+     return true;
+   }
+   if (!books || index < 0 || index >= static_cast<int>(books->size())) return false;
 --- a/src/components/UITheme.cpp
 +++ b/src/components/UITheme.cpp
 @@ -124,7 +124,7 @@

@@ -278,6 +278,11 @@
       "ported_sha256": "d7578f4916c036540d1429eb5b52ad99ad2b3b19c02f030b5078dc6c7d3d4e09"
     },
     {
+      "path": "src/activities/library/LibraryListActivity.cpp",
+      "baseline_sha256": "106499e4058c2ede98930c4ae72aad56af5754d4d6ae829d7559ac531e6ab5ad",
+      "ported_sha256": "784339662f12d7b7dbc4c99ff36d1080ef65f4a849cd95d7dad62e668cfdf64d"
+    },
+    {
       "path": "src/activities/network/WifiSelectionActivity.cpp",
       "baseline_sha256": "4433c9db02e51c9d86b9c98c92750e9cb127f62b7119fb74e5ad161565ec799e",
       "ported_sha256": "bb80f7875c4def278d2c582a7ab75cd72758994cf830ebc7b41e97deb116a7a1"
@@ -350,7 +355,12 @@
     {
       "path": "src/components/RickyDesignTokens.h",
       "baseline_sha256": "2b37779d469a6ea4f18eb0f2ca5a93f45d76418a030d7c2d0f3546a6a972b547",
-      "ported_sha256": "102966c5d4d2b0ad2803fd5ced4ab94c14bf37a86bcb6db377f43632f199dde2"
+      "ported_sha256": "dd6287337ea229541718ff35db348331d43eea100b6f9db76af3b70b257be9a2"
+    },
+    {
+      "path": "src/components/RickyHomeUi.cpp",
+      "baseline_sha256": "490da79c0d2ff3db0e1d0006899477498138d429905e360b30ada20e79e352a1",
+      "ported_sha256": "b18eb77d6bd3766cd511678ffd42653f22db6193f9069ce4f6d1891bd8547a89"
     },
     {
       "path": "src/components/UITheme.cpp",
