@@ -345,6 +345,7 @@ const EpdGlyph* TtfEpdFont::faultGlyph(Face& f, const uint32_t cp) {
       // The tables cannot grow: start them over within the capacity they have, as at
       // maxGlyphs, rather than leaving every new character of the book unresolved.
       if (f.glyphs.empty()) return nullptr;
+      LOG_INF("TTF", "glyph table stuck at %u, flushing", static_cast<unsigned>(f.glyphs.size()));
       flushFace(f);
       if (!growTables()) return nullptr;
     }
@@ -533,7 +534,12 @@ const uint8_t* TtfEpdFont::rasterizeInto(Face& f, EpdGlyph& glyph) {
       // The arena cannot grow any further: treat what it already has as the cap and
       // recycle it. Returning here instead left every glyph not yet drawn blank for
       // the rest of the book (the arena never reached f.cap, so it never recycled).
-      if (f.bmp.capacity() < bytes) return nullptr;
+      if (f.bmp.capacity() < bytes) {
+        LOG_ERR("TTF", "glyph arena cannot hold %u B (capacity %u)", static_cast<unsigned>(bytes),
+                static_cast<unsigned>(f.bmp.capacity()));
+        return nullptr;
+      }
+      LOG_INF("TTF", "glyph arena stuck at %u KB, recycling", static_cast<unsigned>(f.bmp.capacity() / 1024));
       recycleArena();
     }
   }
