@@ -7,6 +7,7 @@
 #include <TrustedTime.h>
 #include <Utf8.h>
 #include <WiFi.h>
+#include <esp_wifi.h>
 #if CROSSPOINT_EMULATED == 0
 #include <esp_mac.h>
 #endif
@@ -267,20 +268,42 @@ void WifiSelectionActivity::startWifiScan(const bool autoScan) {
   networkRowItems.clear();
   requestUpdate();
 
-  // Set WiFi mode to station
+  scanRecoveryUsed = false;
+  if (!beginScan()) showNetworkError();
+}
+
+// Brings the station up and starts an async scan. A radio left half-stopped by an
+// earlier network feature (or too little internal RAM for esp_wifi_init) fails here;
+// one full teardown and retry clears it without asking the user to reboot.
+bool WifiSelectionActivity::beginScan() {
   if (!NetworkStartup::setMode(renderer, WIFI_STA)) {
     LOG_ERR("WIFI", "Station initialization failed");
-    showNetworkError();
-    return;
+    return recoverScan("mode", 0);
   }
   WiFi.disconnect();
   delay(100);
 
-  // Start async scan
   if (WiFi.scanNetworks(true) == WIFI_SCAN_FAILED) {
-    LOG_ERR("WIFI", "Could not start scan");
-    showNetworkError();
+    const int mode = static_cast<int>(WiFi.getMode());
+    LOG_ERR("WIFI", "Could not start scan (mode=%d)", mode);
+    return recoverScan("start", mode);
   }
+  return true;
+}
+
+bool WifiSelectionActivity::recoverScan(const char* stage, const int code) {
+  NetworkStartup::logMemory("WiFi scan failure");
+  NetworkStartup::recordFailure(stage, code);
+  if (scanRecoveryUsed) return false;
+  scanRecoveryUsed = true;
+
+  LOG_INF("WIFI", "Resetting radio after %s failure", stage);
+  WiFi.scanDelete();
+  WiFi.mode(WIFI_OFF);
+  esp_wifi_stop();
+  esp_wifi_deinit();
+  delay(200);
+  return beginScan();
 }
 
 void WifiSelectionActivity::processWifiScanResults() {
@@ -294,7 +317,7 @@ void WifiSelectionActivity::processWifiScanResults() {
   if (scanResult == WIFI_SCAN_FAILED) {
     LOG_ERR("WIFI", "Scan failed");
     WiFi.scanDelete();
-    showNetworkError();
+    if (!recoverScan("result", scanResult)) showNetworkError();
     return;
   }
 

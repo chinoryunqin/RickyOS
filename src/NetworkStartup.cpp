@@ -3,8 +3,12 @@
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <HalMemory.h>
+#include <HalStorage.h>
 #include <Logging.h>
 #include <WiFi.h>
+
+#include <algorithm>
+#include <cstdio>
 
 #if !defined(SIMULATOR)
 #include <esp_heap_caps.h>
@@ -79,6 +83,31 @@ void prepare(GfxRenderer& renderer) {
     if (auto* fontCache = renderer.getFontCacheManager()) fontCache->clearCache();
   }
   logMemory("after font reclaim");
+}
+
+void recordFailure(const char* stage, const int code) {
+  constexpr const char* PATH = "/.crosspoint/wifi-errors.txt";
+  constexpr size_t MAX_BYTES = 4096;
+  const auto internal = HalMemory::getInternalHeap();
+  const auto psram = HalMemory::getPsramHeap();
+  char line[160];
+  const int len = snprintf(line, sizeof(line), "%s up=%lus %s code=%d internal=%u/%u psram=%u\n", CROSSPOINT_VERSION,
+                           static_cast<unsigned long>(millis() / 1000), stage, code,
+                           static_cast<unsigned>(internal.freeBytes), static_cast<unsigned>(internal.largestBlockBytes),
+                           static_cast<unsigned>(psram.freeBytes));
+  if (len <= 0) return;
+
+  RenderLock lock;
+  Storage.ensureDirectoryExists("/.crosspoint");
+  oflag_t flags = O_WRONLY | O_CREAT | O_APPEND;
+  {
+    HalFile existing = Storage.open(PATH);
+    if (existing && existing.fileSize() > MAX_BYTES) flags = O_WRONLY | O_CREAT | O_TRUNC;
+  }
+  HalFile file = Storage.open(PATH, flags);
+  if (!file) return;
+  file.write(line, std::min(static_cast<size_t>(len), sizeof(line) - 1));
+  file.close();
 }
 
 bool setMode(GfxRenderer& renderer, const wifi_mode_t mode) {
