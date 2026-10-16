@@ -215,7 +215,7 @@
     {
       "path": "src/activities/ActivityManager.cpp",
       "baseline_sha256": "e97372dc858385e6ac21bac9d545abadd7bcd9ca036feb7c3dc8ed8bf8cb9ada",
-      "ported_sha256": "74cb987dead095d4694f901fee5865b0fc2f1e3cfb7850cd749ecff07f6caa75"
+      "ported_sha256": "7f43893c5f53d3f7e065a021aac7efc96e2d44504b837333ce5d7909826c44a2"
     },
     {
       "path": "src/activities/ActivityManager.h",

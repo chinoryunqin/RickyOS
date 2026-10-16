@@ -8,3 +8,7 @@ target_compile_features(${COMPONENT_LIB} PUBLIC cxx_std_20)
 target_compile_definitions(${COMPONENT_LIB} PUBLIC
     FREEINK_FB_PSRAM=1 EINK_DISPLAY_SINGLE_BUFFER_MODE=1 BOARD_HAS_PSRAM=1)
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-missing-field-initializers)
+# Diagnostic screen capture over the console (marketing screenshots); off in releases.
+if("$ENV{RICKYOS_PLUS_SCREEN_TOUR}" STREQUAL "1")
+  target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_SCREEN_DUMP=1)
+endif()

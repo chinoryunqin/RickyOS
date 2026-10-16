@@ -2063,16 +2063,26 @@
    mutable HomeButtonAction deferredHomeAction = HomeButtonAction::Ignore;
 --- a/src/activities/ActivityManager.cpp
 +++ b/src/activities/ActivityManager.cpp
-@@ -1,4 +1,8 @@
+@@ -1,4 +1,18 @@
  #include "ActivityManager.h"
 +
 +#if RICKYOS_PLUS_TAB_BENCH
 +#include <esp_timer.h>
 +#endif
++#if RICKYOS_PLUS_SCREEN_TOUR
++#include "CrossPointState.h"
++#include "RecentBooksStore.h"
++#ifndef RICKYOS_PLUS_SCREEN_TOUR_FROM
++#define RICKYOS_PLUS_SCREEN_TOUR_FROM 0
++#endif
++#ifndef RICKYOS_PLUS_SCREEN_TOUR_TO
++#define RICKYOS_PLUS_SCREEN_TOUR_TO 7
++#endif
++#endif
  
  #include <BoardConfig.h>
  #include <FontCacheManager.h>
-@@ -15,6 +19,9 @@
+@@ -15,6 +29,9 @@
  #include "CrossPointSettings.h"
  #include "apps/AppsMenuActivity.h"
  #include "apps/calculator/CalculatorActivity.h"
@@ -2082,7 +2092,7 @@
  #include "apps/gomoku/GomokuMenuActivity.h"
  #include "apps/reading-stats/RickyReadingStatsActivity.h"
  #include "apps/standby/RickyStandbySettingsActivity.h"
-@@ -117,7 +124,7 @@
+@@ -117,7 +134,7 @@
    self->renderTaskLoop();
  }
  
@@ -2091,7 +2101,7 @@
  namespace {
  // Keep the previous B/W + delayed-gray candidate available for A/B builds.
  // The direct-gray experiment skips both the B/W submission and this idle redraw.
-@@ -177,14 +184,14 @@
+@@ -177,14 +194,14 @@
          // before calling them. Input during the render also cancels its idle pass.
          auto delayMs = currentActivity->idleRenderDelayMs();
          [[maybe_unused]] bool directGray = false;
@@ -2108,7 +2118,7 @@
          // A missing gray buffer or failed commit gets the existing readable B/W
          // fallback. The direct path never arms a second, delayed submission.
          if (!directGray || !renderDirectGray(std::move(lock))) currentActivity->render(std::move(lock));
-@@ -194,7 +201,7 @@
+@@ -194,7 +211,7 @@
          idleDelayTicks = delayMs != 0 ? pdMS_TO_TICKS(delayMs) : portMAX_DELAY;
          waitTicks = idleDelayTicks;
        } else if (!idleRenderCancelled(idleGeneration)) {
@@ -2117,7 +2127,7 @@
          if (graySettlePending) {
            graySettlePending = false;
            settleToGray(std::move(lock), idleGeneration);
-@@ -220,13 +227,16 @@
+@@ -220,13 +237,16 @@
    }
  }
  
@@ -2135,7 +2145,7 @@
    const uint32_t renderGeneration = renderRequestGeneration.load(std::memory_order_relaxed);
    // Renderers may release the lock; capture page-owned geometry first.
    const Rect navigation = currentActivity->usesMainTabBar() ? currentActivity->mainTabLayout().tabBar : Rect{};
-@@ -255,6 +265,10 @@
+@@ -255,6 +275,10 @@
    if (committed) renderer.clearNextRefreshOverride();
    LOG_DBG("ACT", "Direct gray: %s paint=%lu ms submit=%lu ms total=%lu ms", committed ? "done" : "failed, B/W fallback",
            painted - started, millis() - painted, millis() - started);
@@ -2146,10 +2156,36 @@
  #if RICKYOS_PERF_SD_LOG
    {
      char line[256];
-@@ -356,6 +370,25 @@
+@@ -356,6 +380,51 @@
      resetHomeStandbyInput();
      return;
    }
++#if RICKYOS_PLUS_SCREEN_TOUR
++  {
++    // Diagnostic: visit the screens used for screenshots, one every 10 s from 25 s after boot.
++    static unsigned step = RICKYOS_PLUS_SCREEN_TOUR_FROM;
++    static uint32_t nextAt = 25000;
++    if (step < RICKYOS_PLUS_SCREEN_TOUR_TO && currentActivity && currentActivity->name != "Boot" && millis() >= nextAt) {
++      LOG_INF("TOUR", "step=%u from=%s", step, currentActivity->name.c_str());
++      nextAt = millis() + 30000;
++      switch (step++) {
++        case 0: goToLibrary(); return;
++        case 1: goToSettings(); return;
++        case 2: goToInxRecent(); return;
++        case 3:
++          if (!RECENT_BOOKS.getBooks().empty()) goToReader(RECENT_BOOKS.getBooks().front().path);
++          return;
++        case 5: goToInxRecent(); return;
++        default: {  // 4: control center over the book, 6: over home
++          auto panel = makeUniqueNoThrow<FrontlightPanelActivity>(renderer, mappedInput,
++                                                                  currentActivity->name == "EpubReader");
++          if (panel) pushActivity(std::move(panel));
++          return;
++        }
++      }
++    }
++  }
++#endif
 +#if RICKYOS_PLUS_TAB_BENCH
 +  {
 +    // Diagnostic: walk the tab bar unattended, three rounds, 5 s apart from 25 s after boot.
@@ -2172,7 +2208,7 @@
  
    if (currentActivity && currentActivity->requiresExclusiveStorageLoop()) {
      currentActivity->loop();
-@@ -820,6 +853,9 @@
+@@ -820,6 +889,9 @@
  void ActivityManager::goToGomoku() { replaceActivityWith<GomokuMenuActivity>(); }
  
  void ActivityManager::goToCalculator() { replaceActivityWith<CalculatorActivity>(); }
@@ -2182,7 +2218,7 @@
  
  void ActivityManager::goToStandby() { replaceActivityWith<StandbyActivity>(); }
  
-@@ -896,7 +932,7 @@
+@@ -896,7 +968,7 @@
    cancelIdleRender();
    if (!currentActivity) return false;
    if (currentActivity->handleForcedRefresh()) return true;
@@ -2191,7 +2227,7 @@
    if (ricky::ds::refresh::kDirectGrayUi && currentActivity->wantsGraySettle() &&
        currentActivity->idleRenderDelayMs() == 0) {
      // Refresh the real gray UI, not its approximate 1-bit proxy.
-@@ -931,7 +967,7 @@
+@@ -931,7 +1003,7 @@
  #endif
  
  void ActivityManager::requestUpdate(bool immediate) {
@@ -2200,7 +2236,7 @@
    renderRequestGeneration.fetch_add(1, std::memory_order_relaxed);
  #endif
  #if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
-@@ -949,7 +985,7 @@
+@@ -949,7 +1021,7 @@
    }
  }
  void ActivityManager::requestUpdateAndWait() {

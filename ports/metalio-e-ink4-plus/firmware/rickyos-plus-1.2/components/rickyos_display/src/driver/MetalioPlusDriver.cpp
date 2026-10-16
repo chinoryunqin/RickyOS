@@ -5,10 +5,36 @@
 #include <esp_log.h>
 #include <esp_timer.h>
 #include <NativeGrayRefreshPolicy.h>
+#include <cstdio>
 #include <cstring>
 
 namespace freeink {
 namespace {
+#if RICKYOS_PLUS_SCREEN_DUMP
+// Diagnostic only: prints the panel's native 4-bit frame (1216x684, even pixel in the
+// low nibble) after every successful update, for exact screenshots. Byte runs as
+// (count, value) pairs in hex, 64 pairs per line: the console carries only ~11 KB/s.
+void dumpFrame(const uint8_t* fb, const char* kind) {
+  static unsigned sequence = 0;
+  constexpr size_t bytes = 1216 / 2 * 684;
+  static const char hex[] = "0123456789abcdef";
+  char line[64 * 4 + 2];
+  size_t used = 0;
+  printf("\n@@FRAME %u %s 1216 684\n", sequence++, kind);
+  for (size_t i = 0; i < bytes;) {
+    const uint8_t value = fb[i];
+    size_t run = 1;
+    while (i + run < bytes && run < 255 && fb[i + run] == value) ++run;
+    i += run;
+    line[used++] = hex[run >> 4]; line[used++] = hex[run & 15];
+    line[used++] = hex[value >> 4]; line[used++] = hex[value & 15];
+    if (used == 64 * 4) { line[used++] = '\n'; line[used] = 0; fputs(line, stdout); used = 0; }
+  }
+  if (used) { line[used++] = '\n'; line[used] = 0; fputs(line, stdout); }
+  printf("@@END\n");
+  fflush(stdout);
+}
+#endif
 uint8_t nextGrayProfile = 0;
 ricky::gray::Area nextNavigation;
 uint8_t contentEvery = 8, smallEvery = 32;
@@ -41,6 +67,9 @@ class MetalioPlusDriver final : public PanelDriver {
     const auto waveform = state_ == OpticalState::Unknown || mode == RefreshMode::Full ? MODE_GC16 : MODE_DU;
     const auto result = refresh(hl, waveform, mode == RefreshMode::Full);
     state_ = result == EPD_DRAW_SUCCESS ? OpticalState::Bw : OpticalState::Unknown;
+#if RICKYOS_PLUS_SCREEN_DUMP
+    if (result == EPD_DRAW_SUCCESS) dumpFrame(hl->front_fb, "bw");
+#endif
     if (result != EPD_DRAW_SUCCESS) ESP_LOGE("PlusDisplay", "refresh failed: 0x%x", result);
     (void)turnOff;
   }
@@ -70,6 +99,9 @@ class MetalioPlusDriver final : public PanelDriver {
       success = refresh(MetalioEpd_Hl(), full ? MODE_GC16 : MODE_GL16, full) == EPD_DRAW_SUCCESS;
     }
     state_ = success ? OpticalState::Gray : OpticalState::Unknown;
+#if RICKYOS_PLUS_SCREEN_DUMP
+    if (success) dumpFrame(MetalioEpd_Hl()->front_fb, "gray");
+#endif
     if (success && proxy) lastProxy_ = const_cast<uint8_t*>(proxy);  // Facade-owned stable BW surface.
     if (!success) ledger_ = {};
     return success;

@@ -628,6 +628,14 @@ if("$ENV{RICKYOS_PLUS_NETWORK_ACCEPTANCE}" STREQUAL "1")
   set_source_files_properties("port/PlusRadioCompare.cpp" "port/PlusNetworkAcceptance.cpp"
       PROPERTIES COMPILE_DEFINITIONS RICKYOS_PLUS_NETWORK_ACCEPTANCE=1)
 endif()
+# Unattended screen tour for screenshots (diagnostic builds only).
+if("$ENV{RICKYOS_PLUS_SCREEN_TOUR}" STREQUAL "1")
+  target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_SCREEN_TOUR=1)
+  if(NOT "$ENV{RICKYOS_PLUS_SCREEN_TOUR_FROM}" STREQUAL "")
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_SCREEN_TOUR_FROM=$ENV{RICKYOS_PLUS_SCREEN_TOUR_FROM}
+                               RICKYOS_PLUS_SCREEN_TOUR_TO=$ENV{RICKYOS_PLUS_SCREEN_TOUR_TO})
+  endif()
+endif()
 # Unattended tab-switch timing (diagnostic builds only).
 if("$ENV{RICKYOS_PLUS_TAB_BENCH}" STREQUAL "1")
   target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_TAB_BENCH=1 RICKYOS_PAINT_PROFILE=1)
