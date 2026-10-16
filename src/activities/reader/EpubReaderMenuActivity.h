@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "components/RickyCompanion.h"
 #include "activities/UiListActivity.h"
 #include "components/OptionPopup.h"
 #include "components/RickyReaderMenuLayout.h"
@@ -93,7 +94,9 @@ class EpubReaderMenuActivity final : public UiListActivity {
   const std::vector<StrId> orientationLabels = {StrId::STR_PORTRAIT, StrId::STR_LANDSCAPE_CW, StrId::STR_INVERTED,
                                                 StrId::STR_LANDSCAPE_CCW};
   const std::vector<const char*> pageTurnLabels = {I18N.get(StrId::STR_STATE_OFF), "1", "3", "6", "12"};
-  const std::vector<StrId> readingModeLabels = {StrId::STR_READING_MODE_ORIGINAL, StrId::STR_READING_MODE_PUPPY,
+  const std::vector<StrId> readingModeLabels = {StrId::STR_READING_MODE_ORIGINAL,
+                                                RickyCompanion::pick(StrId::STR_READING_MODE_PUPPY,
+                                                                     StrId::STR_READING_MODE_KITTY),
                                                 StrId::STR_READING_MODE_IMMERSIVE, StrId::STR_READING_MODE_ANCIENT};
   // readingGuideLine::kMenuStyles order, with 关 first.
   const std::vector<StrId> readingLineLabels = {StrId::STR_STATE_OFF,     StrId::STR_SOLID_LINE, StrId::STR_DASH_LINE,

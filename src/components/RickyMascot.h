@@ -4,9 +4,10 @@
 
 #include <cstdint>
 
+#include "components/RickyCompanion.h"
 #include "components/icons/rickyMascotIcons.h"
 
-// The logo's dog in three moods (rickyMascotIcons.h): ink where the bitmap is 0, paper
+// The companion (the logo's dog, or the cheese cat with the cat theme) in three moods (rickyMascotIcons.h): ink where the bitmap is 0, paper
 // left untouched, so it sits on any card.
 namespace rickyMascot {
 
@@ -19,6 +20,17 @@ constexpr Mood moodFor(const uint64_t todayMs, const uint64_t goalMs) {
 }
 
 inline const uint8_t* bitsFor(const Mood mood, const bool small) {
+  if (RickyCompanion::cat()) {
+    switch (mood) {
+      case Mood::Sleeping:
+        return small ? ricky_cat_small_sleeping : ricky_cat_sleeping;
+      case Mood::Happy:
+        return small ? ricky_cat_small_happy : ricky_cat_happy;
+      case Mood::Reading:
+        break;
+    }
+    return small ? ricky_cat_small_cheering : ricky_cat_cheering;
+  }
   switch (mood) {
     case Mood::Sleeping:
       return small ? ricky_mascot_small_sleeping : ricky_mascot_sleeping;

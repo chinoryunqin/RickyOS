@@ -21,6 +21,7 @@
 #include "UITheme.h"
 #include "util/TimeUtils.h"
 #include "util/PanelTileCache.h"
+#include "RickyCompanion.h"
 
 namespace fui = freeink::ui;
 namespace {
@@ -297,8 +298,9 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   const int cardH = empty ? 256 : std::min(288, screen.body().height - 184 - 24 - 40 - 12 - 200);
   const auto main = screen.takeTop(std::max(256, cardH), ds::space::k6);
   // The puppy's paws rest on the card's top edge, drawn over them next.
-  RickyBrandMark::drawDogPeek(renderer, Rect{main.right() - 124 - RickyDogAsset::width, main.y - RickyDogAsset::height + 1,
-                                             RickyDogAsset::width, RickyDogAsset::height});
+  const auto peek = RickyCompanion::cat() ? RickyBrandMark::catPeek() : RickyBrandMark::dogPeek();
+  RickyBrandMark::drawDogPeek(renderer, Rect{main.right() - 124 - peek.width, main.y - peek.height + 1,
+                                             peek.width, peek.height}, peek);
   const bool selectedCard = !empty && showSelection && selected == start;
   design::softCard(renderer, main, selectedCard);
   const int coverH = main.height - pad * 2;
@@ -422,7 +424,7 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
         snprintf(statsText, sizeof(statsText), tr(STR_RICKY_HOME_TODAY_TO_GOAL),
                  static_cast<unsigned>((goalMs - todayMs + 59999) / 60000));
       else
-        snprintf(statsText, sizeof(statsText), "%s", tr(STR_RICKY_HOME_TODAY_DONE));
+        snprintf(statsText, sizeof(statsText), "%s", RickyCompanion::text(StrId::STR_RICKY_HOME_TODAY_DONE, StrId::STR_RICKY_HOME_TODAY_DONE_CAT));
       design::secondaryText(renderer, box(cell.x + pad, cell.y + 148, col - pad * 2, 28), statsText, design::CAPTION);
     } else {
       if (streak.restCards > 0) {

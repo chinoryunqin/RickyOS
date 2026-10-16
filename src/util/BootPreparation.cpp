@@ -20,6 +20,7 @@
 #include "activities/RenderLock.h"
 #include "fontIds.h"
 #include "util/BookCoverLoader.h"
+#include "components/RickyCompanion.h"
 
 namespace BootPreparation {
 namespace {
@@ -61,7 +62,9 @@ struct Status {
 const char* sniffLine(const unsigned refreshes) {
   static constexpr StrId kLines[] = {StrId::STR_RICKY_PREP_SNIFF, StrId::STR_RICKY_PREP_SNIFF_FOLDERS,
                                      StrId::STR_RICKY_PREP_WAG};
-  return I18n::getInstance().get(kLines[refreshes / 3 % (sizeof(kLines) / sizeof(kLines[0]))]);
+  const StrId line = kLines[refreshes / 3 % (sizeof(kLines) / sizeof(kLines[0]))];
+  if (line == StrId::STR_RICKY_PREP_SNIFF) return RickyCompanion::text(line, StrId::STR_RICKY_PREP_SNIFF_CAT);
+  return I18n::getInstance().get(line);
 }
 
 // Two centred lines in the lower part of whatever the boot screen shows.
@@ -125,7 +128,7 @@ void refreshRecentCovers(Status& status) {
     dir.close();
     for (int i = 0; i < count; ++i) {
       if (!announced) {
-        showStatus(status, tr(STR_RICKY_PREP_COVERS), "");
+        showStatus(status, RickyCompanion::text(StrId::STR_RICKY_PREP_COVERS, StrId::STR_RICKY_PREP_COVERS_CAT), "");
         announced = true;
       }
       BookCoverLoader::ensureThumbnail(book.path, heights[i]);

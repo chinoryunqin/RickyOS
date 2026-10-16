@@ -9,6 +9,8 @@
 #include <cstring>
 
 #include "SdCardFontSystem.h"
+#include "components/RickyCompanion.h"
+#include "components/icons/rickyReaderCat.h"
 #include "components/icons/rickyReaderDog.h"
 #include "fontIds.h"
 #include "util/ReadingGuideLine.h"
@@ -27,8 +29,22 @@ constexpr int kLabelFontId = SMALL_FONT_ID;
 // The dog's 2-bit art with its coverage mask: covered pixels are written (paper
 // included, which hides the frame line under the head); the rest stay untouched.
 // The 16-level pass gets the art's grays; B/W passes threshold at half ink.
+struct ReaderArt {
+  int kWidth, kHeight, kGrayStride, kMaskStride;
+  const uint8_t *kGray, *kMask;
+};
+// Both companions stand on the same edge row, so the reading margins never depend on the theme.
+static_assert(RickyReaderCat::kEdgeRow == RickyReaderDog::kEdgeRow, "companion edge rows");
+ReaderArt readerArt() {
+  if (RickyCompanion::cat())
+    return {RickyReaderCat::kWidth, RickyReaderCat::kHeight, RickyReaderCat::kGrayStride, RickyReaderCat::kMaskStride,
+            RickyReaderCat::kGray,  RickyReaderCat::kMask};
+  return {RickyReaderDog::kWidth, RickyReaderDog::kHeight, RickyReaderDog::kGrayStride, RickyReaderDog::kMaskStride,
+          RickyReaderDog::kGray,  RickyReaderDog::kMask};
+}
+
 void drawDog(const GfxRenderer& renderer, const int originX, const int originY) {
-  using namespace RickyReaderDog;
+  const auto [kWidth, kHeight, kGrayStride, kMaskStride, kGray, kMask] = readerArt();
   const bool gray = renderer.isGrayscale16Active();
   for (int y = 0; y < kHeight; ++y) {
     const uint8_t* maskRow = kMask + y * kMaskStride;
@@ -49,7 +65,7 @@ void drawPuppy(const GfxRenderer& renderer, const Box& text) {
   const Box frame = readingMode::puppyFrame(text);
   renderer.drawRoundedRect(frame.x, frame.y, frame.width, frame.height, readingMode::kHairline,
                            readingMode::kPuppyRadius, true);
-  const int dogX = frame.right() - readingMode::kPuppyDogInset - RickyReaderDog::kWidth;
+  const int dogX = frame.right() - readingMode::kPuppyDogInset - readerArt().kWidth;
   // The art's edge row lands on the frame line's lower row, so paws and tongue hang over it.
   const int dogY = frame.y + readingMode::kHairline - 1 - RickyReaderDog::kEdgeRow;
   if (dogX > frame.x + readingMode::kPuppyRadius) drawDog(renderer, dogX, dogY);

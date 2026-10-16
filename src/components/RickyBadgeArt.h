@@ -21,7 +21,7 @@ inline bool iconAt(const rickyBadges::Icon icon, const float u, const float v) {
   switch (icon) {
     case Icon::Paw: {
       constexpr int kGrid = 100;
-      return rickyPaw::partAt(static_cast<int>(u * kGrid), static_cast<int>(v * kGrid), kGrid) !=
+      return rickyPaw::partAt(static_cast<int>(u * kGrid), static_cast<int>(v * kGrid), kGrid, RickyCompanion::cat()) !=
              rickyPaw::Part::Outside;
     }
     case Icon::Clock: {

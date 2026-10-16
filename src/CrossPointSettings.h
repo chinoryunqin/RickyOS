@@ -493,6 +493,11 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   char rickyNickname[49] = "";
   char rickyAvatarPath[96] = "";
   char rickyHomePhrase[97] = "";  // Empty uses the localized default; at most 96 UTF-8 bytes.
+  // Profile -> Theme: the companion drawn across the UI (home peek, stats moods, reading
+  // companion, paw prints) and named in its lines. Pictures only; reader caches unaffected.
+  enum RICKY_COMPANION { RICKY_COMPANION_DOG = 0, RICKY_COMPANION_CAT = 1 };
+  uint8_t rickyCompanion = RICKY_COMPANION_DOG;
+  bool rickyCat() const { return rickyCompanion == RICKY_COMPANION_CAT; }
   // Settings -> System -> Gestures: the touch gestures that act everywhere. Swiping up
   // from the bottom to go Home is off by default: on this device it sat right on the
   // last lines of a page and on the tab bar, so readers left books by accident.

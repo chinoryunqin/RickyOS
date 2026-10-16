@@ -75,6 +75,7 @@
 #include "util/ReadingGuideLine.h"
 #include "util/ScreenshotUtil.h"
 #include "util/TimeUtils.h"
+#include "components/RickyCompanion.h"
 
 namespace {
 constexpr uint8_t MAX_PAGE_TURN_RATE = 30;
@@ -3291,9 +3292,13 @@ constexpr StrId kTextRowNames[] = {StrId::STR_FONT,         StrId::STR_FONT_SIZE
                                    StrId::STR_LINE_SPACING, StrId::STR_PARA_ALIGNMENT, StrId::STR_FIRST_LINE_INDENT,
                                    StrId::STR_TEXT_AA};
 constexpr int kTextRowAntiAliasing = kTextRowIndent + 1;
-constexpr StrId kReadingModeIds[] = {StrId::STR_READING_MODE_ORIGINAL, StrId::STR_READING_MODE_PUPPY,
-                                     StrId::STR_READING_MODE_IMMERSIVE, StrId::STR_READING_MODE_ANCIENT};
-static_assert(std::size(kReadingModeIds) == static_cast<size_t>(readingMode::Mode::Count), "reading mode labels");
+constexpr StrId kReadingModeDogIds[] = {StrId::STR_READING_MODE_ORIGINAL, StrId::STR_READING_MODE_PUPPY,
+                                        StrId::STR_READING_MODE_IMMERSIVE, StrId::STR_READING_MODE_ANCIENT};
+constexpr StrId kReadingModeCatIds[] = {StrId::STR_READING_MODE_ORIGINAL, StrId::STR_READING_MODE_KITTY,
+                                        StrId::STR_READING_MODE_IMMERSIVE, StrId::STR_READING_MODE_ANCIENT};
+static_assert(std::size(kReadingModeDogIds) == static_cast<size_t>(readingMode::Mode::Count), "reading mode labels");
+static_assert(std::size(kReadingModeCatIds) == std::size(kReadingModeDogIds), "reading mode labels");
+const StrId* readingModeIds() { return RickyCompanion::cat() ? kReadingModeCatIds : kReadingModeDogIds; }
 // 关, then readingGuideLine::kMenuStyles[1..].
 constexpr StrId kReadingLineIds[] = {StrId::STR_STATE_OFF,     StrId::STR_SOLID_LINE, StrId::STR_DASH_LINE,
                                      StrId::STR_DOTTED_LINE,   StrId::STR_WAVY_LINE,  StrId::STR_DOUBLE_LINE,
@@ -4234,7 +4239,7 @@ std::string EpubReaderActivity::moreRowValue(int row) const {
     case MA::NIGHT_MODE:
       return SETTINGS.screenInverted ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
     case MA::READING_MODE:
-      return I18N.get(kReadingModeIds[static_cast<uint8_t>(readingMode::modeFor(SETTINGS.readingMode))]);
+      return I18N.get(readingModeIds()[static_cast<uint8_t>(readingMode::modeFor(SETTINGS.readingMode))]);
     case MA::READING_LINE:
       return I18N.get(kReadingLineIds[readingGuideLine::menuIndexFor(SETTINGS.readingGuideLineEnabled,
                                                                      SETTINGS.readingGuideLineStyle)]);
@@ -4321,7 +4326,7 @@ void EpubReaderActivity::activateMoreRow(int row) {
       requestUpdate();
       return;
     case MA::READING_MODE:
-      overlayPopup.show(StrId::STR_READING_MODE, kReadingModeIds, static_cast<int>(std::size(kReadingModeIds)),
+      overlayPopup.show(StrId::STR_READING_MODE, readingModeIds(), static_cast<int>(std::size(kReadingModeDogIds)),
                         static_cast<int>(readingMode::modeFor(SETTINGS.readingMode)), [this](int idx) {
                           if (SETTINGS.readingMode == idx) return;
                           SETTINGS.readingMode = static_cast<uint8_t>(idx);

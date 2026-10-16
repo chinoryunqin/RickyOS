@@ -21,6 +21,7 @@
 #include "components/RickyReadingStreak.h"
 #include "components/UITheme.h"
 #include "util/TimeUtils.h"
+#include "components/RickyCompanion.h"
 
 namespace {
 namespace fui = freeink::ui;
@@ -326,11 +327,11 @@ void RickyReadingStatsActivity::buildScreen(UiScreen& screen) {
                            static_cast<int>(std::min<uint64_t>(100, todayMs * 100 / goalMs)));
   y += 8 + gap / 2;
   if (todayMs < kMinuteMs)
-    snprintf(text, sizeof(text), "%s", tr(STR_RICKY_STATS_IDLE));
+    snprintf(text, sizeof(text), "%s", RickyCompanion::text(StrId::STR_RICKY_STATS_IDLE, StrId::STR_RICKY_STATS_IDLE_CAT));
   else if (!reached)
     snprintf(text, sizeof(text), tr(STR_RICKY_STATS_GOING), static_cast<unsigned>(minutesOf(goalMs - todayMs) + 1));
   else
-    snprintf(text, sizeof(text), "%s", tr(STR_RICKY_STATS_DONE));
+    snprintf(text, sizeof(text), "%s", RickyCompanion::text(StrId::STR_RICKY_STATS_DONE, StrId::STR_RICKY_STATS_DONE_CAT));
   target.text(rect(textX, y, textWidth, smallHeight), text, small);
 
   // The month: one paw print per day read, a hatched one for a rest day.

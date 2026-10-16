@@ -14,6 +14,7 @@ from PIL import Image, ImageOps
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = ROOT / "src/components/icons/sources/rickyos/mascot"
+CAT_SOURCES = ROOT / "src/components/icons/sources/rickyos/mascot-cat"  # the cat theme, same moods
 NAMES = ("sleeping", "cheering", "happy")
 SIZE = 150
 SMALL_SIZE = 88  # the home page's today card
@@ -47,9 +48,10 @@ def main() -> None:
              "// 0 = ink. Regenerate; never edit these bytes.", "",
              f"inline constexpr int kRickyMascotSize = {SIZE};",
              f"inline constexpr int kRickyMascotSmallSize = {SMALL_SIZE};", ""]
-    for prefix, size in (("ricky_mascot", SIZE), ("ricky_mascot_small", SMALL_SIZE)):
+    for prefix, size, sources in (("ricky_mascot", SIZE, SOURCES), ("ricky_mascot_small", SMALL_SIZE, SOURCES),
+                                  ("ricky_cat", SIZE, CAT_SOURCES), ("ricky_cat_small", SMALL_SIZE, CAT_SOURCES)):
         for name in NAMES:
-            data = icon(SOURCES / f"{name}.png", size)
+            data = icon(sources / f"{name}.png", size)
             lines.append(f"static constexpr uint8_t {prefix}_{name}[] = {{")
             for offset in range(0, len(data), 19):  # clang-format packs 19 per line
                 lines.append("    " + ", ".join(f"0x{b:02X}" for b in data[offset:offset + 19]) + ",")
