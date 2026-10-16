@@ -17,8 +17,9 @@ shim = r'''
 #include <vector>
 #include "PlusFramebuffer.h"
 #include "NativeGrayRefreshPolicy.h"
-#define ESP_LOGI(...) ((void)0)
+template <class... A> static void ESP_LOGI(const char*, const char*, A...) {}
 #define ESP_LOGE(...) ((void)0)
+static int64_t esp_timer_get_time() { return 0; }
 constexpr int W=1216,H=684,N=W*H/2;
 struct EpdRect {int x,y,width,height;};
 enum EpdDrawMode {MODE_GC16=1,MODE_DU=2,MODE_GL16=3};

@@ -628,6 +628,10 @@ if("$ENV{RICKYOS_PLUS_NETWORK_ACCEPTANCE}" STREQUAL "1")
   set_source_files_properties("port/PlusRadioCompare.cpp" "port/PlusNetworkAcceptance.cpp"
       PROPERTIES COMPILE_DEFINITIONS RICKYOS_PLUS_NETWORK_ACCEPTANCE=1)
 endif()
+# Unattended tab-switch timing (diagnostic builds only).
+if("$ENV{RICKYOS_PLUS_TAB_BENCH}" STREQUAL "1")
+  target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_TAB_BENCH=1 RICKYOS_PAINT_PROFILE=1)
+endif()
 target_compile_definitions(${COMPONENT_LIB} PUBLIC
     RICKYOS_PRODUCT=1 CROSSPOINT_PRODUCT_NAME="RickyOS" CROSSPOINT_VERSION="1.2.0"
     CROSSMUX_UI_PROFILE_HIGH_DPI=1 HYPHENATION_ENGLISH_ONLY=1

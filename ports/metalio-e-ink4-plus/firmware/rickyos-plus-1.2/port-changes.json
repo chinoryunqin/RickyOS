@@ -60,17 +60,22 @@
     {
       "path": "lib/EpdFont/FontDecompressor.h",
       "baseline_sha256": "b7032c8393f5d0cebe67c75c2b9b268e3c0c248b1449a4e1fc6069baee083c89",
-      "ported_sha256": "7c5ddba8d5fff21db62271493918344ad1b0a14613200d6606bfd9a010f62fcc"
+      "ported_sha256": "5e7f8e364bac855ff2496b7ea4c21841889679c127f4d810d3ff01656dbcede6"
+    },
+    {
+      "path": "lib/GfxRenderer/GfxRenderer.cpp",
+      "baseline_sha256": "a13a0b71a5eceaf6aa372019aad2fc24c87222f3de0f577868801a0a5b93e757",
+      "ported_sha256": "f742a4d4063de117f313ca0bd67b33b6d2c951484e815b501235bf3cd27c98cd"
     },
     {
       "path": "lib/I18n/translations/chinese.yaml",
       "baseline_sha256": "d85a22f478199f63ec6a783f29c1b14e4dd3dae0a57ecf008055e8cce34247eb",
-      "ported_sha256": "d9f13d8bc33453551b3193a3dfd3cbcd7d793b1e3d4305d42c53698b37daded7"
+      "ported_sha256": "623fa638b1b7ecc0d41e5938bade5defd7df3a0309c494df417fb1100e5ae6e4"
     },
     {
       "path": "lib/I18n/translations/english.yaml",
       "baseline_sha256": "cf6dc9f83dd16a7aa15916eb38b3ed64d44ba577c61cc558dc0a3f8f250e22ba",
-      "ported_sha256": "f18e2d8220181998cb5583479653c3921aa1ee05c4b597f120e7445f60800d5b"
+      "ported_sha256": "643152bffae3c622de612fa0906325157ce20d030ba3af87601c7524b83a2fa9"
     },
     {
       "path": "lib/Logging/Logging.cpp",
@@ -200,7 +205,7 @@
     {
       "path": "src/activities/ActivityManager.cpp",
       "baseline_sha256": "e97372dc858385e6ac21bac9d545abadd7bcd9ca036feb7c3dc8ed8bf8cb9ada",
-      "ported_sha256": "f4638c4908eed70d60ae5985713f5802786c39ec2f85b376bce9fbb695812fc2"
+      "ported_sha256": "74cb987dead095d4694f901fee5865b0fc2f1e3cfb7850cd749ecff07f6caa75"
     },
     {
       "path": "src/activities/ActivityManager.h",
@@ -310,12 +315,12 @@
     {
       "path": "src/activities/settings/HomeButtonSettingsActivity.h",
       "baseline_sha256": "ce63cbfee271557b6141642df0c1c5a9e3d680c866743fbba426d4c30a65bc9b",
-      "ported_sha256": "aa3267ecc43b95907dd47cf2755d7c4da1d3fe9f12c29bb34574dccf1f7344da"
+      "ported_sha256": "202b81d480fd37d08889e57264ca0f4d8098d6d60c0090e78b37be6ae2284707"
     },
     {
       "path": "src/activities/settings/RickyOptionListActivity.cpp",
       "baseline_sha256": "cb58d870dbd08af18396b7bd389c57a6b17511c43ffcd7224450914902057927",
-      "ported_sha256": "2143076475380e635b15e8ad4b701d318ac39e03e01043129113ecaae5e7b048"
+      "ported_sha256": "cd9fa99ec4ac8d73394fde30e4cc3b4c9f2d9cd5cac20cb8a6c47a059d20ecb0"
     },
     {
       "path": "src/activities/settings/SettingsActivity.cpp",
@@ -331,6 +336,11 @@
       "path": "src/activities/util/FrontlightPanelActivity.h",
       "baseline_sha256": "28f273626ec6d605dd24764a8b99c856289cb7d8b27664e6e839d7689486f779",
       "ported_sha256": "bf7fe5d8526e3637face903c4778d7ef6d4e454505a71ba1e9d177204a2fa0d4"
+    },
+    {
+      "path": "src/components/RickyDesignTokens.h",
+      "baseline_sha256": "2b37779d469a6ea4f18eb0f2ca5a93f45d76418a030d7c2d0f3546a6a972b547",
+      "ported_sha256": "102966c5d4d2b0ad2803fd5ced4ab94c14bf37a86bcb6db377f43632f199dde2"
     },
     {
       "path": "src/components/UITheme.cpp",

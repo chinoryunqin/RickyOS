@@ -671,7 +671,21 @@
      }
 --- a/lib/EpdFont/FontDecompressor.h
 +++ b/lib/EpdFont/FontDecompressor.h
-@@ -115,6 +115,6 @@
+@@ -75,7 +75,12 @@
+   // buffers, NOT std::vector: getBitmap() runs on the render path, and under
+   // -fno-exceptions a vector resize that hits OOM abort()s the firmware instead of failing
+   // (field crash: hotGroup.resize() -> std::bad_alloc -> abort with ~11 KB free).
+-#ifdef RICKYOS_PRODUCT
++#if FREEINK_DEVICE_METALIO_PLUS
++  // The Plus packs every built-in UI face to fit its 5 MiB slot (160 groups in all), so
++  // eight slots thrashed: each tab paint re-inflated its groups (~15 ms per text call).
++  // One slot per group: each inflates once, <= ~2.5 MB PSRAM, ~6 KB of slot headers.
++  static constexpr uint8_t HOT_GROUP_SLOTS = 160;
++#elif defined(RICKYOS_PRODUCT)
+   static constexpr uint8_t HOT_GROUP_SLOTS = 8;  // <= 8 x ~16 KB, PSRAM-preferred (fiFontMalloc)
+ #else
+   static constexpr uint8_t HOT_GROUP_SLOTS = 1;  // no-PSRAM targets keep the single group
+@@ -115,6 +120,6 @@
    uint16_t getGroupIndex(const EpdFontData* fontData, uint32_t glyphIndex);
    uint32_t getAlignedOffset(const EpdFontData* fontData, uint16_t groupIndex, uint32_t glyphIndex);
    bool decompressGroup(const EpdFontData* fontData, uint16_t groupIndex, uint8_t* outBuf, uint32_t outSize);
@@ -679,6 +693,37 @@
 +  static void compactSingleGlyph(const uint8_t* alignedSrc, uint8_t* packedDst, uint8_t width, uint8_t height, bool is4Bit);
    static int32_t findGlyphIndex(const EpdFontData* fontData, uint32_t codepoint);
  };
+--- a/lib/GfxRenderer/GfxRenderer.cpp
++++ b/lib/GfxRenderer/GfxRenderer.cpp
+@@ -1478,8 +1478,14 @@
+     // The 16-level frame has real grays: a smooth tone instead of the B/W dot pattern
+     // (and treating these as white made light-gray tracks vanish once a screen settled).
+     // Black/white write the levels drawPixel() mirrors (0 and 15).
+-    const uint8_t level = C == Color::LightGray                             ? 11
+-                          : C == Color::DarkGray                            ? 7
++#if FREEINK_DEVICE_METALIO_PLUS
++    // Same per-panel tone as ricky::ds::gray on the Plus (kLine / a darker mid gray).
++    constexpr uint8_t lightLevel = 7, darkLevel = 4;
++#else
++    constexpr uint8_t lightLevel = 11, darkLevel = 7;
++#endif
++    const uint8_t level = C == Color::LightGray                             ? lightLevel
++                          : C == Color::DarkGray                            ? darkLevel
+                           : framebufferState(renderMode, C == Color::Black) ? 0
+                                                                             : 15;
+     fillGrayscale16Rect(lx0, ly0, lx1 - lx0, ly1 - ly0, level);
+@@ -1487,7 +1493,11 @@
+   }
+   if (grayscale16Buffer != nullptr) {  // strip target: the per-pixel path clips to the band
+     if constexpr (C == Color::LightGray || C == Color::DarkGray) {
++#if FREEINK_DEVICE_METALIO_PLUS
++      constexpr uint8_t gray = C == Color::LightGray ? 119 : 68;  // levels 7 and 4 (Plus tone)
++#else
+       constexpr uint8_t gray = C == Color::LightGray ? 187 : 119;  // levels 11 and 7
++#endif
+       for (int px = lx0; px < lx1; ++px) {
+         for (int py = ly0; py < ly1; ++py) drawGrayscale16Pixel(px, py, gray);
+       }
 --- a/lib/I18n/translations/chinese.yaml
 +++ b/lib/I18n/translations/chinese.yaml
 @@ -1591,3 +1591,49 @@
@@ -699,7 +744,7 @@
 +STR_RICKY_CC_PREVIEW: "试听"
 +
 +STR_PLUS_KEYS: "按键设置"
-+STR_PLUS_KEY_AI: "AI／BOOT 键"
++STR_PLUS_KEY_AI: "AI 键"
 +STR_PLUS_KEY_PREVIOUS: "底部上一页键"
 +STR_PLUS_KEY_NEXT: "底部下一页键"
 +STR_PLUS_KEY_UP: "侧边上键"
@@ -751,7 +796,7 @@
 +STR_RICKY_CC_PREVIEW: "Test sound"
 +
 +STR_PLUS_KEYS: "Button settings"
-+STR_PLUS_KEY_AI: "AI / BOOT key"
++STR_PLUS_KEY_AI: "AI key"
 +STR_PLUS_KEY_PREVIOUS: "Lower previous key"
 +STR_PLUS_KEY_NEXT: "Lower next key"
 +STR_PLUS_KEY_UP: "Side upper key"
@@ -1996,7 +2041,16 @@
    mutable HomeButtonAction deferredHomeAction = HomeButtonAction::Ignore;
 --- a/src/activities/ActivityManager.cpp
 +++ b/src/activities/ActivityManager.cpp
-@@ -15,6 +15,9 @@
+@@ -1,4 +1,8 @@
+ #include "ActivityManager.h"
++
++#if RICKYOS_PLUS_TAB_BENCH
++#include <esp_timer.h>
++#endif
+ 
+ #include <BoardConfig.h>
+ #include <FontCacheManager.h>
+@@ -15,6 +19,9 @@
  #include "CrossPointSettings.h"
  #include "apps/AppsMenuActivity.h"
  #include "apps/calculator/CalculatorActivity.h"
@@ -2006,7 +2060,7 @@
  #include "apps/gomoku/GomokuMenuActivity.h"
  #include "apps/reading-stats/RickyReadingStatsActivity.h"
  #include "apps/standby/RickyStandbySettingsActivity.h"
-@@ -117,7 +120,7 @@
+@@ -117,7 +124,7 @@
    self->renderTaskLoop();
  }
  
@@ -2015,7 +2069,7 @@
  namespace {
  // Keep the previous B/W + delayed-gray candidate available for A/B builds.
  // The direct-gray experiment skips both the B/W submission and this idle redraw.
-@@ -177,14 +180,14 @@
+@@ -177,14 +184,14 @@
          // before calling them. Input during the render also cancels its idle pass.
          auto delayMs = currentActivity->idleRenderDelayMs();
          [[maybe_unused]] bool directGray = false;
@@ -2032,7 +2086,7 @@
          // A missing gray buffer or failed commit gets the existing readable B/W
          // fallback. The direct path never arms a second, delayed submission.
          if (!directGray || !renderDirectGray(std::move(lock))) currentActivity->render(std::move(lock));
-@@ -194,7 +197,7 @@
+@@ -194,7 +201,7 @@
          idleDelayTicks = delayMs != 0 ? pdMS_TO_TICKS(delayMs) : portMAX_DELAY;
          waitTicks = idleDelayTicks;
        } else if (!idleRenderCancelled(idleGeneration)) {
@@ -2041,7 +2095,7 @@
          if (graySettlePending) {
            graySettlePending = false;
            settleToGray(std::move(lock), idleGeneration);
-@@ -220,7 +223,7 @@
+@@ -220,13 +227,16 @@
    }
  }
  
@@ -2050,7 +2104,53 @@
  bool ActivityManager::renderDirectGray(RenderLock&& lock) {
    if (!renderer.beginGrayscale16()) {
      LOG_DBG("ACT", "Direct gray: unavailable, B/W fallback");
-@@ -820,6 +823,9 @@
+     return false;
+   }
+   const unsigned long started = millis();
++#if RICKYOS_PLUS_TAB_BENCH
++  LOG_INF("TABBENCH", "render_start %s t=%lu", currentActivity->name.c_str(), started);
++#endif
+   const uint32_t renderGeneration = renderRequestGeneration.load(std::memory_order_relaxed);
+   // Renderers may release the lock; capture page-owned geometry first.
+   const Rect navigation = currentActivity->usesMainTabBar() ? currentActivity->mainTabLayout().tabBar : Rect{};
+@@ -255,6 +265,10 @@
+   if (committed) renderer.clearNextRefreshOverride();
+   LOG_DBG("ACT", "Direct gray: %s paint=%lu ms submit=%lu ms total=%lu ms", committed ? "done" : "failed, B/W fallback",
+           painted - started, millis() - painted, millis() - started);
++#if RICKYOS_PLUS_TAB_BENCH
++  LOG_INF("TABBENCH", "painted %s paint=%lu submit=%lu end=%lu", currentActivity ? currentActivity->name.c_str() : "?",
++          painted - started, millis() - painted, millis());
++#endif
+ #if RICKYOS_PERF_SD_LOG
+   {
+     char line[256];
+@@ -356,6 +370,25 @@
+     resetHomeStandbyInput();
+     return;
+   }
++#if RICKYOS_PLUS_TAB_BENCH
++  {
++    // Diagnostic: walk the tab bar unattended, three rounds, 5 s apart from 25 s after boot.
++    static uint32_t nextAt = 25000;
++    static unsigned step = 0;
++    if (step < 3 * MainTabs::values.size() && currentActivity && currentActivity->usesMainTabBar() &&
++        millis() >= nextAt) {
++      const MainTab target = MainTabs::values[(step + 1) % MainTabs::values.size()];
++      LOG_INF("TABBENCH", "step=%u from=%d to=%d t=%llu heap=%u psram=%u", step,
++              static_cast<int>(currentActivity->mainTab()), static_cast<int>(target),
++              static_cast<unsigned long long>(esp_timer_get_time() / 1000), (unsigned)ESP.getFreeHeap(),
++              (unsigned)ESP.getFreePsram());
++      ++step;
++      nextAt = millis() + 5000;
++      goToMainTab(target);
++      return;
++    }
++  }
++#endif
+ 
+   if (currentActivity && currentActivity->requiresExclusiveStorageLoop()) {
+     currentActivity->loop();
+@@ -820,6 +853,9 @@
  void ActivityManager::goToGomoku() { replaceActivityWith<GomokuMenuActivity>(); }
  
  void ActivityManager::goToCalculator() { replaceActivityWith<CalculatorActivity>(); }
@@ -2060,7 +2160,7 @@
  
  void ActivityManager::goToStandby() { replaceActivityWith<StandbyActivity>(); }
  
-@@ -896,7 +902,7 @@
+@@ -896,7 +932,7 @@
    cancelIdleRender();
    if (!currentActivity) return false;
    if (currentActivity->handleForcedRefresh()) return true;
@@ -2069,7 +2169,7 @@
    if (ricky::ds::refresh::kDirectGrayUi && currentActivity->wantsGraySettle() &&
        currentActivity->idleRenderDelayMs() == 0) {
      // Refresh the real gray UI, not its approximate 1-bit proxy.
-@@ -931,7 +937,7 @@
+@@ -931,7 +967,7 @@
  #endif
  
  void ActivityManager::requestUpdate(bool immediate) {
@@ -2078,7 +2178,7 @@
    renderRequestGeneration.fetch_add(1, std::memory_order_relaxed);
  #endif
  #if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
-@@ -949,7 +955,7 @@
+@@ -949,7 +985,7 @@
    }
  }
  void ActivityManager::requestUpdateAndWait() {
@@ -3446,7 +3546,7 @@
  
   private:
 +  #if FREEINK_DEVICE_METALIO_PLUS
-+  static constexpr int GESTURE_COUNT = 11;
++  static constexpr int GESTURE_COUNT = 8;  // 6 keys, touch feedback, reset
 +  int keyPage = -1;
 +  void onBackButton() override;
 +#else
@@ -3471,16 +3571,23 @@
    bool handleCustomInput() override;
 --- a/src/activities/settings/RickyOptionListActivity.cpp
 +++ b/src/activities/settings/RickyOptionListActivity.cpp
-@@ -50,6 +50,9 @@
+@@ -50,10 +50,16 @@
  const RickyOptionList& keys() {
    // The strip under the screen is left / middle / right; the middle key is Back.
    static const RickyOptionRow rows[] = {
 +#if FREEINK_DEVICE_METALIO_PLUS
++      // The Plus sets each key's short/long press on its own page; the Read Pico rows
++      // (left/right page keys, long press, middle-key standby) duplicated those there.
 +      {StrId::STR_PLUS_TOUCH_FEEDBACK, &SETTINGS.plusTouchFeedback},
-+#endif
++#else
        {StrId::STR_RICKY_KEYS_SIDE, &SETTINGS.sideButtonLayout, kSideKeyLabels, countOf(kSideKeyLabels)},
        {StrId::STR_RICKY_KEYS_LONG_PRESS, &SETTINGS.longPressButtonBehavior, kLongPressLabels,
         countOf(kLongPressLabels)},
+       {StrId::STR_RICKY_KEYS_STANDBY, &SETTINGS.standbyShortcutEnabled},
++#endif
+   };
+   static const RickyOptionList list{StrId::STR_RICKY_KEYS, rows, static_cast<int>(std::size(rows))};
+   return list;
 --- a/src/activities/settings/SettingsActivity.cpp
 +++ b/src/activities/settings/SettingsActivity.cpp
 @@ -473,10 +473,12 @@
@@ -4218,6 +4325,40 @@
    int computePanelBottom() const;
    void adjustBrightness(int delta);
    void adjustWarmth(int delta);
+--- a/src/components/RickyDesignTokens.h
++++ b/src/components/RickyDesignTokens.h
+@@ -35,10 +35,19 @@
+ namespace gray {
+ using Level = uint8_t;               // 0..15, 0 = black
+ inline constexpr Level kInk = 0;     // #000000 文字/图标/反白底/主按钮
++#if FREEINK_DEVICE_METALIO_PLUS
++// 按机型取值：Plus 的 E0470A14 屏把中间灰显示得明显偏浅（次级文字、描边、进度轨发虚），
++// 同名等级在这台屏上取更深的值，让观感接近设计稿。
++inline constexpr Level kInk2 = 2;    // 次级文字
++inline constexpr Level kMute = 5;    // 禁用/占位
++inline constexpr Level kLine = 7;    // 分隔线/进度轨
++inline constexpr Level kTint = 12;   // 小面积底
++#else
+ inline constexpr Level kInk2 = 4;    // #444444 次级文字（仅静止帧）
+ inline constexpr Level kMute = 8;    // #888888 禁用/占位（仅静止帧）
+ inline constexpr Level kLine = 11;   // #BBBBBB 分隔线/进度轨（仅静止帧）
+ inline constexpr Level kTint = 13;   // #DDDDDD 小面积底（仅静止帧）
++#endif
+ inline constexpr Level kPaper = 15;  // #FFFFFF 背景/反白文字
+ 
+ // 8-bit sRGB 近似值，供模拟器 / 截图对比使用。
+@@ -189,7 +198,11 @@
+ // 5. 线宽（§7）：2 个值。图标线宽见 icon::strokeFor()。
+ // -----------------------------------------------------------------------------
+ namespace stroke {
++#if FREEINK_DEVICE_METALIO_PLUS
++inline constexpr uint8_t kHairline = 3;        // Plus：2 px 灰线在这块屏上几乎看不见
++#else
+ inline constexpr uint8_t kHairline = 2;        // 卡片描边、分隔线、次按钮、进度轨(1-bit)
++#endif
+ inline constexpr uint8_t kEmphasis = 4;        // 弹窗边框、按下态主按钮、强调线
+ enum class Divider : uint8_t { None, Solid };  // 无 Dotted
+ inline constexpr Divider kDefaultListDivider = Divider::None;
 --- a/src/components/UITheme.cpp
 +++ b/src/components/UITheme.cpp
 @@ -124,7 +124,7 @@

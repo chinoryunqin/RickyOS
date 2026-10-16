@@ -3,6 +3,7 @@
 #include <metalio_epd.h>
 #include <epd_board_metalio_eink4_plus.h>
 #include <esp_log.h>
+#include <esp_timer.h>
 #include <NativeGrayRefreshPolicy.h>
 #include <cstring>
 
@@ -99,6 +100,7 @@ class MetalioPlusDriver final : public PanelDriver {
     auto candidate = ledger_;
     const auto plan = candidate.advance(damage, nav, contentEvery, smallEvery);
     if (!plan.count) return true;  // Identical native frame: no rails and no aging.
+    const int64_t startedUs = esp_timer_get_time();
     epd_poweron();
     auto result = EPD_DRAW_EMPTY_LINE_QUEUE;
     if (epd_board_metalio_eink4_plus_tps_ok()) {
@@ -111,7 +113,8 @@ class MetalioPlusDriver final : public PanelDriver {
       }
     }
     epd_poweroff();
-    ESP_LOGI("PlusDisplay", "regional steps=%u result=0x%x", plan.count, result);
+    ESP_LOGI("PlusDisplay", "regional steps=%u result=0x%x ms=%lld end=%lld", plan.count, result,
+             (esp_timer_get_time() - startedUs) / 1000, esp_timer_get_time() / 1000);
     if (result != EPD_DRAW_SUCCESS) return false;
     ledger_ = candidate;
     return true;
@@ -121,6 +124,7 @@ class MetalioPlusDriver final : public PanelDriver {
     // optical baseline, not only a RAM diff against the previous UI image.
     const bool clean = state_ == OpticalState::Unknown;
     if (clean || full || (state_ == OpticalState::Gray && waveform == MODE_DU)) waveform = MODE_GC16;
+    const int64_t startedUs = esp_timer_get_time();
     epd_poweron();
     auto result = EPD_DRAW_EMPTY_LINE_QUEUE;
     if (epd_board_metalio_eink4_plus_tps_ok()) {
@@ -137,8 +141,9 @@ class MetalioPlusDriver final : public PanelDriver {
       }
     }
     epd_poweroff(); // TPS rails are only needed while the waveform runs.
-    ESP_LOGI("PlusDisplay", "refresh mode=%d full=%d clean=%d previous=%d result=0x%x",
-             waveform, full, clean, static_cast<int>(state_), result);
+    ESP_LOGI("PlusDisplay", "refresh mode=%d full=%d clean=%d previous=%d result=0x%x ms=%lld end=%lld",
+             waveform, full, clean, static_cast<int>(state_), result, (esp_timer_get_time() - startedUs) / 1000,
+             esp_timer_get_time() / 1000);
     return result;
   }
   ricky::gray::Ledger ledger_;
