@@ -60,8 +60,7 @@ function showDone(firstInstall, restarted) {
   $('done-text').textContent = (restarted ?
     'RickyOS 已写入并通过校验，设备正在重启。几秒后屏幕会出现 RickyOS 首页，之后可以拔下数据线。' :
     'RickyOS 已写入并通过校验。请长按电源键几秒重启设备，屏幕会出现 RickyOS 首页。') +
-    (firstInstall ? (device === 'plus' ? '原系统的内部设置已清理，SD 卡未作改动。' : '原系统的内部文件已清理，SD 卡未作改动。') :
-      'SD 卡未作改动。');
+    (firstInstall ? '原系统的内部文件已清理，SD 卡未作改动。' : 'SD 卡未作改动。');
   $('done-hint').hidden = !restarted;
   $('done-dialog').showModal();
 }
@@ -88,15 +87,12 @@ function installationBlock() {
 }
 function showPlan(kind) {
   if (device === 'plus' && kind) {
-    $('install-path').textContent = kind === 'factory' ? '已识别原厂系统 · 自动准备安装' :
-      kind === 'upgrade' ? '已识别 RickyOS · 自动准备更新' : '已识别其他系统 · 自动准备完整安装';
-    $('install-note').textContent = kind === 'factory' ?
-      '安装会写入 RickyOS、启动加载器和启动记录，不改分区表，不清除设置分区。装好后原厂系统所在的空间会被 RickyOS 用来缓存字体，恢复原厂需要使用厂商的工具，建议先备份完整 Flash。网站不操作 SD 卡。' :
-      kind === 'upgrade' ? '写入新版 RickyOS，必要时更新启动加载器和启动记录，不改分区表，不操作 SD 卡。' :
-      '完整安装会替换当前系统、启动组件和启动记录，必要时恢复设备的标准分区，并清理原系统的设置和应用空间。建议先备份完整 Flash。网站不操作 SD 卡，请另行备份卡上的数据。';
+    $('install-path').textContent = kind === 'upgrade' ? '已识别 RickyOS · 自动准备更新' :
+      kind === 'factory' ? '已识别原厂系统 · 自动准备完整安装' : '已识别其他系统 · 自动准备完整安装';
+    $('install-note').textContent = kind === 'upgrade' ? '只更新应用，不写启动加载器、分区表和启动记录，不操作 SD 卡。' :
+      '完整安装会替换当前系统、启动组件和分区（RickyOS 的应用空间更大），清理设备内部空间和设置。恢复原厂系统需要使用厂商的工具，建议先备份完整 Flash。网站不操作 SD 卡，请另行备份卡上的数据。';
     $('write-confirm-text').textContent = kind === 'upgrade' ? '我确认安装所选版本，写入期间不拔线、不让电脑休眠。' :
-      kind === 'factory' ? '我确认安装会替换当前使用的系统，写入期间不拔线、不让电脑休眠。' :
-      '我确认安装会替换当前系统并清理设备内部设置，写入期间不拔线、不让电脑休眠。';
+      '我确认安装会替换当前系统并清理设备内部空间，写入期间不拔线、不让电脑休眠。';
     return;
   }
   $('install-path').textContent = kind === 'factory' ? '已识别原厂系统 · 自动准备首次安装' :
@@ -307,7 +303,7 @@ $('install-button').addEventListener('click', () => operate(async () => {
   result('正在下载固件。请勿拔线或让电脑休眠。');
   const bytes = await fetchBytes(release.file, '固件', release.bytes);
   // The Plus keeps its partitions and settings: only the Read Pico's full install clears them.
-  const firstInstall = session.plan.kind === 'other' || (!plus && session.plan.kind === 'factory');
+  const firstInstall = session.plan.kind === 'factory' || session.plan.kind === 'other';
   const assets = [];
   if (plus) {
     assets.push(await fetchBytes(release.bootloader.file, '启动加载器', release.bootloader.bytes));

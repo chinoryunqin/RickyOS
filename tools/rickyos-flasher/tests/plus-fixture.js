@@ -2,14 +2,22 @@ import { md5 } from 'hash-wasm';
 import { FLASH_BYTES, otaCrc } from '../src/policy.js';
 import { PLUS, PLUS_TAG } from '../src/plus.js';
 
-// The vendor partition table (Metalio partitions.csv), as ESP-IDF encodes it.
-const ENTRIES = [
+// Partition tables as ESP-IDF encodes them: the vendor's (Metalio partitions.csv) and the
+// RickyOS / Read Pico layout the installer moves boards to.
+const VENDOR = [
   [1, 2, 0x9000, 0x4000, 'nvs'], [1, 0, 0xd000, 0x2000, 'otadata'], [1, 1, 0xf000, 0x1000, 'phy_init'],
   [1, 130, 0x10000, 0x64000, 'model'], [0, 16, 0x80000, 0x500000, 'ota_0'], [0, 17, 0x580000, 0x500000, 'ota_1'],
   [1, 130, 0xa80000, 0x64000, 'resources'], [1, 64, 0xae4000, 0x500000, 'font_data'],
   [1, 3, 0xfe4000, 0x10000, 'coredump'],
 ];
-export async function plusTable() {
+const RICKY = [
+  [1, 2, 0x9000, 0x5000, 'nvs'], [1, 0, 0xe000, 0x2000, 'otadata'],
+  [0, 16, 0x10000, 0x640000, 'app0'], [0, 17, 0x650000, 0x640000, 'app1'],
+  [1, 130, 0xc90000, 0x360000, 'spiffs'], [1, 3, 0xff0000, 0x10000, 'coredump'],
+];
+export const vendorTable = () => encodeTable(VENDOR);
+export const rickyTable = () => encodeTable(RICKY);
+async function encodeTable(ENTRIES) {
   const table = new Uint8Array(4096).fill(255), view = new DataView(table.buffer);
   ENTRIES.forEach(([type, subtype, offset, size, label], i) => {
     const at = i * 32;
@@ -23,7 +31,7 @@ export async function plusTable() {
   for (let i = 0; i < 16; i++) table[end + 16 + i] = parseInt(digest.slice(i * 2, i * 2 + 2), 16);
   return table;
 }
-export function otaRecord(seq) {
+export function otaRecord(seq) { // a valid record for slot (seq - 1) % 2
   const ota = new Uint8Array(PLUS.otaBytes).fill(255);
   if (seq) {
     const view = new DataView(ota.buffer);
@@ -49,11 +57,21 @@ export function plusBootloader() {
 // A factory-fresh board: vendor bootloader, the vendor table, the vendor app in ota_0.
 export async function factoryFlash() {
   const flash = new Uint8Array(FLASH_BYTES).fill(255);
-  const vendorBoot = plusBootloader().fill(3, 24);
-  flash.set(vendorBoot, PLUS.bootloaderOffset);
-  flash.set(await plusTable(), PLUS.tableOffset);
-  flash.set(otaRecord(1), PLUS.otaOffset);
-  flash.set(plusApp(PLUS.factoryProject, 'vendor 2.0.61'), PLUS.slots[0]);
-  flash.fill(0x5a, 0x9000, 0xd000); // vendor NVS must survive
+  flash.set(plusBootloader().fill(3, 24), PLUS.bootloaderOffset);
+  flash.set(await vendorTable(), PLUS.tableOffset);
+  flash.set(otaRecord(1), PLUS.vendorOtaOffset);
+  flash.set(plusApp(PLUS.factoryProject, 'vendor 2.0.61'), PLUS.vendorSlots[0]);
+  flash.fill(0x5a, 0x9000, 0xd000);  // vendor NVS
+  flash.fill(0x44, 0xae4000, 0xae5000); // vendor font_data
+  return flash;
+}
+// RickyOS already on the RickyOS layout, running from app0 (seq 1) or app1 (seq 2).
+export async function rickyFlash(seq = 1) {
+  const flash = new Uint8Array(FLASH_BYTES).fill(255);
+  flash.set(plusBootloader(), PLUS.bootloaderOffset);
+  flash.set(await rickyTable(), PLUS.tableOffset);
+  flash.set(otaRecord(seq), PLUS.otaOffset);
+  flash.set(plusFirmware('1.1.9'), seq === 2 ? 0x650000 : PLUS.appOffset);
+  flash.fill(0x5a, PLUS.nvsOffset, PLUS.nvsOffset + 0x1000); // RickyOS settings
   return flash;
 }

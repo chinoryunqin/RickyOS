@@ -1,33 +1,36 @@
 import { sha256 } from 'hash-wasm';
-import { requireThat, contains, otaCrc, checkNotes, FLASH_BYTES } from './policy.js';
+import { requireThat, contains, otaCrc, checkNotes, checkPartitions, activeOffset, FLASH_BYTES, SLOT_BYTES,
+  RELEASE_RESERVE } from './policy.js';
 
-// Metalio E-Ink4-Plus (ESP32-S31). Verified on hardware 2026-10-17: the vendor ships
-// this exact partition table (Metalio-E-Ink4-Plus 2.0.61 in ota_0, ota_1 empty), and
-// RickyOS keeps it. Over the vendor system or RickyOS the installer writes the bootloader
-// RickyOS's IDF needs (the vendor's leaves the PSRAM cache unconfigured), RickyOS into
-// ota_1 and last the boot record selecting ota_1; table and NVS stay. Any other system
-// gets the complete install: NVS and ota_0 cleared too, and the vendor table written
-// last when the board carries another one. RickyOS reads only NVS, the boot record and
-// the two app slots (the idle one caches fonts); the vendor data partitions stay as found.
+// Metalio E-Ink4-Plus (ESP32-S31). RickyOS runs it on the Read Pico's partition layout
+// (byte-identical table: app0 0x10000 / app1 0x650000, 6.25 MiB each, boot record at
+// 0xe000). The vendor table (verified on hardware 2026-10-17: Metalio-E-Ink4-Plus 2.0.61
+// in ota_0) gave RickyOS a 5 MiB slot and ~6 MB of partitions it never reads, so every
+// board not already on the RickyOS layout gets the complete install: RickyOS into app0,
+// the rest of the flash and NVS cleared, the bootloader RickyOS's IDF needs (the
+// vendor's leaves the PSRAM cache unconfigured), a boot record selecting app0, and the
+// partition table last. A board already running RickyOS on this layout only gets the app.
 export const PLUS = Object.freeze({
   board: 'metalio-plus-s31',
   chipName: 'ESP32-S31',
   chipId: 32,
-  bootloaderOffset: 0x2000,
-  bootloaderMax: 0x6000,          // up to the partition table at 0x8000
+  bootloaderOffset: 0x2000,        // the S31 ROM reserves the first two sectors
+  bootloaderMax: 0x6000,           // up to the partition table at 0x8000
   tableOffset: 0x8000,
   nvsOffset: 0x9000,
-  nvsBytes: 0x4000,
-  tableSha256: '6428c34dea4556ac826952221e9c99094c6963f21613b5db03e309f7a8d09ebb',
-  otaOffset: 0xd000,
+  nvsBytes: 0x5000,
+  otaOffset: 0xe000,
   otaBytes: 0x2000,
-  slots: [0x80000, 0x580000],
-  slotBytes: 0x500000,
-  appOffset: 0x580000,             // ota_1
+  appOffset: 0x10000,              // app0
+  slotBytes: SLOT_BYTES,
+  vendorTableSha256: '6428c34dea4556ac826952221e9c99094c6963f21613b5db03e309f7a8d09ebb',
+  vendorOtaOffset: 0xd000,
+  vendorSlots: [0x80000, 0x580000],
   factoryProject: 'Metalio-E-Ink4-Plus',
   rickyProjectPrefix: 'RickyOS-Plus',
 });
 export const PLUS_TAG = `CROSSPOINT-BOARD-V1:${PLUS.board};`;
+const FILE = /^firmware\/[A-Za-z0-9._-]+\.bin$/;
 
 export function isPlusRelease(release) { return release?.board === PLUS.board; }
 
@@ -36,19 +39,18 @@ export function checkPlusRelease(release) {
     release.board === PLUS.board && release.chipId === PLUS.chipId && release.flashBytes === FLASH_BYTES &&
     typeof release.version === 'string' && /^\d+\.\d+\.\d+$/.test(release.version) &&
     Number.isInteger(release.bytes) && release.bytes >= 24 && release.bytes % 4 === 0 &&
-    Math.ceil(release.bytes / 4096) * 4096 <= PLUS.slotBytes &&
-    /^[a-f0-9]{64}$/.test(release.sha256) && /^firmware\/[A-Za-z0-9._-]+\.bin$/.test(release.file),
+    // The same headroom rule as the Read Pico, so the image can later be offered over the air.
+    Math.ceil(release.bytes / 4096) * 4096 <= SLOT_BYTES - RELEASE_RESERVE &&
+    /^[a-f0-9]{64}$/.test(release.sha256) && FILE.test(release.file),
     '这份固件尚未通过正式发行检查，安装入口保持关闭。');
   checkNotes(release.notes);
-  const boot = release.bootloader;
+  const boot = release.bootloader, table = release.partitions;
   requireThat(boot?.offset === PLUS.bootloaderOffset && Number.isInteger(boot.bytes) && boot.bytes >= 24 &&
     boot.bytes <= PLUS.bootloaderMax && boot.bytes % 4 === 0 && /^[a-f0-9]{64}$/.test(boot.sha256) &&
-    /^firmware\/[A-Za-z0-9._-]+\.bin$/.test(boot.file) && boot.file !== release.file,
-    '启动加载器的发行信息不合法。');
-  const table = release.partitions;
+    FILE.test(boot.file), '启动加载器的发行信息不合法。');
   requireThat(table?.offset === PLUS.tableOffset && [3072, 4096].includes(table.bytes) &&
-    /^[a-f0-9]{64}$/.test(table.sha256) && /^firmware\/[A-Za-z0-9._-]+\.bin$/.test(table.file) &&
-    new Set([release.file, boot.file, table.file]).size === 3, '分区表的发行信息不合法。');
+    /^[a-f0-9]{64}$/.test(table.sha256) && FILE.test(table.file), '分区表的发行信息不合法。');
+  requireThat(new Set([release.file, boot.file, table.file]).size === 3, '安装组件文件不能重复。');
   return release;
 }
 
@@ -73,16 +75,6 @@ export async function checkPlusFirmware(bytes, release) {
   checkPlusImage(bytes, release.version);
 }
 
-// The release's partition table must be the verified vendor table, sector-padded.
-export async function checkPlusTable(bytes, release) {
-  checkPlusRelease(release);
-  requireThat(bytes instanceof Uint8Array && bytes.length === release.partitions.bytes &&
-    await sha256(bytes) === release.partitions.sha256, '分区表大小或 SHA-256 错误。');
-  const sector = new Uint8Array(4096).fill(255); sector.set(bytes);
-  requireThat(await sha256(sector) === PLUS.tableSha256, '分区表与已验证的布局不一致。');
-  return sector;
-}
-
 export async function checkPlusBootloader(bytes, release) {
   checkPlusRelease(release);
   requireThat(bytes instanceof Uint8Array && bytes.length === release.bootloader.bytes &&
@@ -90,66 +82,67 @@ export async function checkPlusBootloader(bytes, release) {
   checkS31Header(bytes, '启动加载器');
 }
 
-// The boot record that wins: ESP-IDF picks the valid record with the highest sequence,
-// slot (seq - 1) % 2. Records with sequence 0/0xffffffff or a bad CRC do not vote.
-function validSequences(ota) {
-  requireThat(ota.length === PLUS.otaBytes, '启动记录读取不完整。');
-  const seqs = [];
-  for (const at of [0, 4096]) {
-    const view = new DataView(ota.buffer, ota.byteOffset + at, 32);
-    const seq = view.getUint32(0, true);
-    if (seq > 0 && seq < 0xffffffff && view.getUint32(28, true) === otaCrc(ota.subarray(at, at + 4))) seqs.push(seq);
-  }
-  return seqs;
+// The release's table must be the RickyOS layout; returns it as the full 4 KiB sector.
+export async function checkPlusTable(bytes, release) {
+  checkPlusRelease(release);
+  requireThat(bytes instanceof Uint8Array && bytes.length === release.partitions.bytes &&
+    await sha256(bytes) === release.partitions.sha256, '分区表大小或 SHA-256 错误。');
+  const sector = new Uint8Array(4096).fill(255); sector.set(bytes);
+  await checkPartitions(sector);
+  return sector;
 }
 
-export function plusActiveOffset(ota) {
-  const seqs = validSequences(ota);
-  // A blank record means the bootloader starts the first app slot.
-  return seqs.length ? PLUS.slots[(Math.max(...seqs) - 1) % 2] : PLUS.slots[0];
-}
-
-// A complete 8 KiB boot-record area selecting ota_1: one record, the other sector erased.
-// State 0xffffffff (undefined) boots directly; RickyOS builds have app rollback off.
-export function plusBootRecord(ota) {
-  const seqs = validSequences(ota);
-  let seq = Math.max(0, ...seqs) + 1;
-  if ((seq - 1) % 2 !== 1) seq += 1;
-  requireThat(seq < 0xffffffff, '启动记录序号异常，停止。');
+// A fresh 8 KiB boot-record area selecting app0: sequence 1, state undefined (boots
+// directly; RickyOS builds have app rollback off), the second sector erased.
+export function plusBootRecord() {
   const out = new Uint8Array(PLUS.otaBytes).fill(255);
   const view = new DataView(out.buffer);
-  view.setUint32(0, seq, true);
+  view.setUint32(0, 1, true);
   view.setUint32(24, 0xffffffff, true);
   view.setUint32(28, otaCrc(out.subarray(0, 4)), true);
   return out;
 }
 
 function projectOf(head) {
+  checkS31Header(head, '应用镜像');
   const view = new DataView(head.buffer, head.byteOffset);
   if (view.getUint32(32, true) !== 0xabcd5432) return '';
   return new TextDecoder().decode(head.subarray(80, 112)).split('\0')[0];
 }
 
-// Decide from the partition table, boot records and the head of the app that boots.
-// On the verified table the vendor system and an earlier RickyOS keep their settings;
-// everything else (another firmware, another layout, a damaged install) is "other".
+// The vendor's own boot-record rule, for telling its system apart in the install text.
+function vendorActive(ota) {
+  let best = 0;
+  for (const at of [0, 4096]) {
+    const view = new DataView(ota.buffer, ota.byteOffset + at, 32);
+    const seq = view.getUint32(0, true);
+    if (seq > 0 && seq < 0xffffffff && view.getUint32(28, true) === otaCrc(ota.subarray(at, at + 4))) best = Math.max(best, seq);
+  }
+  return best ? PLUS.vendorSlots[(best - 1) % 2] : PLUS.vendorSlots[0];
+}
+
+// table: 0x8000, ota: the RickyOS boot record at 0xe000. "upgrade" only for RickyOS on
+// the RickyOS layout; the vendor system is named for the install text; all else "other".
 export async function inspectPlus(table, ota, readAt) {
-  requireThat(table.length === 4096, '分区表读取不完整。');
-  if (await sha256(table) !== PLUS.tableSha256) return { kind: 'other', device: 'plus', sameLayout: false, table, ota };
-  let project = '';
+  requireThat(table.length === 4096 && ota.length === PLUS.otaBytes, '分区或启动记录读取不完整。');
   try {
-    const head = await readAt(plusActiveOffset(ota), 4096);
-    checkS31Header(head, '应用镜像');
-    project = projectOf(head);
-  } catch { /* not a bootable app: complete install */ }
-  if (project === PLUS.factoryProject) return { kind: 'factory', device: 'plus', sameLayout: true, table, ota };
-  if (project.startsWith(PLUS.rickyProjectPrefix)) return { kind: 'upgrade', device: 'plus', sameLayout: true, table, ota };
-  return { kind: 'other', device: 'plus', sameLayout: true, table, ota };
+    await checkPartitions(table);
+    const offset = activeOffset(ota);
+    if (projectOf(await readAt(offset, 4096)).startsWith(PLUS.rickyProjectPrefix))
+      return { kind: 'upgrade', device: 'plus', table, ota, offset };
+  } catch { /* not RickyOS on the RickyOS layout */ }
+  if (await sha256(table) === PLUS.vendorTableSha256) {
+    try {
+      const vendorOta = await readAt(PLUS.vendorOtaOffset, PLUS.otaBytes);
+      if (projectOf(await readAt(vendorActive(vendorOta), 4096)) === PLUS.factoryProject)
+        return { kind: 'factory', device: 'plus', table, ota };
+    } catch { /* not the vendor app */ }
+  }
+  return { kind: 'other', device: 'plus', table, ota };
 }
 
 export async function inspectPlusBackup(bytes) {
   requireThat(bytes.length === FLASH_BYTES, '完整 Flash 备份必须为 16 MB。');
-  const table = bytes.slice(PLUS.tableOffset, PLUS.tableOffset + 4096);
-  const ota = bytes.slice(PLUS.otaOffset, PLUS.otaOffset + PLUS.otaBytes);
-  return inspectPlus(table, ota, async (at, size) => bytes.slice(at, at + size));
+  return inspectPlus(bytes.slice(PLUS.tableOffset, PLUS.tableOffset + 4096),
+    bytes.slice(PLUS.otaOffset, PLUS.otaOffset + PLUS.otaBytes), async (at, size) => bytes.slice(at, at + size));
 }
