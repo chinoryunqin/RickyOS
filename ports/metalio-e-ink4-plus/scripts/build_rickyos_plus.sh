@@ -11,7 +11,9 @@ export PATH="$PIO_TOOL_ROOT/tool-cmake/bin:$PIO_TOOL_ROOT/tool-ninja:/opt/homebr
 source "${RICKYOS_IDF_PATH:-$TASK_ROOT/tools/esp-idf-v6.1}/export.sh"
 BUILD_DIR="${RICKYOS_BUILD_DIR:-$TASK_ROOT/.local/build-rickyos-plus-1.2}"
 cd "$TASK_ROOT/firmware/rickyos-plus-1.2"
-IDF_TARGET=esp32s31 idf.py -B "$BUILD_DIR" build
+# Diagnostic compile definitions come from environment variables in CMake.
+# Reconfigure so reusing a build directory cannot silently keep the prior mode.
+IDF_TARGET=esp32s31 idf.py -B "$BUILD_DIR" reconfigure build
 python3 "$TASK_ROOT/scripts/check_rickyos_plus_sources.py"
 python3 - "$BUILD_DIR/RickyOS-Plus-1.2.elf" <<'PY'
 from pathlib import Path

@@ -39,3 +39,30 @@ get_filename_component(PLUS_WORKSPACE_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABS
 idf_build_set_property(COMPILE_OPTIONS "-fmacro-prefix-map=${PLUS_WORKSPACE_ROOT}/=" APPEND)
 # LTO optimization is chosen again at final link; keep the application size policy.
 target_link_options(${CMAKE_PROJECT_NAME}.elf PRIVATE -Oz)
+
+# Explicit packet-header diagnostics; normal builds have no hooks or log code.
+if("$ENV{RICKYOS_PLUS_TCP_TRACE}" STREQUAL "1")
+    idf_component_get_property(PLUS_APP_LIB rickyos_application COMPONENT_LIB)
+    target_compile_definitions(${PLUS_APP_LIB} PRIVATE RICKYOS_PLUS_TCP_TRACE=1)
+    target_link_options(${CMAKE_PROJECT_NAME}.elf PRIVATE
+        "-Wl,--wrap=ip4_output_if,--wrap=ethernet_output,--wrap=ethernet_input"
+        "-Wl,-u,__wrap_ip4_output_if,-u,__wrap_ethernet_output,-u,__wrap_ethernet_input")
+endif()
+
+if("$ENV{RICKYOS_PLUS_RADIO_COMPARE}" STREQUAL "1")
+    if(NOT "$ENV{RICKYOS_PLUS_TCP_TRACE}" STREQUAL "1")
+        message(FATAL_ERROR "Radio comparison requires RICKYOS_PLUS_TCP_TRACE=1")
+    endif()
+    idf_component_get_property(PLUS_RADIO_APP_LIB rickyos_application COMPONENT_LIB)
+    target_compile_definitions(${PLUS_RADIO_APP_LIB} PRIVATE RICKYOS_PLUS_RADIO_COMPARE=1)
+    if("$ENV{RICKYOS_PLUS_RADIO_TIMING}" STREQUAL "1")
+        target_compile_definitions(${PLUS_RADIO_APP_LIB} PRIVATE RICKYOS_PLUS_RADIO_TIMING=1)
+    endif()
+    if("$ENV{RICKYOS_PLUS_RADIO_AUTOSTART}" STREQUAL "1")
+        target_compile_definitions(${PLUS_RADIO_APP_LIB} PRIVATE RICKYOS_PLUS_RADIO_AUTOSTART=1)
+    endif()
+    if("$ENV{RICKYOS_PLUS_RADIO_RATE}" STREQUAL "1")
+        target_link_options(${CMAKE_PROJECT_NAME}.elf PRIVATE
+            "-Wl,--wrap=esp_wifi_init" "-Wl,-u,__wrap_esp_wifi_init")
+    endif()
+endif()

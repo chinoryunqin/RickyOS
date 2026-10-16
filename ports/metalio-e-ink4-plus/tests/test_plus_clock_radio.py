@@ -45,6 +45,8 @@ extern MockWiFi WiFi;
 enum wifi_ps_type_t {WIFI_PS_NONE=0,WIFI_PS_MIN_MODEM=1};
 esp_err_t esp_wifi_get_ps(wifi_ps_type_t*);
 esp_err_t esp_wifi_set_ps(wifi_ps_type_t);
+esp_err_t esp_wifi_get_max_tx_power(int8_t*);
+esp_err_t esp_wifi_set_max_tx_power(int8_t);
 ''',
 'esp_netif.h':'''#pragma once
 using esp_err_t=int;
@@ -81,11 +83,14 @@ main='''#include "HalClock.h"
 unsigned long clockMillis=0;
 MockWiFi WiFi;
 wifi_ps_type_t ps=WIFI_PS_MIN_MODEM;
+int8_t txPower=80;bool powerReadError=false,powerSetError=false,powerReadbackError=false;
 bool reply=false, startError=false, live=false;
 unsigned notes=0, httpsCalls=0;
 namespace trustedtime {void note(){++notes;}}
 int esp_wifi_get_ps(wifi_ps_type_t* out){*out=ps;return 0;}
 int esp_wifi_set_ps(wifi_ps_type_t mode){ps=mode;return 0;}
+int esp_wifi_get_max_tx_power(int8_t*out){if(powerReadError||(powerReadbackError&&txPower==20))return -1;*out=txPower;return 0;}
+int esp_wifi_set_max_tx_power(int8_t value){if(powerSetError&&value==20)return -1;txPower=value;return 0;}
 int esp_netif_sntp_init(const esp_sntp_config_t*){live=true;return 0;}
 int esp_netif_sntp_start(){return startError ? -1 : 0;}
 void esp_netif_sntp_deinit(){live=false;}
@@ -93,8 +98,9 @@ int esp_netif_sntp_sync_wait(unsigned long){bool value=reply;reply=false;return 
 int main(){
  halClock.setAutoSyncEnabled(false);
  assert(halClock.requestSync() && ps==WIFI_PS_NONE && live);
+ assert(txPower==(RICKYOS_PLUS_TX_POWER_COMPAT?20:80));
  halClock.cancelSync();
- assert(ps==WIFI_PS_MIN_MODEM && !live && halClock.syncState()==ClockSyncState::Idle);
+ assert(ps==WIFI_PS_MIN_MODEM && txPower==80 && !live && halClock.syncState()==ClockSyncState::Idle);
  assert(halClock.requestSync());reply=true;halClock.update();
  assert(halClock.syncState()==ClockSyncState::Succeeded && ps==WIFI_PS_MIN_MODEM && !live && notes==1);
  assert(halClock.requestSync());clockMillis=60001;halClock.update();
@@ -110,11 +116,12 @@ int main(){
  HalWifiAwakeLease web, download;
  assert(web.acquire() && web.acquire()); // idempotent acquire
  assert(HalWifiAwakeLease::activeCount()==2);
+ assert(txPower==(RICKYOS_PLUS_TX_POWER_COMPAT?20:80));
  halClock.cancelSync();
  assert(ps==WIFI_PS_NONE && HalWifiAwakeLease::activeCount()==1);
  assert(download.acquire());web.release();web.release();
  assert(ps==WIFI_PS_NONE && HalWifiAwakeLease::activeCount()==1);
- download.release();assert(ps==WIFI_PS_MIN_MODEM && HalWifiAwakeLease::activeCount()==0);
+ download.release();assert(ps==WIFI_PS_MIN_MODEM && txPower==80 && HalWifiAwakeLease::activeCount()==0);
  // Do not run synchronous HTTPS backup while a web/transfer owner is active.
  assert(halClock.requestSync());assert(web.acquire());
  const unsigned oldHttpsCalls=httpsCalls;
@@ -129,6 +136,22 @@ int main(){
  // Preserve callers that deliberately keep the radio awake.
  WiFi.state=WL_CONNECTED;ps=WIFI_PS_NONE;
  assert(halClock.requestSync());halClock.cancelSync();assert(ps==WIFI_PS_NONE);
+#if RICKYOS_PLUS_TX_POWER_COMPAT
+ ps=WIFI_PS_MIN_MODEM;txPower=80;
+ HalWifiAwakeLease failed;
+ powerReadError=true;assert(!failed.acquire());powerReadError=false;
+ assert(ps==WIFI_PS_MIN_MODEM&&txPower==80&&HalWifiAwakeLease::activeCount()==0);
+ powerSetError=true;assert(!failed.acquire());powerSetError=false;
+ assert(ps==WIFI_PS_MIN_MODEM&&txPower==80&&HalWifiAwakeLease::activeCount()==0);
+ powerReadbackError=true;assert(!failed.acquire());powerReadbackError=false;
+ assert(ps==WIFI_PS_MIN_MODEM&&txPower==80&&HalWifiAwakeLease::activeCount()==0);
+ // Never raise an existing lower power limit.
+ txPower=8;assert(failed.acquire()&&txPower==8);failed.release();assert(txPower==8);
+ // A separate caller's changed value must not be overwritten on final release.
+ txPower=80;assert(failed.acquire()&&txPower==20);txPower=44;failed.release();assert(txPower==44);
+ assert(ps==WIFI_PS_MIN_MODEM&&HalWifiAwakeLease::activeCount()==0);
+#endif
+
 }
 '''
 with tempfile.TemporaryDirectory() as directory:
@@ -138,6 +161,7 @@ with tempfile.TemporaryDirectory() as directory:
  (work/'main.cpp').write_text(main)
  source=root/'firmware/rickyos-plus-1.2/upstream/lib/hal'
  binary=work/'test'
- subprocess.run(['clang++','-std=c++17','-Wall','-Wextra','-Wno-unused-variable','-I'+str(work),'-I'+str(source),'-I'+str(root/'firmware/rickyos-plus-1.2/components/rickyos_application/port'),str(source/'HalClock.cpp'),str(work/'main.cpp'),'-o',str(binary)],check=True)
- subprocess.run([str(binary)],check=True)
+ for compat in [0,1]:
+  subprocess.run(['clang++','-std=c++17','-Wall','-Wextra','-Wno-unused-variable','-DRICKYOS_PLUS_TX_POWER_COMPAT='+str(compat),'-I'+str(work),'-I'+str(source),'-I'+str(root/'firmware/rickyos-plus-1.2/components/rickyos_application/port'),str(source/'HalClock.cpp'),str(work/'main.cpp'),'-o',str(binary)],check=True)
+  subprocess.run([str(binary)],check=True)
 print('Real HalClock: success, cancellation, deadline, start failure, wait failure disconnect and overlapping web/download owners restore radio mode')

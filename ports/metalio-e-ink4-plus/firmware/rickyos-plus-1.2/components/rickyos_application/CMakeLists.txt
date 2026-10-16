@@ -170,6 +170,11 @@ idf_component_register(
   "${DEPENDENCY_ROOT}/WebSockets/src/libb64/cdecode.c"
   "${DEPENDENCY_ROOT}/WebSockets/src/libb64/cencode.c"
   "${DEPENDENCY_ROOT}/WebSockets/src/libsha1/libsha1.c"
+  "port/PlusTcpTrace.cpp"
+  "port/PlusRadioCompare.cpp"
+  "port/PlusRadioAuto.cpp"
+  "port/PlusWifiTxConfig.cpp"
+  "port/PlusNetworkAcceptance.cpp"
   "port/PlusBoard.cpp"
   "port/PlusAudio.cpp"
   "${APP_ROOT}/lib/hal/HalRecorder.cpp"
@@ -601,9 +606,28 @@ idf_component_register(
   "${APP_ROOT}/freeink-sdk/libs/font/FreeInkFont/third_party/freetype/include"
   "${APP_ROOT}/freeink-sdk/libs/font/FreeInkFont/third_party/stb"
  REQUIRES rickyos_storage rickyos_display rickyos_platform arduino-esp32-4.0.0-RC1
-    metalio_board mdns esp_timer esp_pm esp_app_format app_update esp_http_server nvs_flash
+    metalio_board mdns esp_timer esp_pm esp_app_format app_update esp_http_server nvs_flash esp-tls
 )
 target_compile_features(${COMPONENT_LIB} PUBLIC cxx_std_20)
+# Enable the validated Plus network-owner power cap in ordinary firmware.
+# Controlled radio diagnostics keep the original power unless explicitly opted in.
+if("$ENV{RICKYOS_PLUS_TX_POWER_COMPAT}" STREQUAL "1" OR
+   (NOT "$ENV{RICKYOS_PLUS_TX_POWER_COMPAT}" STREQUAL "0" AND
+    NOT "$ENV{RICKYOS_PLUS_RADIO_COMPARE}" STREQUAL "1"))
+  target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_TX_POWER_COMPAT=1)
+endif()
+if("$ENV{RICKYOS_PLUS_RADIO_RATE}" STREQUAL "1")
+  set_source_files_properties("port/PlusRadioCompare.cpp" "port/PlusWifiTxConfig.cpp"
+      PROPERTIES COMPILE_DEFINITIONS RICKYOS_PLUS_RADIO_RATE=1)
+  if("$ENV{RICKYOS_PLUS_RADIO_POWER}" STREQUAL "1")
+    set_source_files_properties("port/PlusRadioCompare.cpp" PROPERTIES
+        COMPILE_DEFINITIONS "RICKYOS_PLUS_RADIO_RATE=1;RICKYOS_PLUS_RADIO_POWER=1")
+  endif()
+endif()
+if("$ENV{RICKYOS_PLUS_NETWORK_ACCEPTANCE}" STREQUAL "1")
+  set_source_files_properties("port/PlusRadioCompare.cpp" "port/PlusNetworkAcceptance.cpp"
+      PROPERTIES COMPILE_DEFINITIONS RICKYOS_PLUS_NETWORK_ACCEPTANCE=1)
+endif()
 target_compile_definitions(${COMPONENT_LIB} PUBLIC
     RICKYOS_PRODUCT=1 CROSSPOINT_PRODUCT_NAME="RickyOS" CROSSPOINT_VERSION="1.2.0-plus-dev"
     CROSSMUX_UI_PROFILE_HIGH_DPI=1 HYPHENATION_ENGLISH_ONLY=1
@@ -631,10 +655,19 @@ idf_build_set_property(LINK_OPTIONS "-flto=auto;-fuse-linker-plugin" APPEND)
 # Hardware timing and radio/IDF driver compilation are unchanged.
 target_compile_options(${COMPONENT_LIB} PRIVATE -Oz)
 
-# Unattended network self-test (port/PlusNetSelfTest.cpp): build with RICKYOS_PLUS_NETTEST=1.
-if(DEFINED ENV{RICKYOS_PLUS_NETTEST})
-  target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_NETTEST=1)
+# Explicitly opt in to unattended diagnostics; no flag is enabled in normal builds.
+foreach(TEST_OPTION NETTEST NETTEST_CONNECTED NETTEST_AX NETTEST_HEADLESS NETTEST_NATIVE NETTEST_BG NETTEST_CONFIG_BUFFERS)
+  if("$ENV{RICKYOS_PLUS_${TEST_OPTION}}" STREQUAL "1")
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_${TEST_OPTION}=1)
+  endif()
+endforeach()
+if("$ENV{RICKYOS_PLUS_NETTEST_NATIVE}" STREQUAL "1" AND
+   NOT "$ENV{RICKYOS_PLUS_NETTEST_HEADLESS}" STREQUAL "1")
+  message(FATAL_ERROR "Native Wi-Fi isolation requires RICKYOS_PLUS_NETTEST_HEADLESS=1")
 endif()
-if(DEFINED ENV{RICKYOS_PLUS_NETTEST_AX})
-  target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_NETTEST_AX=1)
+
+if("$ENV{RICKYOS_PLUS_NETTEST_CONNECTED}" STREQUAL "1")
+  if(NOT "$ENV{RICKYOS_PLUS_NETTEST}" STREQUAL "1" OR "$ENV{RICKYOS_PLUS_NETTEST_HEADLESS}" STREQUAL "1")
+    message(FATAL_ERROR "Connected comparison requires NETTEST=1 and normal application UI")
+  endif()
 endif()

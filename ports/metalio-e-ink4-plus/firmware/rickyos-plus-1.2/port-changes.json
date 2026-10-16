@@ -50,7 +50,7 @@
     {
       "path": "freeink-sdk/libs/network/SecureNet/src/SecureClient.cpp",
       "baseline_sha256": "544d404e40b81e254a418118623c01a207897b72f7297fd2275b1fe44160dfd5",
-      "ported_sha256": "3813644a74fcfcd1e27b5b6634a8f50395801c58f825baef350412fcd150f2d0"
+      "ported_sha256": "17113a738861b3de994ef57f0b0925d5e97d913ea555a0adecfb66643b128f95"
     },
     {
       "path": "lib/EpdFont/FontDecompressor.cpp",
@@ -225,7 +225,7 @@
     {
       "path": "src/activities/apps/standby/RickyWallpaperDownloadActivity.cpp",
       "baseline_sha256": "93b97e40e79147da72f4fec6914b7c70d73546c72a792728e5ee47ce1c7807db",
-      "ported_sha256": "67e3aca3ef65d483364267129d7cdda1901979999dbc056b4759d5253f12b01d"
+      "ported_sha256": "a2d2a9fd48506317d115c79da1790a45901ffd08245fda9482d877180ce06591"
     },
     {
       "path": "src/activities/apps/standby/RickyWallpaperDownloadActivity.h",
@@ -355,7 +355,7 @@
     {
       "path": "src/main.cpp",
       "baseline_sha256": "7cf64beb1a459737cd03024fd09b02d8568e43928623181d780c8d3075aa187f",
-      "ported_sha256": "0ce40bdb30af47286628df3e9e72ae563b37daf6c59c6fed247e5d46593af89b"
+      "ported_sha256": "d57bc7038f563ae33cb0e616ef3ea61454e306e9d4f3a9a63391827d9d0200ee"
     },
     {
       "path": "src/network/CrossPointWebServer.cpp",
@@ -380,7 +380,7 @@
     {
       "path": "src/network/HttpDownloader.h",
       "baseline_sha256": "fd39f0f7f94b7e2a01307b8f32a60f922dac5106fc257ad6f853531530a89b5e",
-      "ported_sha256": "11af2facd2a9f044485df096b9e5e356fd736f3a62a823034cd9861798bfa3a7"
+      "ported_sha256": "8dec8e5f30f24d301a14cba0cfeb10b5084b8cd4696b5017377693869036e880"
     },
     {
       "path": "src/network/WifiPowerSaveGuard.h",

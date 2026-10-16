@@ -2,7 +2,7 @@
 set -euo pipefail
 TASK_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export IDF_TOOLS_PATH="$TASK_ROOT/.local/espressif"
-export PATH="${PLATFORMIO_CORE_DIR:-$HOME/.platformio}/packages/tool-cmake/bin:${PLATFORMIO_CORE_DIR:-$HOME/.platformio}/packages/tool-ninja:/opt/homebrew/bin:$PATH"
+export PATH="/Users/rick/.platformio/packages/tool-cmake/bin:/Users/rick/.platformio/packages/tool-ninja:/opt/homebrew/bin:$PATH"
 export IDF_PIP_WHEELS_URL=""
 TASK_IDF="$TASK_ROOT/tools/esp-idf-v6.1"
 TASK_EXPECTED_COMMIT=fff9895c82d744c7237be8847347bdd1b07c6643

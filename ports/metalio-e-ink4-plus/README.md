@@ -8,12 +8,11 @@
 
 ## 当前基线与设备状态
 
-- RickyOS 来源：`codex/rickyos-1.2-design` 的 `674a8e3ed91a2dda1ac8e109d194bc1c245ae745`（书库卡片阅读状态、动物默认头像、新小狗图）。升级来源用 `python3 scripts/sync_plus_design.py --repo <RickyOS> --to <commit>`：三方合并 Plus 修改并重写清单与补丁。
-- SDK 来源：`96de1be6ce08eb732909e6e8149af8f892b9a2c5`；来源清单与 77 项 Plus 修改独立记录，不使用原工作区 SDK 的未提交改动。
-- 已构建并安装：design d091adbe 优化／应用页完整高度修正版，5,235,456 bytes；SHA256 `e86755f8a03a6e23ff1b9101c536477b3623cd7b5f080f679b8570e3c00498ec`。原厂 2.0.62 槽保持一致，用户确认基础阅读可用、七个应用入口同页及屏保点选正常。此前用户确认基础录音回放、触控震动和 Tab 叠影修复；USB 1 MiB 写入／读回 SHA256、安全弹出和调试口恢复在此前镜像验证，本轮 USB 重试/SCSI 修改尚未重新做实机传输验收。
-- 当前代码包含显示、触控及盖板键、SD、前光、电量、RTC、网络迁移修改，以及本轮音量输出和试听。
-- 基础录音回放与触控震动已获用户确认。音量曲线、录音时待机保存等场景尚未单独验收；网络稳定性尚未解决，热点对照改善 DNS 但屏保目录仍失败。蓝牙配对和自动旋转尚未接入。
-- 选择性接入设计提交 6e1d0ea7 的拼音、局部灰阶和透明待机；USB MSC 已新增 S31 后端并构建，安装／实机状态见 [USB 接入记录](docs/rickyos-1.2-plus-usb.md)。详见 [接入记录](docs/rickyos-1.2-plus-new-features-integration.md)。
+- RickyOS固定来源：`12d1d95e7d7ff17134eb29082209df2aa9810722`；FreeInk SDK：`96de1be6ce08eb732909e6e8149af8f892b9a2c5`。还原校验2826文件、79项适配；不使用其他设备工作区的未提交源码。
+- 当前设备运行普通TX功率兼容版，4,886,912B，应用SHA256 `9287f68b978ee5c7ed84eee7cceb2324467722404024e16c99fd91744d7aad9b`、ELF `b1006c937…`、IDF `9a97f6c5`。仅写ota_1，启动至InxRecent；槽外Flash、启动程序、分区表和OTA选择在安装前后校验一致。测试固件已移除。
+- 联网使用者持有共享租约时，Plus发射功率上限取min(原值,5dBm)，最后使用者退出恢复原值。两次独立启动对照显示5dBm首次TCP约0.11秒；20/13dBm首次连接超时或明显偏慢。供电/天线/PHY的唯一根因未锁定，远距离及其他AP尚未验收。
+- 真机自动验证：正常DNS、SD挂载、各阶段冷重连，COS屏保列表827/565ms、字体列表676ms，完整字体1,763,452B/6702ms且SD读回CRC一致，原生NTP1096ms成功；下载累计805次发送完成、失败0。字体为临时完整文件验证，不冒称整字体家族安装或用户界面验收。见[实际功能验收](artifacts/plus-tx-power-acceptance-20261016/report.md)和[普通版安装记录](artifacts/plus-tx-power-compat-20261016/report.md)。
+- 既有阅读、七入口应用页、基础录音回放、触控震动及Tab叠影修复的用户验收保留为历史结果。蓝牙配对和自动旋转尚未接入；本轮未重新验收USB传输、音量曲线及录音待机保存。
 
 ## 还原和验证源码
 
@@ -27,13 +26,13 @@ python3 tests/test_plus_frontlight_panel.py
 python3 tests/test_plus_standby_frontlight.py
 ```
 
-还原脚本读取固定 Git 提交、逐文件核对 SHA256，再应用 `firmware/rickyos-plus-1.2/upstream-plus.patch`，重新核对全部 2,824 个文件。它不会使用其他设备的工作区修改；已存在的源码只校验，不覆盖。也可通过 `--source-repo` 和 `--sdk-repo` 使用本地 Git 对象进行离线还原。
+还原脚本读取固定 Git 提交、逐文件核对 SHA256，再应用 `firmware/rickyos-plus-1.2/upstream-plus.patch`，重新核对全部 2,826 个文件。它不会使用其他设备的工作区修改；已存在的源码只校验，不覆盖。也可通过 `--source-repo` 和 `--sdk-repo` 使用本地 Git 对象进行离线还原。
 
 完整应用源码还原到 `firmware/rickyos-plus-1.2/upstream/`；Plus 自有板级组件位于 `firmware/rickyos-plus-1.2/components/`。生成文件、源码还原目录、二进制、设备私有备份和日志均不提交。
 
 ## 构建
 
-当前已验证的构建依赖：ESP-IDF v6.1 `fff9895c82d744c7237be8847347bdd1b07c6643`，Arduino-ESP32 4.0.0-RC1 `76f683d935b390f2805301ec10a5562bbbb37811`，mDNS 1.11.2 `4fb97b209fbc695cc3019e0f1ef7937f766e6503`。其他库的版本与逐文件散列见 `dependency-lock.json`。
+当前普通版验证使用独立ESP-IDF release/v6.1 `9a97f6c5`（通过 `RICKYOS_IDF_PATH` / `RICKYOS_BUILD_DIR` 选择）；历史固定依赖为ESP-IDF v6.1 `fff9895c82d744c7237be8847347bdd1b07c6643`，Arduino-ESP32 4.0.0-RC1 `76f683d935b390f2805301ec10a5562bbbb37811`，mDNS 1.11.2 `4fb97b209fbc695cc3019e0f1ef7937f766e6503`。其他库的版本与逐文件散列见 `dependency-lock.json`。
 
 还原源码后，需要按上述固定版本准备本目录 `.local/arduino-esp32-4.0.0-RC1`、`.local/dependencies/` 和 `tools/esp-idf-v6.1`。当前分支未提供所有第三方依赖的一键下载器；完整构建已在原迁移工作区验证，不宣称全新环境已自动安装验证。
 
@@ -80,3 +79,9 @@ Plus 按键设置已实现并通过分类／逻辑映射及 JSON 持久化主机
 2026-10-14：提交联网入口复用、15 秒自动连接等待、继承按键防护、字体容量进度和两秒更新、小目录共享请求预算、TLS 回退条件及静态待机重画抑制。正式候选已构建、安装并正常进入主页；新增主机回归通过，列表联网和静态待机的实机验收仍未完成。详见 [修复与网络对照记录](docs/rickyos-plus-network-ui-standby.md)。
 
 2026-10-14：整合 design d091adbe 的字号／字重菜单、开机准备和 USB 传书改进，补齐 Plus 原生 16 级相邻页缓存与小章节预取，避免重复黑白正文绘制；可选缓存约 1.19 MiB，内存不足时回退，未单独测量实机缓存命中速度。字体下载显示实际请求来源，包含 Fastly 和重定向站点。应用页按可用高度排列，竖屏七入口同页，用户确认正常。完整构建、主机回归和匹配 ELF 首启通过，见 [整合与验收记录](docs/rickyos-1.2-plus-design-d091adbe.md)。网络稳定性仍待解决。
+
+## Plus 联网诊断开关
+
+普通构建默认启用 `RICKYOS_PLUS_TX_POWER_COMPAT=1`，其余诊断均关闭。`RICKYOS_PLUS_RADIO_COMPARE=1` 要求同时启用 `RICKYOS_PLUS_TCP_TRACE=1`；受控对照默认禁用功率兼容，可显式设置开启。`RICKYOS_PLUS_RADIO_AUTOSTART=1` 会在正常UI启动后自动连接可见的已保存网络，仅供已授权的无人值守设备测试；不会输出凭据。`RICKYOS_PLUS_NETWORK_ACCEPTANCE=1` 运行实际下载、SD读回及原生校时验收，临时文件独占创建并清理。`RADIO_TIMING/RADIO_RATE/RADIO_POWER` 用于隔离时序、聚合/速率、功率，不能当日常固件开关。每次构建先reconfigure，避免复用上次诊断宏。
+
+新增聚焦主机检查：`tests/test_plus_tcp_timeout.py`、`test_plus_clock_radio.py`、`test_plus_tcp_trace.py`、`test_plus_radio_compare.py`、`test_plus_radio_auto.py`、`test_plus_wifi_tx_config.py`、`test_plus_acceptance_integrity.py`。普通构建触控/时钟链接检查及完整构建通过。详细诊断过程见[底层对照](docs/plus-network-low-level-diff-20261015.md)。设备完整Flash、原始日志、凭据与固件二进制保持本地，不提交。
