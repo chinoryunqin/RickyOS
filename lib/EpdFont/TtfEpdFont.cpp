@@ -341,7 +341,13 @@ const EpdGlyph* TtfEpdFont::faultGlyph(Face& f, const uint32_t cp) {
     evictionLocked_ = true;
     freeink::MemoryManager::instance().ensureFree(16 * 1024);
     evictionLocked_ = false;
-    if (!growTables()) return nullptr;
+    if (!growTables()) {
+      // The tables cannot grow: start them over within the capacity they have, as at
+      // maxGlyphs, rather than leaving every new character of the book unresolved.
+      if (f.glyphs.empty()) return nullptr;
+      flushFace(f);
+      if (!growTables()) return nullptr;
+    }
   }
 
   EpdGlyph eg{};
@@ -508,17 +514,28 @@ const uint8_t* TtfEpdFont::rasterizeInto(Face& f, EpdGlyph& glyph) {
   const uint32_t px = w * h;
   const size_t bytes = f.fourBit ? (px + 1) / 2 : (f.twoBit ? (px + 3) / 4 : (px + 7) / 8);
   if (bytes == 0 || bytes > f.cap) return nullptr;
-  if (f.used + bytes > f.cap) {
-    // Arena full: drop every bitmap but keep the glyph records (and the metrics), so
-    // nothing layout holds goes stale; glyphs re-rasterize as they are drawn again.
+  // Arena full: drop every bitmap but keep the glyph records (and the metrics), so
+  // nothing layout holds goes stale; glyphs re-rasterize as they are drawn again.
+  const auto recycleArena = [&f]() {
     for (EpdGlyph& e : f.glyphs) e.dataLength = 0;
     f.used = 0;
-  }
-  if (!reserveChecked(f.bmp, f.used + bytes, 4096, f.cap)) {
+  };
+  if (f.used + bytes > f.cap) recycleArena();
+  // Grow in large steps: every growth copies the whole arena into a new block, so
+  // 4 KB steps meant hundreds of near-1 MB copies and, once PSRAM was fragmented,
+  // a growth that could never succeed.
+  static constexpr size_t kArenaStep = 64 * 1024;
+  if (!reserveChecked(f.bmp, f.used + bytes, kArenaStep, f.cap)) {
     evictionLocked_ = true;
     freeink::MemoryManager::instance().ensureFree(16 * 1024);
     evictionLocked_ = false;
-    if (!reserveChecked(f.bmp, f.used + bytes, 4096, f.cap)) return nullptr;
+    if (!reserveChecked(f.bmp, f.used + bytes, kArenaStep, f.cap)) {
+      // The arena cannot grow any further: treat what it already has as the cap and
+      // recycle it. Returning here instead left every glyph not yet drawn blank for
+      // the rest of the book (the arena never reached f.cap, so it never recycled).
+      if (f.bmp.capacity() < bytes) return nullptr;
+      recycleArena();
+    }
   }
   if (f.bmp.size() < f.used + bytes) f.bmp.resize(f.used + bytes, 0);
   uint8_t* dst = f.bmp.data() + f.used;

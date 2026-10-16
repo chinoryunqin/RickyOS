@@ -66,6 +66,19 @@ class TtfGlyphCachePersistenceTest(unittest.TestCase):
         self.assertRegex(load_family, re.compile(r'ttf_\.reset\(\)|unloadTtf\('),
                          'a new family must replace the TtfEpdFont, not reuse its glyphs')
 
+    def test_a_cache_that_cannot_grow_recycles_instead_of_dropping_glyphs(self):
+        # Field bug (1.2.x): the bitmap arena grew in 4 KB steps; once PSRAM could not fund
+        # the next copy, rasterizeInto returned nullptr for every new glyph and, below
+        # f.cap, the arena never recycled -- later pages of a book lost characters.
+        raster = body(TTF.read_text(), 'const uint8_t* TtfEpdFont::rasterizeInto(')
+        self.assertIn('kArenaStep = 64 * 1024', raster)
+        self.assertIn('if (f.bmp.capacity() < bytes) return nullptr;', raster)
+        self.assertGreaterEqual(raster.count('recycleArena()'), 2,
+                                'a failed growth must recycle the arena it already has')
+        fault = body(TTF.read_text(), 'const EpdGlyph* TtfEpdFont::faultGlyph(')
+        self.assertRegex(fault, re.compile(r'if \(!growTables\(\)\) \{\s*// The tables cannot grow.*?flushFace\(f\);',
+                                           re.S))
+
 
 if __name__ == '__main__':
     unittest.main()
