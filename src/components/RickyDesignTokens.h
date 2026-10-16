@@ -238,6 +238,8 @@ enum class Tier : uint8_t { Interaction1Bit, Resting16Gray };
 inline constexpr bool kDirectGrayUi = RICKYOS_UI_DIRECT_GRAY != 0;
 inline constexpr uint8_t kGc16EveryDirectFrames = 8;    // Content-area changes, not every UI redraw.
 inline constexpr uint8_t kGc16EveryControlFrames = 32;  // Small controls/navigation have their own regional ledger.
+inline constexpr uint8_t kGc16EveryPageSwitchFrames = 12;  // Whole-panel clean on a page switch after this many UI frames.
+inline constexpr uint8_t kGc16EveryUiFrames = 48;          // ...or after this many UI frames on one page.
 inline constexpr uint32_t kGraySettleDelayMs = 1500;    // 同 ActivityManager.cpp kGraySettleDelayMs
 inline constexpr uint8_t kGc16EverySettles = 8;         // 同 settleToGray() kCleanEvery
 inline constexpr uint8_t kGc16EveryDuFrames = 32;       // 建议值，需真机调参

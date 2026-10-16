@@ -246,7 +246,24 @@ bool ActivityManager::renderDirectGray(RenderLock&& lock) {
   renderer.setNextGray16UiRefresh(navigation.x, navigation.y, navigation.width, navigation.height,
                                   ricky::ds::refresh::kGc16EveryDirectFrames,
                                   ricky::ds::refresh::kGc16EveryControlFrames);
-  if (renderer.nextRefreshNeedsCleanup()) display.setNextGray16Profile(2);
+  {
+    // Safety net over the regional ledger, which the driver resets on every full-screen
+    // frame (reader turns, overlays) without cleaning. On a page switch after enough UI
+    // frames, or after a long run of them, clean the whole panel with GC16.
+    static uint8_t framesSinceClean = 0;
+    static const void* lastPage = nullptr;
+    const void* page = &*currentActivity;
+    const bool pageSwitch = page != lastPage;
+    lastPage = page;
+    if (framesSinceClean < 255) ++framesSinceClean;
+    const bool clean = renderer.nextRefreshNeedsCleanup() ||
+                       (pageSwitch && framesSinceClean >= ricky::ds::refresh::kGc16EveryPageSwitchFrames) ||
+                       framesSinceClean >= ricky::ds::refresh::kGc16EveryUiFrames;
+    if (clean) {
+      display.setNextGray16Profile(2);
+      framesSinceClean = 0;
+    }
+  }
 #else
   (void)navigation;
 #endif

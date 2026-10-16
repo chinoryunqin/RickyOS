@@ -88,7 +88,13 @@ struct Ledger {
 
   Plan advance(Damage damage, Area nextNav, uint8_t contentEvery, uint8_t smallEvery) {
     if (nav.x != nextNav.x || nav.y != nextNav.y || nav.width != nextNav.width || nav.height != nextNav.height) {
-      *this = {};
+      // A page switch moves the navigation strip, not the panel's history. Dropping the
+      // debt here meant moving between tab pages and sub-pages never reached a cleanup,
+      // so old screens built up behind new ones. Carry it as content debt instead.
+      contentDebt = unite(contentDebt, navigationDebt);
+      contentFrames = static_cast<uint8_t>(std::min(255, contentFrames + navigationFrames));
+      navigationDebt = {};
+      navigationFrames = 0;
       nav = nextNav;
     }
     Plan plan;
