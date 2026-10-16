@@ -828,6 +828,17 @@
 +STR_FONT_SOURCE_JSDELIVR: "jsDelivr"
 +STR_FONT_SOURCE_FASTLY: "Fastly"
 +STR_FONT_SOURCE_GITHUB: "GitHub"
+--- a/lib/JpegToBmpConverter/JpegToBmpConverter.cpp
++++ b/lib/JpegToBmpConverter/JpegToBmpConverter.cpp
+@@ -810,7 +810,7 @@
+ 
+ bool JpegToBmpConverter::jpegFileToThumbBmpStreamWithSize(HalFile& jpegFile, Print& bmpOut, int targetMaxWidth,
+                                                           int targetMaxHeight) {
+-#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
++#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || defined(SIMULATOR_DEVICE_READPICO)
+   return jpegFileToBmpStreamInternal(jpegFile, bmpOut, targetMaxWidth, targetMaxHeight, Output::Gray8, true);
+ #else
+   return jpegFileTo1BitBmpStreamWithSize(jpegFile, bmpOut, targetMaxWidth, targetMaxHeight);
 --- a/lib/Logging/Logging.cpp
 +++ b/lib/Logging/Logging.cpp
 @@ -2,6 +2,9 @@
@@ -853,6 +864,17 @@
    // Sticky's USB serial bridge uses UART0; ROM output also works before Serial0.begin().
    esp_rom_printf("%s", buf);
  #else
+--- a/lib/PngToBmpConverter/PngToBmpConverter.cpp
++++ b/lib/PngToBmpConverter/PngToBmpConverter.cpp
+@@ -1116,7 +1116,7 @@
+ 
+ bool PngToBmpConverter::pngFileToThumbBmpStreamWithSize(HalFile& pngFile, Print& bmpOut, int targetMaxWidth,
+                                                         int targetMaxHeight) {
+-#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
++#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || defined(SIMULATOR_DEVICE_READPICO)
+   return pngFileToBmpStreamInternal(pngFile, bmpOut, targetMaxWidth, targetMaxHeight, false, true, false, false, true);
+ #else
+   return pngFileTo1BitBmpStreamWithSize(pngFile, bmpOut, targetMaxWidth, targetMaxHeight);
 --- a/lib/TrustedTime/TrustedTime.cpp
 +++ b/lib/TrustedTime/TrustedTime.cpp
 @@ -1,6 +1,10 @@
@@ -4944,6 +4966,17 @@
    wifi_ps_type_t previous = WIFI_PS_MIN_MODEM;
  };
 +#endif
+--- a/src/util/BookCoverLoader.cpp
++++ b/src/util/BookCoverLoader.cpp
+@@ -146,7 +146,7 @@
+ }
+ 
+ bool isOutdatedThumbnail(const Bitmap& bitmap) {
+-#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
++#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || defined(SIMULATOR_DEVICE_READPICO)
+   return bitmap.is1Bit();
+ #else
+   (void)bitmap;
 --- a/src/util/BootPreparation.cpp
 +++ b/src/util/BootPreparation.cpp
 @@ -5,6 +5,9 @@

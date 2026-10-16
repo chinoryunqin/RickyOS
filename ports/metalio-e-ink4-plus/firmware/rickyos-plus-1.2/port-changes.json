@@ -78,9 +78,19 @@
       "ported_sha256": "643152bffae3c622de612fa0906325157ce20d030ba3af87601c7524b83a2fa9"
     },
     {
+      "path": "lib/JpegToBmpConverter/JpegToBmpConverter.cpp",
+      "baseline_sha256": "a7bcdaa84264b1f20301c5436baf3fc0d030cf16094ea6e29a14068bba7b506b",
+      "ported_sha256": "a59d11706f188d4779938de7453842047760ac4a3be38a874f3c0563ac4fb9a9"
+    },
+    {
       "path": "lib/Logging/Logging.cpp",
       "baseline_sha256": "a484e746aa2c62f875e0fe0134f71ec181a9ad9f758832910f6fcccd1f5695f7",
       "ported_sha256": "98681524032c73117edb905a96938796e67ba9a8a5cf8e9544775925303c8738"
+    },
+    {
+      "path": "lib/PngToBmpConverter/PngToBmpConverter.cpp",
+      "baseline_sha256": "e5b76fc6c5b3cf804430a359edc4a656c72b0f33fd98aef0d12d9004eb2d2f9f",
+      "ported_sha256": "26b3a0b8dd7bd5192ce2bf3842eeda84f7d7328bb4fd52c07eba17df9e46ea30"
     },
     {
       "path": "lib/TrustedTime/TrustedTime.cpp",
@@ -401,6 +411,11 @@
       "path": "src/network/WifiPowerSaveGuard.h",
       "baseline_sha256": "00a0ea3d2a912d96af0c3c6f1e9815096b7d8dd39f352d9a7e5f15ad6ccd4580",
       "ported_sha256": "e820fad5603086a392b042ed72bb3235794ac97bf2ddc4ab6515ada644921f9e"
+    },
+    {
+      "path": "src/util/BookCoverLoader.cpp",
+      "baseline_sha256": "ee6df51aac1ea11610f6f4cd4502c011ea180457bcd7ca547e8b538286d5359c",
+      "ported_sha256": "9b6047dcf0285dc9382f4f778095044441c6d7c879bc12b697713aa06d1ad6d8"
     },
     {
       "path": "src/util/BootPreparation.cpp",
