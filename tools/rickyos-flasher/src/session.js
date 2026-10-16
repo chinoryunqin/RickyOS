@@ -1,6 +1,8 @@
 import { md5, sha256 } from 'hash-wasm';
 import { FLASH_BYTES, inspectBackup, inspectHeaders, requireThat, equalBytes, checkFirmware,
   checkInstallAssets, checkPlanRelease } from './policy.js';
+import { PLUS, inspectPlus, inspectPlusBackup, isPlusRelease, checkPlusFirmware, checkPlusBootloader,
+  plusBootRecord } from './plus.js';
 
 function sectorPad(bytes) {
   const padded = new Uint8Array(Math.ceil(bytes.length / 4096) * 4096).fill(255);
@@ -8,14 +10,25 @@ function sectorPad(bytes) {
 }
 
 export class FlashSession {
-  constructor(adapter) { this.adapter = adapter; this.writeStarted = false; this.invalidate(); }
+  // device: 'readpico' (default) or 'plus'; fixed for the session, chosen before connecting.
+  constructor(adapter, device = 'readpico') {
+    this.adapter = adapter; this.device = device; this.writeStarted = false; this.invalidate();
+  }
   invalidate() { this.backup = null; this.ready = false; this.plan = null; }
   // The quick path: read only the partition table, boot records and app headers
   // (a few KiB) to decide how to install. No backup is taken.
   async inspectDevice() {
     this.invalidate();
+    const readAt = (at, size) => this.adapter.read(at, size);
+    if (this.device === 'plus') {
+      const table = await this.adapter.read(PLUS.tableOffset, 4096);
+      const ota = await this.adapter.read(PLUS.otaOffset, PLUS.otaBytes);
+      this.plan = await inspectPlus(table, ota, readAt);
+      this.ready = true;
+      return this.plan;
+    }
     const table = await this.adapter.read(0x8000, 4096), ota = await this.adapter.read(0xe000, 8192);
-    this.plan = await inspectHeaders(table, ota, (at, size) => this.adapter.read(at, size));
+    this.plan = await inspectHeaders(table, ota, readAt);
     this.ready = true;
     return this.plan;
   }
@@ -36,7 +49,10 @@ export class FlashSession {
     this.backupSha = await sha256(bytes);
     // Recognised factory layouts are eligible only when the release accepts that
     // layout. Unknown layouts remain backup-only.
-    try { this.plan = await inspectBackup(bytes); this.compatibilityError = null; }
+    try {
+      this.plan = this.device === 'plus' ? await inspectPlusBackup(bytes) : await inspectBackup(bytes);
+      this.compatibilityError = null;
+    }
     catch (error) { this.compatibilityError = error.message; }
     this.ready = Boolean(this.plan);
     return { bytes, sha256: this.backupSha, compatible: Boolean(this.plan) };
@@ -47,6 +63,11 @@ export class FlashSession {
     const firmware = bytes.slice(); // Do not permit caller mutation across awaits.
     release = structuredClone(release);
     const plan = this.plan, backup = this.backup;
+    if (this.device === 'plus') {
+      requireThat(isPlusRelease(release) && plan.device === 'plus', '固件与所选设备不一致，禁止写入。');
+      return this.installPlus(firmware, release, assets[0]?.slice(), backup, plan, progress, phase);
+    }
+    requireThat(!isPlusRelease(release) && plan.device !== 'plus', '固件与所选设备不一致，禁止写入。');
     await checkFirmware(firmware, release);
     checkPlanRelease(plan, release);
     const installAssets = assets.map(item => item.slice());
@@ -79,6 +100,43 @@ export class FlashSession {
   async requestRestart() {
     this.restarting = true;
     try { await this.adapter.reset(); return true; } catch { return false; }
+  }
+  // Plus: never the partition table or NVS. RickyOS into ota_1, the bootloader its IDF
+  // needs (skipped when already identical), then the boot record selecting ota_1. Every
+  // write is checked by the chip's own digest; the record goes last, so an interrupted
+  // install still boots what booted before.
+  async installPlus(firmware, release, boot, backup, plan, progress, phase) {
+    await checkPlusFirmware(firmware, release);
+    await checkPlusBootloader(boot, release);
+    requireThat(plan.kind === 'factory' || plan.kind === 'upgrade', '没有识别出可安装的设备。');
+    const liveTable = await this.adapter.read(PLUS.tableOffset, 4096);
+    const liveOta = await this.adapter.read(PLUS.otaOffset, PLUS.otaBytes);
+    requireThat(equalBytes(liveTable, plan.table) && equalBytes(liveOta, plan.ota),
+      '设备启动信息已变化，禁止写入。请重新连接并检查。');
+    if (backup) requireThat(await this.adapter.digest(0, FLASH_BYTES) === await md5(backup),
+      '设备内容在备份后发生变化，请重新连接并备份。');
+    requireThat(this.plan === plan && this.ready, '连接或安装资格已失效。');
+    const app = sectorPad(firmware), loader = sectorPad(boot), record = plusBootRecord(plan.ota);
+    const bootCurrent = equalBytes(await this.adapter.read(PLUS.bootloaderOffset, loader.length), loader);
+    this.writeStarted = true; // Latch before erase/write; failures require a fresh session.
+    this.ready = false;
+    const total = app.length + (bootCurrent ? 0 : loader.length) + record.length;
+    let done = 0;
+    const writeChecked = async (bytes, at, failure) => {
+      requireThat(this.plan === plan, '连接已失效。停止安装，不要重启。');
+      await this.adapter.write(bytes, at, count => progress(done + count, total));
+      requireThat(await this.adapter.digest(at, bytes.length) === await md5(bytes) && this.plan === plan, failure);
+      done += bytes.length; progress(done, total);
+    };
+    phase('正在写入 RickyOS，请保持连接');
+    await writeChecked(app, PLUS.appOffset, '写入后的固件校验失败。保持连接，不要重启。');
+    phase('正在更新启动组件，请保持连接');
+    if (!bootCurrent) await writeChecked(loader, PLUS.bootloaderOffset, '启动加载器校验失败。保持连接，不要重启。');
+    await writeChecked(record, PLUS.otaOffset, '启动记录校验失败。保持连接，不要重启。');
+    requireThat(equalBytes(await this.adapter.read(PLUS.tableOffset, 4096), plan.table) && this.plan === plan,
+      '分区表校验失败。保持连接，不要重启。');
+    phase('校验通过，正在请求设备重启');
+    return this.requestRestart();
   }
   async installFactory(firmware, release, assets, backup, plan, progress, phase) {
     // Browser-only buffers and a reused 64 KiB erased-sector block; no

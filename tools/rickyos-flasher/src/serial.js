@@ -45,7 +45,10 @@ export async function verifiedRead(loader, transport, offset, size, progress) {
 // that piece. The session still checks the whole flash digest afterwards.
 const READ_PIECE = 16 * 1024, READ_ATTEMPTS = 5;
 export class SerialAdapter {
-  constructor(log, trace = false) { this.log = log; this.trace = trace; }
+  // chip: the device's chip as chosen on the page (Read Pico ESP32-S3 / id 9 by default).
+  constructor(log, trace = false, chip = { name: 'ESP32-S3', id: 9 }) {
+    this.log = log; this.trace = trace; this.chip = chip;
+  }
   async connect(port) {
     this.port = port;
     this.transport = new Transport(port, this.trace);
@@ -55,9 +58,9 @@ export class SerialAdapter {
       terminal: { clean() {}, writeLine: line => this.log(this.redact(line)), write: line => this.log(this.redact(line)) } });
     await this.loader.detectChip('default_reset');
     const info = await this.loader.getSecurityInfo();
-    requireThat(this.loader.chip.CHIP_NAME === 'ESP32-S3', '当前芯片不是 ESP32-S3。');
+    requireThat(this.loader.chip.CHIP_NAME === this.chip.name, `当前芯片不是 ${this.chip.name}，请确认选择的设备。`);
     // Inspect security before running any RAM stub; unknown status fails closed.
-    checkSecurity(this.loader.chip.CHIP_NAME, '16MB', info, this.loader.secureDownloadMode);
+    checkSecurity(this.loader.chip.CHIP_NAME, '16MB', info, this.loader.secureDownloadMode, this.chip);
     await this.loader.chip.postConnect?.(this.loader);
     await this.loader.runStub();
     requireThat(this.loader.IS_STUB === true, '备份需要受支持的读取程序，连接已停止。');
@@ -65,7 +68,7 @@ export class SerialAdapter {
     this.loader.FLASH_READ_TIMEOUT = 5000;
     this.log('读取方式：448 字节分包逐包确认。');
     const size = await this.loader.detectFlashSize();
-    checkSecurity(this.loader.chip.CHIP_NAME, size, info, this.loader.secureDownloadMode);
+    checkSecurity(this.loader.chip.CHIP_NAME, size, info, this.loader.secureDownloadMode, this.chip);
   }
   redact(line) { return String(line).replace(/(?:[0-9a-f]{2}:){5}[0-9a-f]{2}/gi, '[设备标识已隐藏]'); }
   async read(offset, size, progress) {

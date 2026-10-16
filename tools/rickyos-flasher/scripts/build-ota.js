@@ -1,16 +1,16 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { checkRelease, requireThat } from '../src/policy.js';
+import { requireThat } from '../src/policy.js';
+import { catalogReleases } from '../src/catalog.js';
 
 // The web catalog is the sole source of truth. The device gets a small flat
 // derivative so it never buffers full-install profiles on its limited heap.
 export function otaManifest(catalog) {
-  requireThat(catalog.schema === 1 && catalog.product === 'RickyOS' && Array.isArray(catalog.releases) &&
-    catalog.releases.length <= 1, 'OTA 来源必须是 RickyOS 的唯一发行目录。');
+  // Read Pico only: other boards are not offered over the air yet.
+  const release = catalogReleases(catalog).readpico;
   const manifest = { schema: 1, product: 'RickyOS', board: 'readpico', channel: 'stable', status: 'no_update' };
-  if (!catalog.releases.length) return manifest;
-  const release = checkRelease(catalog.releases[0]);
+  if (!release) return manifest;
   requireThat(release.version.length < 48 && release.file.length < 128, 'OTA 版本或文件名超过设备的固定缓冲。');
   requireThat(release.version.match(/\d+/g).every(part => Number(part) <= 0xffffffff),
     'OTA 版本数字超过设备支持范围。');
@@ -23,9 +23,8 @@ export function otaManifest(catalog) {
 // devices from 1.1.2 accept (their parser refuses unknown ones). The first line names
 // the version, so notes never show against a different offer.
 export function otaNotes(catalog) {
-  const release = catalog.releases?.[0];
+  const release = catalogReleases(catalog).readpico;
   if (!release) return '';
-  checkRelease(release);
   return [release.version, ...(release.notes ?? [])].join('\n') + '\n';
 }
 

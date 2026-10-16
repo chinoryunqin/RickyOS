@@ -25,6 +25,11 @@
 .dp-thumb{flex:none;width:34px;height:52px;border-radius:6px;display:grid;place-items:center;position:relative}
 .dp-pico{background:#efeee9 url('./assets/device-pico.jpg') center/cover;border:1px solid #e1e0dc}
 .dp-more{border:1px dashed #c6cad1;color:#a0a5ad;font-size:18px}
+button.dp-option{font:inherit;text-align:left;cursor:pointer;width:100%}
+button.dp-option:disabled{cursor:default;opacity:.6}
+.dp-plus{background:#f7f7f5;border:1px solid #dcdcd8}
+.dp-plus::after{content:'';position:absolute;left:5px;bottom:5px;width:6px;height:6px;border-radius:50%;background:#f06a1d}
+.dp-option:not(.dp-active) em{background:#eceef1;color:#4b5058}
 .dp-text{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
 .dp-text b{font-size:13px;font-weight:600;color:#17181b}
 .dp-soon .dp-text b{color:#666c75}

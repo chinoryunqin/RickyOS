@@ -34,9 +34,9 @@ export function contains(bytes, text) {
   }
   return false;
 }
-export function checkSecurity(chip, size, info, secureDownloadMode) {
-  requireThat(chip === 'ESP32-S3' && size === '16MB', '设备必须是 ESP32-S3 / 16 MB。');
-  requireThat(info?.chipId === 9 && Number.isInteger(info.flags) &&
+export function checkSecurity(chip, size, info, secureDownloadMode, expected = { name: 'ESP32-S3', id: 9 }) {
+  requireThat(chip === expected.name && size === '16MB', `设备必须是 ${expected.name} / 16 MB。`);
+  requireThat(info?.chipId === expected.id && Number.isInteger(info.flags) &&
     info.flashCryptCnt === 0 && info.parsedFlags?.SECURE_BOOT_EN === false &&
     info.parsedFlags?.SECURE_DOWNLOAD_ENABLE === false && secureDownloadMode === false,
     '安全启动、Flash 加密或安全下载状态不符合要求，停止。');

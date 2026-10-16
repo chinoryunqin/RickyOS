@@ -1,13 +1,25 @@
 import './site.js';
 import { SerialAdapter } from './serial.js';
 import { FlashSession } from './session.js';
-import { checkRelease, checkPlanRelease, FLASH_BYTES, requireThat } from './policy.js';
+import { checkPlanRelease, FLASH_BYTES, requireThat } from './policy.js';
+import { catalogReleases } from './catalog.js';
+import { PLUS } from './plus.js';
 import { canConnect } from './connection-gate.js';
 import { md5, sha256 } from 'hash-wasm';
 
 const $ = id => document.getElementById(id);
 const demo = new URLSearchParams(location.search).get('demo') === '1';
 let release = null, session = null, adapter = null, busy = false, cancelled = false;
+// The device chosen on the page decides the release, the chip check and the install path.
+const DEVICES = {
+  readpico: { board: 'readpico', label: 'Read Pico（RDP-G01-W）', file: 'ReadPico',
+    chip: { name: 'ESP32-S3', id: 9 }, name: 'MindReset Read Pico', model: 'RDP-G01-W',
+    note: ['只适用于已确认的 Read Pico 设备。', '原厂或已刷其他系统的设备都可以直接安装。'] },
+  plus: { board: PLUS.board, label: 'Metalio E-Ink4-Plus', file: 'Plus',
+    chip: { name: PLUS.chipName, id: PLUS.chipId }, name: 'Metalio E-Ink4-Plus', model: 'V1.5',
+    note: ['只适用于已确认的 Metalio E-Ink4-Plus。', '出厂系统或已装 RickyOS 的设备可以直接安装。'] },
+};
+let device = 'readpico', releases = {};
 let backupUrl = null, wakeLock = null;
 let hashReady = false;
 const logs = [];
@@ -69,10 +81,20 @@ function step(name) {
 }
 function installationBlock() {
   if (!release) return '正式安装包尚未开放，当前不能安装。';
+  if (device === 'plus') return ['factory', 'upgrade'].includes(session?.plan?.kind) ? '' : '没有识别出可安装的设备。';
   try { checkPlanRelease(session?.plan, release); return ''; }
   catch (error) { return error.message; }
 }
 function showPlan(kind) {
+  if (device === 'plus' && kind) {
+    $('install-path').textContent = kind === 'factory' ? '已识别原厂系统 · 自动准备安装' : '已识别 RickyOS · 自动准备更新';
+    $('install-note').textContent = kind === 'factory' ?
+      '安装会写入 RickyOS、启动加载器和启动记录，不改分区表，不清除设置分区。装好后原厂系统所在的空间会被 RickyOS 用来缓存字体，恢复原厂需要使用厂商的工具，建议先备份完整 Flash。网站不操作 SD 卡。' :
+      '写入新版 RickyOS，必要时更新启动加载器和启动记录，不改分区表，不操作 SD 卡。';
+    $('write-confirm-text').textContent = kind === 'factory' ?
+      '我确认安装会替换当前使用的系统，写入期间不拔线、不让电脑休眠。' : '我确认安装所选版本，写入期间不拔线、不让电脑休眠。';
+    return;
+  }
   $('install-path').textContent = kind === 'factory' ? '已识别原厂系统 · 自动准备首次安装' :
     kind === 'other' ? '已识别其他系统 · 自动准备完整安装' :
     kind === 'upgrade' ? '已识别兼容系统 · 自动准备更新' : '自动检查当前系统';
@@ -88,6 +110,8 @@ function showPlan(kind) {
 function updateControls() {
   $('connect').disabled = !connectionAllowed();
   $('model-confirm').disabled = busy || Boolean(session);
+  for (const option of document.querySelectorAll('.dp-option[data-device]'))
+    option.disabled = busy || Boolean(session) || (option.dataset.device !== 'readpico' && !releases[DEVICES[option.dataset.device].board]);
   $('disconnect').hidden = !session;
   $('disconnect').disabled = busy;
   $('backup').disabled = busy || Boolean(session?.writeStarted);
@@ -139,27 +163,57 @@ if (demo) {
   $('compatibility').classList.toggle('success', supported);
   $('connect').textContent = '正式固件待发布';
 }
+function selectDevice(next) {
+  if (busy || session || !DEVICES[next]) return;
+  device = next;
+  for (const option of document.querySelectorAll('.dp-option[data-device]')) {
+    const active = option.dataset.device === device;
+    option.classList.toggle('dp-active', active); option.setAttribute('aria-pressed', String(active));
+  }
+  const chosen = DEVICES[device];
+  $('model-name').textContent = chosen.label;
+  $('device-name').textContent = chosen.name;
+  $('device-model').textContent = chosen.model;
+  $('device-chip').textContent = `${chosen.chip.name} / 16 MB`;
+  $('device-note').replaceChildren(chosen.note[0], document.createElement('br'), chosen.note[1]);
+  // Only the Read Pico has a product photo so far; the Plus render replaces this later.
+  $('device-photo').hidden = device !== 'readpico';
+  $('model-confirm').checked = false;
+  showRelease();
+}
+for (const option of document.querySelectorAll('.dp-option[data-device]'))
+  option.addEventListener('click', () => selectDevice(option.dataset.device));
 async function loadReleases() {
   try {
     const response = await fetch('./releases.json', { cache: 'no-store' });
     requireThat(response.ok, '无法获取发行目录。');
-    const catalog = await response.json();
-    requireThat(catalog.schema === 1 && catalog.product === 'RickyOS' && Array.isArray(catalog.releases) &&
-      catalog.releases.length <= 1, '发行目录格式错误。');
-    if (catalog.releases.length) release = checkRelease(catalog.releases[0]);
-    $('release-tag').textContent = release ? '正式版本可用' : '正式固件 · 待开放';
-    if (release) {
-      $('release-version').textContent = release.version;
-      $('release-description').textContent = '已通过发行检查，连接设备即可安装。';
-      if (!demo) $('connect').textContent = '连接并检查设备 →';
-    } else if (!demo) {
-      $('compatibility').textContent = '网站已开放预览。正式固件发布前，不连接设备、不读取备份、不执行刷写。';
-      $('compatibility').classList.remove('success');
-      $('stage-heading').textContent = '正式固件，敬请期待。';
-      $('stage-description').textContent = '可以先了解系统界面，或体验安全的流程演示。';
-    }
+    releases = catalogReleases(await response.json());
   } catch (error) {
-    release = null; $('release-tag').textContent = '发行检查未通过'; result(error.message, true);
+    releases = {}; release = null; $('release-tag').textContent = '发行检查未通过'; result(error.message, true);
+    updateControls(); return;
+  }
+  showRelease();
+}
+function showRelease() {
+  release = releases[DEVICES[device].board] ?? null;
+  $('release-tag').textContent = release ? '正式版本可用' : '正式固件 · 待开放';
+  if (release) {
+    $('release-version').textContent = release.version;
+    $('release-description').textContent = '已通过发行检查，连接设备即可安装。';
+    if (!demo) {
+      $('connect').textContent = '连接并检查设备 →';
+      $('compatibility').textContent = supported ? '浏览器支持 USB 串口。连接会使设备进入下载模式，但不会写入 Flash。' :
+        $('compatibility').textContent;
+      $('compatibility').classList.toggle('success', supported);
+      step('connect');
+    }
+  } else if (!demo) {
+    $('release-version').textContent = '正式安装包尚未开放';
+    $('connect').textContent = '正式固件待发布';
+    $('compatibility').textContent = '网站已开放预览。正式固件发布前，不连接设备、不读取备份、不执行刷写。';
+    $('compatibility').classList.remove('success');
+    $('stage-heading').textContent = '正式固件，敬请期待。';
+    $('stage-description').textContent = '可以先了解系统界面，或体验安全的流程演示。';
   }
   updateControls();
 }
@@ -183,17 +237,17 @@ $('connect').addEventListener('click', () => {
     result('演示第 1 步：机型和容量检查通过。未连接真实串口。');
   } else {
     requireThat(release, '正式固件尚未发布，设备连接暂未开放。');
-    requireThat(supported && hashReady && $('model-confirm').checked, '请先确认 Read Pico 机型和浏览器校验能力。');
+    requireThat(supported && hashReady && $('model-confirm').checked, '请先确认设备机型和浏览器校验能力。');
     const port = await selectedPort;
     // ?trace=1 logs raw serial traffic to the browser console for diagnosis.
-    adapter = new SerialAdapter(log, new URLSearchParams(location.search).has('trace'));
+    adapter = new SerialAdapter(log, new URLSearchParams(location.search).has('trace'), DEVICES[device].chip);
     try {
-      await adapter.connect(port); session = new FlashSession(adapter);
+      await adapter.connect(port); session = new FlashSession(adapter, device);
     } catch (error) {
       await adapter.close().catch(() => {}); adapter = null; throw error;
     }
     $('device-state').textContent = '芯片检查通过';
-    result('ESP32-S3 / 16 MB 检查通过。接下来检查设备当前的系统。');
+    result(`${DEVICES[device].chip.name} / 16 MB 检查通过。接下来检查设备当前的系统。`);
   }
   $('backup-controls').hidden = false; step('backup');
   });
@@ -221,7 +275,7 @@ $('backup').addEventListener('click', () => operate(async () => {
     const backup = await session.backupFlash((done, total) => progress('读取完整 Flash 备份', done, total), () => cancelled);
     backupUrl = URL.createObjectURL(new Blob([backup.bytes]));
     $('save-backup').href = backupUrl;
-    $('save-backup').download = `RickyOS-ReadPico-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.bin`;
+    $('save-backup').download = `RickyOS-${DEVICES[device].file}-backup-${new Date().toISOString().replace(/[:.]/g, '-')}.bin`;
     $('save-backup').hidden = false; $('save-backup').click();
     $('backup-help').textContent = `完整 16 MB 备份已下载，并通过设备摘要校验。SHA-256：${backup.sha256}`;
   } else {
@@ -243,16 +297,20 @@ $('install-button').addEventListener('click', () => operate(async () => {
     return;
   }
   requireThat(release && session && $('write-confirm').checked, '未满足安装条件。');
-  checkPlanRelease(session.plan, release);
+  const plus = device === 'plus';
+  requireThat(!installationBlock(), installationBlock() || '未满足安装条件。');
+  if (!plus) checkPlanRelease(session.plan, release);
   result('正在下载固件。请勿拔线或让电脑休眠。');
   const bytes = await fetchBytes(release.file, '固件', release.bytes);
-  const firstInstall = session.plan.kind === 'factory' || session.plan.kind === 'other';
+  // The Plus keeps its partitions and settings: only the Read Pico's full install clears them.
+  const firstInstall = !plus && (session.plan.kind === 'factory' || session.plan.kind === 'other');
   const assets = [];
-  if (firstInstall) for (const spec of release.fullInstall.segments)
+  if (plus) assets.push(await fetchBytes(release.bootloader.file, '启动加载器', release.bootloader.bytes));
+  else if (firstInstall) for (const spec of release.fullInstall.segments)
     assets.push(await fetchBytes(spec.file, `${spec.role} 组件`, spec.bytes));
   result('正在写入设备，需要几分钟。请勿拔线或让电脑休眠。');
   const restarted = await session.install(bytes, release,
-    (done, total) => progress(firstInstall ? '安装 RickyOS 与准备内部空间' : '写入应用分区', done, total), true,
+    (done, total) => progress(plus ? '写入 RickyOS 与启动组件' : firstInstall ? '安装 RickyOS 与准备内部空间' : '写入应用分区', done, total), true,
     label => { $('operation').textContent = label; $('result').textContent = label; log(label); }, assets);
   progress('安装完成', 100, 100);
   result(restarted ? 'RickyOS 安装完成并通过校验，设备正在重启。' :
