@@ -13,6 +13,8 @@
 #include "HalStorage.h"
 #include "HalWifiAwakeLease.h"
 #include "network/HttpDownloader.h"
+#include <Memory.h>
+#include <WeReadClient.h>
 
 extern void plusTcpTraceBegin();
 extern void plusTcpTraceEnd();
@@ -128,6 +130,41 @@ bool download(const Download& item) {
           HalWifiAwakeLease::activeCount());
   return result == HttpDownloader::OK && match && cleanup && (item.index || context.onlyCos);
 }
+
+// WeRead shelf sync through the production client: a logged-in device syncs its shelf
+// (covers off), otherwise the run stops at the login QR, which is not logged.
+bool weread(unsigned round) {
+  // Operation holds the client's request buffers; heap like the activity that owns it.
+  auto operation = makeUniqueNoThrow<WeReadClient::Operation>();
+  if (!operation) {
+    LOG_ERR("ACCEPT", "name=weread round=%u oom", round);
+    return false;
+  }
+  int8_t powerBefore = 0;
+  esp_wifi_get_max_tx_power(&powerBefore);
+  const uint32_t started = millis();
+  using Event = WeReadClient::Operation::Event;
+  Event event = Event::None;
+  if (operation->begin(WeReadClient::Operation::Kind::Sync)) {
+    while (millis() - started < 60000) {
+      event = operation->step();
+      if (event == Event::QrReady || event == Event::Complete || event == Event::Failed ||
+          event == Event::Cancelled)
+        break;
+    }
+  }
+  const uint32_t elapsed = millis() - started;
+  const auto error = operation->error();
+  if (event == Event::QrReady) operation->cancel();
+  operation.reset();
+  int8_t powerAfter = 0;
+  esp_wifi_get_max_tx_power(&powerAfter);
+  const bool ok = event == Event::QrReady || event == Event::Complete;
+  LOG_INF("ACCEPT", "name=weread round=%u event=%u error=%d ms=%lu ok=%d power_before=%d power_after=%d", round,
+          static_cast<unsigned>(event), static_cast<int>(error), static_cast<unsigned long>(elapsed), ok,
+          powerBefore, powerAfter);
+  return ok;
+}
 }
 
 void plusNetworkAcceptanceOnConnected() {
@@ -162,6 +199,11 @@ void plusNetworkAcceptanceOnConnected() {
             static_cast<unsigned long>(millis() - started), HalWifiAwakeLease::activeCount());
   }
   if (restartNetwork(original, protocols, "wallpapers-repeat") && download(wallpaper)) ++passed;
+  unsigned wereadPassed = 0;
+  for (unsigned round = 1; round <= 3; ++round) {
+    if (restartNetwork(original, protocols, "weread") && weread(round)) ++wereadPassed;
+  }
+  LOG_INF("ACCEPT", "weread_passed=%u expected=3", wereadPassed);
   WiFi.setAutoReconnect(reconnect);
   LOG_INF("ACCEPT", "done downloads_passed=%u expected=4 auto_reconnect_restored=%d", passed,
           WiFi.getAutoReconnect() == reconnect);

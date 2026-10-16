@@ -888,6 +888,32 @@
    if (!ok) return false;
    for (size_t i = 0; i < sizeof(digest); ++i) snprintf(out + i * 2, outSize - i * 2, "%02x", digest[i]);
    out[64] = '\0';
+--- a/lib/WeReadWebApi/src/WeReadHttpClient.cpp
++++ b/lib/WeReadWebApi/src/WeReadHttpClient.cpp
+@@ -6,6 +6,10 @@
+ 
+ #include <cctype>
+ #include <cstring>
++
++#if FREEINK_DEVICE_METALIO_PLUS
++#include <HalWifiAwakeLease.h>
++#endif
+ 
+ #if defined(FREEINK_NET_WOLFSSL) && !defined(CROSSPOINT_EMULATED)
+ #include <strings.h>
+@@ -671,6 +675,12 @@
+     return Result::NetworkError;
+   }
+   LOG_DBG("HTTP", "%s %s", options.method ? options.method : "?", url ? url : "?");
++#if FREEINK_DEVICE_METALIO_PLUS
++  // Like HttpDownloader: hold the shared radio lease (power save off, Plus TX power cap)
++  // for the request; without it first TCP connects to weread.qq.com stall for seconds.
++  HalWifiAwakeLease radioLease;
++  radioLease.acquire();
++#endif
+   g_aborted = false;
+   g_lastAbortCheck = 0;
+   if (abortRequested()) {
 --- a/lib/hal/HalAudioOutput.cpp
 +++ b/lib/hal/HalAudioOutput.cpp
 @@ -1,5 +1,23 @@

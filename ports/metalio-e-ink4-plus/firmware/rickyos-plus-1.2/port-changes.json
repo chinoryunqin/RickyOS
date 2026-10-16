@@ -88,6 +88,11 @@
       "ported_sha256": "de8ec54d3d2326641204a76f9a6a412d7b8ee12dbc9af1a06315746727a2fc71"
     },
     {
+      "path": "lib/WeReadWebApi/src/WeReadHttpClient.cpp",
+      "baseline_sha256": "6b1da2abbd71e59a21d1641c6b86350154d4f091adcfb4a154cbc29d91e79c61",
+      "ported_sha256": "82b05af215f5657a287f02936339f5fabb95ea8f8161ef92587a7c605ebc11df"
+    },
+    {
       "path": "lib/hal/HalAudioOutput.cpp",
       "baseline_sha256": "402506af5026e44ed927ce857fa97917e029b3144793ede908c0a0d38fece482",
       "ported_sha256": "43624f45f22684436dd7a853212d098c3fd080d8dcf836ccf5a0b8d5ac7b62c0"
