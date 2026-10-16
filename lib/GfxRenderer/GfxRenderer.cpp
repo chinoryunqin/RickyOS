@@ -13,6 +13,15 @@
 #include <Utf8.h>
 
 #include <algorithm>
+
+// Named fill grays on the 16-level frame; RICKYOS_GRAY_PRESET (RickyDesignTokens.h) deepens them.
+#ifndef RICKYOS_GRAY_PRESET
+#define RICKYOS_GRAY_PRESET 3
+#endif
+static constexpr uint8_t kLightGrayLevel =
+    RICKYOS_GRAY_PRESET == 3 ? 8 : (RICKYOS_GRAY_PRESET == 2 ? 7 : (RICKYOS_GRAY_PRESET == 1 ? 9 : 11));
+static constexpr uint8_t kDarkGrayLevel =
+    RICKYOS_GRAY_PRESET == 3 ? 5 : (RICKYOS_GRAY_PRESET == 2 ? 4 : (RICKYOS_GRAY_PRESET == 1 ? 6 : 7));
 #include <memory>
 #include <new>
 #include <string_view>
@@ -1478,8 +1487,8 @@ void GfxRenderer::fillRectImpl(const int x, const int y, const int width, const 
     // The 16-level frame has real grays: a smooth tone instead of the B/W dot pattern
     // (and treating these as white made light-gray tracks vanish once a screen settled).
     // Black/white write the levels drawPixel() mirrors (0 and 15).
-    const uint8_t level = C == Color::LightGray                             ? 11
-                          : C == Color::DarkGray                            ? 7
+    const uint8_t level = C == Color::LightGray                             ? kLightGrayLevel
+                          : C == Color::DarkGray                            ? kDarkGrayLevel
                           : framebufferState(renderMode, C == Color::Black) ? 0
                                                                             : 15;
     fillGrayscale16Rect(lx0, ly0, lx1 - lx0, ly1 - ly0, level);
@@ -1487,7 +1496,7 @@ void GfxRenderer::fillRectImpl(const int x, const int y, const int width, const 
   }
   if (grayscale16Buffer != nullptr) {  // strip target: the per-pixel path clips to the band
     if constexpr (C == Color::LightGray || C == Color::DarkGray) {
-      constexpr uint8_t gray = C == Color::LightGray ? 187 : 119;  // levels 11 and 7
+      constexpr uint8_t gray = (C == Color::LightGray ? kLightGrayLevel : kDarkGrayLevel) * 17;
       for (int px = lx0; px < lx1; ++px) {
         for (int py = ly0; py < ly1; ++py) drawGrayscale16Pixel(px, py, gray);
       }

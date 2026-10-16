@@ -113,7 +113,7 @@ int main() {
     assert(renderer.writes==0);
     renderer.gray=true;
     progress(renderer,{8,8,40,8},percent);
-    assert(renderer.pixels[12][27]==(percent>=50?0:221));
+    assert(renderer.pixels[12][27]==(percent>=50?0:ds::gray::toRgb8(ds::gray::kTint)));
   }
 }
 ''')

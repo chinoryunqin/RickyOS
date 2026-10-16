@@ -32,13 +32,36 @@ inline constexpr int kPpi = 297;  // 标称值；1 mm ≈ 11.7 px
 // -----------------------------------------------------------------------------
 // 1. 灰阶色板（§3）。只有 6 个具名等级；其余 10 级不得直接出现在 UI 代码里。
 // -----------------------------------------------------------------------------
+// RICKYOS_GRAY_PRESET（Pico 灰阶深浅，lib/GfxRenderer 里的浅灰/深灰填充同步）。默认 3（用户 2026-10-17 定）：
+//   0 = 1.2.x 原值，1 = 加深一档，2 = 和 Plus 一样深（细线也加到 3 px），
+//   3 = 呼应 Pico 机身按键：圆键和两道短线的印刷灰（实拍约等于第 8 级）、约 3 px 粗。
+#ifndef RICKYOS_GRAY_PRESET
+#define RICKYOS_GRAY_PRESET 3
+#endif
 namespace gray {
-using Level = uint8_t;               // 0..15, 0 = black
-inline constexpr Level kInk = 0;     // #000000 文字/图标/反白底/主按钮
-inline constexpr Level kInk2 = 4;    // #444444 次级文字（仅静止帧）
-inline constexpr Level kMute = 8;    // #888888 禁用/占位（仅静止帧）
-inline constexpr Level kLine = 11;   // #BBBBBB 分隔线/进度轨（仅静止帧）
-inline constexpr Level kTint = 13;   // #DDDDDD 小面积底（仅静止帧）
+using Level = uint8_t;  // 0..15, 0 = black
+inline constexpr Level kInk = 0;  // #000000 文字/图标/反白底/主按钮
+#if RICKYOS_GRAY_PRESET == 3
+inline constexpr Level kInk2 = 3;   // 次级文字（仅静止帧）
+inline constexpr Level kMute = 6;   // 禁用/占位（仅静止帧）
+inline constexpr Level kLine = 8;   // 分隔线/进度轨/边框：机身按键的印刷灰
+inline constexpr Level kTint = 12;  // 小面积底（仅静止帧）
+#elif RICKYOS_GRAY_PRESET == 2
+inline constexpr Level kInk2 = 2;   // 次级文字（仅静止帧）
+inline constexpr Level kMute = 5;   // 禁用/占位（仅静止帧）
+inline constexpr Level kLine = 7;   // 分隔线/进度轨（仅静止帧）
+inline constexpr Level kTint = 12;  // 小面积底（仅静止帧）
+#elif RICKYOS_GRAY_PRESET == 1
+inline constexpr Level kInk2 = 3;   // 次级文字（仅静止帧）
+inline constexpr Level kMute = 6;   // 禁用/占位（仅静止帧）
+inline constexpr Level kLine = 9;   // 分隔线/进度轨（仅静止帧）
+inline constexpr Level kTint = 12;  // 小面积底（仅静止帧）
+#else
+inline constexpr Level kInk2 = 4;   // #444444 次级文字（仅静止帧）
+inline constexpr Level kMute = 8;   // #888888 禁用/占位（仅静止帧）
+inline constexpr Level kLine = 11;  // #BBBBBB 分隔线/进度轨（仅静止帧）
+inline constexpr Level kTint = 13;  // #DDDDDD 小面积底（仅静止帧）
+#endif
 inline constexpr Level kPaper = 15;  // #FFFFFF 背景/反白文字
 
 // 8-bit sRGB 近似值，供模拟器 / 截图对比使用。
@@ -189,7 +212,7 @@ constexpr int concentric(int outer, int inset) { return outer - inset > 0 ? oute
 // 5. 线宽（§7）：2 个值。图标线宽见 icon::strokeFor()。
 // -----------------------------------------------------------------------------
 namespace stroke {
-inline constexpr uint8_t kHairline = 2;        // 卡片描边、分隔线、次按钮、进度轨(1-bit)
+inline constexpr uint8_t kHairline = RICKYOS_GRAY_PRESET >= 2 ? 3 : 2;  // 卡片描边、分隔线、次按钮、进度轨(1-bit)
 inline constexpr uint8_t kEmphasis = 4;        // 弹窗边框、按下态主按钮、强调线
 enum class Divider : uint8_t { None, Solid };  // 无 Dotted
 inline constexpr Divider kDefaultListDivider = Divider::None;

@@ -227,7 +227,7 @@ inline void generatedCover(fui::DrawTarget& target, fui::Rect rect, const char* 
   if (rect.empty()) return;
   const auto black = fui::Paint::solid(fui::Color::Black);
   target.fill(rect, fui::Paint::solid(fui::Color::White));
-  target.stroke(rect, black, 1);
+  target.stroke(rect, fui::Paint::solid(fui::Color::LightGray), ricky::ds::stroke::kHairline);
   const int16_t rule = std::max<int16_t>(5, rect.width / 22);
   if (rect.width > rule * 4 && rect.height > rule * 4)
     target.stroke(fui::Rect{static_cast<int16_t>(rect.x + rule), static_cast<int16_t>(rect.y + rule),
@@ -276,7 +276,7 @@ inline void bookTile(fui::DrawTarget& target, fui::Rect rect, const char* title,
                      Motif kind = Motif::Count) {
   if (rect.empty()) return;
   target.fill(rect, fui::Paint::solid(fui::Color::White));
-  target.stroke(rect, fui::Paint::solid(fui::Color::Black), 1);
+  target.stroke(rect, fui::Paint::solid(fui::Color::LightGray), ricky::ds::stroke::kHairline);
   const int lineHeight = target.lineHeight(text.font);
   const int size = std::min<int>(lineHeight, rect.height / 2);
   const int gap = std::max(8, lineHeight / 3);

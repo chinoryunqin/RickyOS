@@ -20,6 +20,7 @@ class GfxFillClipTest(unittest.TestCase):
 #include <cstring>
 enum class Color { Clear, Black, White, LightGray, DarkGray };
 #define RICKY_PAINT_SCOPE(kind) ((void)0)
+static constexpr uint8_t kLightGrayLevel = 8, kDarkGrayLevel = 5;  // file-scope in GfxRenderer.cpp
 struct FontCacheManager { bool isScanning() const { return false; } };
 struct GfxRenderer {
   enum Orientation { Portrait, LandscapeClockwise, PortraitInverted, LandscapeCounterClockwise };

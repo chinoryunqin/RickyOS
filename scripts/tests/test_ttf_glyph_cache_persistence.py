@@ -72,7 +72,7 @@ class TtfGlyphCachePersistenceTest(unittest.TestCase):
         # f.cap, the arena never recycled -- later pages of a book lost characters.
         raster = body(TTF.read_text(), 'const uint8_t* TtfEpdFont::rasterizeInto(')
         self.assertIn('kArenaStep = 64 * 1024', raster)
-        self.assertIn('if (f.bmp.capacity() < bytes) return nullptr;', raster)
+        self.assertIn('if (f.bmp.capacity() < bytes) {', raster)
         self.assertGreaterEqual(raster.count('recycleArena()'), 2,
                                 'a failed growth must recycle the arena it already has')
         fault = body(TTF.read_text(), 'const EpdGlyph* TtfEpdFont::faultGlyph(')

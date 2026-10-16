@@ -72,10 +72,18 @@ void blendInk(const GfxRenderer& renderer, const int x, const int y, const int c
   renderer.drawGrayscale16Pixel(x, y, static_cast<uint8_t>(level * 17));
 }
 
-// The avatar's circular frame. On a 16-level frame its edges are graded by how much of
-// each pixel the ring covers (distance to the circle, one pixel of falloff each side).
+// Toward `tone` by coverage/15, never lighter than what is already there.
+void blendTone(const GfxRenderer& renderer, const int x, const int y, const int coverage, const int tone) {
+  const int paper = renderer.grayscale16Level(x, y);
+  if (paper <= tone) return;
+  const int level = paper - ((paper - tone) * coverage + 7) / 15;
+  renderer.drawGrayscale16Pixel(x, y, static_cast<uint8_t>(level * 17));
+}
+
+// The avatar's circular frame: the same line gray and hairline as the cards around it. On a
+// 16-level frame its edges are graded by how much of each pixel the ring covers.
 void avatarRing(const GfxRenderer& renderer, const Rect& rect, const int size) {
-  const int thickness = std::max(2, size / 48);
+  const int thickness = ricky::ds::stroke::kHairline;
   if (!renderer.isGrayscale16Active()) {
     renderer.drawRoundedRect(rect.x, rect.y, size, size, thickness, size / 2, true);
     return;
@@ -89,7 +97,7 @@ void avatarRing(const GfxRenderer& renderer, const Rect& rect, const int size) {
       const float d = std::sqrt(d2);
       const float in = std::clamp(outer + 0.5f - d, 0.0f, 1.0f) - std::clamp(inner + 0.5f - d, 0.0f, 1.0f);
       const int coverage = static_cast<int>(in * 15 + 0.5f);
-      if (coverage) blendInk(renderer, rect.x + x, rect.y + y, coverage);
+      if (coverage) blendTone(renderer, rect.x + x, rect.y + y, coverage, ricky::ds::gray::kLine);
     }
   }
 }

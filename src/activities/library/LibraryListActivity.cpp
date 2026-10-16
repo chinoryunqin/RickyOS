@@ -1194,7 +1194,7 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
                                               GUI.drawCoverThumbFill(renderer, bitmap,
                                                                      Rect{rect.x, rect.y, rect.width, rect.height});
                                      });
-      if (painted) screen.target().stroke(rect, fui::Paint::solid(fui::Color::Black), ricky::ds::stroke::kHairline);
+      if (painted) screen.target().stroke(rect, fui::Paint::solid(fui::Color::LightGray), ricky::ds::stroke::kHairline);
     }
     if (!painted) {
       const auto& path = shelfPaths[slot];

@@ -79,7 +79,7 @@ bool RickyHomeUi::paint(fui::Rect rect, int index) {
   if (painter && painter(owner, index, Rect{rect.x, rect.y, rect.width, rect.height})) {
     // Real artwork gets the same hairline edge as generated covers; pale covers
     // would otherwise dissolve into the page.
-    uiTarget.stroke(rect, fui::Paint::solid(fui::Color::Black), ricky::ds::stroke::kHairline);
+    uiTarget.stroke(rect, fui::Paint::solid(fui::Color::LightGray), ricky::ds::stroke::kHairline);
     return true;
   }
   if (!books || index < 0 || index >= static_cast<int>(books->size())) return false;

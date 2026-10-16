@@ -143,7 +143,16 @@ inline void cover(const GfxRenderer& renderer, fui::Rect r, const char* title, c
   const int style = ds::component::coverTemplateFor(title);
   const bool dark = style == 0 || style == 3;
   fill(renderer, r, dark ? ds::gray::kInk : style == 4 ? ds::gray::kTint : ds::gray::kPaper);
-  renderer.drawRect(r.x, r.y, r.width, r.height, ds::stroke::kHairline, !dark);
+  // The outer edge matches the cards' line gray; dark covers keep their own edge.
+  if (!dark && renderer.isGrayscale16Active()) {
+    constexpr int16_t e = ds::stroke::kHairline;
+    fill(renderer, {r.x, r.y, r.width, e}, ds::gray::kLine);
+    fill(renderer, {r.x, static_cast<int16_t>(r.bottom() - e), r.width, e}, ds::gray::kLine);
+    fill(renderer, {r.x, r.y, e, r.height}, ds::gray::kLine);
+    fill(renderer, {static_cast<int16_t>(r.right() - e), r.y, e, r.height}, ds::gray::kLine);
+  } else {
+    renderer.drawRect(r.x, r.y, r.width, r.height, ds::stroke::kHairline, !dark);
+  }
   const bool compact = r.width < 120 || r.height < 180;
   const int pad = compact ? ds::space::k2 : ds::space::k4;
   if (style == 2) {
