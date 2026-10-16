@@ -1,12 +1,10 @@
-# ESP-IDF Partition Table（16MB）— 与 partitions/v1/16m.csv 保持一致
-# Name,    Type, SubType,  Offset,   Size, Flags
-nvs,       data, nvs,      0x9000,   16K,
-otadata,   data, ota,      0xd000,   8K,
-phy_init,  data, phy,      0xf000,   4K,
-model,     data, spiffs,   0x10000,  400K,
-ota_0,     app,  ota_0,    0x80000,  5M,
-ota_1,     app,  ota_1,    0x580000, 5M,
-resources, data, spiffs,   0xa80000, 400K,
-# ebook 24x24 1bpp 点阵（assets/epd_font24.bin ≈1.48MiB）
-font_data, data, 0x40,     0xae4000, 5M,
-coredump,  data, coredump, 0xfe4000, 64K,
+# RickyOS on the Metalio E-Ink4-Plus: the Read Pico layout (16 MB).
+# The vendor table gave RickyOS a 5 MiB slot and ~6 MB of partitions it never reads
+# (model, resources, font_data); the web installer moves boards to this layout.
+# Name,   Type, SubType,  Offset,   Size, Flags
+nvs,      data, nvs,      0x9000,   0x5000,
+otadata,  data, ota,      0xe000,   0x2000,
+app0,     app,  ota_0,    0x10000,  0x640000,
+app1,     app,  ota_1,    0x650000, 0x640000,
+spiffs,   data, spiffs,   0xc90000, 0x360000,
+coredump, data, coredump, 0xff0000, 0x10000,

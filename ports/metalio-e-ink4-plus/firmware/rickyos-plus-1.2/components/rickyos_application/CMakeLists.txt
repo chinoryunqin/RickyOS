@@ -659,7 +659,7 @@ set_target_properties(${COMPONENT_LIB} PROPERTIES C_STANDARD 11 C_STANDARD_REQUI
 # QRCode 0.0.1 supplies its own C bool typedef; compile only this legacy unit as C11.
 set_source_files_properties("${DEPENDENCY_ROOT}/QRCode/src/qrcode.c" PROPERTIES COMPILE_OPTIONS "-std=gnu11")
 
-# Preserve the complete 4-bit UI within the vendor's fixed 5 MiB OTA slot.
+# Preserve the complete 4-bit UI with headroom in the 6.25 MiB app slot.
 # Limit LTO to application/component sources; IDF and radio drivers remain separate.
 target_compile_options(${COMPONENT_LIB} PRIVATE -flto=auto)
 idf_build_set_property(LINK_OPTIONS "-flto=auto;-fuse-linker-plugin" APPEND)

@@ -41,7 +41,7 @@ CONFIG_ARDUINO_SELECTIVE_ESPmDNS=y
 CONFIG_LWIP_SNTP_MAX_SERVERS=3
 
 CONFIG_COMPILER_OPTIMIZATION_SIZE=y
-# Assertions still abort; their file/expression strings are dropped to fit the 5 MiB ota slot.
+# Assertions still abort; their file/expression strings are dropped to keep headroom in the app slot.
 CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT=y
 
 CONFIG_LWIP_DEBUG=y
