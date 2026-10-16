@@ -13,7 +13,7 @@ program = r'''
 #include <cstring>
 #include <string>
 #define FREEINK_DEVICE_METALIO_PLUS 1
-#define CROSSPOINT_VERSION "1.2.0-plus-dev"
+#define CROSSPOINT_VERSION "1.2.0"
 constexpr char kPreparedMarker[]="/marker";
 std::string marker;
 struct HalFile {

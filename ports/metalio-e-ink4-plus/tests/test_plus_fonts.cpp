@@ -91,9 +91,38 @@ static void verify(const EpdFontData& original, const EpdFontData& compressed) {
   }
   printf("%zu glyphs: firmware uzlib decoder, pixel/metric/Unicode preservation and buffer guards passed\n", glyphCount);
 }
+// Faces the design already packs (frequency-ordered groups) are copied unchanged, so the
+// source is no raw baseline: check the copy matches and every glyph decodes through the
+// firmware decoder twice with identical bytes (the design's FontDecompressorTest checks pixels).
+static void verifyUpstreamPacked(const EpdFontData& source, const EpdFontData& copy) {
+  assert(source.groupCount > 0 && source.groupCount == copy.groupCount);
+  assert(memcmp(source.groups, copy.groups, source.groupCount * sizeof(EpdFontGroup)) == 0);
+  const auto& lastGroup = source.groups[source.groupCount - 1];
+  assert(memcmp(source.bitmap, copy.bitmap, lastGroup.compressedOffset + lastGroup.compressedSize) == 0);
+  const auto& lastInterval = source.intervals[source.intervalCount - 1];
+  const size_t glyphCount = lastInterval.offset + lastInterval.last - lastInterval.first + 1;
+  assert(memcmp(source.glyph, copy.glyph, glyphCount * sizeof(EpdGlyph)) == 0);
+  FontDecompressor forward, backward;
+  assert(forward.init() && backward.init());
+  std::vector<std::vector<uint8_t>> decoded(glyphCount);
+  for (size_t i = 0; i < glyphCount; ++i) {
+    const auto& glyph = copy.glyph[i];
+    if (!glyph.dataLength) continue;
+    const uint8_t* bitmap = forward.getBitmap(&copy, &glyph, i);
+    assert(bitmap);
+    decoded[i].assign(bitmap, bitmap + glyph.dataLength);
+  }
+  for (size_t i = glyphCount; i-- > 0;) {
+    const auto& glyph = copy.glyph[i];
+    if (!glyph.dataLength) continue;
+    const uint8_t* bitmap = backward.getBitmap(&copy, &glyph, i);
+    assert(bitmap && memcmp(decoded[i].data(), bitmap, glyph.dataLength) == 0);
+  }
+  printf("%zu glyphs: upstream-packed copy identical and decodable\n", glyphCount);
+}
 int main() {
   uzlib_init();
-  verify(baseline::notosans_cjk_12_rickyos, packed::notosans_cjk_12_rickyos);
+  verifyUpstreamPacked(baseline::notosans_cjk_12_rickyos, packed::notosans_cjk_12_rickyos);
   verify(baseline::notosans_cjk_14, packed::notosans_cjk_14);
   verify(baseline::notosans_cjk_16, packed::notosans_cjk_16);
   verify(baseline::ricky_title_16_bold, packed::ricky_title_16_bold);

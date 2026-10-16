@@ -587,7 +587,7 @@
                    (unsigned)ESP.getMaxAllocHeap());
 --- a/lib/EpdFont/FontDecompressor.cpp
 +++ b/lib/EpdFont/FontDecompressor.cpp
-@@ -112,7 +112,7 @@
+@@ -120,7 +120,7 @@
  
    auto accumGlyph = [&](const EpdGlyph& g) {
      if (g.width > 0 && g.height > 0) {
@@ -596,7 +596,7 @@
      }
    };
  
-@@ -135,10 +135,13 @@
+@@ -143,10 +143,13 @@
  }
  
  void FontDecompressor::compactSingleGlyph(const uint8_t* alignedSrc, uint8_t* packedDst, uint8_t width,
@@ -613,7 +613,7 @@
      memcpy(packedDst, alignedSrc, rowStride * height);
      return;
    }
-@@ -146,8 +149,8 @@
+@@ -154,8 +157,8 @@
    uint32_t writeIdx = 0;
    for (uint8_t y = 0; y < height; y++) {
      for (uint8_t x = 0; x < width; x++) {
@@ -624,7 +624,7 @@
        if (outBits == 8) {
          packedDst[writeIdx++] = outByte;
          outByte = 0;
-@@ -250,7 +253,7 @@
+@@ -275,7 +278,7 @@
        for (uint32_t i = 0; i < group.glyphCount; ++i) {
          slot->offsets[i] = offset;
          const EpdGlyph& g = fontData->glyph[group.firstGlyphIndex + i];
@@ -633,8 +633,8 @@
        }
        slot->offsetsValid = true;
      }
-@@ -274,7 +277,7 @@
-     // original walk so behaviour is unchanged.
+@@ -304,7 +307,7 @@
+     // A table that could not be built: keep the original walk so behaviour is unchanged.
      alignedOff = getAlignedOffset(fontData, groupIndex, glyphIndex);
    }
 -  compactSingleGlyph(&slot->data[alignedOff], hotGlyphBuf, glyph->width, glyph->height);
@@ -642,7 +642,7 @@
    stats.getBitmapTimeUs += micros() - tStart;
    return hotGlyphBuf;
  }
-@@ -487,7 +490,7 @@
+@@ -515,7 +518,7 @@
        }
  
        if (glyph.width > 0 && glyph.height > 0) {
@@ -651,7 +651,7 @@
        }
      }
    } else {
-@@ -513,7 +516,7 @@
+@@ -541,7 +544,7 @@
          }
  
          if (glyph.width > 0 && glyph.height > 0) {
@@ -660,7 +660,7 @@
          }
        }
      }
-@@ -550,7 +553,7 @@
+@@ -578,7 +581,7 @@
        if (getGroupIndex(fontData, slot.glyphs[i].glyphIndex) != groupIdx) continue;
  
        const EpdGlyph& glyph = fontData->glyph[slot.glyphs[i].glyphIndex];
@@ -671,7 +671,7 @@
      }
 --- a/lib/EpdFont/FontDecompressor.h
 +++ b/lib/EpdFont/FontDecompressor.h
-@@ -110,6 +110,6 @@
+@@ -115,6 +115,6 @@
    uint16_t getGroupIndex(const EpdFontData* fontData, uint32_t glyphIndex);
    uint32_t getAlignedOffset(const EpdFontData* fontData, uint16_t groupIndex, uint32_t glyphIndex);
    bool decompressGroup(const EpdFontData* fontData, uint16_t groupIndex, uint8_t* outBuf, uint32_t outSize);
@@ -4294,7 +4294,7 @@
  static const EpdFontData& cjk12Data = notosans_cjk_12_rickyos;
  EpdFont offlineReaderFont(&cjk12Data);
  EpdFontFamily offlineReaderFontFamily(&offlineReaderFont);
-@@ -445,7 +445,7 @@
+@@ -449,7 +449,7 @@
      WiFi.mode(WIFI_OFF);
    }
  
@@ -4303,7 +4303,7 @@
    gpio.stopHapticFeedback();
  #endif
    halTiltSensor.deepSleep();
-@@ -462,7 +462,7 @@
+@@ -466,7 +466,7 @@
  
  bool setupDisplayAndFonts(bool seamless = false, bool logSdFontLoadHeap = false) {
    display.begin(seamless);
@@ -4312,7 +4312,7 @@
    // Read Pico step 4 of 5 (see the boot-order note in setup()): the panel has
    // stepped through its own rails by now — BoardReadPico::epdPrepare/On/Off are
    // the board's LgfxEpdPowerHooks, so the SY7636A enable (FCA9555 P0.3), VCOM and
-@@ -507,7 +507,7 @@
+@@ -511,7 +511,7 @@
    renderer.setFallbackFont(UI_12_FONT_ID, CJK_UI_12_FONT_ID);
    renderer.setFallbackFont(NOTOSANS_18_FONT_ID, CJK_UI_12_FONT_ID);
    renderer.insertFont(BaseTheme::STATUS_NUMERIC_FONT_ID, smallFontFamily);
@@ -4321,7 +4321,7 @@
    renderer.insertFont(READER_STATUS_FONT_ID, smallFontFamily);
    renderer.insertFont(READER_ESTIMATE_FONT_ID, ui10FontFamily);
    renderer.setFallbackFont(READER_STATUS_FONT_ID, CJK_UI_8_FONT_ID);
-@@ -654,7 +654,9 @@
+@@ -666,7 +666,9 @@
    // enumeration proceed asynchronously so users do not pay this startup cost.
    delay(250);
  #endif
@@ -4331,7 +4331,7 @@
  #if LOG_SERIAL_HAS_TX_TIMEOUT
    logSerial.setTxTimeoutMs(1);  // This is a load-bearing 1. Do not modify.
  #endif
-@@ -754,10 +756,20 @@
+@@ -766,10 +768,20 @@
      return;
    }
  
@@ -4353,7 +4353,7 @@
    if (!settingsLoaded) SETTINGS.readerMenuStyle = CrossPointSettings::READER_MENU_LIST;
  #endif
    const auto onboardingMode =
-@@ -816,7 +828,7 @@
+@@ -828,7 +840,7 @@
        // Most devices return to sleep after a USB-powered cold boot.
        LOG_DBG("MAIN", "Wakeup reason: After USB Power");
  #if FREEINK_DEVICE_X4PRO || FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_PAPERMONO || FREEINK_DEVICE_EEGO_A4 || \
@@ -4362,7 +4362,7 @@
        // X4 Pro must stay awake so USB Serial/JTAG remains available after leaving
        // USB Drive and reconnecting the cable. Paper Mono has no armable GPIO wake
        // (its button is behind the PMIC). EEGO A4's post-flash reset reads as
-@@ -976,12 +988,30 @@
+@@ -988,12 +1000,30 @@
      gpio.update();
    }
  
@@ -4393,7 +4393,7 @@
  #ifdef RICKYOS_STANDBY_DIAG
    standby_diag::dumpWhenAwake();
  #endif
-@@ -1037,7 +1067,9 @@
+@@ -1049,7 +1079,9 @@
      activityManager.cancelIdleRender("touch", true);
    }
  #endif
@@ -4404,7 +4404,7 @@
    gpio.updateHapticFeedback(SETTINGS.hapticFeedbackLevel);
  #endif
    updateBluetoothLifecycle();
-@@ -1196,6 +1228,10 @@
+@@ -1208,6 +1240,10 @@
      return;
    }
    const unsigned long sleepTimeoutMs = SETTINGS.getSleepTimeoutMs();
@@ -4415,7 +4415,7 @@
    if (sleepTimeoutMs > 0 && !activityManager.preventAutoSleep() && millis() - lastActivityTime >= sleepTimeoutMs) {
      LOG_DBG("SLP", "Auto-standby after %lu ms of inactivity", sleepTimeoutMs);
      STANDBY_DIAG("auto-standby after %lus idle", sleepTimeoutMs / 1000);
-@@ -1298,12 +1334,13 @@
+@@ -1310,12 +1346,13 @@
    // flash, the AA pass re-running, and a frontlight dip under the refresh
    // load); the reader's status bar picks the charging state up on the next
    // page turn instead.

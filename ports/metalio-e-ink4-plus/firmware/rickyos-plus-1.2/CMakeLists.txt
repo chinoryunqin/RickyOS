@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-set(PROJECT_VER "1.2.0-plus-dev")
+set(PROJECT_VER "1.2.0")
 set(EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/../../.local/arduino-esp32-4.0.0-RC1"
     "${CMAKE_CURRENT_LIST_DIR}/../../.local/dependencies/mdns"
     "${CMAKE_CURRENT_LIST_DIR}/../../.local/usb-dependencies/tinyusb")

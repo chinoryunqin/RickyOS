@@ -1,5 +1,5 @@
 {
-  "baseline": "12d1d95e7d7ff17134eb29082209df2aa9810722",
+  "baseline": "e5e1dcccdce1e897470939e841519333d23943ab",
   "sdk_baseline": "96de1be6ce08eb732909e6e8149af8f892b9a2c5",
   "changes": [
     {
@@ -54,13 +54,13 @@
     },
     {
       "path": "lib/EpdFont/FontDecompressor.cpp",
-      "baseline_sha256": "44ead6dd5d29c1c958fbb97683468d9263bc0b8018a021b679781db4abe1eeff",
-      "ported_sha256": "63d490d1d3fc5f038c7213460b16a91f4ed41f348d2c88cede92b141d59f35c0"
+      "baseline_sha256": "a0f43a7c458ecbbb34a150e405de3b90f0e6f16e18e8ef54fa56978303674697",
+      "ported_sha256": "4af5742401fa2ecf855fe92c29136d490fa6331d04b2c28dbde67ec3edf1ae1d"
     },
     {
       "path": "lib/EpdFont/FontDecompressor.h",
-      "baseline_sha256": "400ba8b69709fd0f774d703a0685d99d214f6741d3ef61488d54c8a3999b77dc",
-      "ported_sha256": "0dc7e0c4fed87ba2993e24dcb6107385cbf73f4f800befb75ace78b22398e5ca"
+      "baseline_sha256": "b7032c8393f5d0cebe67c75c2b9b268e3c0c248b1449a4e1fc6069baee083c89",
+      "ported_sha256": "7c5ddba8d5fff21db62271493918344ad1b0a14613200d6606bfd9a010f62fcc"
     },
     {
       "path": "lib/I18n/translations/chinese.yaml",
@@ -259,8 +259,8 @@
     },
     {
       "path": "src/activities/network/WifiSelectionActivity.cpp",
-      "baseline_sha256": "09017f99c91da12bfeb162063ef047cad46c71a588de955acbd4d08f06e25432",
-      "ported_sha256": "82da5c0baa9f315909dfd77cb72ea1fdc5e0f46b798e7238b36b9839146fb55d"
+      "baseline_sha256": "4433c9db02e51c9d86b9c98c92750e9cb127f62b7119fb74e5ad161565ec799e",
+      "ported_sha256": "bb80f7875c4def278d2c582a7ab75cd72758994cf830ebc7b41e97deb116a7a1"
     },
     {
       "path": "src/activities/network/WifiSelectionActivity.h",
@@ -354,8 +354,8 @@
     },
     {
       "path": "src/main.cpp",
-      "baseline_sha256": "7cf64beb1a459737cd03024fd09b02d8568e43928623181d780c8d3075aa187f",
-      "ported_sha256": "d57bc7038f563ae33cb0e616ef3ea61454e306e9d4f3a9a63391827d9d0200ee"
+      "baseline_sha256": "a9593200335b30dace971723992905ac8ce0beb05159ecb6d17d837bdb73fdc5",
+      "ported_sha256": "fdc5fcd5a4b482367dd4336390a178606ba6def0d0f77f4b76e64aed16e85880"
     },
     {
       "path": "src/network/CrossPointWebServer.cpp",
