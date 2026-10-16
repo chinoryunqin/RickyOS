@@ -56,7 +56,7 @@ test('site navigation is the studio, RickyOS, developer program, RickyVerse and 
     const html = await read(file);
     const nav = html.match(/<nav class="h-nav"[^>]*>(.*?)<\/nav>/s)?.[1] ?? '';
     const links = [...nav.matchAll(/href="([^"]+)"/g)].map(match => match[1]);
-    assert.deepEqual(links, ['./rickyos.html', './developers.html', './verse.html', './install.html'], file);
+    assert.deepEqual(links, ['./rickyos.html', './developers.html', './verse.html', './27.html', './install.html'], file);
     assert.match(html, /class="h-brand" href="\.\/">RICKY AI STUDIO<\/a>/);
     assert.doesNotMatch(html, /data-brand-logo|assets\/home\/(?:studio|duo|developers|verse)\.jpg/);
     assert.match(html, /href="\.\/licenses\.html"/);
@@ -66,7 +66,9 @@ test('site navigation is the studio, RickyOS, developer program, RickyVerse and 
   assert.match(await read('vite.config.js'), /rickyos: resolve[\s\S]*developers: resolve[\s\S]*verse: resolve/);
   assert.match(await read('index.html'), /<title>Ricky AI Studio<\/title>/);
   assert.match(await read('index.html'), /href="\.\/rickyos\.html"/);
-  assert.match(await read('27.html'), /url=\.\/verse\.html/);
+  // The RickyOS 27 teaser stays as published; it links back to the installer.
+  assert.match(await read('27.html'), /src="\.\/src\/r27\.css"|href="\.\/src\/r27\.css"/);
+  assert.match(await read('27.html'), /href="\.\/install\.html"/);
 });
 test('installer offers a device choice with only Read Pico available', async () => {
   // Unreleased devices are not named or hinted at anywhere on the site.
