@@ -18,6 +18,10 @@ mirrors the device's OTA files under cos://<bucket>/ota/, laid out like the site
 The image is checked against ota.json's bytes and sha256 first. --tag is the offered
 version. Devices from 1.2.0 ask the bucket first (RickyOtaPolicy.h); older ones only the
 site, so every release goes to both.
+--device plus publishes the Plus offer instead: dist/plus/ota.json and ota-notes.txt to
+ota/plus/, its image to the shared ota/firmware/. The Read Pico's files are untouched.
+--cos-dir (default ota) puts everything under another top folder, e.g. ota-test for a
+device test build; the official folder is never written then.
 
 Credentials come from the environment, never the command line or the repository:
 COS_SECRET_ID, COS_SECRET_KEY, COS_BUCKET (<bucket>-<appid>), COS_REGION (ap-guangzhou)
@@ -38,37 +42,45 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from rickyos_asset_routes import check_cos_base  # noqa: E402
 
 KINDS = ("fonts", "wallpapers", "ota")
+DEVICES = {"readpico": ("", "readpico"), "plus": ("plus/", "metalio-plus-s31")}
 IMMUTABLE = "Cache-Control:public,max-age=31536000,immutable"
 ROLLING = "Cache-Control:no-cache"
 
 
-def plan_ota(site, version, bucket):
+def plan_ota(site, version, bucket, device="readpico", cos_dir="ota"):
     """The OTA copies: image, notes, then the offer; checked against ota.json first."""
-    offer = json.loads((site / "ota.json").read_text())
+    if device not in DEVICES:
+        raise ValueError(f"device must be one of {tuple(DEVICES)}")
+    if not re.fullmatch(r"ota(-[a-z0-9]+)?", cos_dir):
+        raise ValueError(f"unexpected COS folder {cos_dir}")
+    sub, board = DEVICES[device]
+    offer = json.loads((site / sub / "ota.json").read_text())
     if offer.get("status") != "update_available" or offer.get("version") != version:
-        raise ValueError(f"{site / 'ota.json'} does not offer {version}")
+        raise ValueError(f"{site / sub / 'ota.json'} does not offer {version}")
+    if offer.get("board") != board:
+        raise ValueError(f"{site / sub / 'ota.json'} is for {offer.get('board')}, not {board}")
     file = offer["file"]
     if not re.fullmatch(r"firmware/[A-Za-z0-9._-]+\.bin", file):
         raise ValueError(f"unexpected OTA file {file}")
     image = (site / file).read_bytes()
     if len(image) != offer["bytes"] or hashlib.sha256(image).hexdigest() != offer["sha256"]:
         raise ValueError(f"{site / file} does not match ota.json (bytes / sha256)")
-    notes = site / "ota-notes.txt"
+    notes = site / sub / "ota-notes.txt"
     if not notes.read_text().startswith(version + "\n"):
         raise ValueError(f"{notes} is not for {version}")
     return [
-        (str(site / file), f"cos://{bucket}/ota/{file}", ["--forbid-overwrite", "--meta", IMMUTABLE]),
-        (str(notes), f"cos://{bucket}/ota/ota-notes.txt", ["--meta", ROLLING]),
-        (str(site / "ota.json"), f"cos://{bucket}/ota/ota.json", ["--meta", ROLLING]),
+        (str(site / file), f"cos://{bucket}/{cos_dir}/{file}", ["--forbid-overwrite", "--meta", IMMUTABLE]),
+        (str(notes), f"cos://{bucket}/{cos_dir}/{sub}ota-notes.txt", ["--meta", ROLLING]),
+        (str(site / sub / "ota.json"), f"cos://{bucket}/{cos_dir}/{sub}ota.json", ["--meta", ROLLING]),
     ]
 
 
-def plan(kind, output, tag, bucket, region):
+def plan(kind, output, tag, bucket, region, device="readpico", cos_dir="ota"):
     """The coscli copies to run, in order, after checking the build output."""
     if kind not in KINDS:
         raise ValueError(f"kind must be one of {KINDS}")
     if kind == "ota":
-        return plan_ota(output, tag, bucket)
+        return plan_ota(output, tag, bucket, device, cos_dir)
     files = output / kind
     manifest = output / "cos.json"
     if not files.is_dir() or not any(files.iterdir()):
@@ -95,6 +107,8 @@ def main():
                         help="the build script's output directory (ota: the flasher site's dist/)")
     parser.add_argument("--tag", required=True, help="the release tag the catalog was built with (ota: the version)")
     parser.add_argument("--coscli", default="coscli")
+    parser.add_argument("--device", choices=tuple(DEVICES), default="readpico", help="ota: whose offer to publish")
+    parser.add_argument("--cos-dir", default="ota", help="ota: the COS top folder (ota-test for device tests)")
     parser.add_argument("--dry-run", action="store_true", help="print the copies without credentials or uploads")
     args = parser.parse_args()
 
@@ -102,7 +116,7 @@ def main():
     region = os.environ.get("COS_REGION", "ap-guangzhou")
     if not bucket:
         parser.error("set COS_BUCKET (<bucket>-<appid>) in the environment")
-    copies = plan(args.kind, args.output.resolve(), args.tag, bucket, region)
+    copies = plan(args.kind, args.output.resolve(), args.tag, bucket, region, args.device, args.cos_dir)
     if args.dry_run:
         for source, target, options in copies:
             print(f"{source} -> {target} {' '.join(options)}")
@@ -119,8 +133,10 @@ def main():
     for source, target, options in copies:
         print(f"Uploading {source} -> {target}", flush=True)
         subprocess.run([args.coscli, "cp", *credentials, source, target, *options], check=True)
-    manifest = "ota.json" if args.kind == "ota" else "cos.json"
-    print(f"Published: https://{bucket}.cos.{region}.myqcloud.com/{args.kind}/{manifest}")
+    if args.kind == "ota":
+        print(f"Published: https://{bucket}.cos.{region}.myqcloud.com/{args.cos_dir}/{DEVICES[args.device][0]}ota.json")
+    else:
+        print(f"Published: https://{bucket}.cos.{region}.myqcloud.com/{args.kind}/cos.json")
 
 
 if __name__ == "__main__":

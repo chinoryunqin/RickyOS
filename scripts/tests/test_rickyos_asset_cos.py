@@ -127,8 +127,9 @@ class FirmwareSwitchTest(unittest.TestCase):
             image = b"RickyOS image" * 100
             (site / "firmware/RickyOS-1.2.0.bin").write_bytes(image)
             (site / "ota-notes.txt").write_text("1.2.0\n更快\n")
-            offer = {"status": "update_available", "version": "1.2.0", "file": "firmware/RickyOS-1.2.0.bin",
-                     "bytes": len(image), "sha256": hashlib.sha256(image).hexdigest()}
+            offer = {"board": "readpico", "status": "update_available", "version": "1.2.0",
+                     "file": "firmware/RickyOS-1.2.0.bin", "bytes": len(image),
+                     "sha256": hashlib.sha256(image).hexdigest()}
             (site / "ota.json").write_text(json.dumps(offer))
             copies = publish.plan("ota", site, "1.2.0", "rickyos-1309217881", "ap-guangzhou")
             self.assertEqual([target for _, target, _ in copies],
@@ -142,6 +143,32 @@ class FirmwareSwitchTest(unittest.TestCase):
             (site / "firmware/RickyOS-1.2.0.bin").write_bytes(image + b"x")
             with self.assertRaises(ValueError):
                 publish.plan("ota", site, "1.2.0", "rickyos-1309217881", "ap-guangzhou")  # not the hashed image
+
+    def test_plus_offer_goes_beside_the_read_pico_and_tests_stay_out_of_ota(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as folder:
+            site = Path(folder)
+            (site / "firmware").mkdir(); (site / "plus").mkdir()
+            image = b"RickyOS Plus image" * 100
+            (site / "firmware/RickyOS-Plus-1.2.0.bin").write_bytes(image)
+            (site / "plus/ota-notes.txt").write_text("1.2.0\n首个版本\n")
+            offer = {"board": "metalio-plus-s31", "status": "update_available", "version": "1.2.0",
+                     "file": "firmware/RickyOS-Plus-1.2.0.bin", "bytes": len(image),
+                     "sha256": hashlib.sha256(image).hexdigest()}
+            (site / "plus/ota.json").write_text(json.dumps(offer))
+            copies = publish.plan("ota", site, "1.2.0", "rickyos-1309217881", "ap-guangzhou", "plus")
+            self.assertEqual([target for _, target, _ in copies],
+                             ["cos://rickyos-1309217881/ota/firmware/RickyOS-Plus-1.2.0.bin",
+                              "cos://rickyos-1309217881/ota/plus/ota-notes.txt",
+                              "cos://rickyos-1309217881/ota/plus/ota.json"])
+            test = publish.plan("ota", site, "1.2.0", "rickyos-1309217881", "ap-guangzhou", "plus", "ota-test")
+            self.assertTrue(all(target.startswith("cos://rickyos-1309217881/ota-test/") for _, target, _ in test))
+            with self.assertRaises(ValueError):
+                publish.plan("ota", site, "1.2.0", "rickyos-1309217881", "ap-guangzhou", "plus", "fonts")
+            (site / "ota.json").write_text(json.dumps(offer))  # a Plus offer in the Read Pico's place
+            with self.assertRaises(ValueError):
+                publish.plan("ota", site, "1.2.0", "rickyos-1309217881", "ap-guangzhou")
+
 
 if __name__ == "__main__":
     unittest.main()

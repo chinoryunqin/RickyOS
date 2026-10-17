@@ -125,3 +125,21 @@ test('the catalog holds at most one release per board and lists each release fil
   assert.throws(() => catalogReleases({ schema: 1, product: 'RickyOS', releases: [{ ...plus, board: 'x' }] }), /最多只能有一份/);
   assert.throws(() => checkPlusRelease({ ...plus, mode: 'auto-install' }), /正式发行检查/);
 });
+
+test('OTA files: the Read Pico manifest unchanged, the Plus beside it only once released', async () => {
+  const { otaFiles, otaManifest } = await import('../scripts/build-ota.js');
+  const { readFile } = await import('node:fs/promises');
+  const live = JSON.parse(await readFile(new URL('../public/releases.json', import.meta.url), 'utf8'));
+  const picoOnly = otaFiles(live);
+  assert.deepEqual(picoOnly.map(([path]) => path), ['ota.json', 'ota-notes.txt']);
+  assert.equal(picoOnly[0][1], JSON.stringify(otaManifest(live), null, 2) + '\n');
+  const plus = await release();
+  const both = otaFiles({ ...live, releases: [...live.releases, { ...plus, notes: ['首个版本'] }] });
+  assert.deepEqual(both.map(([path]) => path), ['ota.json', 'ota-notes.txt', 'plus/ota.json', 'plus/ota-notes.txt']);
+  assert.equal(both[0][1], picoOnly[0][1]);
+  const offer = JSON.parse(both[2][1]);
+  assert.equal(offer.board, PLUS.board); assert.equal(offer.chipId, 32); assert.equal(offer.status, 'update_available');
+  // Exactly the keys every device parser accepts.
+  assert.deepEqual(Object.keys(offer), Object.keys(JSON.parse(picoOnly[0][1])));
+  assert.equal(both[3][1], '1.2.0\n首个版本\n');
+});
