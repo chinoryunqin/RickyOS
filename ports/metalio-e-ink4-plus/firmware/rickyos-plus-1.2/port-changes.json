@@ -443,6 +443,11 @@
       "ported_sha256": "c51820abd6e71af2e5a1f9e8d197390e7fc7b17b102df5b211c98ead60d3f37a"
     },
     {
+      "path": "src/network/RickyOtaTrust.h",
+      "baseline_sha256": "a8651bfd51410309e7cf8ffc1ebcb66576ee72f2a52e70de9956142b703e9d5d",
+      "ported_sha256": "22b47241516b4ec57d653a55603fbea7745066abce4a8881d214f2272d875e97"
+    },
+    {
       "path": "src/network/WifiPowerSaveGuard.h",
       "baseline_sha256": "00a0ea3d2a912d96af0c3c6f1e9815096b7d8dd39f352d9a7e5f15ad6ccd4580",
       "ported_sha256": "e820fad5603086a392b042ed72bb3235794ac97bf2ddc4ab6515ada644921f9e"

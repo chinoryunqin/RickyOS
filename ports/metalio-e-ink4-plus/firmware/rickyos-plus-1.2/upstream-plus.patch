@@ -5220,6 +5220,45 @@
  inline constexpr size_t SLOT_BYTES = 0x640000;
  inline constexpr size_t RESERVE_BYTES = 512 * 1024;
  
+--- a/src/network/RickyOtaTrust.h
++++ b/src/network/RickyOtaTrust.h
+@@ -43,6 +43,9 @@
+ // GlobalSign Atlas R3 OV TLS CA -> this root), taken from the macOS system root store on
+ // 2026-10-14; valid until 2029-03-18.
+ // DER SHA-256: cbb522d7b7f127ad6a0113865bdf1cd4102e7d0759af635a7cf4720dc963c53b
++// COS serves GlobalSign Root R3 cross-signed by GlobalSign Root CA (R1). wolfSSL then wants
++// R1 to verify that link (OpenSSL takes the shorter path), so both roots are pinned:
++// R3 (to 2029-03-18) and R1 (to 2028-01-28, SHA-256 EB:D4:10:40:...:1C:99).
+ inline constexpr char COS_ROOT_CA[] = R"PEM(-----BEGIN CERTIFICATE-----
+ MIIDXzCCAkegAwIBAgILBAAAAAABIVhTCKIwDQYJKoZIhvcNAQELBQAwTDEgMB4G
+ A1UECxMXR2xvYmFsU2lnbiBSb290IENBIC0gUjMxEzARBgNVBAoTCkdsb2JhbFNp
+@@ -64,5 +67,26 @@
+ Mx86OyXShkDOOyyGeMlhLxS67ttVb9+E7gUJTb0o2HLO02JQZR7rkpeDMdmztcpH
+ WD9f
+ -----END CERTIFICATE-----
++-----BEGIN CERTIFICATE-----
++MIIDdTCCAl2gAwIBAgILBAAAAAABFUtaw5QwDQYJKoZIhvcNAQEFBQAwVzELMAkG
++A1UEBhMCQkUxGTAXBgNVBAoTEEdsb2JhbFNpZ24gbnYtc2ExEDAOBgNVBAsTB1Jv
++b3QgQ0ExGzAZBgNVBAMTEkdsb2JhbFNpZ24gUm9vdCBDQTAeFw05ODA5MDExMjAw
++MDBaFw0yODAxMjgxMjAwMDBaMFcxCzAJBgNVBAYTAkJFMRkwFwYDVQQKExBHbG9i
++YWxTaWduIG52LXNhMRAwDgYDVQQLEwdSb290IENBMRswGQYDVQQDExJHbG9iYWxT
++aWduIFJvb3QgQ0EwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDaDuaZ
++jc6j40+Kfvvxi4Mla+pIH/EqsLmVEQS98GPR4mdmzxzdzxtIK+6NiY6arymAZavp
++xy0Sy6scTHAHoT0KMM0VjU/43dSMUBUc71DuxC73/OlS8pF94G3VNTCOXkNz8kHp
++1Wrjsok6Vjk4bwY8iGlbKk3Fp1S4bInMm/k8yuX9ifUSPJJ4ltbcdG6TRGHRjcdG
++snUOhugZitVtbNV4FpWi6cgKOOvyJBNPc1STE4U6G7weNLWLBYy5d4ux2x8gkasJ
++U26Qzns3dLlwR5EiUWMWea6xrkEmCMgZK9FGqkjWZCrXgzT/LCrBbBlDSgeF59N8
++9iFo7+ryUp9/k5DPAgMBAAGjQjBAMA4GA1UdDwEB/wQEAwIBBjAPBgNVHRMBAf8E
++BTADAQH/MB0GA1UdDgQWBBRge2YaRQ2XyolQL30EzTSo//z9SzANBgkqhkiG9w0B
++AQUFAAOCAQEA1nPnfE920I2/7LqivjTFKDK1fPxsnCwrvQmeU79rXqoRSLblCKOz
++yj1hTdNGCbM+w6DjY1Ub8rrvrTnhQ7k4o+YviiY776BQVvnGCv04zcQLcFGUl5gE
++38NflNUVyRRBnMRddWQVDf9VMOyGj/8N7yy5Y0b2qvzfvGn9LhJIZJrglfCm7ymP
++AbEVtQwdpf5pLGkkeB6zpxxxYu7KyJesF12KwvhHhm4qxFYxldBniYUr+WymXUad
++DKqC5JlR3XC321Y9YeRq4VzW9v493kHMB65jUr9TU/Qr6cf9tveCX4XSQRjbgbME
++HMUfpIBvFSDJ3gyICh3WZlXi/EjJKSZp4A==
++-----END CERTIFICATE-----
+ )PEM";
+ }  // namespace ricky_ota
 --- a/src/network/WifiPowerSaveGuard.h
 +++ b/src/network/WifiPowerSaveGuard.h
 @@ -1,5 +1,17 @@
