@@ -121,6 +121,7 @@ struct PageLine {
 using PageElement=PageLine;
 namespace readingGuideLine {
 constexpr int rowOffset(int lineHeight,int,int) {return lineHeight;}
+template<typename R> int emFor(const R& r,int fontId) {return r.getTextWidth(fontId,"中");}
 bool fitsVertically(uint8_t,int,int,int) {return true;}
 void draw(GfxRenderer& renderer,int,int,int,uint8_t) {renderer.frame[15]=0x55;}
 }

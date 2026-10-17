@@ -56,6 +56,17 @@ constexpr bool fitsVertically(const uint8_t rawStyle, const int y, const int top
 // below the line top; a CJK ideograph spans about 0.80 em above it and 0.12 em below
 // (measured on the reader faces). `em` is a CJK advance. Tight spacing, where the gap
 // closes, falls back to the row just under the glyphs.
+// The reader face's em, measured on ideographs. A glyph the face lacks is measured in the
+// (much smaller) UI fallback face instead, so a Traditional-only TTF measured 国 too small
+// and every guide landed on the next row's glyph tops. 中 is in every CJK face; the largest
+// of the three is the reader face's own.
+template <typename Renderer>
+int emFor(const Renderer& renderer, const int fontId) {
+  int em = 0;
+  for (const char* glyph : {"中", "国", "國"}) em = std::max(em, renderer.getTextWidth(fontId, glyph));
+  return em;
+}
+
 constexpr int rowOffset(const int lineHeight, const int ascender, const int em) {
   const int glyphBottom = ascender + em * 12 / 100;
   const int nextGlyphTop = lineHeight + ascender - em * 80 / 100;

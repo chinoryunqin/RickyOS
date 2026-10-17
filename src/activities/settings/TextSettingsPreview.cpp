@@ -145,7 +145,7 @@ void renderPreview(const GfxRenderer& renderer, PreviewLayout& layout, int previ
   GfxRenderer::SyntheticBoldScope syntheticBold(renderer, SETTINGS.fakeBold);
   int y = textTop;
   const int guideRow = readingGuideLine::rowOffset(lineAdvance, renderer.getFontAscenderSize(fontId),
-                                                   renderer.getTextWidth(fontId, "国"));
+                                                   readingGuideLine::emFor(renderer, fontId));
   for (int paragraph = 0; paragraph < 2; paragraph++) {
     for (const auto& line : layout.lines) {
       if (y + lineH > textBottomLimit) return;

@@ -2612,7 +2612,7 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
           renderer.getLineHeight(key.spec.fontId, key.spec.lineCompression) + line.getBlock()->getRubyShift(ascender);
       const int guideY =
           key.top + line.yPos +
-          readingGuideLine::rowOffset(lineHeight, ascender, renderer.getTextWidth(key.spec.fontId, "国")) +
+          readingGuideLine::rowOffset(lineHeight, ascender, readingGuideLine::emFor(renderer, key.spec.fontId)) +
           key.guideOffset;
       if (readingGuideLine::fitsVertically(key.guideStyle, guideY, key.top, renderer.getScreenHeight() - key.bottom)) {
         readingGuideLine::draw(renderer, key.left, guideY, renderer.getScreenWidth() - key.right - 1, key.guideStyle);
@@ -2653,7 +2653,7 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
           renderer.getLineHeight(key.spec.fontId, key.spec.lineCompression) + line.getBlock()->getRubyShift(ascender);
       const int guideY =
           key.top + line.yPos +
-          readingGuideLine::rowOffset(lineHeight, ascender, renderer.getTextWidth(key.spec.fontId, "国")) +
+          readingGuideLine::rowOffset(lineHeight, ascender, readingGuideLine::emFor(renderer, key.spec.fontId)) +
           key.guideOffset;
       if (readingGuideLine::fitsVertically(key.guideStyle, guideY, key.top, renderer.getScreenHeight() - key.bottom)) {
         readingGuideLine::draw(renderer, key.left, guideY, renderer.getScreenWidth() - key.right - 1, key.guideStyle);
@@ -2816,7 +2816,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     const int contentBottom = renderer.getScreenHeight() - orientedMarginBottom;
     const int baseLineHeight = renderer.getLineHeight(fontId, SETTINGS.getReaderLineCompression());
     const int ascender = renderer.getFontAscenderSize(fontId);
-    const int em = renderer.getTextWidth(fontId, "国");
+    const int em = readingGuideLine::emFor(renderer, fontId);
     for (const auto& element : page->elements) {
       if (element->getTag() != TAG_PageLine) continue;
       const auto& line = static_cast<const PageLine&>(*element);
