@@ -50,12 +50,12 @@ constexpr bool fitsVertically(const uint8_t rawStyle, const int y, const int top
   return y - extent.up >= top && y + extent.down < bottomExclusive;
 }
 
-// Offset from a text line's top to its guide row: the middle of the white gap between
-// this line's glyph bottoms and the next line's glyph tops, so the line reads as
-// belonging to the text above without touching either. The baseline sits `ascender`
-// below the line top; a CJK ideograph spans about 0.80 em above it and 0.12 em below
-// (measured on the reader faces). `em` is a CJK advance. Tight spacing, where the gap
-// closes, falls back to the row just under the glyphs.
+// Offset from a text line's top to its guide row: just under this line's glyph bottoms,
+// a small gap below them, so the text rests on the line like writing on ruled paper.
+// The baseline sits `ascender` below the line top; a CJK ideograph spans about 0.80 em
+// above it and 0.12 em below (measured on the reader faces). `em` is a CJK advance. The
+// line never reaches the next line's glyph tops; tight spacing falls back to the row just
+// under the glyphs.
 // The reader face's em, measured on ideographs. A glyph the face lacks is measured in the
 // (much smaller) UI fallback face instead, so a Traditional-only TTF measured 国 too small
 // and every guide landed on the next row's glyph tops. 中 is in every CJK face; the largest
@@ -70,8 +70,11 @@ int emFor(const Renderer& renderer, const int fontId) {
 constexpr int rowOffset(const int lineHeight, const int ascender, const int em) {
   const int glyphBottom = ascender + em * 12 / 100;
   const int nextGlyphTop = lineHeight + ascender - em * 80 / 100;
-  const int centered = (glyphBottom + nextGlyphTop) / 2 - kStroke / 2;
-  return centered > glyphBottom ? centered : glyphBottom + 1;
+  const int gap = em * 10 / 100 > 3 ? em * 10 / 100 : 3;
+  const int resting = glyphBottom + gap;
+  const int lowest = nextGlyphTop - kStroke - 1;
+  if (resting <= lowest) return resting;
+  return lowest > glyphBottom ? lowest : glyphBottom + 1;
 }
 
 struct Pattern {
