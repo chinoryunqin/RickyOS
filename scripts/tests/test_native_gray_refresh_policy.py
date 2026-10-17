@@ -96,15 +96,9 @@ int main() {
   auto candidate=ledger;
   candidate.advance({{1,1,1,1},{}},nav,8,32);
   assert(ledger.smallFrames==0 && candidate.smallFrames==1);
-  // A layout change (page switch) keeps the debt: it moves into content, counters carry.
-  ledger={};
-  for(int i=0;i<3;++i) ledger.advance({{0,10,96,60},{110,90,1,1}},nav,8,32);
+  // Orientation/layout changes invalidate old regional debts.
   ledger.advance({},navigationZone({0,80,w,16},w,h),8,32);
-  assert(ledger.navigationFrames==0 && ledger.navigationDebt.empty());
-  assert(ledger.contentFrames==6 && !ledger.contentDebt.empty() && ledger.contentDebt.x+ledger.contentDebt.width>=111);
-  // Switching back and forth still reaches a cleanup.
-  for(int i=0;i<2;++i) ledger.advance({{0,10,96,60},{}},i%2?nav:navigationZone({0,80,w,16},w,h),8,32);
-  assert(ledger.contentFrames==0);
+  assert(ledger.navigationFrames==0 && ledger.contentDebt.empty());
   // Identical, odd nibble and edge pixels are classified against 4-bit, not BW.
   back=front;
   assert(difference(front.data(),back.data(),w,h,nav).content.empty());

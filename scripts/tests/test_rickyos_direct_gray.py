@@ -65,7 +65,7 @@ int main() {
     assert(m.renderer.commits==i && !m.renderer.active && !m.renderer.capture);
 #ifndef SIMULATOR
     assert(m.renderer.uiProfiles==i);
-    assert(m.display.profiles==0); // Driver owns regional cadence; the whole-screen net waits for a page switch.
+    assert(m.display.profiles==0); // Driver owns regional cadence, not a whole-screen counter.
 #else
     assert(m.display.profiles==0);
 #endif
