@@ -33,7 +33,7 @@ AVATARS = [
     ('bichon', 'Bichon in a bandana (replaced the koala, same slot)'),
 ]
 # The default avatar (index 0) follows Profile -> Theme: the cat theme shows this instead of the puppy.
-CAT_DEFAULT = ('catDefault', 'theme-cat', "The cat theme's default avatar: the P1 kitten's head, cut from its peek drawing")
+CAT_DEFAULT = ('catDefault', 'theme-cat', "The cat theme's default avatar: the P1 kitten's head, framed like the puppy")
 INK_LEVEL = 128     # source pixels darker than this count as ink when finding the drawing
 FILL = 0.80         # share of the circle's diameter the drawing's width may take
 TOP = 0.10          # top margin, as a share of the circle's diameter
@@ -145,8 +145,7 @@ def main() -> None:
     parser.add_argument('--preview', type=Path)
     args = parser.parse_args()
     images = [to_coverage(SOURCES / f'{name}.png') for name, _ in AVATARS]
-    # Its ears would touch the circle at the usual size.
-    cat_default = to_coverage(SOURCES / f'{CAT_DEFAULT[1]}.png', fill=0.74, top=0.12)
+    cat_default = to_coverage(SOURCES / f'{CAT_DEFAULT[1]}.png', fill=0.74, top=0.13)  # ear tips clear the circle
     args.out.write_text(header_text(images, cat_default))
     if args.preview:
         preview(images + [cat_default], args.preview)
