@@ -30,7 +30,7 @@ AVATARS = [
     ('fox', 'Fox in a collar'),
     ('owl', 'Owl in round glasses'),
     ('penguin', 'Penguin in a beanie'),
-    ('koala', 'Koala in a bucket hat'),
+    ('bichon', 'Bichon in a bandana (replaced the koala, same slot)'),
 ]
 INK_LEVEL = 128     # source pixels darker than this count as ink when finding the drawing
 FILL = 0.80         # share of the circle's diameter the drawing's width may take

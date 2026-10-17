@@ -11,7 +11,7 @@ HEADER = ROOT / 'src/components/icons/rickyAvatars.h'
 SCRIPT = ROOT / 'scripts/build_rickyos_avatars.py'
 SOURCES = ROOT / 'src/images/sources/rickyos/avatars'
 # Settings store "@avatar:<index>": this order is persistent and must never change.
-ORDER = ['dog', 'cat', 'rabbit', 'bear', 'panda', 'fox', 'owl', 'penguin', 'koala']
+ORDER = ['dog', 'cat', 'rabbit', 'bear', 'panda', 'fox', 'owl', 'penguin', 'bichon']
 
 
 class RickyAvatarTest(unittest.TestCase):
