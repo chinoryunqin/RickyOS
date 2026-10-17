@@ -10,8 +10,12 @@
 #include <algorithm>
 #include <cstdio>
 
+#include <BoardConfig.h>
+
+#if !defined(SIMULATOR) && FREEINK_CAP_BLE_HID_HOST
+#include <esp_bt.h>  // boards without Bluetooth (the Plus) have no BT component
+#endif
 #if !defined(SIMULATOR)
-#include <esp_bt.h>
 #include <esp_heap_caps.h>
 #include <sdkconfig.h>
 #endif
