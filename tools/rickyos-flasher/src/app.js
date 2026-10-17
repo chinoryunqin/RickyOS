@@ -15,9 +15,9 @@ const DEVICES = {
   readpico: { board: 'readpico', label: 'Read Pico（RDP-G01-W）', file: 'ReadPico',
     chip: { name: 'ESP32-S3', id: 9 }, name: 'MindReset Read Pico', model: 'RDP-G01-W',
     note: ['只适用于已确认的 Read Pico 设备。', '原厂或已刷其他系统的设备都可以直接安装。'] },
-  plus: { board: PLUS.board, label: 'Metalio E-Ink4-Plus', file: 'Plus',
-    chip: { name: PLUS.chipName, id: PLUS.chipId }, name: 'Metalio E-Ink4-Plus', model: 'V1.5',
-    note: ['只适用于已确认的 Metalio E-Ink4-Plus。', '出厂系统或已装 RickyOS 的设备可以直接安装。'] },
+  plus: { board: PLUS.board, label: 'Metalio E-Ink4 Plus', file: 'Plus',
+    chip: { name: PLUS.chipName, id: PLUS.chipId }, name: 'Metalio E-Ink4 Plus', model: '',
+    note: ['只适用于已确认的 Metalio E-Ink4 Plus。', '出厂系统或已装 RickyOS 的设备可以直接安装。'] },
 };
 let device = 'readpico', releases = {};
 let backupUrl = null, wakeLock = null;
@@ -174,6 +174,7 @@ function selectDevice(next) {
   $('model-name').textContent = chosen.label;
   $('device-name').textContent = chosen.name;
   $('device-model').textContent = chosen.model;
+  $('device-model').parentElement.hidden = !chosen.model;  // the Plus shows no model row
   $('device-chip').textContent = `${chosen.chip.name} / 16 MB`;
   $('device-note').replaceChildren(chosen.note[0], document.createElement('br'), chosen.note[1]);
   // Only the Read Pico has a product photo so far; the Plus render replaces this later.

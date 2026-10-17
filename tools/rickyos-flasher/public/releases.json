@@ -47,6 +47,33 @@
       "notes": [
         "修复 WiFi 偶尔搜不到网络"
       ]
+    },
+    {
+      "version": "1.2.0",
+      "approved": true,
+      "hardwareAccepted": true,
+      "mode": "plus-install",
+      "board": "metalio-plus-s31",
+      "chipId": 32,
+      "flashBytes": 16777216,
+      "file": "firmware/RickyOS-Plus-1.2.0.bin",
+      "bytes": 4825936,
+      "sha256": "a1e3e69cb7aeb4a8bbe88f52d309ee3ade033f9a487cd60a0d0fe6562ca55365",
+      "bootloader": {
+        "offset": 8192,
+        "file": "firmware/RickyOS-Plus-1.2.0-bootloader.bin",
+        "bytes": 19600,
+        "sha256": "83f16f3903d3c5b0057d3070072197bd9d70ea22299210ca8c9989eecfa1dd50"
+      },
+      "partitions": {
+        "offset": 32768,
+        "file": "firmware/RickyOS-Plus-1.2.0-partitions.bin",
+        "bytes": 3072,
+        "sha256": "bd0f7954aca2ef7d925ee21aaa1f3dc8822d1d6ce5cbbd26a135e5886bfff6ce"
+      },
+      "notes": [
+        "首个版本"
+      ]
     }
   ]
 }
