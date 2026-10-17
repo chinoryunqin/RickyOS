@@ -175,6 +175,7 @@ idf_component_register(
   "port/PlusRadioAuto.cpp"
   "port/PlusWifiTxConfig.cpp"
   "port/PlusNetworkAcceptance.cpp"
+  "port/PlusScreenTour2.cpp"
   "port/PlusBoard.cpp"
   "port/PlusAudio.cpp"
   "${APP_ROOT}/lib/hal/HalRecorder.cpp"
@@ -629,8 +630,8 @@ if("$ENV{RICKYOS_PLUS_NETWORK_ACCEPTANCE}" STREQUAL "1")
       PROPERTIES COMPILE_DEFINITIONS RICKYOS_PLUS_NETWORK_ACCEPTANCE=1)
 endif()
 # Unattended screen tour for screenshots (diagnostic builds only).
-if("$ENV{RICKYOS_PLUS_SCREEN_TOUR}" STREQUAL "1")
-  target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_SCREEN_TOUR=1)
+if(NOT "$ENV{RICKYOS_PLUS_SCREEN_TOUR}" STREQUAL "")
+  target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_SCREEN_TOUR=$ENV{RICKYOS_PLUS_SCREEN_TOUR})
   if(NOT "$ENV{RICKYOS_PLUS_SCREEN_TOUR_FROM}" STREQUAL "")
     target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_SCREEN_TOUR_FROM=$ENV{RICKYOS_PLUS_SCREEN_TOUR_FROM}
                                RICKYOS_PLUS_SCREEN_TOUR_TO=$ENV{RICKYOS_PLUS_SCREEN_TOUR_TO})

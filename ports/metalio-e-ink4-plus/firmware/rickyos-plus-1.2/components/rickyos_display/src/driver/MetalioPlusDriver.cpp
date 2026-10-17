@@ -12,27 +12,40 @@ namespace freeink {
 namespace {
 #if RICKYOS_PLUS_SCREEN_DUMP
 // Diagnostic only: prints the panel's native 4-bit frame (1216x684, even pixel in the
-// low nibble) after every successful update, for exact screenshots. Byte runs as
-// (count, value) pairs in hex, 64 pairs per line: the console carries only ~11 KB/s.
+// low nibble) after every successful update, for exact screenshots. Each line is
+// "offset,bytes:" then (count, value) runs in hex, so a line a log message cut can be
+// told apart and dropped; the frame goes out twice and the host merges the passes.
 void dumpFrame(const uint8_t* fb, const char* kind) {
   static unsigned sequence = 0;
   constexpr size_t bytes = 1216 / 2 * 684;
   static const char hex[] = "0123456789abcdef";
-  char line[64 * 4 + 2];
-  size_t used = 0;
-  printf("\n@@FRAME %u %s 1216 684\n", sequence++, kind);
-  for (size_t i = 0; i < bytes;) {
-    const uint8_t value = fb[i];
-    size_t run = 1;
-    while (i + run < bytes && run < 255 && fb[i + run] == value) ++run;
-    i += run;
-    line[used++] = hex[run >> 4]; line[used++] = hex[run & 15];
-    line[used++] = hex[value >> 4]; line[used++] = hex[value & 15];
-    if (used == 64 * 4) { line[used++] = '\n'; line[used] = 0; fputs(line, stdout); used = 0; }
+  char line[24 + 64 * 4 + 2];
+  const unsigned frame = sequence++;
+  for (int pass = 0; pass < 2; ++pass) {
+    printf("\n@@FRAME %u %s 1216 684\n", frame, kind);
+    for (size_t i = 0; i < bytes;) {
+      const size_t start = i;
+      int used = snprintf(line, 24, "%x,", static_cast<unsigned>(start));
+      const int countAt = used;
+      used += 8;  // room for the byte count, filled in below
+      line[used++] = ':';
+      for (int token = 0; token < 64 && i < bytes; ++token) {
+        const uint8_t value = fb[i];
+        size_t run = 1;
+        while (i + run < bytes && run < 255 && fb[i + run] == value) ++run;
+        i += run;
+        line[used++] = hex[run >> 4]; line[used++] = hex[run & 15];
+        line[used++] = hex[value >> 4]; line[used++] = hex[value & 15];
+      }
+      char count[9];
+      snprintf(count, sizeof(count), "%08x", static_cast<unsigned>(i - start));
+      memcpy(line + countAt, count, 8);
+      line[used++] = '\n'; line[used] = 0;
+      fputs(line, stdout);
+    }
+    printf("@@END\n");
+    fflush(stdout);
   }
-  if (used) { line[used++] = '\n'; line[used] = 0; fputs(line, stdout); }
-  printf("@@END\n");
-  fflush(stdout);
 }
 #endif
 uint8_t nextGrayProfile = 0;

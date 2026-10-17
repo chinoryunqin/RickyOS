@@ -2063,7 +2063,7 @@
    mutable HomeButtonAction deferredHomeAction = HomeButtonAction::Ignore;
 --- a/src/activities/ActivityManager.cpp
 +++ b/src/activities/ActivityManager.cpp
-@@ -1,4 +1,18 @@
+@@ -1,4 +1,33 @@
  #include "ActivityManager.h"
 +
 +#if RICKYOS_PLUS_TAB_BENCH
@@ -2071,6 +2071,21 @@
 +#endif
 +#if RICKYOS_PLUS_SCREEN_TOUR
 +#include "CrossPointState.h"
++#include "activities/reader/ReadingMode.h"
++#if RICKYOS_PLUS_SCREEN_TOUR == 2
++#include <esp_system.h>
++#ifndef RICKYOS_PLUS_SCREEN_TOUR_FROM
++#define RICKYOS_PLUS_SCREEN_TOUR_FROM 0
++#endif
++#include <string>
++std::string plusTour2Book(const char* titlePart);
++bool plusTour2Backup(const std::string& republic, const std::string& dance);
++bool plusTour2Restore();
++bool plusTour2Finished();
++int plusTour2FindChapter(const std::string& path, const char* needle);
++bool plusTour2SetProgress(const std::string& path, int spine);
++bool plusTour2InstallSticker();
++#endif
 +#include "RecentBooksStore.h"
 +#ifndef RICKYOS_PLUS_SCREEN_TOUR_FROM
 +#define RICKYOS_PLUS_SCREEN_TOUR_FROM 0
@@ -2082,7 +2097,7 @@
  
  #include <BoardConfig.h>
  #include <FontCacheManager.h>
-@@ -15,6 +29,9 @@
+@@ -15,6 +44,9 @@
  #include "CrossPointSettings.h"
  #include "apps/AppsMenuActivity.h"
  #include "apps/calculator/CalculatorActivity.h"
@@ -2092,7 +2107,7 @@
  #include "apps/gomoku/GomokuMenuActivity.h"
  #include "apps/reading-stats/RickyReadingStatsActivity.h"
  #include "apps/standby/RickyStandbySettingsActivity.h"
-@@ -117,7 +134,7 @@
+@@ -117,7 +149,7 @@
    self->renderTaskLoop();
  }
  
@@ -2101,7 +2116,7 @@
  namespace {
  // Keep the previous B/W + delayed-gray candidate available for A/B builds.
  // The direct-gray experiment skips both the B/W submission and this idle redraw.
-@@ -177,14 +194,14 @@
+@@ -177,14 +209,14 @@
          // before calling them. Input during the render also cancels its idle pass.
          auto delayMs = currentActivity->idleRenderDelayMs();
          [[maybe_unused]] bool directGray = false;
@@ -2118,7 +2133,7 @@
          // A missing gray buffer or failed commit gets the existing readable B/W
          // fallback. The direct path never arms a second, delayed submission.
          if (!directGray || !renderDirectGray(std::move(lock))) currentActivity->render(std::move(lock));
-@@ -194,7 +211,7 @@
+@@ -194,7 +226,7 @@
          idleDelayTicks = delayMs != 0 ? pdMS_TO_TICKS(delayMs) : portMAX_DELAY;
          waitTicks = idleDelayTicks;
        } else if (!idleRenderCancelled(idleGeneration)) {
@@ -2127,7 +2142,7 @@
          if (graySettlePending) {
            graySettlePending = false;
            settleToGray(std::move(lock), idleGeneration);
-@@ -220,13 +237,16 @@
+@@ -220,13 +252,16 @@
    }
  }
  
@@ -2145,7 +2160,7 @@
    const uint32_t renderGeneration = renderRequestGeneration.load(std::memory_order_relaxed);
    // Renderers may release the lock; capture page-owned geometry first.
    const Rect navigation = currentActivity->usesMainTabBar() ? currentActivity->mainTabLayout().tabBar : Rect{};
-@@ -255,6 +275,10 @@
+@@ -255,6 +290,10 @@
    if (committed) renderer.clearNextRefreshOverride();
    LOG_DBG("ACT", "Direct gray: %s paint=%lu ms submit=%lu ms total=%lu ms", committed ? "done" : "failed, B/W fallback",
            painted - started, millis() - painted, millis() - started);
@@ -2156,11 +2171,71 @@
  #if RICKYOS_PERF_SD_LOG
    {
      char line[256];
-@@ -356,6 +380,51 @@
+@@ -356,6 +395,111 @@
      resetHomeStandbyInput();
      return;
    }
-+#if RICKYOS_PLUS_SCREEN_TOUR
++#if RICKYOS_PLUS_SCREEN_TOUR == 2
++  {
++    // Diagnostic: screenshots of the user's own books (port/PlusScreenTour2.cpp keeps and
++    // restores the state they touch). 0: home as "Ricky", 1: 理想国 in 古籍 at the chapter
++    // with 玻勒马霍斯's line, 2: 舞！舞！舞！ in 小狗伴读, 3: Standby with the 破纸而出 sticker.
++    static bool checked = false;
++    static unsigned step = 0;
++    static uint32_t nextAt = 25000;
++    static char nickname[sizeof(SETTINGS.rickyNickname)];
++    if (!checked) {
++      checked = true;
++      if (plusTour2Restore()) {
++        delay(500);
++        esp_restart();
++      }
++      if (plusTour2Finished()) step = 99;
++    }
++    if (step < 4 && currentActivity && currentActivity->name != "Boot" && millis() >= nextAt) {
++      LOG_INF("TOUR2", "step=%u from=%s", step, currentActivity->name.c_str());
++      nextAt = millis() + 45000;
++      const std::string republic = plusTour2Book("理想国"), dance = plusTour2Book("舞！舞！舞！");
++      switch (step++) {
++        case 0:
++          if (!plusTour2Backup(republic, dance)) {
++            LOG_ERR("TOUR2", "backup failed, tour stopped");
++            step = 99;
++            return;
++          }
++          memcpy(nickname, SETTINGS.rickyNickname, sizeof(nickname));
++#if RICKYOS_PLUS_SCREEN_TOUR_FROM > 0
++          // Re-shoot from a later step; the backup above still covers every step.
++          step = RICKYOS_PLUS_SCREEN_TOUR_FROM;
++          nextAt = millis() + 5000;
++          return;
++#endif
++          strncpy(SETTINGS.rickyNickname, "Ricky", sizeof(SETTINGS.rickyNickname) - 1);
++          goToInxRecent();
++          return;
++        case 1: {
++          memcpy(SETTINGS.rickyNickname, nickname, sizeof(nickname));
++          const int spine = republic.empty() ? -1 : plusTour2FindChapter(republic, "人多势众");
++          LOG_INF("TOUR2", "republic=%s spine=%d", republic.c_str(), spine);
++          if (spine >= 0) plusTour2SetProgress(republic, spine);
++          SETTINGS.readingMode = static_cast<uint8_t>(readingMode::Mode::Ancient);
++          if (!republic.empty()) goToReader(republic);
++          return;
++        }
++        case 2:
++          SETTINGS.readingMode = static_cast<uint8_t>(readingMode::Mode::Puppy);
++          LOG_INF("TOUR2", "dance=%s", dance.c_str());
++          if (!dance.empty()) goToReader(dance);
++          return;
++        case 3:
++          LOG_INF("TOUR2", "sticker=%d", plusTour2InstallSticker());
++          SETTINGS.rickyStandbyFace = CrossPointSettings::RICKY_STANDBY_TRANSPARENT;
++          goToStandby();
++          return;
++      }
++    }
++  }
++#elif RICKYOS_PLUS_SCREEN_TOUR
 +  {
 +    // Diagnostic: visit the screens used for screenshots, one every 10 s from 25 s after boot.
 +    static unsigned step = RICKYOS_PLUS_SCREEN_TOUR_FROM;
@@ -2208,7 +2283,7 @@
  
    if (currentActivity && currentActivity->requiresExclusiveStorageLoop()) {
      currentActivity->loop();
-@@ -820,6 +889,9 @@
+@@ -820,6 +964,9 @@
  void ActivityManager::goToGomoku() { replaceActivityWith<GomokuMenuActivity>(); }
  
  void ActivityManager::goToCalculator() { replaceActivityWith<CalculatorActivity>(); }
@@ -2218,7 +2293,7 @@
  
  void ActivityManager::goToStandby() { replaceActivityWith<StandbyActivity>(); }
  
-@@ -896,7 +968,7 @@
+@@ -896,7 +1043,7 @@
    cancelIdleRender();
    if (!currentActivity) return false;
    if (currentActivity->handleForcedRefresh()) return true;
@@ -2227,7 +2302,7 @@
    if (ricky::ds::refresh::kDirectGrayUi && currentActivity->wantsGraySettle() &&
        currentActivity->idleRenderDelayMs() == 0) {
      // Refresh the real gray UI, not its approximate 1-bit proxy.
-@@ -931,7 +1003,7 @@
+@@ -931,7 +1078,7 @@
  #endif
  
  void ActivityManager::requestUpdate(bool immediate) {
@@ -2236,7 +2311,7 @@
    renderRequestGeneration.fetch_add(1, std::memory_order_relaxed);
  #endif
  #if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
-@@ -949,7 +1021,7 @@
+@@ -949,7 +1096,7 @@
    }
  }
  void ActivityManager::requestUpdateAndWait() {
