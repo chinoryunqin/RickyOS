@@ -11,6 +11,7 @@
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
 
+#include "NetworkStartup.h"
 #include "SdCardFontSystem.h"
 #endif
 
@@ -171,6 +172,10 @@ StartResult ensureStarted(GfxRenderer& renderer, const StartContext context) {
   return StartResult::Unavailable;
 #else
   if (BleHid.isRunning()) return StartResult::AlreadyRunning;
+  if (NetworkStartup::bluetoothMemoryReleased()) {
+    LOG_INF("BLE", "Controller memory was released for Wi-Fi this boot; restart to use Bluetooth");
+    return StartResult::Unavailable;
+  }
 
   const auto before = readMemory();
   auto memory = before;

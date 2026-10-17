@@ -11,11 +11,13 @@
 #include <cstdio>
 
 #if !defined(SIMULATOR)
+#include <esp_bt.h>
 #include <esp_heap_caps.h>
 #include <sdkconfig.h>
 #endif
 
 #include "BleInput.h"
+#include "CrossPointSettings.h"
 #include "SdCardFontSystem.h"
 #include "activities/RenderLock.h"
 
@@ -57,6 +59,29 @@ MemorySnapshot readMemorySnapshot() {
 }  // namespace
 
 namespace NetworkStartup {
+
+namespace {
+bool btReleased = false;
+
+// The BLE controller reserves internal RAM at boot whether or not a page turner is used.
+// With Bluetooth off, the Wi-Fi driver plus the transfer web server do not fit beside the
+// panel driver in what is left (hotspot transfer refused for low memory on Read Pico 1.2),
+// so hand that memory to the heap before Wi-Fi starts. One-way until the next restart.
+void releaseIdleBluetooth() {
+#if !defined(SIMULATOR) && FREEINK_CAP_BLE_HID_HOST
+  if (btReleased || SETTINGS.bluetoothEnabled) return;
+  if (esp_bt_controller_get_status() != ESP_BT_CONTROLLER_STATUS_IDLE) return;
+  const size_t before = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  const esp_err_t err = esp_bt_controller_mem_release(ESP_BT_MODE_BLE);
+  btReleased = err == ESP_OK;
+  LOG_INF("NET", "BLE controller memory %s: internal free %u -> %u", btReleased ? "released" : "kept",
+          static_cast<unsigned>(before),
+          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)));
+#endif
+}
+}  // namespace
+
+bool bluetoothMemoryReleased() { return btReleased; }
 
 void logMemory(const char* stage) {
   const auto internal = HalMemory::getInternalHeap();
@@ -112,6 +137,7 @@ void recordFailure(const char* stage, const int code) {
 
 bool setMode(GfxRenderer& renderer, const wifi_mode_t mode) {
   bleinput::stop();
+  releaseIdleBluetooth();
   logMemory("after BLE stop");
   prepare(renderer);
   const bool started = WiFi.mode(mode);

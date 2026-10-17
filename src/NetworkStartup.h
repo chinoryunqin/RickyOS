@@ -17,6 +17,10 @@ void prepare(GfxRenderer& renderer);
 // failure seen away from a computer still leaves a record. Bounded to a few KB.
 void recordFailure(const char* stage, int code);
 
+// True once the Bluetooth controller's memory was handed to the heap this boot (see setMode):
+// Bluetooth then stays unavailable until the next restart.
+bool bluetoothMemoryReleased();
+
 // The only entry point for enabling STA/AP mode in application code.
 bool setMode(GfxRenderer& renderer, wifi_mode_t mode);
 

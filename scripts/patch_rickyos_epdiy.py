@@ -161,6 +161,15 @@ HEADER_BLOCK = ('/// RICKYOS_GRAY16_TEXT_TURN: profile for the next 16-level com
                 'void epdiyLcdRailsOffIfIdle(uint32_t idleMs);\n'
                 '/// RICKYOS_PANEL_RESTART: rebuild the scan path; the next frame is a full refresh.\n'
                 'bool epdiyLcdRestart();\n')
+# RICKYOS_LQ_DEPTH: on a 16-bit bus epdiy doubles each feed thread's line queue to 64 lines
+# (2 x 64 x 304 B = 39 KB of internal RAM on Read Pico). The board prefills 32 lines per
+# phase (measured underrun-free), so 32 per thread still holds twice the prefill. The
+# 19.5 KB this frees is what the Wi-Fi transfer web server was short of (hotspot refused).
+QUEUE_MARK = 'RICKYOS_LQ_DEPTH'
+OLD_QUEUE_LEN = '    if (epd_get_display()->bus_width == 16) queue_len = 64;\n'
+NEW_QUEUE_LEN = ('    // RICKYOS_LQ_DEPTH: keep 32 lines per thread on the 16-bit bus too (see patch script).\n'
+                 '    if (epd_get_display()->bus_width == 16) queue_len = 32;\n')
+
 UI_MARK = 'RICKYOS_UI_DAMAGE'
 UI_HEADER = ('/// RICKYOS_UI_DAMAGE: physical navigation strip and bounded regional cleanup cadence.\n'
              'void epdiyLcdSetGray16UiRefresh(int x, int y, int width, int height, uint8_t contentEvery, uint8_t smallEvery);\n')
@@ -292,6 +301,7 @@ def apply(project_dir):
                                    (OLD_DIAG_PRINT, NEW_DIAG_PRINT, LQ_MARK)),
         base / 'src/epdiy/src/output_common/render_context.c': ((OLD_LQ_FN, NEW_LQ_FN, LQ_MARK),
                                                                 (OLD_LQ_RESET, NEW_LQ_RESET, LQ_MARK)),
+        base / 'src/epdiy/src/render.c': ((OLD_QUEUE_LEN, NEW_QUEUE_LEN, QUEUE_MARK),),
     }
     for path, steps in edits.items():
         source = path.read_text()
