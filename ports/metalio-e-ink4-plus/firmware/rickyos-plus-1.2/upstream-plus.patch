@@ -695,7 +695,7 @@
  };
 --- a/lib/I18n/translations/chinese.yaml
 +++ b/lib/I18n/translations/chinese.yaml
-@@ -1591,3 +1591,49 @@
+@@ -1600,3 +1600,49 @@
  STR_RICKY_HELP_FEEDBACK_3: "通过你现有的 Ricky AI Studio 联系渠道发送反馈。本页面不会自动上传设备信息。官网入口可扫码打开。"
  STR_RICKY_MENU_AUTO_TURN: "自动翻页"
  STR_RICKY_MENU_PROGRESS: "阅读进度"
@@ -747,7 +747,7 @@
 +STR_FONT_SOURCE_GITHUB: "GitHub"
 --- a/lib/I18n/translations/english.yaml
 +++ b/lib/I18n/translations/english.yaml
-@@ -1613,3 +1613,49 @@
+@@ -1622,3 +1622,49 @@
  STR_RICKY_HELP_FEEDBACK_3: "Send feedback through your existing Ricky AI Studio contact channel. This page does not upload device information. Scan the website QR code to visit the site."
  STR_RICKY_MENU_AUTO_TURN: "Auto page turn"
  STR_RICKY_MENU_PROGRESS: "Reading progress"
@@ -1768,15 +1768,15 @@
    doc["fakeBoldVersion"] = FAKE_BOLD_VERSION;
    // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
    doc["frontButtonBack"] = frontButtonBack;
-@@ -279,6 +284,7 @@
-   doc["rickyGestureHome"] = rickyGestureHome;
+@@ -280,6 +285,7 @@
+   doc["rickyCompanion"] = rickyCompanion;
    doc["rickyGestureControl"] = rickyGestureControl;
    doc["rickyGestureStatus"] = rickyGestureStatus;
 +  doc["speakerVolume"] = speakerVolume;
    doc["rickyTextWeight"] = rickyTextWeight;
    doc["rickyStandbyFace"] = rickyStandbyFace;
    doc["rickyAutoOffIndex"] = rickyAutoOffIndex;
-@@ -310,6 +316,7 @@
+@@ -311,6 +317,7 @@
  bool CrossPointSettings::fromJson(JsonVariantConst doc) {
    CrossPointSettings& s = *this;
    bool needsResave = false;
@@ -1784,7 +1784,7 @@
  
    auto clamp = [](uint8_t val, uint8_t maxVal, uint8_t def) -> uint8_t { return val < maxVal ? val : def; };
  
-@@ -444,6 +451,14 @@
+@@ -445,6 +452,14 @@
      needsResave = true;
    }
    // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
@@ -1823,7 +1823,7 @@
    uint8_t homeButtonTapAction = static_cast<uint8_t>(HomeButtonAction::Home);
    uint8_t homeButtonDoubleTapAction = static_cast<uint8_t>(HomeButtonAction::ToggleFrontlight);
    uint8_t homeButtonLongPressAction = static_cast<uint8_t>(HomeButtonAction::ReaderMenu);
-@@ -562,6 +570,7 @@
+@@ -567,6 +575,7 @@
    uint8_t showReaderMenu = READER_MENU_TAP;
    // Frontlight quick-panel state. Brightness and warmth remain persisted even
    // when restore-on-wake is disabled.
@@ -3039,7 +3039,7 @@
    // The UiAppHost app hosts the network list and the save/forget prompts
 --- a/src/activities/reader/EpubReaderActivity.cpp
 +++ b/src/activities/reader/EpubReaderActivity.cpp
-@@ -340,7 +340,7 @@
+@@ -341,7 +341,7 @@
  
    READING_STATS.endSession();
    ACHIEVEMENTS.recordSessionEnded(READING_STATS.getLastSessionSnapshot());
@@ -3048,7 +3048,7 @@
    // Four frames of PSRAM; the reader is the only owner and gives them back here.
    freePageCache();
  #endif
-@@ -360,7 +360,7 @@
+@@ -361,7 +361,7 @@
  void EpubReaderActivity::showOpeningPopup() {
    // Even a cached book takes a few seconds on device to its first page (measured
    // 2.7-3.6 s), with the tapped screen unchanged meanwhile. Say so at once.
@@ -3057,7 +3057,7 @@
    // Drawn into the retained 16-level frame: the screen keeps its grays and only the
    // popup's area is driven, instead of a B/W refresh of the whole screen.
    if (renderer.beginRetainedGrayscale16()) {
-@@ -882,7 +882,7 @@
+@@ -883,7 +883,7 @@
      return;
    }
  
@@ -3066,7 +3066,7 @@
    constexpr unsigned long IDLE_PREWARM_DEBOUNCE_MS = 400;
    auto* fcm = renderer.getFontCacheManager();
    {
-@@ -1890,7 +1890,7 @@
+@@ -1891,7 +1891,7 @@
        return;
      }
  
@@ -3075,7 +3075,7 @@
      ++sectionGeneration_;
  #endif
      const bool cacheLoaded = section->loadSectionFile(renderSpec);
-@@ -2306,7 +2306,6 @@
+@@ -2307,7 +2307,6 @@
    }
  }
  
@@ -3083,7 +3083,7 @@
  // A page that renders on the native 16-level path: anti-aliased text with no images or
  // only JPEG ones (they decode straight into the frame). Must match use16LevelText.
  bool EpubReaderActivity::nativeGray16Page(const Page& page) const {
-@@ -2314,6 +2313,7 @@
+@@ -2315,6 +2314,7 @@
           page.imagesAreAllJpeg();
  }
  
@@ -3091,7 +3091,7 @@
  bool EpubReaderActivity::pageCacheEligible() const {
    // No !section->isBuilding() here, deliberately. The page cache renders ONE page --
    // the current one or the next -- and Section::loadPage() is written to serve exactly
-@@ -2327,7 +2327,12 @@
+@@ -2328,7 +2328,12 @@
    // engages at all -- every turn is a full render instead of the cached one.
    return !pageCacheFailed_ && section && renderer.hasFrameBuffer() && !activityManager.isSwitchPending() &&
           overlay == Overlay::None && fontPromptState == FontPromptState::Idle && !renderer.isInverted() &&
@@ -3105,7 +3105,7 @@
  }
  
  ReaderPageCacheKey EpubReaderActivity::pageCacheKey(const int page, const int top, const int right, const int bottom,
-@@ -2423,14 +2428,14 @@
+@@ -2424,14 +2429,14 @@
    auto backward = layout;
    --backward.page;
    if (backward.page >= 0) build(1, backward);
@@ -3122,7 +3122,7 @@
  // On a chapter's last page the forward slot is free: build the next chapter and render
  // its first page into it. Comics put one picture in each chapter, so without this every
  // turn decoded a JPEG in the foreground (~3.5 s); now it happens while the page is read.
-@@ -2526,13 +2531,17 @@
+@@ -2527,13 +2532,17 @@
    if (!pageCacheBase_[slot]) {
      constexpr size_t kContiguousReserve = 16 * 1024;
      // Reserve the slots still to allocate; the forward slot is already charged for slot 1.
@@ -3144,7 +3144,7 @@
        freePageCache();
        pageCacheFailed_ = true;
        LOG_ERR("ERS", "Page cache off: PSRAM allocation of %u B failed", static_cast<unsigned>(4 * bytes));
-@@ -2731,7 +2740,7 @@
+@@ -2732,7 +2741,7 @@
        if (manager) manager->clearCache();
      }
    } rawFontCacheGuard;
@@ -3153,7 +3153,7 @@
    const auto key = pageCacheKey(section ? section->currentPage : -1, orientedMarginTop, orientedMarginRight,
                                  orientedMarginBottom, orientedMarginLeft);
    // Either slot may hold this page: slot 0 was built for it as a forward turn, slot 1
-@@ -2843,7 +2852,7 @@
+@@ -2844,7 +2853,7 @@
    };
  
    unsigned long cacheBaseMs = 0;
@@ -3162,7 +3162,7 @@
    if (use16LevelText) {
      // The 16-level pass below clears the frame and renders (or copies from the cache)
      // the page, writing the B/W proxy as it goes, so a B/W render here is thrown away.
-@@ -2858,7 +2867,7 @@
+@@ -2859,7 +2868,7 @@
    {
      renderPageWithGuideLines();
    }
@@ -3171,7 +3171,7 @@
    const uint32_t missingCodepoint =
        pageCacheHit ? pageCacheMissingCodepoint_[pageCacheLiveSlot_] : fcm->consumeMissingChineseCodepoint();
  #else
-@@ -2911,7 +2920,7 @@
+@@ -2912,7 +2921,7 @@
      const auto t16Begin = millis();
      if (renderer.beginGrayscale16()) {
        const auto t16Cleared = millis();
@@ -3180,7 +3180,7 @@
        if (pageCacheHit && pageCacheIs16_[pageCacheLiveSlot_] && pageCache16_[pageCacheLiveSlot_]) {
          memcpy(renderer.grayscale16Frame(), pageCache16_[pageCacheLiveSlot_].get(), renderer.grayscale16FrameBytes());
          memcpy(renderer.getFrameBuffer(), pageCacheBase_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
-@@ -3136,7 +3145,7 @@
+@@ -3137,7 +3146,7 @@
        }
        const auto tBwStore = millis();
  
@@ -3189,7 +3189,7 @@
        if (pageCacheHit) {
          // Both planes were rendered at idle; putting them in place is one copy
          // each instead of a full page render each.
-@@ -3163,7 +3172,7 @@
+@@ -3164,7 +3173,7 @@
          return;
        }
  
@@ -4483,7 +4483,7 @@
    if (style == 2) {
 --- a/src/components/RickyHomeUi.cpp
 +++ b/src/components/RickyHomeUi.cpp
-@@ -77,9 +77,9 @@
+@@ -78,9 +78,9 @@
  
  bool RickyHomeUi::paint(fui::Rect rect, int index) {
    if (painter && painter(owner, index, Rect{rect.x, rect.y, rect.width, rect.height})) {
@@ -5240,7 +5240,7 @@
  #include <I18n.h>
  #include <LibraryBuilder.h>
  #include <LibraryIndexFile.h>
-@@ -27,18 +30,32 @@
+@@ -28,18 +31,32 @@
  // Each line is a panel refresh: often enough to show life, rare enough not to slow the walk.
  constexpr unsigned long kStatusEveryMs = 1500;
  

@@ -1,5 +1,5 @@
 {
-  "baseline": "cf6e33f82912816514ab7721465c19f2794343ff",
+  "baseline": "a42d939944c4495a8731b194171e365c85e5a000",
   "sdk_baseline": "96de1be6ce08eb732909e6e8149af8f892b9a2c5",
   "changes": [
     {
@@ -64,13 +64,13 @@
     },
     {
       "path": "lib/I18n/translations/chinese.yaml",
-      "baseline_sha256": "d85a22f478199f63ec6a783f29c1b14e4dd3dae0a57ecf008055e8cce34247eb",
-      "ported_sha256": "623fa638b1b7ecc0d41e5938bade5defd7df3a0309c494df417fb1100e5ae6e4"
+      "baseline_sha256": "021ec5b9e5880155fea752af9c60ce83a259dd69131f9bd12ffe0ca59e3366bd",
+      "ported_sha256": "6ef23867e9cdb93e0d69dccc2670ce7892440767a30d92ddd208a7a6d14f24bb"
     },
     {
       "path": "lib/I18n/translations/english.yaml",
-      "baseline_sha256": "cf6dc9f83dd16a7aa15916eb38b3ed64d44ba577c61cc558dc0a3f8f250e22ba",
-      "ported_sha256": "643152bffae3c622de612fa0906325157ce20d030ba3af87601c7524b83a2fa9"
+      "baseline_sha256": "85a4d226f1400f6a185759420c63ecff5f81eeb3722afd66c312d4aec6bcb315",
+      "ported_sha256": "180ce0037e1192619a42310bc5752dc4922b947415ac9e6768ce602857a506ed"
     },
     {
       "path": "lib/JpegToBmpConverter/JpegToBmpConverter.cpp",
@@ -189,13 +189,13 @@
     },
     {
       "path": "src/CrossPointSettings.cpp",
-      "baseline_sha256": "d0c2e5a9d151063f2bc9e75e85001a937ac35125dd173347891ddd359aab5efc",
-      "ported_sha256": "36715aed01c469daea4720eaf2b03d4d43570c70a19647ff04c92f5eb1986521"
+      "baseline_sha256": "549f275cd35b12b0479eadda063c5460e167d1156274e759bee34e2232b4dc37",
+      "ported_sha256": "2d5fc057f2083037b063970d839023b62f63c0a9edb3774a9aa3b1767ae4ccdd"
     },
     {
       "path": "src/CrossPointSettings.h",
-      "baseline_sha256": "d6c22b979893a263523860a7c83802e51fa1d3099957aa23d34e27e3a60e7103",
-      "ported_sha256": "00858bfc8a9cdf01c4edcfda8d054b3d5b15a51af08ac744b74de741fd8240ac"
+      "baseline_sha256": "c5a733423898aad83b2f932929b80d3de201da9aa0e181d82d0071a2ac576330",
+      "ported_sha256": "f6b8db81b3934a4302d1e804800ad73c846ce75cb82584520ab20a9a74fbb6a8"
     },
     {
       "path": "src/MappedInputManager.cpp",
@@ -289,8 +289,8 @@
     },
     {
       "path": "src/activities/reader/EpubReaderActivity.cpp",
-      "baseline_sha256": "b21ee02f67225299149078e814765e51d2811585d4fb43a409489c6310943e1d",
-      "ported_sha256": "205857d7335a2d1f570bfa84006b4edfbb4b12d6e416897756a6f489b82a8d41"
+      "baseline_sha256": "330723cad52ac629fa1451c9ca90cffff0a04b06e0266861e092ff93e8ffa1c9",
+      "ported_sha256": "9fee18a58fd5396596f04c6e72d384e055da1626c07aacf836fd5acae801ea24"
     },
     {
       "path": "src/activities/reader/EpubReaderActivity.h",
@@ -359,8 +359,8 @@
     },
     {
       "path": "src/components/RickyHomeUi.cpp",
-      "baseline_sha256": "a809ed3d1cb5412816d1ee1a4aca29b822a8b52f21be7c0d4b903a90bc46968e",
-      "ported_sha256": "b18eb77d6bd3766cd511678ffd42653f22db6193f9069ce4f6d1891bd8547a89"
+      "baseline_sha256": "85d40f37352a3df9b434762459291e312b59e4ce3728f5fd8b779fd016abbb3c",
+      "ported_sha256": "50ea66e6a0a318c65eb2e301bb728830f65edd7a26b894119de949a71de19478"
     },
     {
       "path": "src/components/RickyPageUi.h",
@@ -369,8 +369,8 @@
     },
     {
       "path": "src/components/RickyProfile.cpp",
-      "baseline_sha256": "79e083426b0a939f01c6eed1c613ef0c7b6ef6693291c8a3d29266a2a8eb4d65",
-      "ported_sha256": "9b4051fb1131f9f33013f97ba80af71e5ca37af7af39adf16b5dbf63877d44f1"
+      "baseline_sha256": "d2943e6974a516051b90a6c401fa794b31a21d29662760b0862f9a868e2e0047",
+      "ported_sha256": "18a02d97fc1d62882ff3979c1b4373a6c4d53538fa81bc223107f83ed3406915"
     },
     {
       "path": "src/components/UITheme.cpp",
@@ -454,8 +454,8 @@
     },
     {
       "path": "src/util/BootPreparation.cpp",
-      "baseline_sha256": "a4e23812054d0940f473a6edd0c10558067b2e881bf03dbb5f385b1c1ea06ff9",
-      "ported_sha256": "d3ef19f5a07fabdb514bb279c1ec7ad45c58386cb9464a0318e15cef46bc1836"
+      "baseline_sha256": "683c1e896659b54b7724a454bd82f2b3a33f55a8d12175f9ce535f38deba093c",
+      "ported_sha256": "c360949a78eb04bcc8a2be353bfd5ee42a09cdbf433723d2e4c4db91f8835f94"
     },
     {
       "path": "src/util/PlusButtonInput.h",
