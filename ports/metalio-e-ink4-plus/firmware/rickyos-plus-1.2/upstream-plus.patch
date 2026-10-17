@@ -693,37 +693,6 @@
 +  static void compactSingleGlyph(const uint8_t* alignedSrc, uint8_t* packedDst, uint8_t width, uint8_t height, bool is4Bit);
    static int32_t findGlyphIndex(const EpdFontData* fontData, uint32_t codepoint);
  };
---- a/lib/GfxRenderer/GfxRenderer.cpp
-+++ b/lib/GfxRenderer/GfxRenderer.cpp
-@@ -1478,8 +1478,14 @@
-     // The 16-level frame has real grays: a smooth tone instead of the B/W dot pattern
-     // (and treating these as white made light-gray tracks vanish once a screen settled).
-     // Black/white write the levels drawPixel() mirrors (0 and 15).
--    const uint8_t level = C == Color::LightGray                             ? 11
--                          : C == Color::DarkGray                            ? 7
-+#if FREEINK_DEVICE_METALIO_PLUS
-+    // Same per-panel tone as ricky::ds::gray on the Plus (kLine / a darker mid gray).
-+    constexpr uint8_t lightLevel = 7, darkLevel = 4;
-+#else
-+    constexpr uint8_t lightLevel = 11, darkLevel = 7;
-+#endif
-+    const uint8_t level = C == Color::LightGray                             ? lightLevel
-+                          : C == Color::DarkGray                            ? darkLevel
-                           : framebufferState(renderMode, C == Color::Black) ? 0
-                                                                             : 15;
-     fillGrayscale16Rect(lx0, ly0, lx1 - lx0, ly1 - ly0, level);
-@@ -1487,7 +1493,11 @@
-   }
-   if (grayscale16Buffer != nullptr) {  // strip target: the per-pixel path clips to the band
-     if constexpr (C == Color::LightGray || C == Color::DarkGray) {
-+#if FREEINK_DEVICE_METALIO_PLUS
-+      constexpr uint8_t gray = C == Color::LightGray ? 119 : 68;  // levels 7 and 4 (Plus tone)
-+#else
-       constexpr uint8_t gray = C == Color::LightGray ? 187 : 119;  // levels 11 and 7
-+#endif
-       for (int px = lx0; px < lx1; ++px) {
-         for (int py = ly0; py < ly1; ++py) drawGrayscale16Pixel(px, py, gray);
-       }
 --- a/lib/I18n/translations/chinese.yaml
 +++ b/lib/I18n/translations/chinese.yaml
 @@ -1591,3 +1591,49 @@
@@ -2927,7 +2896,7 @@
                                                GUI.drawCoverThumbFill(renderer, bitmap,
                                                                       Rect{rect.x, rect.y, rect.width, rect.height});
                                       });
--      if (painted) screen.target().stroke(rect, fui::Paint::solid(fui::Color::Black), ricky::ds::stroke::kHairline);
+-      if (painted) screen.target().stroke(rect, fui::Paint::solid(fui::Color::LightGray), ricky::ds::stroke::kHairline);
 +      if (painted) screen.target().stroke(rect, fui::Paint::solid(fui::Color::LightGray), ricky::ds::stroke::kCoverEdge);
      }
      if (!painted) {
@@ -2945,7 +2914,7 @@
  #include <GfxRenderer.h>
  #include <HalClock.h>
  #include <I18n.h>
-@@ -150,6 +155,13 @@
+@@ -151,6 +156,13 @@
  
  void WifiSelectionActivity::onEnter() {
    Activity::onEnter();
@@ -2959,7 +2928,7 @@
    NetworkStartup::logMemory("WifiSelectionActivity enter");
    NetworkStartup::prepare(renderer);
  
-@@ -513,6 +525,9 @@
+@@ -536,6 +548,9 @@
      return;
    }
  
@@ -2969,7 +2938,7 @@
    startWifiScan(true);
  }
  
-@@ -535,7 +550,6 @@
+@@ -558,7 +573,6 @@
  
  void WifiSelectionActivity::attemptConnection() {
    state = autoConnecting ? WifiSelectionState::AUTO_CONNECTING : WifiSelectionState::CONNECTING;
@@ -2977,7 +2946,7 @@
    connectedIP.clear();
    connectionError.clear();
    requestUpdate();
-@@ -548,6 +562,26 @@
+@@ -571,6 +585,26 @@
    }
    WiFi.disconnect(true, true);  // Abort any in-progress SDK auto-connect and clear NVS-saved SSID
    delay(100);
@@ -3004,7 +2973,7 @@
  
    // Scan all channels so networks with multiple APs use the strongest matching
    // BSSID instead of the first match found by the framework's default fast scan.
-@@ -565,6 +599,8 @@
+@@ -588,6 +622,8 @@
      LOG_ERR("WIFI", "Failed to read station MAC for hostname");
    }
  
@@ -3013,7 +2982,7 @@
    if (selectedRequiresPassword && !enteredPassword.empty()) {
      WiFi.begin(selectedSSID.c_str(), enteredPassword.c_str());
    } else {
-@@ -597,6 +633,11 @@
+@@ -620,6 +656,11 @@
              WiFi.RSSI());
  #endif
  
@@ -3025,7 +2994,7 @@
      // Sync RTC from NTP on the first successful WiFi connection only. The DS3231
      // drifts ~2 ppm so one sync is enough; users can force a re-sync from
      // Settings > System > Clock > Sync clock now.
-@@ -606,6 +647,8 @@
+@@ -629,6 +670,8 @@
          SETTINGS.saveToFile();
        }
      }
@@ -3034,7 +3003,7 @@
  
      // Every station join is a chance to snap the loan-clock floor to real
      // time (non-blocking; see TrustedTime).
-@@ -664,6 +707,14 @@
+@@ -687,6 +730,14 @@
  }
  
  void WifiSelectionActivity::loop() {
@@ -3059,7 +3028,7 @@
  
    // True from the Confirm press that stops auto-connect until that button is released.
    bool manualNetworkListRequested = false;
-@@ -101,7 +102,7 @@
+@@ -104,7 +105,7 @@
  
    // Connection timeout
    static constexpr unsigned long CONNECTION_TIMEOUT_MS = 15000;
@@ -4471,35 +4440,9 @@
    void adjustWarmth(int delta);
 --- a/src/components/RickyDesignTokens.h
 +++ b/src/components/RickyDesignTokens.h
-@@ -35,10 +35,19 @@
- namespace gray {
- using Level = uint8_t;               // 0..15, 0 = black
- inline constexpr Level kInk = 0;     // #000000 文字/图标/反白底/主按钮
-+#if FREEINK_DEVICE_METALIO_PLUS
-+// 按机型取值：Plus 的 E0470A14 屏把中间灰显示得明显偏浅（次级文字、描边、进度轨发虚），
-+// 同名等级在这台屏上取更深的值，让观感接近设计稿。
-+inline constexpr Level kInk2 = 2;    // 次级文字
-+inline constexpr Level kMute = 5;    // 禁用/占位
-+inline constexpr Level kLine = 7;    // 分隔线/进度轨
-+inline constexpr Level kTint = 12;   // 小面积底
-+#else
- inline constexpr Level kInk2 = 4;    // #444444 次级文字（仅静止帧）
- inline constexpr Level kMute = 8;    // #888888 禁用/占位（仅静止帧）
- inline constexpr Level kLine = 11;   // #BBBBBB 分隔线/进度轨（仅静止帧）
- inline constexpr Level kTint = 13;   // #DDDDDD 小面积底（仅静止帧）
-+#endif
- inline constexpr Level kPaper = 15;  // #FFFFFF 背景/反白文字
- 
- // 8-bit sRGB 近似值，供模拟器 / 截图对比使用。
-@@ -189,8 +198,14 @@
- // 5. 线宽（§7）：2 个值。图标线宽见 icon::strokeFor()。
- // -----------------------------------------------------------------------------
+@@ -214,6 +214,8 @@
  namespace stroke {
-+#if FREEINK_DEVICE_METALIO_PLUS
-+inline constexpr uint8_t kHairline = 3;        // Plus：2 px 灰线在这块屏上几乎看不见
-+#else
- inline constexpr uint8_t kHairline = 2;        // 卡片描边、分隔线、次按钮、进度轨(1-bit)
-+#endif
+ inline constexpr uint8_t kHairline = RICKYOS_GRAY_PRESET >= 2 ? 3 : 2;  // 卡片描边、分隔线、次按钮、进度轨(1-bit)
  inline constexpr uint8_t kEmphasis = 4;        // 弹窗边框、按下态主按钮、强调线
 +// 真实封面图的外沿：浅灰（gray::kLine）细边，只为让浅色封面不融进纸面；黑框会压过灰度封面。
 +inline constexpr uint8_t kCoverEdge = 2;
@@ -4516,11 +4459,20 @@
  #include "RickyPageLayout.h"
  #include "UiAppHost.h"
  
-@@ -143,7 +144,11 @@
+@@ -143,16 +144,11 @@
    const int style = ds::component::coverTemplateFor(title);
    const bool dark = style == 0 || style == 3;
    fill(renderer, r, dark ? ds::gray::kInk : style == 4 ? ds::gray::kTint : ds::gray::kPaper);
--  renderer.drawRect(r.x, r.y, r.width, r.height, ds::stroke::kHairline, !dark);
+-  // The outer edge matches the cards' line gray; dark covers keep their own edge.
+-  if (!dark && renderer.isGrayscale16Active()) {
+-    constexpr int16_t e = ds::stroke::kHairline;
+-    fill(renderer, {r.x, r.y, r.width, e}, ds::gray::kLine);
+-    fill(renderer, {r.x, static_cast<int16_t>(r.bottom() - e), r.width, e}, ds::gray::kLine);
+-    fill(renderer, {r.x, r.y, e, r.height}, ds::gray::kLine);
+-    fill(renderer, {static_cast<int16_t>(r.right() - e), r.y, e, r.height}, ds::gray::kLine);
+-  } else {
+-    renderer.drawRect(r.x, r.y, r.width, r.height, ds::stroke::kHairline, !dark);
+-  }
 +  // Light templates get the same light gray edge as cover artwork, not a black frame.
 +  if (dark)
 +    renderer.drawRect(r.x, r.y, r.width, r.height, ds::stroke::kHairline, false);
@@ -4537,7 +4489,7 @@
    if (painter && painter(owner, index, Rect{rect.x, rect.y, rect.width, rect.height})) {
 -    // Real artwork gets the same hairline edge as generated covers; pale covers
 -    // would otherwise dissolve into the page.
--    uiTarget.stroke(rect, fui::Paint::solid(fui::Color::Black), ricky::ds::stroke::kHairline);
+-    uiTarget.stroke(rect, fui::Paint::solid(fui::Color::LightGray), ricky::ds::stroke::kHairline);
 +    // Real artwork gets a light gray edge so pale covers do not dissolve into the
 +    // page; a black frame overpowered the gray artwork.
 +    uiTarget.stroke(rect, fui::Paint::solid(fui::Color::LightGray), ricky::ds::stroke::kCoverEdge);
@@ -4550,7 +4502,7 @@
    if (rect.empty()) return;
    const auto black = fui::Paint::solid(fui::Color::Black);
    target.fill(rect, fui::Paint::solid(fui::Color::White));
--  target.stroke(rect, black, 1);
+-  target.stroke(rect, fui::Paint::solid(fui::Color::LightGray), ricky::ds::stroke::kHairline);
 +  target.stroke(rect, fui::Paint::solid(fui::Color::LightGray), ricky::ds::stroke::kCoverEdge);
    const int16_t rule = std::max<int16_t>(5, rect.width / 22);
    if (rect.width > rule * 4 && rect.height > rule * 4)
@@ -4559,42 +4511,46 @@
                       Motif kind = Motif::Count) {
    if (rect.empty()) return;
    target.fill(rect, fui::Paint::solid(fui::Color::White));
--  target.stroke(rect, fui::Paint::solid(fui::Color::Black), 1);
+-  target.stroke(rect, fui::Paint::solid(fui::Color::LightGray), ricky::ds::stroke::kHairline);
 +  target.stroke(rect, fui::Paint::solid(fui::Color::LightGray), ricky::ds::stroke::kCoverEdge);
    const int lineHeight = target.lineHeight(text.font);
    const int size = std::min<int>(lineHeight, rect.height / 2);
    const int gap = std::max(8, lineHeight / 3);
 --- a/src/components/RickyProfile.cpp
 +++ b/src/components/RickyProfile.cpp
-@@ -72,10 +72,20 @@
+@@ -72,18 +72,20 @@
    renderer.drawGrayscale16Pixel(x, y, static_cast<uint8_t>(level * 17));
  }
  
--// The avatar's circular frame. On a 16-level frame its edges are graded by how much of
--// each pixel the ring covers (distance to the circle, one pixel of falloff each side).
+-// Toward `tone` by coverage/15, never lighter than what is already there.
+-void blendTone(const GfxRenderer& renderer, const int x, const int y, const int coverage, const int tone) {
 +// Moves a pixel toward the line gray by coverage/15; never lightens darker paper.
 +void blendLine(const GfxRenderer& renderer, const int x, const int y, const int coverage) {
-+  const int paper = renderer.grayscale16Level(x, y);
+   const int paper = renderer.grayscale16Level(x, y);
+-  if (paper <= tone) return;
+-  const int level = paper - ((paper - tone) * coverage + 7) / 15;
 +  const int target = ricky::ds::gray::kLine;
 +  if (paper <= target) return;
 +  const int level = paper - ((paper - target) * coverage + 7) / 15;
-+  renderer.drawGrayscale16Pixel(x, y, static_cast<uint8_t>(level * 17));
-+}
-+
+   renderer.drawGrayscale16Pixel(x, y, static_cast<uint8_t>(level * 17));
+ }
+ 
+-// The avatar's circular frame: the same line gray and hairline as the cards around it. On a
+-// 16-level frame its edges are graded by how much of each pixel the ring covers.
 +// The avatar's circular frame: the same light gray edge as covers, not a black ring.
 +// On a 16-level frame its edges are graded by how much of each pixel the ring covers
 +// (distance to the circle, one pixel of falloff each side).
  void avatarRing(const GfxRenderer& renderer, const Rect& rect, const int size) {
--  const int thickness = std::max(2, size / 48);
+-  const int thickness = ricky::ds::stroke::kHairline;
 +  const int thickness = ricky::ds::stroke::kCoverEdge;
    if (!renderer.isGrayscale16Active()) {
      renderer.drawRoundedRect(rect.x, rect.y, size, size, thickness, size / 2, true);
      return;
-@@ -89,7 +99,7 @@
+@@ -97,7 +99,7 @@
        const float d = std::sqrt(d2);
        const float in = std::clamp(outer + 0.5f - d, 0.0f, 1.0f) - std::clamp(inner + 0.5f - d, 0.0f, 1.0f);
        const int coverage = static_cast<int>(in * 15 + 0.5f);
--      if (coverage) blendInk(renderer, rect.x + x, rect.y + y, coverage);
+-      if (coverage) blendTone(renderer, rect.x + x, rect.y + y, coverage, ricky::ds::gray::kLine);
 +      if (coverage) blendLine(renderer, rect.x + x, rect.y + y, coverage);
      }
    }
@@ -5222,43 +5178,20 @@
  
 --- a/src/network/RickyOtaTrust.h
 +++ b/src/network/RickyOtaTrust.h
-@@ -43,6 +43,9 @@
+@@ -43,10 +43,9 @@
  // GlobalSign Atlas R3 OV TLS CA -> this root), taken from the macOS system root store on
  // 2026-10-14; valid until 2029-03-18.
  // DER SHA-256: cbb522d7b7f127ad6a0113865bdf1cd4102e7d0759af635a7cf4720dc963c53b
+-// COS also sends R3 cross-signed by GlobalSign Root CA (R1); wolfSSL then wants R1 to verify
+-// that link (-188 "ASN no signer" with R3 alone; OpenSSL takes the shorter path), so R1 is
+-// pinned too. From the macOS system root store, 2026-10-17; valid until 2028-01-28.
+-// SHA-256 fingerprint: EB:D4:10:40:E4:BB:3E:C7:42:C9:E3:81:D3:1E:F2:A4:1A:48:B6:68:5C:96:E7:CE:F3:C1:DF:6C:D4:33:1C:99
 +// COS serves GlobalSign Root R3 cross-signed by GlobalSign Root CA (R1). wolfSSL then wants
 +// R1 to verify that link (OpenSSL takes the shorter path), so both roots are pinned:
 +// R3 (to 2029-03-18) and R1 (to 2028-01-28, SHA-256 EB:D4:10:40:...:1C:99).
  inline constexpr char COS_ROOT_CA[] = R"PEM(-----BEGIN CERTIFICATE-----
  MIIDXzCCAkegAwIBAgILBAAAAAABIVhTCKIwDQYJKoZIhvcNAQELBQAwTDEgMB4G
  A1UECxMXR2xvYmFsU2lnbiBSb290IENBIC0gUjMxEzARBgNVBAoTCkdsb2JhbFNp
-@@ -64,5 +67,26 @@
- Mx86OyXShkDOOyyGeMlhLxS67ttVb9+E7gUJTb0o2HLO02JQZR7rkpeDMdmztcpH
- WD9f
- -----END CERTIFICATE-----
-+-----BEGIN CERTIFICATE-----
-+MIIDdTCCAl2gAwIBAgILBAAAAAABFUtaw5QwDQYJKoZIhvcNAQEFBQAwVzELMAkG
-+A1UEBhMCQkUxGTAXBgNVBAoTEEdsb2JhbFNpZ24gbnYtc2ExEDAOBgNVBAsTB1Jv
-+b3QgQ0ExGzAZBgNVBAMTEkdsb2JhbFNpZ24gUm9vdCBDQTAeFw05ODA5MDExMjAw
-+MDBaFw0yODAxMjgxMjAwMDBaMFcxCzAJBgNVBAYTAkJFMRkwFwYDVQQKExBHbG9i
-+YWxTaWduIG52LXNhMRAwDgYDVQQLEwdSb290IENBMRswGQYDVQQDExJHbG9iYWxT
-+aWduIFJvb3QgQ0EwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDaDuaZ
-+jc6j40+Kfvvxi4Mla+pIH/EqsLmVEQS98GPR4mdmzxzdzxtIK+6NiY6arymAZavp
-+xy0Sy6scTHAHoT0KMM0VjU/43dSMUBUc71DuxC73/OlS8pF94G3VNTCOXkNz8kHp
-+1Wrjsok6Vjk4bwY8iGlbKk3Fp1S4bInMm/k8yuX9ifUSPJJ4ltbcdG6TRGHRjcdG
-+snUOhugZitVtbNV4FpWi6cgKOOvyJBNPc1STE4U6G7weNLWLBYy5d4ux2x8gkasJ
-+U26Qzns3dLlwR5EiUWMWea6xrkEmCMgZK9FGqkjWZCrXgzT/LCrBbBlDSgeF59N8
-+9iFo7+ryUp9/k5DPAgMBAAGjQjBAMA4GA1UdDwEB/wQEAwIBBjAPBgNVHRMBAf8E
-+BTADAQH/MB0GA1UdDgQWBBRge2YaRQ2XyolQL30EzTSo//z9SzANBgkqhkiG9w0B
-+AQUFAAOCAQEA1nPnfE920I2/7LqivjTFKDK1fPxsnCwrvQmeU79rXqoRSLblCKOz
-+yj1hTdNGCbM+w6DjY1Ub8rrvrTnhQ7k4o+YviiY776BQVvnGCv04zcQLcFGUl5gE
-+38NflNUVyRRBnMRddWQVDf9VMOyGj/8N7yy5Y0b2qvzfvGn9LhJIZJrglfCm7ymP
-+AbEVtQwdpf5pLGkkeB6zpxxxYu7KyJesF12KwvhHhm4qxFYxldBniYUr+WymXUad
-+DKqC5JlR3XC321Y9YeRq4VzW9v493kHMB65jUr9TU/Qr6cf9tveCX4XSQRjbgbME
-+HMUfpIBvFSDJ3gyICh3WZlXi/EjJKSZp4A==
-+-----END CERTIFICATE-----
- )PEM";
- }  // namespace ricky_ota
 --- a/src/network/WifiPowerSaveGuard.h
 +++ b/src/network/WifiPowerSaveGuard.h
 @@ -1,5 +1,17 @@

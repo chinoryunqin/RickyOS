@@ -1,5 +1,5 @@
 {
-  "baseline": "e5e1dcccdce1e897470939e841519333d23943ab",
+  "baseline": "cf6e33f82912816514ab7721465c19f2794343ff",
   "sdk_baseline": "96de1be6ce08eb732909e6e8149af8f892b9a2c5",
   "changes": [
     {
@@ -61,11 +61,6 @@
       "path": "lib/EpdFont/FontDecompressor.h",
       "baseline_sha256": "b7032c8393f5d0cebe67c75c2b9b268e3c0c248b1449a4e1fc6069baee083c89",
       "ported_sha256": "5e7f8e364bac855ff2496b7ea4c21841889679c127f4d810d3ff01656dbcede6"
-    },
-    {
-      "path": "lib/GfxRenderer/GfxRenderer.cpp",
-      "baseline_sha256": "a13a0b71a5eceaf6aa372019aad2fc24c87222f3de0f577868801a0a5b93e757",
-      "ported_sha256": "f742a4d4063de117f313ca0bd67b33b6d2c951484e815b501235bf3cd27c98cd"
     },
     {
       "path": "lib/I18n/translations/chinese.yaml",
@@ -279,23 +274,23 @@
     },
     {
       "path": "src/activities/library/LibraryListActivity.cpp",
-      "baseline_sha256": "106499e4058c2ede98930c4ae72aad56af5754d4d6ae829d7559ac531e6ab5ad",
+      "baseline_sha256": "390421f0e356311b536e8d9d3ec0f7805fbe83ca0ee641fec6303ce7a995c465",
       "ported_sha256": "784339662f12d7b7dbc4c99ff36d1080ef65f4a849cd95d7dad62e668cfdf64d"
     },
     {
       "path": "src/activities/network/WifiSelectionActivity.cpp",
-      "baseline_sha256": "4433c9db02e51c9d86b9c98c92750e9cb127f62b7119fb74e5ad161565ec799e",
-      "ported_sha256": "bb80f7875c4def278d2c582a7ab75cd72758994cf830ebc7b41e97deb116a7a1"
+      "baseline_sha256": "40a713262fe8618035edd48551c1c86146b744030733b70e3535590b4f3e074f",
+      "ported_sha256": "28bf959061979bacbd87e03491c895d95a472ceb1b8d03cfb2705e338c3fc1be"
     },
     {
       "path": "src/activities/network/WifiSelectionActivity.h",
-      "baseline_sha256": "a449848a5737b4f6ebe72874500a221f3bec69e0ba1f15e4f1e092c4eb34c922",
-      "ported_sha256": "2d12655fdc7b6751d69cf249c676af04a3029c6fce02f4a5e1f751d24eeb662e"
+      "baseline_sha256": "cf88f463e3cee398cb48ce49923c686ac2aa0475b819d6373bbd30e2e2802484",
+      "ported_sha256": "6f33cf02cd335c93eae565e17114365eab7b6d3d6578ec638db7aebd3d3cd3f3"
     },
     {
       "path": "src/activities/reader/EpubReaderActivity.cpp",
-      "baseline_sha256": "d2a314d74b6379c826464d0bd5d85aa29b1b3785e00de9ad8396f07ea62a28ab",
-      "ported_sha256": "4aee613182d875d3fddf59059768fecd2a8d3d5412257bc1eaec64ebce126b05"
+      "baseline_sha256": "b21ee02f67225299149078e814765e51d2811585d4fb43a409489c6310943e1d",
+      "ported_sha256": "205857d7335a2d1f570bfa84006b4edfbb4b12d6e416897756a6f489b82a8d41"
     },
     {
       "path": "src/activities/reader/EpubReaderActivity.h",
@@ -354,27 +349,27 @@
     },
     {
       "path": "src/components/RickyDesignTokens.h",
-      "baseline_sha256": "2b37779d469a6ea4f18eb0f2ca5a93f45d76418a030d7c2d0f3546a6a972b547",
-      "ported_sha256": "dd6287337ea229541718ff35db348331d43eea100b6f9db76af3b70b257be9a2"
+      "baseline_sha256": "d59af1ca42d6ae6d74732304d67ba45bbf23bcc382760403d6ca7c67ceb5278b",
+      "ported_sha256": "30c1dce733099f5bfc71af8b7ff3d65c9ea2863b50286aeff43316f04f99695f"
     },
     {
       "path": "src/components/RickyDesignUi.h",
-      "baseline_sha256": "6b93d634e3e603d58ae092060e200c48aab6d102ef8f1d19b5405b07a246d477",
+      "baseline_sha256": "ae5acc8b93778f862a8de972123e1fda1490b603638396d33d220e49e99ce5ca",
       "ported_sha256": "631fc27d265a7c3b17bf73e4663ec00efa1762aa04070de9d2bc1358d7d17f71"
     },
     {
       "path": "src/components/RickyHomeUi.cpp",
-      "baseline_sha256": "490da79c0d2ff3db0e1d0006899477498138d429905e360b30ada20e79e352a1",
+      "baseline_sha256": "a809ed3d1cb5412816d1ee1a4aca29b822a8b52f21be7c0d4b903a90bc46968e",
       "ported_sha256": "b18eb77d6bd3766cd511678ffd42653f22db6193f9069ce4f6d1891bd8547a89"
     },
     {
       "path": "src/components/RickyPageUi.h",
-      "baseline_sha256": "ec74b79eeaf9c99e754cd6766eac8c813ae5693476bab8b8bb4c4ce592f48a33",
+      "baseline_sha256": "8a92bb7d8ebd9a22f899a092a00e9392ec28e4c5b117e257116aad01b43a7d69",
       "ported_sha256": "5286ab1ef55f3a6879e16a14ff00fc836f4dadd18c8e2ff40ba0869e318f362b"
     },
     {
       "path": "src/components/RickyProfile.cpp",
-      "baseline_sha256": "8b87843d8717dd56e174a117afdcd00602880ca638e0dcd93f33d93cd824e086",
+      "baseline_sha256": "79e083426b0a939f01c6eed1c613ef0c7b6ef6693291c8a3d29266a2a8eb4d65",
       "ported_sha256": "9b4051fb1131f9f33013f97ba80af71e5ca37af7af39adf16b5dbf63877d44f1"
     },
     {
@@ -444,7 +439,7 @@
     },
     {
       "path": "src/network/RickyOtaTrust.h",
-      "baseline_sha256": "a8651bfd51410309e7cf8ffc1ebcb66576ee72f2a52e70de9956142b703e9d5d",
+      "baseline_sha256": "032e277a59fffc330935ffc806c8b75a91039399963712cfe54293bd4bc695e2",
       "ported_sha256": "22b47241516b4ec57d653a55603fbea7745066abce4a8881d214f2272d875e97"
     },
     {

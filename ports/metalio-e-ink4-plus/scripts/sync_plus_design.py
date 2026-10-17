@@ -147,6 +147,9 @@ def main():
         parser.error('--to or --record is required')
     new = git(args.repo, 'rev-parse', args.to, text=True).strip()
     sdk = git(args.repo, 'rev-parse', f'{new}:freeink-sdk', text=True).strip()
+    if git(args.repo, 'ls-tree', new, 'freeink-sdk', text=True).startswith('120000'):
+        # Design worktrees may carry freeink-sdk as a symlink to the shared checkout; its HEAD is the pin.
+        sdk = git(Path(args.repo) / 'freeink-sdk', 'rev-parse', 'HEAD', text=True).strip()
     if sdk != manifest['sdk_commit']:
         raise SystemExit(f'New design pins SDK {sdk[:8]}, the port pins {manifest["sdk_commit"][:8]}; sync the SDK first')
     if args.resume:
