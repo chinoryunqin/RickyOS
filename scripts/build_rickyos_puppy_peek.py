@@ -36,8 +36,12 @@ def art_above_edge(source: Path = SOURCE) -> Image.Image:
     # The edge is the topmost row that is ink nearly all the way across.
     edge = next(y for y in range(height) if sum(pixels[x, y] < INK for x in range(width)) > width * 0.9)
     above = gray.crop((0, 0, width, edge))
-    # The line's soft upper rows span the whole width; measure the drawing clear of them.
-    left, top, right, _ = above.crop((0, 0, width, edge - 6)).point(lambda v: 255 if v < INK else 0).getbbox()
+    # The line's soft upper rows span the whole width; measure the drawing clear of them. A
+    # thicker line starts a few rows above `edge`, so step back to its first wide row.
+    line_top = edge
+    while line_top > 0 and sum(pixels[x, line_top - 1] < INK for x in range(width)) > width * 0.75:
+        line_top -= 1
+    left, top, right, _ = above.crop((0, 0, width, line_top - 6)).point(lambda v: 255 if v < INK else 0).getbbox()
     # Below the measured band only the paws meet the line; keep their rows but wipe the line's fringe.
     art = above.crop((left, top, right, edge))
     return art.point(lambda v: 255 if v > 200 else v)
