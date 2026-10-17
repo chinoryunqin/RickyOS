@@ -17,17 +17,13 @@ namespace rickyPaw {
 
 enum class Part : uint8_t { Outside, Pad, Toe };
 
-// A cat's paw: a rounder pad with a three-lobed heel and four oval toes set close together.
+// A cat's paw: one round pad and four small oval toes set close above it in a tight arc.
 constexpr Part catPartAt(const int px, const int py, const int s) {
   const auto inEllipse = [](long long dx, long long dy, long long rx, long long ry) {
     return dx * dx * ry * ry + dy * dy * rx * rx <= rx * rx * ry * ry;
   };
-  if (inEllipse(px - 50 * s, py - 60 * s, 26 * s, 16 * s)) return Part::Pad;
-  constexpr int kLobes[3][2] = {{34, 70}, {50, 75}, {66, 70}};
-  for (const auto& lobe : kLobes) {
-    if (inEllipse(px - lobe[0] * s, py - lobe[1] * s, 12 * s, 11 * s)) return Part::Pad;
-  }
-  constexpr int kToes[4][2] = {{20, 38}, {37, 20}, {63, 20}, {80, 38}};
+  if (inEllipse(px - 50 * s, py - 66 * s, 25 * s, 20 * s)) return Part::Pad;
+  constexpr int kToes[4][2] = {{22, 38}, {40, 24}, {60, 24}, {78, 38}};
   for (const auto& toe : kToes) {
     if (inEllipse(px - toe[0] * s, py - toe[1] * s, 9 * s, 11 * s)) return Part::Toe;
   }
