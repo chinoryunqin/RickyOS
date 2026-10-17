@@ -5159,6 +5159,67 @@
 +                                            uint32_t totalBudgetMs = 0,
 +                                            SourceCallback onSource = nullptr, void* sourceContext = nullptr);
  };
+--- a/src/network/RickyOtaManifest.h
++++ b/src/network/RickyOtaManifest.h
+@@ -65,7 +65,7 @@
+       case Product:
+         return text == "RickyOS";
+       case Board:
+-        return text == "readpico";
++        return text == ricky_ota::BOARD;
+       case Channel:
+         return text == "stable";
+       case Status:
+@@ -97,7 +97,7 @@
+       value = value * 10 + c - '0';
+     }
+     if (field == Schema) return value == 1;
+-    if (field == Chip) return value == 9;
++    if (field == Chip) return value == ricky_ota::CHIP_ID;
+     if (field == Flash) return value == 0x1000000;
+     imageBytes = value;
+     return value >= 24 && value % 4 == 0 && value <= ricky_ota::SLOT_BYTES - ricky_ota::RESERVE_BYTES &&
+--- a/src/network/RickyOtaPolicy.h
++++ b/src/network/RickyOtaPolicy.h
+@@ -9,6 +9,30 @@
+ #include "RickyCos.h"
+ 
+ namespace ricky_ota {
++#if FREEINK_DEVICE_METALIO_PLUS
++// The Plus has its own manifest beside the Read Pico's (which earlier Read Pico releases
++// fetch and must stay as it is); firmware files share the firmware/ folder. Diagnostic
++// builds may point COS at a test folder and drop the site route.
++#ifndef RICKYOS_OTA_COS_DIR
++#define RICKYOS_OTA_COS_DIR "/ota/"
++#endif
++#ifndef RICKYOS_OTA_SITE_ROUTE
++#define RICKYOS_OTA_SITE_ROUTE 1
++#endif
++inline constexpr char BOARD[] = "metalio-plus-s31";
++inline constexpr uint16_t CHIP_ID = 32;  // ESP32-S31
++inline constexpr bool SITE_ENABLED = RICKYOS_OTA_SITE_ROUTE != 0;
++inline constexpr char SITE_BASE[] = "https://chinoryunqin.github.io/RickyOS-site/";
++inline constexpr char MANIFEST_URL[] = "https://chinoryunqin.github.io/RickyOS-site/plus/ota.json";
++inline constexpr char NOTES_URL[] = "https://chinoryunqin.github.io/RickyOS-site/plus/ota-notes.txt";
++inline constexpr bool COS_ENABLED = RickyCos::ENABLED;
++inline constexpr char COS_BASE[] = RICKYOS_COS_BASE RICKYOS_OTA_COS_DIR;
++inline constexpr char COS_MANIFEST_URL[] = RICKYOS_COS_BASE RICKYOS_OTA_COS_DIR "plus/ota.json";
++inline constexpr char COS_NOTES_URL[] = RICKYOS_COS_BASE RICKYOS_OTA_COS_DIR "plus/ota-notes.txt";
++#else
++inline constexpr char BOARD[] = "readpico";
++inline constexpr uint16_t CHIP_ID = 9;  // ESP32-S3
++inline constexpr bool SITE_ENABLED = true;
+ inline constexpr char SITE_BASE[] = "https://chinoryunqin.github.io/RickyOS-site/";
+ inline constexpr char MANIFEST_URL[] = "https://chinoryunqin.github.io/RickyOS-site/ota.json";
+ inline constexpr char NOTES_URL[] = "https://chinoryunqin.github.io/RickyOS-site/ota-notes.txt";
+@@ -19,6 +43,7 @@
+ inline constexpr char COS_BASE[] = RICKYOS_COS_BASE "/ota/";
+ inline constexpr char COS_MANIFEST_URL[] = RICKYOS_COS_BASE "/ota/ota.json";
+ inline constexpr char COS_NOTES_URL[] = RICKYOS_COS_BASE "/ota/ota-notes.txt";
++#endif
+ inline constexpr size_t SLOT_BYTES = 0x640000;
+ inline constexpr size_t RESERVE_BYTES = 512 * 1024;
+ 
 --- a/src/network/WifiPowerSaveGuard.h
 +++ b/src/network/WifiPowerSaveGuard.h
 @@ -1,5 +1,17 @@

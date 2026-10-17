@@ -12,7 +12,11 @@
 #include "NetworkStartup.h"
 #include "WifiCredentialStore.h"
 
+#if RICKYOS_PLUS_OTA_SELFTEST
+extern void plusOtaSelfTestOnConnected();
+#else
 extern void plusRadioCompareOnConnected();
+#endif
 
 void plusRadioAutoStart(GfxRenderer& renderer) {
   bool connected = false;
@@ -72,7 +76,11 @@ void plusRadioAutoStart(GfxRenderer& renderer) {
   if (connected) {
     const bool route = Network.setDefaultInterface(WiFi.STA);
     LOG_INF("RADIOAUTO", "default_sta_route=%d", route);
+#if RICKYOS_PLUS_OTA_SELFTEST
+    if (route) plusOtaSelfTestOnConnected();
+#else
     if (route) plusRadioCompareOnConnected();
+#endif
   }
   LOG_INF("RADIOAUTO", "done joined=%d", connected);
 }

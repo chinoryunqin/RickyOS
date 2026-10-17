@@ -57,3 +57,4 @@ python3 tests/test_plus_font_source.py
 python3 tests/test_plus_boot_identity.py
 python3 tests/test_plus_reader_page_cache.py
 python3 tests/test_plus_usb_retry.py
+python3 tests/test_plus_ota_manifest.py

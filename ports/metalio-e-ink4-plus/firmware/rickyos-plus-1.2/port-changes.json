@@ -433,6 +433,16 @@
       "ported_sha256": "8dec8e5f30f24d301a14cba0cfeb10b5084b8cd4696b5017377693869036e880"
     },
     {
+      "path": "src/network/RickyOtaManifest.h",
+      "baseline_sha256": "38afa0bfd28cb95dd862b8e7fcf7611ac8925c4f5fa05da0d2d88052d6bac8f3",
+      "ported_sha256": "861dea711e7d6b1626a8204a272d1bd7e3ff9614a0cb5ebafdf8f3157c8ff924"
+    },
+    {
+      "path": "src/network/RickyOtaPolicy.h",
+      "baseline_sha256": "0a328f420911b3fcb79d3fcbe2935eeade552f8ee6c23370c8092a5af00d907d",
+      "ported_sha256": "c51820abd6e71af2e5a1f9e8d197390e7fc7b17b102df5b211c98ead60d3f37a"
+    },
+    {
       "path": "src/network/WifiPowerSaveGuard.h",
       "baseline_sha256": "00a0ea3d2a912d96af0c3c6f1e9815096b7d8dd39f352d9a7e5f15ad6ccd4580",
       "ported_sha256": "e820fad5603086a392b042ed72bb3235794ac97bf2ddc4ab6515ada644921f9e"

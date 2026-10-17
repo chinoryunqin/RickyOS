@@ -176,6 +176,7 @@ idf_component_register(
   "port/PlusWifiTxConfig.cpp"
   "port/PlusNetworkAcceptance.cpp"
   "port/PlusScreenTour2.cpp"
+  "port/PlusOtaSelfTest.cpp"
   "port/PlusBoard.cpp"
   "port/PlusAudio.cpp"
   "${APP_ROOT}/lib/hal/HalRecorder.cpp"
@@ -629,6 +630,12 @@ if("$ENV{RICKYOS_PLUS_NETWORK_ACCEPTANCE}" STREQUAL "1")
   set_source_files_properties("port/PlusRadioCompare.cpp" "port/PlusNetworkAcceptance.cpp"
       PROPERTIES COMPILE_DEFINITIONS RICKYOS_PLUS_NETWORK_ACCEPTANCE=1)
 endif()
+# Unattended OTA self-test (diagnostic builds only): joins the saved Wi-Fi, updates from
+# the COS test folder only, and may be built as an older version to have something to do.
+if("$ENV{RICKYOS_PLUS_OTA_SELFTEST}" STREQUAL "1")
+  target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_OTA_SELFTEST=1 RICKYOS_PLUS_RADIO_AUTOSTART=1
+                             RICKYOS_OTA_COS_DIR="/ota-test/" RICKYOS_OTA_SITE_ROUTE=0)
+endif()
 # Unattended screen tour for screenshots (diagnostic builds only).
 if(NOT "$ENV{RICKYOS_PLUS_SCREEN_TOUR}" STREQUAL "")
   target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_SCREEN_TOUR=$ENV{RICKYOS_PLUS_SCREEN_TOUR})
@@ -641,8 +648,14 @@ endif()
 if("$ENV{RICKYOS_PLUS_TAB_BENCH}" STREQUAL "1")
   target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_TAB_BENCH=1 RICKYOS_PAINT_PROFILE=1)
 endif()
+# The release version; a diagnostic build may set RICKYOS_PLUS_VERSION (e.g. an older
+# number to exercise an over-the-air update).
+set(RICKYOS_PLUS_APP_VERSION "1.2.0")
+if(NOT "$ENV{RICKYOS_PLUS_VERSION}" STREQUAL "")
+  set(RICKYOS_PLUS_APP_VERSION "$ENV{RICKYOS_PLUS_VERSION}")
+endif()
 target_compile_definitions(${COMPONENT_LIB} PUBLIC
-    RICKYOS_PRODUCT=1 CROSSPOINT_PRODUCT_NAME="RickyOS" CROSSPOINT_VERSION="1.2.0"
+    RICKYOS_PRODUCT=1 CROSSPOINT_PRODUCT_NAME="RickyOS" CROSSPOINT_VERSION="${RICKYOS_PLUS_APP_VERSION}"
     CROSSMUX_UI_PROFILE_HIGH_DPI=1 HYPHENATION_ENGLISH_ONLY=1
     XML_GE=0 XML_CONTEXT_BYTES=1024 MINIZ_NO_ZLIB_COMPATIBLE_NAMES=1
     PNG_MAX_BUFFERED_PIXELS=16416
