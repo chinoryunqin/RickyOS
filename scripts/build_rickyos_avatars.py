@@ -32,23 +32,25 @@ AVATARS = [
     ('penguin', 'Penguin in a beanie'),
     ('bichon', 'Bichon in a bandana (replaced the koala, same slot)'),
 ]
+# The default avatar (index 0) follows Profile -> Theme: the cat theme shows this instead of the puppy.
+CAT_DEFAULT = ('catDefault', 'theme-cat', 'The cat theme\'s default avatar: the P1 white kitten')
 INK_LEVEL = 128     # source pixels darker than this count as ink when finding the drawing
 FILL = 0.80         # share of the circle's diameter the drawing's width may take
 TOP = 0.10          # top margin, as a share of the circle's diameter
 
 
-def to_coverage(path: Path) -> Image.Image:
+def to_coverage(path: Path, fill: float = FILL, top: float = TOP) -> Image.Image:
     """The drawing at SIZE px as ink coverage 0 (paper) .. 15 (ink)."""
     source = Image.open(path).convert('L')
     box = source.point(lambda v: 255 if v < INK_LEVEL else 0).getbbox()
     if box is None:
         raise SystemExit(f'{path.name}: no ink found')
-    left, top, right, bottom = box
+    left, top_, right, bottom = box
     # Fit the width; a portrait's shoulders may run off the bottom of the circle, its ears may not.
-    side = int(max(right - left, (bottom - top) * 0.9) / FILL)
+    side = int(max(right - left, (bottom - top_) * 0.9) / fill)
     cx = (left + right) // 2
     canvas = Image.new('L', (side, side), 255)
-    canvas.paste(source.crop(box), (side // 2 - (cx - left), int(side * TOP)))
+    canvas.paste(source.crop(box), (side // 2 - (cx - left), int(side * top)))
     small = canvas.resize((SIZE, SIZE), Image.LANCZOS)
     return small.point(lambda v: (255 - v) * 15 // 255 if v < 248 else 0)
 
@@ -67,7 +69,7 @@ def rle(image: Image.Image) -> bytes:
     return bytes(out)
 
 
-def header_text(images) -> str:
+def header_text(images, cat_default) -> str:
     lines = [
         '#pragma once',
         '',
@@ -90,6 +92,14 @@ def header_text(images) -> str:
         for start in range(0, len(data), 19):
             lines.append('    ' + ' '.join(f'0x{b:02X},' for b in data[start:start + 19]))
         lines.append('};')
+    name, _, label = CAT_DEFAULT
+    data = rle(cat_default)
+    lines.append(f'// {label}')
+    lines.append(f'inline constexpr uint8_t {name}[] = {{')
+    for start in range(0, len(data), 19):
+        lines.append('    ' + ' '.join(f'0x{b:02X},' for b in data[start:start + 19]))
+    lines.append('};')
+    lines.append(f'inline constexpr uint16_t CAT_DEFAULT_BYTES = {len(data)};')
     names = ', '.join(name for name, _ in AVATARS)
     lines.append(f'inline constexpr const uint8_t* ALL[] = {{{names}}};')
     lines.append(f'inline constexpr uint16_t BYTES[] = {{{", ".join(str(n) for n in lengths)}}};')
@@ -135,9 +145,11 @@ def main() -> None:
     parser.add_argument('--preview', type=Path)
     args = parser.parse_args()
     images = [to_coverage(SOURCES / f'{name}.png') for name, _ in AVATARS]
-    args.out.write_text(header_text(images))
+    # Its wide ears would touch the circle at the usual size.
+    cat_default = to_coverage(SOURCES / f'{CAT_DEFAULT[1]}.png', fill=0.70, top=0.14)
+    args.out.write_text(header_text(images, cat_default))
     if args.preview:
-        preview(images, args.preview)
+        preview(images + [cat_default], args.preview)
 
 
 if __name__ == '__main__':

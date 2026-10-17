@@ -278,8 +278,10 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
       box(profile.right() - ds::layout::kAvatarSize, profile.y, ds::layout::kAvatarSize, ds::layout::kAvatarSize);
   {
     // Same picture on the same paper every visit; a custom one is otherwise read from SD.
-    char key[sizeof(SETTINGS.rickyAvatarPath) + 48];
-    snprintf(key, sizeof(key), "avatar|%s|%d,%d,%d", SETTINGS.rickyAvatarPath, avatar.x, avatar.y, avatar.width);
+    // The theme picks the default avatar's picture, so it is part of the key.
+    char key[sizeof(SETTINGS.rickyAvatarPath) + 52];
+    snprintf(key, sizeof(key), "avatar|%s|%u|%d,%d,%d", SETTINGS.rickyAvatarPath,
+             static_cast<unsigned>(SETTINGS.rickyCompanion), avatar.x, avatar.y, avatar.width);
     PanelTileCache::draw(renderer, key, "avatar", avatar.x, avatar.y, avatar.width, avatar.height, [&] {
       RickyProfile::drawAvatar(renderer, Rect{avatar.x, avatar.y, avatar.width, avatar.height});
       return true;

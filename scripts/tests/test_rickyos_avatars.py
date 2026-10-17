@@ -30,6 +30,16 @@ class RickyAvatarTest(unittest.TestCase):
             self.assertTrue(2000 < ink < 16000, name)  # line art, not a blank or a filled disc
             self.assertLess(len(data), 6000, name)  # about what a 1-bit copy would take
 
+    def test_cat_theme_default_avatar(self):
+        text = HEADER.read_text()
+        self.assertTrue((SOURCES / 'theme-cat.png').exists())
+        self.assertIn('inline constexpr uint8_t catDefault[] = {', text)
+        self.assertIn('inline constexpr uint16_t CAT_DEFAULT_BYTES = ', text)
+        profile = (ROOT / 'src/components/RickyProfile.cpp').read_text()
+        self.assertIn('index == 0 && SETTINGS.rickyCat()', profile)
+        home = (ROOT / 'src/components/RickyHomeUi.cpp').read_text()
+        self.assertIn('SETTINGS.rickyCompanion', home)  # the cached home avatar follows the theme
+
     def test_regeneration_matches_checked_in_header(self):
         with tempfile.TemporaryDirectory(prefix='ricky-avatars-') as directory:
             output = Path(directory) / 'avatars.h'

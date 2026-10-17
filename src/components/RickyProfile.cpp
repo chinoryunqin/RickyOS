@@ -112,8 +112,10 @@ void drawPresetAvatar(const GfxRenderer& renderer, const Rect& rect, const int i
   constexpr int SOURCE = RickyAvatars::SIZE;
   const int drawn = std::min(size, SOURCE);
   const int x0 = rect.x + (size - drawn) / 2, y0 = rect.y + (size - drawn) / 2;
-  const uint8_t* rle = RickyAvatars::ALL[index];
-  const int rleBytes = RickyAvatars::BYTES[index];
+  // The default avatar follows Profile -> Theme; the stored index stays 0.
+  const bool themed = index == 0 && SETTINGS.rickyCat();
+  const uint8_t* rle = themed ? RickyAvatars::catDefault : RickyAvatars::ALL[index];
+  const int rleBytes = themed ? RickyAvatars::CAT_DEFAULT_BYTES : RickyAvatars::BYTES[index];
   const bool gray = renderer.isGrayscale16Active();
   uint16_t columns[SOURCE];
   int next = 0, run = 0, level = 0, sourceY = 0;
