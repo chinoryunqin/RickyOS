@@ -4,11 +4,12 @@ import { pathToFileURL } from 'node:url';
 import { requireThat } from '../src/policy.js';
 import { catalogReleases } from '../src/catalog.js';
 import { PLUS } from '../src/plus.js';
+import { EEGO } from '../src/eego.js';
 
 // The web catalog is the sole source of truth. Each device gets a small flat derivative
 // so it never buffers full-install profiles on its limited heap. The Read Pico's stays at
 // ota.json (every shipped Read Pico release reads it); other boards get <dir>/ota.json.
-export const OTA_DIRS = Object.freeze({ readpico: '', [PLUS.board]: 'plus/' });
+export const OTA_DIRS = Object.freeze({ readpico: '', [PLUS.board]: 'plus/', [EEGO.board]: 'eego/' });
 
 export function otaManifest(catalog, board = 'readpico') {
   const release = catalogReleases(catalog)[board];

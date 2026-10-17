@@ -1,9 +1,11 @@
 import { checkRelease, requireThat } from './policy.js';
 import { checkPlusRelease, PLUS } from './plus.js';
+import { checkEegoRelease, EEGO } from './eego.js';
 
 // releases.json: at most one checked release per board. Read Pico keeps its existing
 // entry format; other boards carry their own mode and are checked by their own policy.
-export const BOARDS = Object.freeze({ readpico: checkRelease, [PLUS.board]: checkPlusRelease });
+export const BOARDS = Object.freeze({ readpico: checkRelease, [PLUS.board]: checkPlusRelease,
+  [EEGO.board]: checkEegoRelease });
 
 export function catalogReleases(catalog) {
   requireThat(catalog?.schema === 1 && catalog.product === 'RickyOS' && Array.isArray(catalog.releases),

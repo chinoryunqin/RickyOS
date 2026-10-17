@@ -20,6 +20,7 @@ version. Devices from 1.2.0 ask the bucket first (RickyOtaPolicy.h); older ones 
 site, so every release goes to both.
 --device plus publishes the Plus offer instead: dist/plus/ota.json and ota-notes.txt to
 ota/plus/, its image to the shared ota/firmware/. The Read Pico's files are untouched.
+--device eego does the same for the EEGO A4 (dist/eego/ -> ota/eego/).
 --cos-dir (default ota) puts everything under another top folder, e.g. ota-test for a
 device test build; the official folder is never written then.
 
@@ -42,7 +43,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from rickyos_asset_routes import check_cos_base  # noqa: E402
 
 KINDS = ("fonts", "wallpapers", "ota")
-DEVICES = {"readpico": ("", "readpico"), "plus": ("plus/", "metalio-plus-s31")}
+DEVICES = {"readpico": ("", "readpico"), "plus": ("plus/", "metalio-plus-s31"), "eego": ("eego/", "eego_a4")}
 IMMUTABLE = "Cache-Control:public,max-age=31536000,immutable"
 ROLLING = "Cache-Control:no-cache"
 
