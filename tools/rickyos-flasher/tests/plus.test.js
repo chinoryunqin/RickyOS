@@ -130,8 +130,8 @@ test('OTA files: the Read Pico manifest unchanged, the Plus beside it only once 
   const { otaFiles, otaManifest } = await import('../scripts/build-ota.js');
   const { readFile } = await import('node:fs/promises');
   const published = JSON.parse(await readFile(new URL('../public/releases.json', import.meta.url), 'utf8'));
-  // The Read Pico's offer on its own, whether or not the Plus is already in the catalog.
-  const live = { ...published, releases: published.releases.filter((item) => item.board !== PLUS.board) };
+  // The Read Pico's offer on its own, whatever other boards the catalog already has.
+  const live = { ...published, releases: published.releases.filter((item) => item.board === 'readpico') };
   const picoOnly = otaFiles(live);
   assert.deepEqual(picoOnly.map(([path]) => path), ['ota.json', 'ota-notes.txt']);
   assert.equal(picoOnly[0][1], JSON.stringify(otaManifest(live), null, 2) + '\n');
