@@ -7,14 +7,11 @@
 #include <HapticFeedback.h>
 #include <Logging.h>
 #include <PowerManager.h>
-#include <Preferences.h>
 #include <SPI.h>
 #include <Wire.h>
-#include <XteinkDetect.h>
 #include <driver/gpio.h>
 #include <esp_sleep.h>
 
-#include "Waveshare397Power.h"
 
 
 
@@ -107,106 +104,8 @@ bool readBQ27220CurrentMA(int16_t* outCurrent) {
 
 }  // namespace X3GPIO
 
-namespace {
-constexpr char HW_NAMESPACE[] = "cphw";
-constexpr char NVS_KEY_DEV_OVERRIDE[] = "dev_ovr";  // 0=auto, 1=x4, 2=x3
-constexpr char NVS_KEY_DEV_CACHED[] = "dev_det";    // 0=unknown, 1=x4, 2=x3
-
-
-enum class NvsDeviceValue : uint8_t { Unknown = 0, X4 = 1, X3 = 2 };
-
-uint8_t readNvsUChar(const char* key, const uint8_t defaultValue) {
-  Preferences prefs;
-  if (!prefs.begin(HW_NAMESPACE, true)) return defaultValue;
-  const uint8_t value = prefs.getUChar(key, defaultValue);
-  prefs.end();
-  return value;
-}
-
-bool writeNvsUChar(const char* key, const uint8_t value) {
-  Preferences prefs;
-  if (!prefs.begin(HW_NAMESPACE, false)) return false;
-  const bool written = prefs.putUChar(key, value) == sizeof(value);
-  prefs.end();
-  return written;
-}
-
-NvsDeviceValue readNvsDeviceValue(const char* key, NvsDeviceValue defaultValue) {
-  const uint8_t raw = readNvsUChar(key, static_cast<uint8_t>(defaultValue));
-  if (raw > static_cast<uint8_t>(NvsDeviceValue::X3)) {
-    return defaultValue;
-  }
-  return static_cast<NvsDeviceValue>(raw);
-}
-
-void writeNvsDeviceValue(const char* key, NvsDeviceValue value) { writeNvsUChar(key, static_cast<uint8_t>(value)); }
-
-HalGPIO::DeviceType nvsToDeviceType(NvsDeviceValue value) {
-  return value == NvsDeviceValue::X3 ? HalGPIO::DeviceType::X3 : HalGPIO::DeviceType::X4;
-}
-
-HalGPIO::DeviceType detectDeviceTypeWithFingerprint() {
-  // Explicit override for recovery/support:
-  // 0 = auto, 1 = force X4, 2 = force X3
-  const NvsDeviceValue overrideValue = readNvsDeviceValue(NVS_KEY_DEV_OVERRIDE, NvsDeviceValue::Unknown);
-  if (overrideValue == NvsDeviceValue::X3 || overrideValue == NvsDeviceValue::X4) {
-    LOG_INF("HW", "Device override active: %s", overrideValue == NvsDeviceValue::X3 ? "X3" : "X4");
-    return nvsToDeviceType(overrideValue);
-  }
-
-  const NvsDeviceValue cachedValue = readNvsDeviceValue(NVS_KEY_DEV_CACHED, NvsDeviceValue::Unknown);
-  if (cachedValue == NvsDeviceValue::X3 || cachedValue == NvsDeviceValue::X4) {
-    LOG_INF("HW", "Using cached device type: %s", cachedValue == NvsDeviceValue::X3 ? "X3" : "X4");
-    return nvsToDeviceType(cachedValue);
-  }
-
-  // No cache yet: use FreeInk's canonical two-pass X3 fingerprint and persist
-  // only confirmed results. Inconclusive probes deliberately remain uncached.
-  uint8_t score1 = 0;
-  uint8_t score2 = 0;
-  const freeink::XteinkVerdict verdict = freeink::detectXteinkVerdict(&score1, &score2);
-  LOG_INF("HW", "Xteink probe scores: pass1=%u pass2=%u verdict=%u", score1, score2, static_cast<unsigned>(verdict));
-
-  if (verdict == freeink::XteinkVerdict::X3Confirmed) {
-    writeNvsDeviceValue(NVS_KEY_DEV_CACHED, NvsDeviceValue::X3);
-    return HalGPIO::DeviceType::X3;
-  }
-
-  if (verdict == freeink::XteinkVerdict::X4Confirmed) {
-    writeNvsDeviceValue(NVS_KEY_DEV_CACHED, NvsDeviceValue::X4);
-    return HalGPIO::DeviceType::X4;
-  }
-
-  // Conservative fallback for first boot with inconclusive probes.
-  return HalGPIO::DeviceType::X4;
-}
-
-
-}  // namespace
-
 void HalGPIO::begin() {
-#if FREEINK_MCU_C3
-  _deviceType = detectDeviceTypeWithFingerprint();
-  BoardConfig::selectDevice(deviceIsX3() ? BoardConfig::Board::XteinkX3 : BoardConfig::Board::XteinkX4);
-
-  // Resolve the per-batch controller before SPI owns the display pins. FreeInk
-  // checks the OEM hw_calib/screenType value first, then falls back to its
-  // two-pass display-bus probe. X3's facade keys panel selection off the sibling
-  // board profile, so preserve a detected UC8279 through setDisplayX3().
-  freeink::applyXteinkDisplayController();
-  if (deviceIsX3() && BoardConfig::ACTIVE.displayController == BoardConfig::DisplayController::UC8279) {
-    BoardConfig::selectDevice(BoardConfig::Board::XteinkX3Uc8279);
-  }
-
-  SPI.begin(EPD_SCLK, SPI_MISO, EPD_MOSI, EPD_CS);
-
-  if (deviceIsX4()) {
-    pinMode(BAT_GPIO0, INPUT);
-    pinMode(UART0_RXD, INPUT);
-  }
-#else
   _deviceType = DeviceType::X4;
-#endif
 #if FREEINK_DEVICE_READPICO
   // BOARD PHASE, before anything else on this board: shared I2C (SDA39/SCL40,
   // 400 kHz), the FCA9555 expander self-test + Port-0 configuration, the
@@ -396,7 +295,7 @@ bool HalGPIO::verifyPowerButtonWakeup() {
 }
 
 bool HalGPIO::verifyPowerButtonWakeup(const uint16_t requiredDurationMs, const bool shortPressAllowed) {
-  if (BoardConfig::isX4Pro() || FREEINK_DEVICE_X4CLASSIC || BoardConfig::isPaperMono() || BoardConfig::isM5PaperV11() ||
+  if (BoardConfig::isX4Pro() || BoardConfig::isPaperMono() || BoardConfig::isM5PaperV11() ||
       BoardConfig::ACTIVE.input.power < 0 || shortPressAllowed) {
     return true;
   }

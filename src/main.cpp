@@ -21,7 +21,6 @@
 #include <TrustedTime.h>
 #include <VectorFontSupport.h>
 #include <WiFi.h>
-#include <XteinkDetect.h>
 #if FREEINK_CAP_TOUCH
 #include <esp_sntp.h>
 #endif
@@ -743,11 +742,11 @@ void setup() {
       delay(10);
     }
     const uint8_t recoveryButton =
-        (BoardConfig::isX4Pro() || FREEINK_DEVICE_X4CLASSIC) ? HalGPIO::BTN_DOWN : HalGPIO::BTN_UP;
+        BoardConfig::isX4Pro() ? HalGPIO::BTN_DOWN : HalGPIO::BTN_UP;
     recoveryFirmwareMode = gpio.isPressed(recoveryButton);
     if (recoveryFirmwareMode) {
       LOG_INF("MAIN", "Recovery firmware mode (%s + POWER held at boot)",
-              (BoardConfig::isX4Pro() || FREEINK_DEVICE_X4CLASSIC) ? "DOWN" : "UP");
+              BoardConfig::isX4Pro() ? "DOWN" : "UP");
     }
   }
 
@@ -834,8 +833,7 @@ void setup() {
     case HalGPIO::WakeupReason::AfterUSBPower:
       // Most devices return to sleep after a USB-powered cold boot.
       LOG_DBG("MAIN", "Wakeup reason: After USB Power");
-#if FREEINK_DEVICE_X4PRO || FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_PAPERMONO || FREEINK_DEVICE_EEGO_A4 || \
-    FREEINK_DEVICE_WAVESHARE_EPAPER_397 || FREEINK_DEVICE_METALIO_EINK4 || FREEINK_DEVICE_READPICO
+#if FREEINK_DEVICE_EEGO_A4 || FREEINK_DEVICE_READPICO
       // X4 Pro must stay awake so USB Serial/JTAG remains available after leaving
       // USB Drive and reconnecting the cable. Paper Mono has no armable GPIO wake
       // (its button is behind the PMIC). EEGO A4's post-flash reset reads as

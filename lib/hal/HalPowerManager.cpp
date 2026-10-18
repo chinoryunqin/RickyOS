@@ -21,7 +21,6 @@
 #endif
 
 #include "HalGPIO.h"
-#include "Waveshare397Power.h"
 
 HalPowerManager powerManager;  // Singleton instance
 
@@ -254,7 +253,7 @@ void HalPowerManager::setPowerSaving(bool enabled) {
 }
 
 void HalPowerManager::startDeepSleep(HalGPIO& gpio) const {
-#if defined(ENABLE_SERIAL_LOG) && !FREEINK_DEVICE_METALIO_EINK4 && !FREEINK_DEVICE_READPICO
+#if defined(ENABLE_SERIAL_LOG) && !FREEINK_DEVICE_READPICO
   // Tear down HWCDC so the host sees a clean disconnect and the peripheral
   // doesn't hold power domains that interfere with USB-powered GPIO wake.
   // logSerial is the raw HWCDC reference; Serial is the MySerialImpl proxy

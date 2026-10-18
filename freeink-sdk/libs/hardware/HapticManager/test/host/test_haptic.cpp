@@ -23,7 +23,6 @@ int main(int argc, char**) {
     std::puts("Haptic mutex allocation failure passed");
     return 0;
   }
-  static_assert(BoardConfig::METALIO_EINK4.haptic.gpio == 44);
   assert(haptic.supported() && !haptic.present());
   assert(!haptic.pulse()); // explicit init
   failCreate = true;

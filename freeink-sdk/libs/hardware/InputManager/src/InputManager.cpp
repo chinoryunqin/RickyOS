@@ -3,9 +3,6 @@
 #include <algorithm>
 
 #include "MultiTouchGestureMath.h"
-#if FREEINK_DEVICE_METALIO_EINK4
-#include <MetalioEink4Board.h>
-#endif
 
 #if FREEINK_CAP_TOUCH
 #include <Wire.h>
@@ -15,16 +12,10 @@
 #if FREEINK_DEVICE_EEGO_A4
 #include "gsl/EegoA4GslFirmware.h"
 #endif
-#if FREEINK_DEVICE_MURPHY_M4
-#include <MurphyM4I2c.h>
-#endif
 #if FREEINK_DEVICE_READPICO
 #include <BoardReadPico.h>
 #include <esp_rom_sys.h>
 #endif
-#endif
-#if FREEINK_DEVICE_PAPERMONO
-#include <PaperMonoBoard.h>
 #endif
 #if defined(TOUCH_PROBE_DEBUG)
 #include <esp_rom_sys.h>
@@ -55,7 +46,7 @@ const char* InputManager::BUTTON_NAMES[] = {"Back", "Confirm", "Left", "Right", 
 namespace {
 int absInt(const int value) { return value < 0 ? -value : value; }
 
-#if FREEINK_DEVICE_EEGO_A4 || FREEINK_DEVICE_MURPHY_M4 || FREEINK_DEVICE_METALIO_EINK4 || FREEINK_DEVICE_READPICO
+#if FREEINK_DEVICE_EEGO_A4 || FREEINK_DEVICE_READPICO
 bool movedBeyondSlop(const int dx, const int dy, const int slop) {
   return absInt(dx) > slop || absInt(dy) > slop;
 }
@@ -363,10 +354,6 @@ uint8_t InputManager::getDigitalState() const {
     state |= (1 << BTN_POWER);
   }
 
-#if FREEINK_DEVICE_METALIO_EINK4
-  state |= freeink::metalio::buttons();
-  if (!freeink::metalio::powerButtonPressed(state & (1u << BTN_POWER))) state &= ~(1u << BTN_POWER);
-#endif
   return state;
 }
 
@@ -502,16 +489,6 @@ void InputManager::updateDigitalTwoButton(const unsigned long currentTime) {
   updatePhysicalPressed(static_cast<uint8_t>((up ? 1u << BTN_UP : 0u) | (down ? 1u << BTN_DOWN : 0u)), currentTime);
   uint8_t auxiliaryState = serviceTouch();
   if (s_buttonHook) auxiliaryState |= s_buttonHook();
-#if FREEINK_DEVICE_PAPERMONO
-  // The power button reaches only the PM1 PMIC; clicks surface here as a
-  // one-tick BTN_POWER pulse in the STATE, so applyStateChange() emits the
-  // press this update and the release on the next. Never write the event
-  // masks directly — applyStateChange() assigns them from the state diff,
-  // clobbering direct writes the same tick.
-  if (freeink::papermono::pollPowerButtonClicked(currentTime)) {
-    auxiliaryState |= static_cast<uint8_t>(1u << BTN_POWER);
-  }
-#endif
 
   if (physical != twoButtonPhysicalState) {
     const uint8_t releasedPhysical = twoButtonPhysicalState;
@@ -547,48 +524,12 @@ void InputManager::updateDigitalTwoButton(const unsigned long currentTime) {
   if (pressedEvents & (1u << BTN_POWER)) powerButtonPressStart = twoButtonPressStart;
 }
 
-#if FREEINK_DEVICE_WAVESHARE_EPAPER_397
-void InputManager::updateFunctionMultiGesture(const unsigned long currentTime) {
-  using Gesture = freeink::input::FunctionButtonGesture;
-  static_assert(Gesture::BACK == (1u << BTN_BACK) && Gesture::CONFIRM == (1u << BTN_CONFIRM) &&
-                    Gesture::LEFT == (1u << BTN_LEFT) && Gesture::RIGHT == (1u << BTN_RIGHT) &&
-                    Gesture::UP == (1u << BTN_UP) && Gesture::DOWN == (1u << BTN_DOWN),
-                "Function gesture button bits must match InputManager");
-
-  uint8_t raw = 0;
-  if (isDigitalPressed(BoardConfig::ACTIVE.input.back)) raw |= Gesture::BACK;
-  if (isDigitalPressed(BoardConfig::ACTIVE.input.left)) raw |= Gesture::LEFT;
-  if (isDigitalPressed(BoardConfig::ACTIVE.input.right)) raw |= Gesture::RIGHT;
-  if (isDigitalPressed(BoardConfig::ACTIVE.input.confirm)) raw |= Gesture::CONFIRM;
-
-  const auto state = functionButtonGesture.update(raw, currentTime);
-  const uint8_t auxiliaryState = s_buttonHook ? s_buttonHook() : 0;
-  applyStateChange(state.down | auxiliaryState, currentTime);
-  physicalPressedEvents = state.physicalPressed | (pressedEvents & (1u << BTN_POWER));
-  pressedEvents |= state.pressed;
-  releasedEvents |= state.released;
-
-  const uint8_t direction = Gesture::LEFT | Gesture::RIGHT | Gesture::UP | Gesture::DOWN;
-  if (state.pressed & direction) buttonPressStart = state.startedMs;
-  if (state.released & direction) buttonPressFinish = currentTime;
-  if (state.pressed & Gesture::CONFIRM) buttonPressStart = state.startedMs;
-  const uint8_t click = Gesture::BACK | Gesture::CONFIRM;
-  if ((state.pressed & click) && (state.released & click)) {
-    buttonPressStart = state.startedMs;
-    buttonPressFinish = currentTime;
-  }
-}
-#endif
-
 void InputManager::update() {
   const unsigned long currentTime = millis();
 
   pressedEvents = 0;
   releasedEvents = 0;
   physicalPressedEvents = 0;
-#if FREEINK_DEVICE_METALIO_EINK4
-  touchContactPressedEvent = false;
-#endif
   touchPressedEvent = false;  // one-shot touch coord events, cleared each update()
   touchReleasedEvent = false;
   touchLongPressEvent = false;
@@ -611,13 +552,6 @@ void InputManager::update() {
     updateDigitalTwoButton(currentTime);
     return;
   }
-#if FREEINK_DEVICE_WAVESHARE_EPAPER_397
-  if (BoardConfig::ACTIVE.board == BoardConfig::Board::WaveshareEpaper397 &&
-      BoardConfig::ACTIVE.inputStyle == BoardConfig::InputStyle::DigitalFunctionMultiGesture) {
-    updateFunctionMultiGesture(currentTime);
-    return;
-  }
-#endif
 
   const uint8_t physicalState = getPhysicalState();
   uint8_t state = physicalState | serviceTouch();
@@ -819,12 +753,6 @@ unsigned long InputManager::lastTouchHeldMs() const {
 }
 
 bool InputManager::wasTouchActivity() const {
-#if FREEINK_DEVICE_METALIO_EINK4
-  if (touchHomeKeyEvent || touchHomeKeyTapEvent || touchHomeKeyLongEvent ||
-      cstContact.region == freeink::Cst816sRegion::Home || cstContact.region == freeink::Cst816sRegion::Previous ||
-      cstContact.region == freeink::Cst816sRegion::Next)
-    return true;
-#endif
 #if FREEINK_CAP_TOUCH
   const bool screenActivity = touchPressedEvent || touchReleasedEvent;
   const bool homeKeyActivity = touchHomeKeyEvent || touchHomeKeyTapEvent || touchHomeKeyLongEvent;
@@ -927,16 +855,10 @@ bool InputManager::wasTouchLongPress(float& nx, float& ny) const {
 }
 
 void InputManager::suppressTouchContact() {
-#if FREEINK_DEVICE_METALIO_EINK4
-  touchContactPressedEvent = false;
-#endif
 #if FREEINK_CAP_TOUCH
   // Only meaningful mid-contact (or on its release-edge frame); the latch
   // self-clears in serviceTouch() once the contact is fully over.
   if (touchPressed || touchReleasedEvent
-#if FREEINK_DEVICE_METALIO_EINK4
-      || cstContact.region != freeink::Cst816sRegion::None
-#endif
   )
     touchSuppressed = true;
   cancelMultiTouchGesture();
@@ -1324,10 +1246,6 @@ void InputManager::clearTouchTapEvent() {
   // cleared in update(), but a pushActivity runs mid-frame).
   touchPressedEvent = false;
   touchReleasedEvent = false;
-#if FREEINK_DEVICE_METALIO_EINK4
-  touchHomeKeyEvent = touchHomeKeyTapEvent = touchHomeKeyLongEvent = false;
-  touchContactPressedEvent = false;
-#endif
 }
 
 void InputManager::prepareForDeepSleep() {
@@ -1335,14 +1253,6 @@ void InputManager::prepareForDeepSleep() {
   const auto& t = BoardConfig::ACTIVE.touch;
   switch (t.controller) {
     case BoardConfig::TouchController::Ft6336u:
-#if FREEINK_DEVICE_MURPHY_M4
-      pauseFt6336uPolling();
-      if (t.powerEnable >= 0) {
-        pinMode(t.powerEnable, OUTPUT);
-        digitalWrite(t.powerEnable, t.powerEnableActiveHigh ? LOW : HIGH);
-      }
-      touchDataEnabled = false;
-#endif
       return;
     case BoardConfig::TouchController::Gslx680:
 #if FREEINK_DEVICE_EEGO_A4
@@ -1361,13 +1271,6 @@ void InputManager::prepareForDeepSleep() {
 #endif
       return;
     case BoardConfig::TouchController::Cst816s:
-#if FREEINK_DEVICE_METALIO_EINK4
-      if (t.irq >= 0) detachInterrupt(t.irq);
-      if (touchDataEnabled && !freeink::metalio::sleepTouch())
-        esp_rom_printf("[touch] CST816S sleep command failed\r\n");
-      touchContactPressedEvent = false;
-      touchDataEnabled = false;
-#endif
       return;
     case BoardConfig::TouchController::Cst836u:
 #if FREEINK_DEVICE_READPICO
@@ -1396,36 +1299,15 @@ void InputManager::prepareForDeepSleep() {
 }
 
 bool InputManager::reinitializeTouchAfterSharedReset() {
-#if FREEINK_DEVICE_MURPHY_M4
-  if (BoardConfig::ACTIVE.touch.controller == BoardConfig::TouchController::Ft6336u) {
-    if (!beginFt6336u(false)) return false;
-    if (!startFt6336uPolling()) {
-      esp_rom_printf("[touch] M4 static polling task unavailable; using synchronous polling\r\n");
-    }
-    return true;
-  }
-#endif
   return true;
 }
 
 void InputManager::beginTouch() {
 #if FREEINK_CAP_TOUCH
   const auto& t = BoardConfig::ACTIVE.touch;
-#if FREEINK_DEVICE_METALIO_EINK4
-  if (t.controller == BoardConfig::TouchController::Cst816s) {
-    beginCst816s();
-    return;
-  }
-#endif
 #if FREEINK_DEVICE_EEGO_A4
   if (t.controller == BoardConfig::TouchController::Gslx680) {
       beginGslx680();
-    return;
-  }
-#endif
-#if FREEINK_DEVICE_MURPHY_M4
-  if (t.controller == BoardConfig::TouchController::Ft6336u) {
-    beginFt6336u(true);
     return;
   }
 #endif
@@ -1470,9 +1352,6 @@ uint8_t InputManager::serviceTouch() {
   // release edge consumed) and a new contact beginning in this same call is
   // delivered normally.
   if (!touchPressed && !touchReleasedEvent
-#if FREEINK_DEVICE_METALIO_EINK4
-      && cstContact.region == freeink::Cst816sRegion::None
-#endif
   ) {
     touchSuppressed = false;
     touchLongPressFired = false;
@@ -1486,18 +1365,9 @@ uint8_t InputManager::serviceTouch() {
   // idempotent, so having both costs nothing).
   uint8_t cst836uButtons = 0;
 #endif
-#if FREEINK_DEVICE_METALIO_EINK4
-  const uint8_t cstButtons = t.controller == BoardConfig::TouchController::Cst816s ? pollCst816s(now) : 0;
-  if (t.controller != BoardConfig::TouchController::Cst816s)
-#endif
 #if FREEINK_DEVICE_EEGO_A4
   if (t.controller == BoardConfig::TouchController::Gslx680) {
     pollGslx680(now);
-  } else
-#endif
-#if FREEINK_DEVICE_MURPHY_M4
-  if (t.controller == BoardConfig::TouchController::Ft6336u) {
-    pollFt6336u(now);
   } else
 #endif
   {
@@ -1526,9 +1396,6 @@ uint8_t InputManager::serviceTouch() {
     touchLongPressEvent = true;
   }
 
-#if FREEINK_DEVICE_METALIO_EINK4
-  if (t.controller == BoardConfig::TouchController::Cst816s) return cstButtons;
-#endif
 #if FREEINK_DEVICE_READPICO
   if (t.controller == BoardConfig::TouchController::Cst836u) return cst836uButtons;
 #endif
@@ -1639,7 +1506,7 @@ uint16_t InputManager::mapTouchAxis(uint16_t raw, const uint16_t rawMin, const u
   return static_cast<uint32_t>(raw - rawMin) * outMax / (rawMax - rawMin);
 }
 
-#if FREEINK_DEVICE_EEGO_A4 || FREEINK_DEVICE_MURPHY_M4 || FREEINK_DEVICE_METALIO_EINK4 || FREEINK_DEVICE_READPICO
+#if FREEINK_DEVICE_EEGO_A4 || FREEINK_DEVICE_READPICO
 InputManager::TouchPoint InputManager::mapTouchPoint(const uint16_t rawX, const uint16_t rawY,
                                                      const unsigned long now) const {
   const auto& t = BoardConfig::ACTIVE.touch;
@@ -1648,11 +1515,7 @@ InputManager::TouchPoint InputManager::mapTouchPoint(const uint16_t rawX, const 
   const uint16_t width = t.rawMaxX > t.rawMinX ? t.rawMaxX - t.rawMinX : 1;
   const uint16_t height = t.rawMaxY > t.rawMinY ? t.rawMaxY - t.rawMinY : 1;
   uint16_t x = mapTouchAxis(sx, t.rawMinX, t.rawMaxX, width);
-#if FREEINK_DEVICE_MURPHY_M4
-  uint16_t y = freeink::mapMurphyM4TouchShortAxis(sy, murphyM4Batch, height);
-#else
   uint16_t y = mapTouchAxis(sy, t.rawMinY, t.rawMaxY, height);
-#endif
   if (t.flipX) x = static_cast<uint16_t>(width - x);
   if (t.flipY) y = static_cast<uint16_t>(height - y);
   return {true, x, y, now};
@@ -1682,71 +1545,6 @@ void InputManager::releaseTouch(const unsigned long now) {
   }
   touchPressed = false;
   touchPoint.valid = false;
-}
-#endif
-
-#if FREEINK_DEVICE_METALIO_EINK4
-void InputManager::beginCst816s() {
-  static_assert(BTN_UP == 4 && BTN_DOWN == 5, "Metalio expander mask follows the SDK button indices");
-  if (!freeink::metalio::begin()) {
-    esp_rom_printf("[touch] Metalio board initialization failed\r\n");
-    return;
-  }
-  const auto irq = BoardConfig::ACTIVE.touch.irq;
-  pinMode(irq, INPUT_PULLUP);
-  attachInterruptArg(
-      irq, [](void* arg) IRAM_ATTR { __atomic_store_n(static_cast<volatile bool*>(arg), true, __ATOMIC_RELAXED); },
-      const_cast<bool*>(&cstIrqPending), FALLING);
-  touchDataEnabled = true;
-}
-
-uint8_t InputManager::pollCst816s(const unsigned long now) {
-  using Region = freeink::Cst816sRegion;
-  const bool retryReady = cstFrame.region != Region::Invalid || static_cast<int32_t>(now - cstRetryAt) >= 0;
-  const bool active = cstContact.region != Region::None;
-  // Read on IRQ and while held (release IRQs may be lost). Do not poll an idle
-  // CST816S: it may auto-sleep. Cancelled contacts retry after two seconds.
-  if (retryReady &&
-      ((active && static_cast<int32_t>(now - cstReadAt) >= 0) || __atomic_load_n(&cstIrqPending, __ATOMIC_RELAXED))) {
-    __atomic_store_n(&cstIrqPending, false, __ATOMIC_RELAXED);
-    uint8_t data[5];
-    if (freeink::metalio::read(BoardConfig::ACTIVE.touch.i2cAddress, 0x02, data, sizeof(data))) {
-      cstRetryAt = now;
-      cstFrame = freeink::decodeCst816s(data, sizeof(data));
-      cstReadAt = now + TOUCH_SAMPLE_DELAY_MS;
-    } else {
-      cstFrame = {Region::Invalid};
-      cstRetryAt = now + 2000;
-      esp_rom_printf("[touch] CST816S read failed; contact cancelled\r\n");
-    }
-  }
-  const Region previous = cstContact.region;
-  cstContact.update(cstFrame.region, now, HOME_KEY_LONG_PRESS_MS);
-  if (cstContact.region == Region::Screen) {
-    updateTouchContact({true, cstFrame.x, cstFrame.y, now});
-  } else {
-    if (cstContact.region == Region::Invalid) touchSuppressed = true;
-    releaseTouch(now);
-  }
-  touchHomeKeyEvent = !touchSuppressed && previous != Region::Home && cstContact.region == Region::Home;
-  touchHomeKeyTapEvent = !touchSuppressed && cstContact.homeTap;
-  touchHomeKeyLongEvent = !touchSuppressed && cstContact.homeLong;
-  if (touchSuppressed) return 0;
-  touchContactPressedEvent =
-      previous == Region::None && (cstContact.region == Region::Screen || cstContact.region == Region::Home ||
-                                   cstContact.region == Region::Previous || cstContact.region == Region::Next);
-  switch (cstContact.region) {
-    case Region::Previous:
-      return 1u << BTN_LEFT;
-    case Region::Next:
-      return 1u << BTN_RIGHT;
-    case Region::None:
-    case Region::Screen:
-    case Region::Home:
-    case Region::Invalid:
-      return 0;
-  }
-  return 0;
 }
 #endif
 
@@ -1978,12 +1776,6 @@ void InputManager::beginFt5x06() {
   const auto& t = BoardConfig::ACTIVE.touch;
   if (t.sda < 0 || t.scl < 0 || t.i2cAddress == 0) return;
 
-#if FREEINK_DEVICE_PAPERMONO
-  // The FT6336's power rail and reset line live on the M5IOE1 expander, not
-  // ESP GPIOs — raise/release them before the probe below.
-  freeink::papermono::enableTouch();
-#endif
-
   // The bus is shared with M5PM1/M5IOE1/RX8130, whose standing profile is
   // 100 kHz. FT6336 accepts that rate even though M5GFX uses 400 kHz for its
   // controller-specific transactions.
@@ -2010,27 +1802,6 @@ void InputManager::beginFt5x06() {
   }
   touchDataEnabled = wrMode && rdId && wrIrq;
 #ifdef TOUCH_PROBE_DEBUG
-#if FREEINK_DEVICE_PAPERMONO
-  // Expander state alongside the probe result: OUT should show TP_EN (bit 12)
-  // and TP_RST (bit 5) high, MODE should show the configured output mask
-  // (0x39B4). All-zero probe ids + correct expander state = the FT6336 itself
-  // isn't answering; wrong expander state = the rail/reset never asserted.
-  uint16_t ioeMode = 0xFFFF, ioeOut = 0xFFFF;
-  freeink::m5ioe1::readReg16(freeink::m5ioe1::REG_GPIO_MODE_L, &ioeMode);
-  freeink::m5ioe1::readReg16(freeink::m5ioe1::REG_GPIO_OUT_L, &ioeOut);
-  touchDebugPrintf("[touch] IOE1 addr=0x%02X mode=0x%04X out=0x%04X\n", freeink::m5ioe1::g_addr, ioeMode, ioeOut);
-  // Full bus scan with the touch rail up: expected residents are 0x32 (RX8130
-  // RTC), 0x4F/0x6F (IOE1), 0x68 (BMI270), 0x6E (PM1), 0x50 (NFC on Pro) —
-  // whatever ELSE ACKs is the touch controller (FT6336 = 0x38; some unit
-  // revisions may carry a CST820 = 0x15 instead).
-  touchDebugPrintf("[touch] i2c scan:");
-  for (uint8_t a = 0x08; a <= 0x77; ++a) {
-    Wire.beginTransmission(a);
-    if (Wire.endTransmission() == 0) touchDebugPrintf(" 0x%02X", a);
-    delayMicroseconds(200);
-  }
-  touchDebugPrintf("\n");
-#endif
   touchDebugPrintf(
       "[touch] FT5x06 probe: enabled=%d wrMode=%d rdId=%d wrIrq=%d "
       "cipher=0x%02X fw=0x%02X vendor=0x%02X irq=%d\n",
@@ -2125,211 +1896,6 @@ void InputManager::pollFt5x06(const unsigned long now) {
 }
 
 // --- FT6336U (Murphy M4) -----------------------------------------------------
-
-#if FREEINK_DEVICE_MURPHY_M4
-bool InputManager::beginFt6336u(const bool powerCycle) {
-  const auto& t = BoardConfig::ACTIVE.touch;
-  pauseFt6336uPolling();
-  touchDataEnabled = false;
-  if (t.sda < 0 || t.scl < 0 || t.i2cAddress == 0 || t.powerEnable < 0) return false;
-
-  portENTER_CRITICAL(&ft6336uPollMux);
-  ft6336uPollState = {};
-  portEXIT_CRITICAL(&ft6336uPollMux);
-
-  if (powerCycle) {
-    gpio_hold_dis(static_cast<gpio_num_t>(t.powerEnable));
-    pinMode(t.powerEnable, OUTPUT);
-    digitalWrite(t.powerEnable, t.powerEnableActiveHigh ? HIGH : LOW);
-    delay(500);
-    if (t.reset >= 0) {
-      pinMode(t.reset, OUTPUT);
-      digitalWrite(t.reset, LOW);
-      delay(50);
-      digitalWrite(t.reset, HIGH);
-      delay(100);
-    }
-  }
-  if (t.irq >= 0) pinMode(t.irq, INPUT_PULLUP);
-
-  const auto device = freeink::murphy_m4_i2c::touchDevice(t.sda, t.scl, t.i2cAddress);
-  const uint8_t mode[] = {0x00, 0x00};
-  const uint8_t threshold[] = {0x80, 0x16};
-  const uint8_t rate[] = {0x88, 0x04};
-  uint8_t readMode = 0xFF;
-  uint8_t readThreshold = 0xFF;
-  uint8_t readRate = 0xFF;
-  uint8_t probe[11] = {};
-  const bool writesOk = freeink::murphy_m4_i2c::write(device, mode, sizeof(mode)) &&
-                        freeink::murphy_m4_i2c::write(device, threshold, sizeof(threshold)) &&
-                        freeink::murphy_m4_i2c::write(device, rate, sizeof(rate));
-  const bool readsOk = writesOk && freeink::murphy_m4_i2c::read(device, 0x00, &readMode, 1) &&
-                       freeink::murphy_m4_i2c::read(device, 0x80, &readThreshold, 1) &&
-                       freeink::murphy_m4_i2c::read(device, 0x88, &readRate, 1) &&
-                       freeink::murphy_m4_i2c::read(device, 0x02, probe, sizeof(probe));
-  auto probeState = freeink::murphy_m4_touch::classifyFrame(probe[0], probe[1], probe[2], probe[3], probe[4]);
-  if (probeState == freeink::murphy_m4_touch::FrameState::Contact &&
-      !freeink::murphy_m4_touch::pointInBounds(probe[1], probe[2], probe[3], probe[4], t.rawMaxX, t.rawMaxY,
-                                               t.swapXY)) {
-    probeState = freeink::murphy_m4_touch::FrameState::Invalid;
-  }
-  touchDataEnabled = readsOk && readMode == 0x00 && readThreshold == 0x16 && readRate == 0x04 &&
-                     probeState != freeink::murphy_m4_touch::FrameState::Invalid;
-  if (!touchDataEnabled) {
-    esp_rom_printf(
-        "[touch] M4 FT6336U initialization failed: writes=%d reads=%d "
-        "mode=%02X threshold=%02X rate=%02X frame=%d\r\n",
-        static_cast<int>(writesOk), static_cast<int>(readsOk), readMode, readThreshold, readRate,
-        static_cast<int>(probeState));
-    digitalWrite(t.powerEnable, t.powerEnableActiveHigh ? LOW : HIGH);
-  }
-  return touchDataEnabled;
-}
-
-bool InputManager::readFt6336uFrame(freeink::murphy_m4_touch::FrameState& state, uint16_t& rawX, uint16_t& rawY) {
-  const auto& t = BoardConfig::ACTIVE.touch;
-  uint8_t frame[11] = {};
-  const auto device = freeink::murphy_m4_i2c::touchDevice(t.sda, t.scl, t.i2cAddress);
-  if (!freeink::murphy_m4_i2c::read(device, 0x02, frame, sizeof(frame))) return false;
-
-  state = freeink::murphy_m4_touch::classifyFrame(frame[0], frame[1], frame[2], frame[3], frame[4]);
-  if (state == freeink::murphy_m4_touch::FrameState::Contact &&
-      !freeink::murphy_m4_touch::pointInBounds(frame[1], frame[2], frame[3], frame[4], t.rawMaxX, t.rawMaxY,
-                                               t.swapXY)) {
-    state = freeink::murphy_m4_touch::FrameState::Invalid;
-  }
-  if (state == freeink::murphy_m4_touch::FrameState::Contact) {
-    rawX = freeink::murphy_m4_touch::axis(frame[1], frame[2]);
-    rawY = freeink::murphy_m4_touch::axis(frame[3], frame[4]);
-  }
-  return true;
-}
-
-void InputManager::applyFt6336uSnapshot(const freeink::murphy_m4_touch::Snapshot& snapshot) {
-  if (snapshot.completedPending) {
-    if (!touchPressed) {
-      updateTouchContact(
-          mapTouchPoint(snapshot.completedDown.x, snapshot.completedDown.y, snapshot.completedDown.timestamp));
-    }
-    updateTouchContact(mapTouchPoint(snapshot.completedUp.x, snapshot.completedUp.y, snapshot.completedUp.timestamp));
-    releaseTouch(snapshot.completedUp.timestamp);
-    return;
-  }
-
-  if (!snapshot.contact) return;
-  if (!touchPressed) updateTouchContact(mapTouchPoint(snapshot.down.x, snapshot.down.y, snapshot.down.timestamp));
-  updateTouchContact(mapTouchPoint(snapshot.latest.x, snapshot.latest.y, snapshot.latest.timestamp));
-}
-
-bool InputManager::startFt6336uPolling() {
-  if (!touchDataEnabled) return false;
-
-  if (ft6336uTask == nullptr) {
-    ft6336uTask = xTaskCreateStaticPinnedToCore(ft6336uTaskTrampoline, "fi_ft6336", FT6336U_TASK_STACK_BYTES, this, 5,
-                                                ft6336uTaskStack, &ft6336uTaskTcb, 0);
-    if (ft6336uTask == nullptr) return false;
-    esp_rom_printf("[touch] M4 FT6336U polling on core 0 every %lu ms (static stack=%lu)\r\n",
-                   static_cast<unsigned long>(FT6336U_POLL_MS), static_cast<unsigned long>(FT6336U_TASK_STACK_BYTES));
-  }
-
-  portENTER_CRITICAL(&ft6336uPollMux);
-  ft6336uPollingEnabled = true;
-  portEXIT_CRITICAL(&ft6336uPollMux);
-  return true;
-}
-
-void InputManager::pauseFt6336uPolling() {
-  if (ft6336uTask == nullptr) return;
-
-  portENTER_CRITICAL(&ft6336uPollMux);
-  ft6336uPollingEnabled = false;
-  bool inFlight = ft6336uPollInFlight;
-  portEXIT_CRITICAL(&ft6336uPollMux);
-
-  const unsigned long startedAt = millis();
-  while (inFlight && millis() - startedAt < 30) {
-    delay(1);
-    portENTER_CRITICAL(&ft6336uPollMux);
-    inFlight = ft6336uPollInFlight;
-    portEXIT_CRITICAL(&ft6336uPollMux);
-  }
-  if (inFlight) esp_rom_printf("[touch] M4 polling pause timed out with I2C in flight\r\n");
-}
-
-void InputManager::ft6336uTaskTrampoline(void* self) { static_cast<InputManager*>(self)->ft6336uTaskLoop(); }
-
-void InputManager::ft6336uTaskLoop() {
-  TickType_t wakeAt = xTaskGetTickCount();
-  for (;;) {
-    portENTER_CRITICAL(&ft6336uPollMux);
-    const bool shouldPoll = ft6336uPollingEnabled;
-    if (shouldPoll) ft6336uPollInFlight = true;
-    portEXIT_CRITICAL(&ft6336uPollMux);
-
-    if (shouldPoll) {
-      freeink::murphy_m4_touch::FrameState state = freeink::murphy_m4_touch::FrameState::Invalid;
-      uint16_t rawX = 0;
-      uint16_t rawY = 0;
-      const bool readOk = readFt6336uFrame(state, rawX, rawY);
-      const uint32_t now = millis();
-
-      portENTER_CRITICAL(&ft6336uPollMux);
-      if (ft6336uPollingEnabled) {
-        if (!readOk || state == freeink::murphy_m4_touch::FrameState::Invalid) {
-          freeink::murphy_m4_touch::releaseIfStale(ft6336uPollState, now, FT6336U_STALE_RELEASE_MS);
-        } else {
-          switch (state) {
-            case freeink::murphy_m4_touch::FrameState::Contact:
-              freeink::murphy_m4_touch::recordContact(ft6336uPollState, rawX, rawY, now);
-              break;
-            case freeink::murphy_m4_touch::FrameState::Released:
-              freeink::murphy_m4_touch::recordRelease(ft6336uPollState, now);
-              break;
-            case freeink::murphy_m4_touch::FrameState::Invalid:
-              break;
-          }
-        }
-      }
-      ft6336uPollInFlight = false;
-      portEXIT_CRITICAL(&ft6336uPollMux);
-    }
-
-    vTaskDelayUntil(&wakeAt, pdMS_TO_TICKS(FT6336U_POLL_MS));
-  }
-}
-
-void InputManager::pollFt6336u(const unsigned long now) {
-  if (ft6336uTask != nullptr) {
-    portENTER_CRITICAL(&ft6336uPollMux);
-    const auto snapshot = freeink::murphy_m4_touch::takeSnapshot(ft6336uPollState);
-    portEXIT_CRITICAL(&ft6336uPollMux);
-    applyFt6336uSnapshot(snapshot);
-    return;
-  }
-
-  if (now < touchReadAt) return;
-  touchReadAt = now + TOUCH_SAMPLE_DELAY_MS;
-
-  freeink::murphy_m4_touch::FrameState state = freeink::murphy_m4_touch::FrameState::Invalid;
-  uint16_t rawX = 0;
-  uint16_t rawY = 0;
-  if (!readFt6336uFrame(state, rawX, rawY) || state == freeink::murphy_m4_touch::FrameState::Invalid) {
-    if (touchPressed && now - touchPoint.timestamp >= FT6336U_STALE_RELEASE_MS) releaseTouch(now);
-    return;
-  }
-
-  switch (state) {
-    case freeink::murphy_m4_touch::FrameState::Released:
-      releaseTouch(now);
-      return;
-    case freeink::murphy_m4_touch::FrameState::Contact:
-      updateTouchContact(mapTouchPoint(rawX, rawY, now));
-      return;
-    case freeink::murphy_m4_touch::FrameState::Invalid:
-      return;
-  }
-}
-#endif
 
 // --- GSLX680 (EEGO A4) ------------------------------------------------------
 

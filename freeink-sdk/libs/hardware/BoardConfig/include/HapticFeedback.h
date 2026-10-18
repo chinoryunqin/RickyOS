@@ -3,9 +3,7 @@
 #include <BoardConfig.h>
 
 #if FREEINK_CAP_HAPTIC
-#if !FREEINK_DEVICE_METALIO_EINK4
 #error "FREEINK_CAP_HAPTIC requires a board motor pin and pulse calibration"
-#endif
 
 #include <driver/gpio.h>
 #include <esp_rom_sys.h>

@@ -38,9 +38,6 @@ class FreeInkDisplay {
   // Select panel geometry/controller before begin().
   void setDisplayX3();
   void setDisplayM5PaperColor();
-#if FREEINK_DEVICE_MURPHY_M4
-  void setMurphyM4Batch(MurphyM4Batch batch);
-#endif
 
   // M5 PaperColor: run the next refresh's OTP waveform to completion (one-shot).
   void requestCompleteWaveformNextRefresh();
@@ -417,10 +414,6 @@ class FreeInkDisplay {
   // Block until a pending async refresh completes (no-op when none is).
   // Every blocking panel operation calls this before touching the bus.
   void syncPendingAsync();
-#if FREEINK_SSD1677_TEXT_ROUTING
-  bool selectTextAaDriver(bool textOnlyAntiAliasing);
-  void invalidateTextRoute();
-#endif
   // Shared body of displayBufferAsync() / triggerDisplayAsync(): fire the
   // update and return while the waveform runs (_asyncPending set).
   void displayAsyncImpl(RefreshMode mode, bool turnOffScreen, bool noShadow = false,
@@ -438,12 +431,6 @@ class FreeInkDisplay {
 
   EpdBus _bus;
   PanelDriver* _driver = nullptr;
-#if FREEINK_SSD1677_TEXT_ROUTING
-  PanelDriver* _originalDriver = nullptr;
-  bool _textCombinedAvailable = false;
-  bool _textAaPending = false;
-  bool _textDriverReady = false;
-#endif
 
   // Async refresh state: pending flag + (single-buffer mode) a lazily
   // allocated shadow of the last-displayed frame, used as the differential
@@ -493,9 +480,6 @@ class FreeInkDisplay {
 
   enum class PanelSel : uint8_t { X4, X3, M5 };
   PanelSel _panelSel = PanelSel::X4;
-#if FREEINK_DEVICE_MURPHY_M4
-  MurphyM4Batch _murphyM4Batch = defaultMurphyM4Batch();
-#endif
 
   // CrossPoint compatibility state (see the compatibility surface above).
   // _redRamSynced mirrors whether the X4 RED-RAM baseline is current (advisory);

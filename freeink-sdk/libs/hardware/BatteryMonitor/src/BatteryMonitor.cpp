@@ -22,9 +22,6 @@ void BatteryMonitor::setPmuBatteryHook(const PmuBatteryHook hook) { g_pmuBattery
 
 #if FREEINK_BATTERY_I2C_GAUGE
 #include <Wire.h>
-#if FREEINK_DEVICE_WS397
-#include <Axp2101.h>
-#endif
 
 // Minimal, dependency-free I2C fuel-gauge read for boards that carry one (e.g.
 // LilyGo T5 S3: BQ27220 gauge + BQ25896 charger). Standard TI command registers;
@@ -248,14 +245,6 @@ bool readGaugeSoc(uint16_t& out) {
     out = BatteryMonitor::percentageFromMillivolts(mv);
     return true;
   }
-#if FREEINK_DEVICE_WS397
-  if (g.gaugeType == BoardConfig::GaugeType::Axp2101) {
-    uint8_t soc = 0;
-    if (!freeink::axp2101::batteryPercent(soc)) return false;
-    out = soc;
-    return true;
-  }
-#endif
   if (g.gaugeType == BoardConfig::GaugeType::Cw2017) {
     static bool initialized = false;
     static unsigned long lastInitAttemptMs = 0;
@@ -303,9 +292,6 @@ bool readGaugeMillivolts(uint16_t& out) {
     out = mv;
     return true;
   }
-#if FREEINK_DEVICE_WS397
-  if (g.gaugeType == BoardConfig::GaugeType::Axp2101) return freeink::axp2101::batteryMillivolts(out);
-#endif
   if (g.gaugeType == BoardConfig::GaugeType::Cw2017) {
     uint8_t hi = 0, lo = 0;
     if (!readReg8(g.gaugeAddr, CW2017_REG_VCELL_H, hi)) return false;
@@ -333,9 +319,6 @@ bool readGaugeMillivolts(uint16_t& out) {
 // a board with neither gaugeAddr nor chargerAddr).
 bool readGaugeCharging(bool& known) {
   const auto& g = BoardConfig::ACTIVE.batteryGauge;
-#if FREEINK_DEVICE_WS397
-  if (g.gaugeType == BoardConfig::GaugeType::Axp2101) return freeink::axp2101::isCharging(known);
-#endif
   // CW2017 has no current register and the X4 Pro has no charger IC on this bus, so
   // charging state is not observable from the gauge (the OEM infers it elsewhere).
   if (g.gaugeType == BoardConfig::GaugeType::Cw2017) {

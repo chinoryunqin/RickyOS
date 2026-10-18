@@ -20,47 +20,11 @@
 // A build links the drivers it can reach and selects among them at runtime
 // (X3 + X4 both link in the generic C3 build; setDisplayX3() picks at runtime).
 
-#if FREEINK_DRIVER_SSD1677
-#include "driver/Ssd1677Driver.h"
-#if FREEINK_DEVICE_MURPHY_M4 || FREEINK_DEVICE_WAVESHARE_EPAPER_397 || FREEINK_DEVICE_METALIO_EINK4
-#include "driver/CrossMuxSsd1677Driver.h"
-#endif
-#endif
-#if FREEINK_DRIVER_UC8253_X3
-#include "driver/Uc8253X3Driver.h"
-#endif
-#if FREEINK_DRIVER_UC8279
-#include "driver/Uc8279Driver.h"
-#endif
-#if FREEINK_DRIVER_UC8179
-#include "driver/Uc8179Driver.h"
-#endif
-#if FREEINK_DRIVER_UC8279_X4
-#include "driver/Uc8279X4Driver.h"
-#endif
 #if FREEINK_DRIVER_UC8279C_A4
 #include "driver/Uc8279cA4Driver.h"
 #endif
-#if FREEINK_DRIVER_ED2208
-#include "driver/Ed2208M5Driver.h"
-#endif
-#if FREEINK_DRIVER_M5_OFFICIAL
-#include "driver/M5OfficialDriver.h"
-#endif
-#if FREEINK_DRIVER_UC8253_MURPHY
-#include "driver/Uc8253MurphyDriver.h"
-#endif
-#if FREEINK_DRIVER_LGFX_EPD
-#include "driver/LgfxEpdDriver.h"
-#endif
 #if FREEINK_DRIVER_EPDIY_LCD
 #include "driver/EpdiyLcdDriver.h"
-#endif
-#if FREEINK_DRIVER_IT8951
-#include "driver/It8951Driver.h"
-#endif
-#if FREEINK_DRIVER_PAPER_MONO
-#include "driver/PaperMonoDriver.h"
 #endif
 
 namespace freeink {
@@ -118,121 +82,26 @@ void FreeInkDisplay::setDisplayM5PaperColor() {
   bufferSize = static_cast<uint32_t>(displayWidthBytes) * displayHeight;
 }
 
-#if FREEINK_DEVICE_MURPHY_M4
-void FreeInkDisplay::setMurphyM4Batch(const MurphyM4Batch batch) { _murphyM4Batch = batch; }
-#endif
-
 void FreeInkDisplay::selectDriver() {
   // Selection is purely _panelSel + the linked FREEINK_DRIVER_* set — no device
   // names. Multi-driver C3 builds pick X3 vs X4 via setDisplayX3(); single-driver
   // builds (M5/Murphy/de-link/LilyGo) fall through to the one linked driver below.
   switch (_panelSel) {
-#if FREEINK_DRIVER_M5_OFFICIAL || FREEINK_DRIVER_ED2208
-    case PanelSel::M5:
-#if FREEINK_DRIVER_M5_OFFICIAL
-      _driver = &m5OfficialDriver();  // M5 official M5GFX backend
-#else
-      _driver = &ed2208M5Driver();  // fast hand-rolled ED2208 backend
-#endif
-      break;
-#endif
-#if FREEINK_DRIVER_UC8253_X3 || FREEINK_DRIVER_UC8279
-    case PanelSel::X3:
-      // Two X3 production runs share the panel selection: the original UC8253
-      // and the newer UC8279d. Which one is running was decided before begin()
-      // (XteinkDetect display probe -> selectDevice), so route on the ACTIVE
-      // profile's controller here.
-#if FREEINK_DRIVER_UC8279
-      if (BoardConfig::ACTIVE.displayController == BoardConfig::DisplayController::UC8279) {
-        _driver = &uc8279Driver();
-        break;
-      }
-#endif
-#if FREEINK_DRIVER_UC8253_X3
-      _driver = &uc8253X3Driver();
-#endif
-      break;
-#endif
     case PanelSel::X4:
     default:
-#if FREEINK_DRIVER_UC8179
-      // Newer X4 / X4 Pro batches swap the SSD1677 for an UltraChip part.
-      // Which silicon a unit carries is decided before begin() by the boot-time
-      // display-bus probe (probe-only; NVS hw_calib/screenType is diagnostics),
-      // which sets ACTIVE.displayController (and, for the UC8279 800x480
-      // variant, ACTIVE.displayControllerVariant from the VER LUT_VER byte).
-      if (BoardConfig::ACTIVE.displayController == BoardConfig::DisplayController::UC8179) {
-        _driver = &uc8179Driver();
-        break;
-      }
-#endif
-#if FREEINK_DRIVER_UC8279_X4
-      // UC8279 (800x480) — the second UltraChip variant of this panel. Distinct
-      // from the X3's UC8279d driver, which routes via PanelSel::X3 above.
-      if (BoardConfig::ACTIVE.displayController == BoardConfig::DisplayController::UC8279) {
-        _driver = &uc8279X4Driver();
-        break;
-      }
-#endif
 #if FREEINK_DRIVER_UC8279C_A4
       if (BoardConfig::ACTIVE.displayController == BoardConfig::DisplayController::UC8279C) {
         _driver = &uc8279cA4Driver();
         break;
       }
 #endif
-#if FREEINK_DRIVER_SSD1677
-#if FREEINK_DEVICE_MURPHY_M4
-      if (BoardConfig::ACTIVE.board == BoardConfig::Board::MurphyM4) {
-        _driver = &crossmuxSsd1677MurphyM4Driver(_murphyM4Batch);
-        break;
-      }
-#endif
-#if FREEINK_DEVICE_PAPERMONO
-      if (paperMonoDriver().prepareBuffers()) {
-        _driver = &paperMonoDriver();
-      } else {
-        esp_rom_printf("Paper Mono combined AA: PSRAM allocation failed; SSD1677 fallback\n");
-        _driver = &ssd1677Driver();
-      }
-#elif FREEINK_DEVICE_WAVESHARE_EPAPER_397 || FREEINK_DEVICE_METALIO_EINK4
-      _driver = &crossmuxSsd1677Driver();
-#else
-      _driver = &ssd1677Driver();
-#endif
-#elif FREEINK_DRIVER_PAPER_MONO
-      _driver = &paperMonoDriver();
-#elif FREEINK_DRIVER_UC8253_MURPHY
-      _driver = &uc8253MurphyDriver();
-#elif FREEINK_DRIVER_M5_OFFICIAL
-      _driver = &m5OfficialDriver();
-#elif FREEINK_DRIVER_ED2208
-      _driver = &ed2208M5Driver();
-#elif FREEINK_DRIVER_UC8253_X3
-      _driver = &uc8253X3Driver();
-#elif FREEINK_DRIVER_EPDIY_LCD
+#if FREEINK_DRIVER_EPDIY_LCD
       // Raw-parallel panels whose timing the LCD_CAM must generate (DE/HSYNC on
       // hardware plus an RMT gate clock) instead of LovyanGFX's i80 bus.
       _driver = &epdiyLcdDriver();
-#elif FREEINK_DRIVER_LGFX_EPD
-      _driver = &lgfxEpdDriver();
-#elif FREEINK_DRIVER_IT8951
-      _driver = &it8951Driver();
 #endif
       break;
   }
-#if FREEINK_SSD1677_TEXT_ROUTING
-  _originalDriver = _driver;
-  _textAaPending = false;
-  _textDriverReady = false;
-  _textCombinedAvailable = BoardConfig::ACTIVE.displayController == BoardConfig::DisplayController::SSD1677 &&
-                           _driver && _driver->geometry().width == 800 && _driver->geometry().height == 480 &&
-                           paperMonoDriver().prepareBuffers();
-  paperMonoDriver().setOriginalDriver(_originalDriver);
-  esp_rom_printf("SSD1677 text-only combined AA: %s (384000 bytes PSRAM)\n",
-                 _textCombinedAvailable
-                     ? "ready"
-                     : "unsupported controller/geometry or PSRAM allocation failed; original driver only");
-#endif
   // A driver chosen after setInverted() (begin(), setDisplayX3()) must still
   // learn the standing content polarity.
   if (_driver) _driver->setBackgroundHint(_inverted);
@@ -279,9 +148,6 @@ void FreeInkDisplay::begin() {
 #endif
 
   _driver->begin(_bus);
-#if FREEINK_SSD1677_TEXT_ROUTING
-  _textDriverReady = !_bus.isBusy();
-#endif
 }
 
 // ============================================================================
@@ -617,64 +483,6 @@ void FreeInkDisplay::syncPendingAsync() {
   _refreshPending = false;
 }
 
-#if FREEINK_SSD1677_TEXT_ROUTING
-void FreeInkDisplay::invalidateTextRoute() {
-  _textAaPending = false;
-  _textDriverReady = false;
-  if (_driver) _driver->requestResync(0);
-  _shadowValid = false;
-  _redRamSynced = false;
-}
-
-bool FreeInkDisplay::selectTextAaDriver(bool textOnlyAntiAliasing) {
-  syncPendingAsync();  // A normal in-flight waveform is not a BUSY failure.
-  paperMonoDriver().setTransitionSource(OpticalState::Unknown);
-  auto source = textOnlyAntiAliasing && canUseTextTransition() ? _driver->opticalState() : OpticalState::Unknown;
-  const bool combined = textOnlyAntiAliasing && _textCombinedAvailable;
-  PanelDriver* next = combined ? static_cast<PanelDriver*>(&paperMonoDriver()) : _originalDriver;
-  if (!next) return false;
-  if (_textDriverReady && _bus.isBusy()) {
-    invalidateTextRoute();
-    return false;
-  }
-  if (_driver == next && _textDriverReady) return true;
-  if (_driver == next && combined) {
-    // Idle sleep lost controller registers, but the host still knows the glass.
-    // Wake in place so begin() does not force a redundant full-page cleanup.
-    if (!paperMonoDriver().ensureControllerReady(_bus)) {
-      invalidateTextRoute();
-      return false;
-    }
-    _textDriverReady = true;
-    return true;
-  }
-  if (_textDriverReady && _driver) {
-    // Neither driver may diff against the other's controller RAM or glass model.
-    _driver->abortPostRefresh();
-    _driver->deepSleep(_bus);
-    // A failed power-down invalidates the source even if the following reset recovers BUSY.
-    if (_driver->opticalState() == OpticalState::Unknown) source = OpticalState::Unknown;
-  }
-  // Deep sleep can hold BUSY until the next hardware reset. begin() resets
-  // first, then checks BUSY before sending any controller command.
-  _driver = next;
-  _textDriverReady = false;
-  _driver->begin(_bus);
-  if (_bus.isBusy()) {
-    invalidateTextRoute();
-    return false;
-  }
-  _textDriverReady = true;
-  _driver->setBackgroundHint(_inverted);
-  _driver->requestResync(0);
-  if (combined) paperMonoDriver().setTransitionSource(source);
-  _shadowValid = false;
-  _redRamSynced = false;
-  esp_rom_printf("SSD1677 display path: %s\n", combined ? "text AA" : "original grayscale");
-  return true;
-}
-#endif
-
 bool FreeInkDisplay::supportsAsyncRefresh() const {
   return !_inverted && !_inversionDirty && _driver != nullptr && _driver->supportsAsyncDisplay();
 }
@@ -703,11 +511,6 @@ void FreeInkDisplay::displayBuffer(RefreshMode mode, bool turnOffScreen, Refresh
   Serial.printf("[EPD] displayBuffer mode=%d off=%d\n", (int)mode, (int)turnOffScreen);
 #endif
   syncPendingAsync();
-#if FREEINK_SSD1677_TEXT_ROUTING
-  _textAaPending = false;
-  selectTextAaDriver(false);
-  if (_bus.isBusy()) return;
-#endif
   if (_inversionDirty && mode == FAST_REFRESH) {
     mode = HALF_REFRESH;
   }
@@ -746,11 +549,6 @@ void FreeInkDisplay::displayAsyncImpl(RefreshMode mode, bool turnOffScreen, bool
   syncPendingAsync();
   cancelGrayscalePass();
   _grayPassFailed = false;
-#if FREEINK_SSD1677_TEXT_ROUTING
-  _textAaPending = false;
-  selectTextAaDriver(false);
-  if (_bus.isBusy()) return;
-#endif
   // Keeping the host framebuffer logical is the core inversion contract.
   // Deferred paths may re-read it after returning or allow the caller to draw
   // immediately, so inverted output takes the safe blocking path.
@@ -916,11 +714,6 @@ void FreeInkDisplay::displayWindow(uint16_t x, uint16_t y, uint16_t w, uint16_t 
     return;
   }
   syncPendingAsync();
-#if FREEINK_SSD1677_TEXT_ROUTING
-  _textAaPending = false;
-  selectTextAaDriver(false);
-  if (_bus.isBusy()) return;
-#endif
 #ifdef EINK_DISPLAY_SINGLE_BUFFER_MODE
   _driver->displayWindow(_bus, frameBuffer, nullptr, x, y, w, h, turnOffScreen);
   _shadowValid = false;
@@ -937,11 +730,6 @@ void FreeInkDisplay::displayGrayBuffer(bool turnOffScreen, const unsigned char* 
   // grayscale planes afterward would partially undo the output inversion.
   if (_inverted) return;
   syncPendingAsync();
-#if FREEINK_SSD1677_TEXT_ROUTING
-  if (factoryMode) _textAaPending = false;
-  if (!_textAaPending) selectTextAaDriver(false);
-  if (_bus.isBusy()) return;
-#endif
   _shadowValid = false;
   _redRamSynced = false;  // grayscale leaves RED holding a gray plane, not the BW baseline
   if (_grayPassFailed) return;
@@ -962,11 +750,6 @@ void FreeInkDisplay::displayGrayCalibration(uint16_t customX, uint16_t customY, 
   cancelGrayscalePass();
   if (_inverted) return;
   syncPendingAsync();
-#if FREEINK_SSD1677_TEXT_ROUTING
-  _textAaPending = false;
-  selectTextAaDriver(false);
-  if (_bus.isBusy()) return;
-#endif
   _shadowValid = false;
   _redRamSynced = false;
   _driver->displayGrayCalibration(_bus, frameBuffer, customX, customY, customW, customH);
@@ -978,10 +761,6 @@ void FreeInkDisplay::copyGrayscaleBuffers(const uint8_t* lsbBuffer, const uint8_
   if (_inverted) return;
   syncPendingAsync();  // RAM writes must not race a deferred refresh
   if (!acceptGrayscaleRows(0, lsbBuffer, 0, getDisplayHeight())) return;
-#if FREEINK_SSD1677_TEXT_ROUTING
-  if (!_textAaPending) selectTextAaDriver(false);
-  if (_bus.isBusy()) return;
-#endif
   _driver->copyGrayscaleLsb(_bus, lsbBuffer);
   if (!acceptGrayscaleRows(1, msbBuffer, 0, getDisplayHeight())) return;
   _driver->copyGrayscaleMsb(_bus, msbBuffer);
@@ -1034,13 +813,6 @@ bool FreeInkDisplay::acceptGrayscaleRows(unsigned plane, const uint8_t* data, ui
 bool FreeInkDisplay::displayGrayscaleBase(GrayscaleMode mode, RefreshMode fallback, bool turnOffScreen,
                                           RefreshContext context) {
   cancelGrayscalePass();
-#if FREEINK_SSD1677_TEXT_ROUTING
-  const bool textAa = mode == GrayscaleMode::Overlay && context == RefreshContext::TextOnlyAntiAliasing &&
-                      _textCombinedAvailable && !_inverted && !_inversionDirty;
-  _textAaPending = false;
-  if (!selectTextAaDriver(textAa)) return false;
-  _textAaPending = textAa;
-#endif
   const auto caps = grayscaleCapabilities(mode);
   if (!caps.supported()) return false;
   if (_inversionDirty && (mode == GrayscaleMode::Overlay || caps.base == GrayscaleBase::Separate))
@@ -1066,12 +838,6 @@ void FreeInkDisplay::displayGrayscaleBase(RefreshMode fallback, bool turnOffScre
     return;
   }
   syncPendingAsync();
-#if FREEINK_SSD1677_TEXT_ROUTING
-  const bool textAa = context == RefreshContext::TextOnlyAntiAliasing && _textCombinedAvailable;
-  _textAaPending = false;
-  if (!selectTextAaDriver(textAa)) return;
-  _textAaPending = textAa;
-#endif
   _shadowValid = false;
   _driver->displayGrayscaleBaseWithContext(_bus, frameBuffer, toInternal(fallback), turnOffScreen, context);
 }
@@ -1079,20 +845,12 @@ void FreeInkDisplay::displayGrayscaleBase(RefreshMode fallback, bool turnOffScre
 void FreeInkDisplay::preconditionGrayscale() {
   if (_inverted) return;
   syncPendingAsync();
-#if FREEINK_SSD1677_TEXT_ROUTING
-  if (!_textAaPending) selectTextAaDriver(false);
-  if (_bus.isBusy()) return;
-#endif
   _driver->preconditionGrayscale(_bus, 0, 0, getDisplayWidth(), getDisplayHeight());
 }
 
 void FreeInkDisplay::preconditionGrayscale(uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
   if (_inverted) return;
   syncPendingAsync();
-#if FREEINK_SSD1677_TEXT_ROUTING
-  if (!_textAaPending) selectTextAaDriver(false);
-  if (_bus.isBusy()) return;
-#endif
   _driver->preconditionGrayscale(_bus, x, y, w, h);
 }
 
@@ -1100,10 +858,6 @@ void FreeInkDisplay::copyGrayscaleLsbBuffers(const uint8_t* lsbBuffer) {
   if (_inverted) return;
   syncPendingAsync();
   if (!acceptGrayscaleRows(0, lsbBuffer, 0, getDisplayHeight())) return;
-#if FREEINK_SSD1677_TEXT_ROUTING
-  if (!_textAaPending) selectTextAaDriver(false);
-  if (_bus.isBusy()) return;
-#endif
   _driver->copyGrayscaleLsb(_bus, lsbBuffer);
 }
 
@@ -1111,10 +865,6 @@ void FreeInkDisplay::copyGrayscaleMsbBuffers(const uint8_t* msbBuffer) {
   if (_inverted) return;
   syncPendingAsync();
   if (!acceptGrayscaleRows(1, msbBuffer, 0, getDisplayHeight())) return;
-#if FREEINK_SSD1677_TEXT_ROUTING
-  if (!_textAaPending) selectTextAaDriver(false);
-  if (_bus.isBusy()) return;
-#endif
   _driver->copyGrayscaleMsb(_bus, msbBuffer);
 }
 
@@ -1125,10 +875,6 @@ void FreeInkDisplay::writeGrayscalePlaneStrip(GrayPlane plane, const uint8_t* ro
   // staging can overlap the B/W waveform. Other drivers may write controller
   // RAM and must drain the pending refresh first.
   if (!grayscaleCapabilities(_grayscaleMode).stagingWhileBusy) syncPendingAsync();
-#if FREEINK_SSD1677_TEXT_ROUTING
-  if (!_textAaPending) selectTextAaDriver(false);
-  if (_bus.isBusy()) return;
-#endif
   _driver->writeGrayscalePlaneStrip(_bus, plane == GRAY_PLANE_LSB ? freeink::GrayPlane::Lsb : freeink::GrayPlane::Msb,
                                     rows, yStart, numRows);
 }
@@ -1148,60 +894,32 @@ bool FreeInkDisplay::supportsStripGrayscale() const {
 }
 
 bool FreeInkDisplay::combinesGrayscaleBase() const {
-#if FREEINK_SSD1677_TEXT_ROUTING
-  return _textAaPending;
-#else
   return grayscaleCapabilities().base == GrayscaleBase::Combined;
-#endif
 }
 
 bool FreeInkDisplay::supportsTextOnlyCombinedBase() const {
-#if FREEINK_SSD1677_TEXT_ROUTING
-  return _textCombinedAvailable && !_inverted;
-#else
   return combinesGrayscaleBase();
-#endif
 }
 
 bool FreeInkDisplay::supportsReaderTransitions() const {
-#if FREEINK_SSD1677_TEXT_ROUTING && FREEINK_SSD1677_READER_TRANSITIONS
-  return _textCombinedAvailable && !_inverted && !_inversionDirty;
-#else
   return false;
-#endif
 }
 
 bool FreeInkDisplay::supportsContinuousImageReading() const {
-#if FREEINK_DEVICE_METALIO_EINK4
-  return supportsReaderTransitions();
-#else
   return false;
-#endif
 }
 
 bool FreeInkDisplay::canUseTextTransition() const {
-#if FREEINK_SSD1677_TEXT_ROUTING
-  return supportsReaderTransitions() && _textDriverReady && !_refreshPending && !_bus.isBusy() &&
-         _driver == _originalDriver && _driver && _driver->opticalState() != OpticalState::Unknown;
-#else
   return false;
-#endif
 }
 
 void FreeInkDisplay::cleanupGrayscaleBuffers(const uint8_t* bwBuffer) {
   cancelGrayscalePass();
   syncPendingAsync();
   bool safeToWrite = true;
-#if FREEINK_SSD1677_TEXT_ROUTING
-  safeToWrite = !_bus.isBusy();
-  if (!safeToWrite) invalidateTextRoute();
-#endif
   if (safeToWrite && !_inverted) {
     _driver->cleanupGrayscaleBuffers(_bus, bwBuffer);
   }
-#if FREEINK_SSD1677_TEXT_ROUTING
-  _textAaPending = false;
-#endif
   // Restore frameBuffer so subsequent BW draws paint onto a valid BW baseline
   // rather than the stale LSB/MSB grayscale plane data that was there before.
   if (frameBuffer && bwBuffer && frameBuffer != bwBuffer) memcpy(frameBuffer, bwBuffer, bufferSize);
@@ -1212,16 +930,9 @@ void FreeInkDisplay::cleanupGrayscaleWithPreviousBuffer() {
   syncPendingAsync();
   const uint8_t* baseline = frameBufferActive ? frameBufferActive : frameBuffer;
   bool safeToWrite = true;
-#if FREEINK_SSD1677_TEXT_ROUTING
-  safeToWrite = !_bus.isBusy();
-  if (!safeToWrite) invalidateTextRoute();
-#endif
   if (safeToWrite && !_inverted) {
     _driver->cleanupGrayscaleBuffers(_bus, baseline);
   }
-#if FREEINK_SSD1677_TEXT_ROUTING
-  _textAaPending = false;
-#endif
   if (frameBuffer && baseline && frameBuffer != baseline) memcpy(frameBuffer, baseline, bufferSize);
 }
 #endif
@@ -1240,9 +951,6 @@ void FreeInkDisplay::beginDisplayWork() {
 
 void FreeInkDisplay::abortPostRefresh() {
   if (_driver) _driver->abortPostRefresh();
-#if FREEINK_SSD1677_TEXT_ROUTING
-  _textAaPending = false;
-#endif
 }
 
 bool FreeInkDisplay::postRefreshAborted() const { return _driver && _driver->postRefreshAborted(); }
@@ -1261,12 +969,6 @@ void FreeInkDisplay::controllerIdle() {
   if (!_driver) return;
   syncPendingAsync();
   _driver->controllerIdle(_bus);
-#if FREEINK_SSD1677_TEXT_ROUTING
-  if (_driver == &paperMonoDriver()) {
-    _textAaPending = false;
-    _textDriverReady = false;  // PaperMonoDriver parks in deep sleep and needs a reset before reuse.
-  }
-#endif
 }
 
 void FreeInkDisplay::requestCompleteWaveformNextRefresh() {
@@ -1292,29 +994,16 @@ void FreeInkDisplay::setHoldPeriodicFullRefresh(bool hold) {
 }
 
 void FreeInkDisplay::grayscaleRevert() {
-#if FREEINK_SSD1677_TEXT_ROUTING
-  if (!_textAaPending) selectTextAaDriver(false);
-  if (_bus.isBusy()) return;
-#endif
   if (!_inverted && _driver) _driver->grayscaleRevert(_bus, frameBuffer);
 }
 
 void FreeInkDisplay::setCustomLUT(bool enabled, const unsigned char* lutData) {
-#if FREEINK_SSD1677_TEXT_ROUTING
-  if (!_textAaPending) selectTextAaDriver(false);
-  if (_bus.isBusy()) return;
-#endif
   if (_driver) _driver->setCustomLut(_bus, enabled, lutData);
 }
 
 void FreeInkDisplay::deepSleep() {
   cancelGrayscalePass();
   syncPendingAsync();
-#if FREEINK_SSD1677_TEXT_ROUTING
-  _textAaPending = false;
-  _textDriverReady = false;
-  if (_driver) _driver->abortPostRefresh();
-#endif
   if (_driver) _driver->deepSleep(_bus);
 }
 

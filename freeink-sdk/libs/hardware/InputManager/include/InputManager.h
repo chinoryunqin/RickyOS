@@ -16,17 +16,6 @@
 
 #include <cstdint>
 
-#if FREEINK_DEVICE_WAVESHARE_EPAPER_397
-#include "FunctionButtonGesture.h"
-#endif
-#if FREEINK_DEVICE_MURPHY_M4
-#include "MurphyM4TouchPolling.h"
-#endif
-
-#if FREEINK_DEVICE_METALIO_EINK4
-#include "Cst816sInput.h"
-#endif
-
 class InputManager {
  public:
   InputManager();
@@ -52,11 +41,7 @@ class InputManager {
 
   // One valid touch-surface contact began this frame (screen or Home/Previous/Next).
   bool wasTouchContactPressed() const {
-#if FREEINK_DEVICE_METALIO_EINK4
-    return touchContactPressedEvent;
-#else
     return false;
-#endif
   }
 
   // Any button press edge since the previous update().
@@ -75,11 +60,6 @@ class InputManager {
   // otherwise a press shorter than the poll period lands in a single sample and
   // is dropped.
   bool isDebouncePending() const {
-#if FREEINK_DEVICE_WAVESHARE_EPAPER_397
-    if (BoardConfig::ACTIVE.inputStyle == BoardConfig::InputStyle::DigitalFunctionMultiGesture) {
-      return functionButtonGesture.isDebouncePending();
-    }
-#endif
     return lastState != currentState;
   }
 
@@ -233,9 +213,6 @@ class InputManager {
   // Reapply volatile FT6336U registers after Murphy M4 display initialization
   // toggles the reset line shared by the panel and touch controller.
   bool reinitializeTouchAfterSharedReset();
-#if FREEINK_DEVICE_MURPHY_M4
-  void setMurphyM4Batch(const freeink::MurphyM4Batch batch) { murphyM4Batch = batch; }
-#endif
 
   // Optional board hook for buttons that aren't direct GPIOs — e.g. a key
   // behind an I2C IO-expander (the LilyGo T5 S3 user button on its PCA9535). It
@@ -356,9 +333,6 @@ class InputManager {
   void updateConfirmBackHold(unsigned long currentTime);
   void updateConfirmPowerHold(unsigned long currentTime);
   void updateDigitalTwoButton(unsigned long currentTime);
-#if FREEINK_DEVICE_WAVESHARE_EPAPER_397
-  void updateFunctionMultiGesture(unsigned long currentTime);
-#endif
   void applyStateChange(uint8_t state, unsigned long currentTime);
   void updatePhysicalPressed(uint8_t state, unsigned long currentTime);
 
@@ -376,20 +350,10 @@ class InputManager {
   bool readChsc6xPoint(TouchPoint& point);
   bool decodeChsc6xFrame(const uint8_t* data, size_t len, TouchPoint& point) const;
   uint16_t mapTouchAxis(uint16_t raw, uint16_t rawMin, uint16_t rawMax, uint16_t outMax) const;
-#if FREEINK_DEVICE_EEGO_A4 || FREEINK_DEVICE_MURPHY_M4 || FREEINK_DEVICE_METALIO_EINK4 || FREEINK_DEVICE_READPICO
+#if FREEINK_DEVICE_EEGO_A4 || FREEINK_DEVICE_READPICO
   TouchPoint mapTouchPoint(uint16_t rawX, uint16_t rawY, unsigned long now) const;
   void updateTouchContact(const TouchPoint& point);
   void releaseTouch(unsigned long now);
-#endif
-#if FREEINK_DEVICE_METALIO_EINK4
-  void beginCst816s();
-  uint8_t pollCst816s(unsigned long now);
-  bool touchContactPressedEvent = false;
-  freeink::Cst816sContact cstContact;
-  freeink::Cst816sFrame cstFrame;
-  uint32_t cstReadAt = 0;
-  uint32_t cstRetryAt = 0;
-  volatile bool cstIrqPending = true;
 #endif
   void beginGt911();
   bool gt911ReadReg(uint16_t reg, uint8_t* buf, uint8_t len);
@@ -429,17 +393,6 @@ class InputManager {
   bool gslx680LoadFirmware();
   bool gslx680Check();
 #endif
-#if FREEINK_DEVICE_MURPHY_M4
-  bool beginFt6336u(bool powerCycle);
-  void pollFt6336u(unsigned long now);
-  bool readFt6336uFrame(freeink::murphy_m4_touch::FrameState& state, uint16_t& rawX, uint16_t& rawY);
-  void applyFt6336uSnapshot(const freeink::murphy_m4_touch::Snapshot& snapshot);
-  bool startFt6336uPolling();
-  void pauseFt6336uPolling();
-  static void ft6336uTaskTrampoline(void* self);
-  void ft6336uTaskLoop();
-  freeink::MurphyM4Batch murphyM4Batch = freeink::defaultMurphyM4Batch();
-#endif
 #if FREEINK_DEVICE_READPICO
   // CST836U (2-point self-capacitive touch + the three capacitive key zones).
   // The frame decode is in the .cpp; the board owns the reset line, the deep
@@ -473,9 +426,6 @@ class InputManager {
   uint8_t twoButtonPhysicalState;
   unsigned long twoButtonPressStart;
   bool twoButtonLongPressActive;
-#if FREEINK_DEVICE_WAVESHARE_EPAPER_397
-  freeink::input::FunctionButtonGesture functionButtonGesture;
-#endif
 
   bool touchDataEnabled = false;         // I2C up, controller present
   uint8_t gt911Addr = 0;                 // resolved GT911 address (0 until probed)
@@ -527,19 +477,6 @@ class InputManager {
   bool touchSuppressed = false;                  // suppressTouchContact() latch; holds through
                                                  // the release-edge frame, cleared in
                                                  // serviceTouch() once the contact is over
-
-#if FREEINK_DEVICE_MURPHY_M4
-  static constexpr uint32_t FT6336U_POLL_MS = 10;
-  static constexpr uint32_t FT6336U_STALE_RELEASE_MS = 100;
-  static constexpr uint32_t FT6336U_TASK_STACK_BYTES = 3072;
-  freeink::murphy_m4_touch::PollState ft6336uPollState{};
-  portMUX_TYPE ft6336uPollMux = portMUX_INITIALIZER_UNLOCKED;
-  bool ft6336uPollingEnabled = false;
-  bool ft6336uPollInFlight = false;
-  TaskHandle_t ft6336uTask = nullptr;
-  StaticTask_t ft6336uTaskTcb{};
-  StackType_t ft6336uTaskStack[FT6336U_TASK_STACK_BYTES]{};
-#endif
 
 #if FREEINK_DEVICE_READPICO
   // CST836U frame geometry, quoted from read_pico_firmware

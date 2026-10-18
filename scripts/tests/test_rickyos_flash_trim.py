@@ -8,7 +8,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 PRODUCT_ENVIRONMENTS = ('env:rickyos_readpico', 'env:simulator_rickyos')
-UPSTREAM_SECTIONS = ('env:readpico', 'env:simulator_readpico', 'base', 'env:simulator')
+UPSTREAM_SECTIONS = ('readpico_hardware', 'env:simulator_readpico', 'base', 'env:simulator')
 
 
 class RickyFlashTrimConfigTest(unittest.TestCase):

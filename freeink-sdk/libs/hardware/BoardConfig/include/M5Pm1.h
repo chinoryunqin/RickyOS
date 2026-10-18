@@ -27,18 +27,10 @@ constexpr uint8_t ADDR = 0x6E;
 // RX8130 RTC and FT6336 touch); its GPIO2/3 are KEY1/KEY2, so the PaperColor
 // default there would put Wire on button pins and kill the whole bus.
 #ifndef FREEINK_M5PM1_SDA
-#if FREEINK_DEVICE_PAPERMONO
-#define FREEINK_M5PM1_SDA 47
-#else
 #define FREEINK_M5PM1_SDA 3
 #endif
-#endif
 #ifndef FREEINK_M5PM1_SCL
-#if FREEINK_DEVICE_PAPERMONO
-#define FREEINK_M5PM1_SCL 48
-#else
 #define FREEINK_M5PM1_SCL 2
-#endif
 #endif
 constexpr int SDA = FREEINK_M5PM1_SDA;
 constexpr int SCL = FREEINK_M5PM1_SCL;

@@ -136,7 +136,7 @@ int main() {
             self.assertIn('${rickyos_app_profile.build_src_filter}', config[environment]['build_src_filter'])
             self.assertIn('-DRICKYOS_PRODUCT=1', config[environment]['build_flags'])
         self.assertIn('${env:simulator.build_src_filter}', config['env:simulator_rickyos']['build_src_filter'])
-        for environment in ('env:readpico', 'env:simulator_readpico', 'base', 'env:simulator'):
+        for environment in ('readpico_hardware', 'env:simulator_readpico', 'base', 'env:simulator'):
             self.assertNotIn('rickyos_app_profile', str(dict(config[environment])))
 
 

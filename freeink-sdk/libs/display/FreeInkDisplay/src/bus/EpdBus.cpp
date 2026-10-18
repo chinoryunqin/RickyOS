@@ -5,17 +5,6 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
-#if FREEINK_DEVICE_METALIO_EINK4
-#include <MetalioEink4Board.h>
-#endif
-
-#if FREEINK_DEVICE_PAPERMONO
-#include <PaperMonoBoard.h>
-#endif
-#if FREEINK_DEVICE_WS397
-#include <Axp2101.h>
-#endif
-
 // Consumer escape hatch for boards whose EPD power/reset live behind glue the
 // SDK doesn't know. Weak REFERENCES only — an SDK-internal implementation
 // can't ride these (a weak ref doesn't force the archive member that defines
@@ -28,36 +17,13 @@ namespace {
 // EPD power/reset for boards without direct GPIOs: SDK board support first,
 // then the consumer hooks.
 void boardEpdPower(bool enabled) {
-#if FREEINK_DEVICE_METALIO_EINK4
-  // The calibrated fork BSP owns the shared screen/SD rail. begin() is
-  // idempotent; refresh teardown must leave this rail on until hardware off.
-  if (enabled) freeink::metalio::begin();
-  return;
-#endif
-#if FREEINK_DEVICE_PAPERMONO
-  freeink::papermono::setEpdPower(enabled);
-#elif FREEINK_DEVICE_WS397
-  freeink::axp2101::setEpdPower(enabled);  // ALDO3, not a GPIO
-#else
   if (freeink_board_epd_power) freeink_board_epd_power(enabled);
-#endif
 }
 bool boardEpdPowerAvailable() {
-#if FREEINK_DEVICE_METALIO_EINK4
-  return true;
-#endif
-#if FREEINK_DEVICE_PAPERMONO || FREEINK_DEVICE_WS397
-  return true;
-#else
   return freeink_board_epd_power != nullptr;
-#endif
 }
 void boardEpdReset(bool high) {
-#if FREEINK_DEVICE_PAPERMONO
-  freeink::papermono::setEpdReset(high);
-#else
   if (freeink_board_epd_reset) freeink_board_epd_reset(high);
-#endif
 }
 }  // namespace
 

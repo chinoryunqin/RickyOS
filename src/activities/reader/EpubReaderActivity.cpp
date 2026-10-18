@@ -87,7 +87,7 @@ constexpr uint8_t MAX_PAGE_TURN_RATE = 30;
 // overlay paints need the identical full-waveform treatment: a FAST differential
 // after the AA waveform leaves the covered page ghosting through the chrome.
 bool xteinkClassPanel() {
-  return gpio.isXteinkDevice() || BoardConfig::isX4Pro() || FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_EEGO_A4;
+  return gpio.isXteinkDevice() || BoardConfig::isX4Pro() || FREEINK_DEVICE_EEGO_A4;
 }
 
 constexpr int PAGE_TURN_RATES[] = {1, 1, 3, 6, 12};

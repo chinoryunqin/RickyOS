@@ -7,7 +7,7 @@
 #include <HalSystem.h>
 #include <LibraryBuilder.h>
 #include <Logging.h>
-#if (FREEINK_DEVICE_MURPHY_M4 || FREEINK_CAP_HAPTIC) && !defined(SIMULATOR)
+#if FREEINK_CAP_HAPTIC && !defined(SIMULATOR)
 #include <HalGPIO.h>
 #endif
 #include <Memory.h>
@@ -436,7 +436,7 @@ void SettingsActivity::rebuildSettingsLists() {
     if (setting.category == StrId::STR_CAT_DISPLAY) {
       // The sunlight fading fix is a grayscale-waveform compensation that does
       // not apply on the X4 Pro / X4 Classic (plain OTP waveform, same panels).
-      if (setting.valuePtr == &CrossPointSettings::fadingFix && (BoardConfig::isX4Pro() || FREEINK_DEVICE_X4CLASSIC)) {
+      if (setting.valuePtr == &CrossPointSettings::fadingFix && BoardConfig::isX4Pro()) {
         continue;
       }
       displaySettings.push_back(std::move(setting));

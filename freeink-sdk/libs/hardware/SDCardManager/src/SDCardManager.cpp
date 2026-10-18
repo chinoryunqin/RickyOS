@@ -1,9 +1,6 @@
 #include "SDCardManager.h"
 
 #include <BoardConfig.h>
-#if FREEINK_DEVICE_METALIO_EINK4
-#include <MetalioEink4Board.h>
-#endif
 #include <SPI.h>
 #include <driver/gpio.h>
 #include <esp_task_wdt.h>
@@ -11,10 +8,6 @@
 #include <new>
 
 #include "SdmmcBlockDevice.h"  // no-op unless FREEINK_SD_SDMMC
-
-#if FREEINK_DEVICE_PAPERMONO
-#include <PaperMonoBoard.h>
-#endif
 
 SDCardManager SDCardManager::instance;
 
@@ -32,20 +25,11 @@ SDCardManager::SDCardManager() {}
 
 bool SDCardManager::begin() {
   if (initialized) return true;
-#if FREEINK_DEVICE_METALIO_EINK4
-  if (!freeink::metalio::begin()) return false;
-#endif
 
   // Native SDMMC: SdFat can't drive SDIO, so mount a plain FsVolume on the esp-idf
   // SDMMC block device. FsFile from this volume is the same type the SPI path
   // returns, so the public API and consumers are unchanged.
   if (_powerHook) _powerHook();  // board brings up its SD rail (e.g. PMIC) if needed
-#if FREEINK_DEVICE_PAPERMONO
-  // Paper Mono's TF rail is switched by the IOE1 expander (PYB_TF_EN), not an
-  // ESP GPIO, and the boot bring-up leaves it LOW. Direct call rather than the
-  // weak-ref consumer hook, same as EpdBus's Paper Mono path.
-  freeink::papermono::setSdPower(true);
-#endif
   // The SD power-enable (sd.powerEnable) is driven by SdmmcBlockDevice itself, which
   // reproduces the OEM's timed HIGH->LOW power-cycle around each mount attempt — do
   // NOT assert it here (holding it HIGH going in breaks that reset sequence).
@@ -177,7 +161,7 @@ bool SDCardManager::begin() {
   // the SD pins. Give SD its own HSPI instance and leave the global SPI for the
   // display. Other boards keep sharing the global SPI as before.
   bool cardReady = false;
-#if FREEINK_MCU_S3 || FREEINK_MCU_ESP32
+#if FREEINK_MCU_S3
   if (BoardConfig::ACTIVE.sd.separateSpi && SD_SCLK >= 0 && SD_MOSI >= 0 && SD_MISO >= 0) {
     static SPIClass dedicatedSdSpi(HSPI);
     // End each transaction in the task that started it; the bus itself remains dedicated HSPI.
@@ -195,7 +179,7 @@ bool SDCardManager::begin() {
       if (cardReady || attempt + 1 == attempts) break;
       delay(80);
     }
-#if FREEINK_MCU_S3 || FREEINK_MCU_ESP32
+#if FREEINK_MCU_S3
   }
 #endif
 

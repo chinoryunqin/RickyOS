@@ -24,8 +24,8 @@ int main() {
   assert(!imu.read(sample) && !imu.sleep() && !imu.wake());
   return 0;
 #else
-  static_assert(BoardConfig::METALIO_EINK4.sensors.imuType == BoardConfig::ImuType::Sc7a20h);
-  static_assert(BoardConfig::METALIO_EINK4.sensors.imuAddr == 0x19);
+  static_assert(BoardConfig::READ_PICO.sensors.imuType == BoardConfig::ImuType::Sc7a20h);
+  static_assert(BoardConfig::READ_PICO.sensors.imuAddr == 0x19);
   assert(!imu.read(sample) && !imu.sleep() && !imu.wake() && !imu.hasGyroscope());
   assert(!imu.begin());
   chip(0x19, 0x33); // A LIS3DH-compatible layout isn't sufficient identity.

@@ -117,11 +117,6 @@ bool HapticManager::begin() {
   if (!lock) return false;
   if (s.begun) return true;
   if (!supported()) return false;
-#if FREEINK_DEVICE_METALIO_EINK4
-  // Finish board initialization before attaching PWM: the legacy board startup
-  // configures the motor pad LOW. Later managers must not reset our PWM pin.
-  if (BoardConfig::isMetalioEInk4() && !metalio::ensureBooted()) return false;
-#endif
   s.config = BoardConfig::ACTIVE.haptic;
   pinMode(s.config.gpio, OUTPUT);
   digitalWrite(s.config.gpio, s.config.activeHigh ? LOW : HIGH);
