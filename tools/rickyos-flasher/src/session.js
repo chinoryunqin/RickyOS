@@ -10,7 +10,7 @@ function sectorPad(bytes) {
 }
 
 export class FlashSession {
-  // device: 'readpico' (default) or 'plus'; fixed for the session, chosen before connecting.
+  // device: 'readpico' (default), 'eego' or 'plus'; fixed for the session, chosen before connecting.
   constructor(adapter, device = 'readpico') {
     this.adapter = adapter; this.device = device; this.writeStarted = false; this.invalidate();
   }
@@ -68,6 +68,9 @@ export class FlashSession {
       return this.installPlus(firmware, release, assets.map(item => item?.slice()), backup, plan, progress, phase);
     }
     requireThat(!isPlusRelease(release) && plan.device !== 'plus', '固件与所选设备不一致，禁止写入。');
+    // Read Pico and EEGO A4 share this path (same chip and layout): the release must be
+    // the chosen device's own.
+    requireThat(release.board === (this.device === 'eego' ? 'eego_a4' : 'readpico'), '固件与所选设备不一致，禁止写入。');
     await checkFirmware(firmware, release);
     checkPlanRelease(plan, release);
     const installAssets = assets.map(item => item.slice());

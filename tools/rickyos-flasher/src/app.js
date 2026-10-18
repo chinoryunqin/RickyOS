@@ -13,11 +13,14 @@ let release = null, session = null, adapter = null, busy = false, cancelled = fa
 // The device chosen on the page decides the release, the chip check and the install path.
 const DEVICES = {
   readpico: { board: 'readpico', label: 'Read Pico（RDP-G01-W）', file: 'ReadPico',
-    chip: { name: 'ESP32-S3', id: 9 }, name: 'MindReset Read Pico', model: 'RDP-G01-W',
+    chip: { name: 'ESP32-S3', id: 9 }, name: 'MindReset Read Pico', model: 'RDP-G01-W', screen: '684 × 1216',
     note: ['只适用于已确认的 Read Pico 设备。', '原厂或已刷其他系统的设备都可以直接安装。'] },
   plus: { board: PLUS.board, label: 'Metalio E-Ink4 Plus', file: 'Plus',
-    chip: { name: PLUS.chipName, id: PLUS.chipId }, name: 'Metalio E-Ink4 Plus', model: '',
+    chip: { name: PLUS.chipName, id: PLUS.chipId }, name: 'Metalio E-Ink4 Plus', model: '', screen: '1000 × 1768',
     note: ['只适用于已确认的 Metalio E-Ink4 Plus。', '出厂系统或已装 RickyOS 的设备可以直接安装。'] },
+  eego: { board: 'eego_a4', label: 'EEGO A4', file: 'EEGO-A4',
+    chip: { name: 'ESP32-S3', id: 9 }, name: 'EEGO A4', model: '', screen: '552 × 768',
+    note: ['只适用于已确认的 EEGO A4。', '其他系统会完整安装，SD 卡里的书不受影响。'] },
 };
 let device = 'readpico', releases = {};
 let backupUrl = null, wakeLock = null;
@@ -110,8 +113,12 @@ function showPlan(kind) {
 function updateControls() {
   $('connect').disabled = !connectionAllowed();
   $('model-confirm').disabled = busy || Boolean(session);
-  for (const option of document.querySelectorAll('.dp-option[data-device]'))
-    option.disabled = busy || Boolean(session) || (option.dataset.device !== 'readpico' && !releases[DEVICES[option.dataset.device].board]);
+  for (const option of document.querySelectorAll('.dp-option[data-device]')) {
+    const available = option.dataset.device === 'readpico' || Boolean(releases[DEVICES[option.dataset.device].board]);
+    option.disabled = busy || Boolean(session) || !available;
+    // A device appears only once the catalog has its release: nothing unreleased is named.
+    if (option.dataset.device === 'eego') option.hidden = !available;
+  }
   $('disconnect').hidden = !session;
   $('disconnect').disabled = busy;
   $('backup').disabled = busy || Boolean(session?.writeStarted);
@@ -176,6 +183,7 @@ function selectDevice(next) {
   $('device-model').textContent = chosen.model;
   $('device-model').parentElement.hidden = !chosen.model;  // the Plus shows no model row
   $('device-chip').textContent = `${chosen.chip.name} / 16 MB`;
+  $('device-screen').textContent = chosen.screen;
   $('device-note').replaceChildren(chosen.note[0], document.createElement('br'), chosen.note[1]);
   // Only the Read Pico has a product photo so far; the Plus render replaces this later.
   $('device-photo').hidden = device !== 'readpico';

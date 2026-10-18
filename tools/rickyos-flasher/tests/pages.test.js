@@ -70,13 +70,15 @@ test('site navigation is the studio, RickyOS, developer program, RickyVerse and 
   assert.match(await read('27.html'), /src="\.\/src\/r27\.css"|href="\.\/src\/r27\.css"/);
   assert.match(await read('27.html'), /href="\.\/install\.html"/);
 });
-test('installer offers Read Pico and the Plus, Read Pico chosen first', async () => {
+test('installer offers Read Pico and the Plus (the A4 once released), Read Pico chosen first', async () => {
   for (const file of ['index.html', 'rickyos.html', 'developers.html', 'verse.html', 'install.html'])
     assert.doesNotMatch(await read(file), /不愿意透露姓名|一位朋友|正在赶来|f-emblem|dp-friend/, file);
   const html = await read('install.html');
   const picker = html.match(/<section class="device-picker"[\s\S]*?<\/section>/)?.[0] ?? '';
-  assert.equal((picker.match(/class="dp-option/g) ?? []).length, 3);
-  assert.deepEqual([...picker.matchAll(/data-device="([\w-]+)"/g)].map(m => m[1]), ['readpico', 'plus']);
+  assert.equal((picker.match(/class="dp-option/g) ?? []).length, 4);
+  assert.deepEqual([...picker.matchAll(/data-device="([\w-]+)"/g)].map(m => m[1]), ['readpico', 'plus', 'eego']);
+  // The A4 stays hidden until the catalog has its release (app.js unhides it).
+  assert.match(picker, /data-device="eego"[^>]*hidden/);
   assert.equal((picker.match(/dp-active/g) ?? []).length, 1);
   assert.match(picker, /dp-active[^>]*>[\s\S]*?Read Pico/);
   assert.equal((picker.match(/aria-disabled="true"/g) ?? []).length, 1);

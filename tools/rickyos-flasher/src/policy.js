@@ -88,19 +88,28 @@ export function activeOffset(ota) {
   requireThat(seqs.length > 0, '没有明确的有效启动槽。');
   return [0x10000, 0x650000][(Math.max(...seqs) - 1) % 2];
 }
-export function checkImage(bytes, product = false, version = '') {
+// ESP32-S3 boards installed through the Read Pico path: the same chip, flash size and
+// RickyOS partition layout; the board tag in the image tells them apart. The EEGO A4 has
+// no hardware-accepted factory layout, so any system that is not RickyOS gets the
+// complete install and a Read Pico factory system is refused.
+export const S3_BOARDS = Object.freeze({
+  readpico: { name: 'Read Pico', factoryLayouts: ['mindreset-factory-4m-v1'] },
+  eego_a4: { name: 'EEGO A4', factoryLayouts: [] },
+});
+export function checkImage(bytes, product = false, version = '', board = 'readpico') {
   requireThat(bytes.length >= 24 && bytes[0] === 0xe9 && bytes[1] >= 1 && bytes[1] <= 16 &&
     new DataView(bytes.buffer, bytes.byteOffset).getUint16(12, true) === 9, '不是有效的 ESP32-S3 应用镜像。');
-  requireThat(contains(bytes, TAG), '镜像缺少 Read Pico 机型标记。');
+  requireThat(S3_BOARDS[board] && contains(bytes, `CROSSPOINT-BOARD-V1:${board};`),
+    `镜像缺少 ${S3_BOARDS[board]?.name ?? board} 机型标记。`);
   // Reject conflicting board tags rather than accepting any matching substring.
   const text = new TextDecoder('latin1').decode(bytes);
   const tags = [...text.matchAll(/CROSSPOINT-BOARD-V1:([\w-]+);/g)].map(m => m[1]);
-  requireThat(tags.every(tag => tag === 'readpico'), '镜像包含其他机型标记。');
+  requireThat(tags.every(tag => tag === board), '镜像包含其他机型标记。');
   if (product) requireThat(contains(bytes, 'RickyOS') && contains(bytes, version), '固件品牌或版本不匹配。');
 }
 export function checkRelease(release) {
   requireThat(release?.approved === true && release.hardwareAccepted === true &&
-    ['app-upgrade', 'auto-install'].includes(release.mode) && release.board === 'readpico' && release.chipId === 9 &&
+    ['app-upgrade', 'auto-install'].includes(release.mode) && Boolean(S3_BOARDS[release.board]) && release.chipId === 9 &&
     release.flashBytes === FLASH_BYTES && typeof release.version === 'string' &&
     /^\d+\.\d+\.\d+$/.test(release.version) &&
     Number.isInteger(release.bytes) && release.bytes >= 24 && release.bytes % 4 === 0 &&
@@ -110,7 +119,7 @@ export function checkRelease(release) {
     '这份固件尚未通过正式发行检查，安装入口保持关闭。');
   checkNotes(release.notes);
   if (release.mode === 'auto-install') {
-    checkFullInstall(release.fullInstall);
+    checkFullInstall(release.fullInstall, release.board);
     requireThat(!release.fullInstall.segments.some(item => item.file === release.file), '应用和启动组件不能使用同一个文件。');
   } else requireThat(release.fullInstall === undefined, '仅更新应用的旧格式不能附带未经校验的首次安装组件。');
   return release;
@@ -126,7 +135,8 @@ export function checkNotes(notes) {
     new TextEncoder().encode(note).length <= NOTE_BYTES_MAX),
   `更新说明最多 ${NOTE_COUNT_MAX} 条，每条一行、不超过 ${NOTE_BYTES_MAX} 字节（约 32 个汉字）。`);
 }
-export function checkFullInstall(bundle) {
+export function checkFullInstall(bundle, board = 'readpico') {
+  const factoryLayouts = S3_BOARDS[board]?.factoryLayouts;
   const specs = [['bootloader', 0, 24, 0x8000], ['partitions', 0x8000, 3072, 4096],
     ['boot_app0', 0xe000, 8192, 8192]];
   // Factory images are built from MindReset's open source, so devices need not
@@ -134,8 +144,10 @@ export function checkFullInstall(bundle) {
   // Read_Pico app descriptor (inspectBackup) and a saved, re-verified full backup.
   requireThat(bundle?.approved === true && bundle.hardwareAccepted === true &&
     Array.isArray(bundle.segments) && bundle.segments.length === 3 &&
-    Array.isArray(bundle.factoryLayouts) && bundle.factoryLayouts.length > 0 &&
-    bundle.factoryLayouts.every(layout => layout === 'mindreset-factory-4m-v1') &&
+    Array.isArray(factoryLayouts) && Array.isArray(bundle.factoryLayouts) &&
+    // A board with accepted factory layouts must name them; one without installs other systems only.
+    (factoryLayouts.length > 0 ? bundle.factoryLayouts.length > 0 : bundle.otherSystems === true) &&
+    bundle.factoryLayouts.every(layout => factoryLayouts.includes(layout)) &&
     [undefined, true, false].includes(bundle.otherSystems),
     '首次安装包尚未通过硬件验收，不能迁移原厂系统。');
   for (const [i, [role, offset, min, max]] of specs.entries()) {
@@ -172,6 +184,8 @@ export function checkPlanRelease(plan, release) {
       '该发行包不包含完整安装组件，不能替换当前系统。');
   }
   if (plan.kind === 'factory') {
+    // The factory detection recognizes the Read Pico's own system only.
+    requireThat(release.board === 'readpico', '检测到的是小纸 Read Pico 的原厂系统，不是所选设备，禁止写入。');
     requireThat(release.mode === 'auto-install', '该发行包不包含原厂首次安装组件。');
     requireThat(release.fullInstall.factoryLayouts.includes(plan.layout),
       '识别到原厂系统，但这种分区布局尚未通过安装验收。请保存备份并联系 Ricky AI Studio。');
@@ -181,7 +195,7 @@ export async function checkFirmware(bytes, release) {
   checkRelease(release);
   requireThat(bytes.length === release.bytes && await sha256(bytes) === release.sha256,
     '固件大小或 SHA-256 不匹配，禁止写入。');
-  checkImage(bytes, true, release.version);
+  checkImage(bytes, true, release.version, release.board);
 }
 export async function inspectBackup(bytes) {
   requireThat(bytes.length === FLASH_BYTES, '完整 Flash 备份必须为 16 MB。');

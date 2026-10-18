@@ -28,6 +28,7 @@
 button.dp-option{font:inherit;text-align:left;cursor:pointer;width:100%}
 button.dp-option:disabled{cursor:default;opacity:.6}
 .dp-plus{background:#f7f7f5;border:1px solid #dcdcd8}
+.dp-a4{background:#f4f5f4;border:1px solid #d6d9d8;border-radius:7px}
 .dp-plus::after{content:'';position:absolute;left:5px;bottom:5px;width:6px;height:6px;border-radius:50%;background:#f06a1d}
 .dp-option:not(.dp-active) em{background:#eceef1;color:#4b5058}
 .dp-text{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
