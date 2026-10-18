@@ -10,6 +10,7 @@
 #include "CrossPointSettings.h"
 #include "ReadingStatsStore.h"
 #include "RickyBrandMark.h"
+#include "RickyCompactLayout.h"
 #include "RickyDesignTokens.h"
 #include "RickyDesignUi.h"
 #include "RickyHomeLayout.h"
@@ -19,9 +20,9 @@
 #include "RickyProfile.h"
 #include "RickyReadingStreak.h"
 #include "UITheme.h"
-#include "util/TimeUtils.h"
 #include "util/PanelTileCache.h"
 #include "RickyCompanion.h"
+#include "util/TimeUtils.h"
 
 namespace fui = freeink::ui;
 namespace {
@@ -58,7 +59,7 @@ void RickyHomeUi::begin(const std::vector<RecentBook>& recent, CoverPainter cove
 void RickyHomeUi::configure(Rect bounds, int selection, bool show, int percent) {
   content = bounds;
   selected = selection;
-  start = RickyHomeLayout::pageStart(selection);
+  start = RickyCompactLayout::enabled ? selection : RickyHomeLayout::pageStart(selection);
   showSelection = show;
   progress = std::clamp(percent, 0, 100);
   snprintf(progressText, sizeof(progressText), "%d%%", progress);
@@ -91,6 +92,14 @@ bool RickyHomeUi::paint(fui::Rect rect, int index) {
     RickyPageUi::bookTile(uiTarget, rect, titleOf(book), text);
     return true;
   }
+  if (RickyCompactLayout::enabled && rect.width < 80) {
+    RickyDesignUi::fill(renderer, rect, ricky::ds::gray::kPaper);
+    uiTarget.stroke(rect, fui::Paint::solid(fui::Color::Black), 1);
+    RickyPageUi::motif(uiTarget,
+                       Rect{rect.x + rect.width / 4, rect.y + rect.height / 3, rect.width / 2, rect.width / 2},
+                       RickyPageUi::motifFor(titleOf(book)));
+    return true;
+  }
   RickyDesignUi::cover(renderer, rect, titleOf(book), formatOf(book.path));
   return true;
 }
@@ -101,8 +110,16 @@ void RickyHomeUi::draw(UiScreen& screen) {
   screen.setContentMarginFromScreen(fui::Insets{
       static_cast<int16_t>(content.y), static_cast<int16_t>(renderer.getScreenWidth() - content.x - content.width),
       static_cast<int16_t>(renderer.getScreenHeight() - content.y - content.height), static_cast<int16_t>(content.x)});
+  if (RickyCompactLayout::enabled) {
+    drawCompact(screen);
+    return;
+  }
   if (content.height > content.width) {
     drawPortrait(screen);
+    return;
+  }
+  if (content.height < 640) {
+    drawLandscape(screen);
     return;
   }
   const auto& theme = screen.theme();
@@ -243,6 +260,319 @@ void RickyHomeUi::draw(UiScreen& screen) {
   fui::coverGrid(screen.frame(), screen.body(), grid);
 }
 
+void RickyHomeUi::drawCompact(UiScreen& screen) {
+  namespace design = RickyDesignUi;
+  namespace compact = RickyCompactLayout;
+  const auto box = compact::box;
+  const int pad = compact::padding, gap = compact::gap;
+  const int smallLine = renderer.getLineHeight(design::CAPTION);
+  const int bodyLine = renderer.getLineHeight(design::BODY);
+  const int titleLine = renderer.getLineHeight(design::TITLE);
+  const auto layout = compact::home(screen.body(), titleLine, bodyLine, smallLine);
+  std::tm local{};
+  if (halClock.localTime(local))
+    snprintf(dateText, sizeof(dateText), tr(STR_RICKY_HOME_MONTH_DAY), static_cast<unsigned>(local.tm_mon + 1),
+             static_cast<unsigned>(local.tm_mday));
+  else
+    snprintf(dateText, sizeof(dateText), "%s", tr(STR_RICKY_DATE_UNSET));
+  const auto avatar = box(layout.profile.right() - 64, layout.profile.y, 64, 64);
+  RickyProfile::drawAvatar(renderer, Rect{avatar.x, avatar.y, avatar.width, avatar.height});
+  screen.frame().hit(avatar, OPEN_BOOK, PROFILE, fui::InputTouch);
+  const int profileWidth = avatar.x - gap - layout.profile.x;
+  design::text(renderer, box(layout.profile.x, layout.profile.y, profileWidth, titleLine), dateText, design::TITLE);
+  snprintf(greetingText, sizeof(greetingText), I18N.get(greetingKeys[greetingChoice]), RickyProfile::nickname());
+  if (layout.landscape) {
+    design::secondaryText(renderer, box(layout.profile.x, layout.profile.y + titleLine, profileWidth, smallLine),
+                          greetingText, design::CAPTION);
+  } else {
+    static constexpr StrId weekdays[] = {
+        StrId::STR_CAL_WEEKDAY_SUN, StrId::STR_CAL_WEEKDAY_MON, StrId::STR_CAL_WEEKDAY_TUE, StrId::STR_CAL_WEEKDAY_WED,
+        StrId::STR_CAL_WEEKDAY_THU, StrId::STR_CAL_WEEKDAY_FRI, StrId::STR_CAL_WEEKDAY_SAT};
+    snprintf(statsText, sizeof(statsText), tr(STR_RICKY_HOME_WEEK_STREAK),
+             I18N.get(weekdays[std::clamp(local.tm_wday, 0, 6)]),
+             static_cast<unsigned>(rickyStreak::evaluate().current));
+    design::secondaryText(renderer, box(layout.profile.x, layout.profile.y + titleLine, profileWidth, smallLine),
+                          halClock.nowUtc() ? statsText : "", design::CAPTION);
+    design::secondaryText(renderer,
+                          box(layout.profile.x, layout.profile.bottom() - bodyLine, layout.profile.width, bodyLine),
+                          greetingText, design::BODY);
+  }
+  design::secondaryText(renderer, layout.motto, RickyProfile::homePhrase(), design::CAPTION, false,
+                        fui::TextAlign::Center);
+  const bool empty = !books || books->empty();
+  const auto main = layout.main;
+  const bool picked = !empty && showSelection && selected == start;
+  // The companion follows Profile -> Theme; right-aligned so its paws meet the card where the puppy's do.
+  const auto peek = RickyCompanion::cat() ? RickyBrandMark::catPeek() : RickyBrandMark::dogPeek();
+  RickyBrandMark::drawDogPeek(renderer, Rect{static_cast<int16_t>(layout.mascot.right() - peek.width),
+                                             static_cast<int16_t>(layout.mascot.y + 1), static_cast<int16_t>(peek.width),
+                                             static_cast<int16_t>(peek.height)},
+                              peek);
+  design::softCard(renderer, main, picked);
+  const int coverHeight = std::min<int>(main.height - pad * 2, main.width / 3 * 3 / 2);
+  const int coverWidth = coverHeight * 2 / 3;
+  const auto art = box(main.x + pad, main.y + (main.height - coverHeight) / 2, coverWidth, coverHeight);
+  const int textX = art.right() + pad, textWidth = main.right() - textX - pad;
+  const auto link = box(textX, main.bottom() - pad - bodyLine, textWidth, bodyLine);
+  if (empty) {
+    design::cover(renderer, art, tr(STR_RICKY_FIRST_BOOK), nullptr);
+    design::text(renderer, box(textX, main.y + pad, textWidth, bodyLine * 2), tr(STR_RICKY_FIRST_BOOK), design::BODY,
+                 false, fui::TextAlign::Left, 2);
+    design::text(renderer, link, tr(STR_RICKY_START_TRANSFER), design::BODY);
+    screen.frame().hit(main, OPEN_BOOK, TRANSFER, fui::InputTouch);
+    auto available = layout.actions;
+    const StrId labels[] = {StrId::STR_RICKY_BROWSER_TRANSFER, StrId::STR_RICKY_SD_BOOKS, StrId::STR_WEREAD_TITLE};
+    const int actions[] = {TRANSFER, FILES, WEREAD};
+    for (int i = 0; i < 3; ++i) {
+      const int cellWidth = (available.width - gap * 2) / 3;
+      const auto row = layout.landscape
+                           ? compact::top(available, bodyLine + 20, 8)
+                           : box(available.x + i * (cellWidth + gap), available.y, cellWidth, available.height);
+      if (row.height < bodyLine) break;
+      design::text(renderer, row, I18N.get(labels[i]), design::CAPTION, false, fui::TextAlign::Left, 2);
+      screen.frame().hit(row, OPEN_BOOK, actions[i], fui::InputTouch);
+    }
+    return;
+  }
+  thumbnailHeight = coverHeight;
+  paint(art, start);
+  const auto& book = (*books)[start];
+  design::secondaryText(renderer, box(textX, main.y + pad, textWidth, smallLine), tr(STR_RICKY_HOME_NOW),
+                        design::CAPTION, picked);
+  const int titleY = main.y + pad + smallLine + 4;
+  const bool singleTitle = renderer.getTextWidth(design::BODY, titleOf(book)) <= textWidth;
+  const int titleHeight = bodyLine * (singleTitle ? 1 : 2);
+  design::text(renderer, box(textX, titleY, textWidth, titleHeight), titleOf(book), design::BODY, picked,
+               fui::TextAlign::Left, 2);
+  const int barY = link.y - 12;
+  if (!book.author.empty() && titleY + titleHeight + 4 + smallLine <= barY - 8)
+    design::secondaryText(renderer, box(textX, titleY + titleHeight + 4, textWidth, smallLine), book.author.c_str(),
+                          design::CAPTION, picked);
+  design::progress(renderer, box(textX, barY, textWidth, 4), progress, picked);
+  snprintf(progressText, sizeof(progressText), "%d%%", progress);
+  design::secondaryText(renderer, box(link.x, link.y, 64, link.height), progressText, design::CAPTION, picked);
+  design::text(renderer, box(link.x + 68, link.y, link.width - 68, link.height), tr(STR_CONTINUE_READING), design::BODY,
+               picked, fui::TextAlign::Right);
+  screen.frame().hit(main, OPEN_BOOK, start, fui::InputTouch);
+  const unsigned values[] = {static_cast<unsigned>(READING_STATS.getTodayReadingMs() / 60000),
+                             static_cast<unsigned>(rickyStreak::evaluate().current)};
+  for (int i = 0; i < 2; ++i) {
+    const auto cell = box(layout.stats.x + i * (layout.stats.width + gap) / 2, layout.stats.y,
+                          (layout.stats.width - gap) / 2, layout.stats.height);
+    design::secondaryText(renderer, box(cell.x + pad, cell.y + pad, cell.width - pad * 2, smallLine),
+                          i == 0 ? tr(STR_RICKY_TODAY_READING) : tr(STR_RICKY_STREAK_READING), design::CAPTION);
+    snprintf(statsText, sizeof(statsText), "%u", values[i]);
+    const char* unit = i == 0 ? tr(STR_RICKY_HOME_MINUTES_UNIT) : tr(STR_RICKY_HOME_DAYS_UNIT);
+    const int unitWidth = renderer.getTextWidth(design::CAPTION, unit);
+    const int numberWidth = cell.width - pad * 2 - unitWidth - 6;
+    design::text(renderer, box(cell.x + pad, cell.bottom() - pad - titleLine, numberWidth, titleLine), statsText,
+                 design::TITLE);
+    design::secondaryText(renderer,
+                          box(cell.right() - pad - unitWidth, cell.bottom() - pad - smallLine, unitWidth, smallLine),
+                          unit, design::CAPTION);
+    screen.frame().hit(cell, OPEN_BOOK, STATISTICS, fui::InputTouch);
+  }
+  design::rule(renderer, box(layout.stats.x, layout.stats.y, layout.stats.width, 0));
+}
+
+// Landscape composition for panels too short for the portrait stack (§13.1):
+// the same content in §13.1's order, but two columns so the continue-reading
+// card keeps the left and the statistics the right (§15.1). Geometry comes from
+// the spec tokens only; 688 px of content is two 334 px columns at a 20 px
+// gutter, and the motto stays on its own line above the tab bar (§12).
+void RickyHomeUi::drawLandscape(UiScreen& screen) {
+  namespace design = RickyDesignUi;
+  namespace ds = ricky::ds;
+  auto& target = screen.target();
+  const auto box = [](int x, int y, int w, int h) {
+    return fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(y), static_cast<int16_t>(std::max(1, w)),
+                     static_cast<int16_t>(std::max(1, h))};
+  };
+  const auto body = screen.body();
+  const int pad = ds::space::kCardPadding;
+  const int gutter = ds::space::kGutter;
+  const int blockGap = ds::space::kBlockGap;
+  const int mottoHeight = renderer.getLineHeight(design::CAPTION);
+
+  const auto motto = box(body.x, body.bottom() - mottoHeight, body.width, mottoHeight);
+  const int columnsHeight = std::max(1, motto.y - body.y - blockGap);
+  const int columnWidth = std::max(1, (body.width - gutter) / 2);
+  const auto left = box(body.x, body.y, columnWidth, columnsHeight);
+  const auto right = box(left.right() + gutter, body.y, columnWidth, columnsHeight);
+  design::secondaryText(renderer, motto, RickyProfile::homePhrase(), design::CAPTION, false, fui::TextAlign::Center);
+
+  std::tm local{};
+  static constexpr StrId weekdays[] = {
+      StrId::STR_CAL_WEEKDAY_SUN, StrId::STR_CAL_WEEKDAY_MON, StrId::STR_CAL_WEEKDAY_TUE, StrId::STR_CAL_WEEKDAY_WED,
+      StrId::STR_CAL_WEEKDAY_THU, StrId::STR_CAL_WEEKDAY_FRI, StrId::STR_CAL_WEEKDAY_SAT};
+  if (halClock.localTime(local)) {
+    snprintf(dateText, sizeof(dateText), tr(STR_RICKY_HOME_MONTH_DAY), static_cast<unsigned>(local.tm_mon + 1),
+             static_cast<unsigned>(local.tm_mday));
+    snprintf(statsText, sizeof(statsText), tr(STR_RICKY_HOME_WEEK_STREAK),
+             I18N.get(weekdays[std::clamp(local.tm_wday, 0, 6)]),
+             static_cast<unsigned>(rickyStreak::evaluate().current));
+  } else {
+    snprintf(dateText, sizeof(dateText), "%s", tr(STR_RICKY_DATE_UNSET));
+    statsText[0] = 0;
+  }
+  snprintf(greetingText, sizeof(greetingText), I18N.get(greetingKeys[greetingChoice]), RickyProfile::nickname());
+
+  // --- left: profile row, then the continue-reading card (§13.1 items 2-5) ---
+  const auto profile = box(left.x, left.y, left.width, ds::layout::kAvatarSize);
+  const auto avatar =
+      box(profile.right() - ds::layout::kAvatarSize, profile.y, ds::layout::kAvatarSize, ds::layout::kAvatarSize);
+  RickyProfile::drawAvatar(renderer, Rect{avatar.x, avatar.y, avatar.width, avatar.height});
+  screen.frame().hit(avatar, OPEN_BOOK, PROFILE, fui::InputTouch);
+  const int profileTextWidth = profile.width - avatar.width - ds::space::kInlineGap;
+  design::text(renderer, box(profile.x, profile.y, profileTextWidth, 44), dateText, design::TITLE);
+  if (statsText[0])
+    design::secondaryText(renderer, box(profile.x, profile.y + 44, profileTextWidth, 28), statsText, design::CAPTION);
+
+  const bool empty = !books || books->empty();
+  const auto main = box(left.x, profile.bottom() + blockGap, left.width, left.bottom() - profile.bottom() - blockGap);
+  const bool selectedCard = !empty && showSelection && selected == start;
+  if (empty) {
+    // §13.5: dashed placeholder, one title line, one primary button.
+    design::card(renderer, main, false);
+    const int coverHeight = main.height - pad * 2;
+    const int coverWidth = coverHeight * ds::layout::kCoverAspectW / ds::layout::kCoverAspectH;
+    const auto art = box(main.x + pad, main.y + pad, coverWidth, coverHeight);
+    for (int y = art.y + ds::stroke::kHairline; y < art.bottom(); y += ds::space::k3) {
+      for (int x = art.x + ((y / ds::space::k3) % 2 ? 0 : ds::space::k2); x < art.right(); x += ds::space::k3) {
+        const int len = std::min<int>(ds::space::k2, art.right() - x);
+        if (len > 0)
+          target.line({static_cast<int16_t>(x), static_cast<int16_t>(y)},
+                      {static_cast<int16_t>(x + len), static_cast<int16_t>(y)}, ds::stroke::kHairline,
+                      fui::Paint::solid(fui::Color::Black));
+      }
+    }
+    const int textX = art.right() + pad;
+    const int textWidth = main.right() - textX - pad;
+    design::text(renderer, box(textX, main.y + pad, textWidth, 40), tr(STR_RICKY_FIRST_BOOK), design::HEADLINE, false,
+                 fui::TextAlign::Left, 2);
+    const auto button =
+        box(textX, main.bottom() - pad - ds::layout::kButtonCompactHeight, textWidth, ds::layout::kButtonCompactHeight);
+    design::fill(renderer, button, ds::gray::kInk, ds::radius::kControl);
+    design::text(renderer, button, tr(STR_RICKY_START_TRANSFER), design::BODY, true, fui::TextAlign::Center);
+    screen.frame().hit(
+        box(button.x - 0, button.y - (ds::layout::kTouchMin - button.height) / 2, button.width, ds::layout::kTouchMin),
+        OPEN_BOOK, TRANSFER, fui::InputTouch);
+    screen.frame().hit(main, OPEN_BOOK, TRANSFER, fui::InputTouch);
+  } else {
+    design::card(renderer, main, selectedCard);
+    const int coverHeight = main.height - pad * 2;
+    const int coverWidth = coverHeight * ds::layout::kCoverAspectW / ds::layout::kCoverAspectH;
+    const auto art = box(main.x + pad, main.y + pad, coverWidth, coverHeight);
+    thumbnailHeight = coverHeight;
+    paint(art, start);
+    const int textX = art.right() + pad;
+    const int textWidth = main.right() - textX - pad;
+    const auto& book = (*books)[start];
+    design::secondaryText(renderer, box(textX, main.y + pad, textWidth, 28), tr(STR_RICKY_HOME_NOW), design::CAPTION,
+                          selectedCard);
+    const int titleFont = design::fontFor(renderer, design::HEADLINE, titleOf(book));
+    const bool singleTitle = renderer.getTextWidth(titleFont, titleOf(book)) <= textWidth;
+    // Two title lines exactly fill the column here, so the author row only has
+    // room when the title fits one line -- same rule as the portrait card.
+    design::text(renderer, box(textX, main.y + pad + 28, textWidth, singleTitle ? 40 : 80), titleOf(book),
+                 design::HEADLINE, selectedCard, fui::TextAlign::Left, 2);
+    if (!book.author.empty() && singleTitle)
+      design::secondaryText(renderer, box(textX, main.y + pad + 68, textWidth, 28), book.author.c_str(),
+                            design::CAPTION, selectedCard);
+    snprintf(progressText, sizeof(progressText), "%d%%", progress);
+    const auto buttonHeight = ds::layout::kButtonCompactHeight;
+    const auto button = box(textX, main.bottom() - pad - buttonHeight, textWidth, buttonHeight);
+    const auto barY = button.y - ds::space::k4 - ds::layout::kProgressHeight;
+    design::progress(renderer, box(textX, barY, textWidth - 72, ds::layout::kProgressHeight), progress, selectedCard);
+    design::secondaryText(renderer, box(textX + textWidth - 68, barY - 10, 68, 28), progressText, design::CAPTION,
+                          selectedCard, fui::TextAlign::Right);
+    design::fill(renderer, button, selectedCard ? ds::gray::kPaper : ds::gray::kInk, ds::radius::kControl);
+    design::text(renderer, button, tr(STR_CONTINUE_READING), design::BODY, !selectedCard, fui::TextAlign::Center);
+    screen.frame().hit(main, OPEN_BOOK, start, fui::InputTouch);
+  }
+
+  // --- right: statistics (§13.1 item 6), then recent books (item 7) ---
+  if (empty) {
+    // No books means no statistics to show, so the column carries §13.5's
+    // transfer list instead, two rows per column so all five fit.
+    const auto heading = box(right.x, right.y, right.width, ds::layout::kSectionHeaderHeight);
+    design::text(renderer, heading, tr(STR_RICKY_TRANSFER_METHODS), design::HEADLINE);
+    static constexpr StrId kMethods[] = {StrId::STR_RICKY_BROWSER_TRANSFER, StrId::STR_RICKY_WEBDAV_CALIBRE,
+                                         StrId::STR_RICKY_CREATE_HOTSPOT, StrId::STR_RICKY_SD_BOOKS,
+                                         StrId::STR_WEREAD_TITLE};
+    const int rowHeight = ds::layout::kRowHeight;
+    const int subColumnWidth = (right.width - gutter) / 2;
+    for (int i = 0; i < static_cast<int>(std::size(kMethods)); ++i) {
+      const auto cell =
+          box(right.x + (i / 3) * (subColumnWidth + gutter),
+              heading.bottom() + ds::space::k2 + (i % 3) * (rowHeight + ds::space::k2), subColumnWidth, rowHeight);
+      if (cell.bottom() > right.bottom()) break;
+      design::text(renderer,
+                   box(cell.x, cell.y + (rowHeight - renderer.getLineHeight(design::BODY)) / 2, cell.width - 24, 36),
+                   I18N.get(kMethods[i]), design::BODY, false, fui::TextAlign::Left, 1);
+      RickyPageUi::chevron(target, box(cell.right() - 24, cell.y + (rowHeight - 24) / 2, 24, 24));
+      screen.frame().hit(cell, OPEN_BOOK,
+                         kMethods[i] == StrId::STR_WEREAD_TITLE     ? WEREAD
+                         : kMethods[i] == StrId::STR_RICKY_SD_BOOKS ? FILES
+                                                                    : TRANSFER,
+                         fui::InputTouch);
+    }
+    return;
+  }
+  const int statCardWidth = (right.width - gutter) / 2;
+  const int statCardHeight = pad * 2 + 28 + renderer.getLineHeight(design::NUMERIC_DISPLAY);
+  const unsigned todayMinutes = READING_STATS.getTodayReadingMs() / 60000;
+  const unsigned streak = rickyStreak::evaluate().current;
+  for (int i = 0; i < 2; ++i) {
+    const auto cell = box(right.x + i * (statCardWidth + gutter), right.y, statCardWidth, statCardHeight);
+    design::card(renderer, cell, false);
+    design::secondaryText(renderer, box(cell.x + pad, cell.y + pad / 2, cell.width - pad * 2, 28),
+                          i == 0 ? tr(STR_RICKY_TODAY_READING) : tr(STR_RICKY_STREAK_READING), design::CAPTION);
+    snprintf(statsText, sizeof(statsText), "%u", i == 0 ? todayMinutes : streak);
+    design::text(renderer,
+                 box(cell.x + pad, cell.bottom() - pad - renderer.getLineHeight(design::NUMERIC_DISPLAY),
+                     cell.width - pad * 2, renderer.getLineHeight(design::NUMERIC_DISPLAY)),
+                 statsText, design::NUMERIC_DISPLAY);
+    design::secondaryText(renderer, box(cell.x + cell.width - pad - 40, cell.bottom() - pad - 28, 40, 28),
+                          i == 0 ? tr(STR_RICKY_HOME_MINUTES_UNIT) : tr(STR_RICKY_HOME_DAYS_UNIT), design::CAPTION,
+                          false, fui::TextAlign::Right);
+    screen.frame().hit(cell, OPEN_BOOK, STATISTICS, fui::InputTouch);
+  }
+  const auto recentHeading =
+      box(right.x, right.y + statCardHeight + blockGap, right.width, ds::layout::kSectionHeaderHeight);
+  design::text(renderer, recentHeading, tr(STR_RICKY_HOME_RECENT), design::HEADLINE);
+  const int allWidth = 104;
+  design::secondaryText(renderer,
+                        box(recentHeading.right() - allWidth, recentHeading.y, allWidth, recentHeading.height),
+                        tr(STR_RICKY_HOME_ALL), design::CAPTION, false, fui::TextAlign::Right);
+  screen.frame().hit(box(recentHeading.right() - allWidth, recentHeading.y, allWidth, recentHeading.height), OPEN_BOOK,
+                     LIBRARY, fui::InputTouch);
+  const auto shelf = box(right.x, recentHeading.bottom(), right.width, right.bottom() - recentHeading.bottom());
+  const int count = std::min(3, static_cast<int>(books->size()) - 1);
+  if (count > 0 && shelf.height > 0) {
+    const int cellWidth = (shelf.width - gutter * (count - 1)) / count;
+    const int coverWidth =
+        std::min<int>(cellWidth, (shelf.height - 28) * ds::layout::kCoverAspectW / ds::layout::kCoverAspectH);
+    const int coverHeight = coverWidth * ds::layout::kCoverAspectH / ds::layout::kCoverAspectW;
+    for (int i = 0; i < count; ++i) {
+      const int index = start + 1 + i;
+      const auto cell = box(shelf.x + i * (cellWidth + gutter), shelf.y, cellWidth, shelf.height);
+      const auto cover = box(cell.x + (cellWidth - coverWidth) / 2, cell.y, coverWidth, coverHeight);
+      const bool selectedBook = showSelection && selected == index;
+      if (selectedBook)
+        design::fill(renderer,
+                     box(cover.x - ds::component::kCoverPlatePadding, cover.y - ds::component::kCoverPlatePadding,
+                         cover.width + ds::component::kCoverPlatePadding * 2,
+                         cover.height + ds::component::kCoverPlatePadding * 2),
+                     ds::gray::kInk, ds::radius::kControl);
+      paint(cover, index);
+      design::text(renderer, box(cell.x, cover.bottom() + ds::space::k2, cell.width, 28), titleOf((*books)[index]),
+                   design::CAPTION, selectedBook, fui::TextAlign::Left, 1);
+      screen.frame().hit(cell, OPEN_BOOK, index, fui::InputTouch);
+    }
+  }
+}
+
 void RickyHomeUi::drawPortrait(UiScreen& screen) {
   namespace design = RickyDesignUi;
   namespace ds = ricky::ds;
@@ -361,8 +691,8 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   // otherwise share that space; neither may collide with progress or the CTA.
   int upperBottom = titleY + (singleTitle ? titleLine : titleLine * 2);
   if (!book.author.empty() && singleTitle) {
-    design::secondaryText(renderer, box(x, upperBottom + 8, width, captionHeight), book.author.c_str(),
-                          design::CAPTION, selectedCard);
+    design::secondaryText(renderer, box(x, upperBottom + 8, width, captionHeight), book.author.c_str(), design::CAPTION,
+                          selectedCard);
     upperBottom += 8 + captionHeight;
   }
   // The card itself opens the book; its last row says so in words instead of a black
@@ -404,8 +734,8 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
                ds::gray::kLine);
   for (int i = 0; i < 2; ++i) {
     // The left column lines up with the page edge; the right one starts after the divider.
-    const auto cell = box(stats.x + i * (col + gap) - (i == 0 ? pad : 0), stats.y, col + (i == 0 ? pad : 0),
-                          stats.height);
+    const auto cell =
+        box(stats.x + i * (col + gap) - (i == 0 ? pad : 0), stats.y, col + (i == 0 ? pad : 0), stats.height);
     design::secondaryText(renderer, box(cell.x + pad, cell.y + 12, col - pad * 2, 28),
                           i == 0 ? tr(STR_RICKY_TODAY_READING) : tr(STR_RICKY_STREAK_READING), design::CAPTION);
     snprintf(statsText, sizeof(statsText), "%u", i == 0 ? todayMinutes : static_cast<unsigned>(streak.current));
@@ -477,8 +807,8 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
     paint(cover, index);
     // Titles are any text: the full-coverage body face for every one, so a row never
     // mixes two sizes (the caption face covers UI strings only).
-    design::text(renderer, box(cell.x, cover.bottom() + 12, cell.width, 36), titleOf(item), design::BODY,
-                 selectedBook, fui::TextAlign::Center);
+    design::text(renderer, box(cell.x, cover.bottom() + 12, cell.width, 36), titleOf(item), design::BODY, selectedBook,
+                 fui::TextAlign::Center);
     const auto* reading = READING_STATS.findMatchingBookForPath(item.path);
     if (reading && reading->lastProgressPercent >= 100)
       snprintf(statsText, sizeof(statsText), "%s", tr(STR_RICKY_BOOK_FINISHED));

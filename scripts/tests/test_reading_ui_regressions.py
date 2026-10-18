@@ -212,11 +212,14 @@ struct Activity {
   bool hasMainTabStatusBar() const { return usesMainTabBar() && bottom; }
   MainTabLayout mainTabLayout() const;
   MainTab mainTab() const { return tab; }
-  bool mainTabBackReturnsToTabs() const { return false; }
+  bool rootBack=false;
+  bool mainTabBackReturnsToTabs() const { return rootBack; }
   void selectMainTabContentEdge(MainTabContentEdge) {}
   void drawPageHeader(const Rect&,const char*,const char* =nullptr) const;
 };
 struct MappedInputManager {
+  inline static bool a4=false;
+  static bool powerKeyIsBack() { return a4; }
   enum class Button { None,Left,Right,Up,Down,Confirm,Back };
   bool tapped=true,down=false;
   int x=0,y=0;
@@ -236,6 +239,7 @@ struct ActivityManager {
   MainTab destination=MainTab::None;
   int updates=0;
   void goToMainTab(MainTab tab) { destination=tab; }
+  void goHome() { destination=MainTab::Recent; }
   void requestUpdate() { ++updates; }
   void goToStandby() { assert(false); }
   bool handleMainTabInput();
@@ -278,6 +282,21 @@ int main() {
       }
     }
   }
+  // A4 Back leaves every root tab in one click, while child pages retain
+  // their own Back owner. Legacy boards still focus the tabs first.
+  for (bool a4 : {false,true}) for (MainTab tab : MainTabs::values) {
+    MappedInputManager::a4=a4;
+    Activity page;page.tab=tab;page.rootBack=true;
+    ActivityManager m;m.currentActivity=&page;m.mappedInput.tapped=false;
+    m.mappedInput.released=MappedInputManager::Button::Back;
+    const bool routed=m.handleMainTabInput();
+    assert(routed);
+    if(a4 && tab!=MainTab::Recent) assert(m.destination==MainTab::Recent);
+    else assert(m.destination==MainTab::None && m.mainTabFocus==MainTabFocus::Tabs);
+    page.rootBack=false;m.destination=MainTab::None;m.mainTabFocus=MainTabFocus::Content;
+    assert(!m.handleMainTabInput() && m.destination==MainTab::None);
+  }
+  MappedInputManager::a4=false;
   theme.tabs=false;
   Activity page; const Rect legacy{0,9,684,66}; page.drawPageHeader(legacy,"legacy","version");
   assert(theme.headers==1 && theme.drawn.x==0 && theme.drawn.y==9 && theme.drawn.width==684);
@@ -321,6 +340,7 @@ struct RenderLock {
 [[maybe_unused]] static struct { void railsOffIfIdle(uint32_t) {} } display;
 struct ActivityResult {};
 struct MappedInputManager {
+  static bool powerKeyIsBack() { return false; }
   enum class Button { None,Back,Confirm,Left,Right,Up,Down };
   bool pressed=false,released=false,held=false,suppressed=false;
   bool tap=false,down=false,home=false,light=false;

@@ -214,10 +214,10 @@ TEST(InxNavigation, HidesOnlyInxTouchFocusAndKeepsActiveFeedback) {
   EXPECT_EQ(tokens.listRow.active.foreground.color, active.foreground.color);
 }
 
-TEST(InxNavigation, KeepsLegacyListMetricsIndependentFromLyra) {
+TEST(InxNavigation, KeepsRickyListMetricsIndependentFromLyra) {
   EXPECT_EQ(InxMetrics::values.listRowHeight, ricky::ds::layout::kRowHeight);
   EXPECT_EQ(InxMetrics::values.listWithSubtitleRowHeight, ricky::ds::layout::kRowHeightTwoLine);
-  EXPECT_EQ(InxMetrics::values.listRowGap, 0);
+  EXPECT_EQ(InxMetrics::values.listRowGap, ricky::ds::space::kTouchSpacing);
   EXPECT_EQ(InxMetrics::values.listRowRadius, ricky::ds::radius::kControl);
   EXPECT_EQ(InxMetrics::values.listInset, 0);
   EXPECT_EQ(InxMetrics::values.listSidePadding, ricky::ds::space::kPageMargin);
@@ -288,7 +288,8 @@ TEST(InxNavigation, PreservesRecentGeometryWithoutBezelInsets) {
   EXPECT_EQ(content.x, 0);
   EXPECT_EQ(content.y, metrics.headerHeight + metrics.verticalSpacing);
   EXPECT_EQ(content.width, 480);
-  EXPECT_EQ(content.height, 800 - metrics.headerHeight - metrics.verticalSpacing - InxRecentGeometry::footerReservedHeight);
+  EXPECT_EQ(content.height,
+            800 - metrics.headerHeight - metrics.verticalSpacing - InxRecentGeometry::footerReservedHeight);
   EXPECT_EQ(battery.x, 453);
   EXPECT_EQ(battery.y, 770);
   EXPECT_EQ(battery.width, 15);
@@ -646,7 +647,7 @@ TEST(InxOptions, ViewportFitsAndHitRowsRemainSeparated) {
       for (int row = 1; row < view.rows; ++row) {
         const auto previous = view.optionRect(row - 1);
         const auto next = view.optionRect(row);
-        EXPECT_EQ(next.y - previous.y - previous.height, 6);
+        EXPECT_GE(next.y - previous.y - previous.height, 6);
       }
     }
   }

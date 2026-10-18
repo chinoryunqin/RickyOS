@@ -758,6 +758,12 @@ bool CrossPointSettings::loadFromBinaryFile() {
   screenMargin = value(13, screenMargin);
   sleepScreenCoverMode = validated(14, sleepScreenCoverMode, SLEEP_SCREEN_COVER_MODE_COUNT);
   textAntiAliasing = value(15, textAntiAliasing);
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+  // The A4's gray pass does not clear the previous page, so every anti-aliased turn
+  // left its ghost on screen until the next one. Its text is always B/W, whatever an
+  // earlier firmware stored.
+  textAntiAliasing = 0;
+#endif
   hideBatteryPercentage = validated(16, hideBatteryPercentage, HIDE_BATTERY_PERCENTAGE_COUNT);
   longPressButtonBehavior = validated(17, longPressButtonBehavior, LONG_PRESS_BUTTON_BEHAVIOR_COUNT);
   hyphenationEnabled = value(18, hyphenationEnabled);

@@ -49,12 +49,12 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "platform/UsbSerialJtagHandoff.h"
+#include "util/BootPreparation.h"
 #include "util/ButtonNavigator.h"
 #include "util/RickyStorageLayout.h"
 #include "util/ScreenshotUtil.h"
 #include "util/Timezones.h"
 #include "util/UserGuide.h"
-#include "util/BootPreparation.h"
 
 #if CROSSPOINT_VECTOR_FONTS
 // Rendering (incl. FreeType TTF rasterization) runs on the Arduino loop task.
@@ -82,7 +82,7 @@ static unsigned long lastX4ProPowerClickAt = 0;
 
 namespace {
 constexpr unsigned long X4PRO_POWER_DOUBLE_CLICK_MS = 500;
-// Side key held this long powers off; anything shorter toggles Standby.
+// A power-key hold powers off. A4 short clicks return; Home short clicks rest.
 constexpr unsigned long RICKY_POWER_OFF_HOLD_MS = 2000;
 constexpr bool kRickyPowerModel = true;
 constexpr unsigned long X4PRO_POWER_CLICK_MAX_HOLD_MS = 300;
@@ -476,6 +476,13 @@ bool setupDisplayAndFonts(bool seamless = false, bool logSdFontLoadHeap = false)
   gpio.beginInput();
 #endif
   renderer.begin();
+#if defined(SIMULATOR_DEVICE_EEGO_A4)
+  // A preview-only override exercises the A4 roots in all four rotations.
+  // Device reading orientation and persisted settings remain unchanged.
+  if (const char* rotation = std::getenv("CROSSPOINT_SIM_UI_ORIENTATION");
+      rotation && rotation[0] >= '0' && rotation[0] <= '3' && rotation[1] == '\0')
+    renderer.setOrientation(static_cast<GfxRenderer::Orientation>(rotation[0] - '0'));
+#endif
   activityManager.begin();
   LOG_DBG("MAIN", "Display initialized");
 
@@ -855,7 +862,7 @@ void setup() {
       break;
   }
 
-  // First serial output only here to avoid timing inconsistencies for power button press duration verification
+    // First serial output only here to avoid timing inconsistencies for power button press duration verification
 #ifdef RICKYOS_PRODUCT
   LOG_INF("MAIN", "Starting CrossPoint version " CROSSPOINT_VERSION);
 #else
@@ -1229,7 +1236,7 @@ void loop() {
                                         SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP &&
                                         gpio.getPowerButtonHeldTime() <= X4PRO_POWER_CLICK_MAX_HOLD_MS;
 
-  // Side key: a short press toggles Standby, a hold powers off (the same hold turns
+  // Power key: a short press toggles Standby, a hold powers off (the same hold turns
   // the device back on). The PMU reports the key over the I2C bus it shares with
   // touch, and a failed poll reads as released: a release only counts after the key
   // has read up for kSideKeyReleaseMs, so a hold is not split into short presses.
@@ -1266,10 +1273,21 @@ void loop() {
                      activityManager.standbyShowing());
         if (activityManager.standbyShowing()) {
           activityManager.closeStandby();
+          return;
+        }
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+        // A4 has no separate Back key. Publish only the debounced short click;
+        // wake holds, power-off holds and the screenshot chord never reach here.
+        if (!activityManager.isHomeActivity()) {
+          mappedInputManager.setBackClickFrame();
         } else {
           activityManager.openStandby();
+          return;
         }
+#else
+        activityManager.openStandby();
         return;
+#endif
       }
     } else if (!keyDown) {
       wakePressPending = false;  // booted without the key held
@@ -1295,7 +1313,8 @@ void loop() {
     toggleFrontlight();
   }
   if (mappedInputManager.homeButtonAction() == HomeButtonAction::Refresh ||
-      (SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::FORCE_REFRESH &&
+      (!MappedInputManager::powerKeyIsBack() &&
+       SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::FORCE_REFRESH &&
        mappedInputManager.wasReleased(MappedInputManager::Button::Power))) {
     LOG_DBG("MAIN", "Manual screen refresh triggered");
     if (!activityManager.handleForcedRefresh()) {

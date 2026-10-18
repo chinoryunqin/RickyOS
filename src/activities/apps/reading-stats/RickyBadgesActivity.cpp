@@ -8,6 +8,7 @@
 
 #include "components/RickyBadgeArt.h"
 #include "components/RickyBadgeStatus.h"
+#include "components/RickyCompactLayout.h"
 #include "components/RickyPageUi.h"
 #include "util/TimeUtils.h"
 
@@ -22,6 +23,10 @@ fui::Rect rect(const int x, const int y, const int w, const int h) {
 const char* RickyBadgesActivity::headerTitle() const { return tr(STR_RICKY_BADGES_TITLE); }
 
 void RickyBadgesActivity::buildScreen(UiScreen& screen) {
+  if (RickyCompactLayout::enabled) {
+    buildCompact(screen);
+    return;
+  }
   const auto bounds = pageContentRect();
   screen.setContentMarginFromScreen(
       fui::Insets{static_cast<int16_t>(bounds.y), 0,
@@ -87,5 +92,58 @@ void RickyBadgesActivity::buildScreen(UiScreen& screen) {
                static_cast<unsigned>(status.target));
       target.text(rect(x, textY + smallHeight * 2, column, smallHeight), text, quiet);
     }
+  }
+}
+
+void RickyBadgesActivity::buildCompact(UiScreen& screen) {
+  namespace c = RickyCompactLayout;
+  const auto bounds = pageContentRect();
+  screen.setContentMarginFromScreen({static_cast<int16_t>(bounds.y), c::margin,
+                                     static_cast<int16_t>(renderer.getScreenHeight() - bounds.y - bounds.height),
+                                     c::margin});
+  const auto statuses = rickyBadgeStatus::evaluate();
+  // Bounded render-only rows (~2 KiB); no per-row heap allocations. FreeInkUI
+  // consumes them synchronously and retains only the action rectangles.
+  fui::ListItem items[rickyBadges::kCount]{};
+  char values[rickyBadges::kCount][48]{};
+  for (size_t i = 0; i < rickyBadges::kCount; ++i) {
+    items[i].label = rickyBadgeStatus::nameOf(i);
+    items[i].subtitle = rickyBadgeStatus::hintOf(i);
+    if (statuses[i].unlocked()) {
+      int year = 0;
+      unsigned month = 0, day = 0;
+      TimeUtils::getDateFromDayOrdinal(statuses[i].unlockedDay, year, month, day);
+      snprintf(values[i], sizeof(values[i]), tr(STR_RICKY_BADGES_EARNED_ON), month, day);
+    } else {
+      snprintf(values[i], sizeof(values[i]), "%u/%u", static_cast<unsigned>(statuses[i].progress),
+               static_cast<unsigned>(statuses[i].target));
+    }
+    items[i].value = values[i];
+    items[i].actionValue = static_cast<int16_t>(i);
+  }
+  fui::ListProps props;
+  props.items = items;
+  props.count = static_cast<uint16_t>(rickyBadges::kCount);
+  props.action = ACTION_ROW;
+  props.inputMask = fui::InputTouch;
+  props.labelText = screen.theme().bodyText;
+  props.subtitleText = screen.theme().smallText;
+  props.rowHeight = 96;
+  props.rowGap = 8;
+  props.sidePadding = 76;
+  syncListViewport(screen, props);
+  props.partialTrailingRow = false;
+  screen.list(props);
+  const auto body = screen.body();
+  int y = body.y;
+  for (int i = props.topIndex; i < props.count && y + props.rowHeight <= body.bottom(); ++i) {
+    const bool selected = props.selectedIndex == i;
+    for (int py = 0; py < 48; ++py) {
+      for (int px = 0; px < 48; ++px) {
+        if (rickyBadgeArt::inkAt(rickyBadges::kDefinitions[i].icon, statuses[i].unlocked(), px, py, 48))
+          renderer.drawPixel(body.x + 12 + px, y + (props.rowHeight - 48) / 2 + py, !selected);
+      }
+    }
+    y += props.rowHeight + props.rowGap;
   }
 }

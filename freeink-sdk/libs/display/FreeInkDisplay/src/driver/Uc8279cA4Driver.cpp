@@ -29,8 +29,7 @@ constexpr uint8_t CMD_TCON = 0xe1;
 
 constexpr uint16_t CONTROLLER_HEIGHT = 600;
 constexpr uint16_t PADDING_ROWS = 48;
-// The fast waveform is intentionally light and accumulates visible residue on
-// this panel. Cap every run at four fast paints; the fifth uses the full bank.
+// Keep the validated fork cadence until FAST-only ghosting is checked on A4.
 constexpr uint8_t MAX_CONSECUTIVE_FAST_REFRESHES = 4;
 static_assert(CONTROLLER_HEIGHT - PADDING_ROWS == 552, "EEGO A4 framebuffer/padding mismatch");
 }  // namespace
@@ -61,12 +60,16 @@ void Uc8279cA4Driver::hardwareReset(EpdBus& bus) {
 
 void Uc8279cA4Driver::initController(EpdBus& bus, const bool grayMode) {
   const uint8_t panel[] = {0x3f, 0x4a};
-  const uint8_t power[] = {static_cast<uint8_t>(grayMode ? 0x03 : 0x43), 0x00, 0x78, 0x78, 0x17};
+  // Full drive for both B/W and gray (PWR byte0 0x43, VCOM_DC 0x24). The OEM gray
+  // path uses these same strong settings; the fork's reduced gray values
+  // (0x03 / 0x20) were the cause of washed-out grays. grayMode still selects the
+  // PON/white-seed ordering below.
+  const uint8_t power[] = {0x43, 0x00, 0x78, 0x78, 0x17};
   const uint8_t booster[] = {0x25, 0x25, 0x3c};
   const uint8_t resolution[] = {0x03, 0x00, 0x02, 0x58};  // 768x600
   const uint8_t interval[] = {0x00, 0x00, 0x20, 0x00};
   const uint8_t powerOffSequence = 0x20;
-  const uint8_t vcom = grayMode ? 0x20 : 0x24;
+  const uint8_t vcom = 0x24;
   const uint8_t pll = 0x0f;
   const uint8_t tcon = 0x02;
 
@@ -81,7 +84,7 @@ void Uc8279cA4Driver::initController(EpdBus& bus, const bool grayMode) {
   bus.cmdData(CMD_TCON, &tcon, 1);
 
   if (grayMode) {
-    // Four-gray drive uses a lower power setup and powers the panel before
+    // Four-gray drive powers the panel before
     // seeding DTM1. Preserve that order exactly.
     bus.cmd(CMD_POWER_ON);
     bus.waitBusy(" A4 gray power-on");
@@ -125,13 +128,19 @@ void Uc8279cA4Driver::loadGrayLut(EpdBus& bus) {
   }
 }
 
-void Uc8279cA4Driver::writeFrame(EpdBus& bus, const uint8_t command, const uint8_t* fb) {
+void Uc8279cA4Driver::writeFrame(EpdBus& bus, const uint8_t command, const uint8_t* fb, const bool invert) {
   uint8_t white[96];
   memset(white, 0xff, sizeof(white));
+  uint8_t rowBuf[96];
   bus.cmd(command);
   bus.beginTxn();
   for (int y = static_cast<int>(_height) - 1; y >= 0; --y) {
-    bus.rawWriteBytes(fb + static_cast<uint32_t>(y) * _widthBytes, _widthBytes);
+    const uint8_t* row = fb + static_cast<uint32_t>(y) * _widthBytes;
+    if (invert) {
+      for (uint16_t xb = 0; xb < _widthBytes; ++xb) rowBuf[xb] = static_cast<uint8_t>(~row[xb]);
+      row = rowBuf;
+    }
+    bus.rawWriteBytes(row, _widthBytes);
   }
   for (uint16_t y = 0; y < PADDING_ROWS; ++y) {
     bus.rawWriteBytes(white, _widthBytes);
@@ -143,9 +152,11 @@ void Uc8279cA4Driver::fillControllerRam(EpdBus& bus, const uint8_t command, cons
   bus.fillPlane(command, fill, CONTROLLER_HEIGHT, _widthBytes);
 }
 
-void Uc8279cA4Driver::refresh(EpdBus& bus, const bool turnOff) {
+void Uc8279cA4Driver::refresh(EpdBus& bus, const bool turnOff, const uint8_t* bwBaseline) {
   bus.cmd(CMD_DISPLAY_REFRESH);
   bus.waitBusy(" A4 refresh");
+  // Keep the next differential baseline coherent before disabling panel power.
+  if (bwBaseline) writeFrame(bus, CMD_DTM1, bwBaseline);
   if (turnOff) {
     bus.cmd(CMD_POWER_OFF);
     bus.waitBusy(" A4 power-off");
@@ -154,26 +165,25 @@ void Uc8279cA4Driver::refresh(EpdBus& bus, const bool turnOff) {
 }
 
 void Uc8279cA4Driver::begin(EpdBus& bus) {
+  _redriveAfterGray = false;
   _fastRefreshesSinceFull = 0;
   hardwareReset(bus);
   initController(bus);
+  _firstRefreshPending = true;
 }
 
 void Uc8279cA4Driver::display(EpdBus& bus, const uint8_t* fb, const uint8_t* prev, const RefreshMode mode,
                               const bool turnOff) {
   (void)prev;
+  // Restore B/W controller registers after a grayscale pass.
   if (_grayControllerMode) {
     hardwareReset(bus);
     initController(bus, false);
   }
   ensurePowerOn(bus);
-  bool fast = mode == RefreshMode::Fast;
-  if (fast && _fastRefreshesSinceFull >= MAX_CONSECUTIVE_FAST_REFRESHES) fast = false;
-  if (fast) {
-    ++_fastRefreshesSinceFull;
-  } else {
-    _fastRefreshesSinceFull = 0;
-  }
+  const bool fast =
+      mode == RefreshMode::Fast && !_firstRefreshPending && _fastRefreshesSinceFull < MAX_CONSECUTIVE_FAST_REFRESHES;
+  _fastRefreshesSinceFull = fast ? _fastRefreshesSinceFull + 1 : 0;
   const uint8_t interval = fast ? 0xd7 : 0x97;
   bus.cmdData(CMD_VCOM_DATA_INTERVAL, &interval, 1);
   if (fast) {
@@ -184,14 +194,22 @@ void Uc8279cA4Driver::display(EpdBus& bus, const uint8_t* fb, const uint8_t* pre
     // Treat it as a complete refresh.
     loadFullLut(bus);
   }
+  if (_firstRefreshPending || _redriveAfterGray) {
+    // Inverse OLD makes every target pixel transition, clearing unknown startup
+    // state or residual AA charge even with the fast waveform.
+    writeFrame(bus, CMD_DTM1, fb, /*invert=*/true);
+    _firstRefreshPending = false;
+  }
   writeFrame(bus, CMD_DTM2, fb);
-  refresh(bus, turnOff);
+  refresh(bus, turnOff, fb);
+  _redriveAfterGray = false;
 }
 
 uint8_t* Uc8279cA4Driver::allocateGrayBuffer() {
   const size_t bytes = static_cast<size_t>(_widthBytes) * _height;
   uint8_t* result = static_cast<uint8_t*>(heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-  if (!result) result = static_cast<uint8_t*>(malloc(bytes));
+  // These two 52,992-byte planes are optional; never consume internal DRAM
+  // when PSRAM is exhausted. The caller keeps the already-painted B/W page.
   return result;
 }
 
@@ -230,20 +248,23 @@ void Uc8279cA4Driver::displayGray(EpdBus& bus, const uint8_t* fb, const bool tur
 
   hardwareReset(bus);
   initController(bus, true);
-  // Store MSB in DTM1 and LSB in DTM2, bottom-up, then append the same 48 white
-  // gate-padding rows used by the normal framebuffer path.
-  writeFrame(bus, CMD_DTM1, _grayMsb);
-  writeFrame(bus, CMD_DTM2, _grayLsb);
+  // LSB -> DTM1 (old, 0x10), MSB -> DTM2 (new, 0x13) — the plane order both proven
+  // UC8279 drivers (Uc8279Driver / Uc8279X4Driver) use with the standard 0x21-0x24
+  // transition LUT. The fork had these swapped, scrambling the four gray levels.
+  writeFrame(bus, CMD_DTM1, _grayLsb);
+  writeFrame(bus, CMD_DTM2, _grayMsb);
+  // Both gray planes are fully written, replacing the unknown startup state.
+  _firstRefreshPending = false;
   loadGrayLut(bus);
   refresh(bus, turnOff);
+  _redriveAfterGray = true;
   _fastRefreshesSinceFull = 0;
 }
 
 void Uc8279cA4Driver::cleanupGrayscaleBuffers(EpdBus& bus, const uint8_t* bw) {
   if (!bw || !_screenOn) return;
   // This keeps both controller planes coherent for callers that explicitly
-  // request cleanup. The next normal display also leaves gray drive mode via
-  // a complete controller re-init before applying the fast waveform.
+  // request cleanup. The next B/W display restores the controller registers.
   writeFrame(bus, CMD_DTM1, bw);
   writeFrame(bus, CMD_DTM2, bw);
 }

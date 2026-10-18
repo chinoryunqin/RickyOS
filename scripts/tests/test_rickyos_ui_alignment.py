@@ -261,7 +261,7 @@ int main() {
         shelf = method(source, 'void LibraryListActivity::buildRickyShelf(')
         for key in ('STR_RICKY_BOOKS_ALL','STR_RICKY_BOOKS_READING','STR_RICKY_BOOKS_UNREAD'):
             self.assertIn(key, shelf)
-        self.assertIn('const int columns = body.width > body.height ? 6 : 3', shelf)
+        self.assertIn('const int columns = (body.width > body.height * 3 / 2 ? 2 : 1) * (SHELF_CAPACITY / 2);', shelf)
         header = (ROOT / 'src/activities/library/LibraryListActivity.h').read_text()
         self.assertIn('SHELF_CAPACITY = 6', header)
         self.assertNotIn('buildTabBar(screen)', shelf)

@@ -18,6 +18,24 @@ spec.loader.exec_module(preview)
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_a4_back_uses_return_gesture_and_preserves_home_key(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        host = object.__new__(preview.Preview)
+        host.lock = threading.RLock()
+        host.process = SimpleNamespace(poll=lambda: None)
+        host.transport = Path('/test/isolated-preview')
+        host.socket = Mock()
+        host.environment = 'simulator_rickyos_eego_a4'
+        host.input({'type': 'key', 'key': 'BACK', 'duration': 120})
+        self.assertEqual(host.socket.sendto.call_args.args[0],
+                         b'T 0.010000 0.500000 0.400000 0.500000 120')
+        host.input({'type': 'key', 'key': 'HOME', 'duration': 120})
+        self.assertEqual(host.socket.sendto.call_args.args[0], b'K HOME 120')
+        host.environment = 'simulator_rickyos'
+        host.input({'type': 'key', 'key': 'BACK', 'duration': 120})
+        self.assertEqual(host.socket.sendto.call_args.args[0], b'K BACK 120')
+
     def test_status_reports_resumed_reader_after_menu_closes(self):
         from types import SimpleNamespace
         with tempfile.TemporaryDirectory() as directory:

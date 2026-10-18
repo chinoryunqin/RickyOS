@@ -197,7 +197,11 @@ class LibraryListActivity final : public UiTabListActivity {
   // Row options modal (Recent long-press menu); owned here so it outlives the
   // touch event that opened it.
   OptionPopup optionPopup;
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+  static constexpr int SHELF_CAPACITY = 4;  // The A4: one 2 x 2 page, so its covers stay large.
+#else
   static constexpr int SHELF_CAPACITY = 6;  // One bounded 3 x 2 page, never all card records.
+#endif
   static constexpr freeink::ui::ActionId ACTION_READING_FILTER = ACTION_BACK + 1;
   static constexpr freeink::ui::ActionId ACTION_SHELF_OPTIONS = ACTION_READING_FILTER + 1;
   uint8_t readingFilter = 0;

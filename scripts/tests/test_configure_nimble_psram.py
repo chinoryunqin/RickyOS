@@ -19,7 +19,10 @@ class NimblePsramMiddlewareTest(unittest.TestCase):
                     with self.subTest(target=name):
                         self.assertIn(f"${{{hardware}.build_flags}}", config[name]["build_flags"])
                         self.assertNotIn("lib_deps", config[name])
-                        self.assertNotIn("extra_scripts", config[name])
+                        if name == "env:rickyos_eego_a4":
+                            self.assertIn("${eego_a4_hardware.extra_scripts}", config[name]["extra_scripts"])
+                        else:
+                            self.assertNotIn("extra_scripts", config[name])
         self.assertEqual(
             config["sticky_hardware"]["custom_sdkconfig"].split(),
             ["${firmware_tuned.custom_sdkconfig}", "${s3_ble_controller.custom_sdkconfig}"],

@@ -36,6 +36,13 @@ class MappedInputManager {
   };
   static constexpr uint8_t kButtonCount = static_cast<uint8_t>(Button::Count);
   static_assert(kButtonCount <= 16, "button edge masks use uint16_t");
+  static constexpr bool powerKeyIsBack() {
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+    return true;
+#else
+    return false;
+#endif
+  }
   enum class SwipeDir { None, Left, Right, Up, Down };
 
   struct Labels {
@@ -51,6 +58,9 @@ class MappedInputManager {
   // Home-key actions so the next main-loop pass can dispatch them, while the
   // current action remains available for immediate Home cancellation.
   void update(bool deferHomeButtonAction = false) const;
+  // The A4 power-key owner publishes a debounced short click after wake/hold
+  // filtering. It is a complete Back gesture in this shared input frame.
+  void setBackClickFrame() { backClickFrame = true; }
 #if FREEINK_CAP_TOUCH
   // X4 Pro delays a single power click until its frontlight double-click window
   // expires. The main loop supplies that one-frame event here.
@@ -180,6 +190,7 @@ class MappedInputManager {
   mutable std::array<bool, kButtonCount> bleReleaseEdges{};
   mutable std::array<bool, kButtonCount> blePendingEdges{};
   mutable bool bleActivityThisFrame = false;
+  mutable bool backClickFrame = false;
   bool bleCaptureMode = false;
   mutable bool bleHasCaptured = false;
   mutable uint8_t bleCapturedKind = 0xFF;

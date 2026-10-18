@@ -22,7 +22,6 @@ class ReadPicoUsbProfileTest(unittest.TestCase):
         self.assertIn("CONFIG_TINYUSB_CDC_ENABLED=n", shipped["custom_sdkconfig"])
         scripts = shipped["extra_scripts"]
         self.assertIn("pre:scripts/prepare_readpico_usb_component.py", scripts)
-        self.assertIn("pre:scripts/patch_rickyos_epdiy.py", scripts)
         self.assertIn("-fno-lto", shipped["build_unflags"])
         self.assertIn("-flto=auto", shipped["build_flags"])
 

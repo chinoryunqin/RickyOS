@@ -21,6 +21,7 @@ class RickyReadingStatsActivity final : public UiListActivity {
   int listCount() const override { return 0; }
   const char* headerTitle() const override;
   void buildScreen(UiScreen& screen) override;
+  void buildCompact(UiScreen& screen);
   void activateIndex(int) override {}
   bool handleCustomInput() override;
 

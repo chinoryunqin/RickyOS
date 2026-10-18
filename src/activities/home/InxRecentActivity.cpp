@@ -14,6 +14,7 @@
 #include "MappedInputManager.h"
 #include "ReadingStatsStore.h"
 #include "activities/apps/reading-stats/RickyBadgesActivity.h"
+#include "components/RickyCompactLayout.h"
 #include "components/RickyDesignTokens.h"
 #include "components/RickyHomeLayout.h"
 #include "components/SubpageLayout.h"
@@ -352,6 +353,8 @@ bool InxRecentActivity::drawBookCover(const int bookIndex, const Rect& bounds) {
     }
   }
 
+  if (rickyHome) return false;  // Product fallback must not leave stock icon pixels outside the cover.
+
   const auto size = InxCoverGeometry::fit(bounds.width, bounds.height);
   const int x = bounds.x + (bounds.width - size.width) / 2;
   const int y = bounds.y + (bounds.height - size.height) / 2;
@@ -492,9 +495,9 @@ void InxRecentActivity::loop() {
   if (rickyHome && swipe != MappedInputManager::SwipeDir::None) {
     // A page holds RickyHomeLayout::PAGE_BOOKS books; moving the selection by one book
     // changed the page only every third swipe, so most swipes did nothing visible.
-    const int page = RickyHomeLayout::PAGE_BOOKS;
+    const int page = RickyCompactLayout::enabled ? 1 : RickyHomeLayout::PAGE_BOOKS;
     const int pages = (count + page - 1) / page;
-    const int current = RickyHomeLayout::pageStart(selected) / page;
+    const int current = (RickyCompactLayout::enabled ? selected : RickyHomeLayout::pageStart(selected)) / page;
     const bool forward = swipe == MappedInputManager::SwipeDir::Left || swipe == MappedInputManager::SwipeDir::Up;
     selected = ((current + (forward ? 1 : pages - 1)) % pages) * page;
     requestUpdate();
@@ -667,8 +670,8 @@ void InxRecentActivity::render(RenderLock&&) {
   if (content.width > 0 && content.height > 0) {
     const GfxRenderer::ClipScope clip(renderer, content.x, content.y, content.width, content.height);
     if (rickyHome) {
-      const int start = RickyHomeLayout::pageStart(selected);
-      const int inset = ricky::ds::space::kPageMargin;
+      const int start = RickyCompactLayout::enabled ? selected : RickyHomeLayout::pageStart(selected);
+      const int inset = RickyCompactLayout::enabled ? RickyCompactLayout::margin : ricky::ds::space::kPageMargin;
       const Rect bounds{content.x + inset, content.y, std::max(1, content.width - inset * 2), content.height};
       rickyHome->configure(bounds, selected, showMainTabContentSelection(), progressOf(statsAt(start)));
       rickyHome->renderUi();

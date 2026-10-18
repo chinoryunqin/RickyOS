@@ -443,8 +443,36 @@ GfxRenderer::PaintScope::~PaintScope() {
 #define RICKY_PAINT_SCOPE(kind) ((void)0)
 #endif
 
-static inline void rotateCoordinates(const GfxRenderer::Orientation orientation, const int x, const int y, int* phyX,
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+// EEGO A4: the case hides the panel's edge (measured 2026-10-18 from a full-screen ruler:
+// in portrait ~6 px top/bottom, 7 px left, 10 px right; window corners ~22 px radius).
+// The logical screen is the visible window: every drawing call is shifted into it here,
+// the one place logical coordinates become panel ones, and getScreenWidth/Height and
+// tapToLogical() match. Physical panel insets (768x552 native): left/right are the
+// portrait top/bottom, bottom/top the portrait left/right; 2 px over the measurement.
+namespace a4view {
+constexpr int kPhysLeft = 8, kPhysRight = 8, kPhysTop = 12, kPhysBottom = 9;
+constexpr int offsetX(const GfxRenderer::Orientation o) {
+  return o == GfxRenderer::Portrait             ? kPhysBottom
+         : o == GfxRenderer::PortraitInverted   ? kPhysTop
+         : o == GfxRenderer::LandscapeClockwise ? kPhysRight
+                                                : kPhysLeft;
+}
+constexpr int offsetY(const GfxRenderer::Orientation o) {
+  return o == GfxRenderer::Portrait             ? kPhysLeft
+         : o == GfxRenderer::PortraitInverted   ? kPhysRight
+         : o == GfxRenderer::LandscapeClockwise ? kPhysBottom
+                                                : kPhysTop;
+}
+}  // namespace a4view
+#endif
+
+static inline void rotateCoordinates(const GfxRenderer::Orientation orientation, int x, int y, int* phyX,
                                      int* phyY, const uint16_t panelWidth, const uint16_t panelHeight) {
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+  x += a4view::offsetX(orientation);
+  y += a4view::offsetY(orientation);
+#endif
   switch (orientation) {
     case GfxRenderer::Portrait: {
       // Logical portrait (480x800) → panel (800x480)
@@ -1622,6 +1650,10 @@ void GfxRenderer::fillRectImpl(const int x, const int y, const int width, const 
           lyBase = samplePy;
           break;
       }
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+      lxBase -= a4view::offsetX(orientation);  // keep the pattern aligned to logical pixels
+      lyBase -= a4view::offsetY(orientation);
+#endif
       uint8_t mask = 0;
       for (int b = 0; b < 8; ++b) {
         const int lx = lxBase + b * dlxPerPhyX;
@@ -2882,6 +2914,11 @@ std::vector<std::string> GfxRenderer::wrappedText(const int fontId, const char* 
 
 // Note: Internal driver treats screen in command orientation; this library exposes a logical orientation
 int GfxRenderer::getScreenWidth() const {
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+  const bool portrait = orientation == Portrait || orientation == PortraitInverted;
+  return portrait ? panelHeight - a4view::kPhysTop - a4view::kPhysBottom
+                  : panelWidth - a4view::kPhysLeft - a4view::kPhysRight;
+#endif
   switch (orientation) {
     case Portrait:
     case PortraitInverted:
@@ -2896,6 +2933,11 @@ int GfxRenderer::getScreenWidth() const {
 }
 
 int GfxRenderer::getScreenHeight() const {
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+  const bool portraitH = orientation == Portrait || orientation == PortraitInverted;
+  return portraitH ? panelWidth - a4view::kPhysLeft - a4view::kPhysRight
+                   : panelHeight - a4view::kPhysTop - a4view::kPhysBottom;
+#endif
   switch (orientation) {
     case Portrait:
     case PortraitInverted:
@@ -2936,6 +2978,10 @@ void GfxRenderer::tapToLogical(float nx, float ny, int& outX, int& outY) const {
       outY = phyY;
       break;
   }
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+  outX = std::clamp(outX - a4view::offsetX(orientation), 0, getScreenWidth() - 1);
+  outY = std::clamp(outY - a4view::offsetY(orientation), 0, getScreenHeight() - 1);
+#endif
 }
 
 // Translate a logical rect through rotateCoordinates and take the bounding
@@ -3489,7 +3535,15 @@ void GfxRenderer::getOrientedViewableTRBL(int* outTop, int* outRight, int* outBo
     }
     return Insets{VIEWABLE_MARGIN_TOP, VIEWABLE_MARGIN_RIGHT, VIEWABLE_MARGIN_BOTTOM, VIEWABLE_MARGIN_LEFT};
   };
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+  // EEGO A4: the logical screen is already the case's visible window (see a4view); the
+  // window's corners are rounded (~22 px radius), so 8 px keeps squared UI clear of them.
+  // Defined here rather than in the pinned SDK profile, whose viewableInsets are zero.
+  (void)boardInsets;
+  const Insets insets{8, 8, 8, 8};
+#else
   const Insets insets = boardInsets(BoardConfig::ACTIVE);
+#endif
   switch (orientation) {
     case Portrait:
       *outTop = insets.top;

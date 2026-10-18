@@ -6,6 +6,9 @@
 #include <EpdiyLcd.h>
 #include <Logging.h>
 #endif
+#if FREEINK_DEVICE_EEGO_A4
+#include <Logging.h>
+#endif
 
 // Global HalDisplay instance
 HalDisplay display;
@@ -109,12 +112,28 @@ EInkDisplay::RefreshContext convertRefreshContext(DisplayRefreshContext context)
 }
 }  // namespace
 
+#if FREEINK_DEVICE_EEGO_A4
+namespace {
+// EEGO A4: the UC8279C driver refreshes synchronously, so this is the time the caller
+// waits for the panel. One line per refresh, for tuning the cadence on the device.
+const char* refreshName(const HalDisplay::RefreshMode mode) {
+  return mode == HalDisplay::FULL_REFRESH ? "full" : mode == HalDisplay::HALF_REFRESH ? "half" : "fast";
+}
+}  // namespace
+#endif
+
 void HalDisplay::displayBuffer(HalDisplay::RefreshMode mode, bool turnOffScreen, DisplayRefreshContext context) {
   if (gpio.deviceIsX3() && mode == RefreshMode::HALF_REFRESH) {
     einkDisplay.requestResync(1);
   }
 
+#if FREEINK_DEVICE_EEGO_A4
+  const uint32_t started = millis();
+#endif
   einkDisplay.displayBuffer(convertRefreshMode(mode), turnOffScreen, convertRefreshContext(context));
+#if FREEINK_DEVICE_EEGO_A4
+  LOG_INF("DISP", "A4 %s refresh %lu ms", refreshName(mode), static_cast<unsigned long>(millis() - started));
+#endif
 }
 
 void HalDisplay::displayBufferAsync(HalDisplay::RefreshMode mode, DisplayRefreshContext context) {
@@ -178,7 +197,13 @@ void HalDisplay::displayGrayscaleBase(RefreshMode fallback, bool turnOffScreen, 
     einkDisplay.requestResync(1);
   }
 
+#if FREEINK_DEVICE_EEGO_A4
+  const uint32_t started = millis();
+#endif
   einkDisplay.displayGrayscaleBase(convertRefreshMode(fallback), turnOffScreen, convertRefreshContext(context));
+#if FREEINK_DEVICE_EEGO_A4
+  LOG_INF("DISP", "A4 gray base (%s) %lu ms", refreshName(fallback), static_cast<unsigned long>(millis() - started));
+#endif
 }
 
 void HalDisplay::preconditionGrayscale() { einkDisplay.preconditionGrayscale(); }
@@ -193,7 +218,15 @@ void HalDisplay::copyGrayscaleMsbBuffers(const uint8_t* msbBuffer) { einkDisplay
 
 void HalDisplay::cleanupGrayscaleBuffers(const uint8_t* bwBuffer) { einkDisplay.cleanupGrayscaleBuffers(bwBuffer); }
 
-void HalDisplay::displayGrayBuffer(bool turnOffScreen) { einkDisplay.displayGrayBuffer(turnOffScreen); }
+void HalDisplay::displayGrayBuffer(bool turnOffScreen) {
+#if FREEINK_DEVICE_EEGO_A4
+  const uint32_t started = millis();
+#endif
+  einkDisplay.displayGrayBuffer(turnOffScreen);
+#if FREEINK_DEVICE_EEGO_A4
+  LOG_INF("DISP", "A4 gray refresh %lu ms", static_cast<unsigned long>(millis() - started));
+#endif
+}
 
 void HalDisplay::writeGrayscalePlaneStrip(bool lsbPlane, const uint8_t* rows, uint16_t yStart, uint16_t numRows) {
   einkDisplay.writeGrayscalePlaneStrip(lsbPlane ? EInkDisplay::GRAY_PLANE_LSB : EInkDisplay::GRAY_PLANE_MSB, rows,

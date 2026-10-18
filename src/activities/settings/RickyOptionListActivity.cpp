@@ -48,12 +48,18 @@ const RickyOptionList& gestures() {
 }
 
 const RickyOptionList& keys() {
-  // The strip under the screen is left / middle / right; the middle key is Back.
+  // A4 has a top power/back key and two side keys; no front-button strip.
   static const RickyOptionRow rows[] = {
-      {StrId::STR_RICKY_KEYS_SIDE, &SETTINGS.sideButtonLayout, kSideKeyLabels, countOf(kSideKeyLabels)},
-      {StrId::STR_RICKY_KEYS_LONG_PRESS, &SETTINGS.longPressButtonBehavior, kLongPressLabels,
-       countOf(kLongPressLabels)},
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+      {StrId::STR_EEGO_POWER_KEY_HELP, nullptr},
+      {StrId::STR_EEGO_POWER_HOLD_HELP, nullptr},
+      {StrId::STR_EEGO_SIDE_KEYS, &SETTINGS.sideButtonLayout, kSideKeyLabels, countOf(kSideKeyLabels)},
+#else
       {StrId::STR_RICKY_KEYS_STANDBY, &SETTINGS.standbyShortcutEnabled},
+      {StrId::STR_RICKY_KEYS_SIDE, &SETTINGS.sideButtonLayout, kSideKeyLabels, countOf(kSideKeyLabels)},
+#endif
+      {MappedInputManager::powerKeyIsBack() ? StrId::STR_EEGO_SIDE_HOLD : StrId::STR_RICKY_KEYS_LONG_PRESS,
+       &SETTINGS.longPressButtonBehavior, kLongPressLabels, countOf(kLongPressLabels)},
   };
   static const RickyOptionList list{StrId::STR_RICKY_KEYS, rows, static_cast<int>(std::size(rows))};
   return list;
@@ -95,6 +101,7 @@ void RickyOptionListActivity::provideRow(void* ctx, uint16_t index, fui::ListIte
   const auto& row = self->list.rows[index];
   item.label = I18N.get(row.label);
   item.actionValue = static_cast<int16_t>(index);
+  if (!row.field) return;
   if (row.section != StrId::STR_NONE_OPT) item.sectionHeading = I18N.get(row.section);
   if (row.options && row.optionCount) {
     item.value = I18N.get(row.options[*row.field % row.optionCount]);
@@ -108,6 +115,7 @@ void RickyOptionListActivity::activateIndex(const int index) {
   app.clearTapFlash();
   nav.selected = index;
   const RickyOptionRow& item = list.rows[index];
+  if (!item.field) return;
   if (!item.options) {
     *item.field = *item.field ? 0 : 1;
     SETTINGS.saveToFile();

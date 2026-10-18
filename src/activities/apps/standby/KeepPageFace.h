@@ -14,6 +14,8 @@ class KeepPageFace final : public StandbyFace {
   static void recoverSticker();
   void onEnter() override;
   static bool drawRetained(GfxRenderer& renderer, const Rect& viewport, bool sticker, bool poweredOff = false);
+  // drawRetained() on panels without a retained 16-level frame: the sticker over the B/W page.
+  static bool drawRetainedBw(GfxRenderer& renderer, const Rect& viewport, bool sticker, bool poweredOff);
   TickResult tick() override { return TickResult::None; }
   void render(GfxRenderer&, const Rect&) override {}
   bool renderNative(GfxRenderer& renderer, const Rect& viewport) override;

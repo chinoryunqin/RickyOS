@@ -53,3 +53,6 @@ weread_apikey*.bin
 sdkconfig.sticky
 sdkconfig.x4pro
 flake.*
+
+# Isolated development environments may be symlinks rather than directories.
+/.venv

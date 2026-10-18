@@ -171,17 +171,41 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFileWithin(const std::st
   }
 
   freeink::FetchSink sink;
-  sink.write = [&file](const uint8_t* data, size_t len) { return file.write(data, len) == len; };
+  // Where a slow transfer spends its time: SD writes and progress callbacks are timed
+  // (stack counters, no per-chunk logging); the rest is network and TLS.
+  struct {
+    uint64_t writeUs = 0, progressUs = 0;
+    size_t calls = 0, largest = 0;
+  } timing;
+  sink.write = [&file, &timing](const uint8_t* data, size_t len) {
+    const uint32_t started = micros();
+    const bool ok = file.write(data, len) == len;
+    timing.writeUs += static_cast<uint32_t>(micros() - started);
+    ++timing.calls;
+    if (len > timing.largest) timing.largest = len;
+    return ok;
+  };
   // Reopening for write truncates: the server restarted the body from byte 0.
   sink.rewind = [&file, &partPath] {
     file.close();
     return Storage.openFileForWrite("HTTP", partPath.c_str(), file);
   };
-  sink.progress = progress;
+  if (progress) {
+    sink.progress = [&progress, &timing](size_t bytes, size_t total) {
+      const uint32_t started = micros();
+      progress(bytes, total);
+      timing.progressUs += static_cast<uint32_t>(micros() - started);
+    };
+  }
 
   size_t downloaded = 0;
+  const uint32_t transferStarted = millis();
   const DownloadError result = runGetSecure(url, username, password, headers, sink, cancelFlag, &downloaded,
                                             downgradeRedirectsToHttp, nullptr, timeoutMs);
+  LOG_INF("HTTP", "Transfer timing: bytes=%u totalMs=%lu writeMs=%lu progressMs=%lu writes=%u largest=%u result=%d",
+          static_cast<unsigned>(downloaded), static_cast<unsigned long>(millis() - transferStarted),
+          static_cast<unsigned long>(timing.writeUs / 1000), static_cast<unsigned long>(timing.progressUs / 1000),
+          static_cast<unsigned>(timing.calls), static_cast<unsigned>(timing.largest), static_cast<int>(result));
   // Close before any remove() on the same path; DESTRUCTOR_CLOSES_FILE would
   // otherwise close only after the remove. A failed rewind leaves no open handle.
   if (file.isOpen()) file.close();

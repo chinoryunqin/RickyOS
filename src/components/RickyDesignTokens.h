@@ -152,13 +152,26 @@ static_assert(columnWidth(4) * 4 + 3 * kGutter == kContentWidth, "4-col grid mus
 }  // namespace space
 
 namespace layout {
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+inline constexpr int16_t kTouchMin = 64;  // A4 约 150 ppi：64 px ≈ 10 mm，仍宽于 7.5 mm
+#else
 inline constexpr int16_t kTouchMin = 88;  // ≈7.5 mm
+#endif
 inline constexpr int16_t kStatusBarHeight = 48;
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+inline constexpr int16_t kPageHeaderHeight = 64;   // A4：屏幕矮，大标题页眉收紧，给内容让位
+#else
 inline constexpr int16_t kPageHeaderHeight = 96;   // 大标题页眉（tab 根页面）
+#endif
 inline constexpr int16_t kSubHeaderHeight = 88;    // 返回 + 标题（子页面）
 inline constexpr int16_t kTabBarHeight = 112;      // 含顶部 2px hairline
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+inline constexpr int16_t kRowHeight = 72;          // A4：752 px 高的屏，列表行收紧
+inline constexpr int16_t kRowHeightTwoLine = 96;
+#else
 inline constexpr int16_t kRowHeight = 96;          // 单行列表
 inline constexpr int16_t kRowHeightTwoLine = 120;  // 标题 + 副标题
+#endif
 inline constexpr int16_t kSectionHeaderHeight = 48;
 inline constexpr int16_t kButtonHeight = 88;
 inline constexpr int16_t kButtonCompactHeight = 56;  // 命中区仍补足 kTouchMin
@@ -167,7 +180,11 @@ inline constexpr int16_t kButtonPaddingX = 32;
 inline constexpr int16_t kTabPillWidth = 88;
 inline constexpr int16_t kTabPillHeight = 48;
 inline constexpr int16_t kSettingsCardHeight = 144;
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+inline constexpr int16_t kProfileCardHeight = 112;  // A4：资料卡和阅读菜单快捷方块收紧
+#else
 inline constexpr int16_t kProfileCardHeight = 136;
+#endif
 inline constexpr int16_t kAppTileSize = 112;
 inline constexpr int16_t kAvatarSize = 88;
 inline constexpr int16_t kProgressHeight = 8;

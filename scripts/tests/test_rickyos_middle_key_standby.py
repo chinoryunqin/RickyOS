@@ -57,7 +57,7 @@ int main() {
 
     def test_power_key_and_timer_paths_remain_independent(self):
         main = (ROOT / 'src/main.cpp').read_text()
-        side = main[main.index('// Side key: a short press toggles Standby'):
+        side = main[main.index('// Power key: a short press toggles Standby'):
                     main.index('if (!kRickyPowerModel')]
         self.assertNotIn('standbyShortcutEnabled', side)
         self.assertIn('activityManager.closeStandby()', side)

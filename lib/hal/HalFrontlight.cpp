@@ -9,7 +9,10 @@ HalFrontlight& HalFrontlight::getInstance() {
 
 void HalFrontlight::begin(const uint8_t brightness, const uint8_t warmth, const bool on) {
   manager.begin();
-  if (!manager.present()) return;
+  if (!manager.present()) {
+    LOG_INF("LIGHT", "Frontlight not detected; controls hidden");
+    return;
+  }
 
   lastBrightness = brightness > 100 ? 100 : brightness;
   manager.setColorTemperature(warmth > 100 ? 100 : warmth);

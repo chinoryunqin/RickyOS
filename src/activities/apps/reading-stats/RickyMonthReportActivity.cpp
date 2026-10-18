@@ -9,6 +9,7 @@
 
 #include "components/RickyBadgeArt.h"
 #include "components/RickyBadgeStatus.h"
+#include "components/RickyCompactLayout.h"
 #include "components/RickyMonthSummary.h"
 #include "components/RickyPageUi.h"
 
@@ -51,6 +52,10 @@ const char* RickyMonthReportActivity::headerTitle() const {
 }
 
 void RickyMonthReportActivity::buildScreen(UiScreen& screen) {
+  if (RickyCompactLayout::enabled) {
+    buildCompact(screen);
+    return;
+  }
   const auto bounds = pageContentRect();
   screen.setContentMarginFromScreen(
       fui::Insets{static_cast<int16_t>(bounds.y), 0,
@@ -211,4 +216,51 @@ void RickyMonthReportActivity::buildScreen(UiScreen& screen) {
                         kMedal);
     target.text(rect(x, rowY + kMedal + 4, slot, smallHeight), rickyBadgeStatus::nameOf(earned[i]), centered);
   }
+}
+
+void RickyMonthReportActivity::buildCompact(UiScreen& screen) {
+  namespace c = RickyCompactLayout;
+  const auto bounds = pageContentRect();
+  screen.setContentMarginFromScreen({static_cast<int16_t>(bounds.y), c::margin,
+                                     static_cast<int16_t>(renderer.getScreenHeight() - bounds.y - bounds.height),
+                                     c::margin});
+  const auto month = rickyMonth::summarize(month_);
+  const auto title = rickyMonth::titleOf(month);
+  const auto statuses = rickyBadgeStatus::evaluate();
+  unsigned earned = 0;
+  for (const auto& status : statuses)
+    if (status.unlocked() && month.contains(status.unlockedDay)) ++earned;
+  // At most three book rows plus six summary rows; bounded stack scratch.
+  fui::ListItem items[9]{};
+  char values[9][96]{};
+  const StrId names[] = {StrId::STR_RICKY_STATS_MONTH_TOTAL, StrId::STR_RICKY_STATS_DAYS,
+                         StrId::STR_RICKY_STATS_FINISHED,    StrId::STR_RICKY_STREAK_READING,
+                         StrId::STR_RICKY_REPORT_NAME_LABEL, StrId::STR_RICKY_REPORT_BADGES};
+  for (int i = 0; i < 6; ++i) items[i].label = I18N.get(names[i]);
+  snprintf(values[0], sizeof(values[0]), "%s", duration(month.totalMs).c_str());
+  snprintf(values[1], sizeof(values[1]), tr(STR_RICKY_STATS_DAYS_UNIT), month.daysRead);
+  snprintf(values[2], sizeof(values[2]), tr(STR_RICKY_STATS_BOOKS_UNIT), month.finished);
+  snprintf(values[3], sizeof(values[3]), tr(STR_RICKY_STATS_DAYS_UNIT), static_cast<unsigned>(month.longestStreak));
+  snprintf(values[4], sizeof(values[4]), "%s", I18N.get(title.name));
+  snprintf(values[5], sizeof(values[5]), "%u", earned);
+  for (int i = 0; i < month.topCount; ++i) {
+    items[6 + i].label = month.top[i].book->title.c_str();
+    snprintf(values[6 + i], sizeof(values[6 + i]), "%s", duration(month.top[i].ms).c_str());
+  }
+  compactCount_ = 6 + month.topCount;
+  for (int i = 0; i < compactCount_; ++i) {
+    items[i].value = values[i];
+    items[i].actionValue = i;
+  }
+  fui::ListProps props;
+  props.items = items;
+  props.count = compactCount_;
+  props.action = ACTION_ROW;
+  props.inputMask = fui::InputTouch;
+  props.labelText = screen.theme().bodyText;
+  props.rowHeight = 76;
+  props.rowGap = 8;
+  props.sidePadding = 12;
+  syncListViewport(screen, props);
+  screen.list(props);
 }

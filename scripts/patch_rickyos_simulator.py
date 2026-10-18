@@ -35,14 +35,17 @@ inline uint32_t ulTaskNotifyTake(int clearOnExit, uint32_t ticksToWait) {
 }'''
 
 
+OLD_TIMED_NOTIFY = '// Block until notified (simulates ulTaskNotifyTake with clear-on-exit).\ninline uint32_t ulTaskNotifyTake(int /*clearOnExit*/,\n                                 uint32_t ticksToWait) {\n  auto *h = xTaskGetCurrentTaskHandle();\n  std::unique_lock<std::mutex> lk(h->mtx);\n  if (ticksToWait == portMAX_DELAY) {\n    h->cv.wait(lk, [h] { return h->notifyCount > 0; });\n  } else if (!h->cv.wait_for(lk, std::chrono::milliseconds(ticksToWait * portTICK_PERIOD_MS),\n                             [h] { return h->notifyCount > 0; })) {\n    return 0;\n  }\n  h->notifyCount--;\n  return 1;\n}'
+
 def patch_task_notify(path):
     path = Path(path)
     source = path.read_text()
     if NEW_NOTIFY in source:
         return False
-    if source.count(OLD_NOTIFY) != 1:
+    old = OLD_NOTIFY if source.count(OLD_NOTIFY) == 1 else OLD_TIMED_NOTIFY
+    if source.count(old) != 1:
         raise RuntimeError('Simulator task shim changed; review the timed notification adapter.')
-    path.write_text(source.replace(OLD_NOTIFY, NEW_NOTIFY))
+    path.write_text(source.replace(old, NEW_NOTIFY))
     return True
 
 
@@ -91,7 +94,8 @@ def patch_retained_gray(dependency):
 
 if 'Import' in globals():
     Import('env')  # noqa: F821 -- supplied by PlatformIO/SCons
-    if env.subst('$PIOENV') == 'simulator_rickyos':  # noqa: F821
-        dependency = Path(env.subst('$PROJECT_LIBDEPS_DIR')) / 'simulator_rickyos' / 'simulator'  # noqa: F821
+    if env.subst('$PIOENV') in ('simulator_rickyos', 'simulator_rickyos_eego_a4'):  # noqa: F821
+        dependency = Path(env.subst('$PROJECT_LIBDEPS_DIR')) / env.subst('$PIOENV') / 'simulator'  # noqa: F821
         patch_task_notify(dependency / 'src/freertos/task.h')
-        patch_retained_gray(dependency)
+        if env.subst('$PIOENV') == 'simulator_rickyos':
+            patch_retained_gray(dependency)

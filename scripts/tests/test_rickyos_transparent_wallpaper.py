@@ -44,9 +44,10 @@ struct KeepPageFace {
   static constexpr const char* kStickerPath="/standby.png";
   bool sticker_=true,drawn_=false;
   static bool drawRetained(GfxRenderer&,const Rect&,bool,bool=false);
+  static bool drawRetainedBw(GfxRenderer&,const Rect&,bool,bool){return false;}  // the A4's B/W path
   bool renderNative(GfxRenderer&,const Rect&);
 };
-''' + method(source, 'bool KeepPageFace::drawRetained(') + '\n' +
+''' + method(source, 'void stickerGeometry(') + '\n' + method(source, 'bool KeepPageFace::drawRetained(') + '\n' +
                 method(source, 'bool KeepPageFace::renderNative(') + r'''
 int main(){
   GfxRenderer r;KeepPageFace face;const Rect view{10,20,100,200};

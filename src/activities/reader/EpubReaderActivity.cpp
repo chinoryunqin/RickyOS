@@ -341,7 +341,7 @@ void EpubReaderActivity::onExit() {
 
   READING_STATS.endSession();
   ACHIEVEMENTS.recordSessionEnded(READING_STATS.getLastSessionSnapshot());
-#if FREEINK_DEVICE_READPICO
+#if RICKYOS_READER_PAGE_CACHE
   // Four frames of PSRAM; the reader is the only owner and gives them back here.
   freePageCache();
 #endif
@@ -883,7 +883,7 @@ void EpubReaderActivity::loop() {
     return;
   }
 
-#if !FREEINK_DEVICE_READPICO
+#if !RICKYOS_READER_PAGE_CACHE
   constexpr unsigned long IDLE_PREWARM_DEBOUNCE_MS = 400;
   auto* fcm = renderer.getFontCacheManager();
   {
@@ -1891,7 +1891,7 @@ void EpubReaderActivity::renderBook() {
       return;
     }
 
-#if FREEINK_DEVICE_READPICO
+#if RICKYOS_READER_PAGE_CACHE
     ++sectionGeneration_;
 #endif
     const bool cacheLoaded = section->loadSectionFile(renderSpec);
@@ -2307,7 +2307,7 @@ void EpubReaderActivity::rememberCurrentContentOffset() {
   }
 }
 
-#if FREEINK_DEVICE_READPICO
+#if RICKYOS_READER_PAGE_CACHE
 // A page that renders on the native 16-level path: anti-aliased text with no images or
 // only JPEG ones (they decode straight into the frame). Must match use16LevelText.
 bool EpubReaderActivity::nativeGray16Page(const Page& page) const {
@@ -2328,7 +2328,12 @@ bool EpubReaderActivity::pageCacheEligible() const {
   // engages at all -- every turn is a full render instead of the cached one.
   return !pageCacheFailed_ && section && renderer.hasFrameBuffer() && !activityManager.isSwitchPending() &&
          overlay == Overlay::None && fontPromptState == FontPromptState::Idle && !renderer.isInverted() &&
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+         // The A4's text is always B/W: the cache holds the finished B/W frame only.
+         !SETTINGS.textAntiAliasing;
+#else
          SETTINGS.textAntiAliasing && !renderer.supportsStripGrayscale() && renderer.supportsTextOnlyCombinedBase();
+#endif
 }
 
 ReaderPageCacheKey EpubReaderActivity::pageCacheKey(const int page, const int top, const int right, const int bottom,
@@ -2524,19 +2529,25 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
 
   const size_t bytes = renderer.getBufferSize();
   if (bytes == 0) return false;
-  if (!pageCacheBase_[slot]) {
+  // A B/W page (no anti-aliasing) needs only the finished frame and the stash; the two
+  // gray planes are for anti-aliased pages.
+  const bool grayPlanes = key.antiAliasing;
+  const int frames = grayPlanes ? 4 : 2;
+  if (!pageCacheBase_[slot] || (grayPlanes && (!pageCacheLsb_[slot] || !pageCacheMsb_[slot]))) {
     constexpr size_t kContiguousReserve = 16 * 1024;
     // Reserve the slots still to allocate; the forward slot is already charged for slot 1.
-    if (memory::psramHasHeadroom(static_cast<size_t>(kPageCacheSlots - slot) * 4 * bytes, bytes, kContiguousReserve)) {
-      pageCacheBase_[slot] = memory::makePsramByteBufferUninitializedNoThrow(bytes);
-      pageCacheLsb_[slot] = memory::makePsramByteBufferUninitializedNoThrow(bytes);
-      pageCacheMsb_[slot] = memory::makePsramByteBufferUninitializedNoThrow(bytes);
+    if (memory::psramHasHeadroom(static_cast<size_t>(kPageCacheSlots - slot) * frames * bytes, bytes,
+                                 kContiguousReserve)) {
+      if (!pageCacheBase_[slot]) pageCacheBase_[slot] = memory::makePsramByteBufferUninitializedNoThrow(bytes);
+      if (grayPlanes && !pageCacheLsb_[slot]) pageCacheLsb_[slot] = memory::makePsramByteBufferUninitializedNoThrow(bytes);
+      if (grayPlanes && !pageCacheMsb_[slot]) pageCacheMsb_[slot] = memory::makePsramByteBufferUninitializedNoThrow(bytes);
       if (!pageCacheStash_[slot]) pageCacheStash_[slot] = memory::makePsramByteBufferUninitializedNoThrow(bytes);
     }
-    if (!pageCacheBase_[slot] || !pageCacheLsb_[slot] || !pageCacheMsb_[slot] || !pageCacheStash_[slot]) {
+    if (!pageCacheBase_[slot] || (grayPlanes && (!pageCacheLsb_[slot] || !pageCacheMsb_[slot])) ||
+        !pageCacheStash_[slot]) {
       freePageCache();
       pageCacheFailed_ = true;
-      LOG_ERR("ERS", "Page cache off: PSRAM allocation of %u B failed", static_cast<unsigned>(4 * bytes));
+      LOG_ERR("ERS", "Page cache off: PSRAM allocation of %u B failed", static_cast<unsigned>(frames * bytes));
       return false;
     }
   }
@@ -2663,8 +2674,8 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
     memcpy(pageCacheBase_[slot].get(), live, bytes);
     pageCacheIs16_[slot] = true;
   } else if (!renderPlane(GfxRenderer::BW, pageCacheBase_[slot].get()) ||
-             !renderPlane(GfxRenderer::GRAYSCALE_LSB, pageCacheLsb_[slot].get()) ||
-             !renderPlane(GfxRenderer::GRAYSCALE_MSB, pageCacheMsb_[slot].get()) || cancelled()) {
+             (grayPlanes && !renderPlane(GfxRenderer::GRAYSCALE_LSB, pageCacheLsb_[slot].get())) ||
+             (grayPlanes && !renderPlane(GfxRenderer::GRAYSCALE_MSB, pageCacheMsb_[slot].get())) || cancelled()) {
     return false;
   } else {
     pageCacheIs16_[slot] = false;
@@ -2706,7 +2717,11 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   const bool pageHasImages = page->hasImages();
   // JPEGs on a 16-level page decode straight into the native frame, so the dithered
   // .pxc cache this predecode builds would be thrown away (it doubled the decode time).
+#if FREEINK_DEVICE_READPICO
   const bool nativeGrayImages = pageHasImages && nativeGray16Page(*page);
+#else
+  const bool nativeGrayImages = false;
+#endif
   const bool pageHasImagesNeedingDecode = pageHasImages && !nativeGrayImages && page->hasImagesNeedingDecode();
   if (pageHasImagesNeedingDecode) {
     // Lend the fixed framebuffer to the large JPEG/PNG decoder while it streams
@@ -2732,7 +2747,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       if (manager) manager->clearCache();
     }
   } rawFontCacheGuard;
-#if FREEINK_DEVICE_READPICO
+#if RICKYOS_READER_PAGE_CACHE
   const auto key = pageCacheKey(section ? section->currentPage : -1, orientedMarginTop, orientedMarginRight,
                                 orientedMarginBottom, orientedMarginLeft);
   // Either slot may hold this page: slot 0 was built for it as a forward turn, slot 1
@@ -2844,7 +2859,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   };
 
   unsigned long cacheBaseMs = 0;
-#if FREEINK_DEVICE_READPICO
+#if RICKYOS_READER_PAGE_CACHE
   if (use16LevelText) {
     // The 16-level pass below clears the frame and renders (or copies from the cache)
     // the page, writing the B/W proxy as it goes, so a B/W render here is thrown away.
@@ -2854,12 +2869,13 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     // is needed on this path.
     memcpy(renderer.getFrameBuffer(), pageCacheBase_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
     cacheBaseMs = millis() - tBase;
+    LOG_INF("ERS", "Page cache hit: slot %d, page %d", pageCacheLiveSlot_, section ? section->currentPage : -1);
   } else
 #endif
   {
     renderPageWithGuideLines();
   }
-#if FREEINK_DEVICE_READPICO
+#if RICKYOS_READER_PAGE_CACHE
   const uint32_t missingCodepoint =
       pageCacheHit ? pageCacheMissingCodepoint_[pageCacheLiveSlot_] : fcm->consumeMissingChineseCodepoint();
 #else
@@ -3137,7 +3153,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       }
       const auto tBwStore = millis();
 
-#if FREEINK_DEVICE_READPICO
+#if RICKYOS_READER_PAGE_CACHE
       if (pageCacheHit) {
         // Both planes were rendered at idle; putting them in place is one copy
         // each instead of a full page render each.
@@ -3164,7 +3180,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
         return;
       }
 
-#if FREEINK_DEVICE_READPICO
+#if RICKYOS_READER_PAGE_CACHE
       if (pageCacheHit) {
         memcpy(renderer.getFrameBuffer(), pageCacheMsb_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
         renderer.copyGrayscaleMsbBuffers();
@@ -3805,7 +3821,9 @@ void EpubReaderActivity::handleOverlayInput() {
         });
       } else if (panelIndex == kTextRowAntiAliasing) {
         // Same layout either way: only the page's rendering changes, so no re-pagination.
+#if !((defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4))
         SETTINGS.textAntiAliasing = SETTINGS.textAntiAliasing ? 0 : 1;
+#endif
         SETTINGS.saveToFile();
         discardOverlayPage();
         requestUpdate();

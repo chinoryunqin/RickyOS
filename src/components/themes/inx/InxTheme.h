@@ -110,6 +110,7 @@ constexpr ThemeMetrics makeValues() {
   metrics.scrollBarWidth = 6;
   metrics.scrollBarRightOffset = 2;
   UiHighDpiProfile::apply(metrics);
+#if defined(CROSSMUX_UI_PROFILE_HIGH_DPI) || (defined(FREEINK_DEVICE_READPICO) && FREEINK_DEVICE_READPICO)
   metrics.contentSidePadding = ricky::ds::space::kPageMargin;
   metrics.headerSidePadding = ricky::ds::space::kPageMargin;
   metrics.listSidePadding = ricky::ds::space::kPageMargin;
@@ -128,6 +129,11 @@ constexpr ThemeMetrics makeValues() {
   metrics.progressBarHeight = ricky::ds::layout::kProgressHeight;
   metrics.listSeparatorStyle = 0;
   metrics.listRowGap = ricky::ds::space::kTouchSpacing;
+#else
+  // Pill (48) + row gap (6) + label + padding, so a short panel still shows the
+  // whole tab instead of spilling the label under the separator.
+  metrics.tabBarHeight = 88;
+#endif
   metrics.headerUnderlineSize = 0;
   metrics.optionPopupInnerPadding = ricky::ds::space::kDialogPadding;
   return metrics;

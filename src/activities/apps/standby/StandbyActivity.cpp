@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <FsHelpers.h>
 #include <HalClock.h>
+#include <HalFrontlight.h>
 #include <I18n.h>
 #include <Logging.h>
 #include <Memory.h>
@@ -129,6 +130,9 @@ void drawFaceDots(const GfxRenderer& renderer, int sw, int sh, uint8_t total, ui
 
 void StandbyActivity::onEnter() {
   Activity::onEnter();
+  savedFrontlightOn_ = Frontlight.present() && Frontlight.isOn();
+  Frontlight.setOn(false);
+  LOG_INF("STANDBY", "Frontlight suspended: wasOn=%u", savedFrontlightOn_);
 #if CROSSPOINT_EMULATED == 0
   HalPowerManager::beginStandbyKeyWatch();
 #endif
@@ -191,6 +195,9 @@ void StandbyActivity::onExit() {
   renderer.setOrientation(savedOrientation_);
   // Time in Standby is not reading time: the book under it starts its gap afresh.
   READING_STATS.resumeSession();
+  const bool restoreLight = savedFrontlightOn_ && SETTINGS.frontlightRestoreOnWake != 0;
+  Frontlight.setOn(restoreLight);
+  LOG_INF("STANDBY", "Frontlight resumed: on=%u", restoreLight);
   LOG_DBG("STANDBY", "onExit free heap=%u", static_cast<unsigned>(ESP.getFreeHeap()));
   Activity::onExit();
 }

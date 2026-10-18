@@ -59,9 +59,8 @@ recovers a complete backup on settings/face entry; `.part` is never displayed.
 FAT renames/settings writes are not an atomic power-loss transaction. Removal
 clears a stale backup first so it cannot resurrect an intentionally removed PNG.
 
-The checked maintained adapters are `scripts/patch_rickyos_epdiy.py` and
-`scripts/patch_rickyos_simulator.py`. Generated SDK/dependency edits are not the
-source of truth; pre-existing unrelated SDK changes are preserved.
+The SDK changes live in the vendored `freeink-sdk/` (2026-10-19); the simulator
+adapter is `scripts/patch_rickyos_simulator.py`.
 
 ## Validation and handoff
 

@@ -21,6 +21,15 @@
 #include "ReadingMode.h"
 #include "components/OptionPopup.h"
 
+// Turn pages from a cache built at idle (the next and the previous page). Read Pico
+// caches anti-aliased planes; the EEGO A4 (B/W text only) caches the B/W frame.
+#if FREEINK_DEVICE_READPICO || (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || \
+    defined(SIMULATOR_DEVICE_EEGO_A4)
+#define RICKYOS_READER_PAGE_CACHE 1
+#else
+#define RICKYOS_READER_PAGE_CACHE 0
+#endif
+
 class EpubReaderActivity final : public ReaderActivity {
   std::shared_ptr<Epub> epub;
   std::unique_ptr<Section> section = nullptr;
@@ -55,7 +64,7 @@ class EpubReaderActivity final : public ReaderActivity {
   int idlePrewarmPage = -1;
   unsigned long lastRenderCompleteMs = 0;
 
-#if FREEINK_DEVICE_READPICO
+#if RICKYOS_READER_PAGE_CACHE
   // Two slots of four reusable PSRAM frames each (~812 KiB total); too large for
   // the render task's stack. The activity owns them and releases them in onExit().
   //

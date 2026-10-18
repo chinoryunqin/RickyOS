@@ -165,6 +165,7 @@ class ActivityManager {
   void openStandby();
   void closeStandby();
   bool standbyShowing() const;
+  bool isHomeActivity() const;
   // Standby asks main to power off once it has run its auto power-off time.
   void requestPowerOff() { powerOffRequested = true; }
   bool consumePowerOffRequest() {

@@ -28,7 +28,9 @@ class RickyHomeUi final : public UiAppHost {
   static void onAction(const freeink::ui::ActionEvent& event, void* user);
   bool paint(freeink::ui::Rect rect, int index);
   void draw(UiScreen& screen);
+  void drawCompact(UiScreen& screen);
   void drawPortrait(UiScreen& screen);
+  void drawLandscape(UiScreen& screen);
   GfxRenderer& renderer;
   const std::vector<RecentBook>* books = nullptr;
   CoverPainter painter = nullptr;

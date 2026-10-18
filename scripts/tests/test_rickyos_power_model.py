@@ -15,7 +15,7 @@ class RickyPowerModelTest(unittest.TestCase):
     def test_side_key_short_press_toggles_standby_and_hold_powers_off(self):
         main = read('src/main.cpp')
         self.assertIn('constexpr unsigned long RICKY_POWER_OFF_HOLD_MS = 2000;', main)
-        block = main[main.index('// Side key: a short press toggles Standby'):]
+        block = main[main.index('// Power key: a short press toggles Standby'):]
         block = block[:block.index('#endif')]
         self.assertIn('now - pressedAt >= RICKY_POWER_OFF_HOLD_MS', block)
         self.assertLess(block.index('enterDeepSleep();'), block.index('activityManager.openStandby();'))
@@ -65,18 +65,8 @@ class RickyPowerModelTest(unittest.TestCase):
         # The PMU holds its interrupt while key events are queued; unacknowledged, a
         # full FIFO meant no press could end Standby's light sleep (device: only a
         # hold worked once Standby had slept). Drain before and after every sleep.
-        import sys
-        sys.path.insert(0, str(ROOT / 'scripts'))
-        import patch_rickyos_pmu_keys as patch
-        self.assertIn('pre:scripts/patch_rickyos_pmu_keys.py', read('platformio.ini'))
         board = read('freeink-sdk/libs/hardware/BoardReadPico/src/BoardReadPico.cpp')
-        header = read('freeink-sdk/libs/hardware/BoardReadPico/include/BoardReadPico.h')
-        for source, old, new, previous in ((header, patch.OLD_DECL, patch.NEW_DECL, (patch.V2_DECL, patch.V1_DECL)),
-                                           (board, patch.OLD_DEF, patch.NEW_DEF, (patch.V2_DEF, patch.V1_DEF))):
-            patched = patch.patch_text(source, old, new, previous)
-            self.assertIn(new, patched)
-            self.assertEqual(patched, patch.patch_text(patched, old, new, previous))
-        self.assertIn('if (!pmuEventAck(id)) break;', patch.NEW_DEF)
+        self.assertIn('if (!pmuEventAck(id)) break;', board)
         hal = read('lib/hal/HalPowerManager.cpp')
         sleep = hal[hal.index('HalPowerManager::LightSleepWakeReason lightSleepReadPico('):]
         self.assertLess(sleep.index('BoardReadPico::takePmuKeyPress(keyDown, boundary);'), sleep.index('esp_light_sleep_start()'))
@@ -92,27 +82,20 @@ class RickyPowerModelTest(unittest.TestCase):
         # Device, 1.1.3: a side-key press left its event queued while STATUS said no
         # events were pending, so the pre-sleep drain skipped it; read after the next
         # auto-Standby light sleep, it looked like a press and closed Standby by itself.
-        import sys
-        sys.path.insert(0, str(ROOT / 'scripts'))
-        import patch_rickyos_pmu_keys as patch
-        drain = patch.NEW_DEF[patch.NEW_DEF.index('bool takePmuKeyPress('):patch.NEW_DEF.index('uint16_t pmuLastEventId() {')]
+        board = read('freeink-sdk/libs/hardware/BoardReadPico/src/BoardReadPico.cpp')
+        drain = board[board.index('bool takePmuKeyPress('):board.index('uint16_t pmuLastEventId() {')]
         # Read until EVENT_PEEK says empty instead of trusting the pending count.
         self.assertNotIn('g_pmuPendingEvents', drain)
         self.assertIn('if (!pmuPeekEvent(id, type)) break;', drain)
         # Only an event newer than the pre-sleep boundary counts as a press.
         self.assertIn('static_cast<int16_t>(id - newerThan) > 0', drain)
         self.assertIn('if (fresh && (type == kKeyDown || type == kKeyShort)) pressed = true;', drain)
-        self.assertIn('uint16_t newerThan = 0', patch.NEW_DECL)
+        self.assertIn('uint16_t newerThan = 0', read('freeink-sdk/libs/hardware/BoardReadPico/include/BoardReadPico.h'))
         hal = read('lib/hal/HalPowerManager.cpp')
         sleep = hal[hal.index('HalPowerManager::LightSleepWakeReason lightSleepReadPico('):]
         boundary = sleep.index('const uint16_t lastIdBeforeSleep = BoardReadPico::pmuLastEventId();')
         self.assertLess(sleep.index('BoardReadPico::takePmuKeyPress(keyDown, boundary);'), boundary)
         self.assertLess(boundary, sleep.index('esp_light_sleep_start()'))
-        # A tree patched by 1.1.3 upgrades in place instead of failing the build.
-        for earlier in (patch.V1_DEF, patch.V2_DEF):
-            upgraded = patch.patch_text('x\n' + earlier + '\ny', patch.OLD_DEF, patch.NEW_DEF, (patch.V2_DEF, patch.V1_DEF))
-            self.assertIn(patch.NEW_DEF, upgraded)
-            self.assertNotIn(earlier, upgraded)
 
     def test_quick_tap_that_wakes_standby_leaves_it(self):
         # Device: a tap that ended the light sleep was sometimes over before

@@ -14,14 +14,15 @@
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "ReadingStatsStore.h"
+#include "activities/ActivityManager.h"
+#include "activities/apps/standby/StandbyActivity.h"
+#include "components/RickyCompactLayout.h"
+#include "components/RickyPageUi.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
 #include "components/icons/customListIcons.h"
 #include "components/icons/listIcons.h"
-#include "ReadingStatsStore.h"
-#include "activities/ActivityManager.h"
-#include "activities/apps/standby/StandbyActivity.h"
-#include "components/RickyPageUi.h"
 #include "components/icons/rickyPageIcons.h"
 #include "util/TimeUtils.h"
 
@@ -39,12 +40,8 @@ constexpr fui::ActionId ACTION_TILE = 6;  // value = tile index
 // a grabber, full-width slider pills, then a 2-column tile grid. The chrome
 // itself is fui::sheet / fui::sliderRow / fui::tileGrid; these constants only
 // size the bands, and computePanelBottom() mirrors them.
-constexpr int16_t kPanelSideMargin = 16;
 constexpr int16_t kGrabberHeight = 5;     // fui::SheetProps default, mirrored here
 constexpr int16_t kSliderRowHeight = 56;  // the pill itself (finger-sized)
-constexpr int16_t kTileHeight = UiHighDpiProfile::enabled ? UiHighDpiProfile::buttonHeight : 84;
-constexpr int16_t kTileGap = UiHighDpiProfile::enabled ? UiHighDpiProfile::controlGap : 16;
-constexpr int kTileCols = 2;
 // One percent per press, on the -/+ buttons and on the physical Left/Right keys
 // alike (both repeat while held), so a level can be set exactly.
 constexpr int BRIGHTNESS_STEP = 1;
@@ -77,6 +74,7 @@ void FrontlightPanelActivity::onEnter() {
   warmth = Frontlight.warmth();
   lightOn = Frontlight.isOn();
   lightOnChanged = false;
+  lastSliderRenderAt = 0;
 
   // Seed the touch tile's restore mode from the live setting, so toggling off
   // and back on within this session returns to the mode the user had.
@@ -85,8 +83,7 @@ void FrontlightPanelActivity::onEnter() {
   }
 
   resetUi();
-  // The host app holds six handlers (UiAppHost); RickyOS boards have no frontlight
-  // and route every control through the tile action.
+  // The host holds six handlers. Only light-capable boards register sliders.
   if (!Frontlight.present()) {
     app.on(ACTION_TILE, &FrontlightPanelActivity::onTileEvent, this);
     app.setScreen(&FrontlightPanelActivity::panelScreen, this);
@@ -104,6 +101,7 @@ void FrontlightPanelActivity::onEnter() {
 }
 
 void FrontlightPanelActivity::persistLightSettings() {
+  if (!Frontlight.present()) return;
   // brightness/warmth are always restored unconditionally on boot (see
   // main.cpp), so they never diverge from SETTINGS at onEnter() — comparing
   // against SETTINGS here only fires on a genuine user change. lightOn has
@@ -127,7 +125,9 @@ void FrontlightPanelActivity::onExit() {
 void FrontlightPanelActivity::onBrightnessEvent(const fui::ActionEvent& event, void* user) {
   auto* self = static_cast<FrontlightPanelActivity*>(user);
   if (event.dragPermille < 0) return;
-  self->brightness = std::max(MIN_BRIGHTNESS, percentFromPermille(event.dragPermille));
+  const auto next = std::max(MIN_BRIGHTNESS, percentFromPermille(event.dragPermille));
+  if (next == self->brightness && self->lightOn) return;
+  self->brightness = next;
   Frontlight.setBrightness(self->brightness);
   if (!self->lightOn) {
     self->lightOn = true;
@@ -139,7 +139,9 @@ void FrontlightPanelActivity::onBrightnessEvent(const fui::ActionEvent& event, v
 void FrontlightPanelActivity::onWarmthEvent(const fui::ActionEvent& event, void* user) {
   auto* self = static_cast<FrontlightPanelActivity*>(user);
   if (event.dragPermille < 0) return;
-  self->warmth = percentFromPermille(event.dragPermille);
+  const auto next = percentFromPermille(event.dragPermille);
+  if (next == self->warmth) return;
+  self->warmth = next;
   Frontlight.setWarmth(self->warmth);
 }
 
@@ -206,7 +208,7 @@ bool FrontlightPanelActivity::handleHomeGesture() {
 void FrontlightPanelActivity::loop() {
   const auto touch = routeTouch(mappedInput, false, /*routeHeld=*/true);
   if (touch.routed) {
-    if (app.invalidated()) requestUpdate();
+    if (app.invalidated() && (!touch.snap.touchHeld || millis() - lastSliderRenderAt >= 250)) requestUpdate();
     if (touch) {
       if (touch.event.dragPermille >= 0) draggingSlider = true;
       return;
@@ -241,38 +243,13 @@ void FrontlightPanelActivity::loop() {
     return;
   }
 
-  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Left},
+  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::NavPrevious},
                                        [this] { adjustBrightness(-BRIGHTNESS_STEP); });
-  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Right},
+  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::NavNext},
                                        [this] { adjustBrightness(BRIGHTNESS_STEP); });
 }
 
-int FrontlightPanelActivity::computePanelBottom() const {
-  if (!Frontlight.present()) return rickyPanelHeight();
-  const auto tokens = uiThemeTokens(uiTarget, true);
-  const auto& metrics = uiThemeMetrics(true);
-  const int16_t lineHeight = uiTarget.lineHeight(tokens.smallText.font);
-  // Slim battery band + the air around it (mirrors buildPanelScreen).
-  const int y0 = std::max<int>(metrics.batteryHeight, lineHeight);
-  int y = tokens.spaceMd + y0 + tokens.spaceMd;
-  if (Frontlight.present()) {
-    // Screen::sliderRow reserves caption + spaceMd + control band, then a
-    // spaceMd gap; addSliderRow() adds one more spaceMd of air after each row.
-    y += lineHeight + tokens.spaceMd + kSliderRowHeight + 2 * tokens.spaceMd;  // brightness
-    if (Frontlight.hasColorTemperature()) {
-      y += lineHeight + tokens.spaceMd + kSliderRowHeight + 2 * tokens.spaceMd;  // warmth
-    }
-    y += tokens.spaceSm;
-  }
-  // Tiles are touch targets, so a buttons-only board gets no grid and the
-  // sheet is exactly the frontlight controls.
-  const int tileCount = mappedInput.hasTouch() ? kTileCount : 0;
-  y += fui::tileGridHeight(static_cast<uint16_t>(tileCount), kTileCols, kTileHeight, kTileGap);
-  // The sheet's grabber band: content margin + grabber + air to the edge.
-  // buildPanelScreen() feeds the same theme spacings into SheetProps.
-  y += tokens.spaceLg + kGrabberHeight + tokens.spaceLg + tokens.spaceMd;
-  return y;
-}
+int FrontlightPanelActivity::computePanelBottom() const { return rickyPanelHeight(); }
 
 void FrontlightPanelActivity::panelScreen(UiScreen& screen, void* user) {
   static_cast<FrontlightPanelActivity*>(user)->buildPanelScreen(screen);
@@ -298,6 +275,11 @@ void FrontlightPanelActivity::addSliderRow(UiScreen& screen, const char* label, 
   rowProps.increment = stepAction;
   rowProps.decrementValue = -BRIGHTNESS_STEP;
   rowProps.incrementValue = BRIGHTNESS_STEP;
+  rowProps.labelText = screen.theme().smallText;
+  rowProps.valueText = screen.theme().smallText;
+  rowProps.buttonText = screen.theme().titleText;
+  rowProps.captionGap = 8;
+  rowProps.gap = 8;
   if (showToggle) {
     // Lamp on/off after the +: the sliders set the level, this kills the light
     // outright. Filled glyph = on, outline = off.
@@ -307,10 +289,8 @@ void FrontlightPanelActivity::addSliderRow(UiScreen& screen, const char* label, 
     rowProps.toggleAction = fui::NO_ACTION;
     rowProps.toggleIcon = fui::BitmapRef{};
   }
-  screen.sliderRow(rowProps, kSliderRowHeight);
-  // The wrapper's own trailing gap is one spaceMd; double it so the rows
-  // breathe — a control band this tall reads cramped at the list cadence.
-  screen.spacer(screen.theme().spaceMd);
+  const auto height = fui::sliderRowHeight(screen.target(), rowProps, kSliderRowHeight);
+  fui::sliderRow(screen.frame(), screen.takeTop(height, 8), rowProps);
 }
 
 void FrontlightPanelActivity::buildPanelScreen(UiScreen& screen) {
@@ -321,7 +301,7 @@ void FrontlightPanelActivity::buildPanelScreen(UiScreen& screen) {
 namespace {
 // Actions: the design's app tile per column (radius 12, 2 px ink, inverted when on;
 // spec §9, no circular frames), the label under it.
-constexpr int16_t kActionDiameter = ricky::ds::layout::kAppTileSize;
+constexpr int16_t kActionDiameter = RickyCompactLayout::enabled ? 64 : ricky::ds::layout::kAppTileSize;
 constexpr int16_t kActionLabelGap = 10;
 constexpr int kActionColumns = 4;
 // Clean-refresh choices in REFRESH_FREQUENCY order (pages between clean refreshes; 0 = never).
@@ -329,6 +309,7 @@ constexpr int kRefreshPages[] = {1, 5, 10, 15, 30, 0};
 }  // namespace
 
 void FrontlightPanelActivity::runRickyTile(const Tile tile) {
+  app.clearTapFlash();
   switch (tile) {
     case Tile::Night:
       SETTINGS.screenInverted = SETTINGS.screenInverted ? 0 : 1;
@@ -372,14 +353,18 @@ int FrontlightPanelActivity::rickyPanelHeight() const {
   const auto& metrics = uiThemeMetrics(true);
   const int small = uiTarget.lineHeight(tokens.smallText.font);
   const int title = uiTarget.lineHeight(tokens.titleText.font);
+  const int ruleGap = RickyCompactLayout::enabled ? 8 : tokens.spaceLg;
+  const int rule = 2 * ruleGap + 1;
   const int actionRow = kActionDiameter + kActionLabelGap + small;
-  int y = tokens.spaceMd + std::max<int>(metrics.batteryHeight, title) + tokens.spaceXs;  // clock and battery
-  y += small;                                                                             // date line
+  const int slider = small + 8 + kSliderRowHeight + 8;
+  const bool landscape = renderer.getScreenWidth() > renderer.getScreenHeight();
+  int y = tokens.spaceMd + std::max<int>(metrics.batteryHeight, title) + tokens.spaceXs + small;
   if (mappedInput.hasTouch()) {
-    y += 2 * tokens.spaceLg + actionRow;
-    if (overReader) y += 2 * tokens.spaceLg + small + tokens.spaceMd + actionRow;
+    y += rule + actionRow;
+    if (!landscape && overReader) y += rule + small + tokens.spaceMd + actionRow;
+    if (Frontlight.present()) y += rule + slider * (landscape ? 1 : (Frontlight.hasColorTemperature() ? 2 : 1));
   }
-  y += tokens.spaceLg + kGrabberHeight + tokens.spaceLg + tokens.spaceMd;  // grabber band
+  y += tokens.spaceLg + kGrabberHeight + tokens.spaceLg + tokens.spaceMd;
   return y;
 }
 
@@ -391,7 +376,8 @@ void FrontlightPanelActivity::roundActionRow(UiScreen& screen, const RoundAction
   label.align = fui::TextAlign::Center;
   const int16_t labelHeight = target.lineHeight(theme.smallText.font);
   const auto row = screen.takeTop(static_cast<int16_t>(kActionDiameter + kActionLabelGap + labelHeight), 0);
-  const int16_t column = static_cast<int16_t>(row.width / kActionColumns);
+  const int columns = count > kActionColumns ? count : kActionColumns;
+  const int16_t column = static_cast<int16_t>(row.width / columns);
   for (int i = 0; i < count; ++i) {
     const RoundAction& action = actions[i];
     const fui::Rect cell{static_cast<int16_t>(row.x + i * column), row.y, column, row.height};
@@ -414,7 +400,7 @@ void FrontlightPanelActivity::roundActionRow(UiScreen& screen, const RoundAction
     target.text(fui::Rect{cell.x, static_cast<int16_t>(circle.bottom() + kActionLabelGap), cell.width, labelHeight},
                 action.label, label);
     // The whole column (tile and label) is the touch target.
-    screen.frame().hit(cell, ACTION_TILE, static_cast<int16_t>(action.tile), fui::InputTouch);
+    screen.frame().hit(cell.inset({0, 4, 0, 4}), ACTION_TILE, static_cast<int16_t>(action.tile), fui::InputTouch);
   }
 }
 
@@ -465,27 +451,23 @@ void FrontlightPanelActivity::buildRickyPanel(UiScreen& screen) {
 
   // Round actions are touch targets; a buttons-only board keeps just the clock.
   if (!mappedInput.hasTouch()) return;
+  const int ruleGap = RickyCompactLayout::enabled ? 8 : theme.spaceLg;
   const auto rule = [&] {
-    screen.spacer(theme.spaceLg);
+    screen.spacer(ruleGap);
     const auto line = screen.takeTop(1, 0);
     target.fill(line, fui::Paint::solid(fui::Color::Black));
-    screen.spacer(theme.spaceLg);
+    screen.spacer(ruleGap);
   };
 
   rule();
   const bool night = SETTINGS.screenInverted != 0;
-  const RoundAction common[] = {
+  RoundAction common[6] = {
       {Tile::Night, &icon_ricky_night_40, tr(STR_NIGHT_MODE), night},
       {Tile::Refresh, &icon_ricky_refresh_40, tr(STR_FORCE_REFRESH), false},
       {Tile::Standby, &icon_ricky_standby_40, tr(STR_RICKY_STANDBY_NOW), false},
       {Tile::Transfer, &icon_ricky_transfer_40, tr(STR_FILE_TRANSFER), false},
   };
-  roundActionRow(screen, common, static_cast<int>(std::size(common)));
-
-  if (!overReader) return;
-  // Reading: only over a book, where each of these changes the page underneath.
-  rule();
-  target.text(screen.takeTop(smallHeight, theme.spaceMd), tr(STR_RICKY_CC_READING), small);
+  const bool landscape = renderer.getScreenWidth() > renderer.getScreenHeight();
   static constexpr StrId kOrientNames[4] = {StrId::STR_PORTRAIT, StrId::STR_LANDSCAPE_CW,
                                             StrId::STR_ORIENTATION_INVERTED, StrId::STR_LANDSCAPE_CCW};
   const uint8_t orientation = SETTINGS.orientation % 4;
@@ -501,7 +483,39 @@ void FrontlightPanelActivity::buildRickyPanel(UiScreen& screen) {
        I18N.get(kOrientNames[orientation]), false},
       {Tile::Clean, &icon_ricky_clean_40, refreshText, false},
   };
-  roundActionRow(screen, reading, static_cast<int>(std::size(reading)));
+  int count = 4;
+  if (landscape && overReader) {
+    common[count++] = reading[0];
+    common[count++] = reading[1];
+  }
+  roundActionRow(screen, common, count);
+  if (!landscape && overReader) {
+    rule();
+    target.text(screen.takeTop(smallHeight, theme.spaceMd), tr(STR_RICKY_CC_READING), small);
+    roundActionRow(screen, reading, static_cast<int>(std::size(reading)));
+  }
+  if (!Frontlight.present()) return;
+  rule();
+  if (!landscape || !Frontlight.hasColorTemperature()) {
+    addSliderRow(screen, tr(STR_BRIGHTNESS), brightness, ACTION_BRIGHTNESS, ACTION_BRIGHTNESS_STEP, true);
+    if (Frontlight.hasColorTemperature())
+      addSliderRow(screen, tr(STR_WARMTH), warmth, ACTION_WARMTH, ACTION_WARMTH_STEP, false);
+    return;
+  }
+  // Plus uses sibling columns in landscape. Share the parent's interaction
+  // frame; only these small Screen cursors live on the stack.
+  const int height = smallHeight + 8 + kSliderRowHeight + 8;
+  const auto area = screen.takeTop(height, 0);
+  const int width = (area.width - 16) / 2;
+  for (int i = 0; i < 2; ++i) {
+    UiScreen child(screen.frame(), theme);
+    const auto all = child.contentRect();
+    const int x = area.x + i * (width + 16);
+    child.insetContent({static_cast<int16_t>(area.y - all.y), static_cast<int16_t>(all.right() - x - width),
+                        static_cast<int16_t>(all.bottom() - area.bottom()), static_cast<int16_t>(x - all.x)});
+    addSliderRow(child, i ? tr(STR_WARMTH) : tr(STR_BRIGHTNESS), i ? warmth : brightness,
+                 i ? ACTION_WARMTH : ACTION_BRIGHTNESS, i ? ACTION_WARMTH_STEP : ACTION_BRIGHTNESS_STEP, i == 0);
+  }
 }
 
 void FrontlightPanelActivity::render(RenderLock&&) {
@@ -518,4 +532,5 @@ void FrontlightPanelActivity::render(RenderLock&&) {
   // or the next scheduled clean refresh.
   renderer.displayBuffer(cleanRefreshPending ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH);
   cleanRefreshPending = false;
+  lastSliderRenderAt = millis();
 }

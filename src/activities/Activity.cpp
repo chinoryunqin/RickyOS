@@ -67,8 +67,9 @@ MainTabLayout Activity::mainTabLayout() const {
     safe.width = std::max(0, safeRight - safe.x);
     safe.height = std::max(0, safeBottom - safe.y);
   }
-  return MainTabs::layout(safe, metrics.topPadding, MainTabs::bottomBarHeight, tabsAtBottom,
-                          showStatus ? MainTabs::statusBarHeight : 0);
+  const int tabHeight = metrics.tabBarHeight > 0 ? metrics.tabBarHeight : MainTabs::bottomBarHeight;
+  const int statusHeight = UiHighDpiProfile::enabled ? MainTabs::statusBarHeight : metrics.batteryBarHeight;
+  return MainTabs::layout(safe, metrics.topPadding, tabHeight, tabsAtBottom, showStatus ? statusHeight : 0);
 }
 
 Rect Activity::pageContentRect() const {

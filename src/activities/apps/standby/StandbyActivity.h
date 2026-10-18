@@ -61,6 +61,7 @@ class StandbyActivity final : public Activity {
   bool tryLightSleep(uint32_t idleMs);
   void openPicturePicker(const std::string& folder = RickyStorageLayout::IMAGES);
   bool drewFrame_ = false;  // B/W frames after the first refresh fast
+  bool savedFrontlightOn_ = false;
   GfxRenderer::Orientation savedOrientation_ = GfxRenderer::Orientation::Portrait;  // restored on exit
   unsigned long enteredMs_ = 0;                                                     // for the auto power-off
 

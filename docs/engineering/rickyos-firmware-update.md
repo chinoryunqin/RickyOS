@@ -61,9 +61,9 @@ CrossMux Stable / Nightly 逻辑不变。设备设置入口为「RickyOS 更新�
 
 复用 SDK 的 wolfSSL，不引入第二套 TLS。`RickyOtaTrust.h` 保存 flash 常量
 ISRG Root X1 与其审阅指纹；需关注托管服务证书链变更。
-`scripts/patch_rickyos_tls.py` 仅在 RickyOS 环境构建时为固定 SDK 添加显式
-peer 验证、CA 加载失败拒绝和域名检查。此机械补丁可重复执行；SDK 源码不匹配
-或补丁不完整时构建失败，不能静默漏掉验证。补丁由父仓库维护，不提交 SDK 指针变更。
+SDK 已收进仓库（`freeink-sdk/`），`SecureClient.cpp` 直接带显式 peer 验证、
+CA 加载失败拒绝和域名检查（标记 `RICKYOS_VERIFIED_TLS`），由
+`test/rickyos_ota/test_tls_patch.py` 检查。
 
 SHA-256 增量状态与标识扫描器使用固定栈空间，期望摘要仅 32 字节。
 证书自身驻留 flash，证书解析仍消耗 TLS 堆内存；成功编译不证明设备握手的

@@ -13,3 +13,5 @@
 # Pin the working-tree form to LF on both sides so the patch bytes and the sources
 # they apply to always agree. The files themselves are already LF in the repository.
 *.patch text eol=lf
+# Unified diffs encode empty context lines as one literal space.
+scripts/patches/*.patch whitespace=-blank-at-eol

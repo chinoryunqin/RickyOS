@@ -360,7 +360,15 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   static constexpr uint8_t CHARACTER_SPACING_OFFSET = 2;  // stored 0..4 maps to -2..+2 px
   uint8_t characterSpacing = CHARACTER_SPACING_OFFSET;
   int8_t getCharacterSpacing() const { return static_cast<int8_t>(characterSpacing - CHARACTER_SPACING_OFFSET); }
+  #if defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4
+  // The A4's UC8279C driver ignores the B/W base in displayGray(), so grayscale
+  // AA costs a second full refresh: the page first appears in crisp black and
+  // then settles to gray. Default it off so opening a book is one refresh; the
+  // setting stays available in the reader menu for anyone who wants the AA.
+  uint8_t textAntiAliasing = 0;
+#else
   uint8_t textAntiAliasing = 1;
+#endif
   uint8_t fakeBold = SYNTHETIC_BOLD_STANDARD;
   // readingMode::Mode: Original, Puppy (小狗伴读), Immersive (沉浸), Ancient (古籍).
   // Chosen in the reader menu; persisted outside SettingsList.

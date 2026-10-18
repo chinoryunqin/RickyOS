@@ -44,6 +44,7 @@ static portMUX_TYPE activityManagerSpinlock = portMUX_INITIALIZER_UNLOCKED;
 
 #if RICKYOS_PERF_SD_LOG
 #include <HalStorage.h>
+
 #include <cstdio>
 #include <cstring>
 namespace {
@@ -612,6 +613,14 @@ bool ActivityManager::handleMainTabInput() {
     return false;
   }
 
+  // A4's single top key must leave a root page in one click. The front-key
+  // "focus the tab strip first" step has no matching Confirm/Left/Right keys.
+  if (MappedInputManager::powerKeyIsBack() && currentTab != MainTab::Recent &&
+      currentActivity->mainTabBackReturnsToTabs() && mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    goHome();
+    return true;
+  }
+
   if (mainTabEntryReleasePending) {
     if (mappedInput.wasReleased(MappedInputManager::Button::Up) ||
         mappedInput.wasReleased(MappedInputManager::Button::Down))
@@ -804,7 +813,7 @@ void ActivityManager::goHome(HomeMenuItem) {
   }
   // The theme is pinned to INX (CrossPointSettings::enforceProductLayout): Home is the
   // main-tab Recent page.
-  mainTabFocus = MainTabFocus::Tabs;
+  mainTabFocus = MappedInputManager::powerKeyIsBack() ? MainTabFocus::Content : MainTabFocus::Tabs;
   mainTabEntryReleasePending = false;
   goToInxRecent();
 }
@@ -824,6 +833,10 @@ void ActivityManager::goToCalculator() { replaceActivityWith<CalculatorActivity>
 void ActivityManager::goToStandby() { replaceActivityWith<StandbyActivity>(); }
 
 bool ActivityManager::standbyShowing() const { return currentActivity && currentActivity->name == "Standby"; }
+bool ActivityManager::isHomeActivity() const {
+  return currentActivity && (currentActivity->isHomeActivity() ||
+                             (currentActivity->usesMainTabBar() && currentActivity->mainTab() == MainTab::Recent));
+}
 
 void ActivityManager::openStandby() {
   if (standbyShowing() || isSwitchPending()) return;

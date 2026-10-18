@@ -28,7 +28,7 @@ import webbrowser
 ROOT = Path(__file__).resolve().parents[2]
 ASSETS = Path(__file__).resolve().parent
 MAX_PIXELS = 1216 * 684
-KEYS = {'BACK', 'ENTER', 'UP', 'DOWN', 'LEFT', 'RIGHT', 'POWER', 'SLEEP'}
+KEYS = {'BACK', 'ENTER', 'UP', 'DOWN', 'LEFT', 'RIGHT', 'POWER', 'SLEEP', 'HOME'}
 
 
 def build_toolchain():
@@ -115,7 +115,13 @@ def seed_demo(sd):
 
 
 class Preview:
-    def __init__(self, state_dir, port):
+    def __init__(self, state_dir, port, environment='simulator_rickyos', ui_orientation=None):
+        if environment not in ('simulator_rickyos', 'simulator_rickyos_eego_a4'):
+            raise ValueError('unsupported simulator environment')
+        if ui_orientation is not None and (environment != "simulator_rickyos_eego_a4" or ui_orientation not in range(4)):
+            raise ValueError("A4 preview orientation must be 0..3")
+        self.ui_orientation = ui_orientation
+        self.environment = environment
         self.state_dir = state_dir.resolve()
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self.state_lock = (self.state_dir / 'preview.lock').open('a')
@@ -144,7 +150,7 @@ class Preview:
         self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
         self.socket.settimeout(0.5)
         self.library = self.state_dir / 'bridge.dylib'
-        self.binary = ROOT / '.pio/build/simulator_rickyos/program'
+        self.binary = ROOT / '.pio/build' / self.environment / 'program'
         self.compile_bridge()
         self.start()
 
@@ -180,6 +186,8 @@ class Preview:
             environment.update(SDL_VIDEODRIVER='dummy', SDL_RENDER_DRIVER='software',
                                DYLD_INSERT_LIBRARIES=str(self.library), RICKYOS_BRIDGE_DIR=str(self.transport),
                                CROSSPOINT_SIM_SD=str(self.sd), CROSSPOINT_SIM_HTTP_PORT=str(self.port + 10))
+            if self.ui_orientation is not None:
+                environment['CROSSPOINT_SIM_UI_ORIENTATION'] = str(self.ui_orientation)
             with (self.state_dir / 'simulator.log').open('wb') as log:
                 self.process = subprocess.Popen([str(self.binary)], cwd=ROOT, env=environment,
                                                 stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
@@ -226,6 +234,11 @@ class Preview:
             return self.frame
 
     def input(self, data):
+        if self.environment == 'simulator_rickyos_eego_a4' and data.get('key') == 'BACK':
+            # A4's physical Home key returns to the root. Browser Back uses
+            # the supported left-edge gesture, preserving nested navigation.
+            data = {'type': 'touch', 'x1': .01, 'y1': .5,
+                    'x2': .4, 'y2': .5, 'duration': data.get('duration', 120)}
         command = input_command(data)
         with self.lock:
             if self.process is None or self.process.poll() is not None:
@@ -247,7 +260,7 @@ class Preview:
                     with self.lock:
                         if self.closing:
                             return
-                        self.build_process = subprocess.Popen([str(pio), 'run', '-e', 'simulator_rickyos'],
+                        self.build_process = subprocess.Popen([str(pio), 'run', '-e', self.environment],
                                                               cwd=ROOT, env=environment, stdout=log,
                                                               stderr=subprocess.STDOUT, start_new_session=True)
                     if self.build_process.wait() != 0:
@@ -375,6 +388,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port', type=int, default=8765)
     parser.add_argument('--state-dir', type=Path, default=ROOT / '.cache/rickyos-browser')
+    parser.add_argument('--environment', choices=['simulator_rickyos', 'simulator_rickyos_eego_a4'],
+                        default='simulator_rickyos')
+    parser.add_argument('--ui-orientation', type=int, choices=range(4))
     parser.add_argument('--open', action='store_true', help='启动后打开默认浏览器')
     args = parser.parse_args()
     if not 1024 <= args.port <= 65524:
@@ -382,7 +398,7 @@ def main():
     # Bind before launching a second simulator when the page is already running.
     server = LocalServer(('127.0.0.1', args.port), BaseHTTPRequestHandler)
     try:
-        preview = Preview(args.state_dir, args.port)
+        preview = Preview(args.state_dir, args.port, args.environment, args.ui_orientation)
     except Exception:
         server.server_close()
         raise

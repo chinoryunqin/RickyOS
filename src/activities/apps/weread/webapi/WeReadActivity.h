@@ -114,6 +114,14 @@ class WeReadActivity final : public Activity {
   bool coverInterrupted_ = false;
   bool pendingBack_ = false;  // Back or Home seen while a download was abandoned
   bool pendingHome_ = false;
+  // Shelf input a cover download consumed while it was abandoned, replayed by
+  // handleShelfInput(): a completed page-turn press (-1/+1), Confirm, a tap, a swipe.
+  int8_t pendingShelfStep_ = 0;
+  bool pendingShelfConfirm_ = false;
+  bool pendingShelfTap_ = false;
+  int pendingShelfTapX_ = 0;
+  int pendingShelfTapY_ = 0;
+  MappedInputManager::SwipeDir pendingShelfSwipe_ = MappedInputManager::SwipeDir::None;
   bool optionPopupClosing_ = false;
   bool disclaimerSaveFailed_ = false;
   bool wifiSessionActive_ = false;

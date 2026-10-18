@@ -240,3 +240,24 @@ add_test(NAME RealImageDecoderCancellation
 
 add_test(NAME TextSettingsFontExit
   COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/scripts/tests/test_text_settings_font_exit.py)
+
+# A4-only integration guards: real geometry, dependency adapter and recording bus.
+add_test(NAME EegoCompactLayout
+  COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/scripts/tests/test_eego_compact_layout.py)
+add_test(NAME EegoDriverAdapter
+  COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/scripts/tests/test_rickyos_eego_patch.py)
+add_test(NAME EegoDisplayTransactions
+  COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/freeink-sdk/libs/display/FreeInkDisplay/test/host/test_eego_a4.py)
+
+# Plus-derived light controls, exercised against A4 geometry and the HAL boundary.
+add_test(NAME EegoFrontlightLayout
+  COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/scripts/tests/test_eego_frontlight_layout.py)
+add_test(NAME EegoFrontlightControls
+  COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/scripts/tests/test_eego_frontlight_controls.py)
+add_test(NAME StandbyFrontlight
+  COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/scripts/tests/test_standby_frontlight.py)
+
+add_test(NAME EegoPowerKey
+  COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/scripts/tests/test_eego_power_key.py)
+add_test(NAME RickyosSdkIntegration
+  COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/scripts/tests/test_rickyos_sdk_integration.py)

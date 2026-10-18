@@ -1047,7 +1047,14 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
   constexpr int cardInset = 8;
   constexpr int cardTextGap = 8;
   constexpr int cardSideInset = 6;
-  const int cardExtraHeight = 2 * cardTextLineHeight + 2 * cardInset + 2 * cardTextGap;
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+  // The A4's shelf rows are short: a title line only, so the covers can grow (reading
+  // state stays in the filter chips and the cover's progress bar).
+  constexpr int cardTextLines = 1;
+#else
+  constexpr int cardTextLines = 2;
+#endif
+  const int cardExtraHeight = cardTextLines * (cardTextLineHeight + cardTextGap) + 2 * cardInset;
   const int count = bookRowCount();
   auto titleRect = screen.takeTop(ricky::ds::layout::kPageHeaderHeight, 0);
   auto countRect = titleRect;
@@ -1109,7 +1116,9 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
   const bool multiplePages = count > SHELF_CAPACITY;
   const auto positionRect = multiplePages ? screen.takeBottom(labelHeight, gap) : fui::Rect{};
   const auto body = screen.body();
-  const int columns = body.width > body.height ? 6 : 3;
+  // One row only on a clearly wide body; a near-square one (the A4: about 480 x 420 in
+  // portrait) keeps two rows, or its covers shrink to a sliver of the width.
+  const int columns = (body.width > body.height * 3 / 2 ? 2 : 1) * (SHELF_CAPACITY / 2);
   const int rows = SHELF_CAPACITY / columns;
   const int rowHeight = std::max(1, (body.height - gap * (rows - 1)) / rows);
   // 2:3 covers, one page of six bounded records.
@@ -1211,8 +1220,10 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
     // never mixes the caption and body sizes.
     RickyDesignUi::text(renderer, titleRect, shelfTitles[slot].c_str(), RickyDesignUi::BODY, picked,
                         fui::TextAlign::Center);
-    RickyDesignUi::secondaryText(renderer, detailRect, shelfDetails[slot].data(), RickyDesignUi::CAPTION, picked,
-                                 fui::TextAlign::Center);
+    if (cardTextLines > 1) {
+      RickyDesignUi::secondaryText(renderer, detailRect, shelfDetails[slot].data(), RickyDesignUi::CAPTION, picked,
+                                   fui::TextAlign::Center);
+    }
     screen.frame().hit(cell, ACTION_ROW, start + slot, fui::InputTouch | fui::InputLongPress);
   }
   n.drawnCount = count;

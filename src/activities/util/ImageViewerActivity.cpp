@@ -255,7 +255,14 @@ void ImageViewerActivity::onEnter() {
         imageReady = shown;
         return;
       }
-      if (bitmap.hasGreyscale()) {
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+      // The A4's gray pass leaves stale planes (a black band, a washed-out picture) and
+      // costs two more refreshes: pictures stay dithered B/W there, like its text.
+      constexpr bool grayPictures = false;
+#else
+      constexpr bool grayPictures = true;
+#endif
+      if (grayPictures && bitmap.hasGreyscale()) {
         // Read Pico's bitmap renderer emits overlay masks, not UC8279 absolute planes.
         constexpr bool absolute = false;
         if (absolute && !renderer.displayGrayscaleBase(HalDisplay::GrayscaleMode::Absolute)) return;
@@ -298,7 +305,8 @@ void ImageViewerActivity::onEnter() {
         if (!planesReady) renderer.displayBuffer(HalDisplay::HALF_REFRESH);
         imageReady = planesReady;
       } else {
-        renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+        // A full-screen picture after the preview: a clean refresh where it is the only one.
+        renderer.displayBuffer(grayPictures ? HalDisplay::FAST_REFRESH : HalDisplay::HALF_REFRESH);
         imageReady = true;
       }
 

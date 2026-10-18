@@ -114,3 +114,19 @@ python tools/rickyos-browser/check_reader_preview.py --out build/design-alignmen
 ```
 
 `--check-home` 在横屏阅读菜单点按可见的首页按钮，确认确实回到首页；不只检查图标被画出来。
+
+## EEGO A4 integration preview
+
+Build `pio run -e simulator_rickyos_eego_a4`, then run:
+
+```sh
+python tools/rickyos-browser/server.py --environment simulator_rickyos_eego_a4 --port 8787 --state-dir build/eego-demo
+python tools/rickyos-browser/check_eego_preview.py --out build/eego-preview
+```
+
+This profile uses the actual 552×768 A4 layout, B/W display path and A4 input.
+Back uses its left-edge return gesture; Home remains a separate key. `--ui-orientation 1` previews the root
+pages at 768×552 without changing device settings; it is a simulator-only
+layout check. The reader's real orientation settings remain available on hardware.
+Run native and hardware builds sequentially: the PlatformIO core switch can
+invalidate another environment's build output. Keep delivery binaries outside `.pio`.

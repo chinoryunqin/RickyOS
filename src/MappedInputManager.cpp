@@ -16,6 +16,7 @@
 namespace fui = freeink::ui;
 
 void MappedInputManager::update(const bool deferHomeButtonAction) const {
+  backClickFrame = false;
   gpio.update();
 #if FREEINK_CAP_BLE_HID_HOST
   BleHid.poll();
@@ -461,9 +462,7 @@ bool MappedInputManager::wasBackGesture() const {
   return wasEdgeSwipe(fui::ScreenEdge::Left);
 }
 
-bool MappedInputManager::wasHeaderTapBack() const {
-  return false;
-}
+bool MappedInputManager::wasHeaderTapBack() const { return false; }
 bool MappedInputManager::wasTopEdgeDownSwipe() const { return wasEdgeSwipe(fui::ScreenEdge::Top); }
 
 bool MappedInputManager::wasBottomEdgeUpSwipe() const { return wasEdgeSwipe(fui::ScreenEdge::Bottom); }
@@ -490,6 +489,7 @@ bool MappedInputManager::wasLightPanelGesture() const {
 
 #if FREEINK_CAP_TOUCH
 bool MappedInputManager::wasPowerConfirmClick() const {
+  if (powerKeyIsBack()) return false;
   if (!gpio.hasTouch() || SETTINGS.shortPwrBtn != CrossPointSettings::SHORT_PWRBTN::PWR_CONFIRM) return false;
   // Wait out the X4 Pro's frontlight double-click window before treating its
   // first release as Confirm. With the shortcut disabled, and on other touch
@@ -500,6 +500,7 @@ bool MappedInputManager::wasPowerConfirmClick() const {
 #endif
 
 bool MappedInputManager::wasPressed(const Button button) const {
+  if (button == Button::Back && backClickFrame) return true;
   if (button == Button::Confirm && homeAction == HomeButtonAction::Confirm) return true;
   if (button == Button::Back && wasBackGesture()) return true;
 #if FREEINK_CAP_TOUCH
@@ -509,6 +510,7 @@ bool MappedInputManager::wasPressed(const Button button) const {
 }
 
 bool MappedInputManager::wasReleased(const Button button) const {
+  if (button == Button::Back && backClickFrame) return true;
   if (button == Button::Confirm && homeAction == HomeButtonAction::Confirm) return true;
   if (button == Button::Back && wasBackGesture()) return true;
 #if FREEINK_CAP_TOUCH
@@ -547,12 +549,12 @@ bool MappedInputManager::isPressed(const Button button) const {
 }
 
 bool MappedInputManager::wasAnyPressed() const {
-  return gpio.wasAnyPressed() ||
+  return backClickFrame || gpio.wasAnyPressed() ||
          std::any_of(blePressEdges.begin(), blePressEdges.end(), [](const bool edge) { return edge; });
 }
 
 bool MappedInputManager::wasAnyReleased() const {
-  return gpio.wasAnyReleased() ||
+  return backClickFrame || gpio.wasAnyReleased() ||
          std::any_of(bleReleaseEdges.begin(), bleReleaseEdges.end(), [](const bool edge) { return edge; });
 }
 
@@ -575,6 +577,7 @@ bool MappedInputManager::takeCapturedBleKey(uint8_t& kind, uint8_t& value) {
 }
 
 unsigned long MappedInputManager::getHeldTime() const {
+  if (backClickFrame) return 0;
   if (bleActivityThisFrame) return 0;
   // A mapped action has its own meaning, independent of the contact duration.
   if (homeAction != HomeButtonAction::Ignore) return 0;

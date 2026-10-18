@@ -23,6 +23,7 @@ that matches your task — don't load everything at once.
 | [sd-card-font-cache.md](sd-card-font-cache.md) | Reviewing the SD-card reader-font cache, its inactive-OTA-slot backend, rollback boundary, commit protocol, SD fallback, progress UI, or performance logs. |
 | [chinese-build.md](chinese-build.md) | Working on unified-firmware content profiles or embedded CJK fonts. |
 | [firmware-release.md](firmware-release.md) | Changing Nightly targets, packaging, GitHub/COS publishing, regional indexes, rollback, or OTA release contracts. |
+| [eego-a4-integration.md](eego-a4-integration.md) | A4 design integration, compact geometry, pinned display adapter and isolated preview checks. |
 | [device-variants.md](device-variants.md) | Building or flashing for the Xteink X3 vs X4, runtime device detection (one binary, both panels), and the per-device hardware differences. |
 | [ssd1677-text-aa.md](ssd1677-text-aa.md) | Default S3 SSD1677 text AA, original image routing, PSRAM fallback, calibration and validation. |
 | [image-dithering-experiment.md](image-dithering-experiment.md) | Pending RickyOS image-only Atkinson vs blue-noise A/B; native 16-gray UI remains unchanged. |

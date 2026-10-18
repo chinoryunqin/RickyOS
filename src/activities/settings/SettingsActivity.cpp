@@ -50,6 +50,7 @@
 #include "activities/util/ConfirmationActivity.h"
 #include "activities/util/ImageViewerActivity.h"
 #include "activities/util/IntervalSelectionActivity.h"
+#include "components/RickyCompactLayout.h"
 #include "components/RickyDesignUi.h"
 #include "components/RickyPageUi.h"
 #include "components/RickyProfile.h"
@@ -1225,6 +1226,10 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
       static_cast<int16_t>(content.y), static_cast<int16_t>(renderer.getScreenWidth() - content.x - content.width),
       static_cast<int16_t>(renderer.getScreenHeight() - content.y - content.height), static_cast<int16_t>(content.x)});
 
+  if (categoryRoot_ && RickyCompactLayout::enabled) {
+    buildCompactRoot(screen);
+    return;
+  }
   if (categoryRoot_) {
     const auto& theme = screen.theme();
     auto& target = screen.target();
@@ -1315,6 +1320,54 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
   }
   screen.list(productProps);
   return;
+}
+
+void SettingsActivity::buildCompactRoot(UiScreen& screen) {
+  namespace design = RickyDesignUi;
+  namespace compact = RickyCompactLayout;
+  const auto box = compact::box;
+  screen.insetContent({0, compact::margin, 0, compact::margin});
+  auto& target = screen.target();
+  const int bodyLine = renderer.getLineHeight(design::BODY);
+  const int smallLine = renderer.getLineHeight(design::CAPTION);
+  const auto layout = compact::settings(screen.body(), renderer.getLineHeight(design::TITLE), bodyLine, smallLine);
+  design::text(renderer, layout.title, tr(STR_SETTINGS_TITLE), design::TITLE);
+  design::softCard(renderer, layout.profile, false);
+  const auto avatar = box(layout.profile.x + 12, layout.profile.y + (layout.profile.height - 56) / 2, 56, 56);
+  RickyProfile::drawAvatar(renderer, Rect{avatar.x, avatar.y, avatar.width, avatar.height});
+  const int textX = avatar.right() + 12, textWidth = layout.profile.right() - textX - 40;
+  const int textY = layout.profile.y + (layout.profile.height - bodyLine - smallLine - 4) / 2;
+  design::text(renderer, box(textX, textY, textWidth, bodyLine), RickyProfile::nickname(), design::BODY);
+  design::secondaryText(renderer, box(textX, textY + bodyLine + 4, textWidth, smallLine),
+                        tr(STR_RICKY_PROFILE_SUBTITLE), design::CAPTION);
+  RickyPageUi::chevron(target, box(layout.profile.right() - 32, layout.profile.y, 24, layout.profile.height));
+  screen.frame().hit(layout.profile, ACTION_TAB_USER + 20, 0, fui::InputTouch);
+  const int selected = RickyPageUi::syncNav(nav, listCount());
+  const bool focus = showMainTabContentSelection();
+  const freeink::Icon* icons[] = {&icon_ricky_display_40, &icon_ricky_reader_40, &icon_ricky_network_40,
+                                  &icon_ricky_fonts_40,   &icon_ricky_folder_40, &icon_ricky_system_40};
+  for (int i = 0; i < categoryCount; ++i) {
+    const auto cell = RickyPageUi::uiRect(
+        RickyPageLayout::cell(Rect{layout.grid.x, layout.grid.y, layout.grid.width, layout.grid.height}, i,
+                              categoryCount, compact::gap, layout.columns));
+    const bool picked = focus && selected == i;
+    design::softCard(renderer, cell, picked);
+    RickyPageUi::pageIcon(target, renderer, cell.x + 12, cell.y + cell.height / 2, *icons[i], picked);
+    design::text(renderer, box(cell.x + 64, cell.y + 8, cell.width - 76, cell.height - 16), I18N.get(categoryNames[i]),
+                 design::BODY, picked, fui::TextAlign::Left, 2);
+    screen.frame().hit(cell, ACTION_ROW, i, fui::InputTouch);
+  }
+  const fui::Rect rows[] = {layout.about, layout.help};
+  const StrId labels[] = {StrId::STR_RICKY_ABOUT_DEVICE, StrId::STR_RICKY_HELP_FEEDBACK};
+  for (int i = 0; i < 2; ++i) {
+    const auto row = rows[i];
+    const bool picked = focus && selected == categoryCount + i;
+    if (picked) design::fill(renderer, row, ricky::ds::gray::kInk, ricky::ds::radius::kControl);
+    design::text(renderer, box(row.x + 8, row.y, row.width - 40, row.height), I18N.get(labels[i]), design::BODY,
+                 picked);
+    RickyPageUi::chevron(target, box(row.right() - 28, row.y, 24, row.height), picked);
+    screen.frame().hit(row, ACTION_ROW, categoryCount + i, fui::InputTouch);
+  }
 }
 
 void SettingsActivity::drawChrome() {

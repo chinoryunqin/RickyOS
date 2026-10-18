@@ -9,6 +9,8 @@
 // X3/X4 ESP32-C3 binary is one compatibility class, tagged "x4".
 #if   FREEINK_DEVICE_READPICO
 #define CROSSPOINT_BOARD_NAME "readpico"
+#elif FREEINK_DEVICE_EEGO_A4
+#define CROSSPOINT_BOARD_NAME "eego_a4"
 #elif CROSSPOINT_EMULATED
 #define CROSSPOINT_BOARD_NAME "simulator"
 #else

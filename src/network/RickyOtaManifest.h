@@ -65,7 +65,7 @@ class RickyOtaManifest {
       case Product:
         return text == "RickyOS";
       case Board:
-        return text == "readpico";
+        return text == ricky_ota::BOARD;
       case Channel:
         return text == "stable";
       case Status:
@@ -97,7 +97,7 @@ class RickyOtaManifest {
       value = value * 10 + c - '0';
     }
     if (field == Schema) return value == 1;
-    if (field == Chip) return value == 9;
+    if (field == Chip) return value == ricky_ota::CHIP_ID;
     if (field == Flash) return value == 0x1000000;
     imageBytes = value;
     return value >= 24 && value % 4 == 0 && value <= ricky_ota::SLOT_BYTES - ricky_ota::RESERVE_BYTES &&

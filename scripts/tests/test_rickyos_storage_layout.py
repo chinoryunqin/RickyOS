@@ -131,9 +131,8 @@ if __name__ == '__main__':
         self.assertIn('RickyStorageActivity::invalidateScan();', body(browser, 'void FileBrowserActivity::finishEdit('))
         # The simulator has no FAT to walk.
         self.assertIn('#ifdef SIMULATOR', source)
-        patch = (ROOT / 'scripts/patch_rickyos_sdcard.py').read_text()
-        self.assertIn('FsVolume& mountedVolume() { return vol(); }', patch)
-        self.assertIn('pre:scripts/patch_rickyos_sdcard.py', (ROOT / 'platformio.ini').read_text())
+        sd = (ROOT / 'freeink-sdk/libs/hardware/SDCardManager/include/SDCardManager.h').read_text()
+        self.assertIn('FsVolume& mountedVolume() { return vol(); }', sd)
 
     def test_free_cluster_count_per_table_type(self):
         source = (ROOT / 'src/util/RickyFreeSpace.cpp').read_text()

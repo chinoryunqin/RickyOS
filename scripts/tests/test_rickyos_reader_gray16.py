@@ -9,18 +9,9 @@ ROOT = Path(__file__).resolve().parents[2]
 READER = ROOT / 'src/activities/reader/EpubReaderActivity.cpp'
 
 
-def load_patch():
-    spec = importlib.util.spec_from_file_location('patch_rickyos_epdiy', ROOT / 'scripts/patch_rickyos_epdiy.py')
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def pristine(path):
-    """The SDK file as pinned, before the build-time patch."""
-    rel = Path(path).relative_to(ROOT / 'freeink-sdk')
-    return subprocess.run(['git', '-C', str(ROOT / 'freeink-sdk'), 'show', f'HEAD:{rel}'],
-                          check=True, capture_output=True, text=True).stdout
+def sdk(path):
+    """The vendored SDK file (RickyOS changes included since 2026-10-19)."""
+    return Path(path).read_text()
 
 
 class RickyReaderGray16Test(unittest.TestCase):
@@ -38,39 +29,18 @@ class RickyReaderGray16Test(unittest.TestCase):
         self.assertIn('memcpy(renderer.grayscale16Frame(), pageCache16_[pageCacheLiveSlot_].get()', source)
         self.assertIn('renderer.beginGrayscale16Offscreen(pageCache16_[slot].get())', source)
 
-    def test_epdiy_patch_applies_once_and_refuses_changed_sources(self):
-        patch = load_patch()
-        cpp = ROOT / 'freeink-sdk/libs/display/EpdiyLcd/src/EpdiyLcd.cpp'
-        header = ROOT / 'freeink-sdk/libs/display/EpdiyLcd/include/EpdiyLcd.h'
-        text = pristine(cpp)
-        patched = patch.patch_text(text, patch.OLD_COMMIT, patch.NEW_COMMIT)
-        self.assertIn(patch.MARK, patched)
-        self.assertEqual(patch.patch_text(patched, patch.OLD_COMMIT, patch.NEW_COMMIT), patched)  # re-runnable
-        with self.assertRaises(RuntimeError):
-            patch.patch_text(text.replace(patch.OLD_COMMIT, patch.OLD_COMMIT.replace('bwProxy', 'proxy')),
-                             patch.OLD_COMMIT, patch.NEW_COMMIT)
-        # The header gets every RickyOS declaration once, however many earlier builds ran
-        # (separate steps on one anchor used to re-insert each other on every build).
-        text = pristine(header)
-        once = patch.patch_header(text)
-        self.assertEqual(patch.patch_header(once), once)
-        doubled = once.replace(patch.HEADER_BLOCK, patch.HEADER_BLOCK * 3)
-        self.assertEqual(patch.patch_header(doubled), once)
+    def test_epdiy_carries_the_text_turn_commit_once(self):
+        cpp = sdk(ROOT / 'freeink-sdk/libs/display/EpdiyLcd/src/EpdiyLcd.cpp')
+        header = sdk(ROOT / 'freeink-sdk/libs/display/EpdiyLcd/include/EpdiyLcd.h')
+        self.assertIn('RICKYOS_GRAY16_TEXT_TURN', cpp)
         for decl in ('void epdiyLcdSetGray16Profile(uint8_t profile);', 'void epdiyLcdRailsOffIfIdle(uint32_t idleMs);',
                      'bool epdiyLcdRestart();'):
-            self.assertEqual(once.count(decl), 1)
-        with self.assertRaises(RuntimeError):
-            patch.patch_header(text.replace('bwProxy', 'proxy'))
+            self.assertEqual(header.count(decl), 1)
         # Reader turns keep the rails up; long-lived frames still power down.
-        self.assertIn('const bool turnOff = g_gray16Profile == 0 || g_gray16Profile == 3;', patch.NEW_COMMIT)
+        self.assertIn('const bool turnOff = g_gray16Profile == 0 || g_gray16Profile == 3;', cpp)
 
     def test_rails_drop_after_frames_stop(self):
-        patch = load_patch()
-        cpp = pristine(ROOT / 'freeink-sdk/libs/display/EpdiyLcd/src/EpdiyLcd.cpp')
-        for old, new in ((patch.OLD_TIMER_INCLUDE, patch.NEW_TIMER_INCLUDE), (patch.OLD_POWER, patch.NEW_POWER),
-                         (patch.OLD_POWER_STATE, patch.NEW_POWER_STATE), (patch.OLD_IDLE_FN, patch.NEW_IDLE_FN)):
-            cpp = patch.patch_text(cpp, old, new, patch.RAILS_MARK)
-            self.assertEqual(patch.patch_text(cpp, old, new, patch.RAILS_MARK), cpp)  # re-runnable
+        cpp = sdk(ROOT / 'freeink-sdk/libs/display/EpdiyLcd/src/EpdiyLcd.cpp')
         self.assertIn('g_railsUp = true;', cpp)
         self.assertIn('void epdiyLcdRailsOffIfIdle(uint32_t idleMs) {', cpp)
         # Held-up rails let charge build in the film (old pages show through): the main
@@ -80,17 +50,8 @@ class RickyReaderGray16Test(unittest.TestCase):
         self.assertIn('if (railsLock.ownsLock()) display.railsOffIfIdle(3000);', manager)
 
     def test_line_queues_start_each_phase_empty_and_repair_rebuilds_the_scan_path(self):
-        patch = load_patch()
-        cpp = pristine(ROOT / 'freeink-sdk/libs/display/EpdiyLcd/src/EpdiyLcd.cpp')
-        ctx = pristine(ROOT / 'freeink-sdk/libs/display/EpdiyLcd/src/epdiy/src/output_common/render_context.c')
-        for old, new, mark in ((patch.OLD_RESTART_FN, patch.NEW_RESTART_FN, patch.RESTART_MARK),
-                               (patch.OLD_DIAG_STATS, patch.NEW_DIAG_STATS, patch.LQ_MARK),
-                               (patch.OLD_DIAG_PRINT, patch.NEW_DIAG_PRINT, patch.LQ_MARK)):
-            cpp = patch.patch_text(cpp, old, new, mark)
-            self.assertEqual(patch.patch_text(cpp, old, new, mark), cpp)
-        for old, new in ((patch.OLD_LQ_FN, patch.NEW_LQ_FN), (patch.OLD_LQ_RESET, patch.NEW_LQ_RESET)):
-            ctx = patch.patch_text(ctx, old, new, patch.LQ_MARK)
-            self.assertEqual(patch.patch_text(ctx, old, new, patch.LQ_MARK), ctx)
+        cpp = sdk(ROOT / 'freeink-sdk/libs/display/EpdiyLcd/src/EpdiyLcd.cpp')
+        ctx = sdk(ROOT / 'freeink-sdk/libs/display/EpdiyLcd/src/epdiy/src/output_common/render_context.c')
         # Lines a late interrupt left in a queue shifted every later phase (a lighter copy of
         # the page beside itself until reboot): both queues are emptied before each phase,
         # before the feed threads start on it.

@@ -128,3 +128,23 @@ TEST_F(BleOverlayTest, BackKeepsStripRemappedAndBleEdgesSeparate) {
   EXPECT_FALSE(input.isPressed(Button::Back));
   EXPECT_TRUE(input.wasReleased(Button::Back));
 }
+
+TEST_F(BleOverlayTest, DebouncedBackIsOneShortGestureInTheSharedFrame) {
+  gpio.heldTime = 5000;
+  input.update();
+  input.setBackClickFrame();
+  EXPECT_TRUE(input.wasPressed(Button::Back));
+  EXPECT_TRUE(input.wasReleased(Button::Back));
+  EXPECT_TRUE(input.wasAnyPressed());
+  EXPECT_TRUE(input.wasAnyReleased());
+  EXPECT_FALSE(input.isPressed(Button::Back));
+  EXPECT_FALSE(input.wasBackGesture());
+  EXPECT_EQ(input.getHeldTime(), 0U);
+  EXPECT_FALSE(input.wasReleased(Button::Confirm));
+  EXPECT_FALSE(input.wasReleased(Button::PageForward));
+  input.update();
+  EXPECT_FALSE(input.wasPressed(Button::Back));
+  EXPECT_FALSE(input.wasReleased(Button::Back));
+  EXPECT_FALSE(input.wasAnyReleased());
+  EXPECT_EQ(input.getHeldTime(), 5000U);
+}

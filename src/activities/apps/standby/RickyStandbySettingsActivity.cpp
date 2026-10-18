@@ -130,7 +130,10 @@ void RickyStandbySettingsActivity::rebuildRows() {
     add(PictureFit);
   }
   add(AutoStandby);
+#if !((defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4))
+  // The A4's top key already enters standby with a short press.
   add(StandbyNow);
+#endif
 }
 
 void RickyStandbySettingsActivity::onTabAction(const int index) {

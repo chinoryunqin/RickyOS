@@ -1622,3 +1622,8 @@ STR_RICKY_HELP_FEEDBACK_2: "Attach a photo of the screen. For file issues, inclu
 STR_RICKY_HELP_FEEDBACK_3: "Send feedback through your existing Ricky AI Studio contact channel. This page does not upload device information. Scan the website QR code to visit the site."
 STR_RICKY_MENU_AUTO_TURN: "Auto page turn"
 STR_RICKY_MENU_PROGRESS: "Reading progress"
+
+STR_EEGO_POWER_KEY_HELP: "Top key: Back; on Home: Standby"
+STR_EEGO_POWER_HOLD_HELP: "Hold top key: Power off"
+STR_EEGO_SIDE_KEYS: "Side keys: Page turns"
+STR_EEGO_SIDE_HOLD: "Hold side keys"

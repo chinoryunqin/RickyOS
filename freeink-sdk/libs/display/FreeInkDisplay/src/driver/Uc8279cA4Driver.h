@@ -35,9 +35,9 @@ class Uc8279cA4Driver : public PanelDriver {
   void loadFullLut(EpdBus& bus);
   void loadFastLut(EpdBus& bus);
   void loadGrayLut(EpdBus& bus);
-  void writeFrame(EpdBus& bus, uint8_t command, const uint8_t* fb);
+  void writeFrame(EpdBus& bus, uint8_t command, const uint8_t* fb, bool invert = false);
   void fillControllerRam(EpdBus& bus, uint8_t command, uint8_t fill);
-  void refresh(EpdBus& bus, bool turnOff);
+  void refresh(EpdBus& bus, bool turnOff, const uint8_t* bwBaseline = nullptr);
   uint8_t* allocateGrayBuffer();
 
   uint16_t _width;
@@ -46,6 +46,8 @@ class Uc8279cA4Driver : public PanelDriver {
   bool _screenOn = false;
   bool _grayControllerMode = false;
   uint8_t _fastRefreshesSinceFull = 0;
+  bool _firstRefreshPending = true;
+  bool _redriveAfterGray = false;
   uint8_t* _grayLsb = nullptr;
   uint8_t* _grayMsb = nullptr;
 };

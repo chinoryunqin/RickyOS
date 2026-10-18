@@ -28,7 +28,13 @@ class UiAppHost {
   // capacity-templated, so per-screen capacities each minted a fresh copy of
   // that code in flash. The wider interaction buffer costs ~300 bytes of RAM
   // per live host, bounded by the activity stack depth.
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+  // A full A4 calendar needs 31 day targets, two month arrows and two links.
+  // Adds 512 bytes of fixed inline storage per host; the C3 capacity stays 24.
+  using UiApp = freeink::ui::FreeInkApp<40, 6>;
+#else
   using UiApp = freeink::ui::FreeInkApp<24, 6>;
+#endif
   using UiScreen = UiApp::ScreenType;
 
   explicit UiAppHost(const GfxRenderer& renderer, bool upstreamStyle = false);

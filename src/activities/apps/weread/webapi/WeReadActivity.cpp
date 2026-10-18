@@ -643,18 +643,45 @@ void WeReadActivity::resetShelfCoverLoading() {
 }
 
 // Runs inside a cover download (WeReadHttpClient::AbortScope), where the loop cannot
-// read input. Any key or touch abandons the download; Back and Home are remembered,
-// since this read consumed them before the loop could see them.
+// read input. Any key or touch abandons the download. This read consumes the input
+// before the loop sees it, so what the shelf acts on is remembered and replayed:
+// Back, Home, page turns (the press starts the gesture, its release completes it),
+// Confirm, a tap and a swipe. Before, only Back/Home survived and a page turn pressed
+// during a download was lost, so the shelf seemed frozen while covers loaded.
 bool WeReadActivity::coverAbortProbe(void* context) {
   auto* self = static_cast<WeReadActivity*>(context);
   auto& input = self->mappedInput;
   input.update(true);
   if (input.wasReleased(MappedInputManager::Button::Back)) self->pendingBack_ = true;
   if (input.wasHomeGesture()) self->pendingHome_ = true;
+  using Gesture = ShelfNavigationGesture;
+  if (self->shelfNavigationGesture_ == Gesture::Idle) {
+    if (input.wasPressed(MappedInputManager::Button::NavPrevious)) {
+      self->shelfNavigationGesture_ = Gesture::PreviousPressed;
+    } else if (input.wasPressed(MappedInputManager::Button::NavNext)) {
+      self->shelfNavigationGesture_ = Gesture::NextPressed;
+    }
+  }
+  const bool previousHeld = self->shelfNavigationGesture_ == Gesture::PreviousPressed;
+  const bool nextHeld = self->shelfNavigationGesture_ == Gesture::NextPressed;
+  if ((previousHeld && input.wasReleased(MappedInputManager::Button::NavPrevious)) ||
+      (nextHeld && input.wasReleased(MappedInputManager::Button::NavNext))) {
+    self->pendingShelfStep_ = previousHeld ? -1 : 1;
+    self->shelfNavigationGesture_ = Gesture::Idle;
+  }
+  if (input.wasReleased(MappedInputManager::Button::Confirm)) self->pendingShelfConfirm_ = true;
   int x = 0;
   int y = 0;
-  if (input.wasAnyPressed() || input.wasAnyReleased() || input.isScreenTouchHeld(x, y) ||
-      input.wasScreenTapped(x, y) || input.wasSwipe() != MappedInputManager::SwipeDir::None) {
+  if (input.wasScreenTapped(x, y)) {
+    self->pendingShelfTap_ = true;
+    self->pendingShelfTapX_ = x;
+    self->pendingShelfTapY_ = y;
+  }
+  if (const auto swipe = input.wasSwipe(); swipe != MappedInputManager::SwipeDir::None) {
+    self->pendingShelfSwipe_ = swipe;
+  }
+  if (input.wasAnyPressed() || input.wasAnyReleased() || input.isScreenTouchHeld(x, y) || self->pendingShelfTap_ ||
+      self->pendingShelfSwipe_ != MappedInputManager::SwipeDir::None) {
     self->coverInterrupted_ = true;
   }
   return self->coverInterrupted_;
@@ -1741,6 +1768,51 @@ void WeReadActivity::handleShelfInput() {
       shelfGridLayout(renderer, mainContentBounds(), metrics.contentSidePadding, metrics.verticalSpacing);
   const int itemsPerPage = layout.itemsPerPage;
   const Rect content = mainContentBounds();
+
+  // Input an abandoned cover download consumed (coverAbortProbe): act on it now.
+  if (pendingShelfStep_ != 0) {
+    const bool previous = pendingShelfStep_ < 0;
+    pendingShelfStep_ = 0;
+    shelfLastPageTurnAt_ = 0;
+    const int selected = shelfSelected_.load();
+    const int target = previous ? previousShelfIndexOrTab(selected) : ButtonNavigator::nextIndex(selected, count);
+    if (target == kNoShelfSelection) {
+      mainFocus_.store(MainFocus::Tabs);
+      requestUpdate();
+      return;
+    }
+    moveShelfSelection(target, itemsPerPage);
+    return;
+  }
+  if (pendingShelfTap_) {
+    pendingShelfTap_ = false;
+    const int touched =
+        weReadShelfIndexFromPoint(content, layout, shelfSelected_.load(), count, pendingShelfTapX_, pendingShelfTapY_);
+    if (touched >= 0) {
+      moveShelfSelection(touched, itemsPerPage);
+      resetShelfCoverLoading();
+      activateSelected();
+      return;
+    }
+  }
+  if (pendingShelfSwipe_ != MappedInputManager::SwipeDir::None) {
+    const auto swipe = pendingShelfSwipe_;
+    pendingShelfSwipe_ = MappedInputManager::SwipeDir::None;
+    if (count > 0 && swipe == MappedInputManager::SwipeDir::Up) {
+      moveShelfSelection(ButtonNavigator::nextPageIndex(shelfSelected_.load(), count, itemsPerPage), itemsPerPage);
+      return;
+    }
+    if (count > 0 && swipe == MappedInputManager::SwipeDir::Down) {
+      moveShelfSelection(ButtonNavigator::previousPageIndex(shelfSelected_.load(), count, itemsPerPage), itemsPerPage);
+      return;
+    }
+  }
+  if (pendingShelfConfirm_) {
+    pendingShelfConfirm_ = false;
+    resetShelfCoverLoading();
+    activateSelected();
+    return;
+  }
 
   switch (shelfNavigationGesture_) {
     case ShelfNavigationGesture::Idle:

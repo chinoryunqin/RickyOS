@@ -1600,3 +1600,8 @@ STR_RICKY_HELP_FEEDBACK_2: "附上问题画面的照片；若涉及文件，请�
 STR_RICKY_HELP_FEEDBACK_3: "通过你现有的 Ricky AI Studio 联系渠道发送反馈。本页面不会自动上传设备信息。官网入口可扫码打开。"
 STR_RICKY_MENU_AUTO_TURN: "自动翻页"
 STR_RICKY_MENU_PROGRESS: "阅读进度"
+
+STR_EEGO_POWER_KEY_HELP: "顶部短按返回，首页短按待机"
+STR_EEGO_POWER_HOLD_HELP: "顶部长按关机"
+STR_EEGO_SIDE_KEYS: "侧键翻页"
+STR_EEGO_SIDE_HOLD: "侧键长按"

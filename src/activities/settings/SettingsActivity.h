@@ -260,6 +260,7 @@ class SettingsActivity final : public UiTabListActivity {
   int activeTab() const override { return selectedCategoryIndex; }
   const char* tabLabel(int index) const override { return I18N.get(categoryNames[index]); }
   void buildScreen(UiScreen& screen) override;
+  void buildCompactRoot(UiScreen& screen);
   void activateIndex(int index) override;
   freeink::ui::ListNav& activeNav() override;
   void onRowAction(const freeink::ui::ActionEvent& event) override;
@@ -294,11 +295,7 @@ class SettingsActivity final : public UiTabListActivity {
   void onEnter() override;
   void onExit() override;
   void render(RenderLock&&) override;
-  MainTab mainTab() const override {
-    return categoryRoot_ ? MainTab::Settings : MainTab::None;
-  }
-  bool mainTabBackReturnsToTabs() const override {
-    return categoryRoot_;
-  }
+  MainTab mainTab() const override { return categoryRoot_ ? MainTab::Settings : MainTab::None; }
+  bool mainTabBackReturnsToTabs() const override { return categoryRoot_; }
   void selectMainTabContentEdge(MainTabContentEdge edge) override;
 };

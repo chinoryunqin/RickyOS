@@ -31,6 +31,7 @@ class FrontlightPanelActivity final : public Activity, private UiAppHost {
   // reflected user intent in the first place.
   bool lightOnChanged = false;
   bool draggingSlider = false;
+  uint32_t lastSliderRenderAt = 0;
   // The touch tile toggles SETTINGS.touchReaderControls between off and this
   // remembered mode, so a Swipe or Inverted Tap user gets their mode back
   // rather than the Tap default. Seeded from the setting in onEnter().

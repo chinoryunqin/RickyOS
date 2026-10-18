@@ -11,34 +11,6 @@ from test_reading_ui_regressions import ROOT, run_cpp
 
 
 class NativeGrayRefreshPolicyTest(unittest.TestCase):
-    def test_fresh_sdk_patch_and_repeated_build(self):
-        spec = importlib.util.spec_from_file_location('ricky_epd_patch', ROOT / 'scripts/patch_rickyos_epdiy.py')
-        patch = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(patch)
-        with tempfile.TemporaryDirectory(prefix='ricky-epd-patch-') as directory:
-            project = Path(directory)
-            for relative in ('libs/display/EpdiyLcd/src/EpdiyLcd.cpp',
-                             'libs/display/EpdiyLcd/include/EpdiyLcd.h',
-                             'libs/display/EpdiyLcd/src/epdiy/src/output_common/render_context.c'):
-                source = subprocess.run(['git', '-C', str(ROOT / 'freeink-sdk'), 'show', 'HEAD:' + relative],
-                                        check=True, capture_output=True, text=True).stdout
-                destination = project / 'freeink-sdk' / relative
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                destination.write_text(source)
-            (project / 'lib/hal').mkdir(parents=True)
-            shutil.copyfile(ROOT / 'lib/hal/NativeGrayRefreshPolicy.h', project / 'lib/hal/NativeGrayRefreshPolicy.h')
-            patch.apply(project)
-            paths = [p for p in (project / 'freeink-sdk').rglob('*') if p.is_file()]
-            before = {p: p.read_bytes() for p in paths}
-            patch.apply(project)
-            self.assertEqual(before, {p: p.read_bytes() for p in paths})
-            driver = (project / 'freeink-sdk/libs/display/EpdiyLcd/src/EpdiyLcd.cpp').read_text()
-            self.assertEqual(driver.count('bool epdiyLcdRestart() {'), 1)
-            self.assertEqual(driver.count('bool epdiyLcdCommitGrayscale16('), 1)
-            self.assertIn(patch.UI_CONFIG, driver)
-            with self.assertRaises(RuntimeError):
-                patch.patch_ui(driver.replace('const bool regionalUi = g_gray16Profile == 4;', ''))
-
     def test_damage_ledgers_and_alignment(self):
         run_cpp(r'''
 #include <cassert>
@@ -108,15 +80,13 @@ int main() {
 }
 ''', include_dirs=(ROOT / 'lib/hal',))
 
-    def test_patch_is_idempotent_and_driver_transactions(self):
-        spec = importlib.util.spec_from_file_location('ricky_epd_patch', ROOT / 'scripts/patch_rickyos_epdiy.py')
-        patch = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(patch)
+    def test_ui_damage_and_driver_transactions(self):
         source = (ROOT / 'freeink-sdk/libs/display/EpdiyLcd/src/EpdiyLcd.cpp').read_text()
-        self.assertIn(patch.UI_MARK, source)
-        self.assertEqual(patch.patch_ui(source), source)
+        self.assertEqual(source.count('bool epdiyLcdRestart() {'), 1)
+        self.assertEqual(source.count('bool epdiyLcdCommitGrayscale16('), 1)
+        self.assertIn('RICKYOS_UI_DAMAGE', source)
+        self.assertIn('const bool regionalUi = g_gray16Profile == 4;', source)
         header = (ROOT / 'freeink-sdk/libs/display/EpdiyLcd/include/EpdiyLcd.h').read_text()
-        self.assertEqual(patch.patch_header(header), header)
         self.assertEqual(header.count('void epdiyLcdSetGray16UiRefresh('), 1)
         # Reuse the real driver/highlevel/OOM harness without editing SDK tests.
         host = ROOT / 'freeink-sdk/libs/display/EpdiyLcd/test/host'

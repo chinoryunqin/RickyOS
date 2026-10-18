@@ -687,8 +687,12 @@ void TextSettingsActivity::confirmStyleRow(int row) {
       requestUpdate();
       return;
     case StyleRow::AntiAliasing:
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+      return;  // hidden on the A4 (text is always B/W there)
+#else
       SETTINGS.textAntiAliasing = !SETTINGS.textAntiAliasing;
       break;
+#endif
 
     default:
       return;
@@ -976,12 +980,21 @@ void TextSettingsActivity::maybeOfferCompleteChineseFont() {
   startActivityForResult(std::move(downloader), [this](const ActivityResult&) { requestUpdate(); });
 }
 
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+// The A4 hides the anti-aliasing row: its text is always B/W.
+constexpr int kHiddenAntiAliasingRows = 1;
+#else
+constexpr int kHiddenAntiAliasingRows = 0;
+#endif
+
 TextSettingsActivity::StyleRow TextSettingsActivity::styleRowAt(int visibleIndex) const {
-  // The only conditional row is last, so visible rows map straight onto StyleRow.
+  // The guide-line row is conditional and last; the A4 also skips anti-aliasing.
   if (visibleIndex < 0 || visibleIndex >= styleRowCount()) return StyleRow::Count;
+  if (kHiddenAntiAliasingRows && visibleIndex >= static_cast<int>(StyleRow::AntiAliasing)) ++visibleIndex;
   return static_cast<StyleRow>(visibleIndex);
 }
 
 int TextSettingsActivity::styleRowCount() const {
-  return static_cast<int>(StyleRow::Count) - (SETTINGS.readingGuideLineEnabled ? 0 : HIDDEN_GUIDE_ROW_COUNT);
+  return static_cast<int>(StyleRow::Count) - (SETTINGS.readingGuideLineEnabled ? 0 : HIDDEN_GUIDE_ROW_COUNT) -
+         kHiddenAntiAliasingRows;
 }

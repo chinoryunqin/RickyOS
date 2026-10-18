@@ -32,7 +32,7 @@ const RickyOptionList& keys();
 }  // namespace RickyOptionLists
 
 // A settings sub-page of switches and choices (Gestures, Keys). Each change is saved
-// as soon as it is made.
+// as soon as it is made. A null field is an informational row.
 class RickyOptionListActivity final : public UiListActivity {
  public:
   RickyOptionListActivity(GfxRenderer& renderer, MappedInputManager& input, const RickyOptionList& list)
