@@ -202,7 +202,8 @@ void ActivityManager::renderTaskLoop() {
           // draw = the activity's render, panel push included where the driver is
           // synchronous (A4); wait = first queued request to this frame's start.
           const uint32_t now = millis();
-          RICKY_PERF("frame", "%s wait=%u draw=%u", perfName, queued ? static_cast<unsigned>(wokeMs - (queued - 1)) : 0u,
+          RICKY_PERF("frame", "%s wait=%u draw=%u", perfName,
+                     queued ? static_cast<unsigned>(wokeMs - (queued - 1)) : 0u,
                      static_cast<unsigned>(now - perfDrawStart));
           const uint32_t opened = perfOpenStartMs.exchange(0);
           if (opened) RICKY_PERF("open", "%s ms=%u", perfName, static_cast<unsigned>(now - (opened - 1)));
@@ -411,8 +412,10 @@ void ActivityManager::loop() {
 
     // Touch users can also open the global control center from the status bar.
     bool statusBarTap = false;
-    const bool statusTapOpensPanel = SETTINGS.rickyGestureStatus != 0;  // Settings -> Gestures
-    if (mappedInput.hasTouch() && statusTapOpensPanel) {
+    // A4 opens only through a complete downward pull. A short upward contact
+    // ending in this strip must never turn into the status-tap shortcut.
+    const bool statusTapOpensPanel = !MappedInputManager::powerKeyIsBack() && SETTINGS.rickyGestureStatus != 0;
+    if (mappedInput.hasTouch() && statusTapOpensPanel && mappedInput.wasSwipe() == MappedInputManager::SwipeDir::None) {
       int tx = 0;
       int ty = 0;
       if (currentActivity->usesMainTabBar()) {

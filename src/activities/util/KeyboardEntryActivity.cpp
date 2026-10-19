@@ -503,8 +503,11 @@ bool KeyboardEntryActivity::activateValue(const int16_t value, const bool longPr
       delPressCount = 0;
       hintVisible = false;
       const fui::KeyboardLayout& layer = currentLayout();
-      // keyboardAltOutputFor covers explicit alts and the letter case-flip.
-      const char* out = longPress ? fui::keyboardAltOutputFor(layer, value) : nullptr;
+      // Credentials must match the visible key even when an e-paper tap takes
+      // longer than the hold threshold. WiFi uses the visible Latin mode;
+      // masked passwords use Password. Shift alone changes their case.
+      const bool useAlt = longPress && inputType != InputType::Password && inputType != InputType::Latin;
+      const char* out = useAlt ? fui::keyboardAltOutputFor(layer, value) : nullptr;
       if (!out) out = fui::keyboardOutputFor(layer, value);
       if (!out) return false;
       insertUtf8(out);
@@ -531,6 +534,7 @@ bool KeyboardEntryActivity::clearAllOrAltOnSelected() {
     cursorPos = 0;
     return true;
   }
+  if (inputType == InputType::Password || inputType == InputType::Latin) return activateValue(key->value, false);
   // Explicit alts and the letter case-flip, same as touch long-press.
   const char* alt = fui::keyboardAltOutputFor(currentLayout(), key->value);
   if (alt) {

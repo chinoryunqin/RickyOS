@@ -18,6 +18,10 @@ namespace fui = freeink::ui;
 void MappedInputManager::update(const bool deferHomeButtonAction) const {
   backClickFrame = false;
   gpio.update();
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+  updateControlCenterPull();
+  updateHeaderBackTouch();
+#endif
 #if FREEINK_CAP_BLE_HID_HOST
   BleHid.poll();
   pollBle();
@@ -265,6 +269,9 @@ void MappedInputManager::rememberTouchHeldTime() const {
 }
 
 bool MappedInputManager::wasScreenTapped(int& x, int& y) const {
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+  if (headerBackContactOwned) return false;
+#endif
   float nx = 0.0f;
   float ny = 0.0f;
   if (!gpio.wasTouchTap(nx, ny)) return false;
@@ -288,10 +295,17 @@ bool MappedInputManager::wasScreenTouchDown(int& x, int& y) const {
   if (!gpio.isTouchTapCandidate(nx, ny, heldMs)) return false;
   if (heldMs < TOUCH_DOWN_SELECT_DELAY_MS) return false;
   renderer.tapToLogical(nx, ny, x, y);
+  if (HeaderBackTapTarget::contains(x, y)) return false;
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+  if (headerBackContactOwned) return false;
+#endif
   return true;
 }
 
 bool MappedInputManager::wasScreenLongPress(int& x, int& y) const {
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+  if (headerBackContactOwned) return false;
+#endif
   float nx = 0.0f;
   float ny = 0.0f;
   if (!gpio.wasTouchLongPress(nx, ny)) return false;
@@ -301,6 +315,9 @@ bool MappedInputManager::wasScreenLongPress(int& x, int& y) const {
 }
 
 bool MappedInputManager::isScreenTouchHeld(int& x, int& y) const {
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+  if (headerBackContactOwned) return false;
+#endif
   // Live contact position while the finger is down (no tap-slop gate) — drag tracking.
   float nx = 0.0f;
   float ny = 0.0f;
@@ -441,6 +458,12 @@ bool MappedInputManager::wasEdgeSwipe(const freeink::ui::ScreenEdge edge) const 
 }
 
 bool MappedInputManager::wasBackGesture() const {
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+  if (headerBackTapFrame) {
+    rememberTouchHeldTime();
+    return true;
+  }
+#else
   // Tap on the header back button (rect recorded by BaseTheme::drawHeader;
   // empty on screens without one). Folded into Button::Back alongside the
   // swipe so every activity's existing Back handling picks it up.
@@ -455,6 +478,7 @@ bool MappedInputManager::wasBackGesture() const {
       return true;
     }
   }
+#endif
   // Back = left-to-right swipe starting near the left edge. Edge-anchored so that
   // mid-screen horizontal swipes stay available to activities that consume
   // SwipeDir::Left/Right (e.g. percent selection, image viewer).
@@ -481,10 +505,80 @@ bool MappedInputManager::wasHomeGesture() const {
   return wasBottomEdgeUpSwipe();
 }
 
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+void MappedInputManager::updateHeaderBackTouch() const {
+  headerBackTapFrame = false;
+  float nx = 0;
+  float ny = 0;
+  if (gpio.wasTouchDown(nx, ny)) {
+    int x = 0;
+    int y = 0;
+    renderer.tapToLogical(nx, ny, x, y);
+    headerBackContactOwned = HeaderBackTapTarget::contains(x, y);
+  }
+  if (gpio.wasTouchReleased()) {
+    // Retain ownership through the release frame even when the finger drifts
+    // below the button. The same contact can never activate the first row.
+    headerBackTapFrame = headerBackContactOwned && gpio.wasTouchTap(nx, ny);
+  } else if (!gpio.isTouchHeldAt(nx, ny)) {
+    headerBackContactOwned = false;
+  }
+}
+
+void MappedInputManager::updateControlCenterPull() const {
+  controlCenterPullFrame = false;
+  if (!hasTouch() || !SETTINGS.rickyGestureControl) {
+    controlCenterPull.reset();
+    return;
+  }
+  const int orientation = static_cast<int>(renderer.getOrientation());
+  float nx = 0, ny = 0;
+  const bool down = gpio.wasTouchDown(nx, ny);
+  if (down) {
+    int x = 0, y = 0;
+    renderer.tapToLogical(nx, ny, x, y);
+    const auto& metrics = UITheme::getInstance().getMetrics();
+    const auto safe = UITheme::getInstance().getScreenSafeArea(renderer);
+    controlCenterPull.begin(x, y, safe.y + metrics.topPadding + metrics.batteryBarHeight, renderer.getScreenHeight(),
+                            orientation);
+  }
+  const bool held = gpio.isTouchHeldAt(nx, ny);
+  if (held) {
+    int x = 0, y = 0;
+    renderer.tapToLogical(nx, ny, x, y);
+    controlCenterPull.move(x, y, orientation);
+  }
+  if (gpio.wasTouchReleased()) {
+    controlCenterPullFrame = controlCenterPull.release(orientation);
+  } else if (!held && !down) {
+    controlCenterPull.reset();
+  }
+}
+#endif
+
 bool MappedInputManager::wasLightPanelGesture() const {
   // The control center also serves touch boards without a frontlight.
   if (!SETTINGS.rickyGestureControl) return false;
-  return hasTouch() && wasTopEdgeDownSwipe();
+  if (!hasTouch()) return false;
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+  if (controlCenterPullFrame) rememberTouchHeldTime();
+  return controlCenterPullFrame;
+#else
+  int sx = 0;
+  int sy = 0;
+  int ex = 0;
+  int ey = 0;
+  if (!decodeSwipe(sx, sy, ex, ey)) return false;
+  // A global pull must begin in the status band. The SDK's default
+  // 14% band reaches into page rows on A4 and steals list scrolling.
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const auto safe = UITheme::getInstance().getScreenSafeArea(renderer);
+  const int topBand = safe.y + metrics.topPadding + metrics.batteryBarHeight;
+  const bool hit = sy >= 0 && sy < topBand && fui::swipeDirection(sx, sy, ex, ey) == fui::SwipeDir::Down &&
+                   ey - sy > std::abs(ex - sx);
+  if (hit) rememberTouchHeldTime();
+  return hit;
+#endif
 }
 
 #if FREEINK_CAP_TOUCH

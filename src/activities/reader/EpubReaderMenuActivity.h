@@ -5,9 +5,9 @@
 #include <string>
 #include <vector>
 
-#include "components/RickyCompanion.h"
 #include "activities/UiListActivity.h"
 #include "components/OptionPopup.h"
+#include "components/RickyCompanion.h"
 #include "components/RickyReaderMenuLayout.h"
 
 class EpubReaderMenuActivity final : public UiListActivity {
@@ -87,17 +87,19 @@ class EpubReaderMenuActivity final : public UiListActivity {
   // Fixed menu layout
   std::vector<MenuItem> menuItems;
 
-  OptionPopup optionPopup{true};
+  // Reader choices use the measured, scrollable product picker too: vector
+  // fonts expose more sizes than the legacy fixed dialog can display.
+  OptionPopup optionPopup;
   std::string title = "Reader Menu";
   uint8_t pendingOrientation = 0;
   uint8_t selectedPageTurnOption = 0;
   const std::vector<StrId> orientationLabels = {StrId::STR_PORTRAIT, StrId::STR_LANDSCAPE_CW, StrId::STR_INVERTED,
                                                 StrId::STR_LANDSCAPE_CCW};
   const std::vector<const char*> pageTurnLabels = {I18N.get(StrId::STR_STATE_OFF), "1", "3", "6", "12"};
-  const std::vector<StrId> readingModeLabels = {StrId::STR_READING_MODE_ORIGINAL,
-                                                RickyCompanion::pick(StrId::STR_READING_MODE_PUPPY,
-                                                                     StrId::STR_READING_MODE_KITTY),
-                                                StrId::STR_READING_MODE_IMMERSIVE, StrId::STR_READING_MODE_ANCIENT};
+  const std::vector<StrId> readingModeLabels = {
+      StrId::STR_READING_MODE_ORIGINAL,
+      RickyCompanion::pick(StrId::STR_READING_MODE_PUPPY, StrId::STR_READING_MODE_KITTY),
+      StrId::STR_READING_MODE_IMMERSIVE, StrId::STR_READING_MODE_ANCIENT};
   // readingGuideLine::kMenuStyles order, with 关 first.
   const std::vector<StrId> readingLineLabels = {StrId::STR_STATE_OFF,     StrId::STR_SOLID_LINE, StrId::STR_DASH_LINE,
                                                 StrId::STR_DOTTED_LINE,   StrId::STR_WAVY_LINE,  StrId::STR_DOUBLE_LINE,

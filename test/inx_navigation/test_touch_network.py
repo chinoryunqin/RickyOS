@@ -2,6 +2,7 @@
 """Exercise production popup contacts, WiFi actions and footer hit geometry."""
 from pathlib import Path
 import subprocess
+import re
 import tempfile
 from test_theme_menus import method, run
 
@@ -15,6 +16,10 @@ while depth:
     depth += (popup[end] == '{') - (popup[end] == '}')
     end += 1
 handler = popup[a:end]
+reader = (ROOT / 'src/activities/reader/EpubReaderMenuActivity.h').read_text()
+reader_picker = re.search(r'OptionPopup optionPopup([^;]*);', reader).group(1).strip()
+assert reader_picker in ('', '{false}', '{true}')
+reader_upstream = 'true' if reader_picker == '{true}' else 'false'
 code = r'''
 #include <cassert>
 #include <cstdio>
@@ -39,16 +44,16 @@ struct MappedInputManager {
 };
 fui::InputSnapshot touchSnapshotFrom(const MappedInputManager& i){return i.snap;}
 struct OptionPopup {
- bool upstreamStyle=false,active=true,ignoreInitialTouchContact=false,ignoreInitialConfirmRelease=false,uiReady=true;
+ bool upstreamStyle=@READER_UPSTREAM@,active=true,ignoreInitialTouchContact=false,ignoreInitialConfirmRelease=false,uiReady=true;
  int selectedIndex=0;std::atomic<int> visibleOptionRows{1};
  static constexpr int MAX_OPTIONS=24;
  static constexpr fui::ActionId ACTION_OPTION=1,ACTION_CHROME=2;
- std::vector<std::string> ownedStrings=std::vector<std::string>(12,"option");
+ std::vector<std::string> ownedStrings=std::vector<std::string>(20,"option");
  fui::InteractionBuffer<24> interactions;
  std::function<void(int)> onSelectCallback;
  @HANDLER@
  void publish(Rect safe){
-  const auto layout=InxOptionGeometry::layout(safe,12,selectedIndex);
+  const auto layout=InxOptionGeometry::layout(safe,20,selectedIndex);
   visibleOptionRows=layout.rows;
   interactions.beginPublishCycle();interactions.clear();
   for(int slot=0;slot<layout.rows;++slot){
@@ -60,7 +65,7 @@ struct OptionPopup {
 };
 int main(){
  int scenes=0;
- for(Rect safe:{Rect{0,0,480,750},Rect{5,8,684-10,1216-13},Rect{8,5,1216-13,684-10},Rect{0,0,800,340}}){
+ for(Rect safe:{Rect{0,0,480,750},Rect{10,4,531,700},Rect{10,4,752,479},Rect{5,8,684-10,1216-13},Rect{8,5,1216-13,684-10},Rect{0,0,800,340}}){
   OptionPopup p;int calls=0,chosen=-1,updates=0;
   p.onSelectCallback=[&](int i){++calls;chosen=i;};
   const auto update=[&]{++updates;};MappedInputManager input;
@@ -70,7 +75,7 @@ int main(){
   assert(p.active&&calls==0&&!p.ignoreInitialTouchContact);
   input={};p.handleInput(input,update);
   // A swipe clears the pressed interaction and moves by the actual drawn row count.
-  auto layout=InxOptionGeometry::layout(safe,12,p.selectedIndex);
+  auto layout=InxOptionGeometry::layout(safe,20,p.selectedIndex);
   auto row=layout.optionRect(1);input.snap.touchPressed=true;input.snap.touchX=row.x+5;input.snap.touchY=row.y+5;
   p.handleInput(input,update);assert(p.selectedIndex==0);
   input.snap={};input.snap.touchReleased=true;input.snap.touchX=input.snap.touchY=-1;input.swipe=MappedInputManager::SwipeDir::Up;
@@ -79,10 +84,10 @@ int main(){
   input={};input.snap.touchReleased=true;input.snap.touchX=input.snap.touchY=-1;p.handleInput(input,update);
   assert(p.active&&calls==0);
   for(int i=0;i<20;++i){input={};input.swipe=MappedInputManager::SwipeDir::Up;p.handleInput(input,update);p.publish(safe);}
-  assert(p.selectedIndex==11&&p.active&&calls==0);
+  assert(p.selectedIndex==19&&p.active&&calls==0);
   for(int i=0;i<20;++i){input={};input.swipe=MappedInputManager::SwipeDir::Down;p.handleInput(input,update);p.publish(safe);}
   assert(p.selectedIndex==0&&p.active&&calls==0);
-  layout=InxOptionGeometry::layout(safe,12,0);row=layout.optionRect(1);
+  layout=InxOptionGeometry::layout(safe,20,0);row=layout.optionRect(1);
   input={};input.snap.touchPressed=true;input.snap.touchX=row.x+row.width/2;input.snap.touchY=row.y+row.height/2;
   p.handleInput(input,update);assert(p.selectedIndex==0);
   input.snap.touchPressed=false;input.snap.touchReleased=true;p.handleInput(input,update);
@@ -94,7 +99,7 @@ int main(){
   ++scenes;
  }
 }
-'''.replace('@HANDLER@', handler)
+'''.replace('@HANDLER@', handler).replace('@READER_UPSTREAM@', reader_upstream)
 with tempfile.TemporaryDirectory(prefix='touch-network-') as directory:
     directory=Path(directory)
     for high in (False,True):

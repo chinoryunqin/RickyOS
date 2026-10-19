@@ -103,8 +103,13 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
   int forgetPromptSelection = 0;
 
   // Connection timeout
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+  static constexpr unsigned long CONNECTION_TIMEOUT_MS = 30000;
+  static constexpr unsigned long AUTO_CONNECTION_TIMEOUT_MS = 30000;
+#else
   static constexpr unsigned long CONNECTION_TIMEOUT_MS = 15000;
   static constexpr unsigned long AUTO_CONNECTION_TIMEOUT_MS = 7000;
+#endif
   unsigned long connectionStartTime = 0;
 
   // The UiAppHost app hosts the network list and the save/forget prompts

@@ -32,8 +32,8 @@
 #include "components/UIThemeTokens.h"
 #include "components/icons/cover.h"
 #include "fontIds.h"
-#include "util/QrUtils.h"
 #include "util/BookCoverLoader.h"
+#include "util/QrUtils.h"
 
 namespace {
 
@@ -751,6 +751,10 @@ void WeReadActivity::connectThen(const Job job, const WeReadStore::ShelfRecord* 
 }
 
 void WeReadActivity::startJob(const Job job, const WeReadStore::ShelfRecord* book) {
+  jobStartedAt_ = millis();
+  jobBackRequested_ = false;
+  jobHomeRequested_ = false;
+  jobTimedOut_ = false;
   wifiSessionActive_ = true;
   if (job == Job::Sync && shelfFile_.isOpen()) shelfFile_.close();
   if (job != Job::Sync && book) pendingBook_ = *book;
@@ -968,8 +972,44 @@ void WeReadActivity::updateJobProgress() {
   if (requestRender) requestJobUpdate();
 }
 
+bool WeReadActivity::jobAbortProbe(void* context) {
+  auto* self = static_cast<WeReadActivity*>(context);
+  // Synchronous network work owns input until it unwinds, as with shelf covers.
+  // Never navigate or destroy the operation from inside the HTTP callback.
+  self->mappedInput.update(true);
+  self->jobBackRequested_ |= self->mappedInput.wasReleased(MappedInputManager::Button::Back);
+  self->jobHomeRequested_ |= self->mappedInput.wasHomeGesture();
+  self->jobTimedOut_ |= self->retryJob_ == Job::Detail && millis() - self->jobStartedAt_ >= kDetailWaitMs;
+  if (!self->jobBackRequested_ && !self->jobHomeRequested_ && !self->jobTimedOut_) return false;
+  self->operation_.cancel();
+  return true;
+}
+
 void WeReadActivity::advanceJob() {
-  const auto event = stepOperation();
+  WeReadClient::Operation::Event event;
+  {
+    WeReadHttpClient::AbortScope abortOnInput(&WeReadActivity::jobAbortProbe, this);
+    event = stepOperation();
+  }
+  if (jobBackRequested_ || jobHomeRequested_) {
+    operation_.reset();
+    shelfCoverStopped_ = true;  // do not immediately start another stalled request
+    state_.store(State::Home);
+    if (jobHomeRequested_) {
+      activityManager.goHome();
+    } else {
+      requestJobUpdate();
+    }
+    return;
+  }
+  if (retryJob_ == Job::Detail && (jobTimedOut_ || millis() - jobStartedAt_ >= kDetailWaitMs)) {
+    operation_.reset();
+    detailLoadFailed_ = true;
+    loadSelectedDetail();
+    state_.store(State::Detail);
+    requestUpdate();
+    return;
+  }
   updateJobProgress();
 
   switch (event) {
@@ -2086,6 +2126,7 @@ void WeReadActivity::loop() {
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     operation_.cancel();
+    jobBackRequested_ = true;
     state_.store(State::Cancelling);
     requestJobUpdate();
     return;
@@ -2110,6 +2151,15 @@ const char* WeReadActivity::errorMessage() const {
       return tr(STR_WEREAD_MEMORY_ERROR);
     case WeReadClient::Error::Network:
       return WiFi.status() == WL_CONNECTED ? tr(STR_WEREAD_HTTP_ERROR) : tr(STR_WEREAD_NO_WIFI);
+    case WeReadClient::Error::Clock:
+      return tr(STR_WEREAD_CLOCK_ERROR);
+    case WeReadClient::Error::Protocol:
+      return tr(STR_WEREAD_RESPONSE_ERROR);
+    case WeReadClient::Error::Integrity:
+      return tr(STR_WEREAD_INTEGRITY_ERROR);
+    case WeReadClient::Error::SessionExpired:
+    case WeReadClient::Error::LoginFailed:
+      return tr(STR_WEREAD_LOGIN_REQUIRED);
     case WeReadClient::Error::Unavailable:
       return tr(STR_WEREAD_CACHE_NOT_AVAILABLE);
     case WeReadClient::Error::WholeBookOnly:

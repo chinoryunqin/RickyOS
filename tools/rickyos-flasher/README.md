@@ -126,6 +126,24 @@ RickyOS 1.6.5-rickyos-pico.12 成功。本网站暂不提供整片备份恢复�
 以后上架正式固件时，网页与设备必须使用完全相同的版本、镜像大小和 SHA-256。
 更换网站域名须同时更新设备的 `RickyOtaPolicy.h` 和信任根配置，不能仅改网页地址。
 
+## 独立 A4 测试安装页
+
+`lab-eego.html` / `src/lab-app.js` 是独立测试入口，使用 `LabFlashSession`，
+不读写正式发行目录或 OTA 清单。执行 `npx vite build --config vite.lab.config.js`
+只生成 `dist-lab/`；部署时将其 HTML 改名为 `index.html`，连同全部资源放进一个
+新的、不可覆盖的 `lab/<构建标识>/` 目录。
+
+同目录的 `candidate.json` 必须明确标记 `channel: test`、`approved: false`、
+`hardwareAccepted: false`，并带有 A4 型号、版本、大小、SHA-256 与支持的源固件
+`compatibleAppElfSha256`。后者来自经过完整 SHA-256 验证的 A4 固件的 ESP-IDF
+应用描述符（镜像偏移 176..207），不能用构建目录名判断产品身份。测试固件和
+`third-party-licenses.txt` 也随页部署。测试包不能进入正式 `releases.json`。
+
+仅支持已识别的 A4 RickyOS 应用更新；保留型号人工确认、S3/容量/安全状态检查、
+可选完整备份、写入前启动信息复核与写入后摘要校验。不支持原厂首次安装、
+任意文件或地址刷写，也不修改正式安装器的发行门槛。`npm test` 包含测试通道的
+双槽、摘要失败、源固件身份、断线与备份回归。
+
 ## 实机验收清单
 
 1. 先只检查与备份，核对 16 MB 文件 SHA-256 / 设备摘要；中途断线必须禁写。

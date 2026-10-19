@@ -1,5 +1,6 @@
 #pragma once
 
+#include "components/A4HeaderLayout.h"
 #include "components/RickyDesignTokens.h"
 #include "components/themes/lyra/LyraTheme.h"
 
@@ -89,6 +90,9 @@ constexpr ThemeMetrics makeValues() {
   metrics.topPadding = 0;
   metrics.batteryBarHeight = 24;
   metrics.headerHeight = 66;
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+  metrics.headerHeight = A4HeaderLayout::headerHeight;
+#endif
   metrics.verticalSpacing = 0;
   metrics.contentSidePadding = 20;
   metrics.listRowHeight = 66;

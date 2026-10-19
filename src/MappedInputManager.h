@@ -6,6 +6,9 @@
 #include <array>
 
 #include "util/HomeButtonInput.h"
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+#include "util/ControlCenterPull.h"
+#endif
 
 class GfxRenderer;
 namespace freeink {
@@ -118,6 +121,12 @@ class MappedInputManager {
   void resetHomeButtonInput() const {
     homeButtonInput.reset();
     deferredHomeAction = HomeButtonAction::Ignore;
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+    controlCenterPull.reset();
+    controlCenterPullFrame = false;
+    headerBackContactOwned = false;
+    headerBackTapFrame = false;
+#endif
   }
   bool wasMenuGesture() const;
   // Bottom-edge up-swipe as the reader-menu gesture (SHOW_READER_MENU's Swipe
@@ -168,6 +177,14 @@ class MappedInputManager {
   bool wasTopEdgeDownSwipe() const;
   bool wasBottomEdgeUpSwipe() const;
   bool wasHeaderTapBack() const;
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+  void updateControlCenterPull() const;
+  void updateHeaderBackTouch() const;
+  mutable bool headerBackContactOwned = false;
+  mutable bool headerBackTapFrame = false;
+  mutable ControlCenterPull controlCenterPull;
+  mutable bool controlCenterPullFrame = false;
+#endif
   // Fetch the pending swipe (if any) and map both endpoints to logical screen coords
   bool decodeSwipe(int& sx, int& sy, int& ex, int& ey) const;
   bool listItemFromPoint(int x, int y, int& index, int itemCount, int selectedIndex, int listTop, int listHeight,

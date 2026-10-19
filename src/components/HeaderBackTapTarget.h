@@ -23,16 +23,15 @@ inline void set(const int newX, const int newY, const int newW, const int newH) 
   h = newH;
 }
 
-// Thumb-sized target for a header's back arrow: the whole leading region (arrow
-// plus title, the usual "tap the title to go back"), the full band height, and
-// at least 160 px wide (~14 mm on a 300 ppi panel) but never past half the band,
-// so trailing header buttons stay reachable. The drawn 48 px arrow alone is
-// about 4 mm, too small to hit reliably.
-inline void setLeading(const int bandX, const int bandY, const int bandWidth, const int bandHeight,
-                       const int leadingWidth) {
-  constexpr int MIN_WIDTH = 160;
-  const int maxWidth = std::max(0, bandWidth / 2);
-  set(bandX, bandY, std::clamp(leadingWidth, std::min(MIN_WIDTH, maxWidth), maxWidth), bandHeight);
+// Back owns the leading half of the header, including the blank left gutter.
+// Safe-area/page insets must not create a dead strip beside the arrow. Use the
+// full band height and a width independent of the translated title's length;
+// the trailing half stays available to Home and other header actions. Never
+// extend below the band into the first content row.
+inline void setLeading(const int bandX, const int bandY, const int bandWidth, const int bandHeight) {
+  const int left = std::min(0, bandX);
+  const int right = bandX + std::max(0, bandWidth / 2);
+  set(left, bandY, bandWidth > 0 ? std::max(0, right - left) : 0, std::max(0, bandHeight));
 }
 
 inline void clear() { w = 0; }

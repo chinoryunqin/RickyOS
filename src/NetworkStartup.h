@@ -24,4 +24,8 @@ bool bluetoothMemoryReleased();
 // The only entry point for enabling STA/AP mode in application code.
 bool setMode(GfxRenderer& renderer, wifi_mode_t mode);
 
+// Read the link state without changing it. Association can succeed before DHCP
+// supplies an address; callers must sample this before disconnecting on timeout.
+bool stationAssociated();
+
 }  // namespace NetworkStartup

@@ -20,6 +20,8 @@ class RickyProfileActivity final : public UiListActivity {
   static constexpr freeink::ui::ActionId ACTION_THEME = ACTION_USER;  // value: companion to pick
   static void onThemeEvent(const freeink::ui::ActionEvent& event, void* user);
   void setCompanion(uint8_t companion);
+  void buildCompactScreen(UiScreen& screen);
+  static void provideRow(void* ctx, uint16_t index, freeink::ui::ListItem& item);
   bool waitForConfirmRelease = false;
   bool failed = false;
 };

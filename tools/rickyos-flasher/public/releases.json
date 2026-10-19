@@ -84,16 +84,16 @@
       ]
     },
     {
-      "version": "1.2.2",
+      "version": "1.2.3",
       "approved": true,
       "hardwareAccepted": true,
       "mode": "auto-install",
       "board": "eego_a4",
       "chipId": 9,
       "flashBytes": 16777216,
-      "file": "firmware/RickyOS-EEGO-A4-1.2.2.bin",
-      "bytes": 5997936,
-      "sha256": "a3af9125112f028cd774813820df054a6e79e308511f4cd7072870fa4ad3b038",
+      "file": "firmware/RickyOS-EEGO-A4-1.2.3.bin",
+      "bytes": 5997888,
+      "sha256": "54ae5e863930f6f905ae5309328b5dccf1fc9da1a775da93b737042667624dc1",
       "fullInstall": {
         "approved": true,
         "hardwareAccepted": true,
@@ -103,28 +103,34 @@
           {
             "role": "bootloader",
             "offset": 0,
-            "file": "firmware/RickyOS-EEGO-A4-1.2.2-bootloader.bin",
+            "file": "firmware/RickyOS-EEGO-A4-1.2.3-bootloader.bin",
             "bytes": 18720,
             "sha256": "15f88ae11793eddc5b7e1f770fba54b10a6f59809c14d7c51cfbf0db8d2fa3ca"
           },
           {
             "role": "partitions",
             "offset": 32768,
-            "file": "firmware/RickyOS-EEGO-A4-1.2.2-partitions.bin",
+            "file": "firmware/RickyOS-EEGO-A4-1.2.3-partitions.bin",
             "bytes": 3072,
             "sha256": "bd0f7954aca2ef7d925ee21aaa1f3dc8822d1d6ce5cbbd26a135e5886bfff6ce"
           },
           {
             "role": "boot_app0",
             "offset": 57344,
-            "file": "firmware/RickyOS-EEGO-A4-1.2.2-boot_app0.bin",
+            "file": "firmware/RickyOS-EEGO-A4-1.2.3-boot_app0.bin",
             "bytes": 8192,
             "sha256": "f94c5d786a7a8fab06ac5d10e33bf37711a6697636dc037559ea19cc410a17f0"
           }
         ]
       },
       "notes": [
-        "首个版本"
+        "扩大返回箭头触控范围，保留原有界面样式",
+        "控制中心仅从顶部下滑打开，减少滑动误触",
+        "修复 WiFi 密码输入大小写与长按输入问题",
+        "改善 WiFi 连接超时判断，连接过程支持返回取消",
+        "修复个人资料显示不全与阅读字号列表滑动",
+        "微信读书加载支持取消，细分联网错误提示",
+        "修复持续下载时被总时限中断的问题"
       ]
     }
   ]

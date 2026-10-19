@@ -341,6 +341,8 @@ struct RenderLock {
 struct ActivityResult {};
 struct MappedInputManager {
   static bool powerKeyIsBack() { return false; }
+  enum class SwipeDir { None, Up, Down, Left, Right };
+  SwipeDir wasSwipe() const { return SwipeDir::None; }
   enum class Button { None,Back,Confirm,Left,Right,Up,Down };
   bool pressed=false,released=false,held=false,suppressed=false;
   bool tap=false,down=false,home=false,light=false;
@@ -700,7 +702,9 @@ int main() {
         error = render.split('    case State::Error: {', 1)[1].split('    case State::LogoutError:', 1)[0]
         keys = ('STR_WEREAD_STORAGE_ERROR', 'STR_WEREAD_CHECK_STORAGE_SPACE', 'STR_WEREAD_CHECK_SD_CARD',
                 'STR_WEREAD_MEMORY_ERROR', 'STR_WEREAD_RESTART_HINT', 'STR_WEREAD_HTTP_ERROR',
-                'STR_WEREAD_NO_WIFI', 'STR_WEREAD_CACHE_NOT_AVAILABLE', 'STR_WEREAD_CACHE_WHOLE_BOOK_ONLY')
+                'STR_WEREAD_NO_WIFI', 'STR_WEREAD_CACHE_NOT_AVAILABLE', 'STR_WEREAD_CACHE_WHOLE_BOOK_ONLY',
+                'STR_WEREAD_CLOCK_ERROR', 'STR_WEREAD_RESPONSE_ERROR', 'STR_WEREAD_INTEGRITY_ERROR',
+                'STR_WEREAD_LOGIN_REQUIRED')
         for language in ('chinese', 'english'):
             spec = importlib.util.spec_from_file_location('gen_i18n', ROOT / 'scripts/gen_i18n.py')
             generator = importlib.util.module_from_spec(spec)
@@ -716,7 +720,7 @@ int main() {
 #include <initializer_list>
 ''' + strings + r'''
 #define tr(key) key
-namespace WeReadClient { enum class Error { SdCard, OutOfMemory, Network, Unavailable, WholeBookOnly, Protocol }; }
+namespace WeReadClient { enum class Error { SdCard, OutOfMemory, Network, Unavailable, WholeBookOnly, Protocol, Clock, Integrity, SessionExpired, LoginFailed }; }
 namespace EpdFontFamily { enum Style { BOLD, REGULAR }; }
 constexpr int UI_10_FONT_ID=10, WL_CONNECTED=1;
 struct { int connected=1; int status() const { return connected; } } WiFi;

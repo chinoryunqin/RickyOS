@@ -125,6 +125,7 @@ bool parseHexSize(const char* value, size_t& result) {
 bool writeAll(freeink::SecureClient& client, const uint8_t* data, const size_t length) {
   size_t written = 0;
   while (written < length) {
+    if (abortRequested()) return false;
     const size_t count = client.write(data + written, length - written);
     if (count == 0) return false;
     written += count;
@@ -142,6 +143,7 @@ bool readLine(freeink::SecureClient& client, uint8_t* buffer, const size_t capac
   length = 0;
   const unsigned long deadline = millis() + static_cast<unsigned long>(timeoutMs);
   while (static_cast<int32_t>(millis() - deadline) < 0) {
+    if (abortRequested()) return false;
     const int value = client.read();
     if (value >= 0) {
       if (value == '\n') {
@@ -195,6 +197,7 @@ TransferResult readCloseDelimitedBody(freeink::SecureClient& client, uint8_t* bu
     const int count = client.read(buffer, bufferSize);
     if (count > 0) {
       if (onData && !onData(buffer, static_cast<size_t>(count))) return TransferResult::Aborted;
+      if (abortRequested()) return TransferResult::Aborted;
       deadline = millis() + static_cast<unsigned long>(timeoutMs);
       continue;
     }
@@ -267,6 +270,9 @@ WeReadHttpClient::Result runRequest(const char* url, const WeReadHttpClient::Req
           static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
 
   client.setInsecure();
+  // SecureClient uses this timeout for both TCP and TLS. Preserve the original
+  // handshake allowance; cancellation is independent through the callback.
+  client.setAbortCallback([] { return abortRequested(); });
   client.setTimeout(static_cast<unsigned long>(options.timeoutMs));
   if (!reused && !client.connect(host, HTTPS_PORT)) {
     LOG_ERR("HTTP", "wolfSSL request connect failed");
@@ -672,6 +678,9 @@ Result request(Session& session, const char* url, const RequestOptions& options,
   }
   LOG_DBG("HTTP", "%s %s", options.method ? options.method : "?", url ? url : "?");
   g_aborted = false;
+  // Continuous chapter/image transfers keep the original idle timeout. Only
+  // the Activity's metadata job has a wall-clock budget; it is not a limit on
+  // each book request that is still receiving data.
   g_lastAbortCheck = 0;
   if (abortRequested()) {
     status = -1;

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <title>RickyOS · A4 返回与联网测试</title>
+  <script type="module" src="./src/lab-app.js"></script>
+</head>
+<body>
+  <main>
+    <a class="brand" href="../../">RickyOS</a>
+    <span id="build-version" class="badge">EEGO A4 · 第七轮测试</span>
+    <h1>A4 Wi-Fi 连接修复</h1>
+    <p class="intro">连接路由器时不再重复关闭重启 Wi-Fi，从实际发起连接后计时，A4 手动和自动连接均允许 30 秒。区分连接超时和获取地址超时，保留连接中返回，以及前几版的界面和下载修复。</p>
+    <p class="notice">此版本已通过构建和模拟检查，尚待实机验证。支持已装 RickyOS 1.2.2 或前一版交互修复测试固件的 EEGO A4；正式更新频道保持原样。</p>
+    <section>
+      <h2>1. 连接你的 A4</h2>
+      <p>在电脑 Chrome 或 Edge 打开本页，用 USB 数据线连接 A4，关闭其他占用设备的窗口。</p>
+      <label><input id="model" type="checkbox">我确认连接的是 EEGO A4，且已安装 RickyOS。</label>
+      <div class="buttons"><button id="connect" disabled>连接并检查设备</button><button id="disconnect" class="secondary" disabled>断开连接</button></div>
+      <p id="support" aria-live="polite">正在检查浏览器与测试固件。</p>
+    </section>
+    <section id="installation" hidden>
+      <h2>2. 安装测试版</h2>
+      <p>更新后保留设置、书籍与阅读进度。可先保存完整备份，方便后续排查。</p>
+      <div class="buttons"><button id="backup" class="secondary">下载完整备份（可选）</button></div>
+      <a id="save-backup" hidden>再次下载备份</a>
+      <label><input id="confirm" type="checkbox">我确认安装本测试版，写入期间保持连接，不让电脑休眠。</label>
+      <div class="buttons"><button id="install" disabled>安装第七轮测试版</button></div>
+    </section>
+    <div id="progress-region" hidden><div class="progress-label"><span id="operation"></span><b id="percent">0%</b></div><progress id="progress" max="100" value="0"></progress></div>
+    <p id="result" role="status" aria-live="polite"></p>
+    <section>
+      <h2>更新后试一下</h2>
+      <ul><li>轻点字母输入，点 Shift 后输入大写。</li><li>打开个人资料，检查底部选项。</li><li>打开阅读字号，滑到列表末尾并选择。</li><li>在多个页面上滑，检查控制中心是否误开。</li><li>点原返回箭头及周围区域，检查能否返回、是否误选下方第一行。</li><li>联网打开微信读书详情，在“正在拉取”时点返回；网络无响应时检查等待能否结束。</li></ul>
+    </section>
+    <details><summary>查看安装日志</summary><pre id="log"></pre><button id="save-log" class="secondary">下载日志</button></details>
+    <footer><a id="firmware-link" hidden>下载测试固件</a><a href="../../install.html">正式安装页</a><a href="./third-party-licenses.txt">第三方许可</a></footer>
+  </main>
+</body>
+</html>

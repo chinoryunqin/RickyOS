@@ -15,6 +15,7 @@
 #include "I18n.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
+#include "components/A4HeaderLayout.h"
 #include "components/HeaderBackTapTarget.h"
 #include "components/RickyBrandMark.h"
 #include "components/RickyPageUi.h"
@@ -589,7 +590,11 @@ void BaseTheme::applyHeaderStatus(const GfxRenderer& renderer, freeink::ui::Head
   // Buttons keep a standard square (a band-8 button dwarfs its 24px icon);
   // the boxes are invisible and minTouchSize pads the tap target.
   constexpr int16_t headerButtonSize = 48;
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+  const int16_t bandHeight = A4HeaderLayout::visualHeaderHeight;
+#else
   const int16_t bandHeight = static_cast<int16_t>(metrics.headerHeight);
+#endif
   const int16_t strip = static_cast<int16_t>(metrics.batteryBarHeight);
   const int titleFontId = uiScaleSpec(upstreamStyle).titleFontId;
   const int16_t opticalDrop =
@@ -645,7 +650,7 @@ void BaseTheme::drawHeaderWithStyle(const GfxRenderer& renderer, Rect rect, cons
                         {static_cast<int16_t>(titleX), static_cast<int16_t>(rowY),
                          static_cast<int16_t>(std::max(0, titleRight - titleX)), static_cast<int16_t>(rowHeight)},
                         title, RickyDesignUi::HEADLINE);
-    HeaderBackTapTarget::setLeading(rect.x, rowY, rect.width, rowHeight, titleX - rect.x + 80);
+    HeaderBackTapTarget::setLeading(rect.x, rowY, rect.width, rowHeight);
     return;
   }
   // Every activity header renders through the FreeInkUI header + battery
@@ -667,8 +672,13 @@ void BaseTheme::drawHeaderWithStyle(const GfxRenderer& renderer, Rect rect, cons
   // subtitles.
   ui.target.setFont(fui::GfxRendererTarget::FONT_SMALL, SMALL_FONT_ID);
   ui.target.setFont(fui::GfxRendererTarget::FONT_LABEL, SMALL_FONT_ID);
-  const fui::Rect band{static_cast<int16_t>(rect.x), static_cast<int16_t>(rect.y), static_cast<int16_t>(rect.width),
-                       static_cast<int16_t>(rect.height)};
+  fui::Rect band{static_cast<int16_t>(rect.x), static_cast<int16_t>(rect.y), static_cast<int16_t>(rect.width),
+                 static_cast<int16_t>(rect.height)};
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+  // Preserve the original arrow/title drawing. Extra header reservation belongs
+  // to the invisible touch target and its gap above the first content row.
+  band.height = std::min<int16_t>(band.height, A4HeaderLayout::visualHeaderHeight);
+#endif
 
   fui::HeaderProps props;
   props.title = title;
@@ -684,16 +694,18 @@ void BaseTheme::drawHeaderWithStyle(const GfxRenderer& renderer, Rect rect, cons
   // Tappable back button leading the band on touch boards, so every pushed
   // screen offers a visible way out beside the edge-swipe gesture. This frame
   // registers no hit rects, so the rect is recorded in HeaderBackTapTarget and
-  // MappedInputManager folds taps on it into Button::Back. Same geometry as
-  // the FUI header's leading slot (applyHeaderStatus set the size/offset) so
-  // the recorded rect matches the drawn button.
-  const int16_t backBtnSize = props.leadingSize;
+  // MappedInputManager folds taps on it into Button::Back. The header band
+  // also defines its enlarged leading hit region, including the left gutter.
   const bool showBackButton = backButton && title != nullptr && gpio.hasTouch();
   if (showBackButton) {
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+    const auto back = A4HeaderLayout::backTarget(rect.x, rect.y, rect.width, rect.height);
+    HeaderBackTapTarget::set(back.x, back.y, back.width, back.height);
+#else
+    HeaderBackTapTarget::setLeading(band.x, band.y, band.width, band.height);
+#endif
     props.leadingIcon = fui::bitmapFromIcon(icon_header_back_32);
-    props.leadingAction = 1;  // any non-NO_ACTION id: paints the button, routing is via HeaderBackTapTarget
-    const int titleWidth = renderer.getTextWidth(uiScaleSpec(upstreamStyle).titleFontId, title);
-    HeaderBackTapTarget::setLeading(band.x, band.y, band.width, band.height, 4 + backBtnSize + titleWidth + 24);
+    props.leadingAction = 1;  // routing is through the shared logical Back target
   } else {
     HeaderBackTapTarget::clear();
   }

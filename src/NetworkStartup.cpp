@@ -1,5 +1,6 @@
 #include "NetworkStartup.h"
 
+#include <BoardConfig.h>
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <HalMemory.h>
@@ -10,13 +11,12 @@
 #include <algorithm>
 #include <cstdio>
 
-#include <BoardConfig.h>
-
 #if !defined(SIMULATOR) && FREEINK_CAP_BLE_HID_HOST
 #include <esp_bt.h>  // boards without Bluetooth (the Plus) have no BT component
 #endif
 #if !defined(SIMULATOR)
 #include <esp_heap_caps.h>
+#include <esp_wifi.h>
 #include <sdkconfig.h>
 #endif
 
@@ -120,10 +120,10 @@ void recordFailure(const char* stage, const int code) {
   const auto internal = HalMemory::getInternalHeap();
   const auto psram = HalMemory::getPsramHeap();
   char line[160];
-  const int len = snprintf(line, sizeof(line), "%s up=%lus %s code=%d internal=%u/%u psram=%u\n", CROSSPOINT_VERSION,
-                           static_cast<unsigned long>(millis() / 1000), stage, code,
-                           static_cast<unsigned>(internal.freeBytes), static_cast<unsigned>(internal.largestBlockBytes),
-                           static_cast<unsigned>(psram.freeBytes));
+  const int len =
+      snprintf(line, sizeof(line), "%s up=%lus %s code=%d internal=%u/%u psram=%u\n", CROSSPOINT_VERSION,
+               static_cast<unsigned long>(millis() / 1000), stage, code, static_cast<unsigned>(internal.freeBytes),
+               static_cast<unsigned>(internal.largestBlockBytes), static_cast<unsigned>(psram.freeBytes));
   if (len <= 0) return;
 
   RenderLock lock;
@@ -147,6 +147,15 @@ bool setMode(GfxRenderer& renderer, const wifi_mode_t mode) {
   const bool started = WiFi.mode(mode);
   logMemory(started ? "WiFi mode ready" : "WiFi mode failed");
   return started;
+}
+
+bool stationAssociated() {
+#if defined(SIMULATOR)
+  return WiFi.status() == WL_CONNECTED;
+#else
+  wifi_ap_record_t ap{};
+  return esp_wifi_sta_get_ap_info(&ap) == ESP_OK;
+#endif
 }
 
 }  // namespace NetworkStartup

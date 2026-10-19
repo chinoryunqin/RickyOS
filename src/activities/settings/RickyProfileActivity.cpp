@@ -1,4 +1,5 @@
 #include "RickyProfileActivity.h"
+
 #include <I18n.h>
 #include <Utf8.h>
 
@@ -40,6 +41,10 @@ void RickyProfileActivity::setCompanion(const uint8_t companion) {
 const char* RickyProfileActivity::headerTitle() const { return tr(STR_RICKY_PROFILE); }
 
 void RickyProfileActivity::buildScreen(UiScreen& screen) {
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+  buildCompactScreen(screen);
+  return;
+#endif
   namespace fui = freeink::ui;
   const auto bounds = pageContentRect();
   screen.setContentMarginFromScreen(
@@ -106,9 +111,9 @@ void RickyProfileActivity::buildScreen(UiScreen& screen) {
   target.stroke(theme2, black, focus && selected == 4 ? 3 : 1, radius);
   const bool cat = SETTINGS.rickyCat();
   const int16_t half = static_cast<int16_t>(theme2.width / 2);
-  const fui::Rect halves[2] = {{theme2.x, theme2.y, half, theme2.height},
-                               {static_cast<int16_t>(theme2.x + half), theme2.y,
-                                static_cast<int16_t>(theme2.width - half), theme2.height}};
+  const fui::Rect halves[2] = {
+      {theme2.x, theme2.y, half, theme2.height},
+      {static_cast<int16_t>(theme2.x + half), theme2.y, static_cast<int16_t>(theme2.width - half), theme2.height}};
   const char* labels[2] = {tr(STR_RICKY_THEME_DOG), tr(STR_RICKY_THEME_CAT)};
   for (int i = 0; i < 2; ++i) {
     const bool chosen = (i == 1) == cat;
@@ -142,6 +147,68 @@ void RickyProfileActivity::buildScreen(UiScreen& screen) {
                         static_cast<int16_t>(bodyHeight)},
               tr(STR_RICKY_RESET_AVATAR), outline);
   screen.frame().hit(secondary, ACTION_ROW, 2, fui::InputTouch);
+}
+
+void RickyProfileActivity::buildCompactScreen(UiScreen& screen) {
+  namespace fui = freeink::ui;
+  const auto bounds = pageContentRect();
+  screen.setContentMarginFromScreen(fui::Insets{
+      static_cast<int16_t>(bounds.y), static_cast<int16_t>(renderer.getScreenWidth() - bounds.x - bounds.width),
+      static_cast<int16_t>(renderer.getScreenHeight() - bounds.y - bounds.height), static_cast<int16_t>(bounds.x)});
+  const auto& theme = screen.theme();
+  screen.insetContent(fui::Insets{theme.spaceSm, theme.spaceLg, theme.spaceSm, theme.spaceLg});
+  constexpr int avatarSize = 64;
+  const auto header = screen.takeTop(avatarSize, std::max<int>(6, theme.spaceLg));
+  RickyProfile::drawAvatar(renderer, Rect{header.x, header.y, avatarSize, avatarSize});
+  auto name = theme.bodyText;
+  name.maxLines = 1;
+  const int gap = std::max<int>(6, theme.spaceSm);
+  screen.target().text(fui::Rect{static_cast<int16_t>(header.x + avatarSize + gap), header.y,
+                                 static_cast<int16_t>(header.width - avatarSize - gap), header.height},
+                       RickyProfile::nickname(), name);
+  if (failed) {
+    screen.target().text(screen.takeTop(screen.target().lineHeight(theme.smallText.font), gap),
+                         tr(STR_RICKY_PROFILE_FAILED), theme.smallText);
+  }
+  // Use the shared measured viewport: portrait fits the settings, while
+  // landscape and larger text can scroll to every action with touch or keys.
+  fui::ListProps props;
+  props.rowProvider = &RickyProfileActivity::provideRow;
+  props.rowProviderCtx = this;
+  props.count = listCount();
+  props.action = ACTION_ROW;
+  props.inputMask = fui::InputTouch;
+  props.rowGap = std::max<int16_t>(6, theme.listRowGap);
+  props.labelText = theme.bodyText;
+  props.labelText.maxLines = 1;
+  props.subtitleText = theme.smallText;
+  props.subtitleText.maxLines = 1;
+  syncListViewport(screen, props);
+  screen.list(props);
+}
+
+void RickyProfileActivity::provideRow(void*, const uint16_t index, freeink::ui::ListItem& item) {
+  item.actionValue = index;
+  switch (index) {
+    case 0:
+      item.label = tr(STR_RICKY_NICKNAME);
+      item.subtitle = RickyProfile::nickname();
+      break;
+    case 1:
+      item.label = tr(STR_RICKY_CHANGE_AVATAR);
+      break;
+    case 2:
+      item.label = tr(STR_RICKY_RESET_AVATAR);
+      break;
+    case 3:
+      item.label = tr(STR_RICKY_PHRASE_TITLE);
+      item.subtitle = RickyProfile::homePhrase();
+      break;
+    case 4:
+      item.label = tr(STR_RICKY_THEME);
+      item.value = SETTINGS.rickyCat() ? tr(STR_RICKY_THEME_CAT) : tr(STR_RICKY_THEME_DOG);
+      break;
+  }
 }
 
 bool RickyProfileActivity::handleCustomInput() {

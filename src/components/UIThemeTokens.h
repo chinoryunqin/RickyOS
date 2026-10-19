@@ -2,6 +2,7 @@
 #include <BoardConfig.h>
 #include <FreeInkUIGfxRenderer.h>
 
+#include "A4HeaderLayout.h"
 #include "SelectionCursorPolicy.h"
 #include "UITheme.h"
 #include "themes/lyra/LyraTheme.h"
@@ -11,6 +12,10 @@ inline const ThemeMetrics& uiThemeMetrics(bool upstreamStyle = false) {
     static constexpr ThemeMetrics lyra = [] {
       auto metrics = LyraMetrics::values;
       UiHighDpiProfile::apply(metrics);
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+      metrics.headerHeight = A4HeaderLayout::headerHeight;
+      metrics.batteryBarHeight = A4HeaderLayout::statusHeight;
+#endif
       return metrics;
     }();
     return lyra;

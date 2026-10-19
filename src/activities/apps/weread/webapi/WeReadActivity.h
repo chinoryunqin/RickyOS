@@ -61,6 +61,7 @@ class WeReadActivity final : public Activity {
   static constexpr int kMaxIntroPages = 128;
   static constexpr uint32_t kLongWaitMs = 30000;
   static constexpr uint32_t kShelfCoverQuietMs = 1500;
+  static constexpr uint32_t kDetailWaitMs = 60000;
 
   ButtonNavigator buttonNavigator_;
   OptionPopup optionPopup_;
@@ -114,6 +115,10 @@ class WeReadActivity final : public Activity {
   bool coverInterrupted_ = false;
   bool pendingBack_ = false;  // Back or Home seen while a download was abandoned
   bool pendingHome_ = false;
+  uint32_t jobStartedAt_ = 0;
+  bool jobBackRequested_ = false;
+  bool jobHomeRequested_ = false;
+  bool jobTimedOut_ = false;
   // Shelf input a cover download consumed while it was abandoned, replayed by
   // handleShelfInput(): a completed page-turn press (-1/+1), Confirm, a tap, a swipe.
   int8_t pendingShelfStep_ = 0;
@@ -142,6 +147,7 @@ class WeReadActivity final : public Activity {
   void resetShelfCoverLoading();
   void advanceShelfCovers();
   static bool coverAbortProbe(void* context);
+  static bool jobAbortProbe(void* context);
   WeReadClient::Operation::Event stepOperation();
   void updatePostProcessNotice(WeReadClient::Operation::ProgressStage previous,
                                WeReadClient::Operation::ProgressStage current);

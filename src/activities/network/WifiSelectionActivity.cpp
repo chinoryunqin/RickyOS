@@ -1,10 +1,10 @@
 #include "WifiSelectionActivity.h"
 
-#include <RickyPerf.h>
 #include <GfxRenderer.h>
 #include <HalClock.h>
 #include <I18n.h>
 #include <Logging.h>
+#include <RickyPerf.h>
 #include <TrustedTime.h>
 #include <Utf8.h>
 #include <WiFi.h>
@@ -559,7 +559,6 @@ void WifiSelectionActivity::showNetworkListFromAutoConnect() {
 
 void WifiSelectionActivity::attemptConnection() {
   state = autoConnecting ? WifiSelectionState::AUTO_CONNECTING : WifiSelectionState::CONNECTING;
-  connectionStartTime = millis();
   connectedIP.clear();
   connectionError.clear();
   requestUpdate();
@@ -570,7 +569,9 @@ void WifiSelectionActivity::attemptConnection() {
     showNetworkError();
     return;
   }
-  WiFi.disconnect(true, true);  // Abort any in-progress SDK auto-connect and clear NVS-saved SSID
+  // Keep the station running. wifioff=true tears down the driver that was just
+  // initialized and makes begin() race a second STA start/stop sequence.
+  WiFi.disconnect(false, true);  // Stop the previous join and clear SDK credentials
   delay(100);
 
   // Scan all channels so networks with multiple APs use the strongest matching
@@ -589,10 +590,13 @@ void WifiSelectionActivity::attemptConnection() {
     LOG_ERR("WIFI", "Failed to read station MAC for hostname");
   }
 
-  if (selectedRequiresPassword && !enteredPassword.empty()) {
-    WiFi.begin(selectedSSID.c_str(), enteredPassword.c_str());
-  } else {
-    WiFi.begin(selectedSSID.c_str());
+  const wl_status_t beginStatus = selectedRequiresPassword && !enteredPassword.empty()
+                                      ? WiFi.begin(selectedSSID.c_str(), enteredPassword.c_str())
+                                      : WiFi.begin(selectedSSID.c_str());
+  // Driver/font preparation and a pending e-ink refresh are not AP join time.
+  connectionStartTime = millis();
+  if (beginStatus == WL_CONNECT_FAILED) {
+    NetworkStartup::recordFailure("join-begin", static_cast<int>(beginStatus));
   }
 }
 
@@ -660,6 +664,7 @@ void WifiSelectionActivity::checkConnectionStatus() {
   }
 
   if (status == WL_CONNECT_FAILED || status == WL_NO_SSID_AVAIL) {
+    NetworkStartup::recordFailure("join-status", static_cast<int>(status));
     connectionError = tr(STR_ERROR_GENERAL_FAILURE);
     if (status == WL_NO_SSID_AVAIL) {
       connectionError = tr(STR_ERROR_NETWORK_NOT_FOUND);
@@ -676,8 +681,10 @@ void WifiSelectionActivity::checkConnectionStatus() {
   // Check for timeout
   const unsigned long timeoutMs = autoConnecting ? AUTO_CONNECTION_TIMEOUT_MS : CONNECTION_TIMEOUT_MS;
   if (millis() - connectionStartTime > timeoutMs) {
+    const bool associated = NetworkStartup::stationAssociated();
+    NetworkStartup::recordFailure(associated ? "join-ip-timeout" : "join-link-timeout", static_cast<int>(status));
     WiFi.disconnect();
-    connectionError = tr(STR_ERROR_CONNECTION_TIMEOUT);
+    connectionError = associated ? tr(STR_ERROR_WIFI_IP_TIMEOUT) : tr(STR_ERROR_CONNECTION_TIMEOUT);
     if (autoConnecting) {
       handleAutoConnectFailure();
       return;
@@ -731,12 +738,12 @@ void WifiSelectionActivity::loop() {
 
   // Check connection progress
   if (state == WifiSelectionState::CONNECTING || state == WifiSelectionState::AUTO_CONNECTING) {
+    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+      WiFi.disconnect();
+      onComplete(false);
+      return;
+    }
     if (state == WifiSelectionState::AUTO_CONNECTING) {
-      if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
-        WiFi.disconnect();
-        onComplete(false);
-        return;
-      }
       if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
         showNetworkListFromAutoConnect();
         return;

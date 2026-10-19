@@ -215,6 +215,36 @@ int main() {
         }
   }
   std::puts("INPUT CHECKS");
+  // Password text must follow the displayed layer at every tap duration.
+  // Exercise the production hold router too: a threshold event must not
+  // insert a second character on release, including after Shift auto-resets.
+  for (auto type : {InputType::Password,InputType::Latin})
+  for (int duration : {120,349,350,450,900}) for (bool upper : {false,true}) {
+    KeyboardEntryActivity password;
+    password.inputType=type;
+    password.shifted=upper;
+    password.draw();
+    int x=0,y=0,value=0;
+    for(size_t i=0;i<password.interactions.count();++i) {
+      const auto& key=password.interactions.data()[i];
+      if(key.value==(upper?'A':'a')) {x=key.rect.x+key.rect.width/2;y=key.rect.y+key.rect.height/2;value=key.value;}
+    }
+    assert(value);
+    fui::TouchHoldRouter router;
+    assert(!router.update(password.interactions,true,x,y,false,0,0,true,1000).event);
+    auto hold=router.update(password.interactions,true,x,y,false,0,0,true,1000+duration).event;
+    if(hold) password.activateValue(hold.value,hold.longPress);
+    auto release=router.update(password.interactions,false,0,0,true,x,y,false,1010+duration).event;
+    if(release) password.activateValue(release.value,release.longPress);
+    assert(password.text==(upper?"A":"a"));
+    assert(!password.shifted);
+    password.text.clear();password.cursorPos=0;password.shifted=upper;
+    assert(password.syncSelectionToValue(value));
+    assert(password.clearAllOrAltOnSelected());
+    assert(password.text==(upper?"A":"a"));
+    assert(password.activateValue(fui::QWERTY_KEY_BACKSPACE,true));
+    assert(password.text.empty());
+  }
   KeyboardEntryActivity edit;
   std::string longText; for(int i=0;i<100;++i) longText+="a中é";
   for(size_t cursor=0;cursor<=longText.size();++cursor) {

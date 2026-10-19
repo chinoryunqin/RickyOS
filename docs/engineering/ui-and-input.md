@@ -156,6 +156,55 @@ meaning: left-edge right swipe is Back, top-edge down swipe is Menu, and
 bottom-edge up swipe is Home on every touch device. A hardware Home key remains
 an additional input path and does not change those screen gestures.
 
+The global control-center pull must start in the status strip and travel
+downward; an ordinary page swipe stays with the current Activity. A release
+classified as a swipe cannot also open the panel through a status-bar tap.
+On A4 the status-tap shortcut is disabled entirely. Its control center uses a
+contact tracker in MappedInputManager: arm only on a real touch-down in the
+status strip, track logical held coordinates, require sufficient downward
+travel, reject reversal/orientation changes, and dispatch once on release.
+Neither a release-only tap nor a swipe beginning in page content can arm it.
+On A4, `A4HeaderLayout` preserves the original 66px arrow/title drawing and
+reserves 24px status + 72px invisible Back target + 12px content gap. The target
+owns the leading half of the header including the left gutter. No visible
+Back label, frame or new control is added. Drawing, target and content reserve
+come from this shared layout.
+A real touch-down on Back owns the contact until its release frame, excluding
+ordinary screen press/hold/long-press/tap routing even when the finger drifts
+toward the first row. Only a classified tap emits Back. Clear ownership across
+Activity transitions. Other touch boards retain the leading half of the drawn
+header band, including the left gutter, independently of title length.
+
+WeRead foreground requests use the same synchronous input ownership model as
+background shelf covers: the HTTP abort probe polls MappedInputManager with
+Home deferral, latches Back/Home, and cancels without navigating inside the
+callback. Reset and navigation happen after protocol work and RenderLock
+unwind. Detail jobs have a 60-second budget starting after Wi-Fi selection;
+failed/expired loading returns to cached detail or its unavailable state.
+The wolfSSL path also polls during handshake and retains the original 20-second
+TCP/TLS timeout. SecureClient shares that timeout between TCP and TLS: lowering
+it to 3 seconds also cut short valid handshakes. Chapter/image downloads retain the original per-stage/idle timeout. The generic
+60-second request deadline was withdrawn: it truncated healthy long transfers
+and could cause repeated requests followed by a network error. Only the detail
+metadata Activity keeps its own 60-second wall-clock budget.
+DNS/TCP blocking can still delay cancellation; TLS/body waits remain cancellable.
+
+Wi-Fi joining keeps the STA radio enabled after NetworkStartup initializes it;
+`disconnect(false, true)` replaces the former immediate radio stop/restart.
+The join timer starts after `WiFi.begin`, so driver/font preparation does not
+consume it. A4 auto/manual joins allow 30 seconds; other boards retain their
+previous budgets. Header Back cancels both manual and automatic joining.
+On timeout, NetworkStartup samples AP association before disconnect: an
+associated station without an address gets the IP acquisition message, while
+an unassociated station gets the connection timeout message. Begin failure,
+terminal status and timeout stage/status are appended to the existing bounded
+`/.crosspoint/wifi-errors.txt`; credentials are not written there.
+
+`KeyboardEntryActivity` treats `Password` and visible `Latin` input (Wi-Fi
+credentials, SSIDs and account names) literally: a held printable key inserts
+the displayed character once, and Shift alone changes case. Text/URL modes
+retain alternate-character holds; a held Delete still clears the field.
+
 ## Long-Press Pattern
 
 Start timing on `wasPressed()`. While `isPressed()` remains true, fire the

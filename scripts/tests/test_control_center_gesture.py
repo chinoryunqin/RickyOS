@@ -1,5 +1,6 @@
 """Keep menu dispatch aligned with Reader upstream da7feed5 on touch devices."""
 import os
+import re
 from pathlib import Path
 import shlex
 import subprocess
@@ -10,6 +11,63 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class ControlCenterGestureTest(unittest.TestCase):
+    def test_pull_requires_status_origin_and_downward_direction(self):
+        source = (ROOT / 'src/MappedInputManager.cpp').read_text()
+        method = re.search(r'bool MappedInputManager::wasLightPanelGesture\(\) const \{.*?\n}', source, re.S).group()
+        program = r'''
+#include <cassert>
+#include <cstdlib>
+#include <initializer_list>
+#include "FreeInkUICore.h"
+namespace fui=freeink::ui;
+struct {bool rickyGestureControl=true;} SETTINGS;
+struct UITheme {
+  struct Metrics {int topPadding=5,batteryBarHeight=40;};
+  static UITheme& getInstance(){static UITheme theme;return theme;}
+  Metrics getMetrics() const {return {};}
+  fui::Rect getScreenSafeArea(int) const {return {0,4,531,752};}
+};
+struct MappedInputManager {
+  int renderer=0,sx=100,sy=8,ex=100,ey=300;
+  bool touch=true,swipe=true;
+  mutable int hits=0;
+  bool hasTouch() const {return touch;}
+  bool decodeSwipe(int& x,int& y,int& xx,int& yy) const {x=sx;y=sy;xx=ex;yy=ey;return swipe;}
+  void rememberTouchHeldTime() const {++hits;}
+  bool wasLightPanelGesture() const;
+};
+''' + method + r'''
+int main(){
+  MappedInputManager input;
+  assert(input.wasLightPanelGesture() && input.hits==1);
+  for(int y: {49,80,150,400,700}) {
+    input.sy=y;input.ey=y-100; // Up in lists, including near the top edge.
+    assert(!input.wasLightPanelGesture());
+    input.ey=y+100; // A downward list scroll also belongs to the page.
+    assert(!input.wasLightPanelGesture());
+  }
+  input.sy=8;input.ey=0;
+  assert(!input.wasLightPanelGesture());
+  input.ey=100;input.ex=300; // horizontal and diagonal motion
+  assert(!input.wasLightPanelGesture());
+  input.ey=208;
+  assert(!input.wasLightPanelGesture());
+  input.ex=100;input.ey=300;input.touch=false;
+  assert(!input.wasLightPanelGesture());
+  input.touch=true;SETTINGS.rickyGestureControl=false;
+  assert(!input.wasLightPanelGesture());
+  SETTINGS.rickyGestureControl=true;input.swipe=false;
+  assert(!input.wasLightPanelGesture());
+  assert(input.hits==1);
+}
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            cpp, exe = Path(directory)/'check.cpp', Path(directory)/'check'
+            cpp.write_text(program)
+            subprocess.run(['c++', '-std=c++20', '-I'+str(ROOT/'freeink-sdk/libs/ui/FreeInkUI/include'),
+                            str(cpp), '-o', str(exe)], check=True)
+            subprocess.run([str(exe)], check=True)
+
     def test_dispatch_and_input_ownership(self):
         source = (ROOT / "src/activities/ActivityManager.cpp").read_text()
         start = source.index("void ActivityManager::loop() {")
@@ -40,9 +98,14 @@ struct Activity {
   void loop() { ++loops; }
 };
 struct Input {
+  static inline bool a4 = false;
+  static bool powerKeyIsBack() { return a4; }
+  enum class SwipeDir { None, Up, Down, Left, Right };
   bool topSwipe = true, light = false, tap = false, suppressed = false;
   bool touch = true;
   int tapX = 20, tapY = 10;
+  SwipeDir swipe = SwipeDir::None;
+  SwipeDir wasSwipe() { return swipe; }
   bool consumeSuppressedRelease() { return suppressed; }
   bool wasHomeGesture() { return false; }
   bool hasTouch() { return touch; }
@@ -50,6 +113,7 @@ struct Input {
   bool wasLightPanelGesture() { return light && topSwipe; }
   bool wasMenuGesture() { return topSwipe; }
 };
+using MappedInputManager = Input;
 struct FrontlightPanelActivity { FrontlightPanelActivity(int, Input&, bool = false) {} };
 bool failAllocation = false;
 template<class T, class... Args> std::unique_ptr<T> makeUniqueNoThrow(Args&&... args) {
@@ -117,6 +181,19 @@ int main() {
   check({}, {.light = true, .suppressed = true}, false, false);
   check({.exclusive = true}, {.light = true}, false, true);
   check({}, {.topSwipe = false}, false, true);
+  for (auto swipe : {Input::SwipeDir::Up, Input::SwipeDir::Down, Input::SwipeDir::Left, Input::SwipeDir::Right}) {
+    // Even a backend exposing a stale status tap alongside a swipe must
+    // leave ordinary scrolling to the current page.
+    check({.name="Settings", .mainTabs=true}, {.topSwipe=false, .tap=true, .swipe=swipe}, false, true);
+  }
+  Input::a4 = true;
+  for (const char* name : {"Home", "Settings", "FileBrowser", "RickyProfile", "EpubReader"}) {
+    // Even when a driver calls the end of an upward gesture a status tap,
+    // the A4 cannot open its panel without a complete top-origin pull.
+    check({.name=name, .mainTabs=true}, {.topSwipe=false, .tap=true}, false, true);
+    check({.name=name}, {.light=true}, true, false);
+  }
+  Input::a4 = false;
   failAllocation = true;
   check({}, {.light = true}, false, false); // OOM does not leak the gesture.
 }

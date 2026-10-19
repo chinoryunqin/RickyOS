@@ -24,7 +24,8 @@ class WifiStartupFailureTest(unittest.TestCase):
 #include <vector>
 #define LOG_ERR(...) ((void)0)
 #define LOG_INF(...) ((void)0)
-constexpr int WIFI_OFF = 0, WIFI_STA = 1, WIFI_SCAN_FAILED = -2;
+constexpr int WIFI_OFF = 0, WIFI_STA = 1, WIFI_SCAN_FAILED = -2, WL_CONNECT_FAILED = 4;
+using wl_status_t = int;
 void esp_wifi_stop() {}
 void esp_wifi_deinit() {}
 constexpr int WIFI_ALL_CHANNEL_SCAN = 0, WIFI_CONNECT_AP_BY_SIGNAL = 0;
@@ -51,7 +52,7 @@ struct {
  void setScanMethod(int) {}
  void setSortMethod(int) {}
  void setHostname(const char*) {}
- void begin(const char*, const char* = nullptr) { ++connections; }
+ int begin(const char*, const char* = nullptr) { ++connections; return 0; }
 } WiFi;
 class WifiSelectionActivity {
  public:
