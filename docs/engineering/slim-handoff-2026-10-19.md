@@ -44,7 +44,7 @@ SDK 文件从 966 个减到 863 个，SDK 代码约少了 1.7 万行。整体约
 
 ## 没做完的事（按顺序）
 
-1. **确认编译结果**：后台正在编四个固件，日志在 `wt-design/.local-perf/`，看 `builds.txt`（这个目录只在本地忽略，不入库）。A4 测量版还没有编通过过。
+1. **编译结果（已完成）**：9ec0ae65 上四个固件全部编译通过。Pico 正式版 5,791,339 B、测量版 5,792,731 B；A4 正式版 5,992,750 B、测量版 5,994,298 B。日志在本地的 `.local-perf/`。
 2. **Plus**：
    - 同步到 9ec0ae65：`cd wt-plus/ports/metalio-e-ink4-plus && python3 scripts/sync_plus_design.py --repo /Users/rick/rickyos/wt-design --to 9ec0ae65 --sdk-repo /Users/rick/rickyos/RickyOS/freeink-sdk`，有冲突就解决，再加 `--resume`。
    - 构建方法见 memory 里的 `rickyos-plus-port.md`：
