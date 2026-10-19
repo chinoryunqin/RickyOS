@@ -83,5 +83,7 @@ cache format, allocation or network behavior.
 image-pass statements with ASan/UBSan across A4 hardware/simulator and peer-device
 configurations, including text AA, night mode, images, manual refresh and cleanup
 debt. The regression fails on 1.2.3's extra gray pass and passes after the fix.
-Hardware acceptance still requires opening the same illustrated page in EPUB
-and WeRead, waiting for the refresh to settle, then turning away and back.
+The device owner flashed `1.2.4-test.1` and confirmed on 2026-10-19 that images
+now display normally, authorizing the 1.2.4 release. Reproduce by opening the same
+illustrated pages in EPUB and WeRead, waiting for the refresh to settle, then
+turning away and back. Release evidence is in `eego-a4-1.2.4-release.md`.
