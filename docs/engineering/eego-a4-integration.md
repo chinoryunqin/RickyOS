@@ -67,3 +67,21 @@ contrast/ghosting, touch calibration, network/SD performance or suspend power.
 Before installation, identify the connected device and preserve its actual Flash
 partition table/data. Then validate cold start, navigation/reading, gray-to-B/W
 transitions, refresh cadence, warm/cool light persistence and sleep/wake on A4.
+
+## Reader illustrations (2026-10-19 follow-up)
+
+The accepted image-viewer workaround in `07ce4bfc` already keeps A4 images in
+B/W because the overlay gray pass washes out a completed picture. The EPUB
+reader still enabled that pass whenever a page had images, even with text AA
+disabled. WeRead cached books use the same reader. A4 reader pages now keep
+the dithered B/W illustration and use one clean HALF refresh on each image page;
+the next text page retains its cleanup debt. Text-only refresh cadence is unchanged.
+The other devices keep their existing grayscale paths. This changes no panel LUT,
+cache format, allocation or network behavior.
+
+`test_eego_reader_images.py` runs production refresh decisions and whole-plane
+image-pass statements with ASan/UBSan across A4 hardware/simulator and peer-device
+configurations, including text AA, night mode, images, manual refresh and cleanup
+debt. The regression fails on 1.2.3's extra gray pass and passes after the fix.
+Hardware acceptance still requires opening the same illustrated page in EPUB
+and WeRead, waiting for the refresh to settle, then turning away and back.

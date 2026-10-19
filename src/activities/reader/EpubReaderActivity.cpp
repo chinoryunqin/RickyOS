@@ -84,9 +84,8 @@ constexpr uint8_t MAX_PAGE_TURN_RATE = 30;
 // (that helper also gates power management). Overlay refresh choices are per-panel:
 // this family runs the grayscale anti-aliasing pass, so chrome painted over a
 // fresh page needs the HALF ghost-cleanup and closing re-renders the page.
-// EEGO A4 runs the same grayscale AA pass on its UC8279C 4-gray panel, so its
-// overlay paints need the identical full-waveform treatment: a FAST differential
-// after the AA waveform leaves the covered page ghosting through the chrome.
+// A4 overlay paints also need a complete cleanup waveform. Its reader stays B/W,
+// but an ordinary FAST differential can leave the covered page under the chrome.
 bool xteinkClassPanel() {
   return gpio.isXteinkDevice() || BoardConfig::isX4Pro() || FREEINK_DEVICE_EEGO_A4;
 }
@@ -2790,8 +2789,15 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   const bool manualRefreshPending = forcedRefreshPending;
   forcedRefreshPending = false;
   const bool cleanImageBasePending = manualRefreshPending || pagesUntilFullRefresh <= 1;
-  // Night mode renders crisp B/W; the SDK disables every grayscale display path.
-  const bool grayscaleEnabled = !renderer.isInverted();
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+  // Match the A4 image viewer: the overlay gray pass washes out an already-painted
+  // illustration. Keep the finished dithered B/W page instead (including WeRead).
+  constexpr bool allowReaderGrayscale = false;
+#else
+  constexpr bool allowReaderGrayscale = true;
+#endif
+  // Night mode also renders crisp B/W.
+  const bool grayscaleEnabled = allowReaderGrayscale && !renderer.isInverted();
   const bool needsTextGrayscale = grayscaleEnabled && SETTINGS.textAntiAliasing;
   // Images write the BW buffer directly; keep them, backgrounds and faux bold on the existing path.
   // RickyOS: every text face (2-bit downloaded fonts too) and synthetic bold draw straight
@@ -2917,8 +2923,10 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       renderer.displayBuffer(ReaderUtils::consumeRefreshMode(pagesUntilFullRefresh),
                              DisplayRefreshContext::ImageReading);
     } else {
-      renderer.displayBuffer(cleanImageBasePending ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH,
-                             DisplayRefreshContext::ImageReading);
+      // A4 keeps this B/W image as the final frame; clean once, with no gray pass.
+      renderer.displayBuffer(
+          !allowReaderGrayscale || cleanImageBasePending ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH,
+          DisplayRefreshContext::ImageReading);
       pagesUntilFullRefresh = 1;
     }
   } else {

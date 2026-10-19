@@ -48,7 +48,7 @@ export class LabFlashSession extends FlashSession {
     requireThat(head.length === 256 && new DataView(head.buffer, head.byteOffset).getUint32(32, true) === 0xabcd5432,
       '未识别到有效的 RickyOS 应用，请重新检查设备。');
     requireThat(this.offer.compatibleAppElfSha256.includes(hex(head.subarray(176, 208))),
-      '没有识别到本测试页支持的 A4 版本。请先用正式安装页更新到 1.2.2。');
+      '没有识别到本测试页支持的 A4 版本。请先用正式安装页更新到当前 A4 正式版。');
   }
 
   async backupFlash(progress, cancelled) {

@@ -258,3 +258,7 @@ add_test(NAME EegoPowerKey
   COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/scripts/tests/test_eego_power_key.py)
 add_test(NAME RickyosSdkIntegration
   COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/scripts/tests/test_rickyos_sdk_integration.py)
+
+# A4 image pages keep the completed B/W frame instead of a washed-out gray overlay.
+add_test(NAME eego_a4_reader_images
+  COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/scripts/tests/test_eego_reader_images.py)
