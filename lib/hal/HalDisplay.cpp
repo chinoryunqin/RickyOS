@@ -9,6 +9,7 @@
 #if FREEINK_DEVICE_EEGO_A4
 #include <Logging.h>
 #endif
+#include <RickyPerf.h>
 
 // Global HalDisplay instance
 HalDisplay display;
@@ -112,11 +113,13 @@ EInkDisplay::RefreshContext convertRefreshContext(DisplayRefreshContext context)
 }
 }  // namespace
 
-#if FREEINK_DEVICE_EEGO_A4
+#if FREEINK_DEVICE_EEGO_A4 || RICKYOS_PERF
 namespace {
 // EEGO A4: the UC8279C driver refreshes synchronously, so this is the time the caller
 // waits for the panel. One line per refresh, for tuning the cadence on the device.
-const char* refreshName(const HalDisplay::RefreshMode mode) {
+// Perf builds log every panel push ("disp <kind> ms="); on the Read Pico a push
+// returns once the frame is queued, and "disp wait" is the time spent for the panel.
+[[maybe_unused]] const char* refreshName(const HalDisplay::RefreshMode mode) {
   return mode == HalDisplay::FULL_REFRESH ? "full" : mode == HalDisplay::HALF_REFRESH ? "half" : "fast";
 }
 }  // namespace
@@ -127,13 +130,14 @@ void HalDisplay::displayBuffer(HalDisplay::RefreshMode mode, bool turnOffScreen,
     einkDisplay.requestResync(1);
   }
 
-#if FREEINK_DEVICE_EEGO_A4
+#if FREEINK_DEVICE_EEGO_A4 || RICKYOS_PERF
   const uint32_t started = millis();
 #endif
   einkDisplay.displayBuffer(convertRefreshMode(mode), turnOffScreen, convertRefreshContext(context));
 #if FREEINK_DEVICE_EEGO_A4
   LOG_INF("DISP", "A4 %s refresh %lu ms", refreshName(mode), static_cast<unsigned long>(millis() - started));
 #endif
+  RICKY_PERF("disp", "%s ms=%u", refreshName(mode), static_cast<unsigned>(millis() - started));
 }
 
 void HalDisplay::displayBufferAsync(HalDisplay::RefreshMode mode, DisplayRefreshContext context) {
@@ -144,7 +148,16 @@ void HalDisplay::displayBufferAsync(HalDisplay::RefreshMode mode, DisplayRefresh
   einkDisplay.displayBufferAsyncNoShadow(convertRefreshMode(mode), convertRefreshContext(context));
 }
 
-void HalDisplay::waitRefreshComplete() { einkDisplay.waitRefreshComplete(); }
+void HalDisplay::waitRefreshComplete() {
+#if RICKYOS_PERF
+  const uint32_t started = millis();
+  einkDisplay.waitRefreshComplete();
+  const uint32_t waited = millis() - started;
+  if (waited > 0) RICKY_PERF("disp", "wait ms=%u", static_cast<unsigned>(waited));
+#else
+  einkDisplay.waitRefreshComplete();
+#endif
+}
 
 bool HalDisplay::supportsAsyncRefresh() const { return einkDisplay.supportsAsyncRefresh(); }
 
@@ -203,6 +216,7 @@ void HalDisplay::displayGrayscaleBase(RefreshMode fallback, bool turnOffScreen, 
   einkDisplay.displayGrayscaleBase(convertRefreshMode(fallback), turnOffScreen, convertRefreshContext(context));
 #if FREEINK_DEVICE_EEGO_A4
   LOG_INF("DISP", "A4 gray base (%s) %lu ms", refreshName(fallback), static_cast<unsigned long>(millis() - started));
+  RICKY_PERF("disp", "graybase ms=%u", static_cast<unsigned>(millis() - started));
 #endif
 }
 
@@ -225,6 +239,7 @@ void HalDisplay::displayGrayBuffer(bool turnOffScreen) {
   einkDisplay.displayGrayBuffer(turnOffScreen);
 #if FREEINK_DEVICE_EEGO_A4
   LOG_INF("DISP", "A4 gray refresh %lu ms", static_cast<unsigned long>(millis() - started));
+  RICKY_PERF("disp", "gray ms=%u", static_cast<unsigned>(millis() - started));
 #endif
 }
 
@@ -266,7 +281,16 @@ uint8_t* HalDisplay::beginRetainedGrayscale16() {
 #endif
   return nullptr;
 }
-bool HalDisplay::commitGrayscale16() { return einkDisplay.commitGrayscale16(); }
+bool HalDisplay::commitGrayscale16() {
+#if RICKYOS_PERF
+  const uint32_t started = millis();
+  const bool committed = einkDisplay.commitGrayscale16();
+  RICKY_PERF("disp", "gray16 ms=%u ok=%d", static_cast<unsigned>(millis() - started), committed ? 1 : 0);
+  return committed;
+#else
+  return einkDisplay.commitGrayscale16();
+#endif
+}
 
 void HalDisplay::setNextGray16Profile(const uint8_t profile) {
 #if FREEINK_DEVICE_READPICO

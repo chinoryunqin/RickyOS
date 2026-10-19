@@ -1,3 +1,4 @@
+#include <RickyPerf.h>
 #include <Arduino.h>
 #include <BoardConfig.h>
 #include <Epub.h>
@@ -996,6 +997,7 @@ void setup() {
   // Ensure we're not still holding the power button before leaving setup
   waitForPowerRelease();
   allowSleepAt = millis() + 2000;
+  RICKY_PERF("boot", "setup=%lu", millis());
 }
 
 void loop() {

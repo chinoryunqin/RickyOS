@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <HalMemory.h>
+#include <RickyPerf.h>
 #include <HalSystem.h>
 #include <Logging.h>
 #include <ResumableFetch.h>
@@ -83,6 +84,8 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
   const unsigned long elapsed = millis() - started;
   LOG_INF("HTTP", "%zu B in %lu ms (%lu KB/s), status %d: %s", result.bytes, elapsed,
           elapsed > 0 ? static_cast<unsigned long>(result.bytes / elapsed) : 0UL, result.status, originOf(url).c_str());
+  RICKY_PERF("http", "kb=%u ms=%lu kbps=%lu status=%d", static_cast<unsigned>(result.bytes / 1024), elapsed,
+             elapsed > 0 ? static_cast<unsigned long>(result.bytes / elapsed) : 0UL, result.status);
 
   if (result.aborted) return HttpDownloader::ABORTED;
   if (result.stopped) return HttpDownloader::FILE_ERROR;

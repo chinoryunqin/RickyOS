@@ -136,7 +136,7 @@ void ActivityManager::renderTaskLoop() {
   while (true) {
     const bool idleArmed = waitTicks != portMAX_DELAY;
     const bool foreground = ulTaskNotifyTake(pdTRUE, waitTicks) != 0;
-#if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
+#if RICKY_RENDER_REQUEST_TIMING
     const uint32_t queued = foreground ? queuedRenderMs.exchange(0) : 0;
     const uint32_t wokeMs = millis();
 #endif
@@ -185,12 +185,33 @@ void ActivityManager::renderTaskLoop() {
 #endif
         idleGeneration = idleRenderGeneration.load(std::memory_order_relaxed);
         display.setInverted(SETTINGS.screenInverted != 0);
+#if RICKYOS_PERF
+        char perfName[24];
+        snprintf(perfName, sizeof(perfName), "%s", currentActivity->name.c_str());
+        const uint32_t perfDrawStart = millis();
+#endif
 #if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
         // A missing gray buffer or failed commit gets the existing readable B/W
         // fallback. The direct path never arms a second, delayed submission.
         if (!directGray || !renderDirectGray(std::move(lock))) currentActivity->render(std::move(lock));
 #else
         currentActivity->render(std::move(lock));
+#endif
+#if RICKYOS_PERF
+        {
+          // draw = the activity's render, panel push included where the driver is
+          // synchronous (A4); wait = first queued request to this frame's start.
+          const uint32_t now = millis();
+          RICKY_PERF("frame", "%s wait=%u draw=%u", perfName, queued ? static_cast<unsigned>(wokeMs - (queued - 1)) : 0u,
+                     static_cast<unsigned>(now - perfDrawStart));
+          const uint32_t opened = perfOpenStartMs.exchange(0);
+          if (opened) RICKY_PERF("open", "%s ms=%u", perfName, static_cast<unsigned>(now - (opened - 1)));
+          static bool firstFrame = true;
+          if (firstFrame) {
+            firstFrame = false;
+            RICKY_PERF("boot", "first_frame=%u", static_cast<unsigned>(now));
+          }
+        }
 #endif
         idleDelayTicks = delayMs != 0 ? pdMS_TO_TICKS(delayMs) : portMAX_DELAY;
         waitTicks = idleDelayTicks;
@@ -425,6 +446,9 @@ void ActivityManager::loop() {
     if (pendingAction.load() == PendingAction::Pop) {
       if (RenderLock::peek()) break;
       RenderLock lock;
+#if RICKYOS_PERF
+      perfOpenStartMs.store(static_cast<uint32_t>(millis()) + 1);
+#endif
 
       if (!currentActivity) {
         // Should never happen in practice
@@ -475,6 +499,9 @@ void ActivityManager::loop() {
       // Current activity has requested a new activity to be launched
       if (RenderLock::peek()) break;
       RenderLock lock;
+#if RICKYOS_PERF
+      perfOpenStartMs.store(static_cast<uint32_t>(millis()) + 1);
+#endif
 
       if (pendingAction.load() == PendingAction::Replace) {
         // Destroy the current activity
@@ -936,7 +963,7 @@ void ActivityManager::prepareForSleep() {
   if (currentActivity) currentActivity->prepareForSleep();
 }
 
-#if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
+#if RICKY_RENDER_REQUEST_TIMING
 void ActivityManager::recordRenderRequest() {
   uint32_t empty = 0;
   queuedRenderMs.compare_exchange_strong(empty, static_cast<uint32_t>(millis()) + 1);
@@ -947,7 +974,7 @@ void ActivityManager::requestUpdate(bool immediate) {
 #if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
   renderRequestGeneration.fetch_add(1, std::memory_order_relaxed);
 #endif
-#if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
+#if RICKY_RENDER_REQUEST_TIMING
   recordRenderRequest();
 #endif
   cancelIdleRender();
@@ -965,7 +992,7 @@ void ActivityManager::requestUpdateAndWait() {
 #if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
   renderRequestGeneration.fetch_add(1, std::memory_order_relaxed);
 #endif
-#if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
+#if RICKY_RENDER_REQUEST_TIMING
   recordRenderRequest();
 #endif
   cancelIdleRender();

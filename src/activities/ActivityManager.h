@@ -16,6 +16,14 @@
 #include "Memory.h"
 #include "activities/MainTab.h"
 #include "util/ScreenshotInfo.h"
+#include <RickyPerf.h>
+
+// Render-request timing (queue wait before each frame): diagnostics and perf builds.
+#if (FREEINK_READPICO_DIAGNOSTICS || RICKYOS_PERF) && !defined(SIMULATOR)
+#define RICKY_RENDER_REQUEST_TIMING 1
+#else
+#define RICKY_RENDER_REQUEST_TIMING 0
+#endif
 
 class Activity;    // forward declaration
 class RenderLock;  // forward declaration
@@ -89,11 +97,15 @@ class ActivityManager {
   // Unlike requestedUpdate, this survives loop() consuming the notification.
   std::atomic<uint32_t> renderRequestGeneration{0};
 #endif
-#if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
+#if RICKY_RENDER_REQUEST_TIMING
   // Earliest coalesced request, encoded +1 to reserve zero. No per-event heap
   // storage or filenames/text in timing logs. Unsigned differences wrap safely.
   std::atomic<uint32_t> queuedRenderMs{0};
   void recordRenderRequest();
+#endif
+#if RICKYOS_PERF
+  // When the current activity was switched to (+1, 0 = none): its first frame logs "open".
+  std::atomic<uint32_t> perfOpenStartMs{0};
 #endif
   std::atomic<uint32_t> idleRenderGeneration{0};
   std::atomic<const char*> lastIdleCancel{"none"};

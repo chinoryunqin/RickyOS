@@ -1,5 +1,6 @@
 #include "WifiSelectionActivity.h"
 
+#include <RickyPerf.h>
 #include <GfxRenderer.h>
 #include <HalClock.h>
 #include <I18n.h>
@@ -604,6 +605,7 @@ void WifiSelectionActivity::checkConnectionStatus() {
 
   if (status == WL_CONNECTED) {
     // Successfully connected
+    RICKY_PERF("wifi", "connect=%lu", millis() - connectionStartTime);
     IPAddress ip = WiFi.localIP();
     char ipStr[16];
     snprintf(ipStr, sizeof(ipStr), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);

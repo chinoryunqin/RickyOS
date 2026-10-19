@@ -1,5 +1,6 @@
 #include "EpubReaderActivity.h"
 
+#include <RickyPerf.h>
 #include <Epub/Page.h>
 #include <Epub/blocks/TextBlock.h>
 #include <Epub/css/CssParser.h>
@@ -1894,7 +1895,9 @@ void EpubReaderActivity::renderBook() {
 #if RICKYOS_READER_PAGE_CACHE
     ++sectionGeneration_;
 #endif
+    [[maybe_unused]] const auto tSectionLoad = millis();
     const bool cacheLoaded = section->loadSectionFile(renderSpec);
+    RICKY_PERF("chapter", "%s load=%lu", cacheLoaded ? "cached" : "uncached", millis() - tSectionLoad);
     if (cacheLoaded) {
       cachedChapterTotalPageCount = 0;
     }
@@ -2940,6 +2943,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       }
       const auto t16Page = millis();
       renderStatusBar();
+      [[maybe_unused]] const auto t16Status = millis();
       LOG_DBG("ERS", "16-level timing: before=%lums begin=%lums page=%lums status=%lums", t16Begin - t0,
               t16Cleared - t16Begin, t16Page - t16Cleared, millis() - t16Page);
 #if RICKYOS_PAINT_PROFILE
@@ -2977,6 +2981,10 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       if (renderer.commitGrayscale16()) {
         const auto tEnd = millis();
         LOG_DBG("ERS", "Page render: 16-level text total=%lums", tEnd - t0);
+        // draw = layout and glyphs (both passes); commit = handing the frame to the panel.
+        RICKY_PERF("page", "%s prewarm=%lu draw=%lu status=%lu commit=%lu total=%lu", pageCacheHit ? "hit" : "miss",
+                   tPrewarm - t0, (tBwRender - tPrewarm) + (t16Page - t16Begin), t16Status - t16Page,
+                   tEnd - tCommit, tEnd - t0);
 #if RICKYOS_PAINT_PROFILE
         LOG_INF("PERF", "reader commit=%lums total=%lums", tEnd - tCommit, tEnd - t0);
 #endif
@@ -3214,6 +3222,8 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       if (pageCacheHit) {
         LOG_DBG("ERS", "Page render: page-cache hit (base_copy=%lums)", cacheBaseMs);
       }
+      RICKY_PERF("page", "%s-gray prewarm=%lu draw=%lu display=%lu gray=%lu total=%lu", pageCacheHit ? "hit" : "miss",
+                 tPrewarm - t0, tBwRender - tPrewarm, tDisplay - tBwRender, tGrayDisplay - tBwStore, tEnd - t0);
       LOG_DBG("ERS",
               "Page render: prewarm=%lums bw_render=%lums display=%lums bw_store=%lums "
               "gray_lsb=%lums gray_msb=%lums gray_display=%lums bw_restore=%lums total=%lums",
@@ -3223,6 +3233,8 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       const auto tEnd = millis();
       LOG_DBG("ERS", "Page render: prewarm=%lums bw_render=%lums display=%lums total=%lums", tPrewarm - t0,
               tBwRender - tPrewarm, tDisplay - tBwRender, tEnd - t0);
+      RICKY_PERF("page", "%s prewarm=%lu draw=%lu display=%lu total=%lu", pageCacheHit ? "hit" : "miss", tPrewarm - t0,
+                 tBwRender - tPrewarm, tDisplay - tBwRender, tEnd - t0);
     }
   }
 }
