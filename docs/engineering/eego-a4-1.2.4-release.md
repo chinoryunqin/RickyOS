@@ -1,4 +1,9 @@
-# EEGO A4 1.2.4 release — 2026-10-19
+# EEGO A4 1.2.4 unpublished candidate — 2026-10-19
+
+This candidate was superseded by 1.2.5 before any production offer was activated.
+Its immutable binaries and private tag remain as build history. During publication
+review, the A4 OTA entry was found to reject its own board; 1.2.5 also repairs that
+check. See `eego-a4-1.2.5-release.md`.
 
 ## Acceptance
 

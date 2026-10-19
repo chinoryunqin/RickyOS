@@ -45,7 +45,8 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate(const Channel requestedCh
   (void)requestedChannel;
   channel = Channel::Stable;
   expectedSha.fill(0);
-  if (std::string_view(board_tag::boardName(), board_tag::boardNameLen()) != "readpico") return WRONG_DEVICE_ERROR;
+  if (std::string_view(board_tag::boardName(), board_tag::boardNameLen()) != ricky_ota::BOARD)
+    return WRONG_DEVICE_ERROR;
   // The COS bucket first (mainland China), then the site; each route has its own pinned
   // root. The first route that answers decides: an authoritative "no update" or a
   // broken manifest from it is the answer, a network failure moves on.

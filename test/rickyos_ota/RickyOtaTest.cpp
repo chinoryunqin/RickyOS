@@ -31,8 +31,8 @@ int begins = 0, ends = 0, switches = 0, aborts = 0;
 int writeError = 0, endError = 0;
 bool networkError = false, cutDownload = false, missingPartition = false, cosDown = false;
 uint16_t runningChip = 9;
-const std::string noUpdate =
-    R"({"schema":1,"product":"RickyOS","board":"readpico","channel":"stable","status":"no_update"})";
+const std::string noUpdate = std::string(R"({"schema":1,"product":"RickyOS","board":")") + ricky_ota::BOARD +
+                             R"(","channel":"stable","status":"no_update"})";
 const std::string offeredVersion = "1.1.1";
 
 void reset() {
@@ -44,7 +44,8 @@ void reset() {
   image[1] = 1;
   image[12] = 9;
   image[13] = 0;
-  const std::string identity = std::string("RickyOS\0", 8) + offeredVersion + '\0' + "CROSSPOINT-BOARD-V1:readpico;";
+  const std::string identity = std::string("RickyOS\0", 8) + offeredVersion + '\0' +
+                               std::string("CROSSPOINT-BOARD-V1:") + ricky_ota::BOARD + ";";
   std::memcpy(image.data() + 100, identity.data(), identity.size());
   next = {0x650000, 0x640000};
   begins = ends = switches = aborts = writeError = endError = 0;
@@ -63,9 +64,9 @@ std::string sha(const std::vector<uint8_t>& bytes) {
   return text;
 }
 std::string offer(const std::string& version = offeredVersion) {
-  return "{\"schema\":1,\"product\":\"RickyOS\",\"board\":\"readpico\",\"channel\":\"stable\","
-         "\"status\":\"update_available\",\"version\":\"" +
-         version + "\",\"file\":\"firmware/RickyOS-test.bin\",\"bytes\":4096,\"sha256\":\"" + sha(image) +
+  return std::string("{\"schema\":1,\"product\":\"RickyOS\",\"board\":\"") + ricky_ota::BOARD +
+         "\",\"channel\":\"stable\",\"status\":\"update_available\",\"version\":\"" + version +
+         "\",\"file\":\"firmware/RickyOS-test.bin\",\"bytes\":4096,\"sha256\":\"" + sha(image) +
          "\",\"approved\":true,\"hardwareAccepted\":true,\"chipId\":9,\"flashBytes\":16777216}";
 }
 bool parses(const std::string& text, size_t chunk = 1) {
@@ -136,13 +137,13 @@ bool HttpDownloader::fetchVerifiedUrl(const std::string& url, const DataCallback
   urls.push_back(url);
   if (networkError || (cos && cosDown)) return false;
   const std::string path = url.substr(std::strlen(cos ? ricky_ota::COS_BASE : ricky_ota::SITE_BASE));
-  if (path == "ota.json") {
+  if (url == ricky_ota::COS_MANIFEST_URL || url == ricky_ota::MANIFEST_URL) {
     for (const auto& character : response) {
       if (!consume(reinterpret_cast<const uint8_t*>(&character), 1)) return false;
     }
     return true;
   }
-  if (path == "ota-notes.txt") return true;
+  if (url == ricky_ota::COS_NOTES_URL || url == ricky_ota::NOTES_URL) return true;
   CHECK(path == "firmware/RickyOS-test.bin");
   for (size_t i = 0; i < image.size(); i += 7) {
     if (cutDownload && i > 1000) return false;
@@ -159,7 +160,7 @@ int main() {
   }
   const auto good = offer();
   for (const auto& bad : {replace(good, "RickyOS\"", "CrossMux\""),
-                          replace(good, "readpico", "x4pro"),
+                          replace(good, ricky_ota::BOARD, "x4pro"),
                           replace(good, "stable", "nightly"),
                           replace(good, "true", "false"),
                           replace(good, "\"schema\":1", "\"schema\":1,\"schema\":1"),
@@ -199,7 +200,7 @@ int main() {
   for (const auto c : scanBytes) scanner.feed(reinterpret_cast<const uint8_t*>(&c), 1);
   CHECK(scanner.found());
   board_tag::Scanner board;
-  const std::string tag = "CROSSPOINT-BOARD-V1:readpico;";
+  const std::string tag = std::string("CROSSPOINT-BOARD-V1:") + ricky_ota::BOARD + ";";
   for (const auto c : tag) board.feed(reinterpret_cast<const uint8_t*>(&c), 1);
   CHECK(board.found() && !board.mismatch());
   reset();

@@ -262,3 +262,7 @@ add_test(NAME RickyosSdkIntegration
 # A4 image pages keep the completed B/W frame instead of a washed-out gray overlay.
 add_test(NAME eego_a4_reader_images
   COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/scripts/tests/test_eego_reader_images.py)
+
+# OTA must admit its own board, prefer COS and retain the verified fallback route.
+add_test(NAME RickyOtaRoutes
+  COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/scripts/tests/test_rickyos_ota_routes.py)
