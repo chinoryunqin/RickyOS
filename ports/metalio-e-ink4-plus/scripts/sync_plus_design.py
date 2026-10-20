@@ -136,13 +136,26 @@ def main():
     parser.add_argument('--repo', required=True, type=Path, help='RickyOS repository holding both commits')
     parser.add_argument('--to', help='design commit to pin')
     parser.add_argument('--record', action='store_true', help='record edited Plus sources against the current pin')
+    parser.add_argument('--add-source', action='append', default=[],
+                        help='register a new restored-source file (requires --record)')
     parser.add_argument('--resume', action='store_true', help='finish after resolving conflicts')
     args = parser.parse_args()
     manifest = json.loads(MANIFEST.read_text())
     changes = json.loads(CHANGES.read_text())
     if args.record:
+        known = set(manifest['files']) | {item['path'] for item in changes['changes']}
+        for name in args.add_source:
+            relative = Path(name)
+            if relative.is_absolute() or '..' in relative.parts or not (UPSTREAM / relative).is_file():
+                parser.error(f'Invalid restored-source path: {name}')
+            if name not in known:
+                changes['changes'].append({'path': name, 'baseline_sha256': None,
+                                          'ported_sha256': sha((UPSTREAM / relative).read_bytes())})
+                known.add(name)
         finish(args.repo, manifest['commit'], manifest, changes, manifest['files'])
         return
+    if args.add_source:
+        parser.error('--add-source requires --record')
     if not args.to:
         parser.error('--to or --record is required')
     new = git(args.repo, 'rev-parse', args.to, text=True).strip()

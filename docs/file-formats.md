@@ -827,6 +827,56 @@ initialized the display and physically rendered its startup verification page.
 Only after confirmation cancels rollback may the old firmware slot be erased
 and rebuilt as a font cache. If that copy is interrupted or fails, the
 uncommitted header remains invalid and the selected font loads from SD.
+## Skill Gomoku save (SGS1 / SGM1, version 1)
+
+Independent from traditional `gomoku.bin` and `gomoku_stats.bin`. Two files,
+`/.crosspoint/skill_gomoku_v1_a.bin` and `skill_gomoku_v1_b.bin`, retain two
+generations. Writes complete and close `skill_gomoku_v1.tmp` before replacing
+the older slot. FAT replacement is not power-loss atomic; the newer existing
+slot is never the replacement target. Load checks both and selects the newer
+valid nonzero sequence (unsigned wrap-aware comparison). A failed write or
+replacement retains the other valid generation. Both missing/corrupt means no
+resume, not migration of the traditional save.
+
+Each file is exactly 272 bytes, integers explicitly little-endian:
+
+| Offset | Length | Meaning |
+|---|---:|---|
+| 0 | 4 | ASCII `SGS1` |
+| 4 | 1 | 0 local two-player, 1 versus computer |
+| 5 | 1 | Cursor intersection index, `< size*size` |
+| 6 | 2 | Reserved zero |
+| 8 | 4 | Nonzero generation counter |
+| 12 | 256 | SGM1 engine record below |
+| 268 | 4 | CRC-32/ISO-HDLC of bytes 0–267 |
+
+Engine record offsets are relative to byte 12:
+
+| Offset | Length | Meaning |
+|---|---:|---|
+| 0 | 4 | ASCII `SGM1` |
+| 4 | 1 | Board size 9 or 15 |
+| 5 | 1 | Side to move: 1 black, 2 white |
+| 6 | 1 | Result: 0 ongoing, 1/2 winner, 3 draw |
+| 7 | 2 | Winning five's start/end indices; 255 if absent |
+| 9 | 2 | Black/white energy, 0–8 |
+| 11 | 6 | Black then white: Remove/Convert/Move cooldowns, 0–2 |
+| 17 | 2 | Black/white used bits: Freeze=1, Reverse=2, Wipe=4 |
+| 19 | 2 | Successful action count, 0–400 |
+| 21 | 1 | Last action: Place=0, Remove=1, Convert=2, Move=3, Freeze=4, Reverse=5, Wipe=6, Rest=7, Resign=8 |
+| 22 | 2 | Last target/source; 255 when absent |
+| 24 | 1 | Last actor: 0 initially, otherwise 1/2 |
+| 25 | 225 | Row-major cells: 0 empty, 1 black, 2 white; inactive tail zero |
+| 250 | 2 | Reserved zero |
+| 252 | 4 | CRC-32/ISO-HDLC of engine bytes 0–251 |
+
+Validation rejects incorrect lengths/checksums, out-of-range fields, illegal
+cell tails, impossible action/stone counts, inconsistent terminal states,
+simultaneous winners and inconsistent turn/last-actor or winning endpoints.
+No native struct serialization, unaligned integer access or heap allocation.
+Energy/cooldown/used state persists; the eight-action undo ring is RAM-only.
+See `docs/skill-gomoku.md` for the gameplay contract.
+
 ## CLX1 — library index (`.crosspoint/library.idx`)
 
 Written by `lib/LibraryIndex/LibraryBuilder.cpp`, read by `LibraryIndexFile`. One

@@ -14,7 +14,7 @@
 #include "CrossPointSettings.h"
 #include "apps/AppsMenuActivity.h"
 #include "apps/calculator/CalculatorActivity.h"
-#include "apps/gomoku/GomokuMenuActivity.h"
+#include "apps/gomoku/GomokuModeActivity.h"
 #include "apps/reading-stats/RickyReadingStatsActivity.h"
 #include "apps/standby/RickyStandbySettingsActivity.h"
 #include "apps/standby/StandbyActivity.h"
@@ -699,7 +699,7 @@ void ActivityManager::goToRickyReadingStats() { replaceActivityWith<RickyReading
 
 void ActivityManager::goToReadingStats() { goToRickyReadingStats(); }
 
-void ActivityManager::goToGomoku() { replaceActivityWith<GomokuMenuActivity>(); }
+void ActivityManager::goToGomoku() { replaceActivityWith<GomokuModeActivity>(); }
 
 void ActivityManager::goToCalculator() { replaceActivityWith<CalculatorActivity>(); }
 
