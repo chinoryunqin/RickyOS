@@ -37,6 +37,8 @@ class CrossPointWebServerActivity final : public Activity {
   // Set when re-entered after the heap-defrag reboot: skip mode selection, go
   // straight to Join Network, and don't reboot again.
   bool startInJoinNetwork = false;
+  // Set when re-entered after the low-memory reboot into Create Hotspot.
+  bool startInHotspot = false;
 
   // Web server - owned by this activity
   std::unique_ptr<CrossPointWebServer> webServer;
@@ -67,12 +69,15 @@ class CrossPointWebServerActivity final : public Activity {
   void onWifiSelectionComplete(bool connected);
   void startAccessPoint();
   void startWebServer();
-  void showMemoryError();
+  // atStartup: the service never started; Read Pico then reboots once into the same mode.
+  void showMemoryError(bool atStartup);
 
  public:
   explicit CrossPointWebServerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                                       bool startInJoinNetwork = false)
-      : Activity("CrossPointWebServer", renderer, mappedInput), startInJoinNetwork(startInJoinNetwork) {}
+                                       bool startInJoinNetwork = false, bool startInHotspot = false)
+      : Activity("CrossPointWebServer", renderer, mappedInput),
+        startInJoinNetwork(startInJoinNetwork),
+        startInHotspot(startInHotspot) {}
   void onEnter() override;
   void onExit() override;
   void loop() override;

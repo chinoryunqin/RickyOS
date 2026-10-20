@@ -96,6 +96,10 @@ void CrossPointWebServerActivity::onEnter() {
   lastHandleClientTime = 0;
   requestUpdate();
 
+  if (startInHotspot) {
+    onNetworkModeSelected(NetworkMode::CREATE_HOTSPOT);
+    return;
+  }
   if (startInJoinNetwork) {
     // Came back from the heap-defrag reboot on a pristine heap: skip the mode
     // picker and go straight into Join Network (onNetworkModeSelected won't
@@ -321,7 +325,7 @@ void CrossPointWebServerActivity::startWebServer() {
   if (!webServer) {
     LOG_ERR("WEBACT", "OOM: CrossPointWebServer (%u bytes)", static_cast<unsigned>(sizeof(CrossPointWebServer)));
     if constexpr (transferMemory::guarded) {
-      showMemoryError();
+      showMemoryError(true);
     } else {
       onGoHome();
     }
@@ -352,7 +356,7 @@ void CrossPointWebServerActivity::startWebServer() {
   } else {
     LOG_ERR("WEBACT", "ERROR: Failed to start web server!");
     if (transferMemory::guarded && webServer->hasMemoryError()) {
-      showMemoryError();
+      showMemoryError(true);
       return;
     }
     webServer.reset();
@@ -361,7 +365,15 @@ void CrossPointWebServerActivity::startWebServer() {
   }
 }
 
-void CrossPointWebServerActivity::showMemoryError() {
+void CrossPointWebServerActivity::showMemoryError(const bool atStartup) {
+  // The first Wi-Fi use leaves ~23 KB of internal RAM with the network stack until the
+  // next restart, so a later hotspot can fall just short of the startup gate. A fresh
+  // heap always has room: reboot once into the same mode instead of asking the reader
+  // to restart. Never mid-transfer, and never twice in a row.
+  if (atStartup && !startInJoinNetwork && !startInHotspot &&
+      (networkMode == NetworkMode::JOIN_NETWORK || networkMode == NetworkMode::CREATE_HOTSPOT)) {
+    restartToTransferWithFreshHeap(isApMode);
+  }
   state = WebServerActivityState::MEMORY_ERROR;
   if (webServer) webServer->stop();
   stopDnsServer();
@@ -458,7 +470,7 @@ void CrossPointWebServerActivity::loop() {
           return;
         }
         if (transferMemory::guarded && webServer->hasMemoryError()) {
-          showMemoryError();
+          showMemoryError(false);
           return;
         }
         // Reset watchdog every 32 iterations

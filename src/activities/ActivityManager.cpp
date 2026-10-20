@@ -782,6 +782,10 @@ void ActivityManager::goToJoinNetwork() {
   replaceActivityWith<CrossPointWebServerActivity>(/*startInJoinNetwork=*/true);
 }
 
+void ActivityManager::goToHotspotTransfer() {
+  replaceActivityWith<CrossPointWebServerActivity>(/*startInJoinNetwork=*/false, /*startInHotspot=*/true);
+}
+
 void ActivityManager::goToUsbDrive() {
 #if FREEINK_CAP_USB_MSC || defined(RICKYOS_USB_PREVIEW)
   auto activity = makeUniqueNoThrow<UsbDriveActivity>(renderer, mappedInput);

@@ -214,6 +214,7 @@ enum class SilentRebootTarget : uint32_t {
   ReaderPreloadChineseFont,
   Settings,
   JoinNetwork,
+  Hotspot,
   Count,
 };
 RTC_NOINIT_ATTR uint32_t silentRebootPayload;
@@ -240,6 +241,10 @@ static bool deepSleepInProgress = false;
 #if FREEINK_DEVICE_READPICO
 // Defer font I/O until after activity teardown releases its render lock.
 static bool sdFontReloadPending = false;
+#endif
+
+#if RICKYOS_NETCYCLE_DIAG && !defined(SIMULATOR)
+void runNetCycleDiag(GfxRenderer& renderer);  // src/diag/NetCycleDiag.cpp
 #endif
 
 static bool finishWifiSessionWithoutRestart() {
@@ -321,6 +326,21 @@ void silentRestartToJoinNetwork() {
   silentRebootPayload = Frontlight.isOn() ? SILENT_REBOOT_LIGHT_ON : 0;
   silentRebootMagic = SILENT_REBOOT_MAGIC;
   LOG_DBG("MAIN", "Silent restart (target=join-network)");
+  GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
+  delay(50);
+  ESP.restart();
+}
+
+void restartToTransferWithFreshHeap(const bool hotspot) {
+  if (deepSleepInProgress) return;
+  // Unlike silentRestartToJoinNetwork() this also runs on touch boards: it is reached only
+  // after the transfer service was refused for low internal RAM, and the reboot is the
+  // one thing the refusal screen would have asked the reader to do.
+  silentRebootTarget = static_cast<uint32_t>(hotspot ? SilentRebootTarget::Hotspot : SilentRebootTarget::JoinNetwork);
+  silentRebootFontPointSize = 0;
+  silentRebootPayload = Frontlight.isOn() ? SILENT_REBOOT_LIGHT_ON : 0;
+  silentRebootMagic = SILENT_REBOOT_MAGIC;
+  LOG_INF("MAIN", "Restart for a fresh heap (target=%s)", hotspot ? "hotspot" : "join-network");
   GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
   delay(50);
   ESP.restart();
@@ -947,6 +967,8 @@ void setup() {
     activityManager.goToReader(APP_STATE.openEpubPath);
   } else if (resume == BootResume::Silent && snapshotTarget == SilentRebootTarget::JoinNetwork) {
     activityManager.goToJoinNetwork();
+  } else if (resume == BootResume::Silent && snapshotTarget == SilentRebootTarget::Hotspot) {
+    activityManager.goToHotspotTransfer();
   } else if (resume == BootResume::Silent && snapshotTarget == SilentRebootTarget::Settings) {
     // Back out of the WiFi rows and the user is where they left off, not on Home.
     activityManager.goToSettings();
@@ -1118,6 +1140,9 @@ void loop() {
     if (line.startsWith("CMD:")) {
       String cmd = line.substring(4);
       cmd.trim();
+#if RICKYOS_NETCYCLE_DIAG && !defined(SIMULATOR)
+      if (cmd == "NETCYCLE") runNetCycleDiag(renderer);
+#endif
       if (cmd == "SCREENSHOT") {
         const uint32_t bufferSize = display.getBufferSize();
         logSerial.printf("SCREENSHOT_START:%d\n", bufferSize);

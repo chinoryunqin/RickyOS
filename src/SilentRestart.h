@@ -14,6 +14,9 @@ void silentRestartToReader(bool suppressChineseFontPrompt = false);  // currentl
 void silentRestartToReaderAndPreloadChineseFont(uint8_t pointSize);
 void silentRestartToSettings();
 void silentRestartToJoinNetwork();
+// File transfer refused for low internal RAM: reboot (every board) and come back
+// straight into the same mode on a fresh heap.
+void restartToTransferWithFreshHeap(bool hotspot);
 
 // Reboots immediately after an activity releases exclusive raw storage. The
 // RTC target ensures setup() lands on Home instead of resuming a reader.
