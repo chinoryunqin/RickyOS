@@ -63,6 +63,16 @@
       "ported_sha256": "5e7f8e364bac855ff2496b7ea4c21841889679c127f4d810d3ff01656dbcede6"
     },
     {
+      "path": "lib/Epub/Epub.cpp",
+      "baseline_sha256": "a104a180f95744bcdd6ef4fede82fe33cc20e539cd8fb9e075f0f52002b6e95e",
+      "ported_sha256": "67f4aec95c230e2a9a1d088b1b26f37bf06313dc75ba126a4a8091a0190bd80e"
+    },
+    {
+      "path": "lib/Epub/Epub.h",
+      "baseline_sha256": "0f47da662224f5dac3f3a37aae7bc0d3574abb1aad1424f2293bf30247a89671",
+      "ported_sha256": "c2300800e8b508d7d1ae8ed0572ba3b443b61a8336b99a82c18f938c2d2ac5e2"
+    },
+    {
       "path": "lib/Epub/Epub/ReaderRenderSpec.h",
       "baseline_sha256": "42f8e30e437a10b38a9659698a34f3b00bde48c1418958e9f1970ace61b42321",
       "ported_sha256": "89f52b07f18cc4fe8d7b6787ce0a20c6420074716ed1f0e8c20c2b9f144ab0c9"
@@ -108,6 +118,11 @@
       "ported_sha256": "8bc0ede3c94c11b53f6d74d45053144bf9823de12537333e0a01d60283f31ad7"
     },
     {
+      "path": "lib/FsHelpers/FsHelpers.cpp",
+      "baseline_sha256": "312700b63cdcd3fee0ea93c5043a57da15132e15fce8d5f768725b48fafd732d",
+      "ported_sha256": "95fc42af967df3802e3bbde131298aae3ebbbc7bdd34f25b4653c3549d7af24d"
+    },
+    {
       "path": "lib/I18n/translations/chinese.yaml",
       "baseline_sha256": "021ec5b9e5880155fea752af9c60ce83a259dd69131f9bd12ffe0ca59e3366bd",
       "ported_sha256": "6ef23867e9cdb93e0d69dccc2670ce7892440767a30d92ddd208a7a6d14f24bb"
@@ -121,6 +136,11 @@
       "path": "lib/JpegToBmpConverter/JpegToBmpConverter.cpp",
       "baseline_sha256": "a7bcdaa84264b1f20301c5436baf3fc0d030cf16094ea6e29a14068bba7b506b",
       "ported_sha256": "a59d11706f188d4779938de7453842047760ac4a3be38a874f3c0563ac4fb9a9"
+    },
+    {
+      "path": "lib/LibraryIndex/LibraryBuilder.cpp",
+      "baseline_sha256": "70d8edb5b759d6febf83bfc45e2331c81c34ed3a46b42ba38010367da19d04f1",
+      "ported_sha256": "2f3d11ccf9d3f530affb7d0bb60bf1e2ca004a0de25cd927a9486267491d9e76"
     },
     {
       "path": "lib/Logging/Logging.cpp",
@@ -318,6 +338,11 @@
       "ported_sha256": "648b89b5013aaafdf5e7ab8ad705c3e124dbcf1ff0015d85523148f5f99b1e27"
     },
     {
+      "path": "src/activities/home/FileBrowserActivity.cpp",
+      "baseline_sha256": "9ab832cdfe1b98fdcf8b525a913bef80f97bee889b225e23e22789448cfb790c",
+      "ported_sha256": "ee934d5e2d30761d8e2fa0eac2185fa1b7f9715ebae1c556c10ae71a6a0b515a"
+    },
+    {
       "path": "src/activities/home/InxRecentActivity.h",
       "baseline_sha256": "ec56f474c57f95ba1bc7d3fc64b3e87a67d9d3598a89b7c89d6550b6607336f1",
       "ported_sha256": "d7578f4916c036540d1429eb5b52ad99ad2b3b19c02f030b5078dc6c7d3d4e09"
@@ -325,7 +350,7 @@
     {
       "path": "src/activities/library/LibraryListActivity.cpp",
       "baseline_sha256": "390421f0e356311b536e8d9d3ec0f7805fbe83ca0ee641fec6303ce7a995c465",
-      "ported_sha256": "784339662f12d7b7dbc4c99ff36d1080ef65f4a849cd95d7dad62e668cfdf64d"
+      "ported_sha256": "559cfd4cf7a74e42dcdc314c95660dba64bfde0e83feff72f6ecbd85dd333215"
     },
     {
       "path": "src/activities/network/WifiSelectionActivity.cpp",
@@ -340,7 +365,7 @@
     {
       "path": "src/activities/reader/EpubReaderActivity.cpp",
       "baseline_sha256": "330723cad52ac629fa1451c9ca90cffff0a04b06e0266861e092ff93e8ffa1c9",
-      "ported_sha256": "2e3ac02457509c4b2b7b97468aad086e4e6f2997e2192e7807bd4b68204a5dcf"
+      "ported_sha256": "5f8a44eb622d9230fabe3715bfb6cb547b5546f35ee0f2a0e53612fad50d2ebc"
     },
     {
       "path": "src/activities/reader/EpubReaderActivity.h",
@@ -415,7 +440,7 @@
     {
       "path": "src/components/RickyPageUi.h",
       "baseline_sha256": "8a92bb7d8ebd9a22f899a092a00e9392ec28e4c5b117e257116aad01b43a7d69",
-      "ported_sha256": "5286ab1ef55f3a6879e16a14ff00fc836f4dadd18c8e2ff40ba0869e318f362b"
+      "ported_sha256": "f01858c80a48c36339870eb3b0da27d27fb50e1cdfb65c1b1355d5bbce9d8d53"
     },
     {
       "path": "src/components/RickyProfile.cpp",
@@ -455,7 +480,7 @@
     {
       "path": "src/network/CrossPointWebServer.cpp",
       "baseline_sha256": "cc26e2862bc34cfd502efd63ab616d9c7e577d51e120037525a8be6222c75ee5",
-      "ported_sha256": "44c6569138c4e9a75489670dbc876e71752afd54cd9f5b941f95d100de0ed9b3"
+      "ported_sha256": "bc32e5499cf63c66a60e0a5723b001aa95384b21515659f4cb9c86c4fccf78d0"
     },
     {
       "path": "src/network/CrossPointWebServer.h",

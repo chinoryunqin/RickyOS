@@ -693,6 +693,175 @@
 +  static void compactSingleGlyph(const uint8_t* alignedSrc, uint8_t* packedDst, uint8_t width, uint8_t height, bool is4Bit);
    static int32_t findGlyphIndex(const EpdFontData* fontData, uint32_t codepoint);
  };
+--- a/lib/Epub/Epub.cpp
++++ b/lib/Epub/Epub.cpp
+@@ -9,6 +9,9 @@
+ #include <Txt.h>
+ #include <Utf8.h>
+ #include <ZipFile.h>
++#if defined(RICKYOS_KINDLE_IMPORT)
++#include <KindleImport.h>
++#endif
+ 
+ #include <cstdlib>
+ #include <cstring>
+@@ -300,7 +303,7 @@
+ 
+ void Epub::discoverCssFilesFromZip() {
+   const std::string& opfDir = contentBasePath;
+-  ZipFile zf(filepath);
++  ZipFile zf(archiveFile());
+ 
+   if (!zf.enumerateFilePaths([&](std::string_view filePath) {
+         if (!opfDir.empty() && filePath.find(opfDir) != 0) {
+@@ -370,7 +373,7 @@
+     std::sort(dedupEntries.get(), dedupEntries.get() + cssFiles.size(),
+               [](const CssDedupEntry& lhs, const CssDedupEntry& rhs) { return lhs.pathHash < rhs.pathHash; });
+ 
+-    ZipFile(filepath).enumerateFileEntries([&](std::string_view entryPath, uint32_t crc32, uint32_t compressedSize) {
++    ZipFile(archiveFile()).enumerateFileEntries([&](std::string_view entryPath, uint32_t crc32, uint32_t compressedSize) {
+       if (!FsHelpers::hasCssExtension(entryPath)) {
+         return;
+       }
+@@ -512,6 +515,9 @@
+ // means normal ZIP reads should be used. A hard error refuses the open with a
+ // user-presentable reason.
+ bool Epub::openProtection() {
++#if defined(RICKYOS_KINDLE_IMPORT)
++  if (kindle::supported(filepath)) return true; // Importer explicitly refuses DRM.
++#endif
+   std::string err;
+   decryptor = freeink::content::openProtectedBook(filepath, err);
+   if (!err.empty()) {
+@@ -525,9 +531,34 @@
+   return true;
+ }
+ 
++bool Epub::prepareArchive() {
++#if defined(RICKYOS_KINDLE_IMPORT)
++  if (kindle::supported(filepath)) {
++    bool rebuilt = false;
++    kindle::Error error;
++    if (!kindle::prepare(filepath, cachePath, archivePath, rebuilt, error)) {
++      protectionError = error == kindle::Error::Encrypted ? "kindle encrypted" :
++                        error == kindle::Error::OutOfMemory ? "kindle memory" :
++                        error == kindle::Error::Unsupported ? "kindle unsupported" : "kindle invalid";
++      return false;
++    }
++    if (rebuilt) reportLoad(5);
++  }
++#endif
++  return true;
++}
++
+ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
+   LOG_DBG("EBP", "Loading ePub: %s", filepath.c_str());
+ 
++#if defined(RICKYOS_KINDLE_IMPORT)
++  if (!buildIfMissing && kindle::supported(filepath)) {
++    // Home/statistics may query progress. Never convert a book from that path.
++    archivePath = cachePath + "/kindle.epub";
++    if (!Storage.exists(archivePath.c_str()) || !Storage.exists((cachePath + kindle::kMarkerName).c_str())) return false;
++  } else
++#endif
++  if (!prepareArchive()) return false;
+   if (!openProtection()) return false;
+ 
+   // Initialize spine/TOC cache
+@@ -692,7 +723,7 @@
+ 
+   // Build final book.bin
+   const uint32_t buildStart = millis();
+-  if (!bookMetadataCache->buildBookBin(filepath, bookMetadata)) {
++  if (!bookMetadataCache->buildBookBin(archiveFile(), bookMetadata)) {
+     LOG_ERR("EBP", "Could not update mappings and sizes");
+     return false;
+   }
+@@ -730,6 +761,12 @@
+ bool Epub::loadMetadata(std::string& title, std::string& author) {
+   title.clear();
+   author.clear();
++#if defined(RICKYOS_KINDLE_IMPORT)
++  if (kindle::supported(filepath)) {
++    kindle::Error error;
++    return kindle::metadata(filepath, title, author, error);
++  }
++#endif
+ 
+   if (Txt::isTxtOrMd(filepath)) {
+     title = utf8ComposeNfc(FsHelpers::getFileNameWithoutExtension(filepath));
+@@ -747,7 +784,7 @@
+   }
+   metadataCache.reset();
+ 
+-  ZipFile zip(filepath);
++  ZipFile zip(archiveFile());
+   if (!zip.open()) {
+     LOG_DBG("EBP", "Could not open ePub for package metadata: %s", filepath.c_str());
+     return false;
+@@ -886,9 +923,17 @@
+     setupCacheDir();
+     return generateThumbBmpForCover(height, companionCover);
+   }
++#if defined(RICKYOS_KINDLE_IMPORT)
++  if (kindle::supported(filepath)) {
++    // Never run an entire import during a background shelf-cover scan.
++    const std::string imported = cachePath + "/kindle.epub";
++    if (!Storage.exists(imported.c_str())) return false;
++    archivePath = imported;
++  }
++#endif
+   // Parser input and metadata outlive parsing but exceed the small task stack budget.
+   auto metadata = makeUniqueNoThrow<BookMetadataCache::BookMetadata>();
+-  auto zip = makeUniqueNoThrow<ZipFile>(filepath);
++  auto zip = makeUniqueNoThrow<ZipFile>(archiveFile());
+   if (!metadata || !zip) {
+     LOG_ERR("EBP", "OOM: cover metadata");
+     return false;
+@@ -986,7 +1031,7 @@
+     return content;
+   }
+ 
+-  const auto content = ZipFile(filepath).readFileToMemory(path.c_str(), size, trailingNullByte);
++  const auto content = ZipFile(archiveFile()).readFileToMemory(path.c_str(), size, trailingNullByte);
+   if (!content) {
+     LOG_DBG("EBP", "Failed to read item %s", path.c_str());
+     return nullptr;
+@@ -1033,7 +1078,7 @@
+     return true;
+   }
+ 
+-  return ZipFile(filepath).readFileToStream(path.c_str(), out, chunkSize, allowEarlyStop, psramChunkSize, cancellation);
++  return ZipFile(archiveFile()).readFileToStream(path.c_str(), out, chunkSize, allowEarlyStop, psramChunkSize, cancellation);
+ }
+ 
+ bool Epub::extractItemToFile(const std::string& itemHref, const std::string& destPath, CancelCheck cancellation) const {
+@@ -1065,7 +1110,7 @@
+     return false;
+   }
+   const std::string path = FsHelpers::normalisePath(itemHref);
+-  return ZipFile(filepath).getInflatedFileSize(path.c_str(), size);
++  return ZipFile(archiveFile()).getInflatedFileSize(path.c_str(), size);
+ }
+ 
+ int Epub::getSpineItemsCount() const {
+--- a/lib/Epub/Epub.h
++++ b/lib/Epub/Epub.h
+@@ -20,6 +20,14 @@
+   std::string tocNavItem;
+   // where is the EPUBfile?
+   std::string filepath;
++  // MOBI/KF8 use a disposable archive; filepath remains the progress identity.
++#if defined(RICKYOS_KINDLE_IMPORT)
++  std::string archivePath;
++  const std::string& archiveFile() const { return archivePath.empty() ? filepath : archivePath; }
++#else
++  const std::string& archiveFile() const { return filepath; }
++#endif
++  bool prepareArchive();
+   // the base path for items in the EPUB file
+   std::string contentBasePath;
+   // Uniq cache key based on filepath
 --- a/lib/Epub/Epub/ReaderRenderSpec.h
 +++ b/lib/Epub/Epub/ReaderRenderSpec.h
 @@ -36,8 +36,16 @@
@@ -1189,6 +1358,18 @@
  
    // One-shot parse: builds every page before returning (begin + step* + finish).
    bool parseAndBuildPages();
+--- a/lib/FsHelpers/FsHelpers.cpp
++++ b/lib/FsHelpers/FsHelpers.cpp
+@@ -177,6 +177,9 @@
+ bool hasMarkdownExtension(std::string_view fileName) { return checkFileExtension(fileName, ".md"); }
+ 
+ bool hasReflowableBookExtension(std::string_view fileName) {
++#if defined(RICKYOS_KINDLE_IMPORT)
++  if (checkFileExtension(fileName, ".mobi") || checkFileExtension(fileName, ".azw3")) return true;
++#endif
+   return hasEpubExtension(fileName) || hasTxtExtension(fileName) || hasMarkdownExtension(fileName);
+ }
+ 
 --- a/lib/I18n/translations/chinese.yaml
 +++ b/lib/I18n/translations/chinese.yaml
 @@ -1600,3 +1600,49 @@
@@ -1304,6 +1485,32 @@
    return jpegFileToBmpStreamInternal(jpegFile, bmpOut, targetMaxWidth, targetMaxHeight, Output::Gray8, true);
  #else
    return jpegFileTo1BitBmpStreamWithSize(jpegFile, bmpOut, targetMaxWidth, targetMaxHeight);
+--- a/lib/LibraryIndex/LibraryBuilder.cpp
++++ b/lib/LibraryIndex/LibraryBuilder.cpp
+@@ -189,8 +189,7 @@
+ }
+ 
+ bool isBookName(const std::string& name) {
+-  return FsHelpers::checkFileExtension(name, ".epub") || FsHelpers::checkFileExtension(name, ".txt") ||
+-         FsHelpers::checkFileExtension(name, ".md");
++  return FsHelpers::hasReflowableBookExtension(name);
+ }
+ 
+ // Hidden entries (including macOS AppleDouble sidecars) and system folders such
+@@ -331,7 +330,12 @@
+   entry.pathHash = clixPathHash(fullPath.data(), fullPath.size());
+   const int priorIndex = findPrior(st, entry.pathHash);
+ 
+-  const bool extractionExpected = st.readMetadata && FsHelpers::hasEpubExtension(name);
++  bool metadataFormat = FsHelpers::hasEpubExtension(name);
++#if defined(RICKYOS_KINDLE_IMPORT)
++  metadataFormat = metadataFormat || FsHelpers::checkFileExtension(name, ".mobi") ||
++                   FsHelpers::checkFileExtension(name, ".azw3");
++#endif
++  const bool extractionExpected = st.readMetadata && metadataFormat;
+   const uint8_t expectedStatus = extractionExpected ? CLIX_METADATA_EXTRACTED : CLIX_METADATA_NOT_ATTEMPTED;
+   bool reuseMetadata = false;
+   ClixRecord priorRecord{};
 --- a/lib/Logging/Logging.cpp
 +++ b/lib/Logging/Logging.cpp
 @@ -2,6 +2,9 @@
@@ -3508,6 +3715,18 @@
 +  bool grayShown_ = false;   // a full 16-gray frame is on the glass; minute updates can be regional
  };
  
+--- a/src/activities/home/FileBrowserActivity.cpp
++++ b/src/activities/home/FileBrowserActivity.cpp
+@@ -755,8 +755,7 @@
+   } else {
+     const std::string fullPath = basepath + entry;
+     lock.unlock();
+-    if (!FsHelpers::hasEpubExtension(fullPath) && !FsHelpers::hasTxtExtension(fullPath) &&
+-        !FsHelpers::hasMarkdownExtension(fullPath) && !FsHelpers::hasBmpExtension(fullPath) &&
++    if (!FsHelpers::hasReflowableBookExtension(fullPath) && !FsHelpers::hasBmpExtension(fullPath) &&
+         !FsHelpers::hasPngExtension(fullPath) && !FsHelpers::hasJpgExtension(fullPath)) {
+       showNotice(StrId::STR_RICKY_NO_PREVIEW);
+       return;
 --- a/src/activities/home/InxRecentActivity.h
 +++ b/src/activities/home/InxRecentActivity.h
 @@ -84,7 +84,7 @@
@@ -3521,7 +3740,7 @@
    bool wantsGraySettle() const override { return true; }
 --- a/src/activities/library/LibraryListActivity.cpp
 +++ b/src/activities/library/LibraryListActivity.cpp
-@@ -1194,7 +1194,7 @@
+@@ -1194,11 +1194,13 @@
                                                GUI.drawCoverThumbFill(renderer, bitmap,
                                                                       Rect{rect.x, rect.y, rect.width, rect.height});
                                       });
@@ -3530,6 +3749,13 @@
      }
      if (!painted) {
        const auto& path = shelfPaths[slot];
+-      const char* format = FsHelpers::hasEpubExtension(path) ? "EPUB" : FsHelpers::hasTxtExtension(path) ? "TXT" : "MD";
++      const char* format = FsHelpers::hasEpubExtension(path) ? "EPUB" : FsHelpers::hasTxtExtension(path) ? "TXT" :
++                           FsHelpers::checkFileExtension(path, ".mobi") ? "MOBI" :
++                           FsHelpers::checkFileExtension(path, ".azw3") ? "AZW3" : "MD";
+       RickyDesignUi::cover(renderer, rect, shelfTitles[slot].c_str(), format);
+     }
+     const fui::Rect titleRect{static_cast<int16_t>(cell.x + cardSideInset),
 --- a/src/activities/network/WifiSelectionActivity.cpp
 +++ b/src/activities/network/WifiSelectionActivity.cpp
 @@ -1,5 +1,10 @@
@@ -3767,7 +3993,20 @@
    constexpr unsigned long IDLE_PREWARM_DEBOUNCE_MS = 400;
    auto* fcm = renderer.getFontCacheManager();
    {
-@@ -1891,7 +1914,7 @@
+@@ -1680,6 +1703,12 @@
+   bool offerSync = false;
+   if (perr == "txt progress migration failed") {
+     msg = StrId::STR_TXT_PROGRESS_MIGRATION_FAILED;
++  } else if (perr == "kindle memory") {
++    msg = StrId::STR_MEMORY_ERROR;
++  } else if (perr == "kindle unsupported") {
++    msg = StrId::STR_RICKY_NO_PREVIEW;
++  } else if (perr == "kindle invalid") {
++    msg = StrId::STR_PAGE_LOAD_ERROR;
+   } else if (perr == "access expired") {
+     msg = StrId::STR_LOAN_EXPIRED;
+   } else if (perr == "loan date unverified") {
+@@ -1891,7 +1920,7 @@
        return;
      }
  
@@ -3776,7 +4015,7 @@
      ++sectionGeneration_;
  #endif
      const bool cacheLoaded = section->loadSectionFile(renderSpec);
-@@ -2307,14 +2330,19 @@
+@@ -2307,14 +2336,19 @@
    }
  }
  
@@ -3799,7 +4038,7 @@
  bool EpubReaderActivity::pageCacheEligible() const {
    // No !section->isBuilding() here, deliberately. The page cache renders ONE page --
    // the current one or the next -- and Section::loadPage() is written to serve exactly
-@@ -2328,7 +2356,12 @@
+@@ -2328,7 +2362,12 @@
    // engages at all -- every turn is a full render instead of the cached one.
    return !pageCacheFailed_ && section && renderer.hasFrameBuffer() && !activityManager.isSwitchPending() &&
           overlay == Overlay::None && fontPromptState == FontPromptState::Idle && !renderer.isInverted() &&
@@ -3813,7 +4052,7 @@
  }
  
  ReaderPageCacheKey EpubReaderActivity::pageCacheKey(const int page, const int top, const int right, const int bottom,
-@@ -2371,6 +2404,11 @@
+@@ -2371,6 +2410,11 @@
  
  void EpubReaderActivity::renderIdle(const uint32_t generation) {
    const auto cancelled = [&] { return activityManager.idleRenderCancelled(generation); };
@@ -3825,7 +4064,7 @@
    // Every exit below names the condition it took. Without that, "the cache never hits"
    // is indistinguishable from "the build was cancelled", "the layout moved since the
    // last render" and "the next page has images" -- and each of those needs a different
-@@ -2400,6 +2438,9 @@
+@@ -2400,6 +2444,9 @@
    const auto& layout = renderedPageKey_;
    // A main-loop reflow/jump may have replaced the section since the last render.
    if (layout != pageCacheKey(section->currentPage, layout.top, layout.right, layout.bottom, layout.left)) {
@@ -3835,7 +4074,7 @@
      LOG_DBG("ERS", "Page cache: skip, layout moved since the last render");
      return;
    }
-@@ -2419,19 +2460,23 @@
+@@ -2419,19 +2466,23 @@
    };
    auto forward = layout;
    ++forward.page;
@@ -3868,7 +4107,7 @@
  // On a chapter's last page the forward slot is free: build the next chapter and render
  // its first page into it. Comics put one picture in each chapter, so without this every
  // turn decoded a JPEG in the foreground (~3.5 s); now it happens while the page is read.
-@@ -2464,6 +2509,12 @@
+@@ -2464,6 +2515,12 @@
    }
    if (nextSection->pageCount == 0 || activityManager.idleRenderCancelled(generation)) return;
    const bool ready = buildPageCacheSlot(0, key, generation, nextSection.get());
@@ -3881,7 +4120,7 @@
    LOG_DBG("ERS", "Next chapter prefetch: spine %d ready=%d in %lums", next, ready, millis() - started);
  }
  #endif
-@@ -2527,13 +2578,18 @@
+@@ -2527,13 +2584,18 @@
    if (!pageCacheBase_[slot]) {
      constexpr size_t kContiguousReserve = 16 * 1024;
      // Reserve the slots still to allocate; the forward slot is already charged for slot 1.
@@ -3904,7 +4143,7 @@
        freePageCache();
        pageCacheFailed_ = true;
        LOG_ERR("ERS", "Page cache off: PSRAM allocation of %u B failed", static_cast<unsigned>(4 * bytes));
-@@ -2579,12 +2635,26 @@
+@@ -2579,12 +2641,26 @@
    const readingMode::Box textBox = readingMode::textBox(renderer.getScreenWidth(), renderer.getScreenHeight(),
                                                          {key.top, key.right, key.bottom, key.left});
    const int pitch = renderer.getLineHeight(key.spec.fontId, key.spec.lineCompression);
@@ -3931,7 +4170,7 @@
    };
  
    // Load glyphs on demand: a whole-page prewarm cannot be interrupted. Check
-@@ -2599,7 +2669,7 @@
+@@ -2599,7 +2675,7 @@
                                              readerTextWeightSpread(key.textWeight));
      for (const auto& element : page->elements) {
        if (cancelled()) return false;
@@ -3940,7 +4179,7 @@
      }
      if (vertical) readerChrome::drawColumnRules(renderer, *page, textBox, pitch);
      // Match foreground ordering: all text first, then the guide lines.
-@@ -2638,7 +2708,7 @@
+@@ -2638,7 +2714,7 @@
                                                readerTextWeightSpread(key.textWeight));
        for (const auto& element : page->elements) {
          if (cancelled()) return false;
@@ -3949,7 +4188,7 @@
        }
        if (vertical) readerChrome::drawColumnRules(renderer, *page, textBox, pitch);
      }
-@@ -2671,6 +2741,10 @@
+@@ -2671,6 +2747,10 @@
    }
    pageCacheMissingCodepoint_[slot] = fcm ? fcm->consumeMissingChineseCodepoint() : 0;
    pageCache_[slot].state = ReaderPageCache::State::Ready;
@@ -3960,7 +4199,7 @@
    LOG_DBG("ERS", "Page cache: slot %d, page %d ready in %lums", slot, key.page, millis() - started);
    return true;
  }
-@@ -2732,7 +2806,7 @@
+@@ -2732,7 +2812,7 @@
        if (manager) manager->clearCache();
      }
    } rawFontCacheGuard;
@@ -3969,7 +4208,7 @@
    const auto key = pageCacheKey(section ? section->currentPage : -1, orientedMarginTop, orientedMarginRight,
                                  orientedMarginBottom, orientedMarginLeft);
    // Either slot may hold this page: slot 0 was built for it as a forward turn, slot 1
-@@ -2779,8 +2853,7 @@
+@@ -2779,8 +2859,7 @@
    // RickyOS: every text face (2-bit downloaded fonts too) and synthetic bold draw straight
    // into the 16-level frame, and JPEG illustrations decode into it, so anti-aliased pages
    // take the single-render path.
@@ -3979,7 +4218,7 @@
    const bool needsAnyGrayscale = grayscaleEnabled && (SETTINGS.textAntiAliasing || pageHasImages);
    const bool absoluteImageGrayscale = grayscaleEnabled && pageHasImages && !gpio.deviceIsX3() &&
                                        display.getController() == HalDisplay::Controller::UC8279 &&
-@@ -2844,7 +2917,7 @@
+@@ -2844,7 +2923,7 @@
    };
  
    unsigned long cacheBaseMs = 0;
@@ -3988,7 +4227,7 @@
    if (use16LevelText) {
      // The 16-level pass below clears the frame and renders (or copies from the cache)
      // the page, writing the B/W proxy as it goes, so a B/W render here is thrown away.
-@@ -2859,7 +2932,7 @@
+@@ -2859,7 +2938,7 @@
    {
      renderPageWithGuideLines();
    }
@@ -3997,7 +4236,7 @@
    const uint32_t missingCodepoint =
        pageCacheHit ? pageCacheMissingCodepoint_[pageCacheLiveSlot_] : fcm->consumeMissingChineseCodepoint();
  #else
-@@ -2869,7 +2942,14 @@
+@@ -2869,7 +2948,14 @@
      uint32_t expected = 0;
      pendingMissingChineseCodepoint_.compare_exchange_strong(expected, missingCodepoint, std::memory_order_relaxed);
    }
@@ -4012,7 +4251,7 @@
    const auto tBwRender = millis();
  
    if (absoluteImageGrayscale) {
-@@ -2912,7 +2992,7 @@
+@@ -2912,7 +2998,7 @@
      const auto t16Begin = millis();
      if (renderer.beginGrayscale16()) {
        const auto t16Cleared = millis();
@@ -4021,7 +4260,7 @@
        if (pageCacheHit && pageCacheIs16_[pageCacheLiveSlot_] && pageCache16_[pageCacheLiveSlot_]) {
          memcpy(renderer.grayscale16Frame(), pageCache16_[pageCacheLiveSlot_].get(), renderer.grayscale16FrameBytes());
          memcpy(renderer.getFrameBuffer(), pageCacheBase_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
-@@ -2926,6 +3006,13 @@
+@@ -2926,6 +3012,13 @@
        renderStatusBar();
        LOG_DBG("ERS", "16-level timing: before=%lums begin=%lums page=%lums status=%lums", t16Begin - t0,
                t16Cleared - t16Begin, t16Page - t16Cleared, millis() - t16Page);
@@ -4035,7 +4274,7 @@
  #if RICKYOS_PAINT_PROFILE
        {
          // Device breakdown of a reader page (profiling builds only).
-@@ -2934,8 +3021,8 @@
+@@ -2934,8 +3027,8 @@
                  "reader page prewarm=%lums before=%lums page=%lums status=%lums cached=%d weight=%u bold=%u "
                  "text=%lums/%lu fill=%lums image=%lums",
                  tPrewarm - t0, t16Begin - tPrewarm, t16Page - t16Cleared, millis() - t16Page, pageCacheHit ? 1 : 0,
@@ -4046,7 +4285,7 @@
          profile = {};
          fcm->logStats("page");
  #if CROSSPOINT_VECTOR_FONTS
-@@ -2961,6 +3048,10 @@
+@@ -2961,6 +3054,10 @@
        if (renderer.commitGrayscale16()) {
          const auto tEnd = millis();
          LOG_DBG("ERS", "Page render: 16-level text total=%lums", tEnd - t0);
@@ -4057,7 +4296,7 @@
  #if RICKYOS_PAINT_PROFILE
          LOG_INF("PERF", "reader commit=%lums total=%lums", tEnd - tCommit, tEnd - t0);
  #endif
-@@ -3137,7 +3228,7 @@
+@@ -3137,7 +3234,7 @@
        }
        const auto tBwStore = millis();
  
@@ -4066,7 +4305,7 @@
        if (pageCacheHit) {
          // Both planes were rendered at idle; putting them in place is one copy
          // each instead of a full page render each.
-@@ -3164,7 +3255,7 @@
+@@ -3164,7 +3261,7 @@
          return;
        }
  
@@ -5375,7 +5614,20 @@
    if (!books || index < 0 || index >= static_cast<int>(books->size())) return false;
 --- a/src/components/RickyPageUi.h
 +++ b/src/components/RickyPageUi.h
-@@ -227,7 +227,7 @@
+@@ -188,7 +188,11 @@
+ 
+ // Index titles fall back to the file name; show "浮生六记", not "浮生六记.txt".
+ inline void stripBookExtension(std::string& title) {
+-  static constexpr const char* extensions[] = {".epub", ".txt", ".md"};
++  static constexpr const char* extensions[] = {".epub", ".txt", ".md"
++#if defined(RICKYOS_KINDLE_IMPORT)
++    , ".mobi", ".azw3"
++#endif
++  };
+   for (const char* extension : extensions) {
+     const size_t length = strlen(extension);
+     if (title.size() <= length) continue;
+@@ -227,7 +231,7 @@
    if (rect.empty()) return;
    const auto black = fui::Paint::solid(fui::Color::Black);
    target.fill(rect, fui::Paint::solid(fui::Color::White));
@@ -5384,7 +5636,7 @@
    const int16_t rule = std::max<int16_t>(5, rect.width / 22);
    if (rect.width > rule * 4 && rect.height > rule * 4)
      target.stroke(fui::Rect{static_cast<int16_t>(rect.x + rule), static_cast<int16_t>(rect.y + rule),
-@@ -276,7 +276,7 @@
+@@ -276,7 +280,7 @@
                       Motif kind = Motif::Count) {
    if (rect.empty()) return;
    target.fill(rect, fui::Paint::solid(fui::Color::White));
@@ -5704,7 +5956,17 @@
  #include <BookKey.h>
  #include <Crypto.h>
  #include <DeviceSecret.h>
-@@ -238,7 +241,14 @@
+@@ -101,8 +104,7 @@
+ // Formats the library index tracks (LibraryIndex isBookName): an upload of any
+ // of these must mark the index dirty so the next Library entry rebuilds it.
+ bool isLibraryBookFile(const String& filename) {
+-  return FsHelpers::checkFileExtension(filename, ".epub") || FsHelpers::checkFileExtension(filename, ".txt") ||
+-         FsHelpers::checkFileExtension(filename, ".md");
++  return FsHelpers::hasReflowableBookExtension(std::string_view(filename.c_str(), filename.length()));
+ }
+ // A font sent through the plain file upload (not the font installer) still has to reach
+ // the font list; the registry is otherwise re-scanned only at boot.
+@@ -238,7 +240,14 @@
  
    // Disable WiFi sleep to improve responsiveness and prevent 'unreachable' errors.
    // This is critical for reliable web server operation on ESP32.
@@ -5719,7 +5981,7 @@
    // Default varies by ESP32 core version. The activity's loss-recovery loop
    // relies on driver retries during transient disconnects.
    WiFi.setAutoReconnect(true);
-@@ -454,6 +464,9 @@
+@@ -454,6 +463,9 @@
    fontUpload.buffer.reset();
    fileListBatch.reset();
    LOG_DBG("WEB", "Web server stopped and deleted");
@@ -5729,7 +5991,7 @@
    LOG_DBG("WEB", "[MEM] Free heap after delete server: %d bytes", ESP.getFreeHeap());
  
    // Note: Static upload variables (uploadFileName, uploadPath, uploadError) are declared
-@@ -487,6 +500,9 @@
+@@ -487,6 +499,9 @@
  
    // Print debug every 10 seconds to confirm handleClient is being called
    if (millis() - lastDebugPrint > 10000) {

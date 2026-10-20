@@ -9,6 +9,8 @@ idf_component_register(
   "${APP_ROOT}/src/activities/apps/reading-stats/RickyMonthReportActivity.cpp"
   "${APP_ROOT}/src/activities/apps/reading-stats/RickyBadgesActivity.cpp"
   "port/LoggingProxy.cpp"
+  "port/KindleDocument.cpp"
+  "port/KindleImport.cpp"
   "${APP_ROOT}/lib/Txt/TxtEncoding.cpp"
   "${APP_ROOT}/lib/Utf8/Utf8.cpp"
   "${APP_ROOT}/lib/Txt/TxtChapterIndex.cpp"
@@ -659,6 +661,7 @@ if(NOT "$ENV{RICKYOS_PLUS_VERSION}" STREQUAL "")
   set(RICKYOS_PLUS_APP_VERSION "$ENV{RICKYOS_PLUS_VERSION}")
 endif()
 target_compile_definitions(${COMPONENT_LIB} PUBLIC
+  RICKYOS_KINDLE_IMPORT=1
     RICKYOS_PRODUCT=1 CROSSPOINT_PRODUCT_NAME="RickyOS" CROSSPOINT_VERSION="${RICKYOS_PLUS_APP_VERSION}"
     CROSSMUX_UI_PROFILE_HIGH_DPI=1 HYPHENATION_ENGLISH_ONLY=1
     XML_GE=0 XML_CONTEXT_BYTES=1024 MINIZ_NO_ZLIB_COMPATIBLE_NAMES=1

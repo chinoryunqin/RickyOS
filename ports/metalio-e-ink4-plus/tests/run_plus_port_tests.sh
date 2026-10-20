@@ -71,3 +71,5 @@ python3 tests/test_plus_reader_waveform.py
 python3 tests/test_plus_direct_calibration.py
 python3 tests/test_plus_usb_retry.py
 python3 tests/test_plus_ota_manifest.py
+python3 tests/test_plus_kindle_document.py
+python3 tests/test_plus_kindle_import.py
