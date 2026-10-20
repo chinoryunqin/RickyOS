@@ -175,12 +175,12 @@
     {
       "path": "lib/I18n/translations/chinese.yaml",
       "baseline_sha256": "021ec5b9e5880155fea752af9c60ce83a259dd69131f9bd12ffe0ca59e3366bd",
-      "ported_sha256": "36eabf1c7d130f4acc36c7a02e6462278691d53bbbd53e6d403b114fbe90dee9"
+      "ported_sha256": "efad2e0eb56fdf0a28b7eac6f482d74c7aa24797a6529d195e7fd23fac50bebf"
     },
     {
       "path": "lib/I18n/translations/english.yaml",
       "baseline_sha256": "85a4d226f1400f6a185759420c63ecff5f81eeb3722afd66c312d4aec6bcb315",
-      "ported_sha256": "9174da924092dffaf3c8dae421a6942130e7f2e86f1a34c71632f8c882bdb3a7"
+      "ported_sha256": "ca49bb99b8f01cbdc52fe4f6521c76a8368d069929c6dc5637194fd6f6ab3b55"
     },
     {
       "path": "lib/JpegToBmpConverter/JpegToBmpConverter.cpp",
@@ -363,9 +363,19 @@
       "ported_sha256": "c3948133b98f25e9185f00d4390c19ffa7df0dcebe88954b1f47bfc0f9083d32"
     },
     {
+      "path": "src/activities/apps/gomoku/GomokuArt.h",
+      "baseline_sha256": null,
+      "ported_sha256": "6c431a76f67084e48f8df2f15d76f723e605b645b2c4b6e926372a99fa41bd75"
+    },
+    {
       "path": "src/activities/apps/gomoku/GomokuGameActivity.cpp",
       "baseline_sha256": "e473a2c121bd1f625814ff968ff71317e71f8dddf2e365e58038de5bd86c1efa",
-      "ported_sha256": "86abf45520ed2732adfc702310753cc44e7a4c6a4c2cad15b0b5662420a38ff3"
+      "ported_sha256": "3b84d482e874699087d035690fd400267014c52c1517a9a86ca56975960f9309"
+    },
+    {
+      "path": "src/activities/apps/gomoku/GomokuGameActivity.h",
+      "baseline_sha256": "5f9a966f17bc8c7c6e04a513b20907988d407558455e850b1cb13e239f0192e6",
+      "ported_sha256": "010455834f8008077ef8fe6409c9040bd500c44508072bdc0be26adfc3c177e6"
     },
     {
       "path": "src/activities/apps/gomoku/GomokuLayout.h",
@@ -395,12 +405,12 @@
     {
       "path": "src/activities/apps/gomoku/SkillGomokuActivity.cpp",
       "baseline_sha256": null,
-      "ported_sha256": "faa69859c7973d35950322213244a204c3edd7eb86ecfd4963fcdced8ce5428d"
+      "ported_sha256": "7353acb0d3b370eb46c83fcfdf72bdff1eb8bb0be7bcecdf1fbf976b46796ec1"
     },
     {
       "path": "src/activities/apps/gomoku/SkillGomokuActivity.h",
       "baseline_sha256": null,
-      "ported_sha256": "fec5a8e715237fd3310c5e14d2df829bdb6bb182e0842a6469a62fceeed62f7f"
+      "ported_sha256": "7261f4167c9df79058d740546c1b85a58315524c6aedd852375b286daf911dd6"
     },
     {
       "path": "src/activities/apps/gomoku/SkillGomokuStore.cpp",

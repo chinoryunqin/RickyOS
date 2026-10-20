@@ -18,11 +18,12 @@ args = parser.parse_args()
 if not (args.baseline_repo / 'freeink-sdk/.git').exists():
     raise SystemExit('Baseline repository must have an initialized SDK checkout')
 directory = "src/activities/apps/gomoku"
-paths = [p.relative_to(ROOT).as_posix() for pattern in ("SkillGomoku*", "GomokuModeActivity*", "GomokuLayout.h")
+paths = [p.relative_to(ROOT).as_posix() for pattern in ("SkillGomoku*", "GomokuModeActivity*", "GomokuLayout.h", "GomokuArt.h")
          for p in (ROOT / directory).glob(pattern) if p.is_file()]
 if not paths:
     raise SystemExit("Shared Skill Gomoku sources missing")
 paths.append(f"{directory}/GomokuGameActivity.cpp")
+paths.append(f"{directory}/GomokuGameActivity.h")
 if args.fonts:
     for name in ('notosans_cjk_14', 'notosans_cjk_16',
                  'ricky_caption_10_regular', 'ricky_title_16_bold', 'ricky_headline_14_medium', 'ricky_display_23_bold'):

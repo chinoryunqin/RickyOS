@@ -927,6 +927,8 @@ STR_SGM_REVERSE_HINT: "Swap all stone colours; not players or energy. Cost 6; on
 STR_SGM_WIPE_HINT: "Clear both colours in a 3×3 area. Cost 8; once per game."
 STR_SGM_REST_HINT: "Gain 3 energy (max 8), then end your turn."
 STR_SGM_ENERGY: "Black %u/8    White %u/8"
+STR_SGM_ENERGY_ONE: "Energy %u/8"
+STR_SGM_SKILL_DETAIL: "%u energy · %s"
 STR_SGM_SKILL_LABEL: "%s · %u energy\n%s"
 STR_SGM_READY: "Ready"
 STR_SGM_USED: "Used this game"

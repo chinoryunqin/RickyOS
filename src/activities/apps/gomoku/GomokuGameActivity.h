@@ -18,6 +18,7 @@ class GomokuGameActivity final : public Activity {
   void onExit() override;
   void loop() override;
   void render(RenderLock&&) override;
+  bool wantsGraySettle() const override { return true; }  // 16-level UI like the rest of RickyOS
 
  private:
   enum class State : uint8_t { Playing, GameMenu, GameOver };
@@ -63,6 +64,9 @@ class GomokuGameActivity final : public Activity {
   GomokuBoard::Stone resignWinner = GomokuBoard::Stone::Empty;
 
   // Geometry helpers (depend on boardSize).
+  int boardAreaTop() const;
+  int playersTop() const;
+  int playersHeight() const;
   int boardPitch() const;
   int boardOriginX() const;
   int boardOriginY() const;

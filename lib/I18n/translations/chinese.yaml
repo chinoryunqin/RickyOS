@@ -875,6 +875,8 @@ STR_SGM_REVERSE_HINT: "交换全部棋子颜色，不交换能量和身份。消
 STR_SGM_WIPE_HINT: "选定中心，清空周围 3×3 的双方棋子。消耗 8 能量，每局限一次。"
 STR_SGM_REST_HINT: "恢复 3 能量，上限 8；结束本回合。"
 STR_SGM_ENERGY: "黑棋 %u/8 能量    白棋 %u/8 能量"
+STR_SGM_ENERGY_ONE: "能量 %u/8"
+STR_SGM_SKILL_DETAIL: "%u 能量 · %s"
 STR_SGM_SKILL_LABEL: "%s · %u 能量\n%s"
 STR_SGM_READY: "可以发动"
 STR_SGM_USED: "本局已使用"

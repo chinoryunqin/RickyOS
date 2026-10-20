@@ -13,6 +13,7 @@ class SkillGomokuActivity final : public Activity, private UiAppHost {
   void prepareForSleep() override;
   void loop() override;
   void render(RenderLock&&) override;
+  bool wantsGraySettle() const override { return true; }  // 16-level UI like the rest of RickyOS
 
  private:
   enum class Page : uint8_t { Menu, Board, Skills, Pause, Rules };
@@ -45,6 +46,7 @@ class SkillGomokuActivity final : public Activity, private UiAppHost {
   static void onControl(const freeink::ui::ActionEvent& event, void* user);
   void buildScreen(UiScreen& screen);
   void drawBoard(UiScreen& screen);
+  const char* pageTitle() const;
   void activate(int index);
   void back();
   void changePage(Page next);

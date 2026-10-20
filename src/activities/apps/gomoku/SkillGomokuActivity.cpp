@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstdio>
 
+#include "GomokuArt.h"
 #include "GomokuLayout.h"
 #include "GomokuModeActivity.h"
 #include "activities/apps/GameUi.h"
@@ -59,10 +60,6 @@ const char* skillHint(Skill skill, bool pickingSource) {
     default:
       return tr(STR_SGM_PLACE_HINT);
   }
-}
-void text(fui::DrawTarget& target, fui::Rect rect, const char* label, fui::TextStyle style, int lines = 1) {
-  style.maxLines = lines;
-  target.text(rect, label, style);
 }
 }  // namespace
 
@@ -350,55 +347,54 @@ void SkillGomokuActivity::screenFn(UiScreen& screen, void* user) {
   static_cast<SkillGomokuActivity*>(user)->buildScreen(screen);
 }
 
+const char* SkillGomokuActivity::pageTitle() const {
+  switch (page) {
+    case Page::Pause:
+      return tr(STR_SGM_MENU);
+    case Page::Skills:
+      return tr(STR_SGM_SKILLS);
+    case Page::Rules:
+      return tr(STR_SGM_RULES);
+    default:
+      return tr(STR_SGM_TITLE);
+  }
+}
+
 void SkillGomokuActivity::buildScreen(UiScreen& screen) {
+  namespace ds = ricky::ds;
   const auto& m = UITheme::getInstance().getMetrics();
   const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
-  const int line = screen.target().lineHeight(screen.theme().bodyText.font);
-  const int gap = std::max(8, int(screen.theme().spaceMd));
-  const int side = std::max(16, int(screen.theme().spaceLg));
+  // The standard "← title" header is drawn in render(); content starts under it, inside
+  // the system page margins.
   screen.setContentMarginFromScreen(fui::Insets{
-      static_cast<int16_t>(safe.y + m.topPadding),
-      static_cast<int16_t>(renderer.getScreenWidth() - safe.x - safe.width + side),
-      static_cast<int16_t>(renderer.getScreenHeight() - safe.y - safe.height), static_cast<int16_t>(safe.x + side)});
-  const auto heading = screen.takeTop(std::max(48, line * 2), gap);
-  const fui::Rect close{heading.x, heading.y, static_cast<int16_t>(std::max(72, line * 3)), heading.height};
-  fui::ButtonProps button;
-  button.label = tr(STR_BACK);
-  button.action = Control;
-  button.value = 8;
-  button.text = screen.theme().smallText;
-  button.inputMask = fui::InputTouch;
-  button.minTouchSize = 0;  // never expand neighbouring hit regions
-  fui::button(screen.frame(), close, button);
-  auto title = heading;
-  title.x += close.width + gap;
-  title.width -= close.width + gap;
-  text(screen.target(), title, tr(STR_SGM_TITLE), screen.theme().titleText);
+      static_cast<int16_t>(safe.y + m.topPadding + m.headerHeight + ds::space::k2),
+      static_cast<int16_t>(renderer.getScreenWidth() - safe.x - safe.width + ds::space::kPageMargin),
+      static_cast<int16_t>(renderer.getScreenHeight() - safe.y - safe.height + ds::space::k2),
+      static_cast<int16_t>(safe.x + ds::space::kPageMargin)});
   if (page == Page::Board) {
     drawBoard(screen);
     return;
   }
+  const int bodyLine = renderer.getLineHeight(RickyDesignUi::BODY);
+  const int captionLine = renderer.getLineHeight(RickyDesignUi::CAPTION);
+  const int gap = ds::space::k3;
 
   if (page == Page::Rules) {
     const char* pages[] = {tr(STR_SGM_RULES_1), tr(STR_SGM_RULES_2), tr(STR_SGM_RULES_3)};
-    const auto footer = screen.takeBottom(std::max(48, line * 2), gap);
-    auto style = screen.theme().bodyText;
-    style.maxLines = 24;
-    screen.target().text(screen.contentRect(), pages[rulesPage], style);
-    button.label = tr(STR_BACK);
-    button.value = 0;
-    button.state = selected == 0 ? fui::StateSelected : fui::StateNormal;
+    const auto footer = screen.takeBottom(std::max<int>(ds::layout::kTouchMin, bodyLine + 2 * ds::space::k5), gap);
+    const auto body = screen.contentRect();
+    RickyDesignUi::text(renderer, body, pages[rulesPage], RickyDesignUi::BODY, false, fui::TextAlign::Left, 40);
     auto half = footer;
-    half.width = (footer.width - gap) / 2;
-    fui::button(screen.frame(), half, button);
-    half.x = footer.right() - half.width;
-    button.label = tr(STR_SGM_NEXT_RULES);
-    button.value = 1;
-    button.state = selected == 1 ? fui::StateSelected : fui::StateNormal;
-    fui::button(screen.frame(), half, button);
+    half.width = static_cast<int16_t>((footer.width - gap) / 2);
+    GUI.drawActionButton(renderer, Rect(half.x, half.y, half.width, half.height), tr(STR_BACK), selected == 0);
+    screen.frame().hit(half, Control, 0, fui::InputTouch);
+    half.x = static_cast<int16_t>(footer.right() - half.width);
+    GUI.drawActionButton(renderer, Rect(half.x, half.y, half.width, half.height), tr(STR_SGM_NEXT_RULES), selected == 1);
+    screen.frame().hit(half, Control, 1, fui::InputTouch);
     return;
   }
 
+  const char* details[8]{};
   if (page == Page::Menu) {
     const char* names[] = {tr(STR_GAME_CONTINUE),   tr(STR_GOMOKU_NEW_AI_15), tr(STR_GOMOKU_NEW_2P_15),
                            tr(STR_GOMOKU_NEW_AI_9), tr(STR_GOMOKU_NEW_2P_9),  tr(STR_SGM_RULES)};
@@ -408,9 +404,12 @@ void SkillGomokuActivity::buildScreen(UiScreen& screen) {
                            tr(STR_SGM_RULES),     tr(STR_GOMOKU_RESIGN), tr(STR_EXIT)};
     for (int i = 0; i < 6; ++i) snprintf(labels[i], sizeof(labels[i]), "%s", names[i]);
   } else {
-    const auto status = screen.takeTop(std::max(44, line * 2), gap);
-    snprintf(labels[0], sizeof(labels[0]), tr(STR_SGM_ENERGY), game.energy[0], game.energy[1]);
-    text(screen.target(), status, labels[0], screen.theme().bodyText);
+    // Skills: the side to move and its energy first, then one card per skill.
+    snprintf(actionNotice, sizeof(actionNotice), tr(STR_SGM_ENERGY_ONE), game.energy[game.turn - 1]);
+    const auto status = screen.takeTop(std::max<int>(ds::layout::kTouchMin, bodyLine + captionLine + 2 * ds::space::k4), gap);
+    gomokuart::playerCard(renderer, status, game.turn == 1, game.turn == 1 ? tr(STR_GOMOKU_BLACK) : tr(STR_GOMOKU_WHITE),
+                          actionNotice, false);
+    static char detailText[7][64];
     for (int i = 0; i < 7; ++i) {
       const auto skill = static_cast<Skill>(i + 1);
       const char* statusLabel = tr(STR_SGM_READY);
@@ -424,137 +423,124 @@ void SkillGomokuActivity::buildScreen(UiScreen& screen) {
         statusLabel = cooldownText;
       } else if (!game.available(skill))
         statusLabel = tr(STR_SGM_LOW_ENERGY);
-      snprintf(labels[i], sizeof(labels[i]), tr(STR_SGM_SKILL_LABEL), skillName(skill), Game::cost(skill), statusLabel);
+      snprintf(labels[i], sizeof(labels[i]), "%s", skillName(skill));
+      snprintf(detailText[i], sizeof(detailText[i]), tr(STR_SGM_SKILL_DETAIL), Game::cost(skill), statusLabel);
+      details[i] = detailText[i];
     }
     snprintf(labels[7], sizeof(labels[7]), "%s", tr(STR_CANCEL));
   }
   const auto area = screen.contentRect();
   const int columns = page == Page::Skills ? 2 : 1;
-  const int rows = itemCount() / columns;
-  const int height = std::min(std::max(56, line * (columns == 2 ? 4 : 2)), (area.height - gap * (rows - 1)) / rows);
+  const int rows = (itemCount() + columns - 1) / columns;
+  const int wanted = columns == 2 ? bodyLine + captionLine + ds::space::kTextStackGap + 2 * ds::space::k5
+                                  : std::max<int>(ds::layout::kTouchMin, bodyLine + 2 * ds::space::k6);
+  const int height = std::min(wanted, (area.height - gap * (rows - 1)) / rows);
+  const int width = (area.width - gap * (columns - 1)) / columns;
   for (int i = 0; i < itemCount(); ++i) {
-    const fui::Rect rect{static_cast<int16_t>(area.x + (i % columns) * ((area.width + gap) / columns)),
-                         static_cast<int16_t>(area.y + (i / columns) * (height + gap)),
-                         static_cast<int16_t>((area.width - gap * (columns - 1)) / columns),
+    const fui::Rect rect{static_cast<int16_t>(area.x + (i % columns) * (width + gap)),
+                         static_cast<int16_t>(area.y + (i / columns) * (height + gap)), static_cast<int16_t>(width),
                          static_cast<int16_t>(height)};
-    button.label = labels[i];
-    button.value = i;
-    button.text = screen.theme().bodyText;
-    button.text.maxLines = columns == 2 ? 3 : 2;
-    button.state = selected == i ? fui::StateSelected : fui::StateNormal;
-    button.enabled = !(page == Page::Menu && i == 0 && !hasSave);
+    bool enabled = !(page == Page::Menu && i == 0 && !hasSave);
     if (page == Page::Pause) {
-      if (i == 1 || i == 4) button.enabled = !game.winner && !(versusComputer && game.turn == 2);
+      if (i == 1 || i == 4) enabled = !game.winner && !(versusComputer && game.turn == 2);
       if (i == 2) {
         int undoIndex = historyCount - 1;
         if (versusComputer)
           while (undoIndex >= 0 && history[undoIndex].turn != 1) --undoIndex;
-        button.enabled = undoIndex >= 0;
+        enabled = undoIndex >= 0;
       }
     }
-    if (page == Page::Skills && i < 7) button.enabled = game.available(static_cast<Skill>(i + 1));
-    fui::button(screen.frame(), rect, button);
+    if (page == Page::Skills && i < 7) enabled = game.available(static_cast<Skill>(i + 1));
+    gomokuart::rowCard(renderer, rect, labels[i], details[i], selected == i, enabled);
+    if (enabled) screen.frame().hit(rect, Control, i, fui::InputTouch);
   }
 }
 
 void SkillGomokuActivity::drawBoard(UiScreen& screen) {
-  const auto& theme = screen.theme();
-  const int line = screen.target().lineHeight(theme.bodyText.font);
-  const int gap = std::max(8, int(theme.spaceMd));
-  const auto energyRect = screen.takeTop(line + gap, gap);
-  snprintf(labels[0], sizeof(labels[0]), tr(STR_SGM_ENERGY), game.energy[0], game.energy[1]);
-  text(screen.target(), energyRect, labels[0], theme.bodyText);
-  const auto statusRect = screen.takeTop(line + gap, gap);
-  const char* status = thinking         ? tr(STR_GOMOKU_AI_THINKING)
-                       : game.turn == 1 ? tr(STR_SGM_BLACK_TURN)
-                                        : tr(STR_SGM_WHITE_TURN);
-  if (game.winner)
-    status = game.winner == 1   ? tr(STR_GOMOKU_BLACK_WINS)
-             : game.winner == 2 ? tr(STR_GOMOKU_WHITE_WINS)
-                                : tr(STR_GOMOKU_DRAW);
-  text(screen.target(), statusRect, status, theme.bodyText);
-  const auto controls = screen.takeBottom(std::max(48, line * 2), gap);
-  const auto hint = screen.takeBottom(line * 3, gap);
+  namespace ds = ricky::ds;
+  const int bodyLine = renderer.getLineHeight(RickyDesignUi::BODY);
+  const int captionLine = renderer.getLineHeight(RickyDesignUi::CAPTION);
+  const int gap = ds::space::k3;
+  // Players: one card per side, the side to move inverted, energy on the detail line.
+  const auto players = screen.takeTop(bodyLine + captionLine + ds::space::kTextStackGap + 2 * ds::space::k4, gap);
+  const int cardW = (players.width - ds::space::kGutter) / 2;
+  static char energyText[2][32];
+  for (int side = 0; side < 2; ++side) {
+    snprintf(energyText[side], sizeof(energyText[side]), tr(STR_SGM_ENERGY_ONE), game.energy[side]);
+    const fui::Rect card{static_cast<int16_t>(players.x + side * (cardW + ds::space::kGutter)), players.y,
+                         static_cast<int16_t>(cardW), players.height};
+    gomokuart::playerCard(renderer, card, side == 0, side == 0 ? tr(STR_GOMOKU_BLACK) : tr(STR_GOMOKU_WHITE),
+                          energyText[side], !game.winner && game.turn == side + 1);
+  }
+  // Status: a result or "thinking" headline; otherwise the side cards already say whose turn.
+  if (game.winner || thinking) {
+    const auto statusRect = screen.takeTop(renderer.getLineHeight(RickyDesignUi::HEADLINE), gap);
+    const char* status = thinking            ? tr(STR_GOMOKU_AI_THINKING)
+                         : game.winner == 1 ? tr(STR_GOMOKU_BLACK_WINS)
+                         : game.winner == 2 ? tr(STR_GOMOKU_WHITE_WINS)
+                                            : tr(STR_GOMOKU_DRAW);
+    RickyDesignUi::text(renderer, statusRect, status, RickyDesignUi::HEADLINE, false, fui::TextAlign::Center);
+  }
+  const auto controls = screen.takeBottom(std::max<int>(ds::layout::kTouchMin, bodyLine + 2 * ds::space::k5), gap);
+  const auto hint = screen.takeBottom(captionLine * 2 + ds::space::kTextStackGap, gap);
   const char* message = saveFailed ? tr(STR_SGM_SAVE_FAILED) : notice ? notice : skillHint(armed, source == Game::None);
-  text(screen.target(), hint, message, theme.smallText, 3);
+  RickyDesignUi::secondaryText(renderer, hint, message, RickyDesignUi::CAPTION, false, fui::TextAlign::Center, 2);
 
   const auto band = screen.contentRect();
   // Half-pitch padding leaves the outer intersections fully hittable and visible.
   const auto layout = GomokuLayout::fit(band.x, band.y, band.width, band.height, game.size);
   pitch = layout.pitch;
   if (!pitch) return;
-  const int gridSide = pitch * (game.size - 1);
   boardX = layout.x;
   boardY = layout.y;
   const fui::Rect boardRect{static_cast<int16_t>(boardX - pitch / 2), static_cast<int16_t>(boardY - pitch / 2),
                             static_cast<int16_t>(pitch * game.size), static_cast<int16_t>(pitch * game.size)};
   if (!game.winner && !thinking && !(versusComputer && game.turn == 2))
     screen.frame().hit(boardRect, Board, 0, fui::InputTouch);
-  const auto ink = fui::Paint::solid(fui::Color::Black);
-  const auto white = fui::Paint::solid(fui::Color::White);
+  gomokuart::board(renderer, boardX, boardY, pitch, game.size);
   if (armed == Skill::Wipe) {
+    // The 3x3 the skill will clear, as a rounded ink outline.
     const int left = std::max(0, int(cursor % game.size) - 1);
     const int right = std::min(int(game.size) - 1, int(cursor % game.size) + 1);
     const int top = std::max(0, int(cursor / game.size) - 1);
     const int bottom = std::min(int(game.size) - 1, int(cursor / game.size) + 1);
-    screen.target().stroke(
-        {static_cast<int16_t>(boardX + left * pitch - pitch / 2),
-         static_cast<int16_t>(boardY + top * pitch - pitch / 2), static_cast<int16_t>((right - left + 1) * pitch),
-         static_cast<int16_t>((bottom - top + 1) * pitch)},
-        ink, 2, 4);
-  }
-  for (int i = 0; i < game.size; ++i) {
-    screen.target().line({static_cast<int16_t>(boardX), static_cast<int16_t>(boardY + i * pitch)},
-                         {static_cast<int16_t>(boardX + gridSide), static_cast<int16_t>(boardY + i * pitch)}, 1, ink);
-    screen.target().line({static_cast<int16_t>(boardX + i * pitch), static_cast<int16_t>(boardY)},
-                         {static_cast<int16_t>(boardX + i * pitch), static_cast<int16_t>(boardY + gridSide)}, 1, ink);
+    renderer.drawRoundedRect(boardX + left * pitch - pitch / 2, boardY + top * pitch - pitch / 2,
+                             (right - left + 1) * pitch, (bottom - top + 1) * pitch, ds::stroke::kHairline,
+                             ds::radius::kControl, true);
   }
   if (game.winStart != Game::None && game.winEnd != Game::None) {
     screen.target().line({static_cast<int16_t>(boardX + (game.winStart % game.size) * pitch),
                           static_cast<int16_t>(boardY + (game.winStart / game.size) * pitch)},
                          {static_cast<int16_t>(boardX + (game.winEnd % game.size) * pitch),
                           static_cast<int16_t>(boardY + (game.winEnd / game.size) * pitch)},
-                         3, ink);
+                         4, fui::Paint::solid(fui::Color::Black));
   }
-  const int radius = std::max(2, pitch * 3 / 8);
+  const int radius = std::max(2, pitch * 2 / 5);
   for (int i = 0; i < game.size * game.size; ++i) {
     const int x = boardX + (i % game.size) * pitch, y = boardY + (i / game.size) * pitch;
-    const fui::Rect stone{static_cast<int16_t>(x - radius), static_cast<int16_t>(y - radius),
-                          static_cast<int16_t>(radius * 2 + 1), static_cast<int16_t>(radius * 2 + 1)};
-    if (game.cells[i]) {
-      screen.target().fill(stone, game.cells[i] == 1 ? ink : white, radius);
-      if (game.cells[i] == 2) screen.target().stroke(stone, ink, 2, radius);
-    }
+    if (game.cells[i]) gomokuart::stone(renderer, x, y, radius, game.cells[i] == 1);
     if (i == source)
-      screen.target().stroke({static_cast<int16_t>(x - radius - 2), static_cast<int16_t>(y - radius - 2),
-                              static_cast<int16_t>(radius * 2 + 5), static_cast<int16_t>(radius * 2 + 5)},
-                             ink, 2);
-    if (i == cursor && !thinking) {
-      const int half = pitch / 2 - 1;
-      screen.target().stroke({static_cast<int16_t>(x - half), static_cast<int16_t>(y - half),
-                              static_cast<int16_t>(half * 2), static_cast<int16_t>(half * 2)},
-                             ink, 2, 3);
-    }
+      renderer.drawRoundedRect(x - radius - 4, y - radius - 4, radius * 2 + 9, radius * 2 + 9, ds::stroke::kHairline,
+                               radius + 4, true);
+    if (i == cursor && !thinking) gomokuart::cursor(renderer, x, y, pitch);
   }
-  fui::ButtonProps button;
-  button.label = armed == Skill::Place ? tr(STR_GOMOKU_PLACE) : skillName(armed);
-  button.action = Control;
-  button.value = 0;
-  button.inputMask = fui::InputTouch;
-  button.text = theme.bodyText;
-  button.minTouchSize = 0;
-  button.enabled = !thinking && !(versusComputer && game.turn == 2 && !game.winner);
   auto half = controls;
-  half.width = (controls.width - gap) / 2;
-  fui::button(screen.frame(), half, button);
-  half.x = controls.right() - half.width;
-  button.label = game.winner ? tr(STR_SGM_MENU) : tr(STR_SGM_SKILLS);
-  button.value = 1;
-  fui::button(screen.frame(), half, button);
+  half.width = static_cast<int16_t>((controls.width - ds::space::kGutter) / 2);
+  const bool canAct = !thinking && !(versusComputer && game.turn == 2 && !game.winner);
+  GUI.drawActionButton(renderer, Rect(half.x, half.y, half.width, half.height),
+                       armed == Skill::Place ? tr(STR_GOMOKU_PLACE) : skillName(armed), canAct);
+  if (canAct) screen.frame().hit(half, Control, 0, fui::InputTouch);
+  half.x = static_cast<int16_t>(controls.right() - half.width);
+  GUI.drawActionButton(renderer, Rect(half.x, half.y, half.width, half.height),
+                       game.winner ? tr(STR_SGM_MENU) : tr(STR_SGM_SKILLS), false);
+  screen.frame().hit(half, Control, 1, fui::InputTouch);
 }
 
 void SkillGomokuActivity::render(RenderLock&&) {
   renderer.clearScreen();
+  const auto& m = UITheme::getInstance().getMetrics();
+  // The system header: "← title"; its back target maps to the Back button (HeaderBackTapTarget).
+  GUI.drawHeader(renderer, Rect{0, m.topPadding, renderer.getScreenWidth(), m.headerHeight}, pageTitle());
   renderUi();
   const auto hints = mappedInput.mapLabels(tr(STR_SGM_MENU), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, hints.btn1, hints.btn2, hints.btn3, hints.btn4);
