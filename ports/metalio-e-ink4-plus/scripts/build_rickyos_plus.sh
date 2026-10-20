@@ -14,7 +14,15 @@ BUILD_DIR="${RICKYOS_BUILD_DIR:-$TASK_ROOT/.local/build-rickyos-plus-1.2}"
 cd "$TASK_ROOT/firmware/rickyos-plus-1.2"
 # Diagnostic compile definitions come from environment variables in CMake.
 # Reconfigure so reusing a build directory cannot silently keep the prior mode.
-IDF_TARGET=esp32s31 idf.py -B "$BUILD_DIR" reconfigure build
+PLUS_IDF_COMMAND=(idf.py -B "$BUILD_DIR")
+if [[ -n "${RICKYOS_SDKCONFIG:-}" ]]; then
+  PLUS_IDF_COMMAND+=(-D "SDKCONFIG=$RICKYOS_SDKCONFIG")
+fi
+if [[ -n "${RICKYOS_SDKCONFIG_DEFAULTS:-}" ]]; then
+  PLUS_IDF_COMMAND+=(-D "SDKCONFIG_DEFAULTS=$RICKYOS_SDKCONFIG_DEFAULTS")
+fi
+IDF_TARGET=esp32s31 "${PLUS_IDF_COMMAND[@]}" reconfigure build
+python3 "$TASK_ROOT/scripts/check_plus_web_memory.py" "$BUILD_DIR/config/sdkconfig.h"
 python3 "$TASK_ROOT/scripts/check_rickyos_plus_sources.py"
 python3 - "$BUILD_DIR/RickyOS-Plus-1.2.elf" <<'PY'
 from pathlib import Path

@@ -34,6 +34,16 @@
 
 ### Bundled first-use user guide
 
+RickyOS product builds (`RICKYOS_PRODUCT=1`), including Read Pico and Plus,
+do **not** bundle or install this upstream guide. The lifecycle hooks are
+no-ops and do not touch card files, recent books or first-use markers. Existing
+guides and user books are not deleted. The PlatformIO hook skips generation;
+the Plus resource script no longer requests it. Verify with
+`python3 scripts/tests/test_product_userguide.py` (restored Plus snapshot needed
+for its Plus case). `ProductUserGuideTest` covers the product, while
+`UserGuideTest` explicitly undefines the product flag to retain the upstream
+regression suite. The following behavior applies only to non-product builds.
+
 `scripts/build_userguide.py` runs for firmware and simulator builds. It calls
 `scripts/generate_userguide_epub.py --bundled` to package the maintained short
 XHTML guides in `docs/user-guide/{zh-CN,en}.xhtml` with a small shared

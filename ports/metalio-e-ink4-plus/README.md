@@ -8,6 +8,12 @@
 
 ## 最新交接 · 2026-10-20
 
+Plus 1.2.4 已通过本次用户真机确认，正在发布；沿用已验收的 BIN `d633d920…`，
+包含传书网页响应修正、热点地址跳转、独立锁屏右滑解锁开关，以及来源文案／首用指南清理。
+固定来源仍为 `a42d9399`／SDK `96de1be6`，2,844 文件、136 项适配。
+发布与校验记录见 [Plus 1.2.4](docs/plus-1.2.4-release-20261020.md)。
+不包含 `codex/plus-display-service` 的持续系统 Wi-Fi／显示服务实验；其他设备正式版本不变。
+
 独立功能分支 `codex/plus-kindle-formats`：MOBI/AZW3 导入与原阅读引擎已接入，
 两本用户样书通过主机差分检查并在独立模拟器中打开。仅以私有开发分支交接，未刷机、未发布。
 实现、容量限制和复现方式见 [Kindle 格式接入记录](docs/plus-kindle-import-20261020.md)。
@@ -56,6 +62,10 @@ bash scripts/prepare_rickyos_plus_resources.sh
 bash scripts/build_rickyos_plus.sh
 bash tests/run_plus_port_tests.sh
 ```
+
+2026-10-20 热点／加入网络传书排查：已存在的 `sdkconfig` 不会自动采用新默认值；
+网络内存试验须用独立配置并通过生成头检查，见[网页响应排查与配置迁移](docs/plus-web-response-20261020.md)。
+不手改生成配置，也不要把第一轮“顺序访问恢复”当作并发验收通过。
 
 构建输出 `.local/build-rickyos-plus-1.2/`。不要直接执行 IDF 输出提示里的整包 `idf.py flash`：它会默认写原厂 ota_0。本机受控安装依赖独立保存的原厂全闪存备份与设备身份校验，这些私有恢复材料不上传；本提交也不提供脱离备份的通用刷机脚本。
 

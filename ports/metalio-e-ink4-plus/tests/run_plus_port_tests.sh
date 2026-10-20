@@ -33,6 +33,7 @@ python3 tests/test_plus_audio.py
 python3 tests/test_plus_frontlight_panel.py
 python3 tests/test_plus_standby_frontlight.py
 python3 tests/test_plus_standby_home.py
+python3 tests/test_plus_standby_swipe_unlock.py
 python3 tests/test_plus_button_mapping.py
 python3 tests/test_plus_button_settings.py
 python3 tests/test_plus_control_center_layout.py
@@ -59,6 +60,9 @@ python3 tests/test_plus_static_standby.py
 
 python3 tests/test_plus_tls_retry.py
 python3 tests/test_plus_font_source.py
+python3 tests/test_plus_web_responsiveness.py
+python3 tests/test_plus_web_memory.py
+python3 ../../scripts/tests/test_product_userguide.py
 python3 tests/test_plus_boot_identity.py
 python3 tests/test_plus_reader_page_cache.py
 python3 tests/test_plus_reader_paint_speed.py

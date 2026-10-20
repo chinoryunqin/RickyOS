@@ -181471,7 +181471,15 @@
      uint32_t calls[static_cast<int>(PaintKind::Count)] = {};
 --- a/lib/I18n/translations/chinese.yaml
 +++ b/lib/I18n/translations/chinese.yaml
-@@ -1600,3 +1600,91 @@
+@@ -1552,6 +1552,7 @@
+ STR_RICKY_GESTURE_READING: "阅读手势"
+ STR_RICKY_GESTURE_BACK: "左侧右滑返回"
+ STR_RICKY_GESTURE_HOME: "底部上滑回首页"
++STR_RICKY_STANDBY_SWIPE_UNLOCK: "锁屏右滑解锁"
+ STR_RICKY_GESTURE_CONTROL: "顶部下滑打开控制中心"
+ STR_RICKY_GESTURE_STATUS: "点状态栏打开控制中心"
+ STR_RICKY_GESTURE_TOUCH_TURN: "触屏翻页"
+@@ -1600,3 +1601,91 @@
  STR_RICKY_HELP_FEEDBACK_3: "通过你现有的 Ricky AI Studio 联系渠道发送反馈。本页面不会自动上传设备信息。官网入口可扫码打开。"
  STR_RICKY_MENU_AUTO_TURN: "自动翻页"
  STR_RICKY_MENU_PROGRESS: "阅读进度"
@@ -181565,7 +181573,15 @@
 +STR_SGM_RULES_3: "强力技能 · 3/3\n\n静如止水（5）：落一子，对方跳过回合，自己继续。\n\n两极反转（6）：交换全部棋子颜色，场上须有双方棋子。\n\n力拔山兮（8）：清空指定 3×3 区域，己方棋子也会移除。\n\n以上技能每位玩家每局各限一次。\n\n休养生息：恢复 3 能量并结束回合。悔棋还原能量、冷却和技能次数，仅保留本次进入后的最近 8 次行动。"
 --- a/lib/I18n/translations/english.yaml
 +++ b/lib/I18n/translations/english.yaml
-@@ -1622,3 +1622,91 @@
+@@ -1574,6 +1574,7 @@
+ STR_RICKY_GESTURE_READING: "Reading"
+ STR_RICKY_GESTURE_BACK: "Swipe right from the left: Back"
+ STR_RICKY_GESTURE_HOME: "Swipe up from the bottom: Home"
++STR_RICKY_STANDBY_SWIPE_UNLOCK: "Lock screen: swipe right to unlock"
+ STR_RICKY_GESTURE_CONTROL: "Swipe down from the top: Control center"
+ STR_RICKY_GESTURE_STATUS: "Tap the status bar: Control center"
+ STR_RICKY_GESTURE_TOUCH_TURN: "Touch page turns"
+@@ -1622,3 +1623,91 @@
  STR_RICKY_HELP_FEEDBACK_3: "Send feedback through your existing Ricky AI Studio contact channel. This page does not upload device information. Scan the website QR code to visit the site."
  STR_RICKY_MENU_AUTO_TURN: "Auto page turn"
  STR_RICKY_MENU_PROGRESS: "Reading progress"
@@ -181719,6 +181735,30 @@
    // Sticky's USB serial bridge uses UART0; ROM output also works before Serial0.begin().
    esp_rom_printf("%s", buf);
  #else
+--- /dev/null
++++ b/lib/Logging/RickyPerf.h
+@@ -0,0 +1,21 @@
++#pragma once
++
++// Timing lines for perf builds (envs rickyos_readpico_perf / rickyos_eego_a4_perf, or
++// Plus with RICKYOS_PERF=1). Each measured event prints one line:
++//
++//   [12345] [INF] [PERF] <event> [<label>] key=<ms> key=<ms> ...
++//
++// tools/rickyos-perf/perf.py captures the serial log and tabulates median / p90 / max
++// per event and key. Values are milliseconds unless the key names another unit
++// (kb, kbps, n). Release builds compile none of this.
++
++#ifndef RICKYOS_PERF
++#define RICKYOS_PERF 0
++#endif
++
++#if RICKYOS_PERF
++#include <Logging.h>
++#define RICKY_PERF(event, format, ...) logPrintf("INF", "PERF", event " " format "\n", ##__VA_ARGS__)
++#else
++#define RICKY_PERF(event, format, ...) ((void)0)
++#endif
 --- a/lib/PngToBmpConverter/PngToBmpConverter.cpp
 +++ b/lib/PngToBmpConverter/PngToBmpConverter.cpp
 @@ -1116,7 +1116,7 @@
@@ -182735,7 +182775,11 @@
    doc["fakeBoldVersion"] = FAKE_BOLD_VERSION;
    // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
    doc["frontButtonBack"] = frontButtonBack;
-@@ -280,6 +285,7 @@
+@@ -277,9 +282,11 @@
+   doc["rickyHomePhrase"] = rickyHomePhrase;
+   doc["rickyGestureBack"] = rickyGestureBack;
+   doc["rickyGestureHome"] = rickyGestureHome;
++  doc["standbySwipeUnlock"] = standbySwipeUnlock;
    doc["rickyCompanion"] = rickyCompanion;
    doc["rickyGestureControl"] = rickyGestureControl;
    doc["rickyGestureStatus"] = rickyGestureStatus;
@@ -182743,7 +182787,7 @@
    doc["rickyTextWeight"] = rickyTextWeight;
    doc["rickyStandbyFace"] = rickyStandbyFace;
    doc["rickyAutoOffIndex"] = rickyAutoOffIndex;
-@@ -311,6 +317,7 @@
+@@ -311,6 +318,7 @@
  bool CrossPointSettings::fromJson(JsonVariantConst doc) {
    CrossPointSettings& s = *this;
    bool needsResave = false;
@@ -182751,7 +182795,7 @@
  
    auto clamp = [](uint8_t val, uint8_t maxVal, uint8_t def) -> uint8_t { return val < maxVal ? val : def; };
  
-@@ -445,6 +452,14 @@
+@@ -445,6 +453,14 @@
      needsResave = true;
    }
    // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
@@ -182766,6 +182810,14 @@
    frontButtonBack = clamp(doc["frontButtonBack"] | (uint8_t)FRONT_HW_BACK, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_BACK);
    frontButtonConfirm =
        clamp(doc["frontButtonConfirm"] | (uint8_t)FRONT_HW_CONFIRM, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_CONFIRM);
+@@ -513,6 +529,7 @@
+   // Missing keys take the defaults: Home swipe starts off for everyone, as agreed.
+   rickyGestureBack = (doc["rickyGestureBack"] | 1) ? 1 : 0;
+   rickyGestureHome = (doc["rickyGestureHome"] | 0) ? 1 : 0;
++  standbySwipeUnlock = (doc["standbySwipeUnlock"] | 0) ? 1 : 0;
+   rickyCompanion = (doc["rickyCompanion"] | 0) == RICKY_COMPANION_CAT ? RICKY_COMPANION_CAT : RICKY_COMPANION_DOG;
+   rickyGestureControl = (doc["rickyGestureControl"] | 1) ? 1 : 0;
+   rickyGestureStatus = (doc["rickyGestureStatus"] | 1) ? 1 : 0;
 --- a/src/CrossPointSettings.h
 +++ b/src/CrossPointSettings.h
 @@ -20,6 +20,9 @@
@@ -182790,7 +182842,15 @@
    uint8_t homeButtonTapAction = static_cast<uint8_t>(HomeButtonAction::Home);
    uint8_t homeButtonDoubleTapAction = static_cast<uint8_t>(HomeButtonAction::ToggleFrontlight);
    uint8_t homeButtonLongPressAction = static_cast<uint8_t>(HomeButtonAction::ReaderMenu);
-@@ -567,6 +575,7 @@
+@@ -503,6 +511,7 @@
+   // last lines of a page and on the tab bar, so readers left books by accident.
+   uint8_t rickyGestureBack = 1;     // swipe right from the left side: Back
+   uint8_t rickyGestureHome = 0;     // swipe up from the bottom: Home
++  uint8_t standbySwipeUnlock = 0;  // opt-in left-edge right swipe; independent of global Back/Home
+   uint8_t rickyGestureControl = 1;  // swipe down from the top: control center
+   uint8_t rickyGestureStatus = 1;   // tap the status bar: control center
+   // Body-text stroke weight in the reader: 0 thinnest .. 2 the font as drawn .. 4 boldest.
+@@ -567,6 +576,7 @@
    uint8_t showReaderMenu = READER_MENU_TAP;
    // Frontlight quick-panel state. Brightness and warmth remain persisted even
    // when restore-on-wake is disabled.
@@ -182891,7 +182951,16 @@
          case CrossPointSettings::PREV_PREV:
          case CrossPointSettings::SIDE_BUTTONS_DISABLED:
          default:
-@@ -483,6 +494,9 @@
+@@ -461,6 +472,8 @@
+   return wasEdgeSwipe(fui::ScreenEdge::Left);
+ }
+ 
++bool MappedInputManager::wasStandbyUnlockGesture() const { return wasEdgeSwipe(fui::ScreenEdge::Left); }
++
+ bool MappedInputManager::wasHeaderTapBack() const {
+   return false;
+ }
+@@ -483,6 +496,9 @@
  }
  
  bool MappedInputManager::wasLightPanelGesture() const {
@@ -182901,7 +182970,7 @@
    // The control center also serves touch boards without a frontlight.
    if (!SETTINGS.rickyGestureControl) return false;
    return hasTouch() && wasTopEdgeDownSwipe();
-@@ -500,6 +514,9 @@
+@@ -500,6 +516,9 @@
  #endif
  
  bool MappedInputManager::wasPressed(const Button button) const {
@@ -182911,7 +182980,7 @@
    if (button == Button::Confirm && homeAction == HomeButtonAction::Confirm) return true;
    if (button == Button::Back && wasBackGesture()) return true;
  #if FREEINK_CAP_TOUCH
-@@ -509,6 +526,9 @@
+@@ -509,6 +528,9 @@
  }
  
  bool MappedInputManager::wasReleased(const Button button) const {
@@ -182921,7 +182990,7 @@
    if (button == Button::Confirm && homeAction == HomeButtonAction::Confirm) return true;
    if (button == Button::Back && wasBackGesture()) return true;
  #if FREEINK_CAP_TOUCH
-@@ -651,3 +671,38 @@
+@@ -651,3 +673,38 @@
    return -1;
  }
  bool MappedInputManager::isHeld(const Button button) const { return isPressed(button); }
@@ -182972,7 +183041,15 @@
  
  class GfxRenderer;
  namespace freeink {
-@@ -105,8 +108,20 @@
+@@ -99,14 +102,28 @@
+   // Back = left-to-right swipe anchored at the left edge. Public so swipe-mode
+   // page turns (reader) can exclude it from a plain SwipeDir::Right.
+   bool wasBackGesture() const;
++  // Direction/edge only: Standby owns its opt-in switch, not global Back/Home.
++  bool wasStandbyUnlockGesture() const;
+   // Home-key boards use a short Home-key tap to exit; their bottom-edge swipe
+   // is intentionally unused. Other boards retain the bottom-edge Home gesture.
+   // The reader menu remains on its existing top-edge gesture and middle tap.
    bool wasHomeGesture() const;
    // Configured one-frame action, independent of the gesture that triggered it.
    HomeButtonAction homeButtonAction() const { return homeAction; }
@@ -182993,7 +183070,7 @@
      deferredHomeAction = HomeButtonAction::Ignore;
    }
    bool wasMenuGesture() const;
-@@ -131,6 +146,10 @@
+@@ -131,6 +148,10 @@
    // Returns the raw front button index that was pressed this frame (or -1 if none).
    int getPressedFrontButton() const;
  
@@ -183004,7 +183081,7 @@
    void setBleCaptureMode(bool enabled);
    bool takeCapturedBleKey(uint8_t& kind, uint8_t& value);
  
-@@ -168,7 +187,16 @@
+@@ -168,7 +189,16 @@
    void rememberTouchHeldTime() const;
    void suppressNextRelease(Button button) const;
  
@@ -185966,7 +186043,23 @@
    requestUpdate();
  }
  
-@@ -507,6 +524,7 @@
+@@ -484,7 +501,14 @@
+ }
+ 
+ void StandbyActivity::loop() {
+-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
++  if (SETTINGS.standbySwipeUnlock && mappedInput.wasStandbyUnlockGesture()) {
++    STANDBY_DIAG("close: swipe unlock");
++    finish();
++    return;
++  }
++  // Back includes touch gestures and a header target from the prior page. Neither
++  // may bypass the independent unlock switch; physical Back keeps its preference.
++  if (!mappedInput.wasBackGesture() && mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+     // One shortcut switch owns both entry and exit; the side power key stays independent.
+     if (SETTINGS.standbyShortcutEnabled) {
+       STANDBY_DIAG("close: Back released");
+@@ -507,6 +531,7 @@
        if (action == StandbyFace::PictureAction::Download &&
            !startActivityForResultWith<RickyWallpaperDownloadActivity>([this](const ActivityResult&) {
              if (currentFace_) currentFace_->onEnter();
@@ -185974,7 +186067,7 @@
              requestUpdate();
            })) {
          LOG_ERR("STANDBY", "Cannot open the picture downloader");
-@@ -531,11 +549,17 @@
+@@ -531,11 +556,17 @@
  
  void StandbyActivity::render(RenderLock&&) {
    if (!currentFace_) return;
@@ -185993,7 +186086,7 @@
      renderer.clearScreen();
      {
        const GfxRenderer::ClipScope clip(renderer, viewport.x, viewport.y, viewport.width, viewport.height);
-@@ -649,6 +673,7 @@
+@@ -649,6 +680,7 @@
        return;
      }
      if (currentFace_) currentFace_->onEnter();
@@ -186143,6 +186236,25 @@
        RickyDesignUi::cover(renderer, rect, shelfTitles[slot].c_str(), format);
      }
      const fui::Rect titleRect{static_cast<int16_t>(cell.x + cardSideInset),
+--- a/src/activities/network/CrossPointWebServerActivity.cpp
++++ b/src/activities/network/CrossPointWebServerActivity.cpp
+@@ -289,8 +289,14 @@
+     return;
+   }
+   dnsServer->setErrorReplyCode(DNSReplyCode::NoError);
+-  dnsServer->start(DNS_PORT, "*", apIP);
+-  LOG_DBG("WEBACT", "DNS server started for captive portal");
++  if (!dnsServer->start(DNS_PORT, "*", apIP)) {
++    // Direct-IP access still works without captive DNS; do not pretend the
++    // portal started, or tear down a usable transfer server on a DNS error.
++    LOG_ERR("WEBACT", "Captive DNS failed; use the displayed HTTP IP address");
++    stopDnsServer();
++  } else {
++    LOG_DBG("WEBACT", "DNS server started for captive portal");
++  }
+ 
+   LOG_DBG("WEBACT", "Free heap after AP start: %d bytes", ESP.getFreeHeap());
+ 
 --- a/src/activities/network/WifiSelectionActivity.cpp
 +++ b/src/activities/network/WifiSelectionActivity.cpp
 @@ -1,5 +1,10 @@
@@ -187264,7 +187376,15 @@
    bool handleCustomInput() override;
 --- a/src/activities/settings/RickyOptionListActivity.cpp
 +++ b/src/activities/settings/RickyOptionListActivity.cpp
-@@ -50,10 +50,16 @@
+@@ -34,6 +34,7 @@
+   static const RickyOptionRow rows[] = {
+       {StrId::STR_RICKY_GESTURE_BACK, &SETTINGS.rickyGestureBack, nullptr, 0, StrId::STR_RICKY_GESTURE_GLOBAL},
+       {StrId::STR_RICKY_GESTURE_HOME, &SETTINGS.rickyGestureHome},
++      {StrId::STR_RICKY_STANDBY_SWIPE_UNLOCK, &SETTINGS.standbySwipeUnlock},
+       {StrId::STR_RICKY_GESTURE_CONTROL, &SETTINGS.rickyGestureControl},
+       {StrId::STR_RICKY_GESTURE_STATUS, &SETTINGS.rickyGestureStatus},
+       {StrId::STR_RICKY_GESTURE_TOUCH_TURN, &SETTINGS.touchReaderControls, nullptr, 0,
+@@ -50,10 +51,16 @@
  const RickyOptionList& keys() {
    // The strip under the screen is left / middle / right; the middle key is Back.
    static const RickyOptionRow rows[] = {
@@ -188410,7 +188530,7 @@
  #endif
 --- a/src/network/CrossPointWebServer.cpp
 +++ b/src/network/CrossPointWebServer.cpp
-@@ -2,6 +2,9 @@
+@@ -2,12 +2,16 @@
  
  #include <ArduinoJson.h>
  #include <BoardConfig.h>
@@ -188420,7 +188540,45 @@
  #include <BookKey.h>
  #include <Crypto.h>
  #include <DeviceSecret.h>
-@@ -101,8 +104,7 @@
+ #include <FsHelpers.h>
+ #include <HalFrontlight.h>
+ #include <HalGPIO.h>
++#include <HalMemory.h>
+ #include <HalStorage.h>
+ #include <I18n.h>
+ #include <LibraryBuilder.h>
+@@ -69,7 +73,29 @@
+ // between requests, and so outbound TLS can reuse that memory immediately.
+ class CrossPointHttpServer final : public WebServer {
+  public:
+-  explicit CrossPointHttpServer(uint16_t port) : WebServer(port) {}
++  explicit CrossPointHttpServer(uint16_t port) : WebServer(port) {
++#if FREEINK_DEVICE_METALIO_PLUS && !defined(SIMULATOR)
++    // Short HTML/API replies should not wait for TCP delayed ACKs between
++    // their headers and body. NetworkServer applies this to accepted clients.
++    _server.setNoDelay(true);
++#endif
++  }
++
++#if FREEINK_DEVICE_METALIO_PLUS && !defined(SIMULATOR)
++  void handleClient() override {
++    // Browsers speculatively open extra sockets. The single-client WebServer
++    // otherwise lets an empty preconnection block every real request for 5 s.
++    // Only expire a socket that has not sent its first request byte: parsed
++    // headers, multipart uploads and WebSockets retain their existing limits.
++    constexpr unsigned long EMPTY_CONNECTION_MS = 750;
++    if (_currentStatus == HC_WAIT_READ && _currentClient.connected() && !_currentClient.available() &&
++        millis() - _statusChange >= EMPTY_CONNECTION_MS) {
++      _currentClient.stop();
++      LOG_INF("WEB", "Expired empty HTTP preconnection");
++    }
++    WebServer::handleClient();
++  }
++#endif
+ 
+   void releaseRequestArguments() {
+ #ifdef SIMULATOR
+@@ -101,8 +127,7 @@
  // Formats the library index tracks (LibraryIndex isBookName): an upload of any
  // of these must mark the index dirty so the next Library entry rebuilds it.
  bool isLibraryBookFile(const String& filename) {
@@ -188430,7 +188588,7 @@
  }
  // A font sent through the plain file upload (not the font installer) still has to reach
  // the font list; the registry is otherwise re-scanned only at boot.
-@@ -238,7 +240,14 @@
+@@ -238,7 +263,14 @@
  
    // Disable WiFi sleep to improve responsiveness and prevent 'unreachable' errors.
    // This is critical for reliable web server operation on ESP32.
@@ -188445,7 +188603,7 @@
    // Default varies by ESP32 core version. The activity's loss-recovery loop
    // relies on driver retries during transient disconnects.
    WiFi.setAutoReconnect(true);
-@@ -454,6 +463,9 @@
+@@ -454,6 +486,9 @@
    fontUpload.buffer.reset();
    fileListBatch.reset();
    LOG_DBG("WEB", "Web server stopped and deleted");
@@ -188455,7 +188613,7 @@
    LOG_DBG("WEB", "[MEM] Free heap after delete server: %d bytes", ESP.getFreeHeap());
  
    // Note: Static upload variables (uploadFileName, uploadPath, uploadError) are declared
-@@ -487,6 +499,9 @@
+@@ -487,6 +522,9 @@
  
    // Print debug every 10 seconds to confirm handleClient is being called
    if (millis() - lastDebugPrint > 10000) {
@@ -188465,6 +188623,87 @@
      LOG_DBG("WEB", "handleClient active, server running on port %d", port);
      lastDebugPrint = millis();
    }
+@@ -544,15 +582,25 @@
+   constexpr unsigned long RESPONSE_DEADLINE_MS = 60000;
+   size_t offset = 0;
+   unsigned long lastProgress = millis();
++  int lastSocketError = 0;
+ 
+   while (offset < length) {
+     const unsigned long now = millis();
+-    if (now - lastProgress >= SEND_STALL_MS || now - responseStart >= RESPONSE_DEADLINE_MS) return false;
++    if (now - lastProgress >= SEND_STALL_MS || now - responseStart >= RESPONSE_DEADLINE_MS) {
++#if FREEINK_DEVICE_METALIO_PLUS
++      const auto heap = HalMemory::getInternalHeap();
++      LOG_ERR("WEB", "Send deadline: chunk=%u/%u errno=%d internal=%u largest=%u", static_cast<unsigned>(offset),
++              static_cast<unsigned>(length), lastSocketError, static_cast<unsigned>(heap.freeBytes),
++              static_cast<unsigned>(heap.largestBlockBytes));
++#endif
++      return false;
++    }
+ 
+     const int socketFd = client.fd();
+     if (socketFd < 0) return false;
+ 
+     const ssize_t written = ::send(socketFd, data + offset, length - offset, MSG_DONTWAIT);
++    if (written < 0) lastSocketError = errno;
+     if (written > 0) {
+       offset += static_cast<size_t>(written);
+       lastProgress = millis();
+@@ -588,16 +636,42 @@
+   for (size_t offset = 0; offset < len; offset += CHUNK_SIZE) {
+     const size_t chunkLength = std::min(CHUNK_SIZE, len - offset);
+     if (!writeClientWithDeadline(server->client(), data + offset, chunkLength, responseStart)) {
+-      LOG_ERR("WEB", "Aborting %s response body after %lu ms", server->uri().c_str(), millis() - responseStart);
++      LOG_ERR("WEB", "Aborting %s response body at %u/%u after %lu ms", server->uri().c_str(),
++              static_cast<unsigned>(offset), static_cast<unsigned>(len), millis() - responseStart);
+       server->client().stop();
+       return false;
+     }
+   }
++#if FREEINK_DEVICE_METALIO_PLUS
++  LOG_INF("WEBHTTP", "page=%s bytes=%u send_ms=%lu", server->uri().c_str(), static_cast<unsigned>(len),
++          millis() - responseStart);
++#endif
+   return true;
+ #endif
+ }
+ 
++// Canonical local address keeps portal pages out of the probe site's origin.
++// Short response-header Strings only; no resident buffers or network task.
++static void redirectToHotspot(WebServer* server, const uint16_t port) {
++  String target = "http://" + WiFi.softAPIP().toString();
++  if (port != 80) target += ":" + String(port);
++  target += "/";
++  server->sendHeader("Cache-Control", "no-store");
++  server->sendHeader("Location", target, true);
++  server->send(302, "text/plain", "");
++}
++
+ void CrossPointWebServer::handleRoot() const {
++#ifndef SIMULATOR
++  if (apMode) {
++    const String host = server->hostHeader();
++    const String address = WiFi.softAPIP().toString();
++    if (!host.isEmpty() && host != address && host != address + ":" + String(port)) {
++      redirectToHotspot(server.get(), port);
++      return;
++    }
++  }
++#endif
+   const auto page = localizedPage(web_zh_cn::HomePageHtml, sizeof(web_zh_cn::HomePageHtml), web_en::HomePageHtml,
+                                   sizeof(web_en::HomePageHtml));
+   if (sendCompressedContent(server.get(), "text/html", page.data, page.size)) {
+@@ -623,8 +697,7 @@
+   // API requests (/api/*) still return 404 so XHR errors surface correctly
+   // see https://en.wikipedia.org/wiki/Captive_portal#Detection
+   if (apMode && !server->uri().startsWith("/api/")) {
+-    server->sendHeader("Location", "/", true);
+-    server->send(302, "text/plain", "");
++    redirectToHotspot(server.get(), port);
+     return;
+   }
+ 
 --- a/src/network/CrossPointWebServer.h
 +++ b/src/network/CrossPointWebServer.h
 @@ -1,6 +1,10 @@
@@ -188942,3 +189181,34 @@
 +  bool ready = false, previous = false, captured = false, fired = false, discarded = false;
 +};
 +}  // namespace plus_keys
+--- a/src/util/UserGuide.cpp
++++ b/src/util/UserGuide.cpp
+@@ -1,4 +1,13 @@
+ #include "UserGuide.h"
++
++#if defined(RICKYOS_PRODUCT) && RICKYOS_PRODUCT
++// RickyOS does not seed books onto the user's card. Keep the lifecycle API so
++// shared startup code remains compatible, without linking the upstream EPUBs.
++namespace UserGuide {
++void prepare(bool) {}
++void installIfPending(bool) {}
++}  // namespace UserGuide
++#else
+ 
+ #include <Arduino.h>
+ #include <Epub.h>
+@@ -131,3 +140,4 @@
+           static_cast<unsigned long>(after.largestFreeBlockBytes));
+ }
+ }  // namespace UserGuide
++#endif
+--- a/src/util/UserGuide.h
++++ b/src/util/UserGuide.h
+@@ -1,6 +1,7 @@
+ #pragma once
+ 
+ namespace UserGuide {
++// Both hooks are no-ops in RickyOS products; existing card contents are preserved.
+ // Called once after loading recents. An unreadable existing store is never an empty library.
+ void prepare(bool recentsLoaded);
+ // Called before routing home, after onboarding. At most one installation attempt per boot.

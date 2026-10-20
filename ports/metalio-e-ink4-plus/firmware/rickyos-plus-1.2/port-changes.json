@@ -175,12 +175,12 @@
     {
       "path": "lib/I18n/translations/chinese.yaml",
       "baseline_sha256": "021ec5b9e5880155fea752af9c60ce83a259dd69131f9bd12ffe0ca59e3366bd",
-      "ported_sha256": "efad2e0eb56fdf0a28b7eac6f482d74c7aa24797a6529d195e7fd23fac50bebf"
+      "ported_sha256": "c64db9e48b034c20be31a389296afcce88119791bac87854839eb92dcdcdc9b0"
     },
     {
       "path": "lib/I18n/translations/english.yaml",
       "baseline_sha256": "85a4d226f1400f6a185759420c63ecff5f81eeb3722afd66c312d4aec6bcb315",
-      "ported_sha256": "ca49bb99b8f01cbdc52fe4f6521c76a8368d069929c6dc5637194fd6f6ab3b55"
+      "ported_sha256": "dc136b7e08cd77116843012313341bd7cb79924ba340878621d6d3439554e059"
     },
     {
       "path": "lib/JpegToBmpConverter/JpegToBmpConverter.cpp",
@@ -196,6 +196,11 @@
       "path": "lib/Logging/Logging.cpp",
       "baseline_sha256": "a484e746aa2c62f875e0fe0134f71ec181a9ad9f758832910f6fcccd1f5695f7",
       "ported_sha256": "98681524032c73117edb905a96938796e67ba9a8a5cf8e9544775925303c8738"
+    },
+    {
+      "path": "lib/Logging/RickyPerf.h",
+      "baseline_sha256": null,
+      "ported_sha256": "c4f4489191b6cd57276e3d81f843103a8ab7a3b21e0a56053cd1117e760b37b1"
     },
     {
       "path": "lib/PngToBmpConverter/PngToBmpConverter.cpp",
@@ -310,22 +315,22 @@
     {
       "path": "src/CrossPointSettings.cpp",
       "baseline_sha256": "549f275cd35b12b0479eadda063c5460e167d1156274e759bee34e2232b4dc37",
-      "ported_sha256": "2d5fc057f2083037b063970d839023b62f63c0a9edb3774a9aa3b1767ae4ccdd"
+      "ported_sha256": "cc5877ab141a938fbea6e52d5966b68e8ffcfa6a1f9385873d945f4ca9324248"
     },
     {
       "path": "src/CrossPointSettings.h",
       "baseline_sha256": "c5a733423898aad83b2f932929b80d3de201da9aa0e181d82d0071a2ac576330",
-      "ported_sha256": "f6b8db81b3934a4302d1e804800ad73c846ce75cb82584520ab20a9a74fbb6a8"
+      "ported_sha256": "17ddacc5796ed3369b11cb585a555df8a2bc9799ea427dafc8981dc3e4569334"
     },
     {
       "path": "src/MappedInputManager.cpp",
       "baseline_sha256": "6cb329fd1abfcff7b2537405b9cad92aa4c78e94fddefe3086d2fb6650ca60c7",
-      "ported_sha256": "542d7c053e97f390dd08909f51509a91e1cd622a27fb9337904602a775d8282e"
+      "ported_sha256": "9661774e6a3963e2e694c390394be07592dcbba8120345fdd466a379199bc42c"
     },
     {
       "path": "src/MappedInputManager.h",
       "baseline_sha256": "f463ca3c5112b4f0c510513c96d384aecd87ebce778545982cdc13d8024be352",
-      "ported_sha256": "33590ba4b82b26db145638ea41ae01a8cbd6d0020e0865f80269aed58fdeb0ba"
+      "ported_sha256": "47c866751cc597147c81e0302a80b4a6923cad0fcd01515b29f36df8308ea6b5"
     },
     {
       "path": "src/SdCardFontSystem.cpp",
@@ -445,7 +450,7 @@
     {
       "path": "src/activities/apps/standby/StandbyActivity.cpp",
       "baseline_sha256": "29dde67945a5e69415ed2f40ca0d287d364f1ff7bf74cc241dd3ead386105696",
-      "ported_sha256": "ef5f89885a9738298419ae730cd4753a10e759bd6dc1d606e0ef3576cfcd6e0e"
+      "ported_sha256": "2eaf25637a72a53eb6947ef2b110278bea727629afe7acf44bf0f3e8e4933da6"
     },
     {
       "path": "src/activities/apps/standby/StandbyActivity.h",
@@ -476,6 +481,11 @@
       "path": "src/activities/library/LibraryListActivity.cpp",
       "baseline_sha256": "390421f0e356311b536e8d9d3ec0f7805fbe83ca0ee641fec6303ce7a995c465",
       "ported_sha256": "aa6c67107208251afe114cb0829726c6e10fa0ae4e9cd0053c39570dd20a849f"
+    },
+    {
+      "path": "src/activities/network/CrossPointWebServerActivity.cpp",
+      "baseline_sha256": "0903483304e119335effb96ef03b90968584b596fee21a876344febba6303ea7",
+      "ported_sha256": "17e783f702368ec53924a71ba5a7a5f5a26f96fdf0df8c2291d1936672883a02"
     },
     {
       "path": "src/activities/network/WifiSelectionActivity.cpp",
@@ -530,7 +540,7 @@
     {
       "path": "src/activities/settings/RickyOptionListActivity.cpp",
       "baseline_sha256": "cb58d870dbd08af18396b7bd389c57a6b17511c43ffcd7224450914902057927",
-      "ported_sha256": "cd9fa99ec4ac8d73394fde30e4cc3b4c9f2d9cd5cac20cb8a6c47a059d20ecb0"
+      "ported_sha256": "018af0bd48bceccc078a304926b241dfdb4f5b1d48aea91a1cb87b68f2f76857"
     },
     {
       "path": "src/activities/settings/SettingsActivity.cpp",
@@ -605,7 +615,7 @@
     {
       "path": "src/network/CrossPointWebServer.cpp",
       "baseline_sha256": "cc26e2862bc34cfd502efd63ab616d9c7e577d51e120037525a8be6222c75ee5",
-      "ported_sha256": "bc32e5499cf63c66a60e0a5723b001aa95384b21515659f4cb9c86c4fccf78d0"
+      "ported_sha256": "5bc368a6cf17b14a815b145c0a5a815114c19efc37b14ecb2ac50f1e4c92b292"
     },
     {
       "path": "src/network/CrossPointWebServer.h",
@@ -661,6 +671,16 @@
       "path": "src/util/PlusButtonInput.h",
       "baseline_sha256": null,
       "ported_sha256": "88c15f24d43979de701a5e0b669112ff87eb8bf63257c83ab6f7c67496725da8"
+    },
+    {
+      "path": "src/util/UserGuide.cpp",
+      "baseline_sha256": "2e87de6c9f3fc96fad078720d98727f177be45ce4eb4f0fdf7e926062ebe5950",
+      "ported_sha256": "33031812ba0afa38c518d6926a6a7b79f0c076d52e6eb15220d4199dc4f42f3f"
+    },
+    {
+      "path": "src/util/UserGuide.h",
+      "baseline_sha256": "a5b2cbbfcab52fda78526019ae3f3a16e7523e3b81bf8bbaa016b82b620e7596",
+      "ported_sha256": "f077c58e6ff59f7ef36f6e92fdf732d0063f0a9c1b5102644795797eae462ef3"
     }
   ],
   "feature_sources": {

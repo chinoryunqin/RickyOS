@@ -1,5 +1,14 @@
 #include "UserGuide.h"
 
+#if defined(RICKYOS_PRODUCT) && RICKYOS_PRODUCT
+// RickyOS does not seed books onto the user's card. Keep the lifecycle API so
+// shared startup code remains compatible, without linking the upstream EPUBs.
+namespace UserGuide {
+void prepare(bool) {}
+void installIfPending(bool) {}
+}  // namespace UserGuide
+#else
+
 #include <Arduino.h>
 #include <Epub.h>
 #include <HalStorage.h>
@@ -131,3 +140,4 @@ void installIfPending(const bool simplifiedChinese) {
           static_cast<unsigned long>(after.largestFreeBlockBytes));
 }
 }  // namespace UserGuide
+#endif

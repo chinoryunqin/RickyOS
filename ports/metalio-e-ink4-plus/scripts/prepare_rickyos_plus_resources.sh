@@ -6,6 +6,6 @@ RESOURCE_PYTHON="${RICKYOS_RESOURCE_PYTHON:-python3}"
 cd "$PROJECT_ROOT/upstream"
 "$RESOURCE_PYTHON" scripts/gen_i18n.py lib/I18n/translations ../generated --src-dirs src lib --strip-unused --builtin-langs en,zh_cn
 "$RESOURCE_PYTHON" scripts/build_html.py
-"$RESOURCE_PYTHON" scripts/generate_userguide_epub.py --bundled --header "$PROJECT_ROOT/generated/UserGuide.generated.h" --output-dir "$TASK_ROOT/.local/user-guide-plus-1.2"
+# RickyOS never bundles or auto-installs the upstream first-use guide.
 
 "$RESOURCE_PYTHON" "$TASK_ROOT/scripts/compress_plus_builtin_fonts.py"
