@@ -88,12 +88,16 @@ int main() {
  Storage.bytes[0]=SECTION_FILE_PARTIAL_VERSION;
  assert(s.loadSectionFile(spec)); // Same header key for interrupted / complete builds.
 #if FREEINK_DEVICE_METALIO_PLUS
- assert(SECTION_FILE_VERSION==81 && SECTION_FILE_PARTIAL_VERSION==201);
+ assert(SECTION_FILE_VERSION==83 && SECTION_FILE_PARTIAL_VERSION==199);
  other=spec;other.imageOutset=0;
  assert(!(spec==other) && !s.loadSectionFile(other));
  Storage.bytes=complete;Storage.bytes[0]=79;
  assert(!s.loadSectionFile(spec));
  Storage.bytes[0]=203; // Previous partial sentinel.
+ assert(!s.loadSectionFile(spec));
+ Storage.bytes[0]=81;  // Plus pagination before collapsed margins.
+ assert(!s.loadSectionFile(spec));
+ Storage.bytes[0]=201; // Its partial sentinel.
  assert(!s.loadSectionFile(spec));
 #else
  assert(SECTION_FILE_VERSION==79 && SECTION_FILE_PARTIAL_VERSION==203);
@@ -113,4 +117,4 @@ with tempfile.TemporaryDirectory(prefix='plus-image-cache-') as directory:
                         '-fsanitize=address,undefined', f'-DFREEINK_DEVICE_METALIO_PLUS={plus}',
                         '-I', str(EPUB), str(work / 'test.cpp'), '-o', str(binary)], check=True)
         subprocess.run([str(binary)], check=True)
-print('Production section header: Plus v81/partial201, image-width key, every truncated header rejected; Pico/C3 v79 unchanged')
+print('Production section header: Plus v83/partial199 (old v81/201 rejected), image-width key, every truncated header rejected; Pico/C3 v79 unchanged')

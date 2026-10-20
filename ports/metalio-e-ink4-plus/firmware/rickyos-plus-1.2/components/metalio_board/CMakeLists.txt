@@ -17,6 +17,9 @@ endif()
 if("$ENV{RICKYOS_PLUS_READER_SHORT_WAVEFORM}" STREQUAL "1")
  target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_READER_SHORT_WAVEFORM=1)
 endif()
-if("$ENV{RICKYOS_PLUS_PHASE_LOOKAHEAD}" STREQUAL "1")
+# Phase lookahead is the default (user-accepted 2026-10-20 after a day of device use:
+# text turns ~853 -> ~765 ms, UI area updates ~860 -> ~780 ms). RICKYOS_PLUS_PHASE_LOOKAHEAD=0
+# builds the legacy cadence for comparison.
+if(NOT "$ENV{RICKYOS_PLUS_PHASE_LOOKAHEAD}" STREQUAL "0")
  target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_PHASE_LOOKAHEAD=1)
 endif()

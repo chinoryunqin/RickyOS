@@ -43,6 +43,17 @@ idf_build_set_property(COMPILE_OPTIONS "-fmacro-prefix-map=${PLUS_WORKSPACE_ROOT
 # LTO optimization is chosen again at final link; keep the application size policy.
 target_link_options(${CMAKE_PROJECT_NAME}.elf PRIVATE -Oz)
 
+# Perf build (RICKYOS_PERF=1): one [PERF] line per measured event (frame, page turn,
+# panel push, chapter load, download), read by tools/rickyos-perf/perf.py. Never shipped.
+if("$ENV{RICKYOS_PERF}" STREQUAL "1")
+    idf_build_set_property(COMPILE_DEFINITIONS "RICKYOS_PERF=1" APPEND)
+endif()
+# Paint profile (RICKYOS_PAINT_PROFILE=1): per reader page, text/fill/image paint time
+# and font cache statistics. Diagnostic only.
+if("$ENV{RICKYOS_PAINT_PROFILE}" STREQUAL "1")
+    idf_build_set_property(COMPILE_DEFINITIONS "RICKYOS_PAINT_PROFILE=1" APPEND)
+endif()
+
 # Explicit packet-header diagnostics; normal builds have no hooks or log code.
 if("$ENV{RICKYOS_PLUS_TCP_TRACE}" STREQUAL "1")
     idf_component_get_property(PLUS_APP_LIB rickyos_application COMPONENT_LIB)

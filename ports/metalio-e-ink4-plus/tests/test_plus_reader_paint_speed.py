@@ -111,6 +111,7 @@ bool graySettleAllowed(){return false;}
 program = program.replace('unsigned delay=400;', '''
   bool inputDuringIdle=false,disableDuringIdle=false,switchDuringIdle=false,updateDuringIdle=false;
   bool wantsGraySettle()const{return false;}
+  void renderIdleWarmup(uint32_t){}
   unsigned delay=400;
 ''')
 program = program.replace('void renderTaskLoop();', '''

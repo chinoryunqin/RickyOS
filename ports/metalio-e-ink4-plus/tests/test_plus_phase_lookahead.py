@@ -172,10 +172,10 @@ static void lookup(const uint32_t* source,uint8_t* dest,const uint8_t* table,uin
  for(int x=0;x<4;x++)dest[x]=(uint8_t)((row+phase*17+x*31)&255);
 }
 int main(int argc,char** argv){
- fault=argc>1?atoi(argv[1]):0;slow=argc>2?atoi(argv[2]):0;
+ fault=argc>1?atoi(argv[1]):0;slow=argc>2?atoi(argv[2]):0;const bool gl16=argc>3&&atoi(argv[3]);
  memset(&ctx,0,sizeof(ctx));ctx.display_width=16;ctx.display_height=684;ctx.lines_total=688;
  ctx.area=(EpdRect){0,0,16,684};ctx.crop_to=(EpdRect){0,10,16,600};
- ctx.mode=MODE_GL16_FAST|MODE_PACKING_1PPB_DIFFERENCE;ctx.cycle_frames=48;
+ ctx.mode=(gl16?MODE_GL16:MODE_GL16_FAST)|MODE_PACKING_1PPB_DIFFERENCE;ctx.cycle_frames=48;
  ctx.data_ptr=input=calloc(684,16);dirty=calloc(684,sizeof(bool));assert(input&&dirty);
  for(int row=0;row<684;row++){input[row*16]=row&255;input[row*16+1]=row>>8;dirty[row]=row%7!=0;}
  ctx.drawn_lines=dirty;ctx.line_mask=mask;ctx.conversion_lut=lut;ctx.lut_build_func=build;ctx.lut_lookup_func=lookup;
@@ -233,6 +233,9 @@ with tempfile.TemporaryDirectory(prefix='plus-phase-lookahead-') as folder:
                     str(DISPLAY / 'output_common/line_queue.c'), '-o', str(binary)], check=True)
     for fault, slow in ((0, 0), (0, 1), (1, 0), (2, 0), (3, 0), (4, 0)):
         subprocess.run([str(binary), str(fault), str(slow)], check=True, timeout=20)
+    # UI area updates (GL16) take the same pipeline, with the same exact order and cleanup.
+    for fault, slow in ((0, 0), (0, 1), (2, 0)):
+        subprocess.run([str(binary), str(fault), str(slow), '1'], check=True, timeout=20)
     fatal = subprocess.run([str(binary), '5', '0'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
     assert fatal.returncode == -signal.SIGABRT, 'Unacknowledged producer must not return a reusable context'
-print('Actual LCD lookahead: 48 phases exact row/mask/crop order, next-phase overlap, delayed peer, frame/prefix/feed failure cleanup, fatal quiesce guard and following legacy GC passed (ASan/UBSan)')
+print('Actual LCD lookahead (GL16_FAST and GL16): 48 phases exact row/mask/crop order, next-phase overlap, delayed peer, frame/prefix/feed failure cleanup, fatal quiesce guard and following legacy GC passed (ASan/UBSan)')

@@ -76,7 +76,7 @@ RICKYOS_PLUS_READER_TIMING=1 \
 bash scripts/build_rickyos_plus.sh
 ```
 
-`PHASE_LOOKAHEAD` 与 `READER_TIMING` 默认关闭，后者只增加诊断日志。
+`READER_TIMING` 默认关闭，只增加诊断日志。`PHASE_LOOKAHEAD` 自 2026-10-20 起默认打开（用户真机使用一天后确认显示正常），并已扩展到界面区域刷新（GL16）；`RICKYOS_PLUS_PHASE_LOOKAHEAD=0` 可编出旧节奏做对比。
 本候选未启用 `GRAY_CALIBRATION`、`READER_SHORT_WAVEFORM`、`TAB_BENCH` 或 `SCREEN_TOUR`；
 不要误开失败的光学校准/短波形实验。普通 UI / GC 仍走原路径。
 JPEG、空闲重试和状态栏改动为 Plus 专用逻辑，不依赖计时开关。

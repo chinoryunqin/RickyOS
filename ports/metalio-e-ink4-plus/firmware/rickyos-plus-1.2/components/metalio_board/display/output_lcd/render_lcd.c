@@ -111,7 +111,10 @@ static void pace_phase(int64_t phase_start_us) {
 
 void lcd_do_update(RenderContext_t* ctx) {
 #if RICKYOS_PLUS_PHASE_LOOKAHEAD
-    if ((ctx->mode & 0x3f) == MODE_GL16_FAST && (ctx->mode & MODE_PACKING_1PPB_DIFFERENCE)
+    // Text turns (GL16_FAST) and UI area updates (GL16) share the scheduling; it only
+    // overlaps preparing the next phase with scanning this one, never the waveform.
+    const int lookaheadMode = ctx->mode & 0x3f;
+    if ((lookaheadMode == MODE_GL16_FAST || lookaheadMode == MODE_GL16) && (ctx->mode & MODE_PACKING_1PPB_DIFFERENCE)
         && ctx->phase_times == NULL && ctx->cycle_frames > 1 && ctx->lines_total > s_prefill_lines
         && ctx->line_threads && ctx->line_ready) {
         lcd_do_update_lookahead(ctx);

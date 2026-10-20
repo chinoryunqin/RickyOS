@@ -62,6 +62,8 @@ python3 tests/test_plus_font_source.py
 python3 tests/test_plus_boot_identity.py
 python3 tests/test_plus_reader_page_cache.py
 python3 tests/test_plus_reader_paint_speed.py
+python3 tests/test_plus_ttf_block_cache.py
+python3 scripts/generate_plus_common_chars.py --check
 python3 tests/test_plus_reader_image_cancel.py
 python3 tests/test_plus_image_quality.py
 python3 tests/test_plus_reader_image_layout.py

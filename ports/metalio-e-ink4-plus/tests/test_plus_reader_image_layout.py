@@ -91,11 +91,12 @@ def main():
     sizing = parser.index('plusReaderImage::fitChapterArt(')
     page_break = parser.index('// Create page for image', sizing)
     image_block = parser.index('makeUniqueNoThrow<ImageBlock>', page_break)
-    reservation = parser.index('self->currentPageNextY += displayHeight + imageMarginBottom;', image_block)
+    reservation = parser.index('self->currentPageNextY += displayHeight;', image_block)
+    assert parser.index('self->pendingMarginBottom = imageMarginBottom;', reservation) > reservation
     assert sizing < page_break < image_block < reservation
     assert '#if FREEINK_DEVICE_METALIO_PLUS' in parser[:sizing][-450:]
     section = SECTION.read_text()
-    assert 'SECTION_FILE_VERSION = 81;' in section and 'SECTION_FILE_VERSION = 79;' in section
+    assert 'SECTION_FILE_VERSION = 83;' in section and 'SECTION_FILE_VERSION = 79;' in section
     assert '0xFE - (SECTION_FILE_VERSION - 28)' in section
     assert 'setImageOutset(spec.imageOutset)' in section
     print('Plus chapter art: near edge-to-edge width, signed page offset, aspect, icons and page bounds passed')
