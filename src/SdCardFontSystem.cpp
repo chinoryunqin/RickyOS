@@ -15,6 +15,11 @@
 #include "CrossPointSettings.h"
 #include "ReaderFontSizes.h"
 #include "fontIds.h"
+#if CROSSPOINT_VECTOR_FONTS
+#include <Utf8.h>
+
+#include "util/RickyCommonChars.h"
+#endif
 
 namespace {
 
@@ -355,6 +360,12 @@ void SdCardFontSystem::freeTtfSources() {
     s.bytes.clear();
     freeink::font::PsramVector<uint8_t>().swap(s.bytes);  // actually release
     if (s.file) s.file.close();
+#if RICKYOS_TTF_BLOCK_CACHE
+    heap_caps_free(s.blockData);
+    s.blockData = nullptr;
+    for (auto& length : s.blockLen) length = 0;
+    s.blockAllocFailed = false;
+#endif
     s.streamed = false;
     s.flash = false;
     s.size = 0;
@@ -427,7 +438,8 @@ bool SdCardFontSystem::openTtfSource(const uint8_t style, const std::string& pat
   // aborts on OOM, so this gate is load-bearing on no-PSRAM boards (X4/C3):
   // fall back to streaming instead of attempting an allocation that can fail.
   bool resident = len <= kResidentMax;
-  if (resident && heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM) < len) {
+  const size_t psramLargest = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
+  if (resident && psramLargest < len) {
     const size_t internalFree = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     if (internalFree < len + kInternalHeadroom) {
       LOG_DBG("SDFS", "TTF %s (%u KB) too large for DRAM (largest block %u KB), streaming", path.c_str(),
@@ -436,9 +448,12 @@ bool SdCardFontSystem::openTtfSource(const uint8_t style, const std::string& pat
     }
   }
   if (resident) {
+    const unsigned long loadStart = millis();
     s.bytes.resize(len);
     const int got = f.read(s.bytes.data(), len);
     f.close();
+    LOG_INF("SDFS", "TTF %s resident (%u KB, read in %lu ms, PSRAM largest was %u KB)", path.c_str(),
+            static_cast<unsigned>(len / 1024), millis() - loadStart, static_cast<unsigned>(psramLargest / 1024));
     if (static_cast<size_t>(got) != len) {
       LOG_ERR("SDFS", "Short read on TTF %s (%d/%u)", path.c_str(), got, static_cast<unsigned>(len));
       s.bytes.clear();
@@ -462,7 +477,22 @@ bool SdCardFontSystem::openTtfSource(const uint8_t style, const std::string& pat
         s.bytes.clear();  // fall back to pure streaming
       }
     }
-    LOG_DBG("SDFS", "Streaming TTF %s (%u KB) from SD", path.c_str(), static_cast<unsigned>(len / 1024));
+    LOG_INF("SDFS", "Streaming TTF %s (%u KB) from SD, PSRAM largest %u KB", path.c_str(),
+            static_cast<unsigned>(len / 1024), static_cast<unsigned>(psramLargest / 1024));
+#if RICKYOS_PAINT_PROFILE
+    // Table directory: where the per-glyph tables sit decides how much the prefix covers.
+    if (s.bytes.size() >= 12) {
+      const uint8_t* d = s.bytes.data();
+      const unsigned tables = (d[4] << 8) | d[5];
+      for (unsigned i = 0; i < tables && 12 + 16 * (i + 1) <= s.bytes.size(); ++i) {
+        const uint8_t* r = d + 12 + 16 * i;
+        const uint32_t offset = (uint32_t(r[8]) << 24) | (r[9] << 16) | (r[10] << 8) | r[11];
+        const uint32_t length = (uint32_t(r[12]) << 24) | (r[13] << 16) | (r[14] << 8) | r[15];
+        LOG_INF("SDFS", "TTF table %c%c%c%c offset=%lu length=%lu", r[0], r[1], r[2], r[3],
+                static_cast<unsigned long>(offset), static_cast<unsigned long>(length));
+      }
+    }
+#endif
   }
   s.size = static_cast<unsigned long>(len);
   s.present = true;
@@ -472,6 +502,10 @@ bool SdCardFontSystem::openTtfSource(const uint8_t style, const std::string& pat
 // Streamed-source read: serve from the PSRAM prefix cache when the range is
 // there, hit SD only for the tail (glyf outlines). A read straddling the
 // boundary splits across both.
+#if RICKYOS_PAINT_PROFILE
+SdCardFontSystem::StreamStats SdCardFontSystem::streamStats_;
+#endif
+
 unsigned long SdCardFontSystem::prefixRead(void* ctx, const unsigned long offset, unsigned char* buffer,
                                            const unsigned long count) {
   auto* s = static_cast<TtfSource*>(ctx);
@@ -481,10 +515,70 @@ unsigned long SdCardFontSystem::prefixRead(void* ctx, const unsigned long offset
     if (count == 0) return 0;  // seek probe
     memcpy(buffer, s->bytes.data() + offset, fromCache);
     if (fromCache == count) return count;
-    return fromCache +
-           SdCardFontRegistry::halFileRead(&s->file, offset + fromCache, buffer + fromCache, count - fromCache);
+    return fromCache + readStreamTail(s, offset + fromCache, buffer + fromCache, count - fromCache);
   }
-  return SdCardFontRegistry::halFileRead(&s->file, offset, buffer, count);
+  return readStreamTail(s, offset, buffer, count);
+}
+
+unsigned long SdCardFontSystem::readStreamTail(TtfSource* s, const unsigned long offset, unsigned char* buffer,
+                                               const unsigned long count) {
+  const auto cardRead = [s](const unsigned long at, unsigned char* out, const unsigned long length) {
+#if RICKYOS_PAINT_PROFILE
+    const uint32_t start = micros();
+    const unsigned long got = SdCardFontRegistry::halFileRead(&s->file, at, out, length);
+    if (length != 0) {
+      ++streamStats_.reads;
+      streamStats_.bytes += length;
+      streamStats_.us += micros() - start;
+    }
+    return got;
+#else
+    return SdCardFontRegistry::halFileRead(&s->file, at, out, length);
+#endif
+  };
+#if RICKYOS_TTF_BLOCK_CACHE
+  constexpr unsigned long kBlock = TtfSource::kBlockBytes;
+  if (count == 0 || count > kBlock) return cardRead(offset, buffer, count);  // seek probe / bulk read
+  if (!s->blockData && !s->blockAllocFailed) {
+    s->blockData = static_cast<uint8_t*>(heap_caps_malloc(TtfSource::kBlockCount * kBlock, MALLOC_CAP_SPIRAM));
+    if (!s->blockData) {
+      s->blockAllocFailed = true;
+      LOG_ERR("SDFS", "No PSRAM for the TTF block cache; reading glyphs straight from SD");
+    }
+  }
+  if (!s->blockData) return cardRead(offset, buffer, count);
+  unsigned long done = 0;
+  while (done < count && offset + done < s->size) {
+    const unsigned long at = offset + done;
+    const unsigned long start = at - at % kBlock;
+    int slot = -1;
+    for (int i = 0; i < TtfSource::kBlockCount; ++i) {
+      if (s->blockLen[i] != 0 && s->blockStart[i] == start) {
+        slot = i;
+        break;
+      }
+    }
+    if (slot < 0) {
+      slot = 0;
+      for (int i = 1; i < TtfSource::kBlockCount; ++i) {
+        if (s->blockUse[i] < s->blockUse[slot]) slot = i;
+      }
+      const unsigned long want = kBlock < s->size - start ? kBlock : s->size - start;
+      s->blockStart[slot] = start;
+      s->blockLen[slot] = cardRead(start, s->blockData + slot * kBlock, want);
+      if (s->blockLen[slot] == 0) break;
+    }
+    s->blockUse[slot] = ++s->blockClock;
+    const unsigned long within = at - start;
+    if (within >= s->blockLen[slot]) break;  // short read at the end of the file
+    const unsigned long length = count - done < s->blockLen[slot] - within ? count - done : s->blockLen[slot] - within;
+    memcpy(buffer + done, s->blockData + slot * kBlock + within, length);
+    done += length;
+  }
+  return done;
+#else
+  return cardRead(offset, buffer, count);
+#endif
 }
 
 unsigned long SdCardFontSystem::flashRead(void* ctx, const unsigned long offset, unsigned char* buffer,
@@ -508,6 +602,26 @@ void SdCardFontSystem::addTtfSources(TtfEpdFont& font) {
     }
   }
 }
+
+#if CROSSPOINT_VECTOR_FONTS
+bool SdCardFontSystem::prerasterizeCommon(const unsigned count) {
+  if (!ttf_ || ttfFontId_ == 0) return false;
+  unsigned done = 0;
+  const auto more = [this] {
+    return kRickyCommonChars[prerasterCursor_] != 0 && prerasterVisited_ < kWarmupCharLimit;
+  };
+  while (done < count && more()) {
+    const auto* p = kRickyCommonChars + prerasterCursor_;
+    const uint32_t cp = utf8NextCodepoint(&p);
+    const auto result = ttf_->prerasterize(cp);
+    if (result == TtfEpdFont::Prerasterize::Full) return false;
+    prerasterCursor_ = static_cast<size_t>(p - kRickyCommonChars);
+    ++prerasterVisited_;
+    if (result == TtfEpdFont::Prerasterize::Done) ++done;
+  }
+  return more();
+}
+#endif
 
 void SdCardFontSystem::setupTtfUiFallbacks(GfxRenderer& renderer) {
   if (ttfFamily_.empty()) return;
@@ -583,8 +697,18 @@ void SdCardFontSystem::loadTtfFamily(const SdCardFontFamilyInfo& family, GfxRend
   // / When the panel does 16 levels, load the reader's vector face with 4-bit coverage:
   // FreeType already computes 8 bits, and packing to 2 discards the anti-aliasing depth.
   const bool fourBit = renderer.getGrayscaleLevels() == 16;
+#if FREEINK_DEVICE_METALIO_PLUS
+  // 16 MB of PSRAM: room for the idle warm-up of ~4000 common characters (~350 B each
+  // at 4-bit coverage) on top of a book's own working set, so it never hits the
+  // flush-everything ceiling.
+  const size_t cacheBytes = havePsram ? 4 * 1024 * 1024 : 32 * 1024;
+  const uint16_t maxGlyphs = havePsram ? 8192 : 768;
+#else
   const size_t cacheBytes = havePsram ? 1024 * 1024 : 32 * 1024;
   const uint16_t maxGlyphs = havePsram ? 4096 : 768;
+#endif
+  prerasterCursor_ = 0;
+  prerasterVisited_ = 0;
 
   // Same family, only the reader size changed (size preview): the open style
   // sources and the size-independent UI fallbacks don't need rebuilding — just

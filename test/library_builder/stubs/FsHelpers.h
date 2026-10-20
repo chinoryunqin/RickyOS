@@ -17,6 +17,13 @@ inline bool checkFileExtension(const std::string& path, const char* extension) {
   return true;
 }
 inline bool hasEpubExtension(const std::string& path) { return checkFileExtension(path, ".epub"); }
+// Same rule as the firmware: EPUB, TXT and Markdown (+ MOBI/AZW3 with RICKYOS_KINDLE_IMPORT).
+inline bool hasReflowableBookExtension(const std::string& path) {
+#if defined(RICKYOS_KINDLE_IMPORT)
+  if (checkFileExtension(path, ".mobi") || checkFileExtension(path, ".azw3")) return true;
+#endif
+  return hasEpubExtension(path) || checkFileExtension(path, ".txt") || checkFileExtension(path, ".md");
+}
 inline bool isProtectedPathComponent(const std::string& component) {
   return component.empty() || component.front() == '.' || component == "System Volume Information" ||
          component == "XTCache";

@@ -25,6 +25,8 @@ class FontDecompressor {
 
   // Free all cached data (page buffer + hot group).
   void clearCache();
+  // Drop only the reader page buffer; hot groups stay for the next lookup.
+  void clearPageCache() { freePageBuffer(); }
 
   // Pre-scan UTF-8 text and extract needed glyph bitmaps into a flat page buffer.
   // Each group is decompressed once into a temp buffer; only needed glyphs are kept.

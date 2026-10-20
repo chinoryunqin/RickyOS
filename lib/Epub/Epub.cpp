@@ -9,6 +9,9 @@
 #include <Txt.h>
 #include <Utf8.h>
 #include <ZipFile.h>
+#if defined(RICKYOS_KINDLE_IMPORT)
+#include <KindleImport.h>
+#endif
 
 #include <cstdlib>
 #include <cstring>
@@ -300,7 +303,7 @@ bool Epub::parseTocNavFile() const {
 
 void Epub::discoverCssFilesFromZip() {
   const std::string& opfDir = contentBasePath;
-  ZipFile zf(filepath);
+  ZipFile zf(archiveFile());
 
   if (!zf.enumerateFilePaths([&](std::string_view filePath) {
         if (!opfDir.empty() && filePath.find(opfDir) != 0) {
@@ -370,7 +373,7 @@ CssParser::ParseResult Epub::parseCssFiles(const CssParser::CacheStatus existing
     std::sort(dedupEntries.get(), dedupEntries.get() + cssFiles.size(),
               [](const CssDedupEntry& lhs, const CssDedupEntry& rhs) { return lhs.pathHash < rhs.pathHash; });
 
-    ZipFile(filepath).enumerateFileEntries([&](std::string_view entryPath, uint32_t crc32, uint32_t compressedSize) {
+    ZipFile(archiveFile()).enumerateFileEntries([&](std::string_view entryPath, uint32_t crc32, uint32_t compressedSize) {
       if (!FsHelpers::hasCssExtension(entryPath)) {
         return;
       }
@@ -512,6 +515,9 @@ CssParser::ParseResult Epub::parseCssFiles(const CssParser::CacheStatus existing
 // means normal ZIP reads should be used. A hard error refuses the open with a
 // user-presentable reason.
 bool Epub::openProtection() {
+#if defined(RICKYOS_KINDLE_IMPORT)
+  if (kindle::supported(filepath)) return true; // Importer explicitly refuses DRM.
+#endif
   std::string err;
   decryptor = freeink::content::openProtectedBook(filepath, err);
   if (!err.empty()) {
@@ -525,9 +531,34 @@ bool Epub::openProtection() {
   return true;
 }
 
+bool Epub::prepareArchive() {
+#if defined(RICKYOS_KINDLE_IMPORT)
+  if (kindle::supported(filepath)) {
+    bool rebuilt = false;
+    kindle::Error error;
+    if (!kindle::prepare(filepath, cachePath, archivePath, rebuilt, error)) {
+      protectionError = error == kindle::Error::Encrypted ? "kindle encrypted" :
+                        error == kindle::Error::OutOfMemory ? "kindle memory" :
+                        error == kindle::Error::Unsupported ? "kindle unsupported" : "kindle invalid";
+      return false;
+    }
+    if (rebuilt) reportLoad(5);
+  }
+#endif
+  return true;
+}
+
 bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
   LOG_DBG("EBP", "Loading ePub: %s", filepath.c_str());
 
+#if defined(RICKYOS_KINDLE_IMPORT)
+  if (!buildIfMissing && kindle::supported(filepath)) {
+    // Home/statistics may query progress. Never convert a book from that path.
+    archivePath = cachePath + "/kindle.epub";
+    if (!Storage.exists(archivePath.c_str()) || !Storage.exists((cachePath + kindle::kMarkerName).c_str())) return false;
+  } else
+#endif
+  if (!prepareArchive()) return false;
   if (!openProtection()) return false;
 
   // Initialize spine/TOC cache
@@ -692,7 +723,7 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
 
   // Build final book.bin
   const uint32_t buildStart = millis();
-  if (!bookMetadataCache->buildBookBin(filepath, bookMetadata)) {
+  if (!bookMetadataCache->buildBookBin(archiveFile(), bookMetadata)) {
     LOG_ERR("EBP", "Could not update mappings and sizes");
     return false;
   }
@@ -730,6 +761,12 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
 bool Epub::loadMetadata(std::string& title, std::string& author) {
   title.clear();
   author.clear();
+#if defined(RICKYOS_KINDLE_IMPORT)
+  if (kindle::supported(filepath)) {
+    kindle::Error error;
+    return kindle::metadata(filepath, title, author, error);
+  }
+#endif
 
   if (Txt::isTxtOrMd(filepath)) {
     title = utf8ComposeNfc(FsHelpers::getFileNameWithoutExtension(filepath));
@@ -747,7 +784,7 @@ bool Epub::loadMetadata(std::string& title, std::string& author) {
   }
   metadataCache.reset();
 
-  ZipFile zip(filepath);
+  ZipFile zip(archiveFile());
   if (!zip.open()) {
     LOG_DBG("EBP", "Could not open ePub for package metadata: %s", filepath.c_str());
     return false;
@@ -886,9 +923,17 @@ bool Epub::generateThumbBmpFromSource(int height) {
     setupCacheDir();
     return generateThumbBmpForCover(height, companionCover);
   }
+#if defined(RICKYOS_KINDLE_IMPORT)
+  if (kindle::supported(filepath)) {
+    // Never run an entire import during a background shelf-cover scan.
+    const std::string imported = cachePath + "/kindle.epub";
+    if (!Storage.exists(imported.c_str())) return false;
+    archivePath = imported;
+  }
+#endif
   // Parser input and metadata outlive parsing but exceed the small task stack budget.
   auto metadata = makeUniqueNoThrow<BookMetadataCache::BookMetadata>();
-  auto zip = makeUniqueNoThrow<ZipFile>(filepath);
+  auto zip = makeUniqueNoThrow<ZipFile>(archiveFile());
   if (!metadata || !zip) {
     LOG_ERR("EBP", "OOM: cover metadata");
     return false;
@@ -986,7 +1031,7 @@ uint8_t* Epub::readItemContentsToBytes(const std::string& itemHref, size_t* size
     return content;
   }
 
-  const auto content = ZipFile(filepath).readFileToMemory(path.c_str(), size, trailingNullByte);
+  const auto content = ZipFile(archiveFile()).readFileToMemory(path.c_str(), size, trailingNullByte);
   if (!content) {
     LOG_DBG("EBP", "Failed to read item %s", path.c_str());
     return nullptr;
@@ -1033,7 +1078,7 @@ bool Epub::readItemContentsToStream(const std::string& itemHref, Print& out, con
     return true;
   }
 
-  return ZipFile(filepath).readFileToStream(path.c_str(), out, chunkSize, allowEarlyStop, psramChunkSize, cancellation);
+  return ZipFile(archiveFile()).readFileToStream(path.c_str(), out, chunkSize, allowEarlyStop, psramChunkSize, cancellation);
 }
 
 bool Epub::extractItemToFile(const std::string& itemHref, const std::string& destPath, CancelCheck cancellation) const {
@@ -1065,7 +1110,7 @@ bool Epub::getItemSize(const std::string& itemHref, size_t* size) const {
     return false;
   }
   const std::string path = FsHelpers::normalisePath(itemHref);
-  return ZipFile(filepath).getInflatedFileSize(path.c_str(), size);
+  return ZipFile(archiveFile()).getInflatedFileSize(path.c_str(), size);
 }
 
 int Epub::getSpineItemsCount() const {

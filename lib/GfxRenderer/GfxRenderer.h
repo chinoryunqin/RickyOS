@@ -41,7 +41,8 @@ enum Color : uint8_t { Clear = 0x00, White = 0x01, LightGray = 0x05, DarkGray = 
 
 class GfxRenderer {
  public:
-  enum class PaintKind : uint8_t { Fill, Text, Shape, Image, Count };
+  // Glyph = glyph bitmap fetches (font cache / decompressor / SD), counted inside Text too.
+  enum class PaintKind : uint8_t { Fill, Text, Shape, Image, Glyph, Count };
   struct PaintProfile {
     uint32_t us[static_cast<int>(PaintKind::Count)] = {};
     uint32_t calls[static_cast<int>(PaintKind::Count)] = {};

@@ -188,7 +188,11 @@ inline void motif(fui::DrawTarget& target, Rect r, Motif kind) {
 
 // Index titles fall back to the file name; show "浮生六记", not "浮生六记.txt".
 inline void stripBookExtension(std::string& title) {
-  static constexpr const char* extensions[] = {".epub", ".txt", ".md"};
+  static constexpr const char* extensions[] = {".epub", ".txt", ".md"
+#if defined(RICKYOS_KINDLE_IMPORT)
+    , ".mobi", ".azw3"
+#endif
+  };
   for (const char* extension : extensions) {
     const size_t length = strlen(extension);
     if (title.size() <= length) continue;

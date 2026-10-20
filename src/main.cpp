@@ -342,7 +342,9 @@ void restartToHomeAfterStorageHandoff() {
 }
 
 void toggleFrontlight() {
-  if (!Frontlight.present()) return;
+  // Global shortcuts run before the active Activity gets its input. Standby
+  // must not change the light or persist a preference from an ignored gesture.
+  if (activityManager.standbyShowing() || !Frontlight.present()) return;
   const bool lightOn = !Frontlight.isOn();
   Frontlight.setOn(lightOn);
   SETTINGS.frontlightOn = lightOn ? 1 : 0;
@@ -1040,7 +1042,8 @@ void loop() {
 
   gpio.setSharedConfirmPowerShortPressEmitsPower(SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP);
   mappedInputManager.update();
-#if FREEINK_DEVICE_READPICO
+  if (activityManager.standbyShowing()) mappedInputManager.suppressStandbyHomeActions();
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
   // Cancel before any handler can wait for the framebuffer lock. These are
   // snapshot queries: they do not consume the gesture from its normal owner.
 #if CROSSPOINT_EMULATED

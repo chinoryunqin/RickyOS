@@ -3,6 +3,7 @@
 #include <Logging.h>
 #include <Memory.h>
 
+#include <algorithm>
 #include <memory>
 #include <string>
 
@@ -23,6 +24,20 @@ ImageToFramebufferDecoder* ImageDecoderFactory::getDecoder(const std::string& im
   } else {
     ext = "";
   }
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
+  // Legacy section caches may still name PNG bytes .jpg. Prefer a bounded
+  // content probe after extraction; keep suffix-based probing for lazy files.
+  HalFile file;
+  if (Storage.openFileForRead("DEC", imagePath, file)) {
+    uint8_t header[8]{};
+    const int count = file.read(header, sizeof(header));
+    const uint8_t png[8]{137, 80, 78, 71, 13, 10, 26, 10};
+    if (count == 8 && std::equal(header, header + 8, png))
+      ext = ".png";
+    else if (count >= 3 && header[0] == 255 && header[1] == 216 && header[2] == 255)
+      ext = ".jpg";
+  }
+#endif
 
   if (JpegToFramebufferConverter::supportsFormat(ext)) {
     if (!jpegDecoder) {

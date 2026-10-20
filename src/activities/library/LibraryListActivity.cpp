@@ -35,6 +35,7 @@
 #include "util/BookCacheUtils.h"
 #include "util/BookCoverLoader.h"
 #include "util/PanelTileCache.h"
+#include <RickyPerf.h>
 
 namespace fui = freeink::ui;
 
@@ -1138,6 +1139,7 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
           bounds.y, bounds.width, bounds.height, body.x, body.y, body.width, body.height, start, count, visible,
           coverHeight);
   if (start != shelfStart || coverHeight != shelfHeight) {
+    [[maybe_unused]] const auto perfShelfStart = millis();
     shelfCount = visible;
     // Materialize only four bounded index records; no vector of every book/cover.
     for (int i = 0; i < visible; ++i) {
@@ -1158,6 +1160,7 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
       shelfCovers[i].clear();
     }
     index.close();
+    [[maybe_unused]] const auto perfThumbStart = millis();
     // Do not loan a framebuffer that already contains the header and controls.
     // Existing thumbnail parsers use fallible temporary scratch, released per
     // book; a failed conversion leaves the cover placeholder usable.
@@ -1169,6 +1172,8 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
                            ? std::move(drawn)
                            : BookCoverLoader::ensureThumbnail(shelfPaths[i], coverHeight);
     }
+    RICKY_PERF("shelf", "start=%d records=%lu thumbs=%lu", start, perfThumbStart - perfShelfStart,
+               millis() - perfThumbStart);
     if (!index.open(library::libraryIndexPath())) {
       LOG_ERR("LIB", "cannot reopen shelf index");
       shelfStart = -1;
@@ -1207,7 +1212,9 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
     }
     if (!painted) {
       const auto& path = shelfPaths[slot];
-      const char* format = FsHelpers::hasEpubExtension(path) ? "EPUB" : FsHelpers::hasTxtExtension(path) ? "TXT" : "MD";
+      const char* format = FsHelpers::hasEpubExtension(path) ? "EPUB" : FsHelpers::hasTxtExtension(path) ? "TXT" :
+                           FsHelpers::checkFileExtension(path, ".mobi") ? "MOBI" :
+                           FsHelpers::checkFileExtension(path, ".azw3") ? "AZW3" : "MD";
       RickyDesignUi::cover(renderer, rect, shelfTitles[slot].c_str(), format);
     }
     const fui::Rect titleRect{static_cast<int16_t>(cell.x + cardSideInset),

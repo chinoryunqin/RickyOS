@@ -51,6 +51,7 @@ struct PngContext {
   // output row be emitted once the second of its two source rows has arrived,
   // which is why bilinear emission is one interval behind (see nextDstY).
   uint8_t* prevGrayLine{nullptr};
+  uint8_t* prevAlphaLine{nullptr};
   bool havePrevRow{false};
   int nextDstY{0};  // next destination row to emit in bilinear mode
   // 16.16 source-column step for the bilinear sampler, computed once per image so
@@ -275,7 +276,8 @@ constexpr int kBilinearOne = 1 << 16;
 // the two neighbouring source columns with the same fixed-point scheme, so a
 // scaled image gets a continuous ramp instead of nearest-neighbour stair steps.
 void emitBilinearRow(PngContext& ctx, const int dstY, const uint8_t* rowTop, const uint8_t* rowBot, const int fyFP,
-                     DirectPixelWriter& pw, const bool writeFramebuffer) {
+                     DirectPixelWriter& pw, const bool writeFramebuffer, const uint8_t* alphaTop = nullptr,
+                     const uint8_t* alphaBot = nullptr) {
   const int outY = ctx.config->y + dstY;
   if (outY >= ctx.screenHeight) return;
   if (writeFramebuffer) pw.beginRow(outY);
@@ -313,6 +315,25 @@ void emitBilinearRow(PngContext& ctx, const int dstY, const uint8_t* rowTop, con
     const int sx1 = (sx + 1 <= lastX) ? sx + 1 : lastX;
     const int x0 = ctx.cropLeft + sx;
     const int x1 = ctx.cropLeft + sx1;
+
+    if (ctx.config->output == DecodeOutput::NativeGrayscale16) {
+      // Filter premultiplied gray and alpha together, avoiding dark fringes
+      // from arbitrary RGB values in transparent decoration pixels.
+      const auto mix = [](int a, int b, int f) {
+        return static_cast<int>((static_cast<int64_t>(a) * (kBilinearOne - f) + static_cast<int64_t>(b) * f + 32768) >>
+                                16);
+      };
+      const int a00 = alphaTop ? alphaTop[x0] : 255, a01 = alphaTop ? alphaTop[x1] : 255;
+      const int a10 = alphaBot ? alphaBot[x0] : 255, a11 = alphaBot ? alphaBot[x1] : 255;
+      const int alpha = mix(mix(a00, a01, fxFP), mix(a10, a11, fxFP), fyFP);
+      if (alpha && outX < ctx.screenWidth) {
+        const int premul =
+            mix(mix(rowTop[x0] * a00, rowTop[x1] * a01, fxFP), mix(rowBot[x0] * a10, rowBot[x1] * a11, fxFP), fyFP);
+        const int sample = std::min(255, (premul + alpha / 2) / alpha);
+        ctx.renderer->blendGrayscale16Pixel(outX, outY, (sample + 8) / 17, (alpha + 8) / 17);
+      }
+      continue;
+    }
 
     const int top = (static_cast<int>(rowTop[x0]) * (kBilinearOne - fxFP) + static_cast<int>(rowTop[x1]) * fxFP) >> 16;
     int gray = top;
@@ -382,7 +403,7 @@ int pngDrawCallback(PNGDRAW* pDraw) {
         for (int dstY = ctx->nextDstY; dstY < last; dstY++) {
           const int64_t srcPos = (static_cast<int64_t>(dstY) * ctx->visibleHeight << 16) / ctx->dstHeight;
           emitBilinearRow(*ctx, dstY, ctx->prevGrayLine, ctx->grayLineBuffer, static_cast<int>(srcPos & 0xFFFF), pw,
-                          writeFramebuffer);
+                          writeFramebuffer, ctx->prevAlphaLine, ctx->alphaLineBuffer);
         }
         ctx->nextDstY = last;
       }
@@ -391,6 +412,7 @@ int pngDrawCallback(PNGDRAW* pDraw) {
     if (ctx->prevGrayLine) {
       memcpy(ctx->prevGrayLine, ctx->grayLineBuffer, static_cast<size_t>(srcWidth));
     }
+    if (ctx->prevAlphaLine) memcpy(ctx->prevAlphaLine, ctx->alphaLineBuffer, static_cast<size_t>(srcWidth));
     ctx->havePrevRow = true;
     return 1;
   }
@@ -517,8 +539,8 @@ bool PngToFramebufferConverter::decodeToFramebuffer(const std::string& imagePath
   LOG_DBG("PNG", "Decoding PNG: %s", imagePath.c_str());
 
   const bool cacheOnly = config.output == DecodeOutput::CacheOnly;
-  if (config.output == DecodeOutput::NativeGrayscale16 && (!renderer.isGrayscale16Active() || config.bilinearScaling)) {
-    LOG_ERR("PNG", "Native decode requires an active frame and nearest-neighbor scaling");
+  if (config.output == DecodeOutput::NativeGrayscale16 && !renderer.isGrayscale16Active()) {
+    LOG_ERR("PNG", "Native decode requires an active frame");
     if (config.error) *config.error = ImageRenderError::Failed;
     return false;
   }
@@ -658,7 +680,8 @@ bool PngToFramebufferConverter::decodeToFramebuffer(const std::string& imagePath
   // Bilinear holds one extra source row (the previous scanline) so an output row
   // can be blended vertically; nearest needs only the current one.
   const size_t alphaAndCurrent = grayBufSize * (retainAlpha ? 2u : 1u);
-  const size_t lineBufferBytes = alphaAndCurrent + (bilinearMode ? grayBufSize : 0u);
+  // At most four source rows, not a full image allocation.
+  const size_t lineBufferBytes = alphaAndCurrent * (bilinearMode ? 2u : 1u);
   auto lineBuffers = makeUniqueNoThrow<uint8_t[]>(lineBufferBytes);
   if (!lineBuffers) {
     LOG_ERR("PNG", "Failed to allocate PNG line buffers (%u bytes)", static_cast<unsigned>(lineBufferBytes));
@@ -667,6 +690,7 @@ bool PngToFramebufferConverter::decodeToFramebuffer(const std::string& imagePath
   ctx.grayLineBuffer = lineBuffers.get();
   ctx.alphaLineBuffer = retainAlpha ? ctx.grayLineBuffer + grayBufSize : nullptr;
   ctx.prevGrayLine = bilinearMode ? ctx.grayLineBuffer + alphaAndCurrent : nullptr;
+  ctx.prevAlphaLine = bilinearMode && retainAlpha ? ctx.prevGrayLine + grayBufSize : nullptr;
   ctx.havePrevRow = false;
   ctx.nextDstY = 0;
 
@@ -709,7 +733,8 @@ bool PngToFramebufferConverter::decodeToFramebuffer(const std::string& imagePath
         ctx.cache.abort();
         return false;
       }
-      emitBilinearRow(ctx, dstY, ctx.prevGrayLine, ctx.prevGrayLine, 0, pw, writeFramebuffer);
+      emitBilinearRow(ctx, dstY, ctx.prevGrayLine, ctx.prevGrayLine, 0, pw, writeFramebuffer, ctx.prevAlphaLine,
+                      ctx.prevAlphaLine);
     }
     ctx.nextDstY = ctx.dstHeight;
   }

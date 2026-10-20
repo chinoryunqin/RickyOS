@@ -50,7 +50,12 @@ void FontCacheManager::setFontDecompressor(FontDecompressor* d) { fontDecompress
 
 void FontCacheManager::clearCache() {
   // Preserve bounded TTF glyph caches across renders; memory pressure uses releaseResidentCaches().
-  if (fontDecompressor_) fontDecompressor_->clearCache();
+  // Hot groups hold only the built-in UI faces (compile-time data at fixed addresses):
+  // at most HOT_GROUP_SLOTS of them (8 x ~16 KB on the Pico/A4, more on the Plus). Freeing
+  // them on every reader page made the status bar re-inflate its groups each turn
+  // (105-131 ms of every ~920 ms cached turn on the Plus). releaseSdFontCaches() still
+  // frees them under memory pressure.
+  if (fontDecompressor_) fontDecompressor_->clearPageCache();
   for (auto& [id, font] : sdCardFonts_) {
     font->clearCache();
   }

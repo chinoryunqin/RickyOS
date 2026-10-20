@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <HalStorage.h>
 #include <expat.h>
 
@@ -47,6 +48,15 @@ class ChapterHtmlSlimParser {
   std::string rubyTextBuffer;
   std::unique_ptr<Page> currentPage = nullptr;
   int16_t currentPageNextY = 0;
+  // CSS vertical margins between adjacent blocks collapse to the larger one: a block's
+  // bottom margin waits here and the next block's top margin takes max(pending, top).
+  // Padding never collapses; a new page drops what is pending.
+  int16_t pendingMarginBottom = 0;
+  int16_t takeCollapsedTopMargin(int16_t top) {
+    const int16_t collapsed = std::max<int16_t>(pendingMarginBottom, std::max<int16_t>(top, 0));
+    pendingMarginBottom = 0;
+    return collapsed;
+  }
   int fontId;
   float lineCompression;
   uint8_t extraParagraphSpacing;  // 0=off, 1..5=0.5x/0.75x/1x/1.25x/1.5x line height
@@ -57,6 +67,9 @@ class ChapterHtmlSlimParser {
   uint8_t paragraphAlignment;
   uint16_t viewportWidth;
   uint16_t viewportHeight;
+#if FREEINK_DEVICE_METALIO_PLUS
+  uint16_t imageOutset = 0;
+#endif
   bool hyphenationEnabled;
   bool focusReadingEnabled;
   const CssParser* cssParser;
@@ -237,6 +250,9 @@ class ChapterHtmlSlimParser {
   }
   void setTxtChapterBoundaries(bool enabled) { txtChapterBoundaries = enabled; }
   void setParagraphIndentSpaces(const uint8_t spaces) { paragraphIndentSpaces = spaces; }
+#if FREEINK_DEVICE_METALIO_PLUS
+  void setImageOutset(const uint16_t pixels) { imageOutset = pixels; }
+#endif
 
   // One-shot parse: builds every page before returning (begin + step* + finish).
   bool parseAndBuildPages();

@@ -27,7 +27,10 @@ void MappedInputManager::update(const bool deferHomeButtonAction) const {
   pollBle();
 #endif
   homeAction = HomeButtonAction::Ignore;
-  if (gpio.hasHomeKey()) {
+  // A release / long-press that began behind the lock screen is not a fresh
+  // gesture. The SDK exposes the Home press edge even when it has no held query.
+  if (homeNeedsFreshPress && gpio.wasHomeKeyPressed()) homeNeedsFreshPress = false;
+  if (gpio.hasHomeKey() && !homeNeedsFreshPress) {
     homeAction = homeButtonInput.update(millis(), gpio.wasHomeKeyTapped(), gpio.wasHomeKeyLongPressed(),
                                         wasSwipe() != SwipeDir::None, gpio.wasHomeKeyPressed(),
                                         static_cast<HomeButtonAction>(SETTINGS.homeButtonTapAction),
@@ -485,6 +488,8 @@ bool MappedInputManager::wasBackGesture() const {
   if (!SETTINGS.rickyGestureBack) return false;
   return wasEdgeSwipe(fui::ScreenEdge::Left);
 }
+
+bool MappedInputManager::wasStandbyUnlockGesture() const { return wasEdgeSwipe(fui::ScreenEdge::Left); }
 
 bool MappedInputManager::wasHeaderTapBack() const { return false; }
 bool MappedInputManager::wasTopEdgeDownSwipe() const { return wasEdgeSwipe(fui::ScreenEdge::Top); }

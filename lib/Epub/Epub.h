@@ -20,6 +20,14 @@ class Epub {
   std::string tocNavItem;
   // where is the EPUBfile?
   std::string filepath;
+  // MOBI/KF8 use a disposable archive; filepath remains the progress identity.
+#if defined(RICKYOS_KINDLE_IMPORT)
+  std::string archivePath;
+  const std::string& archiveFile() const { return archivePath.empty() ? filepath : archivePath; }
+#else
+  const std::string& archiveFile() const { return filepath; }
+#endif
+  bool prepareArchive();
   // the base path for items in the EPUB file
   std::string contentBasePath;
   // Uniq cache key based on filepath

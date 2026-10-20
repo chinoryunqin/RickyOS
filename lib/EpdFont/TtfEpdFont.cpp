@@ -649,6 +649,27 @@ bool TtfEpdFont::build(const char* utf8) {
   flushFace(faces_[0]);
   return addCoverage(utf8);
 }
+TtfEpdFont::Prerasterize TtfEpdFont::prerasterize(const uint32_t cp) {
+  if (!loaded_) return Prerasterize::Full;
+  Face& f = faces_[0];
+  if (!f.inited) initFace(f);
+  if (!f.ready) return Prerasterize::Full;
+  static constexpr size_t kArenaMargin = 64 * 1024;
+  if (f.glyphs.size() + f.maxGlyphs / 10 >= f.maxGlyphs || f.used + kArenaMargin >= f.cap) return Prerasterize::Full;
+#if defined(ESP_PLATFORM)
+  // Growing the arena takes a 64 KB step of PSRAM; a short heap would answer with an
+  // eviction (MemoryManager::ensureFree) of the page cache or other fonts.
+  if (f.used + 4096 > f.bmp.capacity() && heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM) < 2 * 1024 * 1024) {
+    return Prerasterize::Full;
+  }
+#endif
+  const EpdGlyph* glyph = faultGlyph(f, cp);
+  if (glyph == nullptr || glyph->dataLength != 0) return Prerasterize::Skipped;  // absent or already drawn
+  if (glyph->dataOffset != kPendingBox && (glyph->width == 0 || glyph->height == 0)) return Prerasterize::Skipped;
+  rasterizeInto(f, const_cast<EpdGlyph&>(*glyph));
+  return Prerasterize::Done;
+}
+
 bool TtfEpdFont::addCoverage(const char* utf8) {
   if (!loaded_ || utf8 == nullptr) return false;
   const auto* p = reinterpret_cast<const unsigned char*>(utf8);

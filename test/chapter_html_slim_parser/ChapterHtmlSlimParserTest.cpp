@@ -737,8 +737,34 @@ TEST_F(ChapterHtmlSlimParserTest, ParagraphSpacingLevelsAddToCssMargins) {
     parser.currentTextBlock->addWord("word", EpdFontFamily::REGULAR);
     parser.makePages();
     ASSERT_FALSE(parser.hasFailed());
-    EXPECT_EQ(parser.currentPageNextY, 16 + 10 + gaps[level]);
+    // The bottom margin waits to collapse with the next block's top margin (CSS).
+    EXPECT_EQ(parser.currentPageNextY, 16 + 7 + gaps[level]);
+    EXPECT_EQ(parser.pendingMarginBottom, 3);
   }
+}
+
+TEST_F(ChapterHtmlSlimParserTest, AdjacentParagraphMarginsCollapseToTheLarger) {
+  parser.extraParagraphSpacing = 0;
+  parser.currentPage.reset();
+  parser.currentPageNextY = 0;
+  parser.pendingMarginBottom = 0;
+  BlockStyle first;
+  first.marginTop = 4;
+  first.marginBottom = 12;
+  parser.currentTextBlock = std::make_unique<ParsedText>(0, FirstLineIndent::Auto, false, false, first);
+  parser.currentTextBlock->addWord("one", EpdFontFamily::REGULAR);
+  parser.makePages();
+  ASSERT_FALSE(parser.hasFailed());
+  ASSERT_EQ(parser.currentPageNextY, 4 + 16);
+  BlockStyle second;
+  second.marginTop = 7;
+  second.marginBottom = 0;
+  parser.currentTextBlock = std::make_unique<ParsedText>(0, FirstLineIndent::Auto, false, false, second);
+  parser.currentTextBlock->addWord("two", EpdFontFamily::REGULAR);
+  parser.makePages();
+  ASSERT_FALSE(parser.hasFailed());
+  // max(12, 7) between the two lines, not 12 + 7.
+  EXPECT_EQ(parser.currentPageNextY, 4 + 16 + 12 + 16);
 }
 
 TEST_F(SectionMemoryTest, ParagraphSpacingLevelsRoundTripWithoutCollapsingToBool) {

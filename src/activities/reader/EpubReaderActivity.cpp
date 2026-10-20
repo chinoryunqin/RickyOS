@@ -17,9 +17,13 @@
 #include <SdCardFontCache.h>
 #include <TrustedTime.h>
 #include <Txt.h>
+#include <VectorFontSupport.h>
 #include <WeReadStore.h>
 #include <WiFi.h>
 #include <esp_system.h>
+#if FREEINK_DEVICE_METALIO_PLUS
+#include <PlusReaderImageLayout.h>
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -28,7 +32,6 @@
 #include <functional>
 #include <iterator>
 #include <limits>
-#include <VectorFontSupport.h>
 #if CROSSPOINT_VECTOR_FONTS
 #include <TtfEpdFont.h>
 #endif
@@ -65,6 +68,7 @@
 #include "activities/settings/TextSettingsActivity.h"
 #include "components/FontPreloadView.h"
 #include "components/RickyBadgeNotice.h"
+#include "components/RickyCompanion.h"
 #include "components/UITheme.h"
 #include "components/icons/rickyReaderDog.h"
 #include "fontIds.h"
@@ -76,7 +80,6 @@
 #include "util/ReadingGuideLine.h"
 #include "util/ScreenshotUtil.h"
 #include "util/TimeUtils.h"
-#include "components/RickyCompanion.h"
 
 namespace {
 constexpr uint8_t MAX_PAGE_TURN_RATE = 30;
@@ -105,6 +108,17 @@ const uint8_t* readerTextWeightCurve(const uint8_t weight) {
       {0, 4, 6, 7, 8, 9, 10, 11, 11, 12, 12, 13, 14, 14, 15, 15},
       {0, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 12, 13, 14, 14, 15},
   };
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
+  // Image pages remain native gray with text AA off. Quantize only glyph
+  // coverage in that case, preserving the user's black/white text choice.
+  static constexpr auto kBinaryCurves = [] {
+    std::array<std::array<uint8_t, 16>, 5> result{};
+    for (size_t w = 0; w < result.size(); ++w)
+      for (size_t i = 0; i < 16; ++i) result[w][i] = kCurves[w][i] >= 8 ? 15 : 0;
+    return result;
+  }();
+  if (!SETTINGS.textAntiAliasing) return kBinaryCurves[weight < 5 ? weight : 2].data();
+#endif
   return weight < std::size(kCurves) && weight != 2 ? kCurves[weight] : nullptr;
 }
 
@@ -648,6 +662,15 @@ ReaderRenderSpec EpubReaderActivity::effectiveRenderSpec(const uint16_t width, c
   auto spec = vertical ? SETTINGS.readerRenderSpec(height, width) : SETTINGS.readerRenderSpec(width, height);
   spec.collectTouchLinks = mappedInput.hasTouch() && !vertical;
   if (stylesDisabledForSession_) spec.embeddedStyle = false;
+#if FREEINK_DEVICE_METALIO_PLUS
+  const auto mode = readingMode::modeFor(SETTINGS.readingMode);
+  if (mode == readingMode::Mode::Original || mode == readingMode::Mode::Immersive) {
+    readingMode::Margins viewable;
+    renderer.getOrientedViewableTRBL(&viewable.top, &viewable.right, &viewable.bottom, &viewable.left);
+    const auto text = textMargins();
+    spec.imageOutset = plusReaderImage::horizontalOutset(text.left, text.right, viewable.left, viewable.right);
+  }
+#endif
   if (vertical) {
     spec.verticalText = true;
     // Columns keep one pitch so the 界行 stay on their grid; images have no column
@@ -1680,6 +1703,12 @@ bool EpubReaderActivity::handleLoadFailure() {
   bool offerSync = false;
   if (perr == "txt progress migration failed") {
     msg = StrId::STR_TXT_PROGRESS_MIGRATION_FAILED;
+  } else if (perr == "kindle memory") {
+    msg = StrId::STR_MEMORY_ERROR;
+  } else if (perr == "kindle unsupported") {
+    msg = StrId::STR_RICKY_NO_PREVIEW;
+  } else if (perr == "kindle invalid") {
+    msg = StrId::STR_PAGE_LOAD_ERROR;
   } else if (perr == "access expired") {
     msg = StrId::STR_LOAN_EXPIRED;
   } else if (perr == "loan date unverified") {
@@ -2313,8 +2342,13 @@ void EpubReaderActivity::rememberCurrentContentOffset() {
 // A page that renders on the native 16-level path: anti-aliased text with no images or
 // only JPEG ones (they decode straight into the frame). Must match use16LevelText.
 bool EpubReaderActivity::nativeGray16Page(const Page& page) const {
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
+  return !renderer.isInverted() && renderer.getGrayscaleLevels() == 16 &&
+         (SETTINGS.textAntiAliasing || page.hasImages());
+#else
   return SETTINGS.textAntiAliasing && !renderer.isInverted() && renderer.getGrayscaleLevels() == 16 &&
          page.imagesAreAllJpeg();
+#endif
 }
 
 bool EpubReaderActivity::pageCacheEligible() const {
@@ -2376,8 +2410,33 @@ void EpubReaderActivity::freePageCache() {
   }
 }
 
+#if CROSSPOINT_VECTOR_FONTS
+// After the page cache: warm the TTF reader face's common characters, eight at a time
+// while input stays quiet. A first-seen glyph costs ~4 ms to rasterize from the card, and
+// page turns are where it was paid. Interrupted warm-up resumes on the next idle pass.
+void EpubReaderActivity::renderIdleWarmup(const uint32_t generation) {
+#if RICKYOS_PLUS_READER_TIMING
+  const auto warmStart = millis();
+  unsigned batches = 0;
+#endif
+  while (!activityManager.idleRenderCancelled(generation) && sdFontSystem.prerasterizeCommon(8)) {
+#if RICKYOS_PLUS_READER_TIMING
+    ++batches;
+#endif
+  }
+#if RICKYOS_PLUS_READER_TIMING
+  if (batches) LOG_INF("ReaderCache", "ttf warm-up batches=%u in %lums", batches, millis() - warmStart);
+#endif
+}
+#endif
+
 void EpubReaderActivity::renderIdle(const uint32_t generation) {
   const auto cancelled = [&] { return activityManager.idleRenderCancelled(generation); };
+#if RICKYOS_PLUS_READER_TIMING && FREEINK_DEVICE_METALIO_PLUS
+  LOG_INF("ReaderCache", "idle eligible=%d cancelled=%d aa=%d failed=%d spine=%d page=%d epoch=%lu",
+          pageCacheEligible(), cancelled(), SETTINGS.textAntiAliasing, pageCacheFailed_, currentSpineIndex,
+          section ? section->currentPage : -1, static_cast<unsigned long>(renderEpoch_));
+#endif
   // Every exit below names the condition it took. Without that, "the cache never hits"
   // is indistinguishable from "the build was cancelled", "the layout moved since the
   // last render" and "the next page has images" -- and each of those needs a different
@@ -2407,6 +2466,9 @@ void EpubReaderActivity::renderIdle(const uint32_t generation) {
   const auto& layout = renderedPageKey_;
   // A main-loop reflow/jump may have replaced the section since the last render.
   if (layout != pageCacheKey(section->currentPage, layout.top, layout.right, layout.bottom, layout.left)) {
+#if RICKYOS_PLUS_READER_TIMING && FREEINK_DEVICE_METALIO_PLUS
+    LOG_INF("ReaderCache", "skip layout moved");
+#endif
     LOG_DBG("ERS", "Page cache: skip, layout moved since the last render");
     return;
   }
@@ -2419,23 +2481,35 @@ void EpubReaderActivity::renderIdle(const uint32_t generation) {
   // A build cut short by input stays retryable: the render task re-arms the idle pass
   // once input is quiet, and a Skipped slot would otherwise never be built again.
   const auto build = [&](const int slot, const ReaderPageCacheKey& key) {
-    if (!buildPageCacheSlot(slot, key, generation) && cancelled() && pageCache_[slot].key == key &&
+    [[maybe_unused]] const auto buildStart = millis();
+    const bool built = buildPageCacheSlot(slot, key, generation);
+#if RICKYOS_PLUS_READER_TIMING && FREEINK_DEVICE_METALIO_PLUS
+    if (!built) {
+      LOG_INF("ReaderCache", "build slot=%d page=%d failed cancelled=%d state=%d after=%lums", slot, key.page,
+              cancelled(), static_cast<int>(pageCache_[slot].state), millis() - buildStart);
+    }
+#endif
+    if (!built && cancelled() && pageCache_[slot].key == key &&
         pageCache_[slot].state == ReaderPageCache::State::Skipped) {
       pageCache_[slot].state = ReaderPageCache::State::Empty;
     }
   };
   auto forward = layout;
   ++forward.page;
-  if (forward.page < static_cast<int>(section->pageCount)) build(0, forward);
+  if (forward.page < static_cast<int>(section->pageCount)) {
+    build(0, forward);
+  }
+#if FREEINK_DEVICE_READPICO
+  else {
+    // At a chapter boundary, the next chapter is the forward page. Prepare it
+    // before spending the idle window rendering the previous page.
+    prefetchNextChapter(layout, generation);
+  }
+#endif
   if (cancelled() || pageCacheFailed_) return;
   auto backward = layout;
   --backward.page;
   if (backward.page >= 0) build(1, backward);
-#if FREEINK_DEVICE_READPICO
-  if (forward.page >= static_cast<int>(section->pageCount) && !cancelled() && !pageCacheFailed_) {
-    prefetchNextChapter(layout, generation);
-  }
-#endif
 }
 
 #if FREEINK_DEVICE_READPICO
@@ -2471,6 +2545,12 @@ void EpubReaderActivity::prefetchNextChapter(const ReaderPageCacheKey& layout, c
   }
   if (nextSection->pageCount == 0 || activityManager.idleRenderCancelled(generation)) return;
   const bool ready = buildPageCacheSlot(0, key, generation, nextSection.get());
+  // Unlike the same-chapter path this call does not go through renderIdle's
+  // build wrapper. Keep an interrupted image retryable here as well.
+  if (!ready && activityManager.idleRenderCancelled(generation) && pageCache_[0].key == key &&
+      pageCache_[0].state == ReaderPageCache::State::Skipped) {
+    pageCache_[0].state = ReaderPageCache::State::Empty;
+  }
   LOG_DBG("ERS", "Next chapter prefetch: spine %d ready=%d in %lums", next, ready, millis() - started);
 }
 #endif
@@ -2592,12 +2672,26 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
   const readingMode::Box textBox = readingMode::textBox(renderer.getScreenWidth(), renderer.getScreenHeight(),
                                                         {key.top, key.right, key.bottom, key.left});
   const int pitch = renderer.getLineHeight(key.spec.fontId, key.spec.lineCompression);
+  uint32_t idleGeneration = generation;
+  const CancelCheck cancellation{&idleGeneration, [](void* context) {
+                                   return activityManager.idleRenderCancelled(*static_cast<uint32_t*>(context));
+                                 }};
   const auto renderCachedElement = [&](PageElement& element) {
+    if (native16 && !vertical && element.getTag() == TAG_PageImage) {
+      auto& image = static_cast<PageImage&>(element);
+      ImageRenderError error = ImageRenderError::None;
+      image.getImageBlock().render(renderer, element.xPos + key.left, element.yPos + key.top,
+                                   ImageBlock::PixelCachePolicy::Stream, &error, cancellation);
+      // Ordinary failures retain the existing placeholder. Cancellation must
+      // never publish a half-decoded image as a finished page-cache hit.
+      return error != ImageRenderError::Cancelled;
+    }
     if (vertical) {
       element.renderVertical(renderer, key.spec.fontId, textBox.right(), textBox.y, pitch);
     } else {
       element.render(renderer, key.spec.fontId, key.left, key.top);
     }
+    return true;
   };
 
   // Load glyphs on demand: a whole-page prewarm cannot be interrupted. Check
@@ -2612,7 +2706,7 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
                                             readerTextWeightSpread(key.textWeight));
     for (const auto& element : page->elements) {
       if (cancelled()) return false;
-      renderCachedElement(*element);
+      if (!renderCachedElement(*element)) return false;
     }
     if (vertical) readerChrome::drawColumnRules(renderer, *page, textBox, pitch);
     // Match foreground ordering: all text first, then the guide lines.
@@ -2651,7 +2745,7 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
                                               readerTextWeightSpread(key.textWeight));
       for (const auto& element : page->elements) {
         if (cancelled()) return false;
-        renderCachedElement(*element);
+        if (!renderCachedElement(*element)) return false;
       }
       if (vertical) readerChrome::drawColumnRules(renderer, *page, textBox, pitch);
     }
@@ -2684,6 +2778,10 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
   }
   pageCacheMissingCodepoint_[slot] = fcm ? fcm->consumeMissingChineseCodepoint() : 0;
   pageCache_[slot].state = ReaderPageCache::State::Ready;
+#if RICKYOS_PLUS_READER_TIMING && FREEINK_DEVICE_METALIO_PLUS
+  LOG_INF("ReaderCache", "ready slot=%d spine=%d page=%d epoch=%lu ms=%lu", slot, key.spine, key.page,
+          static_cast<unsigned long>(key.renderEpoch), millis() - started);
+#endif
   LOG_DBG("ERS", "Page cache: slot %d, page %d ready in %lums", slot, key.page, millis() - started);
   return true;
 }
@@ -2803,8 +2901,8 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   // RickyOS: every text face (2-bit downloaded fonts too) and synthetic bold draw straight
   // into the 16-level frame, and JPEG illustrations decode into it, so anti-aliased pages
   // take the single-render path.
-  const bool use16LevelText =
-      needsTextGrayscale && (!pageHasImages || page->imagesAreAllJpeg()) && renderer.getGrayscaleLevels() == 16;
+  // The A4 keeps its finished B/W page (allowReaderGrayscale is false there).
+  const bool use16LevelText = grayscaleEnabled && nativeGray16Page(*page);
   const bool needsAnyGrayscale = grayscaleEnabled && (SETTINGS.textAntiAliasing || pageHasImages);
   const bool absoluteImageGrayscale = grayscaleEnabled && pageHasImages && !gpio.deviceIsX3() &&
                                       display.getController() == HalDisplay::Controller::UC8279 &&
@@ -2894,7 +2992,14 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     uint32_t expected = 0;
     pendingMissingChineseCodepoint_.compare_exchange_strong(expected, missingCodepoint, std::memory_order_relaxed);
   }
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
+  // beginGrayscale16() clears both frames. Drawing the B/W chrome here was
+  // discarded immediately; the native pass (and its failure fallback) draws
+  // the same chrome after the page, including its B/W proxy for popups.
+  if (!use16LevelText) renderStatusBar();
+#else
   renderStatusBar();
+#endif
   const auto tBwRender = millis();
 
   if (absoluteImageGrayscale) {
@@ -2954,22 +3059,33 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       [[maybe_unused]] const auto t16Status = millis();
       LOG_DBG("ERS", "16-level timing: before=%lums begin=%lums page=%lums status=%lums", t16Begin - t0,
               t16Cleared - t16Begin, t16Page - t16Cleared, millis() - t16Page);
+#if RICKYOS_PLUS_READER_TIMING
+      LOG_INF("ReaderTiming", "spine=%d page=%d images=%d cached=%d prewarm=%lums before=%lums begin=%lums "
+                              "paint=%lums status=%lums",
+              currentSpineIndex, section ? section->currentPage : -1, pageHasImages ? 1 : 0, pageCacheHit ? 1 : 0,
+              tPrewarm - t0, t16Begin - tPrewarm, t16Cleared - t16Begin, t16Page - t16Cleared,
+              millis() - t16Page);
+#endif
 #if RICKYOS_PAINT_PROFILE
       {
         // Device breakdown of a reader page (profiling builds only).
         auto& profile = GfxRenderer::paintProfile();
         LOG_INF("PERF",
                 "reader page prewarm=%lums before=%lums page=%lums status=%lums cached=%d weight=%u bold=%u "
-                "text=%lums/%lu fill=%lums image=%lums",
+                "text=%lums/%lu fill=%lums image=%lums glyph=%lums/%lu",
                 tPrewarm - t0, t16Begin - tPrewarm, t16Page - t16Cleared, millis() - t16Page, pageCacheHit ? 1 : 0,
-                static_cast<unsigned>(SETTINGS.rickyTextWeight), static_cast<unsigned>(SETTINGS.fakeBold), profile.us[1] / 1000,
-                profile.calls[1], profile.us[0] / 1000, profile.us[3] / 1000);
+                static_cast<unsigned>(SETTINGS.rickyTextWeight), static_cast<unsigned>(SETTINGS.fakeBold),
+                profile.us[1] / 1000, profile.calls[1], profile.us[0] / 1000, profile.us[3] / 1000, profile.us[4] / 1000,
+                profile.calls[4]);
         profile = {};
         fcm->logStats("page");
 #if CROSSPOINT_VECTOR_FONTS
         auto& ttf = TtfEpdFont::counters();
         LOG_INF("PERF", "reader ttf rasterized=%lu in %lums releases=%lu", static_cast<unsigned long>(ttf.rasterized),
                 static_cast<unsigned long>(ttf.rasterUs / 1000), static_cast<unsigned long>(ttf.releases));
+        const auto sd = SdCardFontSystem::takeStreamStats();
+        LOG_INF("PERF", "reader ttf sd reads=%lu bytes=%lu in %lums", static_cast<unsigned long>(sd.reads),
+                static_cast<unsigned long>(sd.bytes), static_cast<unsigned long>(sd.us / 1000));
         ttf = {};
 #endif
       }
@@ -2993,6 +3109,10 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
         RICKY_PERF("page", "%s prewarm=%lu draw=%lu status=%lu commit=%lu total=%lu", pageCacheHit ? "hit" : "miss",
                    tPrewarm - t0, (tBwRender - tPrewarm) + (t16Page - t16Begin), t16Status - t16Page,
                    tEnd - tCommit, tEnd - t0);
+#if RICKYOS_PLUS_READER_TIMING
+        LOG_INF("ReaderTiming", "commit=%lums total=%lums images=%d cached=%d", tEnd - tCommit, tEnd - t0,
+                pageHasImages ? 1 : 0, pageCacheHit ? 1 : 0);
+#endif
 #if RICKYOS_PAINT_PROFILE
         LOG_INF("PERF", "reader commit=%lums total=%lums", tEnd - tCommit, tEnd - t0);
 #endif
@@ -3248,9 +3368,12 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
 }
 
 void EpubReaderActivity::renderStatusBar() const {
+  [[maybe_unused]] const auto perfStart = millis();
+  [[maybe_unused]] unsigned long perfLookup = 0, perfChrome = 0;
   const int currentPage = section ? section->currentPage + 1 : 1;
   const auto mode = readingMode::modeFor(SETTINGS.readingMode);
   if (mode != readingMode::Mode::Original && mode != readingMode::Mode::Immersive) {
+    [[maybe_unused]] const auto perfLookupStart = millis();
     readerChrome::PageInfo info;
     info.bookTitle = epub ? epub->getTitle().c_str() : nullptr;
     // A chapter the table of contents names, not currentChapterTitle()'s "unnamed".
@@ -3261,11 +3384,18 @@ void EpubReaderActivity::renderStatusBar() const {
     }
     info.chapterTitle = chapter.c_str();
     info.pageInChapter = currentPage;
+    perfLookup += millis() - perfLookupStart;
+    [[maybe_unused]] const auto perfChromeStart = millis();
     readerChrome::draw(renderer, mode,
                        readingMode::textBox(renderer.getScreenWidth(), renderer.getScreenHeight(), textMargins()),
                        info);
+    perfChrome = millis() - perfChromeStart;
   }
-  if (!readingMode::showsFooter(mode)) return;
+  if (!readingMode::showsFooter(mode)) {
+    RICKY_PERF("status", "lookup=%lu chrome=%lu bar=0 total=%lu", perfLookup, perfChrome, millis() - perfStart);
+    return;
+  }
+  [[maybe_unused]] const auto perfFooterStart = millis();
   const float pageCount = section ? section->estimatedTotalPages() : 1;
   const float sectionChapterProg = (pageCount > 0) ? (static_cast<float>(currentPage) / pageCount) : 0;
   const float bookProgress = epub ? (epub->calculateProgress(currentSpineIndex, sectionChapterProg) * 100) : 0;
@@ -3302,8 +3432,12 @@ void EpubReaderActivity::renderStatusBar() const {
       auto chapter = renderer.truncatedText(RickyDesignUi::BODY, title.c_str(), column);
       title = book + " · " + chapter;
     }
+    [[maybe_unused]] const auto perfBarStart = millis();
+    perfLookup += perfBarStart - perfFooterStart;
     GUI.drawRickyReaderChrome(renderer, bookProgress, currentPage, pageCount, title.c_str(), currentPageBookmarked,
                               section ? section->isBuilding() : false, readingMode::showsHeader(mode));
+    RICKY_PERF("status", "lookup=%lu chrome=%lu bar=%lu total=%lu", perfLookup, perfChrome, millis() - perfBarStart,
+               millis() - perfStart);
     return;
   }
   GUI.drawStatusBar(renderer, bookProgress, currentPage, pageCount, title, 0, textYOffset, true, currentPageBookmarked,

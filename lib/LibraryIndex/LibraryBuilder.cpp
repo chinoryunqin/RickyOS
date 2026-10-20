@@ -189,8 +189,7 @@ void clearLibraryIndexDirty() {
 }
 
 bool isBookName(const std::string& name) {
-  return FsHelpers::checkFileExtension(name, ".epub") || FsHelpers::checkFileExtension(name, ".txt") ||
-         FsHelpers::checkFileExtension(name, ".md");
+  return FsHelpers::hasReflowableBookExtension(name);
 }
 
 // Hidden entries (including macOS AppleDouble sidecars) and system folders such
@@ -331,7 +330,12 @@ int findPrior(WalkState& st, const uint64_t pathHash) {
   entry.pathHash = clixPathHash(fullPath.data(), fullPath.size());
   const int priorIndex = findPrior(st, entry.pathHash);
 
-  const bool extractionExpected = st.readMetadata && FsHelpers::hasEpubExtension(name);
+  bool metadataFormat = FsHelpers::hasEpubExtension(name);
+#if defined(RICKYOS_KINDLE_IMPORT)
+  metadataFormat = metadataFormat || FsHelpers::checkFileExtension(name, ".mobi") ||
+                   FsHelpers::checkFileExtension(name, ".azw3");
+#endif
+  const bool extractionExpected = st.readMetadata && metadataFormat;
   const uint8_t expectedStatus = extractionExpected ? CLIX_METADATA_EXTRACTED : CLIX_METADATA_NOT_ATTEMPTED;
   bool reuseMetadata = false;
   ClixRecord priorRecord{};

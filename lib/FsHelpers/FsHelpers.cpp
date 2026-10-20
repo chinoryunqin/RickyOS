@@ -177,6 +177,9 @@ bool hasTxtExtension(std::string_view fileName) { return checkFileExtension(file
 bool hasMarkdownExtension(std::string_view fileName) { return checkFileExtension(fileName, ".md"); }
 
 bool hasReflowableBookExtension(std::string_view fileName) {
+#if defined(RICKYOS_KINDLE_IMPORT)
+  if (checkFileExtension(fileName, ".mobi") || checkFileExtension(fileName, ".azw3")) return true;
+#endif
   return hasEpubExtension(fileName) || hasTxtExtension(fileName) || hasMarkdownExtension(fileName);
 }
 

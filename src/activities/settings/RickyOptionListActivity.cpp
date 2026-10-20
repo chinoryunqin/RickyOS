@@ -34,6 +34,7 @@ const RickyOptionList& gestures() {
   static const RickyOptionRow rows[] = {
       {StrId::STR_RICKY_GESTURE_BACK, &SETTINGS.rickyGestureBack, nullptr, 0, StrId::STR_RICKY_GESTURE_GLOBAL},
       {StrId::STR_RICKY_GESTURE_HOME, &SETTINGS.rickyGestureHome},
+      {StrId::STR_RICKY_STANDBY_SWIPE_UNLOCK, &SETTINGS.standbySwipeUnlock},
       {StrId::STR_RICKY_GESTURE_CONTROL, &SETTINGS.rickyGestureControl},
 #if !((defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4))
       {StrId::STR_RICKY_GESTURE_STATUS, &SETTINGS.rickyGestureStatus},

@@ -33,7 +33,16 @@ class ReaderPageCacheTest(unittest.TestCase):
 #include "CancelCheck.h"
 #include "ReadingMode.h"
 template<class F> struct ScopedCleanup {F fn;~ScopedCleanup(){fn();}};
-struct ImageBlock {static void releaseRenderCache() {}};
+struct GfxRenderer;
+enum class ImageRenderError {None, Failed, Cancelled};
+struct ImageBlock {
+  enum class PixelCachePolicy {Stream};
+  static void releaseRenderCache() {}
+  bool render(GfxRenderer&,int,int,PixelCachePolicy,ImageRenderError* error,CancelCheck cancel) {
+    *error=cancel.isCancelled()?ImageRenderError::Cancelled:ImageRenderError::None;
+    return *error==ImageRenderError::None;
+  }
+};
 int imageWarms=0;bool cancelImage=false;
 #define ENABLE_CHINESE_VERSION 1
 template<class... Args> void log(const char*,const char*,Args...) {}
@@ -102,14 +111,15 @@ struct GfxRenderer {
   bool beginGrayscale16Offscreen(uint8_t*) {return false;}
   void endGrayscale16Offscreen() {}
 };
-constexpr int TAG_PageLine=1;
+constexpr int TAG_PageLine=1, TAG_PageImage=2;
 int renders=0, cancelAt=0;
 struct Block {bool isEmpty() const {return false;} int getRubyShift(int) const {return 0;}};
 struct PageLine {
-  int yPos=0;
+  int xPos=0, yPos=0;
   Block block;
   uint32_t missing=0;
-  int getTag() const {return TAG_PageLine;}
+  virtual ~PageLine()=default;
+  virtual int getTag() const {return TAG_PageLine;}
   const Block* getBlock() const {return &block;}
   void render(GfxRenderer& renderer,int,int,int) {
     renderer.frame[yPos]=static_cast<uint8_t>(renderer.mode+1);
@@ -117,6 +127,11 @@ struct PageLine {
     if (++renders == cancelAt) activityManager.cancelled=true;
   }
   void renderVertical(GfxRenderer& renderer,int fontId,int,int,int) {render(renderer,fontId,0,0);}
+};
+struct PageImage : PageLine {
+  ImageBlock image;
+  int getTag() const override {return TAG_PageImage;}
+  ImageBlock& getImageBlock() {return image;}
 };
 using PageElement=PageLine;
 namespace readingGuideLine {
@@ -304,8 +319,9 @@ int main() {
     def test_readpico_input_cancellation_on_hardware_and_simulator(self):
         source = (ROOT / 'src/main.cpp').read_text()
         begin = source.index('  // Cancel before any handler can wait for the framebuffer lock.')
+        begin = source.rfind('#if ', 0, begin)
         end = source.index('\n#endif', source.index('    activityManager.cancelIdleRender("touch", true);', begin))
-        production = source[begin:end]
+        production = source[begin:end + len('\n#endif')]
         program = r'''
 #include <cassert>
 #include <cstdint>
@@ -337,9 +353,15 @@ int main() {
   }
 }
 '''
-        for emulated in (0, 1):
-            with self.subTest(emulated=emulated):
-                run_cpp(f'#define CROSSPOINT_EMULATED {emulated}\n' + program)
+        for pico, plus in ((1, 0), (0, 1), (0, 0)):
+            for emulated in (0, 1):
+                with self.subTest(pico=pico, plus=plus, emulated=emulated):
+                    definitions = (f'#define CROSSPOINT_EMULATED {emulated}\n'
+                                   f'#define FREEINK_DEVICE_READPICO {pico}\n'
+                                   f'#define FREEINK_DEVICE_METALIO_PLUS {plus}\n')
+                    case = program if pico or plus else program.replace(
+                        'cancellations==1 && *event', 'cancellations==0 && *event')
+                    run_cpp(definitions + case)
 
     def test_render_task_priorities_and_waiter(self):
         source = (ROOT / 'src/activities/ActivityManager.cpp').read_text()
@@ -381,6 +403,7 @@ struct Activity {
   unsigned idleRenderDelayMs() const {return delay;}
   void render(RenderLock&&);
   void renderIdle(uint32_t);
+  void renderIdleWarmup(uint32_t) {}
 };
 struct ActivityManager {
   enum class PendingAction {None,Push};

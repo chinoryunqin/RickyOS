@@ -8,6 +8,8 @@
 #include <cstdio>
 
 #include "GomokuAI.h"
+#include "GomokuArt.h"
+#include "GomokuLayout.h"
 #include "GomokuMenuActivity.h"
 #include "activities/apps/GameUi.h"
 #include "components/UITheme.h"
@@ -15,24 +17,11 @@
 
 namespace {
 
-// Centralized font roles, mirroring Sudoku.
-constexpr int kStatusFont = UI_12_FONT_ID;           // title bar / mode line
-constexpr int kHeroFont = NOTOSERIF_16_FONT_ID;      // win-screen big title
-constexpr int kStatValueFont = NOTOSANS_16_FONT_ID;  // win-screen stat values + info-panel stat values
+namespace ds = ricky::ds;
+namespace fui = freeink::ui;
 
 const char* modeLabel(GomokuMode m) {
   return (m == GomokuMode::VsAi) ? tr(STR_GOMOKU_MODE_AI) : tr(STR_GOMOKU_MODE_2P);
-}
-
-const char* difficultyShortLabel(GomokuAiLevel level) {
-  switch (level) {
-    case GomokuAiLevel::Easy:
-      return "E";
-    case GomokuAiLevel::Hard:
-      return "H";
-    default:
-      return "M";
-  }
 }
 
 }  // namespace
@@ -136,57 +125,42 @@ void GomokuGameActivity::loop() {
 
 // ---------- Geometry ----------
 
+// Under the system header; the player cards sit just above the action bar.
+int GomokuGameActivity::boardAreaTop() const {
+  const auto& m = UITheme::getInstance().getMetrics();
+  return m.topPadding + m.headerHeight + ds::space::k2;
+}
+int GomokuGameActivity::playersHeight() const {
+  return renderer.getLineHeight(RickyDesignUi::BODY) + renderer.getLineHeight(RickyDesignUi::CAPTION) +
+         ds::space::kTextStackGap + 2 * ds::space::k4;
+}
+int GomokuGameActivity::playersTop() const { return actionBarY() - ds::space::k3 - playersHeight(); }
+
 int GomokuGameActivity::boardPitch() const {
-  // The 30 / 50 pitch was tuned on an 800x480 panel, where a 15x15 grid at 30 px
-  // covers 420 of ~448 usable px (94%) and nearly fills the available height too.
-  // Read Pico drives a 1216x684 panel as a 684x1216 logical board, so the same
-  // 420 px grid covered only ~64% of the width and ~41% of the available height:
-  // the board came out small and stranded in the middle of a lot of white.
-  //
-  // Gated on the device on purpose: every other board keeps the exact pitch it
-  // was tuned with, byte for byte, so this cannot regress them.
-#if defined(FREEINK_DEVICE_READPICO) && FREEINK_DEVICE_READPICO
-  const int n = board.boardSize - 1;
-  const int side = UITheme::getInstance().getMetrics().contentSidePadding;
-  const int availW = renderer.getScreenWidth() - 2 * side;
-  const int availH = actionBarY() - BOARD_AREA_Y;
-  const int fit = std::min(availW, availH) / n;
-  // Floor at the legacy value (never shrink below the old tuning), ceiling so the
-  // grid lines stay a sensible distance apart on a very large board.
-  const int legacy = (board.boardSize == 15) ? 30 : 50;
-  return std::max(legacy, std::min(fit, 64));
-#else
+  // Keep button-only boards' old tuning; fit every touch board between the header and
+  // the player cards, inside the system page margins.
+  if (mappedInput.hasTouch()) {
+    const int side = ds::space::kPageMargin;
+    const auto layout = GomokuLayout::fit(side, boardAreaTop(), renderer.getScreenWidth() - 2 * side,
+                                          playersTop() - ds::space::k3 - boardAreaTop(), board.boardSize);
+    return std::max(1, layout.pitch);
+  }
   return (board.boardSize == 15) ? 30 : 50;
-#endif
 }
 int GomokuGameActivity::boardOriginX() const {
   return (renderer.getScreenWidth() - (board.boardSize - 1) * boardPitch()) / 2;
 }
 int GomokuGameActivity::boardOriginY() const {
-  // Read Pico's board is much taller than the grid, so top-anchoring (the legacy
-  // rule, correct when the grid nearly filled the panel) would leave a large gap
-  // above the action bar. Center it in the available band instead. Gated, so no
-  // other board's origin moves.
-#if defined(FREEINK_DEVICE_READPICO) && FREEINK_DEVICE_READPICO
-  const int n = board.boardSize - 1;
-  const int availH = actionBarY() - BOARD_AREA_Y;
-  const int used = n * boardPitch();
-  return BOARD_AREA_Y + std::max(0, (availH - used) / 2) + boardPitch() / 2;
-#else
-  return BOARD_AREA_Y + boardPitch() / 2;
-#endif
+  if (mappedInput.hasTouch()) {
+    const int used = (board.boardSize - 1) * boardPitch();
+    const int available = playersTop() - ds::space::k3 - boardAreaTop();
+    return boardAreaTop() + std::max(0, (available - used) / 2);
+  }
+  return boardAreaTop() + boardPitch() / 2;
 }
 int GomokuGameActivity::stoneRadius() const {
-  // Historically a fixed 12 px (15x15) / 20 px (9x9) -- exactly 0.4 of the 30 / 50
-  // pitch. Read Pico's board is much larger, so keep that same stone-to-cell ratio
-  // against the adaptive pitch instead of freezing the stones at 12 px on a grid
-  // whose cells are now ~46 px (which read as tiny dots in big squares).
-  // Gated, so every other board keeps its pixel-exact stones.
-#if defined(FREEINK_DEVICE_READPICO) && FREEINK_DEVICE_READPICO
-  return std::max(1, boardPitch() * 2 / 5);
-#else
+  if (mappedInput.hasTouch()) return std::max(1, boardPitch() * 2 / 5);  // matches gomokuart and the skill board
   return (board.boardSize == 15) ? 12 : 20;
-#endif
 }
 
 void GomokuGameActivity::intersectionXY(uint8_t r, uint8_t c, int* x, int* y) const {
@@ -509,38 +483,23 @@ void GomokuGameActivity::renderPlaying() {
 // ---------- Title bar ----------
 
 void GomokuGameActivity::drawTitleBar() {
-  const int w = renderer.getScreenWidth();
-  renderer.drawLine(0, TITLE_BAR_H, w - 1, TITLE_BAR_H, true);
-
-  const int textH = renderer.getTextHeight(kStatusFont);
-  const int y = gameCenterY(TITLE_BAR_H, textH);
-
-  char left[64];
-  if (mode == GomokuMode::VsAi) {
-    snprintf(left, sizeof(left), "%s · %s [%s]", tr(STR_GOMOKU_TITLE), modeLabel(mode), difficultyShortLabel(aiLevel));
-  } else {
-    snprintf(left, sizeof(left), "%s · %s", tr(STR_GOMOKU_TITLE), modeLabel(mode));
-  }
-  renderer.drawText(kStatusFont, 12, y, left);
-
-  // Right side: small stone dot + move count + time.
-  // Dot reflects whose turn is next during play (or the winner once over).
-  const GomokuBoard::Stone marker = (board.winner != GomokuBoard::Stone::Empty) ? board.winner : board.nextTurn();
-  const bool markerIsBlack = (marker == GomokuBoard::Stone::Black);
-
+  // The system header: "← 五子棋" with the mode, move count and time as its subtitle.
   char timeStr[8];
   gameFormatElapsed(elapsedMs, timeStr, sizeof(timeStr));
-  char tail[24];
-  snprintf(tail, sizeof(tail), "%u · %s", static_cast<unsigned>(board.moveCount), timeStr);
-  const int rw = renderer.getTextWidth(kStatusFont, tail);
-  constexpr int dotR = 4;
-  constexpr int dotGap = 4;
-  const int totalW = 2 * dotR + dotGap + rw;
-  const int rx = w - 12 - totalW;
-  const int dotCx = rx + dotR;
-  const int dotCy = TITLE_BAR_H / 2;
-  drawStone(dotCx, dotCy, dotR, markerIsBlack);
-  renderer.drawText(kStatusFont, rx + 2 * dotR + dotGap, y, tail);
+  char moves[24];
+  snprintf(moves, sizeof(moves), tr(STR_GOMOKU_MOVE_FMT), static_cast<unsigned>(board.moveCount));
+  char subtitle[96];
+  if (mode == GomokuMode::VsAi) {
+    const char* level = aiLevel == GomokuAiLevel::Easy   ? tr(STR_GOMOKU_DIFF_EASY)
+                        : aiLevel == GomokuAiLevel::Hard ? tr(STR_GOMOKU_DIFF_HARD)
+                                                         : tr(STR_GOMOKU_DIFF_MEDIUM);
+    snprintf(subtitle, sizeof(subtitle), "%s · %s · %s · %s", modeLabel(mode), level, moves, timeStr);
+  } else {
+    snprintf(subtitle, sizeof(subtitle), "%s · %s · %s", modeLabel(mode), moves, timeStr);
+  }
+  const auto& m = UITheme::getInstance().getMetrics();
+  GUI.drawHeader(renderer, Rect{0, m.topPadding, renderer.getScreenWidth(), m.headerHeight}, tr(STR_GOMOKU_TITLE),
+                 subtitle);
 }
 
 // ---------- Board ----------
@@ -550,66 +509,31 @@ void GomokuGameActivity::drawBoard() {
   const int pitch = boardPitch();
   const int ox = boardOriginX();
   const int oy = boardOriginY();
-  const int len = (n - 1) * pitch;
+  gomokuart::board(renderer, ox, oy, pitch, n);
 
-  // Grid lines (1px black).
-  for (int i = 0; i < n; i++) {
-    renderer.drawLine(ox, oy + i * pitch, ox + len, oy + i * pitch, true);
-    renderer.drawLine(ox + i * pitch, oy, ox + i * pitch, oy + len, true);
-  }
-
-  // Star points (hoshi).
-  static constexpr uint8_t kHoshi15[5][2] = {{3, 3}, {3, 11}, {7, 7}, {11, 3}, {11, 11}};
-  static constexpr uint8_t kHoshi9[5][2] = {{2, 2}, {2, 6}, {4, 4}, {6, 2}, {6, 6}};
-  const uint8_t (*hoshi)[2] = (n == 15) ? kHoshi15 : kHoshi9;
-  for (int k = 0; k < 5; k++) {
-    const int hx = ox + hoshi[k][1] * pitch;
-    const int hy = oy + hoshi[k][0] * pitch;
-    renderer.fillRoundedRect(hx - 3, hy - 3, 7, 7, 3, Color::Black);
-  }
-
-  // Stones.
   const int sr = stoneRadius();
   for (int r = 0; r < n; r++) {
     for (int c = 0; c < n; c++) {
       const auto v = board.at(static_cast<uint8_t>(r), static_cast<uint8_t>(c));
       if (v == GomokuBoard::Stone::Empty) continue;
-      const int sx = ox + c * pitch;
-      const int sy = oy + r * pitch;
-      drawStone(sx, sy, sr, v == GomokuBoard::Stone::Black);
+      gomokuart::stone(renderer, ox + c * pitch, oy + r * pitch, sr, v == GomokuBoard::Stone::Black);
     }
   }
-
-  // Last-move marker: small reverse-color dot on top of the most recent stone.
   if (board.moveCount > 0) {
     const uint8_t lastIdx = board.moveHistory[board.moveCount - 1];
     const uint8_t lr = board.rowOf(lastIdx);
     const uint8_t lc = board.colOf(lastIdx);
-    const int sx = ox + lc * pitch;
-    const int sy = oy + lr * pitch;
-    const auto color = board.at(lr, lc);
-    const Color dotColor = (color == GomokuBoard::Stone::Black) ? Color::White : Color::Black;
-    renderer.fillRoundedRect(sx - 2, sy - 2, 5, 5, 2, dotColor);
+    gomokuart::lastMove(renderer, ox + lc * pitch, oy + lr * pitch, sr, board.at(lr, lc) == GomokuBoard::Stone::Black);
   }
-
-  // Cursor: 24×24 hollow box centered on intersection (mirrors Sudoku palette focus).
   if (state == State::Playing && board.winner == GomokuBoard::Stone::Empty) {
     int cx, cy;
     intersectionXY(cursorR, cursorC, &cx, &cy);
-    constexpr int half = 12;
-    renderer.drawRect(cx - half, cy - half, 2 * half, 2 * half, 2, true);
+    gomokuart::cursor(renderer, cx, cy, pitch);
   }
 }
 
 void GomokuGameActivity::drawStone(int cx, int cy, int radius, bool isBlack) const {
-  const int side = 2 * radius + 1;
-  if (isBlack) {
-    renderer.fillRoundedRect(cx - radius, cy - radius, side, side, radius, Color::Black);
-  } else {
-    // Erase grid lines under the stone, then black outline.
-    renderer.fillRoundedRect(cx - radius, cy - radius, side, side, radius, Color::White);
-    renderer.drawRoundedRect(cx - radius, cy - radius, side, side, 2, radius, true);
-  }
+  gomokuart::stone(renderer, cx, cy, radius, isBlack);
 }
 
 void GomokuGameActivity::drawWinLine() {
@@ -627,69 +551,34 @@ void GomokuGameActivity::drawWinLine() {
 // ---------- Info panel ----------
 
 void GomokuGameActivity::drawInfoPanel() {
+  // One card per side, the side to move inverted (as a selected row is elsewhere in
+  // RickyOS); the detail line is the side's stone count, or "thinking" for the AI.
   const int sw = renderer.getScreenWidth();
-
-  // Two stat cells, narrower and shorter than v3, centered horizontally.
-  // Inside each: a board-sized stone icon next to the count — the colour
-  // itself identifies the side, so no "Black"/"White" text label.
-  // Anchored just above the action bar (measured from the screen bottom), so
-  // the row stays on-panel on every target instead of running off the bottom.
-  constexpr int statH = 44;
-  constexpr int cellW = 160;
-  constexpr int cellGap = 24;
-  const int statY = std::max(BOARD_AREA_Y, actionBarY() - statH - 6);
-  const int totalW = 2 * cellW + cellGap;
-  const int statXStart = (sw - totalW) / 2;
-  const int statStoneR = stoneRadius();  // matches the board (12 for 15×15, 20 for 9×9)
-
-  // Active-turn indicator: a small filled triangle on the active side's cell.
-  // Hidden when the game is over (winner set) or the board is a draw-full.
-  const bool showTurn = (board.winner == GomokuBoard::Stone::Empty) && !board.isFull();
-  const GomokuBoard::Stone activeSide = showTurn ? board.nextTurn() : GomokuBoard::Stone::Empty;
-
-  auto drawStatCell = [&](int xLeft, GomokuBoard::Stone color) {
-    renderer.drawRect(xLeft, statY, cellW, statH, true);
-    const uint16_t count = (color == GomokuBoard::Stone::Black) ? board.blackCount() : board.whiteCount();
-    char numBuf[8];
-    snprintf(numBuf, sizeof(numBuf), "%u", static_cast<unsigned>(count));
-    const int valH = renderer.getTextHeight(kStatValueFont);
-    const int valW = renderer.getTextWidth(kStatValueFont, numBuf);
-    constexpr int gap = 10;
-    const int groupW = 2 * statStoneR + gap + valW;
-    const int gx = xLeft + (cellW - groupW) / 2;
-    const int cy = statY + statH / 2;  // group is vertically centred in the cell
-    drawStone(gx + statStoneR, cy, statStoneR, color == GomokuBoard::Stone::Black);
-    // NOTOSANS_16 digits have no descenders, so a pure (cy - valH/2) places
-    // the optical centre a few px below the stone. Bias up 4 px to align.
-    constexpr int valOpticalBias = 4;
-    renderer.drawText(kStatValueFont, gx + 2 * statStoneR + gap, cy - valH / 2 - valOpticalBias, numBuf);
-
-    // Right-pointing filled triangle ▶ on the active side.
-    if (color == activeSide) {
-      constexpr int triW = 8;
-      constexpr int triH = 12;
-      const int tx = xLeft + 10;
-      const int ty = statY + (statH - triH) / 2;
-      const int xs[3] = {tx, tx + triW, tx};
-      const int ys[3] = {ty, ty + triH / 2, ty + triH};
-      renderer.fillPolygon(xs, ys, 3, true);
-    }
-  };
-
-  drawStatCell(statXStart, GomokuBoard::Stone::Black);
-  drawStatCell(statXStart + cellW + cellGap, GomokuBoard::Stone::White);
+  const int side = mappedInput.hasTouch() ? int(ds::space::kPageMargin) : int(CONTENT_X);
+  const int width = (sw - 2 * side - ds::space::kGutter) / 2;
+  const bool live = board.winner == GomokuBoard::Stone::Empty && !board.isFull();
+  const GomokuBoard::Stone toMove = live ? board.nextTurn() : GomokuBoard::Stone::Empty;
+  static char detail[2][32];
+  for (int i = 0; i < 2; ++i) {
+    const auto color = i == 0 ? GomokuBoard::Stone::Black : GomokuBoard::Stone::White;
+    const uint16_t count = color == GomokuBoard::Stone::Black ? board.blackCount() : board.whiteCount();
+    if (aiThinkingArmed && color == toMove)
+      snprintf(detail[i], sizeof(detail[i]), "%s", tr(STR_GOMOKU_AI_THINKING));
+    else
+      snprintf(detail[i], sizeof(detail[i]), "%s %u", tr(STR_GOMOKU_PLAYED), static_cast<unsigned>(count));
+    const fui::Rect card{static_cast<int16_t>(side + i * (width + ds::space::kGutter)),
+                         static_cast<int16_t>(playersTop()), static_cast<int16_t>(width),
+                         static_cast<int16_t>(playersHeight())};
+    gomokuart::playerCard(renderer, card, color == GomokuBoard::Stone::Black,
+                          color == GomokuBoard::Stone::Black ? tr(STR_GOMOKU_BLACK) : tr(STR_GOMOKU_WHITE), detail[i],
+                          color == toMove);
+  }
 }
 
 // ---------- Mode line ----------
 
 void GomokuGameActivity::drawModeLine() {
-  if (!aiThinkingArmed) {
-    return;
-  }
-  // Drawn directly above the action bar: the old anchor (702) was off the
-  // panel entirely, so the "Thinking…" notice never actually appeared.
-  renderer.drawCenteredText(kStatusFont, std::max(0, actionBarY() - renderer.getTextHeight(kStatusFont) - 4),
-                            tr(STR_GOMOKU_AI_THINKING));
+  // "AI thinking" now lives on the AI side's card (drawInfoPanel).
 }
 
 // ---------- Footer (button hints) ----------
@@ -725,28 +614,19 @@ void GomokuGameActivity::renderGameOver() {
   drawTitleBar();
   const int sw = renderer.getScreenWidth();
 
-  // Determine outcome text.
   GomokuBoard::Stone winner = resignedFlag ? resignWinner : board.winner;
-  const char* titleStr = nullptr;
-  if (winner == GomokuBoard::Stone::Black) {
-    titleStr = tr(STR_GOMOKU_BLACK_WINS);
-  } else if (winner == GomokuBoard::Stone::White) {
-    titleStr = tr(STR_GOMOKU_WHITE_WINS);
-  } else {
-    titleStr = tr(STR_GOMOKU_DRAW);
-  }
-
-  // Subtitle: mode · size · time · N moves
+  const char* titleStr = winner == GomokuBoard::Stone::Black   ? tr(STR_GOMOKU_BLACK_WINS)
+                         : winner == GomokuBoard::Stone::White ? tr(STR_GOMOKU_WHITE_WINS)
+                                                               : tr(STR_GOMOKU_DRAW);
   char timeBuf[8];
   gameFormatElapsed(elapsedMs, timeBuf, sizeof(timeBuf));
   const char* sizeLabel = (board.boardSize == 9) ? tr(STR_GOMOKU_BOARD_9) : tr(STR_GOMOKU_BOARD_15);
   char sub[96];
-  snprintf(sub, sizeof(sub), "%s · %s · %s · %u %s", modeLabel(mode), sizeLabel, timeBuf,
-           static_cast<unsigned>(board.moveCount), tr(STR_GOMOKU_MOVES_SUFFIX));
+  snprintf(sub, sizeof(sub), "%s · %s · %u %s", modeLabel(mode), sizeLabel, static_cast<unsigned>(board.moveCount),
+           tr(STR_GOMOKU_MOVES_SUFFIX));
 
   const uint8_t s = GomokuStore::sizeIndex(board.boardSize);
   const GomokuStats stats = GomokuStore::loadStats();
-
   char rec[64];
   const bool showRecord = s <= 1;
   if (showRecord) {
@@ -754,42 +634,30 @@ void GomokuGameActivity::renderGameOver() {
              static_cast<unsigned>(stats.whiteWins[s]), static_cast<unsigned>(stats.draws[s]));
   }
 
-  constexpr int titleGap = 12;
-  constexpr int sectionGap = 36;
-  constexpr int statPadding = 16;
-  constexpr int statTextGap = 12;
-  constexpr int footnoteGap = 16;
-  const int titleH = renderer.getTextHeight(kHeroFont);
-  const int statusH = renderer.getTextHeight(kStatusFont);
-  const int valueH = renderer.getTextHeight(kStatValueFont);
-  const int statsH = statPadding + valueH + statTextGap + statusH + statPadding;
-  const int blockH = titleH + titleGap + statusH + sectionGap + statsH + (showRecord ? footnoteGap + statusH : 0);
-  const int availableBottom = renderer.getScreenHeight() - UITheme::getInstance().getMetrics().buttonHintsHeight;
-  const int titleY = gameCenteredBlockY(TITLE_BAR_H, availableBottom, blockH);
-  const int subtitleY = titleY + titleH + titleGap;
-  const int statsY = subtitleY + statusH + sectionGap;
+  const int titleH = renderer.getLineHeight(RickyDesignUi::TITLE);
+  const int captionH = renderer.getLineHeight(RickyDesignUi::CAPTION);
+  const int valueH = renderer.getLineHeight(RickyDesignUi::HEADLINE);
+  const int cardH = 2 * ds::space::k5 + valueH + ds::space::kTextStackGap + captionH;
+  const int blockH = titleH + ds::space::kTextStackGap + captionH + ds::space::kSectionGap + cardH +
+                     (showRecord ? ds::space::k4 + captionH : 0);
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int top = boardAreaTop();
+  const int bottom = mappedInput.hasTouch()
+                         ? gameTouchActionRect(sw, renderer.getScreenHeight(), metrics.contentSidePadding,
+                                               metrics.menuSpacing, metrics.menuRowHeight, 0, 2)
+                               .y
+                         : renderer.getScreenHeight() - metrics.buttonHintsHeight;
+  const int y = gameCenteredBlockY(top, bottom, blockH);
+  const int x = ds::space::kPageMargin;
+  const int w = sw - 2 * ds::space::kPageMargin;
+  using gomokuart::rect;
+  RickyDesignUi::text(renderer, rect(x, y, w, titleH), titleStr, RickyDesignUi::TITLE, false, fui::TextAlign::Center);
+  RickyDesignUi::secondaryText(renderer, rect(x, y + titleH + ds::space::kTextStackGap, w, captionH), sub,
+                               RickyDesignUi::CAPTION, false, fui::TextAlign::Center);
 
-  renderer.drawCenteredText(kHeroFont, titleY, titleStr, true, EpdFontFamily::BOLD);
-  renderer.drawCenteredText(kStatusFont, subtitleY, sub);
-
-  // Three-column stats row (Time / Best Time / Played).
-  const int sx = CONTENT_X;
-  const int sw2 = sw - 2 * CONTENT_X;
-  const int colW = sw2 / 3;
-
-  renderer.drawLine(sx, statsY, sx + sw2, statsY, true);
-  renderer.drawLine(sx, statsY + statsH, sx + sw2, statsY + statsH, true);
-
-  auto drawStatCol = [&](int col, const char* label, const char* value) {
-    const int cx = sx + col * colW;
-    const int valW = renderer.getTextWidth(kStatValueFont, value);
-    const int labW = renderer.getTextWidth(kStatusFont, label);
-    renderer.drawText(kStatValueFont, cx + (colW - valW) / 2, statsY + statPadding, value, true);
-    renderer.drawText(kStatusFont, cx + (colW - labW) / 2, statsY + statPadding + valueH + statTextGap, label, true);
-  };
-
-  drawStatCol(0, tr(STR_GAME_TIME), timeBuf);
-
+  // Three stat cards: time, best time, games played.
+  const int cardsY = y + titleH + ds::space::kTextStackGap + captionH + ds::space::kSectionGap;
+  const int cardW = (w - 2 * ds::space::kGutter) / 3;
   char bestBuf[16];
   if (s <= 1 && stats.bestTimeSec[s] > 0) {
     snprintf(bestBuf, sizeof(bestBuf), "%02u:%02u", static_cast<unsigned>(stats.bestTimeSec[s] / 60),
@@ -797,27 +665,31 @@ void GomokuGameActivity::renderGameOver() {
   } else {
     snprintf(bestBuf, sizeof(bestBuf), "--");
   }
-  drawStatCol(1, tr(STR_GAME_BEST_TIME), bestBuf);
-
   char playedBuf[16];
-  uint16_t played = 0;
-  if (s <= 1) {
-    played = stats.blackWins[s] + stats.whiteWins[s] + stats.draws[s];
+  const unsigned played = s <= 1 ? stats.blackWins[s] + stats.whiteWins[s] + stats.draws[s] : 0;
+  snprintf(playedBuf, sizeof(playedBuf), "%u", played);
+  const char* values[3] = {timeBuf, bestBuf, playedBuf};
+  const char* names[3] = {tr(STR_GAME_TIME), tr(STR_GAME_BEST_TIME), tr(STR_GOMOKU_PLAYED)};
+  for (int i = 0; i < 3; ++i) {
+    const int cx = x + i * (cardW + ds::space::kGutter);
+    RickyDesignUi::softCard(renderer, rect(cx, cardsY, cardW, cardH), false);
+    RickyDesignUi::text(renderer, rect(cx, cardsY + ds::space::k5, cardW, valueH), values[i], RickyDesignUi::HEADLINE,
+                        false, fui::TextAlign::Center);
+    RickyDesignUi::secondaryText(renderer,
+                                 rect(cx, cardsY + ds::space::k5 + valueH + ds::space::kTextStackGap, cardW, captionH),
+                                 names[i], RickyDesignUi::CAPTION, false, fui::TextAlign::Center);
   }
-  snprintf(playedBuf, sizeof(playedBuf), "%u", static_cast<unsigned>(played));
-  drawStatCol(2, tr(STR_GOMOKU_PLAYED), playedBuf);
-
   if (showRecord) {
-    renderer.drawCenteredText(kStatusFont, statsY + statsH + footnoteGap, rec);
+    RickyDesignUi::secondaryText(renderer, rect(x, cardsY + cardH + ds::space::k4, w, captionH), rec,
+                                 RickyDesignUi::CAPTION, false, fui::TextAlign::Center);
   }
 
   if (mappedInput.hasTouch()) {
-    const auto& metrics = UITheme::getInstance().getMetrics();
     GUI.drawActionButton(
         renderer,
         gameTouchActionRect(renderer.getScreenWidth(), renderer.getScreenHeight(), metrics.contentSidePadding,
                             metrics.menuSpacing, metrics.menuRowHeight, 0, 2),
-        tr(STR_GOMOKU_AGAIN));
+        tr(STR_GOMOKU_AGAIN), true);
     GUI.drawActionButton(
         renderer,
         gameTouchActionRect(renderer.getScreenWidth(), renderer.getScreenHeight(), metrics.contentSidePadding,

@@ -127,6 +127,7 @@ struct Page {
   bool wantsGraySettle() const {return opted;}
   void render(RenderLock&&) {++renders;}
   void renderIdle(uint32_t) {++idles;}
+  void renderIdleWarmup(uint32_t) {}
 };
 struct ActivityManager {
   enum class PendingAction {None,Push};

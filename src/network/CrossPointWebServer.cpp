@@ -8,6 +8,7 @@
 #include <FsHelpers.h>
 #include <HalFrontlight.h>
 #include <HalGPIO.h>
+#include <HalMemory.h>
 #include <HalStorage.h>
 #include <I18n.h>
 #include <LibraryBuilder.h>
@@ -69,7 +70,29 @@ namespace {
 // between requests, and so outbound TLS can reuse that memory immediately.
 class CrossPointHttpServer final : public WebServer {
  public:
-  explicit CrossPointHttpServer(uint16_t port) : WebServer(port) {}
+  explicit CrossPointHttpServer(uint16_t port) : WebServer(port) {
+#if !defined(SIMULATOR)
+    // Short HTML/API replies should not wait for TCP delayed ACKs between
+    // their headers and body. NetworkServer applies this to accepted clients.
+    _server.setNoDelay(true);
+#endif
+  }
+
+#if !defined(SIMULATOR)
+  void handleClient() override {
+    // Browsers speculatively open extra sockets. The single-client WebServer
+    // otherwise lets an empty preconnection block every real request for 5 s.
+    // Only expire a socket that has not sent its first request byte: parsed
+    // headers, multipart uploads and WebSockets retain their existing limits.
+    constexpr unsigned long EMPTY_CONNECTION_MS = 750;
+    if (_currentStatus == HC_WAIT_READ && _currentClient.connected() && !_currentClient.available() &&
+        millis() - _statusChange >= EMPTY_CONNECTION_MS) {
+      _currentClient.stop();
+      LOG_INF("WEB", "Expired empty HTTP preconnection");
+    }
+    WebServer::handleClient();
+  }
+#endif
 
   void releaseRequestArguments() {
 #ifdef SIMULATOR
@@ -101,8 +124,7 @@ constexpr const char* HIDDEN_ITEMS[] = {"System Volume Information", "XTCache"};
 // Formats the library index tracks (LibraryIndex isBookName): an upload of any
 // of these must mark the index dirty so the next Library entry rebuilds it.
 bool isLibraryBookFile(const String& filename) {
-  return FsHelpers::checkFileExtension(filename, ".epub") || FsHelpers::checkFileExtension(filename, ".txt") ||
-         FsHelpers::checkFileExtension(filename, ".md");
+  return FsHelpers::hasReflowableBookExtension(std::string_view(filename.c_str(), filename.length()));
 }
 // A font sent through the plain file upload (not the font installer) still has to reach
 // the font list; the registry is otherwise re-scanned only at boot.
@@ -544,15 +566,25 @@ static bool writeClientWithDeadline(NetworkClient& client, const char* data, siz
   constexpr unsigned long RESPONSE_DEADLINE_MS = 60000;
   size_t offset = 0;
   unsigned long lastProgress = millis();
+  int lastSocketError = 0;
 
   while (offset < length) {
     const unsigned long now = millis();
-    if (now - lastProgress >= SEND_STALL_MS || now - responseStart >= RESPONSE_DEADLINE_MS) return false;
+    if (now - lastProgress >= SEND_STALL_MS || now - responseStart >= RESPONSE_DEADLINE_MS) {
+#if FREEINK_DEVICE_METALIO_PLUS
+      const auto heap = HalMemory::getInternalHeap();
+      LOG_ERR("WEB", "Send deadline: chunk=%u/%u errno=%d internal=%u largest=%u", static_cast<unsigned>(offset),
+              static_cast<unsigned>(length), lastSocketError, static_cast<unsigned>(heap.freeBytes),
+              static_cast<unsigned>(heap.largestBlockBytes));
+#endif
+      return false;
+    }
 
     const int socketFd = client.fd();
     if (socketFd < 0) return false;
 
     const ssize_t written = ::send(socketFd, data + offset, length - offset, MSG_DONTWAIT);
+    if (written < 0) lastSocketError = errno;
     if (written > 0) {
       offset += static_cast<size_t>(written);
       lastProgress = millis();
@@ -588,16 +620,42 @@ static bool sendCompressedContent(WebServer* server, const char* contentType, co
   for (size_t offset = 0; offset < len; offset += CHUNK_SIZE) {
     const size_t chunkLength = std::min(CHUNK_SIZE, len - offset);
     if (!writeClientWithDeadline(server->client(), data + offset, chunkLength, responseStart)) {
-      LOG_ERR("WEB", "Aborting %s response body after %lu ms", server->uri().c_str(), millis() - responseStart);
+      LOG_ERR("WEB", "Aborting %s response body at %u/%u after %lu ms", server->uri().c_str(),
+              static_cast<unsigned>(offset), static_cast<unsigned>(len), millis() - responseStart);
       server->client().stop();
       return false;
     }
   }
+#if FREEINK_DEVICE_METALIO_PLUS
+  LOG_INF("WEBHTTP", "page=%s bytes=%u send_ms=%lu", server->uri().c_str(), static_cast<unsigned>(len),
+          millis() - responseStart);
+#endif
   return true;
 #endif
 }
 
+// Canonical local address keeps portal pages out of the probe site's origin.
+// Short response-header Strings only; no resident buffers or network task.
+static void redirectToHotspot(WebServer* server, const uint16_t port) {
+  String target = "http://" + WiFi.softAPIP().toString();
+  if (port != 80) target += ":" + String(port);
+  target += "/";
+  server->sendHeader("Cache-Control", "no-store");
+  server->sendHeader("Location", target, true);
+  server->send(302, "text/plain", "");
+}
+
 void CrossPointWebServer::handleRoot() const {
+#ifndef SIMULATOR
+  if (apMode) {
+    const String host = server->hostHeader();
+    const String address = WiFi.softAPIP().toString();
+    if (!host.isEmpty() && host != address && host != address + ":" + String(port)) {
+      redirectToHotspot(server.get(), port);
+      return;
+    }
+  }
+#endif
   const auto page = localizedPage(web_zh_cn::HomePageHtml, sizeof(web_zh_cn::HomePageHtml), web_en::HomePageHtml,
                                   sizeof(web_en::HomePageHtml));
   if (sendCompressedContent(server.get(), "text/html", page.data, page.size)) {
@@ -623,8 +681,7 @@ void CrossPointWebServer::handleNotFound() const {
   // API requests (/api/*) still return 404 so XHR errors surface correctly
   // see https://en.wikipedia.org/wiki/Captive_portal#Detection
   if (apMode && !server->uri().startsWith("/api/")) {
-    server->sendHeader("Location", "/", true);
-    server->send(302, "text/plain", "");
+    redirectToHotspot(server.get(), port);
     return;
   }
 

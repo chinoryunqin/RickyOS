@@ -372,8 +372,8 @@ void ImageBlock::render(GfxRenderer& renderer, const int x, const int y) {
 }
 
 bool ImageBlock::render(GfxRenderer& renderer, const int x, const int y, const PixelCachePolicy cachePolicy,
-                        ImageRenderError* error) {
-  return renderInternal(renderer, x, y, cachePolicy, DecodeOutput::FrameBufferAndCache, error);
+                        ImageRenderError* error, CancelCheck cancellation) {
+  return renderInternal(renderer, x, y, cachePolicy, DecodeOutput::FrameBufferAndCache, error, cancellation);
 }
 
 bool ImageBlock::cacheDecodedImage(GfxRenderer& renderer, const int x, const int y, CancelCheck cancellation) {
@@ -432,7 +432,12 @@ bool ImageBlock::renderInternal(GfxRenderer& renderer, const int x, const int y,
   // 16-level pages: a JPEG decodes straight into the native frame at full gray depth.
   // The pixel cache holds dithered 4-level samples written past the 16-level buffer,
   // which made illustrations look dark and blotchy.
-  if (renderToFramebuffer && renderer.isGrayscale16Active() && isJpegPath(imagePath)) {
+  if (renderToFramebuffer && renderer.isGrayscale16Active() &&
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
+      true) {
+#else
+      isJpegPath(imagePath)) {
+#endif
     if (!srcPath.empty() && !ensureExtracted(cancellation)) {
       if (error) *error = cancellation.isCancelled() ? ImageRenderError::Cancelled : ImageRenderError::Failed;
       if (!cancellation.isCancelled()) renderPlaceholder(renderer, x, y);
@@ -447,11 +452,14 @@ bool ImageBlock::renderInternal(GfxRenderer& renderer, const int x, const int y,
     native.useDithering = false;
     native.useExactDimensions = true;
     native.output = DecodeOutput::NativeGrayscale16;
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
+    native.preserveAlpha = true;
+#endif
     native.bilinearScaling = bilinearScalingEnabled();
     native.error = &decodeError;
     native.cancellation = cancellation;
-    JpegToFramebufferConverter converter;
-    if (converter.decodeToFramebuffer(imagePath, renderer, native)) {
+    auto* converter = ImageDecoderFactory::getDecoder(imagePath);
+    if (converter && converter->decodeToFramebuffer(imagePath, renderer, native)) {
       if (error) *error = ImageRenderError::None;
       return true;
     }

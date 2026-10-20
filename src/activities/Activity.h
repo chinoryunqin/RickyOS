@@ -41,6 +41,9 @@ class Activity {
   // One cancellable idle pass after a normal render; zero keeps the task asleep.
   virtual uint32_t idleRenderDelayMs() const { return 0; }
   virtual void renderIdle(uint32_t) {}
+  // Low-priority work after renderIdle(), in the same quiet window (e.g. font warm-up).
+  // Implementations stop as soon as activityManager.idleRenderCancelled(generation).
+  virtual void renderIdleWarmup(uint32_t) {}
   // Full-redraw menu screens may use the ActivityManager's 16-level UI policy:
   // direct foreground gray, or B/W + idle gray in comparison builds. Keep this
   // false for readers, retained/incremental frames and self-owned gray transactions.

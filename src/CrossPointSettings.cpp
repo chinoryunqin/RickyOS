@@ -277,6 +277,7 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   doc["rickyHomePhrase"] = rickyHomePhrase;
   doc["rickyGestureBack"] = rickyGestureBack;
   doc["rickyGestureHome"] = rickyGestureHome;
+  doc["standbySwipeUnlock"] = standbySwipeUnlock;
   doc["rickyCompanion"] = rickyCompanion;
   doc["rickyGestureControl"] = rickyGestureControl;
   doc["rickyGestureStatus"] = rickyGestureStatus;
@@ -513,6 +514,7 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   // Missing keys take the defaults: Home swipe starts off for everyone, as agreed.
   rickyGestureBack = (doc["rickyGestureBack"] | 1) ? 1 : 0;
   rickyGestureHome = (doc["rickyGestureHome"] | 0) ? 1 : 0;
+  standbySwipeUnlock = (doc["standbySwipeUnlock"] | 0) ? 1 : 0;
   rickyCompanion = (doc["rickyCompanion"] | 0) == RICKY_COMPANION_CAT ? RICKY_COMPANION_CAT : RICKY_COMPANION_DOG;
   rickyGestureControl = (doc["rickyGestureControl"] | 1) ? 1 : 0;
   rickyGestureStatus = (doc["rickyGestureStatus"] | 1) ? 1 : 0;

@@ -511,6 +511,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // last lines of a page and on the tab bar, so readers left books by accident.
   uint8_t rickyGestureBack = 1;     // swipe right from the left side: Back
   uint8_t rickyGestureHome = 0;     // swipe up from the bottom: Home
+  uint8_t standbySwipeUnlock = 0;  // opt-in left-edge right swipe; independent of global Back/Home
   uint8_t rickyGestureControl = 1;  // swipe down from the top: control center
   uint8_t rickyGestureStatus = 1;   // tap the status bar: control center
   // Body-text stroke weight in the reader: 0 thinnest .. 2 the font as drawn .. 4 boldest.

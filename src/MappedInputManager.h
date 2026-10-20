@@ -112,12 +112,23 @@ class MappedInputManager {
   // Back = left-to-right swipe anchored at the left edge. Public so swipe-mode
   // page turns (reader) can exclude it from a plain SwipeDir::Right.
   bool wasBackGesture() const;
+  // Direction/edge only: Standby owns its opt-in switch, not global Back/Home.
+  bool wasStandbyUnlockGesture() const;
   // Home-key boards use a short Home-key tap to exit; their bottom-edge swipe
   // is intentionally unused. Other boards retain the bottom-edge Home gesture.
   // The reader menu remains on its existing top-edge gesture and middle tap.
   bool wasHomeGesture() const;
   // Configured one-frame action, independent of the gesture that triggered it.
   HomeButtonAction homeButtonAction() const { return homeAction; }
+  // Standby owns input, not the global Home shortcuts. Drop the recognizer's
+  // partial click AND the current/deferred actions without touching Back/Power
+  // or the Plus physical-key gestures that may legitimately wake the device.
+  void suppressStandbyHomeActions() const {
+    homeButtonInput.reset();
+    homeAction = HomeButtonAction::Ignore;
+    deferredHomeAction = HomeButtonAction::Ignore;
+    homeNeedsFreshPress = true;
+  }
   void resetHomeButtonInput() const {
     homeButtonInput.reset();
     deferredHomeAction = HomeButtonAction::Ignore;
@@ -196,6 +207,7 @@ class MappedInputManager {
   void suppressNextRelease(Button button) const;
 
   mutable HomeButtonInput homeButtonInput;
+  mutable bool homeNeedsFreshPress = false;
   mutable HomeButtonAction homeAction = HomeButtonAction::Ignore;
   mutable HomeButtonAction deferredHomeAction = HomeButtonAction::Ignore;
   mutable bool touchHeldOverrideValid = false;

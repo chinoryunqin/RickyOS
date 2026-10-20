@@ -132,7 +132,24 @@ void appendShapedRtlTokens(const char* text, std::string& shapedOut) {
 }
 }  // namespace
 
+#if RICKYOS_PAINT_PROFILE
+namespace {
+// Glyph fetches are timed on their own: the nesting-aware scopes would fold them into Text.
+struct GlyphFetchTimer {
+  uint32_t start = micros();
+  ~GlyphFetchTimer() {
+    auto& profile = GfxRenderer::paintProfile();
+    profile.us[static_cast<int>(GfxRenderer::PaintKind::Glyph)] += micros() - start;
+    ++profile.calls[static_cast<int>(GfxRenderer::PaintKind::Glyph)];
+  }
+};
+}  // namespace
+#endif
+
 const uint8_t* GfxRenderer::getGlyphBitmap(const EpdFontData* fontData, const EpdGlyph* glyph) const {
+#if RICKYOS_PAINT_PROFILE
+  const GlyphFetchTimer glyphFetchTimer;
+#endif
   // Vector (TTF) fonts: the glyph bitmap lives in the font's own cache, keyed by
   // the EpdGlyph the miss handler returned. Checked first so it never reaches the
   // SdCardFont overflow cast below. nullptr = zero-width glyph (e.g. space).

@@ -15,7 +15,7 @@
 #include "CrossPointSettings.h"
 #include "apps/AppsMenuActivity.h"
 #include "apps/calculator/CalculatorActivity.h"
-#include "apps/gomoku/GomokuMenuActivity.h"
+#include "apps/gomoku/GomokuModeActivity.h"
 #include "apps/reading-stats/RickyReadingStatsActivity.h"
 #include "apps/standby/RickyStandbySettingsActivity.h"
 #include "apps/standby/StandbyActivity.h"
@@ -145,12 +145,20 @@ void ActivityManager::renderTaskLoop() {
     // looks the same from outside whichever of these fired.
     if (idleArmed && foreground) {
       LOG_DBG("ACT", "Idle render: preempted by an update");
+#if RICKYOS_PLUS_READER_TIMING
+      LOG_INF("ReaderCache", "idle preempted by an update");
+#endif
     } else if (idleArmed && idleRenderCancelled(idleGeneration)) {
       const uint32_t generation = idleRenderGeneration.load(std::memory_order_relaxed);
       const bool byInput = idleGeneration != generation;
       LOG_DBG("ACT", "Idle render: cancelled (%s)",
               byInput ? lastIdleCancel.load(std::memory_order_relaxed)
                       : (isSwitchPending() ? "switch pending" : "update requested"));
+#if RICKYOS_PLUS_READER_TIMING
+      LOG_INF("ReaderCache", "idle cancelled before start (%s)",
+              byInput ? lastIdleCancel.load(std::memory_order_relaxed)
+                      : (isSwitchPending() ? "switch pending" : "update requested"));
+#endif
       // One idle attempt per render, but a page turn's own touch-up or key release lands
       // during that render and used to spend the attempt: on device the reader's page
       // cache hit about 1 turn in 40. Input that queues no render re-arms the wait, so
@@ -223,15 +231,37 @@ void ActivityManager::renderTaskLoop() {
           settleToGray(std::move(lock), idleGeneration);
         } else {
           currentActivity->renderIdle(idleGeneration);
+          if (!idleRenderCancelled(idleGeneration)) currentActivity->renderIdleWarmup(idleGeneration);
         }
 #else
         currentActivity->renderIdle(idleGeneration);
+        if (!idleRenderCancelled(idleGeneration)) currentActivity->renderIdleWarmup(idleGeneration);
 #endif
       }
     }
     // An idle timeout must never acknowledge requestUpdateAndWait(): its
     // notification may have arrived while the idle callback was cancelling.
-    if (!foreground) continue;
+    if (!foreground) {
+      // Input can arrive during renderIdle(), not just during its timeout.
+      // A touch-up without a queued redraw must leave interrupted prefetch
+      // retryable after a new quiet window. Do not retry successful passes,
+      // navigation, queued updates or a disabled cache (delay == 0).
+      const uint32_t generation = idleRenderGeneration.load(std::memory_order_relaxed);
+      if (currentActivity && generation != idleGeneration &&
+          lastIdleCancelRearms.load(std::memory_order_relaxed) && !isSwitchPending() && !requestedUpdate.load()) {
+        const auto delayMs = currentActivity->idleRenderDelayMs();
+        if (delayMs != 0) {
+          idleGeneration = generation;
+          idleDelayTicks = pdMS_TO_TICKS(delayMs);
+          waitTicks = idleDelayTicks;
+          LOG_DBG("ACT", "Idle render: retry after interrupted pass");
+#if RICKYOS_PLUS_READER_TIMING
+          LOG_INF("ReaderCache", "idle interrupted (%s), retry", lastIdleCancel.load(std::memory_order_relaxed));
+#endif
+        }
+      }
+      continue;
+    }
     TaskHandle_t waiter = nullptr;
     taskENTER_CRITICAL(&activityManagerSpinlock);
     waiter = waitingTaskHandle;
@@ -856,7 +886,7 @@ void ActivityManager::goToRickyReadingStats() { replaceActivityWith<RickyReading
 
 void ActivityManager::goToReadingStats() { goToRickyReadingStats(); }
 
-void ActivityManager::goToGomoku() { replaceActivityWith<GomokuMenuActivity>(); }
+void ActivityManager::goToGomoku() { replaceActivityWith<GomokuModeActivity>(); }
 
 void ActivityManager::goToCalculator() { replaceActivityWith<CalculatorActivity>(); }
 

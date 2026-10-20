@@ -15,6 +15,15 @@
 #include <string>
 #include <vector>
 
+// Streamed TTF glyph reads go through a 128 KB PSRAM block cache on boards with PSRAM.
+#ifndef RICKYOS_TTF_BLOCK_CACHE
+#if defined(BOARD_HAS_PSRAM) || FREEINK_DEVICE_METALIO_PLUS
+#define RICKYOS_TTF_BLOCK_CACHE 1
+#else
+#define RICKYOS_TTF_BLOCK_CACHE 0
+#endif
+#endif
+
 class GfxRenderer;
 class TtfEpdFont;
 
@@ -33,6 +42,19 @@ inline constexpr int READER_ESTIMATE_FONT_ID = 0x5253420A;
 /// Hides implementation details behind a single begin() + ensureLoaded() API.
 class SdCardFontSystem {
  public:
+#if RICKYOS_PAINT_PROFILE
+  // SD traffic of streamed TTF sources since the last take (profiling builds only).
+  struct StreamStats {
+    uint32_t reads = 0, bytes = 0, us = 0;
+  };
+  static StreamStats takeStreamStats() {
+    const StreamStats out = streamStats_;
+    streamStats_ = {};
+    return out;
+  }
+  static StreamStats streamStats_;
+#endif
+
   static constexpr const char* COMPLETE_CHINESE_NOTO_SANS_FAMILY = "NotoSansSC";
 
   // Constructor and destructor are out-of-line (defined in the .cpp where
@@ -139,6 +161,24 @@ class SdCardFontSystem {
   // One style source file. SMALL files are read fully into `bytes` (resident,
   // PSRAM when present); LARGE files stream from `file` (kept open) so a multi-MB
   // file never sits in RAM. All faces (reader + UI sizes) share these sources.
+#if CROSSPOINT_VECTOR_FONTS
+ public:
+  // Idle warm-up of the reader TTF face: rasterize up to `count` of the next common
+  // characters (frequency order) not yet drawn. True while more remain. Render task only.
+  bool prerasterizeCommon(unsigned count);
+
+ private:
+#if FREEINK_DEVICE_METALIO_PLUS
+  // 4 MB glyph cache: the whole 4000-character table fits beside a book's own glyphs.
+  static constexpr unsigned kWarmupCharLimit = 4000;
+#else
+  // 1 MB glyph cache: warm the most frequent 1500 (~half of it at 4-bit coverage) so a
+  // book's own characters keep room and never push the face into a full flush.
+  static constexpr unsigned kWarmupCharLimit = 1500;
+#endif
+  size_t prerasterCursor_ = 0;     // byte offset into kRickyCommonChars; reset on every face load
+  unsigned prerasterVisited_ = 0;  // characters walked so far, against kWarmupCharLimit
+#endif
   struct TtfSource {
     // Resident form: the whole file. Streamed form: a PSRAM prefix cache of the
     // file head (cmap/loca/hmtx) — empty when PSRAM couldn't fund it.
@@ -148,7 +188,22 @@ class SdCardFontSystem {
     bool flash = false;  // read from the flash font cache instead of the SD card
     unsigned long size = 0;
     bool present = false;
+#if RICKYOS_TTF_BLOCK_CACHE
+    // Streamed tail (glyf): FreeType reads one glyph as ~4 small pieces (~225 B each)
+    // and each went to the card (~1.2 ms apiece). Serve them from whole 4 KB blocks,
+    // least recently used first out, in PSRAM (128 KB per streamed face, on first use).
+    static constexpr unsigned long kBlockBytes = 4096;
+    static constexpr int kBlockCount = 32;
+    uint8_t* blockData = nullptr;  // kBlockCount * kBlockBytes; nullptr = read through
+    unsigned long blockStart[kBlockCount] = {};
+    unsigned long blockLen[kBlockCount] = {};  // 0 = empty slot
+    uint32_t blockUse[kBlockCount] = {};
+    uint32_t blockClock = 0;
+    bool blockAllocFailed = false;
+#endif
   };
+  // Reads the part of a streamed source past its prefix (from the card, or its block cache).
+  static unsigned long readStreamTail(TtfSource* s, unsigned long offset, unsigned char* buffer, unsigned long count);
 
   // Active TTF font (at most one reader-size vector family loaded at a time).
   std::unique_ptr<TtfEpdFont> ttf_;

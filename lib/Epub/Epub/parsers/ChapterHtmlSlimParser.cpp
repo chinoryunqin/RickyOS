@@ -24,6 +24,9 @@
 #include "Epub/converters/ImageDimsProbe.h"
 #include "Epub/converters/ImageToFramebufferDecoder.h"
 #include "Epub/htmlEntities.h"
+#if FREEINK_DEVICE_METALIO_PLUS
+#include <PlusReaderImageLayout.h>
+#endif
 
 // Minimum file size (in bytes) to show indexing popup - smaller chapters don't benefit from it
 constexpr size_t MIN_SIZE_FOR_POPUP = 10 * 1024;  // 10KB
@@ -320,6 +323,7 @@ bool ChapterHtmlSlimParser::allocatePage() {
   }
   currentPage = std::move(page);
   currentPageNextY = 0;
+  pendingMarginBottom = 0;
   currentPageVisibleOffsetSet = false;
   return true;
 }
@@ -465,12 +469,12 @@ void ChapterHtmlSlimParser::emitHorizontalRule(const BlockStyle& blockStyle) {
 
   const int16_t lineHeight = static_cast<int16_t>(renderer.getLineHeight(fontId, lineCompression));
   const int16_t defaultVerticalSpacing = static_cast<int16_t>(lineHeight / 2);
+  const int16_t topMargin = blockStyle.marginTop > 0 ? blockStyle.marginTop : defaultVerticalSpacing;
+  const int16_t bottomMargin = blockStyle.marginBottom > 0 ? blockStyle.marginBottom : defaultVerticalSpacing;
+  const int16_t bottomPadding = blockStyle.paddingBottom > 0 ? blockStyle.paddingBottom : 0;
   const int16_t topSpacing =
-      static_cast<int16_t>((blockStyle.marginTop > 0 ? blockStyle.marginTop : defaultVerticalSpacing) +
-                           (blockStyle.paddingTop > 0 ? blockStyle.paddingTop : 0));
-  const int16_t bottomSpacing =
-      static_cast<int16_t>((blockStyle.marginBottom > 0 ? blockStyle.marginBottom : defaultVerticalSpacing) +
-                           (blockStyle.paddingBottom > 0 ? blockStyle.paddingBottom : 0));
+      static_cast<int16_t>(std::max(pendingMarginBottom, topMargin) + (blockStyle.paddingTop > 0 ? blockStyle.paddingTop : 0));
+  const int16_t bottomSpacing = static_cast<int16_t>(bottomMargin + bottomPadding);
   constexpr uint8_t ruleThickness = 2;
   const int16_t availableWidth =
       std::max<int16_t>(1, static_cast<int16_t>(viewportWidth - blockStyle.totalHorizontalInset()));
@@ -486,6 +490,7 @@ void ChapterHtmlSlimParser::emitHorizontalRule(const BlockStyle& blockStyle) {
     if (!allocatePage()) return;
   }
 
+  pendingMarginBottom = 0;  // collapsed into topSpacing (or dropped with the page break above)
   currentPageNextY += topSpacing;
 
   auto pageRule = makeUniqueNoThrow<PageHorizontalRule>(width, ruleThickness, xPos, currentPageNextY);
@@ -496,7 +501,8 @@ void ChapterHtmlSlimParser::emitHorizontalRule(const BlockStyle& blockStyle) {
   }
   currentPage->elements.push_back(std::move(pageRule));
   setCurrentPageVisibleOffset(visibleTextOffset);
-  currentPageNextY = static_cast<int16_t>(currentPageNextY + ruleThickness + bottomSpacing);
+  currentPageNextY = static_cast<int16_t>(currentPageNextY + ruleThickness + bottomPadding);
+  pendingMarginBottom = bottomMargin;
 
   if (!pendingAnchorId.empty()) {
     if (!txtChapterBoundaries)
@@ -1182,6 +1188,17 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
                   LOG_DBG("EHP", "Display size: %dx%d (scale %.2f)", displayWidth, displayHeight, scale);
                 }
 
+#if FREEINK_DEVICE_METALIO_PLUS
+                // Resolve before page breaking / ImageBlock serialization so the
+                // taller full-width art never covers following text. Text margins
+                // and the shared Pico/C3 layout remain unchanged.
+                if (plusReaderImage::fitChapterArt(dims.width, dims.height, self->viewportWidth,
+                                                   self->viewportHeight, self->imageOutset, displayWidth,
+                                                   displayHeight)) {
+                  LOG_DBG("EHP", "Chapter art fits reading width: %dx%d", displayWidth, displayHeight);
+                }
+#endif
+
                 // Flush any pending text block so it appears before the image
                 if (self->partWordBufferIndex > 0) {
                   self->flushPartWordBuffer();
@@ -1206,6 +1223,10 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
                     imageMarginBottom = self->blockStyleStack.back().bottomInset();
                   }
                 }
+
+                // Collapse with the previous block's pending bottom margin (CSS).
+                imageMarginTop = std::max(imageMarginTop, self->pendingMarginBottom);
+                self->pendingMarginBottom = 0;
 
                 // Create page for image - only break if image won't fit remaining space
                 if (self->currentPage && !self->currentPage->elements.empty() &&
@@ -1251,7 +1272,8 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
                 }
                 self->currentPage->elements.push_back(std::move(pageImage));
                 self->setCurrentPageVisibleOffset(self->visibleTextOffset);
-                self->currentPageNextY += displayHeight + imageMarginBottom;
+                self->currentPageNextY += displayHeight;
+                self->pendingMarginBottom = imageMarginBottom;
 
                 // The image consumed the empty block's accumulated vertical spacing.
                 // Reset the block so the Vertical merge in startNewTextBlock doesn't
@@ -2353,6 +2375,9 @@ bool ChapterHtmlSlimParser::addLineToPage(std::unique_ptr<TextBlock> line, const
   if (!currentPage) {
     if (!allocatePage()) return false;
   }
+  // A line outside the block flow (table rows, <br> lines) does not collapse.
+  currentPageNextY = static_cast<int16_t>(currentPageNextY + pendingMarginBottom);
+  pendingMarginBottom = 0;
 
   if (currentPageNextY + lineHeight > viewportHeight) {
     setCurrentPageVisibleOffset(visibleOffset);
@@ -2416,9 +2441,7 @@ void ChapterHtmlSlimParser::makePages() {
 
   // Apply top spacing before the paragraph (stored in pixels)
   const BlockStyle& blockStyle = currentTextBlock->getBlockStyle();
-  if (blockStyle.marginTop > 0) {
-    currentPageNextY += blockStyle.marginTop;
-  }
+  currentPageNextY = static_cast<int16_t>(currentPageNextY + takeCollapsedTopMargin(blockStyle.marginTop));
   if (blockStyle.paddingTop > 0) {
     currentPageNextY += blockStyle.paddingTop;
   }
@@ -2455,10 +2478,8 @@ void ChapterHtmlSlimParser::makePages() {
     pendingFootnotes.clear();
   }
 
-  // Apply bottom spacing after the paragraph (stored in pixels)
-  if (blockStyle.marginBottom > 0) {
-    currentPageNextY += blockStyle.marginBottom;
-  }
+  // Bottom margin waits to collapse with the next block's top margin; padding applies now.
+  pendingMarginBottom = std::max<int16_t>(blockStyle.marginBottom, 0);
   if (blockStyle.paddingBottom > 0) {
     currentPageNextY += blockStyle.paddingBottom;
   }

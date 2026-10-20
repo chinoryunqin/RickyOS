@@ -17,6 +17,9 @@
 #include "DitherUtils.h"
 #include "PixelCache.h"
 #include "SampleRowClamp.h"
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
+#include "FullProgressiveJpeg.h"
+#endif
 
 namespace {
 
@@ -115,6 +118,31 @@ bool hasHeapForJpegDecoder(const char* operation) {
           operation, available.freeBytes, available.largestBlockBytes, MIN_FREE_HEAP_FOR_JPEG, JPEG_DECODER_SIZE,
           internal.freeBytes, internal.largestBlockBytes, psram.freeBytes, psram.largestBlockBytes);
   return false;
+}
+
+// Reuse the existing optional compressed-image allocation. Idle decodes read in
+// bounded chunks so input can release the render lock before the whole file is
+// loaded. Foreground reads keep their existing single-transfer path.
+[[maybe_unused]] memory::ByteBuffer readJpegIntoPsram(const std::string& path, size_t& size, CancelCheck cancellation) {
+  size = 0;
+  if (cancellation.isCancelled()) return {};
+  HalFile file;
+  if (!Storage.openFileForRead("JPG", path, file)) return {};
+  const size_t bytes = file.fileSize();
+  constexpr size_t kMaxRamJpeg = 4 * 1024 * 1024;
+  if (!bytes || bytes > kMaxRamJpeg || !memory::psramHasHeadroom(bytes, bytes, 256 * 1024)) return {};
+  auto data = memory::makePsramByteBufferUninitializedNoThrow(bytes);
+  if (!data) return {};
+  for (size_t offset = 0; offset < bytes;) {
+    if (cancellation.isCancelled()) return {};
+    const size_t remaining = bytes - offset;
+    const size_t chunk = cancellation && remaining > 16 * 1024 ? 16 * 1024 : remaining;
+    if (file.read(data.get() + offset, chunk) != static_cast<int>(chunk)) return {};
+    offset += chunk;
+  }
+  if (cancellation.isCancelled()) return {};
+  size = bytes;
+  return data;
 }
 
 // Choose JPEGDEC's built-in scale factor for coarse downscaling.
@@ -273,6 +301,32 @@ int jpegDrawCallback(JPEGDRAW* pDraw) {
   // stair-step edges on scaled artwork.
   const bool bilinearRequested = ctx->config != nullptr && ctx->config->bilinearScaling;
   if ((fineScaleFPX > FP_ONE && fineScaleFPY > FP_ONE) || bilinearRequested) {
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
+    // Portrait columns are contiguous in the native panel frame. The old
+    // column fast path excluded bilinear filtering, so the quality setting
+    // still caused a PSRAM read/modify/write on a different panel row for
+    // every pixel. Reorder only: retain the exact fixed-point samples, block
+    // clamps and rounding below, without a second image or scratch allocation.
+    if (ctx->config->output == DecodeOutput::NativeGrayscale16 && renderer.grayscale16PrefersColumns()) {
+      for (int dstX = dstXStart; dstX < dstXEnd; ++dstX) {
+        if (ctx->config->cancellation.isCancelled()) return 0;
+        const int32_t fx = (dstX * invScaleFPX) & FP_MASK;
+        const int32_t fxInv = FP_ONE - fx;
+        const SampleCols cols = sampleColsFor(dstX, invScaleFPX, blockX, validW);
+        for (int dstY = dstYStart; dstY < dstYEnd; ++dstY) {
+          const int32_t fy = (dstY * invScaleFPY) & FP_MASK;
+          const SampleRows rows = sampleRowsFor(dstY, invScaleFPY, blockY, blockH);
+          const uint8_t* row0 = &pixels[rows.row0 * stride];
+          const uint8_t* row1 = &pixels[rows.row1 * stride];
+          const int top = (row0[cols.col0] * fxInv + row0[cols.col1] * fx) >> FP_SHIFT;
+          const int bot = (row1[cols.col0] * fxInv + row1[cols.col1] * fx) >> FP_SHIFT;
+          const uint8_t gray = static_cast<uint8_t>((top * (FP_ONE - fy) + bot * fy) >> FP_SHIFT);
+          renderer.drawGrayscale16Pixel(cfgX + dstX, cfgY + dstY, gray);
+        }
+      }
+      return 1;
+    }
+#endif
     // Pre-compute safe X range where lx0 and lx0+1 are both in [0, validW-1].
     // Only the left/right edge pixels (typically 0-2 and 1-8 respectively) need clamping.
     int safeXStart = (int)(((int64_t)blockX * fineScaleFPX + FP_MASK) >> FP_SHIFT);
@@ -440,7 +494,10 @@ bool JpegToFramebufferConverter::decodeToFramebuffer(const std::string& imagePat
     jpeg->~JPEGDEC();
     buildscratch::release(decoderScratch);
   }};
-  const ScopedCleanup closeJpeg{[jpeg]() { jpeg->close(); }};
+  bool jpegClosed = false;
+  const ScopedCleanup closeJpeg{[jpeg, &jpegClosed]() {
+    if (!jpegClosed) jpeg->close();
+  }};
 
   JpegContext ctx;
   ctx.renderer = &renderer;
@@ -455,16 +512,10 @@ bool JpegToFramebufferConverter::decodeToFramebuffer(const std::string& imagePat
   size_t ramJpegSize = 0;
   if (config.output == DecodeOutput::NativeGrayscale16) {
     const unsigned long loadStart = millis();
-    HalFile file;
-    if (Storage.openFileForRead("JPG", imagePath, file)) {
-      ramJpegSize = file.fileSize();
-      constexpr size_t kMaxRamJpeg = 4 * 1024 * 1024;
-      if (ramJpegSize > 0 && ramJpegSize <= kMaxRamJpeg &&
-          memory::psramHasHeadroom(ramJpegSize, ramJpegSize, 256 * 1024)) {
-        ramJpeg = memory::makePsramByteBufferUninitializedNoThrow(ramJpegSize);
-        if (ramJpeg && file.read(ramJpeg.get(), ramJpegSize) != static_cast<int>(ramJpegSize)) ramJpeg.reset();
-      }
-      file.close();
+    ramJpeg = readJpegIntoPsram(imagePath, ramJpegSize, config.cancellation);
+    if (config.cancellation.isCancelled()) {
+      if (config.error) *config.error = ImageRenderError::Cancelled;
+      return false;
     }
     if (ramJpeg)
       LOG_DBG("JPG", "Loaded %u bytes to PSRAM in %lu ms", static_cast<unsigned>(ramJpegSize), millis() - loadStart);
@@ -485,6 +536,33 @@ bool JpegToFramebufferConverter::decodeToFramebuffer(const std::string& imagePat
   const int srcHeight = sourceDimensions.height;
 
   bool isProgressive = jpeg->getJPEGType() == JPEG_MODE_PROGRESSIVE;
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
+  if (isProgressive && config.output == DecodeOutput::NativeGrayscale16) {
+    // Close the header probe exactly once before reopening for full decoding.
+    jpeg->close();
+    jpegClosed = true;
+#if !defined(SIMULATOR)
+    ramJpeg.reset();
+#endif
+    ImageRenderError fullError = ImageRenderError::Failed;
+    RenderConfig fullConfig = config;  // Native config has no pixel-cache string.
+    fullConfig.error = &fullError;
+    if (decodeFullProgressiveJpeg(imagePath, renderer, fullConfig)) {
+      if (config.error) *config.error = ImageRenderError::None;
+      return true;
+    }
+    if (fullError != ImageRenderError::OutOfMemory || config.cancellation.isCancelled()) {
+      if (config.error) *config.error = config.cancellation.isCancelled() ? ImageRenderError::Cancelled : fullError;
+      return false;
+    }
+    // A large source or memory pressure must not replace an otherwise readable
+    // image with a blank placeholder. Explicitly retain the historical preview
+    // only for this budget fallback; never hide corruption/cancellation behind it.
+    LOG_ERR("JPG", "Full progressive decode unavailable within PSRAM budget; using DC preview");
+    jpegClosed = false;
+    if (jpeg->open(imagePath.c_str(), jpegOpen, jpegClose, jpegRead, jpegSeek, jpegDrawCallback) != 1) return false;
+  }
+#endif
   if (isProgressive) {
     LOG_INF("JPG", "Progressive JPEG detected - decoding DC coefficients only (lower quality)");
   }

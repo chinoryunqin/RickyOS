@@ -755,8 +755,7 @@ void FileBrowserActivity::activateSelected() {
   } else {
     const std::string fullPath = basepath + entry;
     lock.unlock();
-    if (!FsHelpers::hasEpubExtension(fullPath) && !FsHelpers::hasTxtExtension(fullPath) &&
-        !FsHelpers::hasMarkdownExtension(fullPath) && !FsHelpers::hasBmpExtension(fullPath) &&
+    if (!FsHelpers::hasReflowableBookExtension(fullPath) && !FsHelpers::hasBmpExtension(fullPath) &&
         !FsHelpers::hasPngExtension(fullPath) && !FsHelpers::hasJpgExtension(fullPath)) {
       showNotice(StrId::STR_RICKY_NO_PREVIEW);
       return;

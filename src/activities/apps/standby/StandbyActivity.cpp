@@ -491,7 +491,14 @@ bool StandbyActivity::tryLightSleep(const uint32_t idleMs) {
 }
 
 void StandbyActivity::loop() {
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  if (SETTINGS.standbySwipeUnlock && mappedInput.wasStandbyUnlockGesture()) {
+    STANDBY_DIAG("close: swipe unlock");
+    finish();
+    return;
+  }
+  // Back includes touch gestures and a header target from the prior page. Neither
+  // may bypass the independent unlock switch; physical Back keeps its preference.
+  if (!mappedInput.wasBackGesture() && mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     // One shortcut switch owns both entry and exit; the side power key stays independent.
     if (SETTINGS.standbyShortcutEnabled) {
       STANDBY_DIAG("close: Back released");

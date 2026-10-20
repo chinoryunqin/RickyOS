@@ -289,8 +289,14 @@ void CrossPointWebServerActivity::startAccessPoint() {
     return;
   }
   dnsServer->setErrorReplyCode(DNSReplyCode::NoError);
-  dnsServer->start(DNS_PORT, "*", apIP);
-  LOG_DBG("WEBACT", "DNS server started for captive portal");
+  if (!dnsServer->start(DNS_PORT, "*", apIP)) {
+    // Direct-IP access still works without captive DNS; do not pretend the
+    // portal started, or tear down a usable transfer server on a DNS error.
+    LOG_ERR("WEBACT", "Captive DNS failed; use the displayed HTTP IP address");
+    stopDnsServer();
+  } else {
+    LOG_DBG("WEBACT", "DNS server started for captive portal");
+  }
 
   LOG_DBG("WEBACT", "Free heap after AP start: %d bytes", ESP.getFreeHeap());
 

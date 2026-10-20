@@ -114,6 +114,13 @@ class TtfEpdFont {
   bool build(const char* utf8);
   bool addCoverage(const char* utf8);
 
+  // Rasterize the regular face's glyph for cp ahead of its first draw (idle warm-up).
+  // Speculation never costs a page anything: it stops (Full) while a tenth of the glyph
+  // table or 64 KB of the arena is all that is left, or when growing the arena would
+  // need PSRAM that is short, so it can never flush, recycle or evict what pages use.
+  enum class Prerasterize : uint8_t { Done, Skipped, Full };
+  Prerasterize prerasterize(uint32_t cp);
+
  private:
   // A borrowed source file (one per style role that the caller supplies).
   struct Source {

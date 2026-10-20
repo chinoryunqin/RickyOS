@@ -4,6 +4,7 @@
 #include <Epub/FootnoteEntry.h>
 #include <Epub/PageLink.h>
 #include <Epub/Section.h>
+#include <VectorFontSupport.h>
 
 #include <atomic>
 #include <memory>
@@ -97,6 +98,9 @@ class EpubReaderActivity final : public ReaderActivity {
   ReaderPageCacheKey pageCacheKey(int page, int top, int right, int bottom, int left) const;
   uint32_t idleRenderDelayMs() const override;
   void renderIdle(uint32_t generation) override;
+#if CROSSPOINT_VECTOR_FONTS
+  void renderIdleWarmup(uint32_t generation) override;
+#endif
   // Build one page into one cache slot; only called from renderIdle().
   bool buildPageCacheSlot(int slot, const ReaderPageCacheKey& key, uint32_t generation, Section* source = nullptr);
 #if FREEINK_DEVICE_READPICO

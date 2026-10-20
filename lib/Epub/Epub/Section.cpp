@@ -51,7 +51,20 @@ namespace {
 //   74 / 75 - character and word spacing in the render spec and cached text
 //   76 / 77 - independent Western paragraph indentation width
 //   78 / 79 - vertical text (columns, right to left) in the render spec
-constexpr uint8_t SECTION_FILE_VERSION = 79;
+//   80 / 81 - reserved: the Metalio Plus imageOutset header field
+//   82 / 83 - reserved: Plus pagination with collapsed margins (with imageOutset)
+//   84 / 85 - adjacent vertical margins collapse (CSS): max(bottom, next top), not the sum
+// Boards without the Plus header come first: host tests read the first declaration.
+#if !FREEINK_DEVICE_METALIO_PLUS
+constexpr uint8_t SECTION_FILE_VERSION = 85;
+constexpr uint32_t IMAGE_LAYOUT_HEADER_SIZE = 0;
+#else
+// Plus-only v81 adds a uint16 imageOutset after verticalText; v83 collapses margins.
+// Its numbers stay apart from 85 so a card moved between devices never reads the
+// other header layout as its own.
+constexpr uint8_t SECTION_FILE_VERSION = 83;
+constexpr uint32_t IMAGE_LAYOUT_HEADER_SIZE = sizeof(uint16_t);
+#endif
 // Written into the version field while a build is in progress; patched to
 // SECTION_FILE_VERSION only when the build is finalized. An abandoned /
 // crash-interrupted .bin therefore carries version 0, which loadSectionFile rejects
@@ -73,7 +86,7 @@ constexpr uint32_t HEADER_SIZE = sizeof(uint8_t) + sizeof(int) + sizeof(float) +
                                  sizeof(uint8_t) + sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint16_t) +
                                  sizeof(bool) + sizeof(bool) + sizeof(uint8_t) + sizeof(bool) + sizeof(bool) +
                                  sizeof(uint32_t) * 5 + sizeof(int8_t) + sizeof(uint8_t) + sizeof(uint8_t) +
-                                 sizeof(bool);
+                                 sizeof(bool) + IMAGE_LAYOUT_HEADER_SIZE;
 // Called only between layout/render operations; no borrowed glyph pointer is live.
 void reclaimLayoutCaches(GfxRenderer& renderer, const char* stage) {
 #ifndef BOARD_HAS_PSRAM
@@ -139,7 +152,8 @@ void Section::writeSectionFileHeader(const ReaderRenderSpec& spec) {
                          sizeof(spec.hyphenationEnabled) + sizeof(spec.embeddedStyle) + sizeof(spec.imageRendering) +
                          sizeof(spec.focusReadingEnabled) + sizeof(spec.collectTouchLinks) + sizeof(uint32_t) +
                          sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) +
-                         sizeof(spec.characterSpacing) + sizeof(spec.wordSpacingPercent) + sizeof(spec.verticalText),
+                         sizeof(spec.characterSpacing) + sizeof(spec.wordSpacingPercent) + sizeof(spec.verticalText) +
+                         IMAGE_LAYOUT_HEADER_SIZE,
       "Header size mismatch");
   // Written as the incomplete sentinel; finalizeBuild() patches it to
   // SECTION_FILE_VERSION as the last step, committing the file.
@@ -160,6 +174,9 @@ void Section::writeSectionFileHeader(const ReaderRenderSpec& spec) {
   serialization::writePod(file, spec.characterSpacing);
   serialization::writePod(file, spec.wordSpacingPercent);
   serialization::writePod(file, spec.verticalText);
+#if FREEINK_DEVICE_METALIO_PLUS
+  serialization::writePod(file, spec.imageOutset);
+#endif
   serialization::writePod(file, pageCount);  // Placeholder for page count (will be initially 0, patched later)
   serialization::writePod(file, static_cast<uint32_t>(0));  // Placeholder for LUT offset (patched later)
   serialization::writePod(file, static_cast<uint32_t>(0));  // Placeholder for anchor map offset (patched later)
@@ -206,7 +223,10 @@ bool Section::loadSectionFile(const ReaderRenderSpec& spec) {
     int8_t fileCharacterSpacing = 0;
     uint8_t fileWordSpacingPercent = 100;
     bool fileVerticalText = false;
-    const bool headerValid =
+#if FREEINK_DEVICE_METALIO_PLUS
+    uint16_t fileImageOutset = 0;
+#endif
+    bool headerValid =
         serialization::readPod(file, fileFontId) && serialization::readPod(file, fileLineCompression) &&
         serialization::readPod(file, fileExtraParagraphSpacing) && serialization::readPod(file, fileFirstLineIndent) &&
         serialization::readPod(file, fileParagraphIndentSpaces) &&
@@ -216,6 +236,12 @@ bool Section::loadSectionFile(const ReaderRenderSpec& spec) {
         serialization::readPod(file, fileFocusReadingEnabled) && serialization::readPod(file, fileCollectTouchLinks) &&
         serialization::readPod(file, fileCharacterSpacing) && serialization::readPod(file, fileWordSpacingPercent) &&
         serialization::readPod(file, fileVerticalText);
+#if FREEINK_DEVICE_METALIO_PLUS
+    headerValid = headerValid && serialization::readPod(file, fileImageOutset);
+    const bool imageLayoutMatches = spec.imageOutset == fileImageOutset;
+#else
+    const bool imageLayoutMatches = true;
+#endif
 
     if (!headerValid || spec.fontId != fileFontId || spec.lineCompression != fileLineCompression ||
         spec.extraParagraphSpacing != fileExtraParagraphSpacing || spec.firstLineIndent != fileFirstLineIndent ||
@@ -224,7 +250,8 @@ bool Section::loadSectionFile(const ReaderRenderSpec& spec) {
         spec.hyphenationEnabled != fileHyphenationEnabled || spec.embeddedStyle != fileEmbeddedStyle ||
         spec.imageRendering != fileImageRendering || spec.focusReadingEnabled != fileFocusReadingEnabled ||
         spec.collectTouchLinks != fileCollectTouchLinks || spec.characterSpacing != fileCharacterSpacing ||
-        spec.wordSpacingPercent != fileWordSpacingPercent || spec.verticalText != fileVerticalText) {
+        spec.wordSpacingPercent != fileWordSpacingPercent || spec.verticalText != fileVerticalText ||
+        !imageLayoutMatches) {
       file.close();
       LOG_ERR("SCT", "Deserialization failed: Parameters do not match");
       clearCache();
@@ -504,6 +531,9 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
   ctx->parser->setTxtChapterBoundaries(txtChapterBoundaries);
   ctx->parser->setTextSpacing(spec.characterSpacing, spec.wordSpacingPercent);
   ctx->parser->setParagraphIndentSpaces(spec.paragraphIndentSpaces);
+#if FREEINK_DEVICE_METALIO_PLUS
+  ctx->parser->setImageOutset(spec.imageOutset);
+#endif
   Hyphenator::setPreferredLanguage(epub->getLanguage());
 
   if (!build_->parser->beginParse()) {
