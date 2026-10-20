@@ -63,6 +63,46 @@
       "ported_sha256": "5e7f8e364bac855ff2496b7ea4c21841889679c127f4d810d3ff01656dbcede6"
     },
     {
+      "path": "lib/EpdFont/builtinFonts/notosans_cjk_14.h",
+      "baseline_sha256": "56d1b1092c13ed0a8a918280de3f9c03045bdf0bd97aa554ff208493ea1dcf5d",
+      "ported_sha256": "10517c78872475c4c23e4a11a741646f8f3ee0b935b9f44fad4925dbbc69873e"
+    },
+    {
+      "path": "lib/EpdFont/builtinFonts/notosans_cjk_16.h",
+      "baseline_sha256": "49d4e1846c27fa058dd343d20548a80314ed853bd8d98c528016a53da48c7e85",
+      "ported_sha256": "a284203ceaf85d3962336affd29053532c5b5b580b526ab48cba56fe8982d66e"
+    },
+    {
+      "path": "lib/EpdFont/builtinFonts/ricky_caption_10_regular.h",
+      "baseline_sha256": "d9e32b31e4a385b9b846ab3d80d66b6dc79b513c1c9ce2f58ce9ac5c08355cb5",
+      "ported_sha256": "089f1c60c9d0485884d03d44b4d0cc4738dcc097e613b5d3adaf3f697cc8452b"
+    },
+    {
+      "path": "lib/EpdFont/builtinFonts/ricky_headline_14_medium.h",
+      "baseline_sha256": "6440daae5bef749d4ac14557bcbb77130d165bc12790bc03fb06e016dbac73ab",
+      "ported_sha256": "d68688dfafd0b202bc1183f3c7411b264fca87c4332ec02a84bb220c80bbc6cf"
+    },
+    {
+      "path": "lib/EpdFont/builtinFonts/ricky_title_16_bold.h",
+      "baseline_sha256": "ef9b2a5868a9c9d0232f96edccc3346b34be7f5969b0fb7a19e76d3169421ac0",
+      "ported_sha256": "7ef5d11ac442833b2c293439d03e1a0c7d139c0c3b003a70f913e3e7fe0198bb"
+    },
+    {
+      "path": "lib/EpdFont/scripts/cn_common_chars.txt",
+      "baseline_sha256": "5e76b157c329b56c6c0a21dc12a73004e9c2c2920a48cae94f2551f0172ef411",
+      "ported_sha256": "b51b356257e60b531514dc1665a891c63161487cffdad3cb428c472e5753a410"
+    },
+    {
+      "path": "lib/EpdFont/scripts/cn_i18n_chars.txt",
+      "baseline_sha256": "d13e7b41e90b999d53d937c519ca059cfa815cfadb844a7fb9d175bfa44dc87e",
+      "ported_sha256": "6546f4b2b70d8b7fadade82d70e30e7cb80906ede0a6a8c775b1d8b8c70cbb1b"
+    },
+    {
+      "path": "lib/EpdFont/scripts/cn_rickyos_chars.txt",
+      "baseline_sha256": "ec0646aebfbb3b08c02664c47fe0f127171bea04b186fa76c27bc849c7994252",
+      "ported_sha256": "fc0e2579da667b6c073f33ecac4518024bdc070d5dcb6371daeaa208515ce6c6"
+    },
+    {
       "path": "lib/Epub/Epub.cpp",
       "baseline_sha256": "a104a180f95744bcdd6ef4fede82fe33cc20e539cd8fb9e075f0f52002b6e95e",
       "ported_sha256": "67f4aec95c230e2a9a1d088b1b26f37bf06313dc75ba126a4a8091a0190bd80e"
@@ -125,12 +165,12 @@
     {
       "path": "lib/I18n/translations/chinese.yaml",
       "baseline_sha256": "021ec5b9e5880155fea752af9c60ce83a259dd69131f9bd12ffe0ca59e3366bd",
-      "ported_sha256": "6ef23867e9cdb93e0d69dccc2670ce7892440767a30d92ddd208a7a6d14f24bb"
+      "ported_sha256": "36eabf1c7d130f4acc36c7a02e6462278691d53bbbd53e6d403b114fbe90dee9"
     },
     {
       "path": "lib/I18n/translations/english.yaml",
       "baseline_sha256": "85a4d226f1400f6a185759420c63ecff5f81eeb3722afd66c312d4aec6bcb315",
-      "ported_sha256": "180ce0037e1192619a42310bc5752dc4922b947415ac9e6768ce602857a506ed"
+      "ported_sha256": "9174da924092dffaf3c8dae421a6942130e7f2e86f1a34c71632f8c882bdb3a7"
     },
     {
       "path": "lib/JpegToBmpConverter/JpegToBmpConverter.cpp",
@@ -280,7 +320,7 @@
     {
       "path": "src/activities/ActivityManager.cpp",
       "baseline_sha256": "e97372dc858385e6ac21bac9d545abadd7bcd9ca036feb7c3dc8ed8bf8cb9ada",
-      "ported_sha256": "c1cd72a07940dd699dfc3a0a2b3448f5b3c4cc6a95c60354d97d402e535fd48c"
+      "ported_sha256": "f14eabe0ff8f85adb9ef9827d988f330d274f9ed188ab8f664012da776fc7a61"
     },
     {
       "path": "src/activities/ActivityManager.h",
@@ -296,6 +336,56 @@
       "path": "src/activities/apps/AppsMenuActivity.cpp",
       "baseline_sha256": "aee473e42f7d5e8545965aa5d6be38ce36966fa25e1122e28984f65c40c093e6",
       "ported_sha256": "c3948133b98f25e9185f00d4390c19ffa7df0dcebe88954b1f47bfc0f9083d32"
+    },
+    {
+      "path": "src/activities/apps/gomoku/GomokuGameActivity.cpp",
+      "baseline_sha256": "e473a2c121bd1f625814ff968ff71317e71f8dddf2e365e58038de5bd86c1efa",
+      "ported_sha256": "86abf45520ed2732adfc702310753cc44e7a4c6a4c2cad15b0b5662420a38ff3"
+    },
+    {
+      "path": "src/activities/apps/gomoku/GomokuLayout.h",
+      "baseline_sha256": null,
+      "ported_sha256": "5cc5dbb6978a96fb64fa4ce62bc40e3979fc1c14f8fef9174f371a3cf47ed9ae"
+    },
+    {
+      "path": "src/activities/apps/gomoku/GomokuModeActivity.cpp",
+      "baseline_sha256": null,
+      "ported_sha256": "f499d6fc43e8d24361ed604ac19349666aab95e69a8633638099d69028b7291d"
+    },
+    {
+      "path": "src/activities/apps/gomoku/GomokuModeActivity.h",
+      "baseline_sha256": null,
+      "ported_sha256": "7d3b8cf6b92693c43d297d326d1f50a0506424c1fd2a196cad229d0fdca095d9"
+    },
+    {
+      "path": "src/activities/apps/gomoku/SkillGomoku.cpp",
+      "baseline_sha256": null,
+      "ported_sha256": "d8026ce84defe2159e872ced7b1540eae47e763717db8ca5198dc9846051f450"
+    },
+    {
+      "path": "src/activities/apps/gomoku/SkillGomoku.h",
+      "baseline_sha256": null,
+      "ported_sha256": "338c2b02ca3360c5564f2756fc790822b0bf53b3d3fdb80ee78eb3a5cc8c1ba3"
+    },
+    {
+      "path": "src/activities/apps/gomoku/SkillGomokuActivity.cpp",
+      "baseline_sha256": null,
+      "ported_sha256": "faa69859c7973d35950322213244a204c3edd7eb86ecfd4963fcdced8ce5428d"
+    },
+    {
+      "path": "src/activities/apps/gomoku/SkillGomokuActivity.h",
+      "baseline_sha256": null,
+      "ported_sha256": "fec5a8e715237fd3310c5e14d2df829bdb6bb182e0842a6469a62fceeed62f7f"
+    },
+    {
+      "path": "src/activities/apps/gomoku/SkillGomokuStore.cpp",
+      "baseline_sha256": null,
+      "ported_sha256": "01946d3e6f0892859c108f7f9014d1e059f90d23b47034b288a2f0ce895d556d"
+    },
+    {
+      "path": "src/activities/apps/gomoku/SkillGomokuStore.h",
+      "baseline_sha256": null,
+      "ported_sha256": "70f511e172b963cde727a91db6ae67472fae0ea7d2724845b00419dcf4ea4340"
     },
     {
       "path": "src/activities/apps/recorder/RecorderActivity.cpp",
