@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "../output_common/render_method.h"
@@ -23,17 +24,31 @@
 // declare vector optimized line mask application.
 void epd_apply_line_mask_VE(uint8_t* line, const uint8_t* mask, int mask_len);
 
+// Same proven prefill as the legacy path. Never reduce it for the experiment.
+static int s_prefill_lines = 192;
+#if RICKYOS_PLUS_PHASE_LOOKAHEAD
+// The driver already owns one serialized RenderContext. Reuse its two internal
+// per-row arrays as alternating ready maps; no extra queues, frames or tasks.
+static bool s_phase_lookahead;
+static uint8_t* s_phase_producer_ready;
+#endif
+
 __attribute__((optimize("O3"))) static bool IRAM_ATTR
 retrieve_line_isr(RenderContext_t* ctx, uint8_t* buf) {
     if (ctx->lines_consumed >= ctx->lines_total) {
         return false;
     }
-    int thread = ctx->line_threads[ctx->lines_consumed];
+    int thread =
+#if RICKYOS_PLUS_PHASE_LOOKAHEAD
+        __atomic_load_n(&s_phase_lookahead, __ATOMIC_ACQUIRE)
+            ? ctx->lines_consumed % NUM_RENDER_THREADS :
+#endif
+        ctx->line_threads[ctx->lines_consumed];
     BaseType_t awoken = pdFALSE;
 
     if (!__atomic_load_n(&ctx->line_ready[ctx->lines_consumed],__ATOMIC_ACQUIRE) ||
         thread >= NUM_RENDER_THREADS) {
-        ctx->error |= EPD_DRAW_EMPTY_LINE_QUEUE;
+        __atomic_fetch_or(&ctx->error, EPD_DRAW_EMPTY_LINE_QUEUE, __ATOMIC_RELEASE);
         memset(buf, 0x00, ctx->display_width / 4);
         ctx->lines_consumed += 1;
         return awoken;
@@ -42,7 +57,7 @@ retrieve_line_isr(RenderContext_t* ctx, uint8_t* buf) {
     LineQueue_t* lq = &ctx->line_queues[thread];
 
     if (lq_read(lq, buf) != 0) {
-        ctx->error |= EPD_DRAW_EMPTY_LINE_QUEUE;
+        __atomic_fetch_or(&ctx->error, EPD_DRAW_EMPTY_LINE_QUEUE, __ATOMIC_RELEASE);
         memset(buf, 0x00, ctx->display_width / 4);
     }
 
@@ -60,7 +75,7 @@ static void IRAM_ATTR handle_lcd_frame_done(RenderContext_t* ctx) {
 
     // 扫描先于供数结束时置错，禁止残留行进入下一相位
     if (ctx->lines_consumed < ctx->lines_total) {
-        ctx->error |= EPD_DRAW_EMPTY_LINE_QUEUE;
+        __atomic_fetch_or(&ctx->error, EPD_DRAW_EMPTY_LINE_QUEUE, __ATOMIC_RELEASE);
     }
 
     BaseType_t task_awoken = pdFALSE;
@@ -90,7 +105,19 @@ static void pace_phase(int64_t phase_start_us) {
     }
 }
 
+#if RICKYOS_PLUS_PHASE_LOOKAHEAD
+#include "phase_lookahead.inc"
+#endif
+
 void lcd_do_update(RenderContext_t* ctx) {
+#if RICKYOS_PLUS_PHASE_LOOKAHEAD
+    if ((ctx->mode & 0x3f) == MODE_GL16_FAST && (ctx->mode & MODE_PACKING_1PPB_DIFFERENCE)
+        && ctx->phase_times == NULL && ctx->cycle_frames > 1 && ctx->lines_total > s_prefill_lines
+        && ctx->line_threads && ctx->line_ready) {
+        lcd_do_update_lookahead(ctx);
+        return;
+    }
+#endif
     const int64_t cycle_start=esp_timer_get_time();
     int64_t previous_phase_start=0, period_total=0;
     int period_min=INT32_MAX, period_max=0, periods=0;
@@ -255,7 +282,6 @@ void epd_push_pixels_lcd(RenderContext_t* ctx, short time, int color) {
 // S31 uses C LUT feeding instead of Pico's Xtensa SIMD. The 64-line profile
 // underruns during concurrent audio. Alternate producers to prefill 192 rows
 // without exceeding either existing 127-slot queue.
-static int s_prefill_lines = 192;
 
 __attribute__((optimize("O3"))) void IRAM_ATTR
 lcd_calculate_frame(RenderContext_t* ctx, int thread_id) {
@@ -264,9 +290,16 @@ lcd_calculate_frame(RenderContext_t* ctx, int thread_id) {
 
     LineQueue_t* lq = &ctx->line_queues[thread_id];
     int l = 0;
+#if RICKYOS_PLUS_PHASE_LOOKAHEAD
+    const bool lookahead = __atomic_load_n(&s_phase_lookahead, __ATOMIC_ACQUIRE);
+    uint8_t* ready = lookahead ? s_phase_producer_ready : ctx->line_ready;
+#else
+    const bool lookahead = false;
+    uint8_t* ready = ctx->line_ready;
+#endif
 
     // 另一生产者可能已启动并报告欠载；不得再次启动同一帧
-    if (ctx->error) {
+    if (__atomic_load_n(&ctx->error, __ATOMIC_ACQUIRE)) {
         return;
     }
 
@@ -278,25 +311,27 @@ lcd_calculate_frame(RenderContext_t* ctx, int thread_id) {
     const uint8_t* ptr_start;
     get_buffer_params(ctx, &bytes_per_line, &ptr_start, &min_y, &max_y, &_ppB);
 
-    assert(area.width == ctx->display_width && area.x == 0 && !ctx->error);
+    if (__atomic_load_n(&ctx->error, __ATOMIC_ACQUIRE)) return;
+    assert(area.width == ctx->display_width && area.x == 0);
 
     const int trigger_line = int_min(s_prefill_lines, ctx->lines_total-1);
 
     // Fixed ownership bounds each producer to half the prefill. With dynamic
     // claims one core can fill its 127-slot queue before a larger prefill starts.
     for (l=thread_id; l<ctx->lines_total; l+=NUM_RENDER_THREADS) {
-        ctx->line_threads[l] = (uint8_t)thread_id;
+        if (__atomic_load_n(&ctx->error, __ATOMIC_ACQUIRE)) return;
+        if (!lookahead) ctx->line_threads[l] = (uint8_t)thread_id;
 
         // 预填够行后开扫，随后边扫边喂
-        if (l == trigger_line) {
+        if (!lookahead && l == trigger_line) {
             // Claimed rows are not necessarily committed: the other core may
             // still own an early row. Start scanning only when the entire
             // prefill prefix is ready, not when a producer claims row 127.
             const int64_t ready_deadline=esp_timer_get_time()+2000000;
             for (int row=0;row<l;++row) {
                 while (!__atomic_load_n(&ctx->line_ready[row],__ATOMIC_ACQUIRE)) {
-                    if (ctx->error || esp_timer_get_time()>ready_deadline) {
-                        ctx->error|=EPD_DRAW_EMPTY_LINE_QUEUE; return;
+                    if (__atomic_load_n(&ctx->error, __ATOMIC_ACQUIRE) || esp_timer_get_time()>ready_deadline) {
+                        __atomic_fetch_or(&ctx->error, EPD_DRAW_EMPTY_LINE_QUEUE, __ATOMIC_RELEASE); return;
                     }
                     vTaskDelay(0);
                 }
@@ -310,24 +345,27 @@ lcd_calculate_frame(RenderContext_t* ctx, int thread_id) {
             uint8_t* buf = NULL;
             int wait_iters = 0;
             while (buf == NULL) {
-                if (ctx->error & EPD_DRAW_EMPTY_LINE_QUEUE) {
-                    lq_reset(lq);
+                if (__atomic_load_n(&ctx->error, __ATOMIC_ACQUIRE)) {
+                    if (!lookahead) lq_reset(lq);
                     return;
                 }
                 buf = lq_current(lq);
                 if (buf != NULL) {
                     break;
                 }
-                vTaskDelay(0);
+                // A prefilled next phase can fill both rings after the current
+                // scan ends. Yield a tick so the lower-priority controller can
+                // start it; spinning at feeder priority would deadlock it.
+                vTaskDelay(lookahead ? 1 : 0);
                 if (++wait_iters > 30000) {
-                    ctx->error |= EPD_DRAW_EMPTY_LINE_QUEUE;
-                    lq_reset(lq);
+                    __atomic_fetch_or(&ctx->error, EPD_DRAW_EMPTY_LINE_QUEUE, __ATOMIC_RELEASE);
+                    if (!lookahead) lq_reset(lq);
                     return;
                 }
             }
             memset(buf, 0x00, lq->element_size);
             lq_commit(lq);
-            __atomic_store_n(&ctx->line_ready[l],1,__ATOMIC_RELEASE);
+            __atomic_store_n(&ready[l],1,__ATOMIC_RELEASE);
             continue;
         }
 
@@ -340,18 +378,18 @@ lcd_calculate_frame(RenderContext_t* ctx, int thread_id) {
         uint8_t* buf = NULL;
         int wait_iters = 0;
         while (buf == NULL) {
-            if (ctx->error & EPD_DRAW_EMPTY_LINE_QUEUE) {
-                lq_reset(lq);
+            if (__atomic_load_n(&ctx->error, __ATOMIC_ACQUIRE)) {
+                if (!lookahead) lq_reset(lq);
                 return;
             }
             buf = lq_current(lq);
             if (buf != NULL) {
                 break;
             }
-            vTaskDelay(0);
+            vTaskDelay(lookahead ? 1 : 0);
             if (++wait_iters > 30000) {
-                ctx->error |= EPD_DRAW_EMPTY_LINE_QUEUE;
-                lq_reset(lq);
+                __atomic_fetch_or(&ctx->error, EPD_DRAW_EMPTY_LINE_QUEUE, __ATOMIC_RELEASE);
+                if (!lookahead) lq_reset(lq);
                 return;
             }
         }
@@ -359,7 +397,7 @@ lcd_calculate_frame(RenderContext_t* ctx, int thread_id) {
         ctx->lut_lookup_func(lp, buf, ctx->conversion_lut, ctx->display_width);
         epd_apply_line_mask_VE(buf, ctx->line_mask, ctx->display_width / 4);
         lq_commit(lq);
-        __atomic_store_n(&ctx->line_ready[l],1,__ATOMIC_RELEASE);
+        __atomic_store_n(&ready[l],1,__ATOMIC_RELEASE);
     }
 }
 

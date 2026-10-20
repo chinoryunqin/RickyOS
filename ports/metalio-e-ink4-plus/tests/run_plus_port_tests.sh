@@ -50,6 +50,7 @@ python3 tests/test_plus_download_cancel.py
 
 python3 tests/test_plus_lcd_tail.py
 python3 tests/test_plus_line_timing.py
+python3 tests/test_plus_phase_lookahead.py
 python3 tests/test_plus_timed_neutral.py
 
 python3 tests/test_plus_font_reconnect_progress.py
@@ -60,6 +61,7 @@ python3 tests/test_plus_tls_retry.py
 python3 tests/test_plus_font_source.py
 python3 tests/test_plus_boot_identity.py
 python3 tests/test_plus_reader_page_cache.py
+python3 tests/test_plus_reader_paint_speed.py
 python3 tests/test_plus_reader_image_cancel.py
 python3 tests/test_plus_image_quality.py
 python3 tests/test_plus_reader_image_layout.py

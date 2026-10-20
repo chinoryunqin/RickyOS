@@ -90,7 +90,7 @@
     {
       "path": "lib/Epub/Epub/converters/JpegToFramebufferConverter.cpp",
       "baseline_sha256": "cee4267399fa69f4eb8350a756c170dfb868ecb716b87ca28f3f94c6a4da485c",
-      "ported_sha256": "0c655578222d115bb520476e98656b97d5bbe7eef166a14d1000be77f1847b2d"
+      "ported_sha256": "b457f55f0cb6b6820a051ad0d1b1a9c475bd033a9597ec514ed80b3f7d7f00fd"
     },
     {
       "path": "lib/Epub/Epub/converters/PngToFramebufferConverter.cpp",
@@ -260,7 +260,7 @@
     {
       "path": "src/activities/ActivityManager.cpp",
       "baseline_sha256": "e97372dc858385e6ac21bac9d545abadd7bcd9ca036feb7c3dc8ed8bf8cb9ada",
-      "ported_sha256": "a7c2e54b2b9e295d79aed738bc9448d0cef88cccacb9a1f24e5fd792e503045d"
+      "ported_sha256": "c1cd72a07940dd699dfc3a0a2b3448f5b3c4cc6a95c60354d97d402e535fd48c"
     },
     {
       "path": "src/activities/ActivityManager.h",
@@ -340,7 +340,7 @@
     {
       "path": "src/activities/reader/EpubReaderActivity.cpp",
       "baseline_sha256": "330723cad52ac629fa1451c9ca90cffff0a04b06e0266861e092ff93e8ffa1c9",
-      "ported_sha256": "8217b5dc0ae68cf305629ec95e4577da5ed28daf2fe04eb006d65f83d48dc53f"
+      "ported_sha256": "2e3ac02457509c4b2b7b97468aad086e4e6f2997e2192e7807bd4b68204a5dcf"
     },
     {
       "path": "src/activities/reader/EpubReaderActivity.h",

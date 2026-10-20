@@ -6,7 +6,16 @@
 
 本目录是本分支的 Plus 开发入口。仓库根部的通用 RickyOS 工程保留为来源基线，不能作为这台设备的构建或刷机入口。
 
-## 当前基线与设备状态
+## 最新交接 · 2026-10-20
+
+当前阅读优化位于私有 `RickyOS-dev:codex/plus-online-fix-1.2.2`，不是公开发布或其他机型更新。
+先读 [阅读性能进度与审查入口](docs/plus-reader-performance-handoff-20261020.md)：包含改动范围、开关、
+101 次真机翻页结果、当前体验版摘要、构建/测试方式及未完成事项。
+固定设计来源 `a42d9399`，SDK `96de1be6`，2,844 个来源文件、102 项 Plus 适配。
+已刷体验版 `1.2.2-dev`（BIN `ebbd2f2d…`），仅写 app0 并显式重启到首页。
+相位预备重叠是默认关闭的实验开关，复现实机体验须显式开启；尚未合入正式渠道。
+
+## 2026-10-16 迁移基线与设备状态（历史）
 
 - RickyOS固定来源：`e5e1dcccdce1e897470939e841519333d23943ab`（1.2.0 发布版，含 Wi-Fi 密码/账号 Latin 输入和 12pt 字体频率分组）；FreeInk SDK：`96de1be6ce08eb732909e6e8149af8f892b9a2c5`。还原校验2835文件、79项适配；不使用其他设备工作区的未提交源码。12pt 字体沿用设计分支的频率分组，`compress_plus_builtin_fonts.py` 对已分组字体原样拷贝。
 - 当前设备运行 1.2.0（同步 e5e1dccc，含微信读书功率租约），4,816,672B，应用SHA256 `3153045ff3ac210d0612a9e460e42d6de3b207812e157b1083488e54a4351694`、ELF `306e98d4e…`、IDF `9a97f6c5`。仅写ota_1，读回散列一致，启动至InxRecent。Wi-Fi 密码键盘的实机确认待做。
@@ -26,7 +35,7 @@ python3 tests/test_plus_frontlight_panel.py
 python3 tests/test_plus_standby_frontlight.py
 ```
 
-还原脚本读取固定 Git 提交、逐文件核对 SHA256，再应用 `firmware/rickyos-plus-1.2/upstream-plus.patch`，重新核对全部 2,826 个文件。它不会使用其他设备的工作区修改；已存在的源码只校验，不覆盖。也可通过 `--source-repo` 和 `--sdk-repo` 使用本地 Git 对象进行离线还原。
+还原脚本读取固定 Git 提交、逐文件核对 SHA256，再应用 `firmware/rickyos-plus-1.2/upstream-plus.patch`，重新核对全部 2,844 个来源文件和 102 项适配。它不会使用其他设备的工作区修改；已存在的源码只校验，不覆盖。也可通过 `--source-repo` 和 `--sdk-repo` 使用本地 Git 对象进行离线还原。
 
 完整应用源码还原到 `firmware/rickyos-plus-1.2/upstream/`；Plus 自有板级组件位于 `firmware/rickyos-plus-1.2/components/`。生成文件、源码还原目录、二进制、设备私有备份和日志均不提交。
 

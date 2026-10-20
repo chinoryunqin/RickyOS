@@ -649,6 +649,9 @@ endif()
 if("$ENV{RICKYOS_PLUS_TAB_BENCH}" STREQUAL "1")
   target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_TAB_BENCH=1 RICKYOS_PAINT_PROFILE=1)
 endif()
+if("$ENV{RICKYOS_PLUS_READER_TIMING}" STREQUAL "1")
+  target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_READER_TIMING=1)
+endif()
 # The release version; a diagnostic build may set RICKYOS_PLUS_VERSION (e.g. an older
 # number to exercise an over-the-air update).
 set(RICKYOS_PLUS_APP_VERSION "1.2.0")

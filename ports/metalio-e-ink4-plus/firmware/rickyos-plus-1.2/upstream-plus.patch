@@ -935,7 +935,40 @@
  }
  
  // Choose JPEGDEC's built-in scale factor for coarse downscaling.
-@@ -440,7 +468,10 @@
+@@ -273,6 +301,32 @@
+   // stair-step edges on scaled artwork.
+   const bool bilinearRequested = ctx->config != nullptr && ctx->config->bilinearScaling;
+   if ((fineScaleFPX > FP_ONE && fineScaleFPY > FP_ONE) || bilinearRequested) {
++#if FREEINK_DEVICE_METALIO_PLUS
++    // Portrait columns are contiguous in the native panel frame. The old
++    // column fast path excluded bilinear filtering, so the quality setting
++    // still caused a PSRAM read/modify/write on a different panel row for
++    // every pixel. Reorder only: retain the exact fixed-point samples, block
++    // clamps and rounding below, without a second image or scratch allocation.
++    if (ctx->config->output == DecodeOutput::NativeGrayscale16 && renderer.grayscale16PrefersColumns()) {
++      for (int dstX = dstXStart; dstX < dstXEnd; ++dstX) {
++        if (ctx->config->cancellation.isCancelled()) return 0;
++        const int32_t fx = (dstX * invScaleFPX) & FP_MASK;
++        const int32_t fxInv = FP_ONE - fx;
++        const SampleCols cols = sampleColsFor(dstX, invScaleFPX, blockX, validW);
++        for (int dstY = dstYStart; dstY < dstYEnd; ++dstY) {
++          const int32_t fy = (dstY * invScaleFPY) & FP_MASK;
++          const SampleRows rows = sampleRowsFor(dstY, invScaleFPY, blockY, blockH);
++          const uint8_t* row0 = &pixels[rows.row0 * stride];
++          const uint8_t* row1 = &pixels[rows.row1 * stride];
++          const int top = (row0[cols.col0] * fxInv + row0[cols.col1] * fx) >> FP_SHIFT;
++          const int bot = (row1[cols.col0] * fxInv + row1[cols.col1] * fx) >> FP_SHIFT;
++          const uint8_t gray = static_cast<uint8_t>((top * (FP_ONE - fy) + bot * fy) >> FP_SHIFT);
++          renderer.drawGrayscale16Pixel(cfgX + dstX, cfgY + dstY, gray);
++        }
++      }
++      return 1;
++    }
++#endif
+     // Pre-compute safe X range where lx0 and lx0+1 are both in [0, validW-1].
+     // Only the left/right edge pixels (typically 0-2 and 1-8 respectively) need clamping.
+     int safeXStart = (int)(((int64_t)blockX * fineScaleFPX + FP_MASK) >> FP_SHIFT);
+@@ -440,7 +494,10 @@
      jpeg->~JPEGDEC();
      buildscratch::release(decoderScratch);
    }};
@@ -947,7 +980,7 @@
  
    JpegContext ctx;
    ctx.renderer = &renderer;
-@@ -455,16 +486,10 @@
+@@ -455,16 +512,10 @@
    size_t ramJpegSize = 0;
    if (config.output == DecodeOutput::NativeGrayscale16) {
      const unsigned long loadStart = millis();
@@ -968,7 +1001,7 @@
      }
      if (ramJpeg)
        LOG_DBG("JPG", "Loaded %u bytes to PSRAM in %lu ms", static_cast<unsigned>(ramJpegSize), millis() - loadStart);
-@@ -485,6 +510,33 @@
+@@ -485,6 +536,33 @@
    const int srcHeight = sourceDimensions.height;
  
    bool isProgressive = jpeg->getJPEGType() == JPEG_MODE_PROGRESSIVE;
@@ -2679,7 +2712,35 @@
          if (graySettlePending) {
            graySettlePending = false;
            settleToGray(std::move(lock), idleGeneration);
-@@ -220,13 +252,16 @@
+@@ -208,7 +240,26 @@
+     }
+     // An idle timeout must never acknowledge requestUpdateAndWait(): its
+     // notification may have arrived while the idle callback was cancelling.
+-    if (!foreground) continue;
++    if (!foreground) {
++#if FREEINK_DEVICE_METALIO_PLUS
++      // Input can arrive during renderIdle(), not just during its timeout.
++      // A touch-up without a queued redraw must leave interrupted prefetch
++      // retryable after a new quiet window. Do not retry successful passes,
++      // navigation, queued updates or a disabled cache (delay == 0).
++      const uint32_t generation = idleRenderGeneration.load(std::memory_order_relaxed);
++      if (currentActivity && generation != idleGeneration &&
++          lastIdleCancelRearms.load(std::memory_order_relaxed) && !isSwitchPending() && !requestedUpdate.load()) {
++        const auto delayMs = currentActivity->idleRenderDelayMs();
++        if (delayMs != 0) {
++          idleGeneration = generation;
++          idleDelayTicks = pdMS_TO_TICKS(delayMs);
++          waitTicks = idleDelayTicks;
++          LOG_DBG("ACT", "Idle render: retry after interrupted pass");
++        }
++      }
++#endif
++      continue;
++    }
+     TaskHandle_t waiter = nullptr;
+     taskENTER_CRITICAL(&activityManagerSpinlock);
+     waiter = waitingTaskHandle;
+@@ -220,13 +271,16 @@
    }
  }
  
@@ -2697,7 +2758,7 @@
    const uint32_t renderGeneration = renderRequestGeneration.load(std::memory_order_relaxed);
    // Renderers may release the lock; capture page-owned geometry first.
    const Rect navigation = currentActivity->usesMainTabBar() ? currentActivity->mainTabLayout().tabBar : Rect{};
-@@ -255,6 +290,10 @@
+@@ -255,6 +309,10 @@
    if (committed) renderer.clearNextRefreshOverride();
    LOG_DBG("ACT", "Direct gray: %s paint=%lu ms submit=%lu ms total=%lu ms", committed ? "done" : "failed, B/W fallback",
            painted - started, millis() - painted, millis() - started);
@@ -2708,7 +2769,7 @@
  #if RICKYOS_PERF_SD_LOG
    {
      char line[256];
-@@ -356,6 +395,111 @@
+@@ -356,6 +414,111 @@
      resetHomeStandbyInput();
      return;
    }
@@ -2820,7 +2881,7 @@
  
    if (currentActivity && currentActivity->requiresExclusiveStorageLoop()) {
      currentActivity->loop();
-@@ -820,6 +964,9 @@
+@@ -820,6 +983,9 @@
  void ActivityManager::goToGomoku() { replaceActivityWith<GomokuMenuActivity>(); }
  
  void ActivityManager::goToCalculator() { replaceActivityWith<CalculatorActivity>(); }
@@ -2830,7 +2891,7 @@
  
  void ActivityManager::goToStandby() { replaceActivityWith<StandbyActivity>(); }
  
-@@ -896,7 +1043,7 @@
+@@ -896,7 +1062,7 @@
    cancelIdleRender();
    if (!currentActivity) return false;
    if (currentActivity->handleForcedRefresh()) return true;
@@ -2839,7 +2900,7 @@
    if (ricky::ds::refresh::kDirectGrayUi && currentActivity->wantsGraySettle() &&
        currentActivity->idleRenderDelayMs() == 0) {
      // Refresh the real gray UI, not its approximate 1-bit proxy.
-@@ -931,7 +1078,7 @@
+@@ -931,7 +1097,7 @@
  #endif
  
  void ActivityManager::requestUpdate(bool immediate) {
@@ -2848,7 +2909,7 @@
    renderRequestGeneration.fetch_add(1, std::memory_order_relaxed);
  #endif
  #if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
-@@ -949,7 +1096,7 @@
+@@ -949,7 +1115,7 @@
    }
  }
  void ActivityManager::requestUpdateAndWait() {
@@ -3752,7 +3813,29 @@
  }
  
  ReaderPageCacheKey EpubReaderActivity::pageCacheKey(const int page, const int top, const int right, const int bottom,
-@@ -2419,19 +2452,23 @@
+@@ -2371,6 +2404,11 @@
+ 
+ void EpubReaderActivity::renderIdle(const uint32_t generation) {
+   const auto cancelled = [&] { return activityManager.idleRenderCancelled(generation); };
++#if RICKYOS_PLUS_READER_TIMING && FREEINK_DEVICE_METALIO_PLUS
++  LOG_INF("ReaderCache", "idle eligible=%d cancelled=%d aa=%d failed=%d spine=%d page=%d epoch=%lu",
++          pageCacheEligible(), cancelled(), SETTINGS.textAntiAliasing, pageCacheFailed_, currentSpineIndex,
++          section ? section->currentPage : -1, static_cast<unsigned long>(renderEpoch_));
++#endif
+   // Every exit below names the condition it took. Without that, "the cache never hits"
+   // is indistinguishable from "the build was cancelled", "the layout moved since the
+   // last render" and "the next page has images" -- and each of those needs a different
+@@ -2400,6 +2438,9 @@
+   const auto& layout = renderedPageKey_;
+   // A main-loop reflow/jump may have replaced the section since the last render.
+   if (layout != pageCacheKey(section->currentPage, layout.top, layout.right, layout.bottom, layout.left)) {
++#if RICKYOS_PLUS_READER_TIMING && FREEINK_DEVICE_METALIO_PLUS
++    LOG_INF("ReaderCache", "skip layout moved");
++#endif
+     LOG_DBG("ERS", "Page cache: skip, layout moved since the last render");
+     return;
+   }
+@@ -2419,19 +2460,23 @@
    };
    auto forward = layout;
    ++forward.page;
@@ -3785,7 +3868,7 @@
  // On a chapter's last page the forward slot is free: build the next chapter and render
  // its first page into it. Comics put one picture in each chapter, so without this every
  // turn decoded a JPEG in the foreground (~3.5 s); now it happens while the page is read.
-@@ -2464,6 +2501,12 @@
+@@ -2464,6 +2509,12 @@
    }
    if (nextSection->pageCount == 0 || activityManager.idleRenderCancelled(generation)) return;
    const bool ready = buildPageCacheSlot(0, key, generation, nextSection.get());
@@ -3798,7 +3881,7 @@
    LOG_DBG("ERS", "Next chapter prefetch: spine %d ready=%d in %lums", next, ready, millis() - started);
  }
  #endif
-@@ -2527,13 +2570,18 @@
+@@ -2527,13 +2578,18 @@
    if (!pageCacheBase_[slot]) {
      constexpr size_t kContiguousReserve = 16 * 1024;
      // Reserve the slots still to allocate; the forward slot is already charged for slot 1.
@@ -3821,7 +3904,7 @@
        freePageCache();
        pageCacheFailed_ = true;
        LOG_ERR("ERS", "Page cache off: PSRAM allocation of %u B failed", static_cast<unsigned>(4 * bytes));
-@@ -2579,12 +2627,26 @@
+@@ -2579,12 +2635,26 @@
    const readingMode::Box textBox = readingMode::textBox(renderer.getScreenWidth(), renderer.getScreenHeight(),
                                                          {key.top, key.right, key.bottom, key.left});
    const int pitch = renderer.getLineHeight(key.spec.fontId, key.spec.lineCompression);
@@ -3848,7 +3931,7 @@
    };
  
    // Load glyphs on demand: a whole-page prewarm cannot be interrupted. Check
-@@ -2599,7 +2661,7 @@
+@@ -2599,7 +2669,7 @@
                                              readerTextWeightSpread(key.textWeight));
      for (const auto& element : page->elements) {
        if (cancelled()) return false;
@@ -3857,7 +3940,7 @@
      }
      if (vertical) readerChrome::drawColumnRules(renderer, *page, textBox, pitch);
      // Match foreground ordering: all text first, then the guide lines.
-@@ -2638,7 +2700,7 @@
+@@ -2638,7 +2708,7 @@
                                                readerTextWeightSpread(key.textWeight));
        for (const auto& element : page->elements) {
          if (cancelled()) return false;
@@ -3866,7 +3949,18 @@
        }
        if (vertical) readerChrome::drawColumnRules(renderer, *page, textBox, pitch);
      }
-@@ -2732,7 +2794,7 @@
+@@ -2671,6 +2741,10 @@
+   }
+   pageCacheMissingCodepoint_[slot] = fcm ? fcm->consumeMissingChineseCodepoint() : 0;
+   pageCache_[slot].state = ReaderPageCache::State::Ready;
++#if RICKYOS_PLUS_READER_TIMING && FREEINK_DEVICE_METALIO_PLUS
++  LOG_INF("ReaderCache", "ready slot=%d spine=%d page=%d epoch=%lu ms=%lu", slot, key.spine, key.page,
++          static_cast<unsigned long>(key.renderEpoch), millis() - started);
++#endif
+   LOG_DBG("ERS", "Page cache: slot %d, page %d ready in %lums", slot, key.page, millis() - started);
+   return true;
+ }
+@@ -2732,7 +2806,7 @@
        if (manager) manager->clearCache();
      }
    } rawFontCacheGuard;
@@ -3875,7 +3969,7 @@
    const auto key = pageCacheKey(section ? section->currentPage : -1, orientedMarginTop, orientedMarginRight,
                                  orientedMarginBottom, orientedMarginLeft);
    // Either slot may hold this page: slot 0 was built for it as a forward turn, slot 1
-@@ -2779,8 +2841,7 @@
+@@ -2779,8 +2853,7 @@
    // RickyOS: every text face (2-bit downloaded fonts too) and synthetic bold draw straight
    // into the 16-level frame, and JPEG illustrations decode into it, so anti-aliased pages
    // take the single-render path.
@@ -3885,7 +3979,7 @@
    const bool needsAnyGrayscale = grayscaleEnabled && (SETTINGS.textAntiAliasing || pageHasImages);
    const bool absoluteImageGrayscale = grayscaleEnabled && pageHasImages && !gpio.deviceIsX3() &&
                                        display.getController() == HalDisplay::Controller::UC8279 &&
-@@ -2844,7 +2905,7 @@
+@@ -2844,7 +2917,7 @@
    };
  
    unsigned long cacheBaseMs = 0;
@@ -3894,7 +3988,7 @@
    if (use16LevelText) {
      // The 16-level pass below clears the frame and renders (or copies from the cache)
      // the page, writing the B/W proxy as it goes, so a B/W render here is thrown away.
-@@ -2859,7 +2920,7 @@
+@@ -2859,7 +2932,7 @@
    {
      renderPageWithGuideLines();
    }
@@ -3903,7 +3997,22 @@
    const uint32_t missingCodepoint =
        pageCacheHit ? pageCacheMissingCodepoint_[pageCacheLiveSlot_] : fcm->consumeMissingChineseCodepoint();
  #else
-@@ -2912,7 +2973,7 @@
+@@ -2869,7 +2942,14 @@
+     uint32_t expected = 0;
+     pendingMissingChineseCodepoint_.compare_exchange_strong(expected, missingCodepoint, std::memory_order_relaxed);
+   }
++#if FREEINK_DEVICE_METALIO_PLUS
++  // beginGrayscale16() clears both frames. Drawing the B/W chrome here was
++  // discarded immediately; the native pass (and its failure fallback) draws
++  // the same chrome after the page, including its B/W proxy for popups.
++  if (!use16LevelText) renderStatusBar();
++#else
+   renderStatusBar();
++#endif
+   const auto tBwRender = millis();
+ 
+   if (absoluteImageGrayscale) {
+@@ -2912,7 +2992,7 @@
      const auto t16Begin = millis();
      if (renderer.beginGrayscale16()) {
        const auto t16Cleared = millis();
@@ -3912,7 +4021,21 @@
        if (pageCacheHit && pageCacheIs16_[pageCacheLiveSlot_] && pageCache16_[pageCacheLiveSlot_]) {
          memcpy(renderer.grayscale16Frame(), pageCache16_[pageCacheLiveSlot_].get(), renderer.grayscale16FrameBytes());
          memcpy(renderer.getFrameBuffer(), pageCacheBase_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
-@@ -2934,8 +2995,8 @@
+@@ -2926,6 +3006,13 @@
+       renderStatusBar();
+       LOG_DBG("ERS", "16-level timing: before=%lums begin=%lums page=%lums status=%lums", t16Begin - t0,
+               t16Cleared - t16Begin, t16Page - t16Cleared, millis() - t16Page);
++#if RICKYOS_PLUS_READER_TIMING
++      LOG_INF("ReaderTiming", "spine=%d page=%d images=%d cached=%d prewarm=%lums before=%lums begin=%lums "
++                              "paint=%lums status=%lums",
++              currentSpineIndex, section ? section->currentPage : -1, pageHasImages ? 1 : 0, pageCacheHit ? 1 : 0,
++              tPrewarm - t0, t16Begin - tPrewarm, t16Cleared - t16Begin, t16Page - t16Cleared,
++              millis() - t16Page);
++#endif
+ #if RICKYOS_PAINT_PROFILE
+       {
+         // Device breakdown of a reader page (profiling builds only).
+@@ -2934,8 +3021,8 @@
                  "reader page prewarm=%lums before=%lums page=%lums status=%lums cached=%d weight=%u bold=%u "
                  "text=%lums/%lu fill=%lums image=%lums",
                  tPrewarm - t0, t16Begin - tPrewarm, t16Page - t16Cleared, millis() - t16Page, pageCacheHit ? 1 : 0,
@@ -3923,7 +4046,18 @@
          profile = {};
          fcm->logStats("page");
  #if CROSSPOINT_VECTOR_FONTS
-@@ -3137,7 +3198,7 @@
+@@ -2961,6 +3048,10 @@
+       if (renderer.commitGrayscale16()) {
+         const auto tEnd = millis();
+         LOG_DBG("ERS", "Page render: 16-level text total=%lums", tEnd - t0);
++#if RICKYOS_PLUS_READER_TIMING
++        LOG_INF("ReaderTiming", "commit=%lums total=%lums images=%d cached=%d", tEnd - tCommit, tEnd - t0,
++                pageHasImages ? 1 : 0, pageCacheHit ? 1 : 0);
++#endif
+ #if RICKYOS_PAINT_PROFILE
+         LOG_INF("PERF", "reader commit=%lums total=%lums", tEnd - tCommit, tEnd - t0);
+ #endif
+@@ -3137,7 +3228,7 @@
        }
        const auto tBwStore = millis();
  
@@ -3932,7 +4066,7 @@
        if (pageCacheHit) {
          // Both planes were rendered at idle; putting them in place is one copy
          // each instead of a full page render each.
-@@ -3164,7 +3225,7 @@
+@@ -3164,7 +3255,7 @@
          return;
        }
  
