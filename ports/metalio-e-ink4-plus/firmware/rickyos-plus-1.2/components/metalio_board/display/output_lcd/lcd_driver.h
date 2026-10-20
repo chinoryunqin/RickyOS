@@ -56,3 +56,14 @@ void epd_lcd_abort_frame();
  * Set the LCD pixel clock frequency in MHz.
  */
 void epd_lcd_set_pixel_clock_MHz(int frequency);
+/** Task-only, between scans. Units 0.1us; zero restores board defaults.
+ * Rejects live changes, unsafe data/CKV windows and unsupported periods.
+ * Gate width is NOT the electrophoretic exposure time of a pixel.
+ */
+bool epd_lcd_set_line_timing(int period_us10, int gate_high_us10);
+/** Data-scan deadline; zero starts now. Returns measured LCD start timestamp. */
+int64_t epd_lcd_start_frame_at(int64_t scan_at_us);
+#if RICKYOS_PLUS_GRAY_CALIBRATION
+/** Diagnostic only. Requires source HOLD before prefix; (0,0) restores full scan. */
+bool epd_lcd_set_scan_window(int first, int padded_lines);
+#endif

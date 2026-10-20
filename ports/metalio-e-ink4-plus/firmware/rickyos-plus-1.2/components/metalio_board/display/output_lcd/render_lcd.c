@@ -107,8 +107,14 @@ void lcd_do_update(RenderContext_t* ctx) {
             period_total+=period; ++periods;
         }
         previous_phase_start=phase_start;
-        epd_lcd_frame_done_cb((frame_done_func_t)handle_lcd_frame_done, ctx);
         prepare_context_for_next_frame(ctx);
+        // NULL timing keeps the proven board profile, not the I2S 12us
+        // default. Explicit LCD timing is a complete line period in 0.1us.
+        if (!epd_lcd_set_line_timing(ctx->phase_times ? ctx->frame_time : 0, 0)) {
+            ctx->error |= EPD_DRAW_NO_PHASES_AVAILABLE;
+            break;
+        }
+        epd_lcd_frame_done_cb((frame_done_func_t)handle_lcd_frame_done, ctx);
 
         const int64_t t0 = esp_timer_get_time();
 
@@ -153,6 +159,9 @@ void lcd_do_update(RenderContext_t* ctx) {
     epd_lcd_frame_done_cb(NULL, NULL);
 
     epd_set_mode(0);
+    // Restore after success, timeout or rejected timing; tests cannot leak
+    // their gate/line setting into a later UI, clear or reading update.
+    if (!epd_lcd_set_line_timing(0, 0)) ctx->error |= EPD_DRAW_NO_PHASES_AVAILABLE;
     if (periods) {
         __atomic_store_n(&last_phase_average,(int)(period_total/periods),__ATOMIC_RELAXED);
         __atomic_store_n(&last_phase_minimum,period_min,__ATOMIC_RELAXED);

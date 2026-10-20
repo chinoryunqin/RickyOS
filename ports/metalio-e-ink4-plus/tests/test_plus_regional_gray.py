@@ -17,12 +17,13 @@ shim = r'''
 #include <vector>
 #include "PlusFramebuffer.h"
 #include "NativeGrayRefreshPolicy.h"
+#include "GrayscaleCapabilities.h"
 template <class... A> static void ESP_LOGI(const char*, const char*, A...) {}
 #define ESP_LOGE(...) ((void)0)
 static int64_t esp_timer_get_time() { return 0; }
 constexpr int W=1216,H=684,N=W*H/2;
 struct EpdRect {int x,y,width,height;};
-enum EpdDrawMode {MODE_GC16=1,MODE_DU=2,MODE_GL16=3};
+enum EpdDrawMode {MODE_GC16=1,MODE_DU=2,MODE_GL16=3,MODE_GL16_FAST=6,MODE_GL4=10};
 constexpr int MODE_PACKING_1PPB_DIFFERENCE=16;
 enum EpdDrawError {EPD_DRAW_SUCCESS=0,EPD_DRAW_EMPTY_LINE_QUEUE=1};
 struct EpdiyHighlevelState {uint8_t *front_fb,*back_fb,*difference_fb; bool* dirty_lines; uint8_t* dirty_columns; void* waveform;};
@@ -31,6 +32,7 @@ EpdiyHighlevelState hl{front,back,diff,lines,cols,nullptr};
 struct Call {EpdRect area; bool cleanup;};
 std::vector<Call> calls;
 int powered=0,off=0,full=0,cleared=0,failDraw=0;
+std::vector<int> selectedModes;
 int epd_width(){return W;} int epd_height(){return H;}
 EpdRect epd_full_screen(){return {0,0,W,H};}
 EpdRect _inverse_rotated_area(int x,int y,int w,int h){return {x,y,w,h};}
@@ -57,9 +59,9 @@ EpdiyHighlevelState* MetalioEpd_Hl(){return &hl;}
 void epd_poweron(){++powered;} void epd_poweroff(){++off;}
 bool epd_board_metalio_eink4_plus_tps_ok(){return true;}
 EpdDrawError epd_clear_checked(){++cleared;return EPD_DRAW_SUCCESS;}
-EpdDrawError epd_hl_update_screen_from_white(EpdiyHighlevelState*,EpdDrawMode,int){++full;memcpy(back,front,N);return EPD_DRAW_SUCCESS;}
-EpdDrawError epd_hl_update_screen_full(EpdiyHighlevelState*,EpdDrawMode,int){++full;memcpy(back,front,N);return EPD_DRAW_SUCCESS;}
-EpdDrawError epd_hl_update_screen(EpdiyHighlevelState* s,EpdDrawMode m,int t){return epd_hl_update_area(s,m,t,epd_full_screen());}
+EpdDrawError epd_hl_update_screen_from_white(EpdiyHighlevelState*,EpdDrawMode m,int){selectedModes.push_back(m);++full;memcpy(back,front,N);return EPD_DRAW_SUCCESS;}
+EpdDrawError epd_hl_update_screen_full(EpdiyHighlevelState*,EpdDrawMode m,int){selectedModes.push_back(m);++full;memcpy(back,front,N);return EPD_DRAW_SUCCESS;}
+EpdDrawError epd_hl_update_screen(EpdiyHighlevelState* s,EpdDrawMode m,int t){selectedModes.push_back(m);return epd_hl_update_area(s,m,t,epd_full_screen());}
 namespace freeink {
 struct EpdBus{};
 enum class BusyPolarity {ActiveHigh}; enum class OpticalState {Unknown,Bw,Gray}; enum class RefreshMode{Full,Half,Fast};
@@ -73,6 +75,13 @@ public:
  virtual void display(EpdBus&,const uint8_t*,const uint8_t*,RefreshMode,bool)=0;
  virtual uint8_t* beginGrayscale16()=0;virtual bool commitGrayscale16(const uint8_t*)=0;
  virtual void cancelGrayscale16()=0;virtual void requestResync(uint8_t)=0;
+ virtual GrayscaleCapabilities grayscaleCapabilities(GrayscaleMode=GrayscaleMode::Overlay)const{return {};}
+ virtual void copyGrayscaleLsb(EpdBus&,const uint8_t*){}
+ virtual void copyGrayscaleMsb(EpdBus&,const uint8_t*){}
+ virtual void displayGray(EpdBus& bus,const uint8_t* fb,bool off,const unsigned char*,bool){
+   display(bus,fb,nullptr,RefreshMode::Fast,off);
+ }
+ virtual void cleanupGrayscaleBuffers(EpdBus&,const uint8_t*){}
 };
 }
 '''
@@ -92,7 +101,18 @@ int main(){
  EpdBus bus;auto& d=metalioPlusDriver();d.begin(bus);
  uint8_t proxy[W*H/8];memset(proxy,255,sizeof(proxy));
  assert(!metalioPlusRestoreGray16Baseline(proxy));
+ metalioPlusSetGray16Profile(1);
  d.beginGrayscale16();front[0]=0;assert(d.commitGrayscale16(proxy));assert(cleared==1);
+ assert(selectedModes.back()==MODE_GC16); // Unknown always restores the optical baseline.
+ const auto submissions=selectedModes.size();
+ d.beginGrayscale16();memcpy(front,back,N);front[1]=0x88;
+ metalioPlusSetGray16Profile(1);assert(d.commitGrayscale16(proxy));
+ assert(selectedModes.size()==submissions+1 && selectedModes.back()==MODE_GL16_FAST);
+ d.beginGrayscale16();memcpy(front,back,N);front[1]=0x99;
+ metalioPlusSetGray16Profile(2);assert(d.commitGrayscale16(proxy));
+ assert(selectedModes.back()==MODE_GC16); // Cycle/manual cleanup is never suppressed.
+ d.beginGrayscale16();memcpy(front,back,N);front[1]=0xaa;
+ assert(d.commitGrayscale16(proxy));assert(selectedModes.back()==MODE_GC16); // Profile is one-shot.
  int prior=powered;
  metalioPlusSetGray16UiRefresh(W-32,0,32,H,1,4);
  d.beginGrayscale16();memcpy(front,back,N);assert(d.commitGrayscale16(proxy));assert(powered==prior);
@@ -112,10 +132,68 @@ int main(){
  assert(d.commitGrayscale16(proxy));assert(cleared==2);assert(powered==off);
  // New gray is never reduced to DU and ledger uses constant bounded storage.
  static_assert(sizeof(ricky::gray::Ledger)<=64);
+ // Reproduce EPUB PNG / mixed-page fallback. The argument to displayGray is
+ // the final selector mask, NOT a B/W page. The default PanelDriver method
+ // would display it and turn every untouched white margin black.
+ uint8_t lsb[W*H/8]{},msb[W*H/8]{};
+ memset(proxy,255,sizeof(proxy));proxy[0]=0x14;
+ lsb[0]=0x41;msb[0]=0x63;
+ d.display(bus,proxy,nullptr,RefreshMode::Fast,false);
+ d.copyGrayscaleLsb(bus,lsb);d.copyGrayscaleMsb(bus,msb);
+ d.displayGray(bus,msb,false,nullptr,false);
+ const uint8_t levels[]{0,5,10,15,0,15,10,5};
+ for(unsigned x=0;x<8;++x)assert(((front[x/2]>>((x&1)*4))&15)==levels[x]);
+ for(int i=4;i<N;++i)assert(front[i]==255);
+ assert(d.opticalState()==OpticalState::Gray && memcmp(front,back,N)==0);
+ assert(d.grayscaleCapabilities().supported());
+ assert(d.grayscaleCapabilities().encoding==GrayscaleEncoding::OverlayMasks);
+ assert(d.grayscaleCapabilities().base==GrayscaleBase::Separate);
+ assert(!d.grayscaleCapabilities(GrayscaleMode::Absolute).supported());
+ assert(!d.grayscaleCapabilities(GrayscaleMode::Direct).supported());
+ // Missing, out-of-order, duplicate or cancelled planes never submit a mask.
+ for(int reason=0;reason<8;++reason){
+  d.display(bus,proxy,nullptr,RefreshMode::Fast,false);
+  int before=powered;
+  if(reason==0){} // No upload.
+  if(reason==1)d.copyGrayscaleMsb(bus,msb);
+  if(reason>=2)d.copyGrayscaleLsb(bus,lsb);
+  if(reason==3)d.copyGrayscaleLsb(bus,nullptr);
+  if(reason==4)d.copyGrayscaleMsb(bus,nullptr);
+  if(reason>=5)d.copyGrayscaleMsb(bus,msb);
+  if(reason==5)d.copyGrayscaleMsb(bus,msb);
+  if(reason==6)d.cleanupGrayscaleBuffers(bus,proxy);
+  if(reason==7){const unsigned char lut=0;d.displayGray(bus,msb,false,&lut,false);}
+  d.displayGray(bus,msb,false,nullptr,false);
+  assert(powered==before && memcmp(front,back,N)==0 && d.opticalState()==OpticalState::Bw);
+ }
+ // A fresh LSB replaces an unfinished transaction, and native begin / resync
+ // invalidates the old overlay so it cannot be committed into another page.
+ d.copyGrayscaleLsb(bus,lsb);d.copyGrayscaleLsb(bus,lsb);d.copyGrayscaleMsb(bus,msb);
+ d.displayGray(bus,msb,false,nullptr,false);assert(d.opticalState()==OpticalState::Gray);
+ d.display(bus,proxy,nullptr,RefreshMode::Fast,false);
+ d.copyGrayscaleLsb(bus,lsb);d.beginGrayscale16();prior=powered;
+ d.displayGray(bus,msb,false,nullptr,false);assert(powered==prior);
+ d.cancelGrayscale16();assert(memcmp(front,back,N)==0);
+ d.copyGrayscaleLsb(bus,lsb);d.copyGrayscaleMsb(bus,msb);d.requestResync(1);
+ prior=powered;d.displayGray(bus,msb,false,nullptr,false);assert(powered==prior);
+ // A panel failure does not publish a successful optical baseline. The next
+ // normal base recovers through the checked clear path before another overlay.
+ d.display(bus,proxy,nullptr,RefreshMode::Fast,false);
+ d.copyGrayscaleLsb(bus,lsb);d.copyGrayscaleMsb(bus,msb);failDraw=1;
+ d.displayGray(bus,msb,false,nullptr,false);assert(d.opticalState()==OpticalState::Unknown);
+ int previousClear=cleared;
+ d.display(bus,proxy,nullptr,RefreshMode::Fast,false);assert(cleared==previousClear+1);
+ d.copyGrayscaleLsb(bus,lsb);d.copyGrayscaleMsb(bus,msb);
+ d.displayGray(bus,msb,false,nullptr,true);assert(d.opticalState()==OpticalState::Gray && powered==off);
 }
 '''
-with tempfile.TemporaryDirectory(prefix='plus-regional-test-') as folder:
-    p=Path(folder);(p/'test.cpp').write_text(shim+high+backend+driver+main)
-    subprocess.run(['clang++','-std=c++20','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-fsanitize=address,undefined','-I',str(PORT/'components/rickyos_display/include'),'-I',str(PORT/'upstream/lib/hal'),str(p/'test.cpp'),'-o',str(p/'test')],check=True)
-    subprocess.run([str(p/'test')],check=True)
-print('Plus actual driver + regional submissions passed (ASan/UBSan)')
+def run_program(program):
+    with tempfile.TemporaryDirectory(prefix='plus-regional-test-') as folder:
+        p=Path(folder);(p/'test.cpp').write_text(program)
+        subprocess.run(['clang++','-std=c++20','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-fsanitize=address,undefined','-I',str(PORT/'components/rickyos_display/include'),'-I',str(PORT/'upstream/lib/hal'),str(p/'test.cpp'),'-o',str(p/'test')],check=True)
+        subprocess.run([str(p/'test')],check=True)
+
+
+if __name__ == '__main__':
+    run_program(shim+high+backend+driver+main)
+    print('Plus actual driver: regional submissions, legacy image-page polarity, interrupted overlays and recovery passed (ASan/UBSan)')

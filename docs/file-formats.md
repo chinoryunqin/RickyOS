@@ -100,6 +100,22 @@ if (parsedSize != fileSize) {
 
 ## `section.bin`
 
+### Plus-specific version 81 (chapter-art width)
+
+The isolated Plus port uses complete **81** / partial **201** (still derived as
+`0xFE - (completeVersion - 28)`). Its header adds a little-endian `u16 imageOutset`
+immediately after `verticalText`, before `pageCount` and the five LUT offsets.
+It records how far chapter illustrations may extend into each horizontal text
+margin. The value participates in render-spec equality and header validation;
+changing it rebuilds complete and partial pagination. `HEADER_SIZE` includes the
+additional two bytes, so existing relative page-count/LUT seeks still apply.
+The page element binary layout is unchanged: `PageImage.xPos` is already signed
+and can be negative relative to the text origin, while its final screen position
+remains inside the panel's viewable area. Old Plus caches are rejected and rebuilt
+on demand; no SD-wide cache deletion or source-book modification is required.
+This does not change the shared Pico/C3 version-79 header in the Plus snapshot,
+nor the main application's separate current cache version.
+
 ### Versions 76 / 77
 
 Adds `paragraphIndentSpaces` (0–5, default 3) immediately after the retained

@@ -14,6 +14,25 @@ module.ReaderPageCacheTest().test_cache_identity_cancellation_and_lifetime()
 program,includes=captured[0]
 program=program[:program.index('void reset()')]
 program='#define FREEINK_DEVICE_METALIO_PLUS 1\n'+program
+program=program.replace('struct GfxRenderer;', '''
+int nativeImageBlocks=0, cancelNativeImageAt=0;
+bool failNativeImage=false;
+void nativeImageStep();
+std::vector<int> pageLoads;
+struct GfxRenderer;
+''')
+program=program.replace('    *error=cancel.isCancelled()?ImageRenderError::Cancelled:ImageRenderError::None;', '''
+    if(failNativeImage){*error=ImageRenderError::Failed;return false;}
+    for(int block=0;block<8;++block){
+      if(cancel.isCancelled()){*error=ImageRenderError::Cancelled;return false;}
+      nativeImageStep();
+    }
+    *error=cancel.isCancelled()?ImageRenderError::Cancelled:ImageRenderError::None;
+''')
+program=program.replace('    ++loads;', '    ++loads;pageLoads.push_back(index);')
+program=program.replace('p->images=images;', '''p->images=images;
+    if(images){p->elements.clear();p->elements.push_back(std::make_unique<PageImage>());}
+''')
 program=program.replace('  bool inverted=false;', '  bool inverted=false; int grayLevels=16; uint8_t* active16=nullptr;\n  int getGrayscaleLevels() const {return grayLevels;}')
 program=program.replace('bool supportsTextOnlyCombinedBase() const {return true;}', 'bool supportsTextOnlyCombinedBase() const {return false;}')
 program=program.replace('size_t grayscale16FrameBytes() const {return 0;}', 'size_t grayscale16FrameBytes() const {return 64;}')
@@ -29,8 +48,9 @@ template<class T,class... Args> auto makeUniqueNoThrow(Args&&... args){return st
 unsigned heapFree=1<<20;
 constexpr size_t BACKGROUND_BUILD_MIN_FREE_HEAP=32768, BACKGROUND_BUILD_MIN_MAX_ALLOC=32768;
 struct Esp {size_t getFreeHeap(){return heapFree;}size_t getMaxAllocHeap(){return heapFree;}} ESP;
+bool nextChapterImages=false;
 struct Section {
- Section()=default;Section(std::shared_ptr<Epub>,int,GfxRenderer&){}
+ Section()=default;Section(std::shared_ptr<Epub>,int,GfxRenderer&):images(nextChapterImages){}
  bool partial=false;
  bool isPartial()const{return partial;}
  bool loadSectionFile(const ReaderRenderSpec&){return true;}
@@ -41,7 +61,8 @@ program=program.replace('  void freePageCache();','  void freePageCache();\n  vo
 source=module.READER.read_text()
 program+='\n'+module.method(source,'void EpubReaderActivity::prefetchNextChapter(')
 program+=r'''
-void resetNative(){assert(memory::live==0);memory::allocations=0;memory::failAt=0;memory::headroom=true;activityManager={};SETTINGS={};renders=0;cancelAt=0;heapFree=1<<20;}
+void nativeImageStep(){if(++nativeImageBlocks==cancelNativeImageAt)activityManager.cancelled=true;}
+void resetNative(){assert(memory::live==0);memory::allocations=0;memory::failAt=0;memory::headroom=true;activityManager={};SETTINGS={};renders=0;cancelAt=0;heapFree=1<<20;nativeImageBlocks=0;cancelNativeImageAt=0;failNativeImage=false;nextChapterImages=false;pageLoads.clear();}
 int main(){
  resetNative();
  {
@@ -80,7 +101,23 @@ int main(){
  {EpubReaderActivity r;r.renderer.inverted=true;assert(!r.pageCacheEligible());}
  resetNative();
  {
+  EpubReaderActivity r;const auto original=r.renderer.frame;r.section->images=true;cancelNativeImageAt=3;
+  r.renderIdle(0);
+  assert(nativeImageBlocks==3 && r.pageCache_[0].state==ReaderPageCache::State::Empty);
+  assert(r.renderer.frame==original && r.renderer.active16==nullptr && !r.pageCacheFailed_);
+  activityManager.cancelled=false;cancelNativeImageAt=0;nativeImageBlocks=0;r.renderIdle(0);
+  assert(nativeImageBlocks==16 && r.pageCache_[0].state==ReaderPageCache::State::Ready);
+  assert(r.pageCache_[1].state==ReaderPageCache::State::Ready && memory::live==6);
+ }
+ resetNative();
+ {
+  EpubReaderActivity r;r.section->images=true;failNativeImage=true;r.renderIdle(0);
+  assert(r.pageCache_[0].state==ReaderPageCache::State::Ready); // Existing failure placeholder is retained.
+ }
+ resetNative();
+ {
   EpubReaderActivity r;r.section->currentPage=19;r.renderedPageKey_=r.pageCacheKey(19,1,1,1,1);r.renderIdle(0);
+  assert(pageLoads.size()==2 && pageLoads[0]==0 && pageLoads[1]==18); // Forward chapter before backward page.
   assert(r.pageCache_[0].state==ReaderPageCache::State::Ready);
   assert(r.pageCache_[0].key.spine==3 && r.pageCache_[0].key.page==0 && r.pageCache_[0].key.sectionGeneration==2);
   ++r.currentSpineIndex;++r.sectionGeneration_;r.section->currentPage=-1;
@@ -92,6 +129,17 @@ int main(){
   if(reason==1)heapFree=0;
   if(reason==2)r.section->partial=true;
   r.renderIdle(0);assert(r.pageCache_[0].state==ReaderPageCache::State::Empty);
+ }
+ resetNative();
+ {
+  EpubReaderActivity r;const auto original=r.renderer.frame;
+  r.section->currentPage=19;r.renderedPageKey_=r.pageCacheKey(19,1,1,1,1);
+  nextChapterImages=true;cancelNativeImageAt=3;r.renderIdle(0);
+  assert(nativeImageBlocks==3 && r.pageCache_[0].state==ReaderPageCache::State::Empty);
+  assert(r.renderer.frame==original && r.renderer.active16==nullptr);
+  activityManager.cancelled=false;cancelNativeImageAt=0;nativeImageBlocks=0;r.renderIdle(0);
+  assert(nativeImageBlocks==8 && r.pageCache_[0].state==ReaderPageCache::State::Ready);
+  assert(r.pageCache_[0].key.spine==3 && r.pageCache_[0].key.page==0);
  }
 }
 '''

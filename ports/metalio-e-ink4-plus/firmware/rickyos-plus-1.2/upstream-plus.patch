@@ -693,6 +693,469 @@
 +  static void compactSingleGlyph(const uint8_t* alignedSrc, uint8_t* packedDst, uint8_t width, uint8_t height, bool is4Bit);
    static int32_t findGlyphIndex(const EpdFontData* fontData, uint32_t codepoint);
  };
+--- a/lib/Epub/Epub/ReaderRenderSpec.h
++++ b/lib/Epub/Epub/ReaderRenderSpec.h
+@@ -36,8 +36,16 @@
+   // Lines are laid out as columns (VerticalText.h): the caller swaps the viewport so
+   // viewportWidth is the column height and viewportHeight the width the columns fill.
+   bool verticalText = false;
++#if FREEINK_DEVICE_METALIO_PLUS
++  // Chapter art can extend into the horizontal text margins, never into a
++  // decorated reading frame. Part of the Plus section-cache layout key.
++  uint16_t imageOutset = 0;
++#endif
+ 
+   bool operator==(const ReaderRenderSpec& other) const {
++#if FREEINK_DEVICE_METALIO_PLUS
++    if (imageOutset != other.imageOutset) return false;
++#endif
+     return fontId == other.fontId && lineCompression == other.lineCompression &&
+            extraParagraphSpacing == other.extraParagraphSpacing && firstLineIndent == other.firstLineIndent &&
+            paragraphIndentSpaces == other.paragraphIndentSpaces && characterSpacing == other.characterSpacing &&
+--- a/lib/Epub/Epub/Section.cpp
++++ b/lib/Epub/Epub/Section.cpp
+@@ -51,7 +51,15 @@
+ //   74 / 75 - character and word spacing in the render spec and cached text
+ //   76 / 77 - independent Western paragraph indentation width
+ //   78 / 79 - vertical text (columns, right to left) in the render spec
++#if FREEINK_DEVICE_METALIO_PLUS
++// Plus-only v81 adds a uint16 imageOutset after verticalText. Rebuild old complete
++// AND partial pagination; Pico/C3 keep v79 and their unchanged binary header.
++constexpr uint8_t SECTION_FILE_VERSION = 81;
++constexpr uint32_t IMAGE_LAYOUT_HEADER_SIZE = sizeof(uint16_t);
++#else
+ constexpr uint8_t SECTION_FILE_VERSION = 79;
++constexpr uint32_t IMAGE_LAYOUT_HEADER_SIZE = 0;
++#endif
+ // Written into the version field while a build is in progress; patched to
+ // SECTION_FILE_VERSION only when the build is finalized. An abandoned /
+ // crash-interrupted .bin therefore carries version 0, which loadSectionFile rejects
+@@ -73,7 +81,7 @@
+                                  sizeof(uint8_t) + sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint16_t) +
+                                  sizeof(bool) + sizeof(bool) + sizeof(uint8_t) + sizeof(bool) + sizeof(bool) +
+                                  sizeof(uint32_t) * 5 + sizeof(int8_t) + sizeof(uint8_t) + sizeof(uint8_t) +
+-                                 sizeof(bool);
++                                 sizeof(bool) + IMAGE_LAYOUT_HEADER_SIZE;
+ // Called only between layout/render operations; no borrowed glyph pointer is live.
+ void reclaimLayoutCaches(GfxRenderer& renderer, const char* stage) {
+ #ifndef BOARD_HAS_PSRAM
+@@ -139,7 +147,8 @@
+                          sizeof(spec.hyphenationEnabled) + sizeof(spec.embeddedStyle) + sizeof(spec.imageRendering) +
+                          sizeof(spec.focusReadingEnabled) + sizeof(spec.collectTouchLinks) + sizeof(uint32_t) +
+                          sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) +
+-                         sizeof(spec.characterSpacing) + sizeof(spec.wordSpacingPercent) + sizeof(spec.verticalText),
++                         sizeof(spec.characterSpacing) + sizeof(spec.wordSpacingPercent) + sizeof(spec.verticalText) +
++                         IMAGE_LAYOUT_HEADER_SIZE,
+       "Header size mismatch");
+   // Written as the incomplete sentinel; finalizeBuild() patches it to
+   // SECTION_FILE_VERSION as the last step, committing the file.
+@@ -160,6 +169,9 @@
+   serialization::writePod(file, spec.characterSpacing);
+   serialization::writePod(file, spec.wordSpacingPercent);
+   serialization::writePod(file, spec.verticalText);
++#if FREEINK_DEVICE_METALIO_PLUS
++  serialization::writePod(file, spec.imageOutset);
++#endif
+   serialization::writePod(file, pageCount);  // Placeholder for page count (will be initially 0, patched later)
+   serialization::writePod(file, static_cast<uint32_t>(0));  // Placeholder for LUT offset (patched later)
+   serialization::writePod(file, static_cast<uint32_t>(0));  // Placeholder for anchor map offset (patched later)
+@@ -206,7 +218,10 @@
+     int8_t fileCharacterSpacing = 0;
+     uint8_t fileWordSpacingPercent = 100;
+     bool fileVerticalText = false;
+-    const bool headerValid =
++#if FREEINK_DEVICE_METALIO_PLUS
++    uint16_t fileImageOutset = 0;
++#endif
++    bool headerValid =
+         serialization::readPod(file, fileFontId) && serialization::readPod(file, fileLineCompression) &&
+         serialization::readPod(file, fileExtraParagraphSpacing) && serialization::readPod(file, fileFirstLineIndent) &&
+         serialization::readPod(file, fileParagraphIndentSpaces) &&
+@@ -216,6 +231,12 @@
+         serialization::readPod(file, fileFocusReadingEnabled) && serialization::readPod(file, fileCollectTouchLinks) &&
+         serialization::readPod(file, fileCharacterSpacing) && serialization::readPod(file, fileWordSpacingPercent) &&
+         serialization::readPod(file, fileVerticalText);
++#if FREEINK_DEVICE_METALIO_PLUS
++    headerValid = headerValid && serialization::readPod(file, fileImageOutset);
++    const bool imageLayoutMatches = spec.imageOutset == fileImageOutset;
++#else
++    const bool imageLayoutMatches = true;
++#endif
+ 
+     if (!headerValid || spec.fontId != fileFontId || spec.lineCompression != fileLineCompression ||
+         spec.extraParagraphSpacing != fileExtraParagraphSpacing || spec.firstLineIndent != fileFirstLineIndent ||
+@@ -224,7 +245,8 @@
+         spec.hyphenationEnabled != fileHyphenationEnabled || spec.embeddedStyle != fileEmbeddedStyle ||
+         spec.imageRendering != fileImageRendering || spec.focusReadingEnabled != fileFocusReadingEnabled ||
+         spec.collectTouchLinks != fileCollectTouchLinks || spec.characterSpacing != fileCharacterSpacing ||
+-        spec.wordSpacingPercent != fileWordSpacingPercent || spec.verticalText != fileVerticalText) {
++        spec.wordSpacingPercent != fileWordSpacingPercent || spec.verticalText != fileVerticalText ||
++        !imageLayoutMatches) {
+       file.close();
+       LOG_ERR("SCT", "Deserialization failed: Parameters do not match");
+       clearCache();
+@@ -504,6 +526,9 @@
+   ctx->parser->setTxtChapterBoundaries(txtChapterBoundaries);
+   ctx->parser->setTextSpacing(spec.characterSpacing, spec.wordSpacingPercent);
+   ctx->parser->setParagraphIndentSpaces(spec.paragraphIndentSpaces);
++#if FREEINK_DEVICE_METALIO_PLUS
++  ctx->parser->setImageOutset(spec.imageOutset);
++#endif
+   Hyphenator::setPreferredLanguage(epub->getLanguage());
+ 
+   if (!build_->parser->beginParse()) {
+--- a/lib/Epub/Epub/blocks/ImageBlock.cpp
++++ b/lib/Epub/Epub/blocks/ImageBlock.cpp
+@@ -372,8 +372,8 @@
+ }
+ 
+ bool ImageBlock::render(GfxRenderer& renderer, const int x, const int y, const PixelCachePolicy cachePolicy,
+-                        ImageRenderError* error) {
+-  return renderInternal(renderer, x, y, cachePolicy, DecodeOutput::FrameBufferAndCache, error);
++                        ImageRenderError* error, CancelCheck cancellation) {
++  return renderInternal(renderer, x, y, cachePolicy, DecodeOutput::FrameBufferAndCache, error, cancellation);
+ }
+ 
+ bool ImageBlock::cacheDecodedImage(GfxRenderer& renderer, const int x, const int y, CancelCheck cancellation) {
+@@ -432,7 +432,12 @@
+   // 16-level pages: a JPEG decodes straight into the native frame at full gray depth.
+   // The pixel cache holds dithered 4-level samples written past the 16-level buffer,
+   // which made illustrations look dark and blotchy.
+-  if (renderToFramebuffer && renderer.isGrayscale16Active() && isJpegPath(imagePath)) {
++  if (renderToFramebuffer && renderer.isGrayscale16Active() &&
++#if FREEINK_DEVICE_METALIO_PLUS
++      true) {
++#else
++      isJpegPath(imagePath)) {
++#endif
+     if (!srcPath.empty() && !ensureExtracted(cancellation)) {
+       if (error) *error = cancellation.isCancelled() ? ImageRenderError::Cancelled : ImageRenderError::Failed;
+       if (!cancellation.isCancelled()) renderPlaceholder(renderer, x, y);
+@@ -447,11 +452,14 @@
+     native.useDithering = false;
+     native.useExactDimensions = true;
+     native.output = DecodeOutput::NativeGrayscale16;
++#if FREEINK_DEVICE_METALIO_PLUS
++    native.preserveAlpha = true;
++#endif
+     native.bilinearScaling = bilinearScalingEnabled();
+     native.error = &decodeError;
+     native.cancellation = cancellation;
+-    JpegToFramebufferConverter converter;
+-    if (converter.decodeToFramebuffer(imagePath, renderer, native)) {
++    auto* converter = ImageDecoderFactory::getDecoder(imagePath);
++    if (converter && converter->decodeToFramebuffer(imagePath, renderer, native)) {
+       if (error) *error = ImageRenderError::None;
+       return true;
+     }
+--- a/lib/Epub/Epub/blocks/ImageBlock.h
++++ b/lib/Epub/Epub/blocks/ImageBlock.h
+@@ -64,7 +64,8 @@
+   bool isEmpty() override { return false; }
+ 
+   void render(GfxRenderer& renderer, const int x, const int y);
+-  bool render(GfxRenderer& renderer, int x, int y, PixelCachePolicy cachePolicy, ImageRenderError* error = nullptr);
++  bool render(GfxRenderer& renderer, int x, int y, PixelCachePolicy cachePolicy, ImageRenderError* error = nullptr,
++              CancelCheck cancellation = {});
+   bool cacheDecodedImage(GfxRenderer& renderer, int x, int y, CancelCheck cancellation = {});
+   bool serialize(HalFile& file);
+   static std::unique_ptr<ImageBlock> deserialize(HalFile& file);
+--- a/lib/Epub/Epub/converters/ImageDecoderFactory.cpp
++++ b/lib/Epub/Epub/converters/ImageDecoderFactory.cpp
+@@ -3,6 +3,7 @@
+ #include <Logging.h>
+ #include <Memory.h>
+ 
++#include <algorithm>
+ #include <memory>
+ #include <string>
+ 
+@@ -23,6 +24,20 @@
+   } else {
+     ext = "";
+   }
++#if FREEINK_DEVICE_METALIO_PLUS
++  // Legacy section caches may still name PNG bytes .jpg. Prefer a bounded
++  // content probe after extraction; keep suffix-based probing for lazy files.
++  HalFile file;
++  if (Storage.openFileForRead("DEC", imagePath, file)) {
++    uint8_t header[8]{};
++    const int count = file.read(header, sizeof(header));
++    const uint8_t png[8]{137, 80, 78, 71, 13, 10, 26, 10};
++    if (count == 8 && std::equal(header, header + 8, png))
++      ext = ".png";
++    else if (count >= 3 && header[0] == 255 && header[1] == 216 && header[2] == 255)
++      ext = ".jpg";
++  }
++#endif
+ 
+   if (JpegToFramebufferConverter::supportsFormat(ext)) {
+     if (!jpegDecoder) {
+--- a/lib/Epub/Epub/converters/JpegToFramebufferConverter.cpp
++++ b/lib/Epub/Epub/converters/JpegToFramebufferConverter.cpp
+@@ -17,6 +17,9 @@
+ #include "DitherUtils.h"
+ #include "PixelCache.h"
+ #include "SampleRowClamp.h"
++#if FREEINK_DEVICE_METALIO_PLUS
++#include <PlusProgressiveJpeg.h>
++#endif
+ 
+ namespace {
+ 
+@@ -115,6 +118,31 @@
+           operation, available.freeBytes, available.largestBlockBytes, MIN_FREE_HEAP_FOR_JPEG, JPEG_DECODER_SIZE,
+           internal.freeBytes, internal.largestBlockBytes, psram.freeBytes, psram.largestBlockBytes);
+   return false;
++}
++
++// Reuse the existing optional compressed-image allocation. Idle decodes read in
++// bounded chunks so input can release the render lock before the whole file is
++// loaded. Foreground reads keep their existing single-transfer path.
++[[maybe_unused]] memory::ByteBuffer readJpegIntoPsram(const std::string& path, size_t& size, CancelCheck cancellation) {
++  size = 0;
++  if (cancellation.isCancelled()) return {};
++  HalFile file;
++  if (!Storage.openFileForRead("JPG", path, file)) return {};
++  const size_t bytes = file.fileSize();
++  constexpr size_t kMaxRamJpeg = 4 * 1024 * 1024;
++  if (!bytes || bytes > kMaxRamJpeg || !memory::psramHasHeadroom(bytes, bytes, 256 * 1024)) return {};
++  auto data = memory::makePsramByteBufferUninitializedNoThrow(bytes);
++  if (!data) return {};
++  for (size_t offset = 0; offset < bytes;) {
++    if (cancellation.isCancelled()) return {};
++    const size_t remaining = bytes - offset;
++    const size_t chunk = cancellation && remaining > 16 * 1024 ? 16 * 1024 : remaining;
++    if (file.read(data.get() + offset, chunk) != static_cast<int>(chunk)) return {};
++    offset += chunk;
++  }
++  if (cancellation.isCancelled()) return {};
++  size = bytes;
++  return data;
+ }
+ 
+ // Choose JPEGDEC's built-in scale factor for coarse downscaling.
+@@ -440,7 +468,10 @@
+     jpeg->~JPEGDEC();
+     buildscratch::release(decoderScratch);
+   }};
+-  const ScopedCleanup closeJpeg{[jpeg]() { jpeg->close(); }};
++  bool jpegClosed = false;
++  const ScopedCleanup closeJpeg{[jpeg, &jpegClosed]() {
++    if (!jpegClosed) jpeg->close();
++  }};
+ 
+   JpegContext ctx;
+   ctx.renderer = &renderer;
+@@ -455,16 +486,10 @@
+   size_t ramJpegSize = 0;
+   if (config.output == DecodeOutput::NativeGrayscale16) {
+     const unsigned long loadStart = millis();
+-    HalFile file;
+-    if (Storage.openFileForRead("JPG", imagePath, file)) {
+-      ramJpegSize = file.fileSize();
+-      constexpr size_t kMaxRamJpeg = 4 * 1024 * 1024;
+-      if (ramJpegSize > 0 && ramJpegSize <= kMaxRamJpeg &&
+-          memory::psramHasHeadroom(ramJpegSize, ramJpegSize, 256 * 1024)) {
+-        ramJpeg = memory::makePsramByteBufferUninitializedNoThrow(ramJpegSize);
+-        if (ramJpeg && file.read(ramJpeg.get(), ramJpegSize) != static_cast<int>(ramJpegSize)) ramJpeg.reset();
+-      }
+-      file.close();
++    ramJpeg = readJpegIntoPsram(imagePath, ramJpegSize, config.cancellation);
++    if (config.cancellation.isCancelled()) {
++      if (config.error) *config.error = ImageRenderError::Cancelled;
++      return false;
+     }
+     if (ramJpeg)
+       LOG_DBG("JPG", "Loaded %u bytes to PSRAM in %lu ms", static_cast<unsigned>(ramJpegSize), millis() - loadStart);
+@@ -485,6 +510,33 @@
+   const int srcHeight = sourceDimensions.height;
+ 
+   bool isProgressive = jpeg->getJPEGType() == JPEG_MODE_PROGRESSIVE;
++#if FREEINK_DEVICE_METALIO_PLUS
++  if (isProgressive && config.output == DecodeOutput::NativeGrayscale16) {
++    // Close the header probe exactly once before reopening for full decoding.
++    jpeg->close();
++    jpegClosed = true;
++#if !defined(SIMULATOR)
++    ramJpeg.reset();
++#endif
++    ImageRenderError fullError = ImageRenderError::Failed;
++    RenderConfig fullConfig = config;  // Native config has no pixel-cache string.
++    fullConfig.error = &fullError;
++    if (decodePlusProgressiveJpeg(imagePath, renderer, fullConfig)) {
++      if (config.error) *config.error = ImageRenderError::None;
++      return true;
++    }
++    if (fullError != ImageRenderError::OutOfMemory || config.cancellation.isCancelled()) {
++      if (config.error) *config.error = config.cancellation.isCancelled() ? ImageRenderError::Cancelled : fullError;
++      return false;
++    }
++    // A large source or memory pressure must not replace an otherwise readable
++    // image with a blank placeholder. Explicitly retain the historical preview
++    // only for this budget fallback; never hide corruption/cancellation behind it.
++    LOG_ERR("JPG", "Full progressive decode unavailable within PSRAM budget; using DC preview");
++    jpegClosed = false;
++    if (jpeg->open(imagePath.c_str(), jpegOpen, jpegClose, jpegRead, jpegSeek, jpegDrawCallback) != 1) return false;
++  }
++#endif
+   if (isProgressive) {
+     LOG_INF("JPG", "Progressive JPEG detected - decoding DC coefficients only (lower quality)");
+   }
+--- a/lib/Epub/Epub/converters/PngToFramebufferConverter.cpp
++++ b/lib/Epub/Epub/converters/PngToFramebufferConverter.cpp
+@@ -51,6 +51,7 @@
+   // output row be emitted once the second of its two source rows has arrived,
+   // which is why bilinear emission is one interval behind (see nextDstY).
+   uint8_t* prevGrayLine{nullptr};
++  uint8_t* prevAlphaLine{nullptr};
+   bool havePrevRow{false};
+   int nextDstY{0};  // next destination row to emit in bilinear mode
+   // 16.16 source-column step for the bilinear sampler, computed once per image so
+@@ -275,7 +276,8 @@
+ // the two neighbouring source columns with the same fixed-point scheme, so a
+ // scaled image gets a continuous ramp instead of nearest-neighbour stair steps.
+ void emitBilinearRow(PngContext& ctx, const int dstY, const uint8_t* rowTop, const uint8_t* rowBot, const int fyFP,
+-                     DirectPixelWriter& pw, const bool writeFramebuffer) {
++                     DirectPixelWriter& pw, const bool writeFramebuffer, const uint8_t* alphaTop = nullptr,
++                     const uint8_t* alphaBot = nullptr) {
+   const int outY = ctx.config->y + dstY;
+   if (outY >= ctx.screenHeight) return;
+   if (writeFramebuffer) pw.beginRow(outY);
+@@ -313,6 +315,25 @@
+     const int sx1 = (sx + 1 <= lastX) ? sx + 1 : lastX;
+     const int x0 = ctx.cropLeft + sx;
+     const int x1 = ctx.cropLeft + sx1;
++
++    if (ctx.config->output == DecodeOutput::NativeGrayscale16) {
++      // Filter premultiplied gray and alpha together, avoiding dark fringes
++      // from arbitrary RGB values in transparent decoration pixels.
++      const auto mix = [](int a, int b, int f) {
++        return static_cast<int>((static_cast<int64_t>(a) * (kBilinearOne - f) + static_cast<int64_t>(b) * f + 32768) >>
++                                16);
++      };
++      const int a00 = alphaTop ? alphaTop[x0] : 255, a01 = alphaTop ? alphaTop[x1] : 255;
++      const int a10 = alphaBot ? alphaBot[x0] : 255, a11 = alphaBot ? alphaBot[x1] : 255;
++      const int alpha = mix(mix(a00, a01, fxFP), mix(a10, a11, fxFP), fyFP);
++      if (alpha && outX < ctx.screenWidth) {
++        const int premul =
++            mix(mix(rowTop[x0] * a00, rowTop[x1] * a01, fxFP), mix(rowBot[x0] * a10, rowBot[x1] * a11, fxFP), fyFP);
++        const int sample = std::min(255, (premul + alpha / 2) / alpha);
++        ctx.renderer->blendGrayscale16Pixel(outX, outY, (sample + 8) / 17, (alpha + 8) / 17);
++      }
++      continue;
++    }
+ 
+     const int top = (static_cast<int>(rowTop[x0]) * (kBilinearOne - fxFP) + static_cast<int>(rowTop[x1]) * fxFP) >> 16;
+     int gray = top;
+@@ -382,7 +403,7 @@
+         for (int dstY = ctx->nextDstY; dstY < last; dstY++) {
+           const int64_t srcPos = (static_cast<int64_t>(dstY) * ctx->visibleHeight << 16) / ctx->dstHeight;
+           emitBilinearRow(*ctx, dstY, ctx->prevGrayLine, ctx->grayLineBuffer, static_cast<int>(srcPos & 0xFFFF), pw,
+-                          writeFramebuffer);
++                          writeFramebuffer, ctx->prevAlphaLine, ctx->alphaLineBuffer);
+         }
+         ctx->nextDstY = last;
+       }
+@@ -391,6 +412,7 @@
+     if (ctx->prevGrayLine) {
+       memcpy(ctx->prevGrayLine, ctx->grayLineBuffer, static_cast<size_t>(srcWidth));
+     }
++    if (ctx->prevAlphaLine) memcpy(ctx->prevAlphaLine, ctx->alphaLineBuffer, static_cast<size_t>(srcWidth));
+     ctx->havePrevRow = true;
+     return 1;
+   }
+@@ -517,8 +539,8 @@
+   LOG_DBG("PNG", "Decoding PNG: %s", imagePath.c_str());
+ 
+   const bool cacheOnly = config.output == DecodeOutput::CacheOnly;
+-  if (config.output == DecodeOutput::NativeGrayscale16 && (!renderer.isGrayscale16Active() || config.bilinearScaling)) {
+-    LOG_ERR("PNG", "Native decode requires an active frame and nearest-neighbor scaling");
++  if (config.output == DecodeOutput::NativeGrayscale16 && !renderer.isGrayscale16Active()) {
++    LOG_ERR("PNG", "Native decode requires an active frame");
+     if (config.error) *config.error = ImageRenderError::Failed;
+     return false;
+   }
+@@ -658,7 +680,8 @@
+   // Bilinear holds one extra source row (the previous scanline) so an output row
+   // can be blended vertically; nearest needs only the current one.
+   const size_t alphaAndCurrent = grayBufSize * (retainAlpha ? 2u : 1u);
+-  const size_t lineBufferBytes = alphaAndCurrent + (bilinearMode ? grayBufSize : 0u);
++  // At most four source rows, not a full image allocation.
++  const size_t lineBufferBytes = alphaAndCurrent * (bilinearMode ? 2u : 1u);
+   auto lineBuffers = makeUniqueNoThrow<uint8_t[]>(lineBufferBytes);
+   if (!lineBuffers) {
+     LOG_ERR("PNG", "Failed to allocate PNG line buffers (%u bytes)", static_cast<unsigned>(lineBufferBytes));
+@@ -667,6 +690,7 @@
+   ctx.grayLineBuffer = lineBuffers.get();
+   ctx.alphaLineBuffer = retainAlpha ? ctx.grayLineBuffer + grayBufSize : nullptr;
+   ctx.prevGrayLine = bilinearMode ? ctx.grayLineBuffer + alphaAndCurrent : nullptr;
++  ctx.prevAlphaLine = bilinearMode && retainAlpha ? ctx.prevGrayLine + grayBufSize : nullptr;
+   ctx.havePrevRow = false;
+   ctx.nextDstY = 0;
+ 
+@@ -709,7 +733,8 @@
+         ctx.cache.abort();
+         return false;
+       }
+-      emitBilinearRow(ctx, dstY, ctx.prevGrayLine, ctx.prevGrayLine, 0, pw, writeFramebuffer);
++      emitBilinearRow(ctx, dstY, ctx.prevGrayLine, ctx.prevGrayLine, 0, pw, writeFramebuffer, ctx.prevAlphaLine,
++                      ctx.prevAlphaLine);
+     }
+     ctx.nextDstY = ctx.dstHeight;
+   }
+--- a/lib/Epub/Epub/parsers/ChapterHtmlSlimParser.cpp
++++ b/lib/Epub/Epub/parsers/ChapterHtmlSlimParser.cpp
+@@ -24,6 +24,9 @@
+ #include "Epub/converters/ImageDimsProbe.h"
+ #include "Epub/converters/ImageToFramebufferDecoder.h"
+ #include "Epub/htmlEntities.h"
++#if FREEINK_DEVICE_METALIO_PLUS
++#include <PlusReaderImageLayout.h>
++#endif
+ 
+ // Minimum file size (in bytes) to show indexing popup - smaller chapters don't benefit from it
+ constexpr size_t MIN_SIZE_FOR_POPUP = 10 * 1024;  // 10KB
+@@ -1182,6 +1185,17 @@
+                   LOG_DBG("EHP", "Display size: %dx%d (scale %.2f)", displayWidth, displayHeight, scale);
+                 }
+ 
++#if FREEINK_DEVICE_METALIO_PLUS
++                // Resolve before page breaking / ImageBlock serialization so the
++                // taller full-width art never covers following text. Text margins
++                // and the shared Pico/C3 layout remain unchanged.
++                if (plusReaderImage::fitChapterArt(dims.width, dims.height, self->viewportWidth,
++                                                   self->viewportHeight, self->imageOutset, displayWidth,
++                                                   displayHeight)) {
++                  LOG_DBG("EHP", "Chapter art fits reading width: %dx%d", displayWidth, displayHeight);
++                }
++#endif
++
+                 // Flush any pending text block so it appears before the image
+                 if (self->partWordBufferIndex > 0) {
+                   self->flushPartWordBuffer();
+--- a/lib/Epub/Epub/parsers/ChapterHtmlSlimParser.h
++++ b/lib/Epub/Epub/parsers/ChapterHtmlSlimParser.h
+@@ -57,6 +57,9 @@
+   uint8_t paragraphAlignment;
+   uint16_t viewportWidth;
+   uint16_t viewportHeight;
++#if FREEINK_DEVICE_METALIO_PLUS
++  uint16_t imageOutset = 0;
++#endif
+   bool hyphenationEnabled;
+   bool focusReadingEnabled;
+   const CssParser* cssParser;
+@@ -237,6 +240,9 @@
+   }
+   void setTxtChapterBoundaries(bool enabled) { txtChapterBoundaries = enabled; }
+   void setParagraphIndentSpaces(const uint8_t spaces) { paragraphIndentSpaces = spaces; }
++#if FREEINK_DEVICE_METALIO_PLUS
++  void setImageOutset(const uint16_t pixels) { imageOutset = pixels; }
++#endif
+ 
+   // One-shot parse: builds every page before returning (begin + step* + finish).
+   bool parseAndBuildPages();
 --- a/lib/I18n/translations/chinese.yaml
 +++ b/lib/I18n/translations/chinese.yaml
 @@ -1600,3 +1600,49 @@
@@ -1671,6 +2134,87 @@
  
  let output = path.join(root, 'src/components/icons/rickyAppIcons.h');
  const args = process.argv.slice(2);
+--- a/scripts/tests/test_reader_page_cache.py
++++ b/scripts/tests/test_reader_page_cache.py
+@@ -33,7 +33,16 @@
+ #include "CancelCheck.h"
+ #include "ReadingMode.h"
+ template<class F> struct ScopedCleanup {F fn;~ScopedCleanup(){fn();}};
+-struct ImageBlock {static void releaseRenderCache() {}};
++struct GfxRenderer;
++enum class ImageRenderError {None, Failed, Cancelled};
++struct ImageBlock {
++  enum class PixelCachePolicy {Stream};
++  static void releaseRenderCache() {}
++  bool render(GfxRenderer&,int,int,PixelCachePolicy,ImageRenderError* error,CancelCheck cancel) {
++    *error=cancel.isCancelled()?ImageRenderError::Cancelled:ImageRenderError::None;
++    return *error==ImageRenderError::None;
++  }
++};
+ int imageWarms=0;bool cancelImage=false;
+ #define ENABLE_CHINESE_VERSION 1
+ template<class... Args> void log(const char*,const char*,Args...) {}
+@@ -102,14 +111,15 @@
+   bool beginGrayscale16Offscreen(uint8_t*) {return false;}
+   void endGrayscale16Offscreen() {}
+ };
+-constexpr int TAG_PageLine=1;
++constexpr int TAG_PageLine=1, TAG_PageImage=2;
+ int renders=0, cancelAt=0;
+ struct Block {bool isEmpty() const {return false;} int getRubyShift(int) const {return 0;}};
+ struct PageLine {
+-  int yPos=0;
++  int xPos=0, yPos=0;
+   Block block;
+   uint32_t missing=0;
+-  int getTag() const {return TAG_PageLine;}
++  virtual ~PageLine()=default;
++  virtual int getTag() const {return TAG_PageLine;}
+   const Block* getBlock() const {return &block;}
+   void render(GfxRenderer& renderer,int,int,int) {
+     renderer.frame[yPos]=static_cast<uint8_t>(renderer.mode+1);
+@@ -117,6 +127,11 @@
+     if (++renders == cancelAt) activityManager.cancelled=true;
+   }
+   void renderVertical(GfxRenderer& renderer,int fontId,int,int,int) {render(renderer,fontId,0,0);}
++};
++struct PageImage : PageLine {
++  ImageBlock image;
++  int getTag() const override {return TAG_PageImage;}
++  ImageBlock& getImageBlock() {return image;}
+ };
+ using PageElement=PageLine;
+ namespace readingGuideLine {
+@@ -304,8 +319,9 @@
+     def test_readpico_input_cancellation_on_hardware_and_simulator(self):
+         source = (ROOT / 'src/main.cpp').read_text()
+         begin = source.index('  // Cancel before any handler can wait for the framebuffer lock.')
++        begin = source.rfind('#if ', 0, begin)
+         end = source.index('\n#endif', source.index('    activityManager.cancelIdleRender("touch", true);', begin))
+-        production = source[begin:end]
++        production = source[begin:end + len('\n#endif')]
+         program = r'''
+ #include <cassert>
+ #include <cstdint>
+@@ -337,9 +353,15 @@
+   }
+ }
+ '''
+-        for emulated in (0, 1):
+-            with self.subTest(emulated=emulated):
+-                run_cpp(f'#define CROSSPOINT_EMULATED {emulated}\n' + program)
++        for pico, plus in ((1, 0), (0, 1), (0, 0)):
++            for emulated in (0, 1):
++                with self.subTest(pico=pico, plus=plus, emulated=emulated):
++                    definitions = (f'#define CROSSPOINT_EMULATED {emulated}\n'
++                                   f'#define FREEINK_DEVICE_READPICO {pico}\n'
++                                   f'#define FREEINK_DEVICE_METALIO_PLUS {plus}\n')
++                    case = program if pico or plus else program.replace(
++                        'cancellations==1 && *event', 'cancellations==0 && *event')
++                    run_cpp(definitions + case)
+ 
+     def test_render_task_priorities_and_waiter(self):
+         source = (ROOT / 'src/activities/ActivityManager.cpp').read_text()
 --- a/scripts/tests/test_rickyos_app_profile.py
 +++ b/scripts/tests/test_rickyos_app_profile.py
 @@ -21,6 +21,7 @@
@@ -1833,7 +2377,18 @@
    uint8_t frontlightOn = 0;
 --- a/src/MappedInputManager.cpp
 +++ b/src/MappedInputManager.cpp
-@@ -29,6 +29,9 @@
+@@ -22,13 +22,19 @@
+   pollBle();
+ #endif
+   homeAction = HomeButtonAction::Ignore;
+-  if (gpio.hasHomeKey()) {
++  // A release / long-press that began behind the lock screen is not a fresh
++  // gesture. The SDK exposes the Home press edge even when it has no held query.
++  if (homeNeedsFreshPress && gpio.wasHomeKeyPressed()) homeNeedsFreshPress = false;
++  if (gpio.hasHomeKey() && !homeNeedsFreshPress) {
+     homeAction = homeButtonInput.update(millis(), gpio.wasHomeKeyTapped(), gpio.wasHomeKeyLongPressed(),
+                                         wasSwipe() != SwipeDir::None, gpio.wasHomeKeyPressed(),
+                                         static_cast<HomeButtonAction>(SETTINGS.homeButtonTapAction),
                                          static_cast<HomeButtonAction>(SETTINGS.homeButtonDoubleTapAction),
                                          static_cast<HomeButtonAction>(SETTINGS.homeButtonLongPressAction));
    }
@@ -1843,7 +2398,7 @@
    if (deferHomeButtonAction) {
      // Keep the first action observed during a synchronous transfer. Home must
      // still be visible now so the transfer can cancel and unwind promptly.
-@@ -85,39 +88,44 @@
+@@ -85,39 +91,44 @@
  }
  
  bool MappedInputManager::mapButton(const Button button, bool (HalGPIO::*fn)(uint8_t) const) const {
@@ -1898,7 +2453,7 @@
          case CrossPointSettings::NEXT_NEXT:
          case CrossPointSettings::SIDE_BUTTONS_DISABLED:
          default:
-@@ -127,11 +135,11 @@
+@@ -127,11 +138,11 @@
        // Reader page navigation uses side buttons and can be swapped via settings.
        switch (sideLayout) {
          case CrossPointSettings::PREV_NEXT:
@@ -1913,7 +2468,7 @@
          case CrossPointSettings::PREV_PREV:
          case CrossPointSettings::SIDE_BUTTONS_DISABLED:
          default:
-@@ -483,6 +491,9 @@
+@@ -483,6 +494,9 @@
  }
  
  bool MappedInputManager::wasLightPanelGesture() const {
@@ -1923,7 +2478,7 @@
    // The control center also serves touch boards without a frontlight.
    if (!SETTINGS.rickyGestureControl) return false;
    return hasTouch() && wasTopEdgeDownSwipe();
-@@ -500,6 +511,9 @@
+@@ -500,6 +514,9 @@
  #endif
  
  bool MappedInputManager::wasPressed(const Button button) const {
@@ -1933,7 +2488,7 @@
    if (button == Button::Confirm && homeAction == HomeButtonAction::Confirm) return true;
    if (button == Button::Back && wasBackGesture()) return true;
  #if FREEINK_CAP_TOUCH
-@@ -509,6 +523,9 @@
+@@ -509,6 +526,9 @@
  }
  
  bool MappedInputManager::wasReleased(const Button button) const {
@@ -1943,7 +2498,7 @@
    if (button == Button::Confirm && homeAction == HomeButtonAction::Confirm) return true;
    if (button == Button::Back && wasBackGesture()) return true;
  #if FREEINK_CAP_TOUCH
-@@ -651,3 +668,38 @@
+@@ -651,3 +671,38 @@
    return -1;
  }
  bool MappedInputManager::isHeld(const Button button) const { return isPressed(button); }
@@ -1994,8 +2549,19 @@
  
  class GfxRenderer;
  namespace freeink {
-@@ -107,6 +110,9 @@
+@@ -105,8 +108,20 @@
+   bool wasHomeGesture() const;
+   // Configured one-frame action, independent of the gesture that triggered it.
    HomeButtonAction homeButtonAction() const { return homeAction; }
++  // Standby owns input, not the global Home shortcuts. Drop the recognizer's
++  // partial click AND the current/deferred actions without touching Back/Power
++  // or the Plus physical-key gestures that may legitimately wake the device.
++  void suppressStandbyHomeActions() const {
++    homeButtonInput.reset();
++    homeAction = HomeButtonAction::Ignore;
++    deferredHomeAction = HomeButtonAction::Ignore;
++    homeNeedsFreshPress = true;
++  }
    void resetHomeButtonInput() const {
      homeButtonInput.reset();
 +#if FREEINK_DEVICE_METALIO_PLUS
@@ -2004,7 +2570,7 @@
      deferredHomeAction = HomeButtonAction::Ignore;
    }
    bool wasMenuGesture() const;
-@@ -131,6 +137,10 @@
+@@ -131,6 +146,10 @@
    // Returns the raw front button index that was pressed this frame (or -1 if none).
    int getPressedFrontButton() const;
  
@@ -2015,7 +2581,7 @@
    void setBleCaptureMode(bool enabled);
    bool takeCapturedBleKey(uint8_t& kind, uint8_t& value);
  
-@@ -168,6 +178,14 @@
+@@ -168,7 +187,16 @@
    void rememberTouchHeldTime() const;
    void suppressNextRelease(Button button) const;
  
@@ -2028,8 +2594,10 @@
 +  mutable bool plusControl = false;
 +#endif
    mutable HomeButtonInput homeButtonInput;
++  mutable bool homeNeedsFreshPress = false;
    mutable HomeButtonAction homeAction = HomeButtonAction::Ignore;
    mutable HomeButtonAction deferredHomeAction = HomeButtonAction::Ignore;
+   mutable bool touchHeldOverrideValid = false;
 --- a/src/activities/ActivityManager.cpp
 +++ b/src/activities/ActivityManager.cpp
 @@ -1,4 +1,33 @@
@@ -3039,7 +3607,63 @@
    // The UiAppHost app hosts the network list and the save/forget prompts
 --- a/src/activities/reader/EpubReaderActivity.cpp
 +++ b/src/activities/reader/EpubReaderActivity.cpp
-@@ -341,7 +341,7 @@
+@@ -16,9 +16,13 @@
+ #include <SdCardFontCache.h>
+ #include <TrustedTime.h>
+ #include <Txt.h>
++#include <VectorFontSupport.h>
+ #include <WeReadStore.h>
+ #include <WiFi.h>
+ #include <esp_system.h>
++#if FREEINK_DEVICE_METALIO_PLUS
++#include <PlusReaderImageLayout.h>
++#endif
+ 
+ #include <algorithm>
+ #include <cmath>
+@@ -27,7 +31,6 @@
+ #include <functional>
+ #include <iterator>
+ #include <limits>
+-#include <VectorFontSupport.h>
+ #if CROSSPOINT_VECTOR_FONTS
+ #include <TtfEpdFont.h>
+ #endif
+@@ -64,6 +67,7 @@
+ #include "activities/settings/TextSettingsActivity.h"
+ #include "components/FontPreloadView.h"
+ #include "components/RickyBadgeNotice.h"
++#include "components/RickyCompanion.h"
+ #include "components/UITheme.h"
+ #include "components/icons/rickyReaderDog.h"
+ #include "fontIds.h"
+@@ -75,7 +79,6 @@
+ #include "util/ReadingGuideLine.h"
+ #include "util/ScreenshotUtil.h"
+ #include "util/TimeUtils.h"
+-#include "components/RickyCompanion.h"
+ 
+ namespace {
+ constexpr uint8_t MAX_PAGE_TURN_RATE = 30;
+@@ -105,6 +108,17 @@
+       {0, 4, 6, 7, 8, 9, 10, 11, 11, 12, 12, 13, 14, 14, 15, 15},
+       {0, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 12, 13, 14, 14, 15},
+   };
++#if FREEINK_DEVICE_METALIO_PLUS
++  // Image pages remain native gray with text AA off. Quantize only glyph
++  // coverage in that case, preserving the user's black/white text choice.
++  static constexpr auto kBinaryCurves = [] {
++    std::array<std::array<uint8_t, 16>, 5> result{};
++    for (size_t w = 0; w < result.size(); ++w)
++      for (size_t i = 0; i < 16; ++i) result[w][i] = kCurves[w][i] >= 8 ? 15 : 0;
++    return result;
++  }();
++  if (!SETTINGS.textAntiAliasing) return kBinaryCurves[weight < 5 ? weight : 2].data();
++#endif
+   return weight < std::size(kCurves) && weight != 2 ? kCurves[weight] : nullptr;
+ }
+ 
+@@ -341,7 +355,7 @@
  
    READING_STATS.endSession();
    ACHIEVEMENTS.recordSessionEnded(READING_STATS.getLastSessionSnapshot());
@@ -3048,7 +3672,7 @@
    // Four frames of PSRAM; the reader is the only owner and gives them back here.
    freePageCache();
  #endif
-@@ -361,7 +361,7 @@
+@@ -361,7 +375,7 @@
  void EpubReaderActivity::showOpeningPopup() {
    // Even a cached book takes a few seconds on device to its first page (measured
    // 2.7-3.6 s), with the tapped screen unchanged meanwhile. Say so at once.
@@ -3057,7 +3681,23 @@
    // Drawn into the retained 16-level frame: the screen keeps its grays and only the
    // popup's area is driven, instead of a B/W refresh of the whole screen.
    if (renderer.beginRetainedGrayscale16()) {
-@@ -883,7 +883,7 @@
+@@ -648,6 +662,15 @@
+   auto spec = vertical ? SETTINGS.readerRenderSpec(height, width) : SETTINGS.readerRenderSpec(width, height);
+   spec.collectTouchLinks = mappedInput.hasTouch() && !vertical;
+   if (stylesDisabledForSession_) spec.embeddedStyle = false;
++#if FREEINK_DEVICE_METALIO_PLUS
++  const auto mode = readingMode::modeFor(SETTINGS.readingMode);
++  if (mode == readingMode::Mode::Original || mode == readingMode::Mode::Immersive) {
++    readingMode::Margins viewable;
++    renderer.getOrientedViewableTRBL(&viewable.top, &viewable.right, &viewable.bottom, &viewable.left);
++    const auto text = textMargins();
++    spec.imageOutset = plusReaderImage::horizontalOutset(text.left, text.right, viewable.left, viewable.right);
++  }
++#endif
+   if (vertical) {
+     spec.verticalText = true;
+     // Columns keep one pitch so the 界行 stay on their grid; images have no column
+@@ -883,7 +906,7 @@
      return;
    }
  
@@ -3066,7 +3706,7 @@
    constexpr unsigned long IDLE_PREWARM_DEBOUNCE_MS = 400;
    auto* fcm = renderer.getFontCacheManager();
    {
-@@ -1891,7 +1891,7 @@
+@@ -1891,7 +1914,7 @@
        return;
      }
  
@@ -3075,7 +3715,7 @@
      ++sectionGeneration_;
  #endif
      const bool cacheLoaded = section->loadSectionFile(renderSpec);
-@@ -2307,7 +2307,6 @@
+@@ -2307,14 +2330,19 @@
    }
  }
  
@@ -3083,15 +3723,22 @@
  // A page that renders on the native 16-level path: anti-aliased text with no images or
  // only JPEG ones (they decode straight into the frame). Must match use16LevelText.
  bool EpubReaderActivity::nativeGray16Page(const Page& page) const {
-@@ -2315,6 +2314,7 @@
++#if FREEINK_DEVICE_METALIO_PLUS
++  return !renderer.isInverted() && renderer.getGrayscaleLevels() == 16 &&
++         (SETTINGS.textAntiAliasing || page.hasImages());
++#else
+   return SETTINGS.textAntiAliasing && !renderer.isInverted() && renderer.getGrayscaleLevels() == 16 &&
           page.imagesAreAllJpeg();
- }
- 
+-}
+-
++#endif
++}
++
 +#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
  bool EpubReaderActivity::pageCacheEligible() const {
    // No !section->isBuilding() here, deliberately. The page cache renders ONE page --
    // the current one or the next -- and Section::loadPage() is written to serve exactly
-@@ -2328,7 +2328,12 @@
+@@ -2328,7 +2356,12 @@
    // engages at all -- every turn is a full render instead of the cached one.
    return !pageCacheFailed_ && section && renderer.hasFrameBuffer() && !activityManager.isSwitchPending() &&
           overlay == Overlay::None && fontPromptState == FontPromptState::Idle && !renderer.isInverted() &&
@@ -3105,24 +3752,53 @@
  }
  
  ReaderPageCacheKey EpubReaderActivity::pageCacheKey(const int page, const int top, const int right, const int bottom,
-@@ -2424,14 +2429,14 @@
+@@ -2419,19 +2452,23 @@
+   };
+   auto forward = layout;
+   ++forward.page;
+-  if (forward.page < static_cast<int>(section->pageCount)) build(0, forward);
++  if (forward.page < static_cast<int>(section->pageCount)) {
++    build(0, forward);
++  }
++#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
++  else {
++    // At a chapter boundary, the next chapter is the forward page. Prepare it
++    // before spending the idle window rendering the previous page.
++    prefetchNextChapter(layout, generation);
++  }
++#endif
+   if (cancelled() || pageCacheFailed_) return;
    auto backward = layout;
    --backward.page;
    if (backward.page >= 0) build(1, backward);
 -#if FREEINK_DEVICE_READPICO
-+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
-   if (forward.page >= static_cast<int>(section->pageCount) && !cancelled() && !pageCacheFailed_) {
-     prefetchNextChapter(layout, generation);
-   }
- #endif
- }
- 
+-  if (forward.page >= static_cast<int>(section->pageCount) && !cancelled() && !pageCacheFailed_) {
+-    prefetchNextChapter(layout, generation);
+-  }
+-#endif
+-}
+-
 -#if FREEINK_DEVICE_READPICO
++}
++
 +#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
  // On a chapter's last page the forward slot is free: build the next chapter and render
  // its first page into it. Comics put one picture in each chapter, so without this every
  // turn decoded a JPEG in the foreground (~3.5 s); now it happens while the page is read.
-@@ -2527,13 +2532,17 @@
+@@ -2464,6 +2501,12 @@
+   }
+   if (nextSection->pageCount == 0 || activityManager.idleRenderCancelled(generation)) return;
+   const bool ready = buildPageCacheSlot(0, key, generation, nextSection.get());
++  // Unlike the same-chapter path this call does not go through renderIdle's
++  // build wrapper. Keep an interrupted image retryable here as well.
++  if (!ready && activityManager.idleRenderCancelled(generation) && pageCache_[0].key == key &&
++      pageCache_[0].state == ReaderPageCache::State::Skipped) {
++    pageCache_[0].state = ReaderPageCache::State::Empty;
++  }
+   LOG_DBG("ERS", "Next chapter prefetch: spine %d ready=%d in %lums", next, ready, millis() - started);
+ }
+ #endif
+@@ -2527,13 +2570,18 @@
    if (!pageCacheBase_[slot]) {
      constexpr size_t kContiguousReserve = 16 * 1024;
      // Reserve the slots still to allocate; the forward slot is already charged for slot 1.
@@ -3140,11 +3816,57 @@
        if (!pageCacheStash_[slot]) pageCacheStash_[slot] = memory::makePsramByteBufferUninitializedNoThrow(bytes);
      }
 -    if (!pageCacheBase_[slot] || !pageCacheLsb_[slot] || !pageCacheMsb_[slot] || !pageCacheStash_[slot]) {
-+    if (!pageCacheBase_[slot] || (!native16 && (!pageCacheLsb_[slot] || !pageCacheMsb_[slot])) || !pageCacheStash_[slot]) {
++    if (!pageCacheBase_[slot] || (!native16 && (!pageCacheLsb_[slot] || !pageCacheMsb_[slot])) ||
++        !pageCacheStash_[slot]) {
        freePageCache();
        pageCacheFailed_ = true;
        LOG_ERR("ERS", "Page cache off: PSRAM allocation of %u B failed", static_cast<unsigned>(4 * bytes));
-@@ -2732,7 +2741,7 @@
+@@ -2579,12 +2627,26 @@
+   const readingMode::Box textBox = readingMode::textBox(renderer.getScreenWidth(), renderer.getScreenHeight(),
+                                                         {key.top, key.right, key.bottom, key.left});
+   const int pitch = renderer.getLineHeight(key.spec.fontId, key.spec.lineCompression);
++  uint32_t idleGeneration = generation;
++  const CancelCheck cancellation{&idleGeneration, [](void* context) {
++                                   return activityManager.idleRenderCancelled(*static_cast<uint32_t*>(context));
++                                 }};
+   const auto renderCachedElement = [&](PageElement& element) {
++    if (native16 && !vertical && element.getTag() == TAG_PageImage) {
++      auto& image = static_cast<PageImage&>(element);
++      ImageRenderError error = ImageRenderError::None;
++      image.getImageBlock().render(renderer, element.xPos + key.left, element.yPos + key.top,
++                                   ImageBlock::PixelCachePolicy::Stream, &error, cancellation);
++      // Ordinary failures retain the existing placeholder. Cancellation must
++      // never publish a half-decoded image as a finished page-cache hit.
++      return error != ImageRenderError::Cancelled;
++    }
+     if (vertical) {
+       element.renderVertical(renderer, key.spec.fontId, textBox.right(), textBox.y, pitch);
+     } else {
+       element.render(renderer, key.spec.fontId, key.left, key.top);
+     }
++    return true;
+   };
+ 
+   // Load glyphs on demand: a whole-page prewarm cannot be interrupted. Check
+@@ -2599,7 +2661,7 @@
+                                             readerTextWeightSpread(key.textWeight));
+     for (const auto& element : page->elements) {
+       if (cancelled()) return false;
+-      renderCachedElement(*element);
++      if (!renderCachedElement(*element)) return false;
+     }
+     if (vertical) readerChrome::drawColumnRules(renderer, *page, textBox, pitch);
+     // Match foreground ordering: all text first, then the guide lines.
+@@ -2638,7 +2700,7 @@
+                                               readerTextWeightSpread(key.textWeight));
+       for (const auto& element : page->elements) {
+         if (cancelled()) return false;
+-        renderCachedElement(*element);
++        if (!renderCachedElement(*element)) return false;
+       }
+       if (vertical) readerChrome::drawColumnRules(renderer, *page, textBox, pitch);
+     }
+@@ -2732,7 +2794,7 @@
        if (manager) manager->clearCache();
      }
    } rawFontCacheGuard;
@@ -3153,7 +3875,17 @@
    const auto key = pageCacheKey(section ? section->currentPage : -1, orientedMarginTop, orientedMarginRight,
                                  orientedMarginBottom, orientedMarginLeft);
    // Either slot may hold this page: slot 0 was built for it as a forward turn, slot 1
-@@ -2844,7 +2853,7 @@
+@@ -2779,8 +2841,7 @@
+   // RickyOS: every text face (2-bit downloaded fonts too) and synthetic bold draw straight
+   // into the 16-level frame, and JPEG illustrations decode into it, so anti-aliased pages
+   // take the single-render path.
+-  const bool use16LevelText =
+-      needsTextGrayscale && (!pageHasImages || page->imagesAreAllJpeg()) && renderer.getGrayscaleLevels() == 16;
++  const bool use16LevelText = nativeGray16Page(*page);
+   const bool needsAnyGrayscale = grayscaleEnabled && (SETTINGS.textAntiAliasing || pageHasImages);
+   const bool absoluteImageGrayscale = grayscaleEnabled && pageHasImages && !gpio.deviceIsX3() &&
+                                       display.getController() == HalDisplay::Controller::UC8279 &&
+@@ -2844,7 +2905,7 @@
    };
  
    unsigned long cacheBaseMs = 0;
@@ -3162,7 +3894,7 @@
    if (use16LevelText) {
      // The 16-level pass below clears the frame and renders (or copies from the cache)
      // the page, writing the B/W proxy as it goes, so a B/W render here is thrown away.
-@@ -2859,7 +2868,7 @@
+@@ -2859,7 +2920,7 @@
    {
      renderPageWithGuideLines();
    }
@@ -3171,7 +3903,7 @@
    const uint32_t missingCodepoint =
        pageCacheHit ? pageCacheMissingCodepoint_[pageCacheLiveSlot_] : fcm->consumeMissingChineseCodepoint();
  #else
-@@ -2912,7 +2921,7 @@
+@@ -2912,7 +2973,7 @@
      const auto t16Begin = millis();
      if (renderer.beginGrayscale16()) {
        const auto t16Cleared = millis();
@@ -3180,7 +3912,18 @@
        if (pageCacheHit && pageCacheIs16_[pageCacheLiveSlot_] && pageCache16_[pageCacheLiveSlot_]) {
          memcpy(renderer.grayscale16Frame(), pageCache16_[pageCacheLiveSlot_].get(), renderer.grayscale16FrameBytes());
          memcpy(renderer.getFrameBuffer(), pageCacheBase_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
-@@ -3137,7 +3146,7 @@
+@@ -2934,8 +2995,8 @@
+                 "reader page prewarm=%lums before=%lums page=%lums status=%lums cached=%d weight=%u bold=%u "
+                 "text=%lums/%lu fill=%lums image=%lums",
+                 tPrewarm - t0, t16Begin - tPrewarm, t16Page - t16Cleared, millis() - t16Page, pageCacheHit ? 1 : 0,
+-                static_cast<unsigned>(SETTINGS.rickyTextWeight), static_cast<unsigned>(SETTINGS.fakeBold), profile.us[1] / 1000,
+-                profile.calls[1], profile.us[0] / 1000, profile.us[3] / 1000);
++                static_cast<unsigned>(SETTINGS.rickyTextWeight), static_cast<unsigned>(SETTINGS.fakeBold),
++                profile.us[1] / 1000, profile.calls[1], profile.us[0] / 1000, profile.us[3] / 1000);
+         profile = {};
+         fcm->logStats("page");
+ #if CROSSPOINT_VECTOR_FONTS
+@@ -3137,7 +3198,7 @@
        }
        const auto tBwStore = millis();
  
@@ -3189,7 +3932,7 @@
        if (pageCacheHit) {
          // Both planes were rendered at idle; putting them in place is one copy
          // each instead of a full page render each.
-@@ -3164,7 +3173,7 @@
+@@ -3164,7 +3225,7 @@
          return;
        }
  
@@ -4657,7 +5400,18 @@
  static const EpdFontData& cjk12Data = notosans_cjk_12_rickyos;
  EpdFont offlineReaderFont(&cjk12Data);
  EpdFontFamily offlineReaderFontFamily(&offlineReaderFont);
-@@ -449,7 +449,7 @@
+@@ -342,7 +342,9 @@
+ }
+ 
+ void toggleFrontlight() {
+-  if (!Frontlight.present()) return;
++  // Global shortcuts run before the active Activity gets its input. Standby
++  // must not change the light or persist a preference from an ignored gesture.
++  if (activityManager.standbyShowing() || !Frontlight.present()) return;
+   const bool lightOn = !Frontlight.isOn();
+   Frontlight.setOn(lightOn);
+   SETTINGS.frontlightOn = lightOn ? 1 : 0;
+@@ -449,7 +451,7 @@
      WiFi.mode(WIFI_OFF);
    }
  
@@ -4666,7 +5420,7 @@
    gpio.stopHapticFeedback();
  #endif
    halTiltSensor.deepSleep();
-@@ -466,7 +466,7 @@
+@@ -466,7 +468,7 @@
  
  bool setupDisplayAndFonts(bool seamless = false, bool logSdFontLoadHeap = false) {
    display.begin(seamless);
@@ -4675,7 +5429,7 @@
    // Read Pico step 4 of 5 (see the boot-order note in setup()): the panel has
    // stepped through its own rails by now — BoardReadPico::epdPrepare/On/Off are
    // the board's LgfxEpdPowerHooks, so the SY7636A enable (FCA9555 P0.3), VCOM and
-@@ -511,7 +511,7 @@
+@@ -511,7 +513,7 @@
    renderer.setFallbackFont(UI_12_FONT_ID, CJK_UI_12_FONT_ID);
    renderer.setFallbackFont(NOTOSANS_18_FONT_ID, CJK_UI_12_FONT_ID);
    renderer.insertFont(BaseTheme::STATUS_NUMERIC_FONT_ID, smallFontFamily);
@@ -4684,7 +5438,7 @@
    renderer.insertFont(READER_STATUS_FONT_ID, smallFontFamily);
    renderer.insertFont(READER_ESTIMATE_FONT_ID, ui10FontFamily);
    renderer.setFallbackFont(READER_STATUS_FONT_ID, CJK_UI_8_FONT_ID);
-@@ -666,7 +666,9 @@
+@@ -666,7 +668,9 @@
    // enumeration proceed asynchronously so users do not pay this startup cost.
    delay(250);
  #endif
@@ -4694,7 +5448,7 @@
  #if LOG_SERIAL_HAS_TX_TIMEOUT
    logSerial.setTxTimeoutMs(1);  // This is a load-bearing 1. Do not modify.
  #endif
-@@ -766,10 +768,20 @@
+@@ -766,10 +770,20 @@
      return;
    }
  
@@ -4716,7 +5470,7 @@
    if (!settingsLoaded) SETTINGS.readerMenuStyle = CrossPointSettings::READER_MENU_LIST;
  #endif
    const auto onboardingMode =
-@@ -828,7 +840,7 @@
+@@ -828,7 +842,7 @@
        // Most devices return to sleep after a USB-powered cold boot.
        LOG_DBG("MAIN", "Wakeup reason: After USB Power");
  #if FREEINK_DEVICE_X4PRO || FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_PAPERMONO || FREEINK_DEVICE_EEGO_A4 || \
@@ -4725,7 +5479,7 @@
        // X4 Pro must stay awake so USB Serial/JTAG remains available after leaving
        // USB Drive and reconnecting the cable. Paper Mono has no armable GPIO wake
        // (its button is behind the PMIC). EEGO A4's post-flash reset reads as
-@@ -988,12 +1000,30 @@
+@@ -988,12 +1002,30 @@
      gpio.update();
    }
  
@@ -4756,7 +5510,17 @@
  #ifdef RICKYOS_STANDBY_DIAG
    standby_diag::dumpWhenAwake();
  #endif
-@@ -1049,7 +1079,9 @@
+@@ -1033,7 +1065,8 @@
+ 
+   gpio.setSharedConfirmPowerShortPressEmitsPower(SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP);
+   mappedInputManager.update();
+-#if FREEINK_DEVICE_READPICO
++  if (activityManager.standbyShowing()) mappedInputManager.suppressStandbyHomeActions();
++#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+   // Cancel before any handler can wait for the framebuffer lock. These are
+   // snapshot queries: they do not consume the gesture from its normal owner.
+ #if CROSSPOINT_EMULATED
+@@ -1049,7 +1082,9 @@
      activityManager.cancelIdleRender("touch", true);
    }
  #endif
@@ -4767,7 +5531,7 @@
    gpio.updateHapticFeedback(SETTINGS.hapticFeedbackLevel);
  #endif
    updateBluetoothLifecycle();
-@@ -1208,6 +1240,10 @@
+@@ -1208,6 +1243,10 @@
      return;
    }
    const unsigned long sleepTimeoutMs = SETTINGS.getSleepTimeoutMs();
@@ -4778,7 +5542,7 @@
    if (sleepTimeoutMs > 0 && !activityManager.preventAutoSleep() && millis() - lastActivityTime >= sleepTimeoutMs) {
      LOG_DBG("SLP", "Auto-standby after %lu ms of inactivity", sleepTimeoutMs);
      STANDBY_DIAG("auto-standby after %lus idle", sleepTimeoutMs / 1000);
-@@ -1310,12 +1346,13 @@
+@@ -1310,12 +1349,13 @@
    // flash, the AA pass re-running, and a frontlight dip under the refresh
    // load); the reader's status bar picks the charging state up on the next
    // page turn instead.

@@ -2,7 +2,7 @@
 
 #include "epd_internals.h"
 
-/** 默认表：GC16/GL16 完整 48 相（可选 MY_WAVEFORM_TRIM=1 裁成 36/37）+ 完备 DU */
+/** GC16/GL16 + 完备 DU；GL16_FAST 为阅读专用 37 相裁剪/保持对角线实验表。 */
 extern const EpdWaveform MY_WAVEFORM;
 
 /**

@@ -32,6 +32,7 @@ clang++ -std=c++17 -Wall -Wextra -Werror tests/test_plus_http_date.cpp -o .local
 python3 tests/test_plus_audio.py
 python3 tests/test_plus_frontlight_panel.py
 python3 tests/test_plus_standby_frontlight.py
+python3 tests/test_plus_standby_home.py
 python3 tests/test_plus_button_mapping.py
 python3 tests/test_plus_button_settings.py
 python3 tests/test_plus_control_center_layout.py
@@ -40,6 +41,7 @@ python3 tests/test_plus_haptic_input.py
 python3 tests/test_plus_recorder.py
 python3 tests/test_plus_recorder_ui.py
 python3 tests/test_plus_regional_gray.py
+python3 tests/test_plus_image_page_polarity.py
 python3 tests/test_plus_regional_raster.py
 python3 tests/test_plus_transparent_wallpaper.py
 python3 tests/test_plus_usb.py
@@ -47,6 +49,8 @@ python3 tests/test_plus_usb_remount.py
 python3 tests/test_plus_download_cancel.py
 
 python3 tests/test_plus_lcd_tail.py
+python3 tests/test_plus_line_timing.py
+python3 tests/test_plus_timed_neutral.py
 
 python3 tests/test_plus_font_reconnect_progress.py
 python3 tests/test_plus_index_budget.py
@@ -56,5 +60,12 @@ python3 tests/test_plus_tls_retry.py
 python3 tests/test_plus_font_source.py
 python3 tests/test_plus_boot_identity.py
 python3 tests/test_plus_reader_page_cache.py
+python3 tests/test_plus_reader_image_cancel.py
+python3 tests/test_plus_image_quality.py
+python3 tests/test_plus_reader_image_layout.py
+python3 tests/test_plus_reader_image_cache.py
+python3 tests/test_plus_reader_native_images.py
+python3 tests/test_plus_reader_waveform.py
+python3 tests/test_plus_direct_calibration.py
 python3 tests/test_plus_usb_retry.py
 python3 tests/test_plus_ota_manifest.py

@@ -1,4 +1,5 @@
 #include "lcd_driver.h"
+#include "line_timing.h"
 #include "epdiy.h"
 
 #ifndef __DECLARE_RCC_ATOMIC_ENV
@@ -151,6 +152,11 @@ typedef struct {
     int line_length_us;
     int ckv_period_us; // CKV 一行周期；S31 探测拉伸时可大于 line_length_us
     uint32_t ckv_tick_hz;
+    int ckv_period_ticks;
+    int default_line_cycles;
+    int default_ckv_high_us10;
+    bool frame_active;
+    int64_t frame_completed_us;
     int line_cycles;
     int lcd_res_h;
 
@@ -201,6 +207,8 @@ typedef struct {
     /// The number of lines of the display
     int display_lines;
     int native_height;
+    int default_display_lines;
+    int scan_first_line;
 } s3_lcd_t;
 
 static s3_lcd_t lcd = { 0 };
@@ -229,6 +237,8 @@ static IRAM_ATTR void lcd_finish_frame_from_isr(void) {
     lcd.line_source_cb = NULL;
     lcd_ll_stop(lcd.hal.dev);
     gdma_stop(lcd.dma_chan);
+    lcd.frame_completed_us = esp_timer_get_time();
+    __atomic_store_n(&lcd.frame_active, false, __ATOMIC_RELEASE);
     if (lcd.frame_done_cb != NULL) {
         lcd.frame_done_cb(lcd.frame_cb_payload);
     }
@@ -256,7 +266,7 @@ static IRAM_ATTR bool fill_bounce_buffer(uint8_t* buffer) {
             line[b] = (b & 1) ? 0x00 : 0x01;
         }
 #endif
-        epd_filter_white_border(&buffer[buffer_offset],(int)lcd.lines_fed,
+        epd_filter_white_border(&buffer[buffer_offset],lcd.scan_first_line+(int)lcd.lines_fed,
             lcd.line_bytes,lcd.native_height,lcd.config.white_border_pixels,border_whitening);
         lcd.lines_fed += 1;
     }
@@ -295,7 +305,8 @@ static void start_ckv_cycles(int cycles) {
 static void ckv_rmt_build_signal() {
     // 门极一行周期必须等于 LCD 一行时间；若偏短会出现「一行数据多次 CKV」→ 格子被拉扁。
     const int period_us = lcd.ckv_period_us > 0 ? lcd.ckv_period_us : 1;
-    const int period=(int)(((uint64_t)period_us*lcd.ckv_tick_hz+500000)/1000000);
+    const int period=lcd.ckv_period_ticks > 0 ? lcd.ckv_period_ticks
+        : (int)(((uint64_t)period_us*lcd.ckv_tick_hz+500000)/1000000);
     const int minimum=(lcd.ckv_tick_hz+999999)/1000000; // E0470A14-AF: high/low >=1us.
     if (period<2*minimum) return; // init precedes calculating the real line length.
     int high=(int)(((uint64_t)lcd.config.ckv_high_time*lcd.ckv_tick_hz+5000000)/10000000);
@@ -309,6 +320,64 @@ static void ckv_rmt_build_signal() {
     rmt_mem_ptr->level1 = 0;
     rmt_mem_ptr[1].val = 0;
 }
+
+bool epd_lcd_set_line_timing(int period_us10, int gate_high_us10) {
+    EpdLcdLineTiming timing;
+    const int data_cycles = lcd.lcd_res_h + lcd.config.le_high_time + lcd.config.line_front_porch;
+    // Keep the original source-data window plus >=1us gate-low protection,
+    // even when a test requests a shorter gate-high window.
+    const int protected_cycles = data_cycles + ((int)lcd.config.pixel_clock + 999999) / 1000000;
+    const int minimum_cycles = max(protected_cycles, data_cycles + lcd.config.dummy_clocks_after_data);
+    if (__atomic_load_n(&lcd.frame_active, __ATOMIC_ACQUIRE)
+        || !epd_lcd_plan_line_timing(lcd.config.pixel_clock, lcd.ckv_tick_hz, minimum_cycles,
+            lcd.default_line_cycles, lcd.default_ckv_high_us10, period_us10, gate_high_us10, &timing)) {
+        ESP_LOGE("EpdTiming", "rejected line/gate request %d/%d (0.1us)", period_us10, gate_high_us10);
+        return false;
+    }
+    if (lcd.line_cycles == timing.cycles && lcd.config.ckv_high_time == timing.high_us10) return true;
+    // DMA EOF precedes the final gate flush clocks. Let those finish before
+    // stopping/rebuilding RMT; never rewrite live pulse memory from an ISR.
+    while (lcd.frame_completed_us && esp_timer_get_time() - lcd.frame_completed_us < 6 * lcd.ckv_period_us)
+        esp_rom_delay_us(1);
+    taskENTER_CRITICAL(&frame_start_spinlock);
+    if (__atomic_load_n(&lcd.frame_active, __ATOMIC_ACQUIRE)) {
+        taskEXIT_CRITICAL(&frame_start_spinlock);
+        return false;
+    }
+    rmt_ll_tx_stop(&RMT, RMT_CKV_CHAN);
+    lcd.line_cycles = timing.cycles;
+    lcd.line_length_us = timing.period_us;
+    lcd.ckv_period_us = timing.period_us;
+    lcd.ckv_period_ticks = timing.period_ticks;
+    lcd.config.ckv_high_time = timing.high_us10;
+    ckv_rmt_build_signal();
+    taskEXIT_CRITICAL(&frame_start_spinlock);
+    ESP_LOGI("EpdTiming", "applied line=%d PCLK cycles / %d RMT ticks gate=%d.%dus (requested %d/%d)",
+        timing.cycles, timing.period_ticks, timing.high_us10 / 10, timing.high_us10 % 10,
+        period_us10, gate_high_us10);
+    return true;
+}
+
+#if RICKYOS_PLUS_GRAY_CALIBRATION
+bool epd_lcd_set_scan_window(int first, int lines) {
+    if (first == 0 && lines == 0) lines = lcd.default_display_lines;
+    // Single batch only; leave RMT's loop count within 10 bits.
+    if (first < 0 || lines < BOUNCE_BUF_LINES || lines % BOUNCE_BUF_LINES
+        || first > lcd.default_display_lines - lines || first + lines + 5 > 1023
+        || __atomic_load_n(&lcd.frame_active, __ATOMIC_ACQUIRE)) return false;
+    while (lcd.frame_completed_us && esp_timer_get_time() - lcd.frame_completed_us < 6 * lcd.ckv_period_us)
+        esp_rom_delay_us(1);
+    taskENTER_CRITICAL(&frame_start_spinlock);
+    if (__atomic_load_n(&lcd.frame_active, __ATOMIC_ACQUIRE)) {
+        taskEXIT_CRITICAL(&frame_start_spinlock);
+        return false;
+    }
+    lcd.scan_first_line = first;
+    lcd.display_lines = lines;
+    taskEXIT_CRITICAL(&frame_start_spinlock);
+    return true;
+}
+#endif
 
 /**
  * Configure the RMT peripheral for use as the CKV clock.
@@ -705,6 +774,8 @@ static void assign_lcd_parameters_from_config(
 
     // Make sure the bounce buffers divide the display height evenly.
     lcd.display_lines = (((display_height + 7) / 8) * 8);
+    lcd.default_display_lines = lcd.display_lines;
+    lcd.scan_first_line = 0;
 
     lcd.line_bytes = display_width / 4;
     lcd.lcd_res_h = lcd.line_bytes / (lcd.config.bus_width / 8);
@@ -1055,6 +1126,7 @@ void epd_lcd_set_pixel_clock_MHz(int frequency) {
     lcd.line_cycles = lcd.line_length_us * pclk / 1000000;
     // EOF 逐脉冲对比度崩；×2/×6 自由跑会撕成多列。先 1:1 自由跑保清晰，拉伸另查。
     lcd.ckv_period_us = lcd.line_length_us;
+    lcd.ckv_period_ticks = 0; // Pixel-clock changes establish a fresh board default.
     if (lcd.config.dummy_clocks_after_data) {
         // Apply Pico's data-window calculation to our 8-bit bus. Keep this
         // panel's >=1us low interval and ten post-data clocks (not Pico's pins
@@ -1072,6 +1144,8 @@ void epd_lcd_set_pixel_clock_MHz(int frequency) {
         (lcd.ckv_period_us*10-lcd.config.ckv_high_time)%10,
         lcd.line_cycles-lcd.lcd_res_h-lcd.config.le_high_time-lcd.config.line_front_porch,
         (unsigned)lcd.ckv_tick_hz);
+    lcd.default_line_cycles = lcd.line_cycles;
+    lcd.default_ckv_high_us10 = lcd.config.ckv_high_time;
     ESP_LOGI(TAG,
              "PROBE bounce=%d always_on=%d d0_toggle=%d | expect EOF≈%dus | scope: D0=GPIO8 "
              "XCL=GPIO%d XLE=GPIO%d CKV=GPIO%d",
@@ -1124,7 +1198,10 @@ static void log_lcd_suspects(void) {
 }
 #endif
 
-void IRAM_ATTR epd_lcd_start_frame() {
+int64_t IRAM_ATTR epd_lcd_start_frame_at(int64_t scan_at_us) {
+    taskENTER_CRITICAL(&frame_start_spinlock);
+    __atomic_store_n(&lcd.frame_active, true, __ATOMIC_RELEASE);
+    taskEXIT_CRITICAL(&frame_start_spinlock);
     int initial_lines = min(LINE_BATCH, lcd.display_lines);
 
     // 用上一相 EOF 间隔反推行周期（bounce 行一组）
@@ -1211,6 +1288,17 @@ void IRAM_ATTR epd_lcd_start_frame() {
     }
 #endif
 
+    // Deadline is the data-scan start, not preparation/prefix clocks. Prefix
+    // uses the SAME CKV period/high/low, never accelerated gate skipping.
+    const int prefix_us = (lcd.scan_first_line + 2) * lcd.ckv_period_us
+        + lcd.default_ckv_high_us10 / 10;
+    while (scan_at_us > 0) {
+        const int64_t left = scan_at_us - prefix_us - esp_timer_get_time();
+        if (left <= 0) break;
+        if (left > 2000) vTaskDelay(1);
+        else esp_rom_delay_us((int)min(left, 100));
+    }
+
     // enter a critical section to ensure the frame start timing is correct
     taskENTER_CRITICAL(&frame_start_spinlock);
 
@@ -1220,18 +1308,25 @@ void IRAM_ATTR epd_lcd_start_frame() {
     // esp_rom_delay_us(1);
     //  for picture clarity, it seems to be important to start CKV at a "good"
     //  time, seemingly start or towards end of line.
-    start_ckv_cycles(initial_lines + 5);
+    // Previously latched HOLD crosses preceding rows without shifting data.
+    // Diagnostic prefix is bounded by 688 rows (~12ms at board timing).
+    start_ckv_cycles(lcd.scan_first_line + initial_lines + 5);
     esp_rom_delay_us(lcd.ckv_period_us);
     gpio_set_level(lcd.config.bus.stv, 1);
-    esp_rom_delay_us(lcd.ckv_period_us);
-    esp_rom_delay_us(lcd.config.ckv_high_time / 10);
+    esp_rom_delay_us((lcd.scan_first_line + 1) * lcd.ckv_period_us);
+    // Gate-width tests must not also move XLE/data relative to CKV. Keep the
+    // proven startup phase anchor, independent of the selected gate width.
+    esp_rom_delay_us(lcd.default_ckv_high_us10 / 10);
 
     // start LCD engine
     lcd.frame_t0_us = esp_timer_get_time();
     lcd_ll_start(lcd.hal.dev);
 
     taskEXIT_CRITICAL(&frame_start_spinlock);
+    return lcd.frame_t0_us;
 }
+
+void IRAM_ATTR epd_lcd_start_frame() { (void)epd_lcd_start_frame_at(0); }
 
 #else
 

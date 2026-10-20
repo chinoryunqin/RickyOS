@@ -63,6 +63,51 @@
       "ported_sha256": "5e7f8e364bac855ff2496b7ea4c21841889679c127f4d810d3ff01656dbcede6"
     },
     {
+      "path": "lib/Epub/Epub/ReaderRenderSpec.h",
+      "baseline_sha256": "42f8e30e437a10b38a9659698a34f3b00bde48c1418958e9f1970ace61b42321",
+      "ported_sha256": "89f52b07f18cc4fe8d7b6787ce0a20c6420074716ed1f0e8c20c2b9f144ab0c9"
+    },
+    {
+      "path": "lib/Epub/Epub/Section.cpp",
+      "baseline_sha256": "01de5535d5106a94583eeeae5b1b59ad6878acbf75d2771f07d91e79a0bbde15",
+      "ported_sha256": "758dfc909e2be8d20c5b0be404839d5f12dcb932866721ba70387f9436ba2d44"
+    },
+    {
+      "path": "lib/Epub/Epub/blocks/ImageBlock.cpp",
+      "baseline_sha256": "cc01768f0aa7a90cae80b176f6856cc0219ae9e2251c09a1c41e2df9f13e902a",
+      "ported_sha256": "44069b564e18cfbb3138e7aba5633cfe90522450d93985a9def7e828c60be67b"
+    },
+    {
+      "path": "lib/Epub/Epub/blocks/ImageBlock.h",
+      "baseline_sha256": "eb2dd76470f1119fbc94e5cac2e2326ca087e5d4a58e5cf0a1a1a307c64dbddc",
+      "ported_sha256": "0a141971b94de7eead24fb20fed4b9facae814bd53c5a45edf1f7d86d66fe0fc"
+    },
+    {
+      "path": "lib/Epub/Epub/converters/ImageDecoderFactory.cpp",
+      "baseline_sha256": "5e57b0225d135eefc225fa3ea1074627726e8d26278fcf1acd8182a297f840a4",
+      "ported_sha256": "21b6f134ff4dc099c3e4bdd9fb313630910d21fb963ed93fa5ee8628ad79861d"
+    },
+    {
+      "path": "lib/Epub/Epub/converters/JpegToFramebufferConverter.cpp",
+      "baseline_sha256": "cee4267399fa69f4eb8350a756c170dfb868ecb716b87ca28f3f94c6a4da485c",
+      "ported_sha256": "0c655578222d115bb520476e98656b97d5bbe7eef166a14d1000be77f1847b2d"
+    },
+    {
+      "path": "lib/Epub/Epub/converters/PngToFramebufferConverter.cpp",
+      "baseline_sha256": "9c47bdd5169c5a5df56da843e5f7f33d2659f66a86e1dc717473577d59ea0ea9",
+      "ported_sha256": "41b26e4b552368f047baa151628d4004f3010b18db6bf1baf80115be6d54b03f"
+    },
+    {
+      "path": "lib/Epub/Epub/parsers/ChapterHtmlSlimParser.cpp",
+      "baseline_sha256": "4327cec5abfe03692da0280846862a29b3491449ba1ca9008f4503f6beb26fef",
+      "ported_sha256": "49b22c10b293fd7da619a6ced235b68576fd05606db159e5265373c155dce23b"
+    },
+    {
+      "path": "lib/Epub/Epub/parsers/ChapterHtmlSlimParser.h",
+      "baseline_sha256": "21097841f36c684a9e8790c5fa33d8ad02a7097542d5c7bdc3dbe53e981eb4a7",
+      "ported_sha256": "8bc0ede3c94c11b53f6d74d45053144bf9823de12537333e0a01d60283f31ad7"
+    },
+    {
       "path": "lib/I18n/translations/chinese.yaml",
       "baseline_sha256": "021ec5b9e5880155fea752af9c60ce83a259dd69131f9bd12ffe0ca59e3366bd",
       "ported_sha256": "6ef23867e9cdb93e0d69dccc2670ce7892440767a30d92ddd208a7a6d14f24bb"
@@ -178,6 +223,11 @@
       "ported_sha256": "46a11b070180e21fdcd8e0193b138804bb8a3070817cb14416ecdee34b544a9a"
     },
     {
+      "path": "scripts/tests/test_reader_page_cache.py",
+      "baseline_sha256": "7153d307adee5a6960f252e680077353bb32ef22105d7cd5911554b492602b1e",
+      "ported_sha256": "2ee47d2f8159d8ec1649193173272b6de5f9f3f09b77c99ce7437710f9193ba4"
+    },
+    {
       "path": "scripts/tests/test_rickyos_app_profile.py",
       "baseline_sha256": "dcea506c3ba494d742ca22a63a8af5823e296d723d415f42ca2dbd68b54c712d",
       "ported_sha256": "7c59000e6852cb1ba53d405d58d000393e5ad735afaf8e4fb41e11de63c3fdac"
@@ -200,12 +250,12 @@
     {
       "path": "src/MappedInputManager.cpp",
       "baseline_sha256": "6cb329fd1abfcff7b2537405b9cad92aa4c78e94fddefe3086d2fb6650ca60c7",
-      "ported_sha256": "0aa6b0f0866962ff9f74cec65ac30cce0899a881bb4f6e9ae4f541df0668c502"
+      "ported_sha256": "542d7c053e97f390dd08909f51509a91e1cd622a27fb9337904602a775d8282e"
     },
     {
       "path": "src/MappedInputManager.h",
       "baseline_sha256": "f463ca3c5112b4f0c510513c96d384aecd87ebce778545982cdc13d8024be352",
-      "ported_sha256": "e3982d0844219d052d1e60bd7bca3164b4fd91c9101ae71188ce3c0cb878621d"
+      "ported_sha256": "33590ba4b82b26db145638ea41ae01a8cbd6d0020e0865f80269aed58fdeb0ba"
     },
     {
       "path": "src/activities/ActivityManager.cpp",
@@ -290,7 +340,7 @@
     {
       "path": "src/activities/reader/EpubReaderActivity.cpp",
       "baseline_sha256": "330723cad52ac629fa1451c9ca90cffff0a04b06e0266861e092ff93e8ffa1c9",
-      "ported_sha256": "9fee18a58fd5396596f04c6e72d384e055da1626c07aacf836fd5acae801ea24"
+      "ported_sha256": "8217b5dc0ae68cf305629ec95e4577da5ed28daf2fe04eb006d65f83d48dc53f"
     },
     {
       "path": "src/activities/reader/EpubReaderActivity.h",
@@ -400,7 +450,7 @@
     {
       "path": "src/main.cpp",
       "baseline_sha256": "a9593200335b30dace971723992905ac8ce0beb05159ecb6d17d837bdb73fdc5",
-      "ported_sha256": "fdc5fcd5a4b482367dd4336390a178606ba6def0d0f77f4b76e64aed16e85880"
+      "ported_sha256": "73f8630ba1140ee895cbaa0e25e1498a437c3145e40c9febfda03709dcebe5d4"
     },
     {
       "path": "src/network/CrossPointWebServer.cpp",

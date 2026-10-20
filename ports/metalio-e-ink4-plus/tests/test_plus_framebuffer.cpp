@@ -42,6 +42,34 @@ int main() {
     for (size_t x = 0; x < 8; ++x)
       assert(pixel(guarded.data() + 1, x) == ((bits >> (7 - x)) & 1 ? 15 : 0));
   }
+  // All four legacy image/glyph gray levels, in every eight-pixel arrangement.
+  // The two masks select shades; black and white come from the immutable base.
+  for (unsigned pattern = 0; pattern < 65536; ++pattern) {
+    uint8_t bw = 0, lsb = 0, msb = 0;
+    for (unsigned x = 0; x < 8; ++x) {
+      const unsigned level = (pattern >> (x * 2)) & 3;
+      if (level == 3) bw |= 0x80u >> x;
+      if (level == 1) lsb |= 0x80u >> x;
+      if (level == 1 || level == 2) msb |= 0x80u >> x;
+    }
+    std::array<uint8_t, 4> base{};
+    std::array<uint8_t, 6> frame{0xa5, 0, 0, 0, 0, 0x5a};
+    freeink::plus::expandMonochrome(&bw, 1, base.data());
+    freeink::plus::stageOverlayLsb(base.data(), &lsb, 1, frame.data() + 1);
+    freeink::plus::finishOverlayMsb(base.data(), &msb, 1, frame.data() + 1);
+    assert(frame.front() == 0xa5 && frame.back() == 0x5a);
+    for (unsigned x = 0; x < 8; ++x)
+      assert(pixel(frame.data() + 1, x) == ((pattern >> (x * 2)) & 3) * 5);
+  }
+  // Stray LSB marks must not turn white paper gray when MSB does not select it.
+  for (uint8_t bw : {uint8_t(0), uint8_t(255), uint8_t(0x69)}) {
+    uint8_t lsb = 255, msb = 0;
+    std::array<uint8_t, 4> base{}, frame{};
+    freeink::plus::expandMonochrome(&bw, 1, base.data());
+    freeink::plus::stageOverlayLsb(base.data(), &lsb, 1, frame.data());
+    freeink::plus::finishOverlayMsb(base.data(), &msb, 1, frame.data());
+    assert(base == frame);
+  }
   // Detect reversed scan order and row-boundary corruption at the actual panel size.
   constexpr size_t width = 1216, height = 684, bytes = width * height / 8;
   std::vector<uint8_t> source(bytes, 0xff), destination(bytes * 4 + 2, 0xa5);
@@ -65,5 +93,5 @@ int main() {
   assert(pixel(destination.data() + 1, width + 1) == 7);
   for (auto marker : markers) if (marker != width)
     assert(pixel(destination.data() + 1, marker) == 15);
-  puts("Plus framebuffer: scan, guards and home-to-gray-page clearing passed");
+  puts("Plus framebuffer: scan, guards, 65536 overlay patterns and home-to-gray-page clearing passed");
 }

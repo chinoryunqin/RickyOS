@@ -1,5 +1,8 @@
 #include "MetalioPlusDriver.h"
 #include <PlusFramebuffer.h>
+#if RICKYOS_PLUS_GRAY_CALIBRATION
+#include <PlusGrayCalibration.h>
+#endif
 #include <metalio_epd.h>
 #include <epd_board_metalio_eink4_plus.h>
 #include <esp_log.h>
@@ -60,15 +63,22 @@ class MetalioPlusDriver final : public PanelDriver {
   PanelGeometry geometry() const override { return {1216, 684, 152, 103968}; }
   bool usesExternalBus() const override { return true; }
   void begin(EpdBus&) override {
+    overlayStage_ = 0;
     ready_ = MetalioEpd_Init();
     state_ = OpticalState::Unknown;
     if (!ready_) ESP_LOGE("PlusDisplay", "panel initialization failed");
   }
   void deepSleep(EpdBus&) override {
+    discardOverlay();
     if (ready_) epd_poweroff();
   }
   OpticalState opticalState() const override { return state_; }
   void display(EpdBus&, const uint8_t* fb, const uint8_t*, RefreshMode mode, bool turnOff) override {
+#if RICKYOS_PLUS_GRAY_CALIBRATION
+    calibrationHeld_ = false;  // Home/menu/BW navigation exits the diagnostic.
+    calibrationShown_ = false;  // Returning to a book can open the card again.
+#endif
+    overlayStage_ = 0;
     nextGrayProfile = 0;
     ledger_ = {};
     if (!ready_ || !fb) return;
@@ -87,6 +97,7 @@ class MetalioPlusDriver final : public PanelDriver {
     (void)turnOff;
   }
   uint8_t* beginGrayscale16() override {
+    overlayStage_ = 0;
     auto* hl = ready_ ? MetalioEpd_Hl() : nullptr;
     if (!hl || !hl->front_fb) return nullptr;
     plus::clearGrayscale(hl->front_fb, geometry().bufferSize * 4);
@@ -103,13 +114,27 @@ class MetalioPlusDriver final : public PanelDriver {
     const uint8_t profile = nextGrayProfile;
     nextGrayProfile = 0;
     if (!ready_) return false;
+#if RICKYOS_PLUS_GRAY_CALIBRATION
+    // Generic retained redraws (profile 0), reading and cycle redraws must not
+    // erase the samples before photographing. Only explicit UI navigation or
+    // the B/W display path leaves the card; either route re-arms it.
+    if (calibrationHeld_ && profile != 4) return true;
+    if (profile == 4) calibrationShown_ = false;
+    if (!calibrationShown_ && profile == 1) {
+      calibrationShown_ = true;
+      return showCalibration();
+    }
+    calibrationHeld_ = false;
+#endif
     bool success;
     if (profile == 4 && state_ != OpticalState::Unknown) {
       success = refreshUi();
     } else {
       ledger_ = {};
       const bool full = profile != 1;
-      success = refresh(MetalioEpd_Hl(), full ? MODE_GC16 : MODE_GL16, full) == EPD_DRAW_SUCCESS;
+      // Only an ordinary reader turn selects the short/held-diagonal variant. UI,
+      // manual/cycle cleanup and an unknown optical baseline keep their tables.
+      success = refresh(MetalioEpd_Hl(), full ? MODE_GC16 : MODE_GL16_FAST, full) == EPD_DRAW_SUCCESS;
     }
     state_ = success ? OpticalState::Gray : OpticalState::Unknown;
 #if RICKYOS_PLUS_SCREEN_DUMP
@@ -120,11 +145,97 @@ class MetalioPlusDriver final : public PanelDriver {
     return success;
   }
   void cancelGrayscale16() override {
+    overlayStage_ = 0;
     nextGrayProfile = 0;
     if (lastProxy_ && state_ != OpticalState::Unknown) restoreBaseline(lastProxy_);
   }
-  void requestResync(uint8_t) override { state_ = OpticalState::Unknown; ledger_ = {}; nextGrayProfile = 0; }
+  void requestResync(uint8_t) override {
+    overlayStage_ = 0;
+    state_ = OpticalState::Unknown;
+    ledger_ = {};
+    nextGrayProfile = 0;
+  }
+  GrayscaleCapabilities grayscaleCapabilities(GrayscaleMode mode = GrayscaleMode::Overlay) const override {
+    if (mode != GrayscaleMode::Overlay) return {};
+    return {GrayscaleEncoding::OverlayMasks, GrayscaleBase::Separate, false, false, false};
+  }
+  void copyGrayscaleLsb(EpdBus&, const uint8_t* lsb) override {
+    discardOverlay();
+    auto* hl = ready_ ? MetalioEpd_Hl() : nullptr;
+    if (!lsb || !hl || !hl->front_fb || !hl->back_fb || state_ != OpticalState::Bw) return;
+    plus::stageOverlayLsb(hl->back_fb, lsb, geometry().bufferSize, hl->front_fb);
+    overlayStage_ = 1;
+  }
+  void copyGrayscaleMsb(EpdBus&, const uint8_t* msb) override {
+    auto* hl = ready_ ? MetalioEpd_Hl() : nullptr;
+    if (overlayStage_ != 1 || !msb || !hl || !hl->front_fb || !hl->back_fb || state_ != OpticalState::Bw) {
+      discardOverlay();
+      return;
+    }
+    plus::finishOverlayMsb(hl->back_fb, msb, geometry().bufferSize, hl->front_fb);
+    overlayStage_ = 2;
+  }
+  void displayGray(EpdBus&, const uint8_t*, bool, const unsigned char* lut, bool factoryMode) override {
+    // fb is the final MSB selector, not the page. Never use PanelDriver's
+    // default display(fb): it turns untouched page margins into black ink.
+    if (overlayStage_ != 2 || lut || state_ != OpticalState::Bw) {
+      discardOverlay();
+      return;
+    }
+    overlayStage_ = 0;
+    nextGrayProfile = 0;
+    ledger_ = {};
+    const auto result = refresh(MetalioEpd_Hl(), factoryMode ? MODE_GC16 : MODE_GL16, factoryMode);
+    state_ = result == EPD_DRAW_SUCCESS ? OpticalState::Gray : OpticalState::Unknown;
+    if (result != EPD_DRAW_SUCCESS) ESP_LOGE("PlusDisplay", "overlay refresh failed: 0x%x", result);
+  }
+  void cleanupGrayscaleBuffers(EpdBus&, const uint8_t*) override { discardOverlay(); }
  private:
+#if RICKYOS_PLUS_GRAY_CALIBRATION
+  bool showCalibration() {
+    auto* hl = MetalioEpd_Hl();
+    if (!hl || !hl->front_fb || !hl->back_fb) return false;
+    const plus::GrayCalibrationCard card{geometry().width, geometry().height};
+    state_ = OpticalState::Unknown;  // Calibration always starts with a physical white clear.
+    card.initial(hl->front_fb);
+    auto result = refresh(hl, MODE_GC16, true);
+    if (result == EPD_DRAW_SUCCESS) {
+      // refresh() publishes the physically driven reference and white sample
+      // interiors. Never invent a white baseline without physically drawing it.
+      EpdRect cells[16];
+      for (int i = 0; i < 16; ++i) {
+        const int left = card.boundary(i), right = card.boundary(i + 1);
+        cells[i] = {card.lower(), geometry().height - right + 1, card.bandHeight(), right - left - 3};
+      }
+      const int64_t started = esp_timer_get_time();
+      epd_poweron();
+      if (epd_board_metalio_eink4_plus_tps_ok()) {
+        result = epd_calibrate_timed_samples(cells, 16);
+      } else {
+        result = EPD_DRAW_EMPTY_LINE_QUEUE;
+      }
+      epd_poweroff();
+      ESP_LOGI("PlusDisplay", "CALIBRATION timed-drive 3..150ms then HOLD result=0x%x ms=%lld", result,
+               (esp_timer_get_time() - started) / 1000);
+    }
+    // Sample codes are pulse indices, NOT measured optical gray values.
+    // Force a physical clean when leaving this card; do not treat its targets
+    // as a valid reading baseline or apply general grayscale deltas to it.
+    state_ = OpticalState::Unknown;
+    ledger_ = {};
+    lastProxy_ = nullptr;
+    calibrationHeld_ = result == EPD_DRAW_SUCCESS;
+    return calibrationHeld_;
+  }
+  bool calibrationShown_ = false;
+  bool calibrationHeld_ = false;
+#endif
+  void discardOverlay() {
+    auto* hl = ready_ ? MetalioEpd_Hl() : nullptr;
+    if (overlayStage_ && hl && hl->front_fb && hl->back_fb && state_ != OpticalState::Unknown)
+      memcpy(hl->front_fb, hl->back_fb, geometry().bufferSize * 4);
+    overlayStage_ = 0;
+  }
   void restoreProxy(uint8_t* proxy) {
     const auto* gray = MetalioEpd_Hl()->back_fb;
     for (size_t i = 0; i < geometry().bufferSize; ++i) {
@@ -193,6 +304,7 @@ class MetalioPlusDriver final : public PanelDriver {
   }
   ricky::gray::Ledger ledger_;
   uint8_t* lastProxy_ = nullptr;
+  uint8_t overlayStage_ = 0;  // 0: none, 1: LSB staged, 2: complete native target.
   bool ready_ = false;
   OpticalState state_ = OpticalState::Unknown;
 };

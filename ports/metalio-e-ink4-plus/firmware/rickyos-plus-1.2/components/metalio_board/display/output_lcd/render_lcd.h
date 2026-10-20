@@ -17,3 +17,6 @@ void lcd_do_update(RenderContext_t* ctx);
  * In LCD mode, both threads do the same thing.
  */
 void lcd_calculate_frame(RenderContext_t* ctx, int thread_id);
+#if RICKYOS_PLUS_GRAY_CALIBRATION
+enum EpdDrawError epd_timed_samples_lcd(RenderContext_t* ctx, const EpdRect* cells, int count);
+#endif

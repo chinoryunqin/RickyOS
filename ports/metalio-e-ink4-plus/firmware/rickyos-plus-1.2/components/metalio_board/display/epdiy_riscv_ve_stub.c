@@ -182,7 +182,7 @@ bool epd_pixel_order_selftest(void) {
     if (!pair.build_func || !pair.lookup_func) return false;
     for (int m=0;m<MY_WAVEFORM.num_modes;++m) {
         const EpdWaveformMode* mode=MY_WAVEFORM.mode_data[m];
-        if (mode->type!=MODE_GC16 && mode->type!=MODE_GL16) continue;
+        if (mode->type!=MODE_GC16 && mode->type!=MODE_GL16 && mode->type!=MODE_GL16_FAST) continue;
         const EpdWaveformPhases* phases=mode->range_data[0];
         for (int f=0;f<phases->phases;++f) {
             pair.build_func((uint8_t*)lut,phases,f);

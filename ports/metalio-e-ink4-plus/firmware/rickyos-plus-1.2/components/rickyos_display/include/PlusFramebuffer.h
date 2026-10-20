@@ -22,4 +22,31 @@ inline void expandMonochrome(const uint8_t* source, size_t sourceBytes, uint8_t*
     }
   }
 }
+
+// Legacy overlay selectors are NOT monochrome pages: (LSB, MSB) = 11 is
+// dark gray, 01 light gray, 00 keeps the B/W base. Reuse the native front
+// buffer to retain the LSB marker, with no additional full-screen allocation.
+// The caller must provide an already committed B/W base (levels 0 / 15).
+inline void stageOverlayLsb(const uint8_t* base, const uint8_t* lsb, size_t sourceBytes, uint8_t* frame) {
+  for (size_t i = 0; i < sourceBytes; ++i) {
+    for (unsigned pair = 0; pair < 4; ++pair) {
+      uint8_t value = base[i * 4 + pair];
+      if (lsb[i] & (0x80u >> (pair * 2))) value = (value & 0xf0) | 5;
+      if (lsb[i] & (0x40u >> (pair * 2))) value = (value & 0x0f) | 0x50;
+      frame[i * 4 + pair] = value;
+    }
+  }
+}
+
+inline void finishOverlayMsb(const uint8_t* base, const uint8_t* msb, size_t sourceBytes, uint8_t* frame) {
+  for (size_t i = 0; i < sourceBytes; ++i) {
+    for (unsigned pair = 0; pair < 4; ++pair) {
+      const uint8_t staged = frame[i * 4 + pair];
+      const uint8_t original = base[i * 4 + pair];
+      const uint8_t low = (msb[i] & (0x80u >> (pair * 2))) ? ((staged & 15) == 5 ? 5 : 10) : original & 15;
+      const uint8_t high = (msb[i] & (0x40u >> (pair * 2))) ? ((staged >> 4) == 5 ? 5 : 10) : original >> 4;
+      frame[i * 4 + pair] = low | (high << 4);
+    }
+  }
+}
 }

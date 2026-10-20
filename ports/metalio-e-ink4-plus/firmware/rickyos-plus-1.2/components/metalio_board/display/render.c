@@ -46,6 +46,12 @@ const int clear_cycle_time = 15;
 
 static RenderContext_t render_context;
 
+#if defined(RENDER_METHOD_LCD) && RICKYOS_PLUS_GRAY_CALIBRATION
+enum EpdDrawError epd_calibrate_timed_samples(const EpdRect* cells, int count) {
+    return epd_timed_samples_lcd(&render_context, cells, count);
+}
+#endif
+
 void epd_push_pixels(EpdRect area, short time, int color) {
     render_context.area = area;
 #ifdef RENDER_METHOD_LCD

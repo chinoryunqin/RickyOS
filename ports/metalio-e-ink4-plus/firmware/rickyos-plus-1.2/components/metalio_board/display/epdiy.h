@@ -521,6 +521,10 @@ void epd_push_pixels(EpdRect area, short time, int color);
  *      If you don't have special waveforms, use `EPD_BUILTIN_WAVEFORM`.
  * @returns `EPD_DRAW_SUCCESS` on sucess, a combination of error flags otherwise.
  */
+#if RICKYOS_PLUS_GRAY_CALIBRATION
+/** Private known-white calibration; caller owns power/optical invalidation. */
+enum EpdDrawError epd_calibrate_timed_samples(const EpdRect* cells, int count);
+#endif
 enum EpdDrawError epd_draw_base(
     EpdRect area,
     const uint8_t* data,
