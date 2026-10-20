@@ -36,14 +36,14 @@ struct ReaderRenderSpec {
   // Lines are laid out as columns (VerticalText.h): the caller swaps the viewport so
   // viewportWidth is the column height and viewportHeight the width the columns fill.
   bool verticalText = false;
-#if FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
   // Chapter art can extend into the horizontal text margins, never into a
   // decorated reading frame. Part of the Plus section-cache layout key.
   uint16_t imageOutset = 0;
 #endif
 
   bool operator==(const ReaderRenderSpec& other) const {
-#if FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
     if (imageOutset != other.imageOutset) return false;
 #endif
     return fontId == other.fontId && lineCompression == other.lineCompression &&

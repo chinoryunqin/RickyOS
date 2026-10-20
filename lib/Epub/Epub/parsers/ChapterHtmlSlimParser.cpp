@@ -24,8 +24,8 @@
 #include "Epub/converters/ImageDimsProbe.h"
 #include "Epub/converters/ImageToFramebufferDecoder.h"
 #include "Epub/htmlEntities.h"
-#if FREEINK_DEVICE_METALIO_PLUS
-#include <PlusReaderImageLayout.h>
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
+#include "Epub/ReaderImageLayout.h"
 #endif
 
 // Minimum file size (in bytes) to show indexing popup - smaller chapters don't benefit from it
@@ -1188,11 +1188,11 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
                   LOG_DBG("EHP", "Display size: %dx%d (scale %.2f)", displayWidth, displayHeight, scale);
                 }
 
-#if FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
                 // Resolve before page breaking / ImageBlock serialization so the
                 // taller full-width art never covers following text. Text margins
-                // and the shared Pico/C3 layout remain unchanged.
-                if (plusReaderImage::fitChapterArt(dims.width, dims.height, self->viewportWidth,
+                // and the A4 layout remain unchanged.
+                if (readerImage::fitChapterArt(dims.width, dims.height, self->viewportWidth,
                                                    self->viewportHeight, self->imageOutset, displayWidth,
                                                    displayHeight)) {
                   LOG_DBG("EHP", "Chapter art fits reading width: %dx%d", displayWidth, displayHeight);

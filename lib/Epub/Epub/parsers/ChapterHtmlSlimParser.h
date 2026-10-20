@@ -67,7 +67,7 @@ class ChapterHtmlSlimParser {
   uint8_t paragraphAlignment;
   uint16_t viewportWidth;
   uint16_t viewportHeight;
-#if FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
   uint16_t imageOutset = 0;
 #endif
   bool hyphenationEnabled;
@@ -250,7 +250,7 @@ class ChapterHtmlSlimParser {
   }
   void setTxtChapterBoundaries(bool enabled) { txtChapterBoundaries = enabled; }
   void setParagraphIndentSpaces(const uint8_t spaces) { paragraphIndentSpaces = spaces; }
-#if FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
   void setImageOutset(const uint16_t pixels) { imageOutset = pixels; }
 #endif
 

@@ -21,8 +21,8 @@
 #include <WeReadStore.h>
 #include <WiFi.h>
 #include <esp_system.h>
-#if FREEINK_DEVICE_METALIO_PLUS
-#include <PlusReaderImageLayout.h>
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
+#include <Epub/ReaderImageLayout.h>
 #endif
 
 #include <algorithm>
@@ -662,13 +662,13 @@ ReaderRenderSpec EpubReaderActivity::effectiveRenderSpec(const uint16_t width, c
   auto spec = vertical ? SETTINGS.readerRenderSpec(height, width) : SETTINGS.readerRenderSpec(width, height);
   spec.collectTouchLinks = mappedInput.hasTouch() && !vertical;
   if (stylesDisabledForSession_) spec.embeddedStyle = false;
-#if FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
   const auto mode = readingMode::modeFor(SETTINGS.readingMode);
   if (mode == readingMode::Mode::Original || mode == readingMode::Mode::Immersive) {
     readingMode::Margins viewable;
     renderer.getOrientedViewableTRBL(&viewable.top, &viewable.right, &viewable.bottom, &viewable.left);
     const auto text = textMargins();
-    spec.imageOutset = plusReaderImage::horizontalOutset(text.left, text.right, viewable.left, viewable.right);
+    spec.imageOutset = readerImage::horizontalOutset(text.left, text.right, viewable.left, viewable.right);
   }
 #endif
   if (vertical) {
