@@ -31,8 +31,20 @@ MOBI/AZW3 和技能五子棋为此前 1.2.3 已发布功能，不重复列为新
 
 ## 发布状态
 
-准备更新官网 `RickyOS-web:gh-pages`、设备 OTA 镜像 `RickyOS-site:gh-pages` 和 COS `ota/plus/`。
+已更新官网 `RickyOS-web:gh-pages`、设备 OTA 镜像 `RickyOS-site:gh-pages` 和 COS `ota/plus/`。
 每处先上传不可变应用并核对摘要，之后才切换目录／OTA／说明。Pico 1.2.2 与 EEGO A4 1.2.5 的目录条目及 OTA 文件须逐字保持不变。
 源码仅推送私有 `RickyOS-dev` 的 Plus 分支；公网站点只接收发行文件，不接收实验源码、设备备份或原始串口日志。
 
-当前尚未切换线上入口，发布后的提交号与公网校验结果在本节续记。
+发布已完成：
+
+- 私有源码提交：`6b888abf287c0fc258ef4c1a06badb98c8b8216b`；位于 `codex/plus-1.2.3`（沿用既有维护分支名），已推送。
+- 私有发行标签：`plus-v1.2.4`，指向上述源码提交，不含设备备份或日志。
+- 官网资源提交 `5cf4122`，启用提交 `36e5cd9b46338ff08eb589868441a5feb268ac92`。
+- GitHub OTA 资源提交 `3a2b2d8`，启用提交 `b0c2d6aeb2a426965cdc353e9d9070be03ccb2e2`。
+- COS 先上传不可变应用并进行公网摘要核对，再上传说明、最后上传 Plus OTA 清单；未触及其他机型路径。
+- 官网入口：[安装](https://rickyaistudio.com/install.html)，选择 Metalio E-Ink4-Plus。
+- 在线更新清单：[官网](https://rickyaistudio.com/plus/ota.json)、[GitHub 镜像](https://chinoryunqin.github.io/RickyOS-site/plus/ota.json)、[COS](https://rickyos-1309217881.cos.ap-guangzhou.myqcloud.com/ota/plus/ota.json)。三处均为 1.2.4，文件长度／SHA256／审批字段一致。
+- 公网完整下载三处应用并核对同一 SHA256；20 个目录／说明／版本页面检查均匹配本地发布内容。最终一批 23 个目标初次有 22 个成功，COS 应用下载一次被对端重置；仅对此失败项单独重取后完整长度与 SHA256 通过。初次失败和重核报告均保留，未覆盖或隐去该网络异常。
+- Pico 1.2.2、A4 1.2.5 的目录条目及三处 OTA／说明保持原值；未删除历史二进制、`.nojekyll`、README 或其他站点文件。关于页只改 Plus 版本文字，不顺带改其他机型的既有展示。
+
+操作与公网复核结果保存在本地 `.local/release-plus124/`，公开摘要见下述发布记录。本轮未再次刷写测试机；正式应用与用户已经验收的候选逐字一致。未以主机测试替代新的真实设备 OTA 写入验证。
