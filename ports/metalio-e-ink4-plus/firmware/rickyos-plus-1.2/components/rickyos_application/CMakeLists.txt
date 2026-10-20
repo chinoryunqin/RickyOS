@@ -660,7 +660,7 @@ if("$ENV{RICKYOS_PLUS_READER_TIMING}" STREQUAL "1")
 endif()
 # The release version; a diagnostic build may set RICKYOS_PLUS_VERSION (e.g. an older
 # number to exercise an over-the-air update).
-set(RICKYOS_PLUS_APP_VERSION "1.2.0")
+set(RICKYOS_PLUS_APP_VERSION "1.2.3")
 if(NOT "$ENV{RICKYOS_PLUS_VERSION}" STREQUAL "")
   set(RICKYOS_PLUS_APP_VERSION "$ENV{RICKYOS_PLUS_VERSION}")
 endif()
