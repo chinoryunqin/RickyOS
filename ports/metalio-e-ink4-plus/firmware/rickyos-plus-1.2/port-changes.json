@@ -510,12 +510,12 @@
     {
       "path": "src/activities/settings/FontDownloadActivity.cpp",
       "baseline_sha256": "f4cb1fa336fa62a66e765b574a65dd68cd1587c5b05cbcd14513b1cea0678f9d",
-      "ported_sha256": "2748cfef5693adeee6505220c5e6adbf3d723c4f00fed7b49d83ab9038b0113f"
+      "ported_sha256": "139d27cd82ab1b45fec6c48cb21043563ecd306c06c86c482023c492e0ea8e8c"
     },
     {
       "path": "src/activities/settings/FontDownloadActivity.h",
       "baseline_sha256": "5b4eef1fea6533015d61ead60bb307743d2bd25e49193852966a786edb96ad99",
-      "ported_sha256": "36d34d30c59322756f9357dd45a515bea877a9a1efe24a63d1f3b451f2eb6448"
+      "ported_sha256": "e604acbf521a8214711cbb081172f0d4358c8ae4f041904b0bb8fb257cf595f2"
     },
     {
       "path": "src/activities/settings/HomeButtonSettingsActivity.cpp",

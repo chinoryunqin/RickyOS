@@ -186962,7 +186962,7 @@
  #if defined(CONFIG_IDF_TARGET_ESP32C3)
    if (!readingStatsReleased_) {
      RenderLock lock(*this);
-@@ -763,23 +764,59 @@
+@@ -763,23 +764,47 @@
  }
  
  void FontDownloadActivity::resetDownloadProgress(const size_t total) {
@@ -187011,25 +187011,13 @@
 +  {
 +    RenderLock lock(*this);
 +    std::memcpy(downloadSourceHost_, next, std::strlen(next) + 1);
-+    lastProgressRefreshMs_ = millis();
 +  }
++  // Diagnostics only: the download screen does not name the mirror.
 +  LOG_INF("FONT", "Download source host: %s", downloadSourceHost_);
-+  requestUpdateAndWait();
-+}
-+
-+const char* FontDownloadActivity::downloadSourceLabel() const {
-+  switch (classifyFontDownloadHost(downloadSourceHost_)) {
-+    case FontDownloadSource::Cos: return tr(STR_FONT_SOURCE_COS);
-+    case FontDownloadSource::JsDelivr: return tr(STR_FONT_SOURCE_JSDELIVR);
-+    case FontDownloadSource::Fastly: return tr(STR_FONT_SOURCE_FASTLY);
-+    case FontDownloadSource::GitHub: return tr(STR_FONT_SOURCE_GITHUB);
-+    case FontDownloadSource::Other: return downloadSourceHost_;
-+  }
-+  return downloadSourceHost_;
  }
  
  FontDownloadActivity::DownloadResult FontDownloadActivity::downloadFile(const ManifestFamily& family,
-@@ -806,7 +843,7 @@
+@@ -806,7 +831,7 @@
    }
  
    NetworkStartup::prepare(renderer);
@@ -187038,7 +187026,7 @@
      mappedInput.update();
      if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
        cancelRequested_ = true;
-@@ -817,6 +854,8 @@
+@@ -817,6 +842,8 @@
        goHomeRequested_ = true;
      }
      UiAppHost::routeTouch(mappedInput);
@@ -187047,7 +187035,7 @@
      updateDownloadProgress(fileStartProgress + std::min(downloaded, fileSize));
    };
    // A refused or dropped connection is retried, moving to the next host that carries
-@@ -833,9 +872,17 @@
+@@ -833,9 +860,17 @@
        delay(kRetryDelayMs);
      }
      const unsigned long started = millis();
@@ -187067,7 +187055,7 @@
    }
  
    if (result == HttpDownloader::ABORTED) {
-@@ -1411,6 +1458,20 @@
+@@ -1411,6 +1446,11 @@
            Rect{metrics.contentSidePadding, barY, pageWidth - metrics.contentSidePadding * 2, metrics.progressBarHeight},
            static_cast<int>(progress * 100), 100);
  
@@ -187076,25 +187064,15 @@
 +               static_cast<unsigned long>(downloadProgress_ / 1024),
 +               static_cast<unsigned long>((downloadTotal_ + 1023) / 1024));
 +      renderer.drawCenteredText(UI_10_FONT_ID, barY + metrics.progressBarHeight + metrics.verticalSpacing, transferred);
-+      if (downloadSourceHost_[0]) {
-+        char source[320];
-+        snprintf(source, sizeof(source), tr(STR_FONT_DOWNLOAD_SOURCE), downloadSourceLabel());
-+        const std::string fitted = renderer.truncatedText(UI_10_FONT_ID, source,
-+                                                        pageWidth - metrics.contentSidePadding * 2);
-+        renderer.drawCenteredText(UI_10_FONT_ID,
-+                                  barY + metrics.progressBarHeight + 2 * metrics.verticalSpacing + lineHeight,
-+                                  fitted.c_str());
-+      }
        const auto labels = mappedInput.mapLabels(tr(STR_CANCEL), "", "", "");
        GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
      } else if (state_ == COMPLETE) {
-@@ -1482,12 +1543,27 @@
+@@ -1482,12 +1522,19 @@
      const Rect content = SubpageLayout::contentRect(safeArea, metrics);
      const Rect textBounds = SubpageLayout::insetHorizontal(content, metrics.contentSidePadding);
      const int sectionGap = SubpageLayout::sectionGap(metrics);
 -    const int blockHeight = lineHeight + sectionGap + GUI.measureProgressBarHeight(renderer, metrics.progressBarHeight);
-+    const int sourceHeight = downloadSourceHost_[0] ? lineHeight + sectionGap : 0;
-+    const int blockHeight = 2 * lineHeight + 2 * sectionGap + sourceHeight +
++    const int blockHeight = 2 * lineHeight + 2 * sectionGap +
 +                            GUI.measureProgressBarHeight(renderer, metrics.progressBarHeight);
      int y = SubpageLayout::centeredTop(content, blockHeight);
      UITheme::drawCenteredText(renderer, textBounds, UI_10_FONT_ID, y, statusText.c_str());
@@ -187107,13 +187085,6 @@
 +             static_cast<unsigned long>((downloadTotal_ + 1023) / 1024));
 +    y += GUI.measureProgressBarHeight(renderer, metrics.progressBarHeight) + sectionGap;
 +    UITheme::drawCenteredText(renderer, textBounds, UI_10_FONT_ID, y, transferred);
-+    if (downloadSourceHost_[0]) {
-+      char source[320];
-+      snprintf(source, sizeof(source), tr(STR_FONT_DOWNLOAD_SOURCE), downloadSourceLabel());
-+      const std::string fitted = renderer.truncatedText(UI_10_FONT_ID, source, textBounds.width);
-+      y += lineHeight + sectionGap;
-+      UITheme::drawCenteredText(renderer, textBounds, UI_10_FONT_ID, y, fitted.c_str());
-+    }
  
      const auto labels = mappedInput.mapLabels(tr(STR_CANCEL), "", "", "");
      GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
@@ -187130,12 +187101,11 @@
    int downloadingFamilyIndex_ = -1;
    std::string errorMessage_;
    bool cancelRequested_ = false;
-@@ -149,6 +151,8 @@
+@@ -149,6 +151,7 @@
    void resetDownloadProgress(size_t total);
    void updateDownloadProgress(size_t completed);
    void finishDownloadProgress();
 +  void updateDownloadSource(const char* host);
-+  const char* downloadSourceLabel() const;
    DownloadResult downloadFile(const ManifestFamily& family, const ManifestFile& file);
    DownloadResult downloadFamily(ManifestFamily& family);
    void downloadSingle(int familyIndex);
