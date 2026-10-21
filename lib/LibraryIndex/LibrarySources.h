@@ -34,6 +34,11 @@ class LibrarySources {
   // Snapshot ONLY the old catalog, not the SD card, on first opt-in. This
   // preserves existing users' shelves without silently enrolling the root.
   static bool preserveLegacy();
+  // RickyOS keeps no pre-sources shelf: the Library is exactly the enrolled sources.
+  // Removes a snapshot an earlier build kept (books on the card are untouched).
+  static bool retireLegacy();
+  // Whether the reader has enrolled anything yet (the sources file exists).
+  static bool enrolled();
   static const char* legacyIndexPath();
 
  private:

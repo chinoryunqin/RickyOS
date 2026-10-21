@@ -141,12 +141,18 @@ void LibraryListActivity::onEnter() {
 
   // Dirty means an explicit update is available, not permission to walk the
   // card on entry. A retained catalog remains usable while imports are pending.
-  index.open(library::libraryIndexPath());
+  // Nothing enrolled yet: an index left by an earlier whole-card scan is not the
+  // Library, which starts empty until the reader adds folders or books.
+  if (library::LibrarySources::enrolled()) index.open(library::libraryIndexPath());
   degraded = index.isOpen() && index.ranksDegraded();
   if (index.isOpen() && index.dedupDegraded()) {
     LOG_ERR("LIB", "index was built without duplicate detection");
   }
   resolvePinned();
+  // A shelf an earlier build carried over from before sources: rebuild from the
+  // enrolled sources only (the import retires the snapshot first).
+  if (index.isOpen() && Storage.exists(library::LibrarySources::legacyIndexPath()))
+    library::LibraryIncoming::markUnknownChanges();
   transferCheckPending = library::LibraryIncoming::pending();
   transferCheckAt = millis() + 400;  // let the shelf paint first
 
@@ -483,7 +489,7 @@ void LibraryListActivity::reloadIndex() {
   index.close();
   searchTable.release();
   searchTableFailed = false;
-  index.open(library::libraryIndexPath());
+  if (library::LibrarySources::enrolled()) index.open(library::libraryIndexPath());
   degraded = index.isOpen() && index.ranksDegraded();
   resetAfterRebuild();
   swallowHeldReleases();

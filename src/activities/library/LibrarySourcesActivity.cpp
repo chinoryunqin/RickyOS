@@ -54,17 +54,12 @@ bool LibraryImportActivity::runImport() {
   if (loaded == library::LibrarySources::Load::Error || cancel.load()) return false;
   const auto action = request.action;
   using Action = LibraryImportRequest::Action;
-  bool narrowerFolder = false;
   if (action == Action::AddBook || action == Action::AddFolder) {
     HalFile target = Storage.open(request.path.c_str());
     if (!target || target.isDirectory() != (action == Action::AddFolder)) return false;
     const auto kind = action == Action::AddBook ? library::SourceKind::Book
                       : request.recursive       ? library::SourceKind::RecursiveFolder
                                                 : library::SourceKind::Folder;
-    for (uint16_t i = 0; i < sources->size(); ++i)
-      if (request.path == (*sources)[i].path && (*sources)[i].kind == library::SourceKind::RecursiveFolder &&
-          kind == library::SourceKind::Folder)
-        narrowerFolder = true;
     if (!sources->add(request.path.c_str(), kind)) return false;
   } else if (action == Action::ExcludeBook) {
     if (!sources->exclude(request.path.c_str())) return false;
@@ -74,18 +69,22 @@ bool LibraryImportActivity::runImport() {
   } else if (action == Action::RefreshSource) {
     if (request.source >= sources->size()) return false;
   }
-  if (loaded == library::LibrarySources::Load::Missing && !library::LibrarySources::preserveLegacy()) return false;
+  // The shelf before managed sources is not carried over: the Library starts empty
+  // and holds exactly what the reader enrolls.
+  if (!library::LibrarySources::retireLegacy()) return false;
   if (cancel.load() || !sources->save(true)) return false;
   library::markLibraryIndexDirty();
   library::BuildOptions build;
   build.sources = sources.get();
+  // Every merge keeps only books an enrolled source still covers, so nothing from
+  // an earlier whole-card index survives into the managed shelf.
   if (action == Action::ExcludeBook || action == Action::RemoveSource) {
     build.mergeExisting = true;
-    build.filterExistingSources = action == Action::RemoveSource;
+    build.filterExistingSources = true;
   }
   if (action == Action::AddBook || action == Action::AddFolder) {
     build.mergeExisting = true;
-    build.filterExistingSources = narrowerFolder;
+    build.filterExistingSources = true;
     for (uint16_t i = 0; i < sources->size(); ++i)
       if (request.path == (*sources)[i].path) {
         build.sourceToScan = i;
@@ -95,6 +94,7 @@ bool LibraryImportActivity::runImport() {
   if (action == Action::RefreshSource) {
     // One source re-read from the card; every other book replays from the index.
     build.mergeExisting = true;
+    build.filterExistingSources = true;
     build.sourceToScan = request.source;
   }
   build.context = this;

@@ -5,6 +5,8 @@
 #include <Epub.h>
 #include <HalClock.h>
 #include <JpegToBmpConverter.h>
+#include <LibraryBuilder.h>
+#include <LibraryIncoming.h>
 #include <Logging.h>
 #include <MD5Builder.h>
 #include <Memory.h>
@@ -2902,6 +2904,12 @@ bool Operation::remoteAppIdMatchesLocal() const {
          remote.appIdHash == WeReadProtocol::hashAppId(localAppId, strlen(localAppId));
 }
 
+void Operation::noteBookForLibrary() {
+  if (outputPath_.empty()) return;
+  library::LibraryIncoming::add(outputPath_.c_str());
+  library::markLibraryIndexDirty();
+}
+
 void Operation::persistInitialProgress() {
   const bool saved = initialProgressValid_ && initialProgressFraction_ > 0.0f
                          ? WeReadStore::saveInitialProgress(book_.bookId, initialProgressFraction_)
@@ -3139,6 +3147,7 @@ Operation::Event Operation::finishWholeBook(const std::string& source) {
     return fail(Error::SdCard);
   }
   if (!persistCoverOverride()) LOG_ERR("WR", "Failed to persist EPUB cover override");
+  noteBookForLibrary();
   cleanupTransient(bookDir_, "");
   if (!WeReadStore::saveSession(session_)) return fail(Error::SdCard);
   persistInitialProgress();
@@ -4228,6 +4237,7 @@ Operation::Event Operation::step(const WeReadStore::WorkCallback callback, void*
       }
       HalFile packaged;
       const uint64_t packageBytes = Storage.openFileForRead("WR", outputPath_, packaged) ? packaged.fileSize64() : 0;
+      noteBookForLibrary();
       LOG_INF("WR", "package complete: ms=%lu bytes=%llu images=%s", millis() - packageStartedAt,
               static_cast<unsigned long long>(packageBytes),
               options_.imagePolicy == WeReadStore::ImagePolicy::Embed ? "embed" : "exclude");

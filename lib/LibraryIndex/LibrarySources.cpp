@@ -180,6 +180,8 @@ bool LibrarySources::includes(const char* path) const {
   return false;
 }
 const char* LibrarySources::legacyIndexPath() { return kLegacy; }
+bool LibrarySources::retireLegacy() { return !Storage.exists(kLegacy) || Storage.remove(kLegacy); }
+bool LibrarySources::enrolled() { return Storage.exists(kPath); }
 bool LibrarySources::preserveLegacy() {
   if (Storage.exists(kPath) || Storage.exists(kLegacy)) return true;
   if (!recoverLibraryIndex()) return false;

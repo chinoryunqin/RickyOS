@@ -350,6 +350,9 @@ class Operation {
   bool sameRemotePosition() const;
   bool remoteAppIdMatchesLocal() const;
   void persistInitialProgress();
+  // The cached EPUB is on the card: the Library folds it in on its next visit when an
+  // enrolled source covers it (as for a browser upload).
+  void noteBookForLibrary();
   Error decideProgress();
   Error fetchReaderOnce();
   Error fetchShardOnce(const char* endpoint, const std::string& destination);
