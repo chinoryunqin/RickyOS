@@ -33,6 +33,9 @@ struct BlockStyle {
   bool textAlignDefined = false;   // true if text-align was explicitly set in CSS
   bool isRtl = false;              // true if resolved direction is RTL
   bool directionDefined = false;   // true if direction was explicitly set in CSS/HTML
+  // The book's CSS set a top or bottom margin: its spacing is the book's, and the reader's
+  // extra paragraph spacing is not added on top. Layout-only, not serialized.
+  bool verticalMarginDefined = false;
 
   // Set when this block was created by a <br> element. Used by startNewTextBlock to inject
   // a full line-height gap when the <br> block stays empty (section-break use case).
@@ -99,6 +102,7 @@ struct BlockStyle {
       result.marginBottom = std::max(child.marginBottom, marginBottom);
       result.paddingTop = static_cast<int16_t>(child.paddingTop + paddingTop);
       result.paddingBottom = static_cast<int16_t>(child.paddingBottom + paddingBottom);
+      result.verticalMarginDefined = child.verticalMarginDefined || verticalMarginDefined;
     }
 
     // Direction is not axis-specific. Inherit from parent when child doesn't define it.
@@ -123,6 +127,7 @@ struct BlockStyle {
     const auto maxHorizontalInsetPx = static_cast<int16_t>(emSize * MAX_HORIZONTAL_INSET_EM);
     // Resolve all CssLength values to pixels using the current font's em size and viewport width
     blockStyle.marginTop = cssStyle.marginTop.toPixelsInt16(emSize, vw);
+    blockStyle.verticalMarginDefined = cssStyle.hasMarginTop() || cssStyle.hasMarginBottom();
     blockStyle.marginBottom = cssStyle.marginBottom.toPixelsInt16(emSize, vw);
     blockStyle.marginLeft = std::min(cssStyle.marginLeft.toPixelsInt16(emSize, vw), maxHorizontalInsetPx);
     blockStyle.marginRight = std::min(cssStyle.marginRight.toPixelsInt16(emSize, vw), maxHorizontalInsetPx);

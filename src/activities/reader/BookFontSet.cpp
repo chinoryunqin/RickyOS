@@ -96,7 +96,7 @@ void BookFontSet::collectFaces() {
   if (!css || css->empty()) return;
   collected_ = true;
   // Revision of how looks are derived (ink mapping etc.): a change re-lays chapters out.
-  constexpr uint32_t kLookRevision = 3;  // 3: inline face / tone flush at element boundaries
+  constexpr uint32_t kLookRevision = 4;  // 4: book paragraph margins replace the reader spacing
   uint32_t hash = (2166136261u ^ kLookRevision) * 16777619u;
   const auto mix = [&hash](const std::string_view text) {
     for (const char c : text) {

@@ -2563,8 +2563,10 @@ void ChapterHtmlSlimParser::makePages() {
     currentPageNextY += blockStyle.paddingBottom;
   }
 
-  // Extra paragraph spacing: 0=off, else 0.5x/0.75x/1x/1.25x/1.5x line height.
-  if (extraParagraphSpacing > 0) {
+  // Extra paragraph spacing: 0=off, else 0.5x/0.75x/1x/1.25x/1.5x line height. A book that
+  // sets its own paragraph margins keeps exactly those while its styles are on; adding the
+  // reader's spacing on top roughly doubled the gaps of typeset books.
+  if (extraParagraphSpacing > 0 && !(embeddedStyle && blockStyle.verticalMarginDefined)) {
     constexpr float EXTRA_PARAGRAPH_SPACING_FACTORS[] = {0.0f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f};
     const float factor = extraParagraphSpacing < std::size(EXTRA_PARAGRAPH_SPACING_FACTORS)
                              ? EXTRA_PARAGRAPH_SPACING_FACTORS[extraParagraphSpacing]
