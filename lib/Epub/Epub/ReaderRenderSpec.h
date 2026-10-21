@@ -36,6 +36,9 @@ struct ReaderRenderSpec {
   // Lines are laid out as columns (VerticalText.h): the caller swaps the viewport so
   // viewportWidth is the column height and viewportHeight the width the columns fill.
   bool verticalText = false;
+  // Fingerprint of the book's usable fonts (BookFontSet); 0 = none or the book's styles off.
+  // Pagination measured words in those faces, so a change re-lays the chapter out.
+  uint32_t bookFontsKey = 0;
 #if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
   // Chapter art can extend into the horizontal text margins, never into a
   // decorated reading frame. Part of the Plus section-cache layout key.
@@ -53,6 +56,7 @@ struct ReaderRenderSpec {
            viewportWidth == other.viewportWidth && viewportHeight == other.viewportHeight &&
            hyphenationEnabled == other.hyphenationEnabled && embeddedStyle == other.embeddedStyle &&
            imageRendering == other.imageRendering && focusReadingEnabled == other.focusReadingEnabled &&
-           collectTouchLinks == other.collectTouchLinks && verticalText == other.verticalText;
+           collectTouchLinks == other.collectTouchLinks && verticalText == other.verticalText &&
+           bookFontsKey == other.bookFontsKey;
   }
 };

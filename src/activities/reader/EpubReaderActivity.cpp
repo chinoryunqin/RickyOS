@@ -673,6 +673,8 @@ ReaderRenderSpec EpubReaderActivity::effectiveRenderSpec(const uint16_t width, c
   auto spec = vertical ? SETTINGS.readerRenderSpec(height, width) : SETTINGS.readerRenderSpec(width, height);
   spec.collectTouchLinks = mappedInput.hasTouch() && !vertical;
   if (stylesDisabledForSession_) spec.embeddedStyle = false;
+  // Words are measured in the book's own faces only with its styles on.
+  spec.bookFontsKey = spec.embeddedStyle && bookFonts_ ? bookFonts_->key() : 0;
 #if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
   const auto mode = readingMode::modeFor(SETTINGS.readingMode);
   if (mode == readingMode::Mode::Original || mode == readingMode::Mode::Immersive) {

@@ -344,7 +344,7 @@ TEST_F(CssParserTest, FontFaceRulesResolveAgainstTheirStylesheet) {
                     "@font-face { font-family: \"cc\"; src: url(../Fonts/other.ttf); }\n"
                     "p { font-family: \"cc\"; }\n"),
             CssParser::ParseResult::Complete);
-  ASSERT_EQ(parser.fontFaceCount(), 3);
+  ASSERT_EQ(parser.fontFaceCount(), 4);
   EXPECT_EQ(parser.fontFaceAt(0).family, "cc");
   EXPECT_EQ(parser.fontFaceAt(0).path, "OEBPS/Fonts/cc.ttf");
   EXPECT_EQ(parser.fontFaceAt(1).family, "zw");
@@ -353,6 +353,9 @@ TEST_F(CssParserTest, FontFaceRulesResolveAgainstTheirStylesheet) {
   EXPECT_EQ(parser.fontFaceAt(2).family, "kt");
   EXPECT_EQ(parser.fontFaceAt(2).path, "");
   EXPECT_EQ(parser.fontFaceAt(2).category, CssParser::FontCategory::Kai);
+  // A repeated family is kept for the reader to fall through to.
+  EXPECT_EQ(parser.fontFaceAt(3).family, "cc");
+  EXPECT_EQ(parser.fontFaceAt(3).path, "OEBPS/Fonts/other.ttf");
   // The @font-face font-family names a face; only the p rule selects one.
   EXPECT_EQ(parser.ruleCount(), 1u);
   EXPECT_EQ(parser.familyAt(parser.resolveStyle("p", "").fontFamily), "\"cc\"");

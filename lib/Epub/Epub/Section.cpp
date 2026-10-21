@@ -59,18 +59,21 @@ namespace {
 //   90 / 91 - the same on the Read Pico (imageOutset header)
 //   92 / 93 - the same on the Metalio Plus (imageOutset header)
 //   94 / 95 - Read Pico: book faces collected during layout (v91 test builds had none)
+//   96 / 97 - bookFontsKey in the header (fingerprint of the book's usable faces)
+//   98 / 99 - the same on the Read Pico (imageOutset header)
+//  100 /101 - the same on the Metalio Plus (imageOutset header)
 // Boards without the imageOutset field come first: host tests read the first declaration.
 #if !FREEINK_DEVICE_METALIO_PLUS && !FREEINK_DEVICE_READPICO
-constexpr uint8_t SECTION_FILE_VERSION = 89;
+constexpr uint8_t SECTION_FILE_VERSION = 97;
 constexpr uint32_t IMAGE_LAYOUT_HEADER_SIZE = 0;
 #elif FREEINK_DEVICE_READPICO
 // A uint16 imageOutset follows verticalText, as on the Plus; its own number keeps a
 // card moved between devices from reading another board's pagination as its own.
-constexpr uint8_t SECTION_FILE_VERSION = 95;
+constexpr uint8_t SECTION_FILE_VERSION = 99;
 constexpr uint32_t IMAGE_LAYOUT_HEADER_SIZE = sizeof(uint16_t);
 #else
 // Plus-only v81 adds a uint16 imageOutset after verticalText; v83 collapses margins.
-constexpr uint8_t SECTION_FILE_VERSION = 93;
+constexpr uint8_t SECTION_FILE_VERSION = 101;
 constexpr uint32_t IMAGE_LAYOUT_HEADER_SIZE = sizeof(uint16_t);
 #endif
 // Written into the version field while a build is in progress; patched to
@@ -94,7 +97,7 @@ constexpr uint32_t HEADER_SIZE = sizeof(uint8_t) + sizeof(int) + sizeof(float) +
                                  sizeof(uint8_t) + sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint16_t) +
                                  sizeof(bool) + sizeof(bool) + sizeof(uint8_t) + sizeof(bool) + sizeof(bool) +
                                  sizeof(uint32_t) * 5 + sizeof(int8_t) + sizeof(uint8_t) + sizeof(uint8_t) +
-                                 sizeof(bool) + IMAGE_LAYOUT_HEADER_SIZE;
+                                 sizeof(bool) + IMAGE_LAYOUT_HEADER_SIZE + sizeof(uint32_t);
 // Called only between layout/render operations; no borrowed glyph pointer is live.
 void reclaimLayoutCaches(GfxRenderer& renderer, const char* stage) {
 #ifndef BOARD_HAS_PSRAM
@@ -161,7 +164,7 @@ void Section::writeSectionFileHeader(const ReaderRenderSpec& spec) {
                          sizeof(spec.focusReadingEnabled) + sizeof(spec.collectTouchLinks) + sizeof(uint32_t) +
                          sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) +
                          sizeof(spec.characterSpacing) + sizeof(spec.wordSpacingPercent) + sizeof(spec.verticalText) +
-                         IMAGE_LAYOUT_HEADER_SIZE,
+                         IMAGE_LAYOUT_HEADER_SIZE + sizeof(spec.bookFontsKey),
       "Header size mismatch");
   // Written as the incomplete sentinel; finalizeBuild() patches it to
   // SECTION_FILE_VERSION as the last step, committing the file.
@@ -185,6 +188,7 @@ void Section::writeSectionFileHeader(const ReaderRenderSpec& spec) {
 #if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
   serialization::writePod(file, spec.imageOutset);
 #endif
+  serialization::writePod(file, spec.bookFontsKey);
   serialization::writePod(file, pageCount);  // Placeholder for page count (will be initially 0, patched later)
   serialization::writePod(file, static_cast<uint32_t>(0));  // Placeholder for LUT offset (patched later)
   serialization::writePod(file, static_cast<uint32_t>(0));  // Placeholder for anchor map offset (patched later)
@@ -250,6 +254,8 @@ bool Section::loadSectionFile(const ReaderRenderSpec& spec) {
 #else
     const bool imageLayoutMatches = true;
 #endif
+    uint32_t fileBookFontsKey = 0;
+    headerValid = headerValid && serialization::readPod(file, fileBookFontsKey);
 
     if (!headerValid || spec.fontId != fileFontId || spec.lineCompression != fileLineCompression ||
         spec.extraParagraphSpacing != fileExtraParagraphSpacing || spec.firstLineIndent != fileFirstLineIndent ||
@@ -259,7 +265,7 @@ bool Section::loadSectionFile(const ReaderRenderSpec& spec) {
         spec.imageRendering != fileImageRendering || spec.focusReadingEnabled != fileFocusReadingEnabled ||
         spec.collectTouchLinks != fileCollectTouchLinks || spec.characterSpacing != fileCharacterSpacing ||
         spec.wordSpacingPercent != fileWordSpacingPercent || spec.verticalText != fileVerticalText ||
-        !imageLayoutMatches) {
+        !imageLayoutMatches || spec.bookFontsKey != fileBookFontsKey) {
       file.close();
       LOG_ERR("SCT", "Deserialization failed: Parameters do not match");
       clearCache();

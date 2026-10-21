@@ -596,13 +596,16 @@ TEST_F(SectionMemoryTest, MixedChapterCacheMatchesVerifiedLayout) {
   ASSERT_EQ(static_cast<uint8_t>(bytes[spacingOffset + 1]), 100);
   ASSERT_EQ(static_cast<uint8_t>(bytes[spacingOffset + 2]), 0);  // verticalText (v79), horizontal here
   bytes.erase(spacingOffset, 3);
+  // bookFontsKey (v96+): zero without book fonts; not part of the historical layout either.
+  for (size_t i = 0; i < 4; ++i) ASSERT_EQ(static_cast<uint8_t>(bytes[spacingOffset + i]), 0);
+  bytes.erase(spacingOffset, 4);
   const auto readOffset = [&bytes](size_t position) {
     uint32_t value;
     std::memcpy(&value, bytes.data() + position, sizeof(value));
     return value;
   };
   const auto adjustOffset = [&bytes, &readOffset](size_t position) {
-    const uint32_t value = readOffset(position) - 4;
+    const uint32_t value = readOffset(position) - 8;  // the 8 header bytes erased above
     std::memcpy(bytes.data() + position, &value, sizeof(value));
   };
   // pageCount follows spacing; the next five fields address tables in the file.

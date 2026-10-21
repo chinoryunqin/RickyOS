@@ -68,25 +68,50 @@ BookFontSet::~BookFontSet() {
   for (auto& face : faces_) unload(face);
 }
 
-void BookFontSet::open(const Epub& epub) { epub_ = &epub; }
+void BookFontSet::open(const Epub& epub) {
+  epub_ = &epub;
+  // Epub releases its CSS rules after load and reloads them only while a chapter is laid
+  // out. Read the faces now, from the cache, so the fingerprint is known before the first
+  // section is validated; the rules are released again right after.
+  CssParser* css = epub.getCssParser();
+  if (!css) return;
+  const bool loadedHere = css->empty() && css->hasCache() && css->loadFromCache() == CssParser::CacheLoadResult::Complete;
+  collectFaces();
+  if (loadedHere) css->clear();
+}
 
 void BookFontSet::collectFaces() {
-  // Epub keeps the CSS rules only while a chapter is laid out (they are released after
-  // load and reloaded from cache by createSectionFile), so the faces are read here, on
-  // the first font-family the layout asks about, and kept for the rest of the session.
   if (collected_ || !epub_) return;
   const CssParser* css = epub_->getCssParser();
   if (!css || css->empty()) return;
   collected_ = true;
+  uint32_t hash = 2166136261u;
+  const auto mix = [&hash](const std::string_view text) {
+    for (const char c : text) {
+      hash ^= static_cast<uint8_t>(c);
+      hash *= 16777619u;
+    }
+    hash ^= 0xFF;
+    hash *= 16777619u;
+  };
   for (uint8_t i = 0; i < css->fontFaceCount() && faces_.size() < kMaxFaces; ++i) {
     const CssParser::FontFace declared = css->fontFaceAt(i);
     if (declared.path.empty()) continue;  // a system-font name only (宋体 / 楷体 …)
+    bool known = false;
+    for (const auto& face : faces_) known = known || equalsCaseless(face.family, declared.family);
+    if (known) continue;  // an earlier declaration of this family already has a file
     Face face;
-    face.family.assign(declared.family.data(), declared.family.size());
     face.path.assign(declared.path.data(), declared.path.size());
+    size_t length = 0;
+    if (!epub_->getItemSize(face.path, &length) || length < 64 || length > kMaxFaceBytes) continue;
+    face.family.assign(declared.family.data(), declared.family.size());
+    mix(face.family);
+    mix(face.path);
     faces_.push_back(std::move(face));
   }
-  if (!faces_.empty()) LOG_INF("BOOKFONT", "%u book faces declared", static_cast<unsigned>(faces_.size()));
+  key_ = faces_.empty() ? 0 : (hash != 0 ? hash : 1);
+  LOG_INF("BOOKFONT", "%u of %u declared faces usable, key %08lx", static_cast<unsigned>(faces_.size()),
+          static_cast<unsigned>(css->fontFaceCount()), static_cast<unsigned long>(key_));
 }
 
 uint8_t BookFontSet::faceForFamily(const std::string_view candidates) {

@@ -29,9 +29,11 @@ class BookFontSet final : public bookfonts::Resolver {
   BookFontSet(const BookFontSet&) = delete;
   BookFontSet& operator=(const BookFontSet&) = delete;
 
-  // Remember the book; its faces are collected from the stylesheets during layout.
+  // Read the book's usable faces (a declared file that exists in the EPUB, first per family).
   void open(const Epub& epub);
   bool empty() const { return faces_.empty(); }
+  // Fingerprint of the usable faces, for the section cache key (0 = none).
+  uint32_t key() const { return key_; }
 
   uint8_t faceForFamily(std::string_view candidates) override;
   int fontIdFor(uint8_t face, int baseFontId, uint16_t size) override;
@@ -67,5 +69,6 @@ class BookFontSet final : public bookfonts::Resolver {
   GfxRenderer& renderer_;
   const Epub* epub_ = nullptr;
   bool collected_ = false;
+  uint32_t key_ = 0;
   std::vector<Face> faces_;
 };

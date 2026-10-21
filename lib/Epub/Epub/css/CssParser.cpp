@@ -514,8 +514,10 @@ bool CssParser::addFontFace(std::string_view family, const std::string_view path
   }
   if (family.empty() || (path.empty() && category == FontCategory::None)) return false;
   for (uint8_t i = 0; i < fontFaceCount_; ++i) {
-    // The first declaration of a family wins, as in a browser's first matching rule.
-    if (fontFaceAt(i).family == family) return false;
+    // Repeats of one family are kept in order: the reader takes the first whose file exists
+    // (books often declare a name twice, the first time for a file they never shipped).
+    const FontFace existing = fontFaceAt(i);
+    if (existing.family == family && existing.path == path && existing.category == category) return false;
   }
   if (fontFaceCount_ >= MAX_FONT_FACES || family.size() > UINT16_MAX || path.size() > UINT16_MAX ||
       faceCharsUsed_ + family.size() + path.size() > MAX_FACE_CHARS) {
