@@ -883,6 +883,13 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
       CssStyle inlineStyle = self->cssParser->parseInlineStyleWithFamilies(styleAttr);
       cssStyle.applyOver(inlineStyle);
     }
+    // Text buffered so far belongs to the outer face / tone: hand it over before an element
+    // that changes them opens, and let the next fragment continue the same word.
+    if (self->embeddedStyle && self->partWordBufferIndex > 0 && (cssStyle.hasFontFamily() || cssStyle.hasColor())) {
+      self->flushPartWordBuffer();
+      if (self->hasFailed()) return;
+      self->nextWordContinues = true;
+    }
     // Every element joins the path, whichever branch below takes it.
     self->pushElementFrame(name, classAttr, cssStyle);
   }
@@ -2037,7 +2044,13 @@ void XMLCALL ChapterHtmlSlimParser::endElement(void* userData, const XML_Char* n
   const bool willClearBold = self->boldUntilDepth == self->depth - 1;
   const bool willClearItalic = self->italicUntilDepth == self->depth - 1;
 
-  const bool styleWillChange = willPopStyleStack || willClearBold || willClearItalic;
+  // An element that set the face or tone closes: its text must leave with that look.
+  self->pruneElementPath();
+  const bool willPopLook = self->elementPathSize > 0 &&
+                           self->elementPath[self->elementPathSize - 1].depth == self->depth - 1 &&
+                           (self->elementPath[self->elementPathSize - 1].hasFace ||
+                            self->elementPath[self->elementPathSize - 1].hasInk);
+  const bool styleWillChange = willPopStyleStack || willClearBold || willClearItalic || willPopLook;
   const bool headerOrBlockTag = isHeaderOrBlock(name);
   const bool tableStructuralTag = isTableStructuralTag(name);
   const bool insideSkippedSubtree = self->depth - 1 >= self->skipUntilDepth;

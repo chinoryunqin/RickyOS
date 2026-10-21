@@ -2,6 +2,9 @@
 #include <Epub/Page.h>
 #include <GfxRenderer.h>
 #include <gtest/gtest.h>
+
+#include "Epub/BookFonts.h"
+#include "Epub/WordLook.h"
 #include <unistd.h>
 
 #include <filesystem>
@@ -324,6 +327,41 @@ TEST_P(ChapterHtmlSlimParserTest, KeepsCssVerticalAlignAndInternalLinkMetadata) 
   ASSERT_EQ(parser.currentTextBlock->wordLinkIds.size(), 1u);
   EXPECT_EQ(parser.currentTextBlock->wordLinkIds.front(), linkId);
   EXPECT_TRUE(parser.currentTextBlock->linkTargetMatches(linkId, expectedHref));
+}
+
+namespace {
+// Two book faces by family name; widths stay the reader font's.
+class FakeBookFonts final : public bookfonts::Resolver {
+ public:
+  uint8_t faceForFamily(const std::string_view candidates) override {
+    return candidates == "kk" ? 1 : candidates == "mm" ? 2 : 0;
+  }
+  int fontIdFor(uint8_t, const int baseFontId, uint16_t) override { return baseFontId; }
+};
+}  // namespace
+
+TEST_F(ChapterHtmlSlimParserTest, InlineFaceAndToneFollowTheirElements) {
+  FakeBookFonts fonts;
+  bookfonts::setActive(&fonts);
+  // <span 正文><span 小标题>林：</span>联邦</span>, as 间客 nests p.gt > span.yzxs (an inline
+  // outer element keeps this direct drive inside the current paragraph).
+  const XML_Char* paragraph[] = {"style", "font-family: mm; color: #696969", nullptr};
+  const XML_Char* span[] = {"style", "font-family: kk; color: #8B4513", nullptr};
+  ChapterHtmlSlimParser::startElement(&parser, "span", paragraph);
+  ChapterHtmlSlimParser::startElement(&parser, "span", span);
+  ChapterHtmlSlimParser::characterData(&parser, "林：", strlen("林："));
+  ChapterHtmlSlimParser::endElement(&parser, "span");
+  ChapterHtmlSlimParser::characterData(&parser, "联邦", strlen("联邦"));
+  parser.flushPartWordBuffer();
+  bookfonts::setActive(nullptr);
+
+  const auto& looks = parser.currentTextBlock->wordLooks;
+  ASSERT_GE(looks.size(), 2u);
+  // The span's words: face kk, saddle brown is dark enough to stay black.
+  EXPECT_EQ(looks.front(), wordlook::make(1, 0));
+  // After the span closes: the paragraph's face mm and its gray (#696969 -> ink 3).
+  EXPECT_EQ(looks.back(), wordlook::make(2, wordlook::inkForLuma(0x69)));
+  EXPECT_EQ(wordlook::ink(looks.back()), 3);
 }
 
 INSTANTIATE_TEST_SUITE_P(CssVerticalAlign, ChapterHtmlSlimParserTest,

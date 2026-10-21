@@ -2429,6 +2429,9 @@ void EpubReaderActivity::freePageCache() {
 // while input stays quiet. A first-seen glyph costs ~4 ms to rasterize from the card, and
 // page turns are where it was paid. Interrupted warm-up resumes on the next idle pass.
 void EpubReaderActivity::renderIdleWarmup(const uint32_t generation) {
+  // A book drawing in its own faces leaves the reader font little to carry; keep the PSRAM
+  // for those faces instead of filling the reader cache with common characters.
+  if (bookFonts_ && bookFonts_->anyLoaded()) return;
 #if RICKYOS_PLUS_READER_TIMING
   const auto warmStart = millis();
   unsigned batches = 0;

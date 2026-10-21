@@ -96,7 +96,7 @@ void BookFontSet::collectFaces() {
   if (!css || css->empty()) return;
   collected_ = true;
   // Revision of how looks are derived (ink mapping etc.): a change re-lays chapters out.
-  constexpr uint32_t kLookRevision = 2;
+  constexpr uint32_t kLookRevision = 3;  // 3: inline face / tone flush at element boundaries
   uint32_t hash = (2166136261u ^ kLookRevision) * 16777619u;
   const auto mix = [&hash](const std::string_view text) {
     for (const char c : text) {
@@ -124,6 +124,13 @@ void BookFontSet::collectFaces() {
   key_ = hash != 0 ? hash : 1;  // also covers books with colors but no faces
   LOG_INF("BOOKFONT", "%u of %u declared faces usable, key %08lx", static_cast<unsigned>(faces_.size()),
           static_cast<unsigned>(css->fontFaceCount()), static_cast<unsigned long>(key_));
+}
+
+bool BookFontSet::anyLoaded() const {
+  for (const auto& face : faces_) {
+    if (face.fontId != 0) return true;
+  }
+  return false;
 }
 
 uint8_t BookFontSet::faceForFamily(const std::string_view candidates) {
@@ -173,7 +180,7 @@ bool BookFontSet::load(Face& face, const uint8_t pointSize, const int baseFontId
       face.failed = true;
       return false;
     }
-    if (HalMemory::getPsramHeap().freeBytes < length + kGlyphCacheBytes + kPsramReserve) {
+    if (HalMemory::getPsramHeap().freeBytes < length + kFirstArenaStep + kPsramReserve) {
       // Not marked failed: PSRAM may be free again later. Wait before asking again.
       face.refusedAt = millis();
       if (face.refusedAt == 0) face.refusedAt = 1;
