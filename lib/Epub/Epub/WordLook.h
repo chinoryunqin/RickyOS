@@ -22,8 +22,16 @@ constexpr uint32_t make(const uint8_t face, const uint8_t ink, const uint16_t si
   return static_cast<uint32_t>(face) | (static_cast<uint32_t>(ink & 0x0F) << 8) | (static_cast<uint32_t>(size) << 16);
 }
 
-// CSS luminance (0 = black .. 255 = white) to an ink level. Near-white text is drawn black:
-// it only reads on a colored background, and backgrounds are not painted.
-constexpr uint8_t inkForLuma(const uint8_t luma) { return luma >= 200 ? 0 : static_cast<uint8_t>(luma / 17); }
+// CSS luminance (0 = black .. 255 = white) to an ink level.
+//   - Dark colors (#222, #333, navy, maroon: luma < 96) are body text meant as black; on a
+//     reflective panel any lift reads as faded type, so they stay pure black.
+//   - Clear grays (#666 .. #aaa) keep a visible tone, compressed to ink 3..8 so they remain
+//     readable at small sizes.
+//   - Near-white text is drawn black: it only reads on a colored background, and
+//     backgrounds are not painted.
+constexpr uint8_t inkForLuma(const uint8_t luma) {
+  if (luma < 96 || luma >= 200) return 0;
+  return static_cast<uint8_t>(3 + (luma - 96) * 5 / (200 - 96));
+}
 
 }  // namespace wordlook

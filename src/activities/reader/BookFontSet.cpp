@@ -1,5 +1,6 @@
 #include "BookFontSet.h"
 
+#include <Arduino.h>
 #include <Epub.h>
 #include <Epub/css/CssParser.h>
 #include <GfxRenderer.h>
@@ -74,10 +75,19 @@ void BookFontSet::open(const Epub& epub) {
   // out. Read the faces now, from the cache, so the fingerprint is known before the first
   // section is validated; the rules are released again right after.
   CssParser* css = epub.getCssParser();
-  if (!css) return;
-  const bool loadedHere = css->empty() && css->hasCache() && css->loadFromCache() == CssParser::CacheLoadResult::Complete;
+  if (!css) {
+    LOG_INF("BOOKFONT", "No stylesheet parser for this book");
+    return;
+  }
+  const bool wasEmpty = css->empty();
+  const bool hasCache = css->hasCache();
+  const auto status = css->inspectCache();
+  const auto load = wasEmpty && hasCache ? css->loadFromCache() : CssParser::CacheLoadResult::Invalid;
+  LOG_INF("BOOKFONT", "CSS rules %s, cache %s (status %d), load %d, %zu rules, %u faces",
+          wasEmpty ? "released" : "resident", hasCache ? "present" : "missing", static_cast<int>(status),
+          static_cast<int>(load), css->ruleCount(), static_cast<unsigned>(css->fontFaceCount()));
   collectFaces();
-  if (loadedHere) css->clear();
+  if (wasEmpty && load == CssParser::CacheLoadResult::Complete) css->clear();
 }
 
 void BookFontSet::collectFaces() {
@@ -85,7 +95,9 @@ void BookFontSet::collectFaces() {
   const CssParser* css = epub_->getCssParser();
   if (!css || css->empty()) return;
   collected_ = true;
-  uint32_t hash = 2166136261u;
+  // Revision of how looks are derived (ink mapping etc.): a change re-lays chapters out.
+  constexpr uint32_t kLookRevision = 2;
+  uint32_t hash = (2166136261u ^ kLookRevision) * 16777619u;
   const auto mix = [&hash](const std::string_view text) {
     for (const char c : text) {
       hash ^= static_cast<uint8_t>(c);
@@ -109,7 +121,7 @@ void BookFontSet::collectFaces() {
     mix(face.path);
     faces_.push_back(std::move(face));
   }
-  key_ = faces_.empty() ? 0 : (hash != 0 ? hash : 1);
+  key_ = hash != 0 ? hash : 1;  // also covers books with colors but no faces
   LOG_INF("BOOKFONT", "%u of %u declared faces usable, key %08lx", static_cast<unsigned>(faces_.size()),
           static_cast<unsigned>(css->fontFaceCount()), static_cast<unsigned long>(key_));
 }
@@ -136,6 +148,10 @@ int BookFontSet::fontIdFor(const uint8_t face, const int baseFontId, uint16_t /*
   if (face == 0 || face > faces_.size()) return baseFontId;
   Face& entry = faces_[face - 1];
   if (entry.failed) return baseFontId;
+  if (entry.refusedAt != 0) {
+    if (millis() - entry.refusedAt < kRetryAfterMs) return baseFontId;
+    entry.refusedAt = 0;
+  }
   const uint8_t pointSize = SETTINGS.fontPointSize;
   if (entry.font && entry.pointSize == pointSize) return entry.fontId;
   if (entry.font) releaseFont(entry);  // the reader size changed; keep the bytes
@@ -157,10 +173,13 @@ bool BookFontSet::load(Face& face, const uint8_t pointSize, const int baseFontId
       face.failed = true;
       return false;
     }
-    if (HalMemory::getPsramHeap().freeBytes < length + kPsramReserve) {
-      // Not marked failed: PSRAM may be free again on a later chapter.
-      LOG_INF("BOOKFONT", "Face %s (%u KB) waits: PSRAM short", face.family.c_str(),
-              static_cast<unsigned>(length / 1024));
+    if (HalMemory::getPsramHeap().freeBytes < length + kGlyphCacheBytes + kPsramReserve) {
+      // Not marked failed: PSRAM may be free again later. Wait before asking again.
+      face.refusedAt = millis();
+      if (face.refusedAt == 0) face.refusedAt = 1;
+      LOG_INF("BOOKFONT", "Face %s (%u KB) waits: PSRAM short (%u KB free)", face.family.c_str(),
+              static_cast<unsigned>(length / 1024),
+              static_cast<unsigned>(HalMemory::getPsramHeap().freeBytes / 1024));
       return false;
     }
     face.bytes = epub_->readItemContentsToBytes(face.path, &face.length);
@@ -174,7 +193,7 @@ bool BookFontSet::load(Face& face, const uint8_t pointSize, const int baseFontId
   font->addResidentSource(TtfEpdFont::Regular, face.bytes, static_cast<uint32_t>(face.length));
   const bool fourBit = renderer_.getGrayscaleLevels() == 16;
   // A decorative or heading face draws a few hundred distinct glyphs at most.
-  if (!font->load(pointSize, /*twoBit=*/true, /*glyphCacheBytes=*/192 * 1024, /*maxGlyphs=*/1024, fourBit)) {
+  if (!font->load(pointSize, /*twoBit=*/true, kGlyphCacheBytes, kMaxGlyphs, fourBit)) {
     LOG_ERR("BOOKFONT", "Face %s: %s is not a usable font", face.family.c_str(), face.path.c_str());
     free(face.bytes);
     face.bytes = nullptr;

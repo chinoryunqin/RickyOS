@@ -467,6 +467,7 @@ bool EpubReaderActivity::loadBook() {
 
   // The book's own fonts, when its styles are kept (loaded on first use).
   bookFonts_.reset();
+  LOG_INF("BOOKFONT", "Book styles %s", SETTINGS.embeddedStyle ? "on" : "off");
   if (SETTINGS.embeddedStyle) {
     bookFonts_ = makeUniqueNoThrow<BookFontSet>(renderer);
     if (bookFonts_) {

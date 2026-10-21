@@ -40,7 +40,13 @@ class BookFontSet final : public bookfonts::Resolver {
 
   // PSRAM kept free when loading a face: decoded illustrations, the chapter's text and
   // the reader glyph cache need it more than a decorative face does.
-  static constexpr size_t kPsramReserve = 1600 * 1024;
+  static constexpr size_t kPsramReserve = 768 * 1024;  // one illustration decode plus slack
+  // Glyph cache per book face: headings and decorative runs reuse a few hundred glyphs.
+  static constexpr size_t kGlyphCacheBytes = 64 * 1024;
+  static constexpr uint16_t kMaxGlyphs = 512;
+  // After a face is refused for PSRAM, layout and drawing keep the reader font for this
+  // long instead of asking again for every word.
+  static constexpr uint32_t kRetryAfterMs = 15000;
   static constexpr size_t kMaxFaceBytes = 4 * 1024 * 1024;
   static constexpr size_t kMaxFaces = 31;
 
@@ -49,6 +55,7 @@ class BookFontSet final : public bookfonts::Resolver {
     std::string family;
     std::string path;
     bool failed = false;
+    uint32_t refusedAt = 0;  // millis() of the last PSRAM refusal, 0 = none
     uint8_t* bytes = nullptr;  // malloc'd by Epub::readItemContentsToBytes
     size_t length = 0;
     std::unique_ptr<TtfEpdFont> font;
