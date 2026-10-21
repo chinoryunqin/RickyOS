@@ -44,6 +44,8 @@
 namespace fui = freeink::ui;
 
 namespace {
+// Recent books that vanished are pruned at most every ten minutes, and after transfers.
+unsigned long lastRecentPrune = 0;
 constexpr int SIDE_PADDING = 12;
 constexpr unsigned long LONG_PRESS_MS = 1000;
 
@@ -90,6 +92,7 @@ LibraryListActivity::LibraryListActivity(GfxRenderer& renderer, MappedInputManag
 void LibraryListActivity::onEnter() {
   // Publish one coherent cached page. No scan/EPUB parsing runs under this lock.
   RenderLock lock(*this);
+  const unsigned long enterStarted = millis();
   UiTabListActivity::onEnter();
   app.on(ACTION_SEARCH, &LibraryListActivity::searchActionTrampoline, this);
   app.on(ACTION_BACK, &LibraryListActivity::backActionTrampoline, this);
@@ -119,7 +122,9 @@ void LibraryListActivity::onEnter() {
           self.promptPageJump();
       },
       this);
+  const unsigned long tCategories = millis();
   categoriesReady = categories.load() != library::LibraryCategories::Load::Error;
+  const unsigned long tCategoriesDone = millis();
   app.on(
       ACTION_READING_FILTER,
       [](const fui::ActionEvent& event, void* user) {
@@ -137,7 +142,14 @@ void LibraryListActivity::onEnter() {
 
   // Recent is backed by the resident store. Prune before opening the index so
   // its persistence write never overlaps the long-lived index reader.
-  if (RECENT_BOOKS.pruneMissing()) RECENT_BOOKS.saveToFile();
+  const unsigned long tPrune = millis();
+  // Checking every recent book on the card is ~230 ms; books rarely vanish between
+  // two visits, so it runs on the first visit, after transfers and every ten minutes.
+  if (lastRecentPrune == 0 || millis() - lastRecentPrune > 10UL * 60 * 1000 || library::LibraryIncoming::pending()) {
+    lastRecentPrune = millis() | 1;
+    if (RECENT_BOOKS.pruneMissing()) RECENT_BOOKS.saveToFile();
+  }
+  const unsigned long tIndex = millis();
 
   // Dirty means an explicit update is available, not permission to walk the
   // card on entry. A retained catalog remains usable while imports are pending.
@@ -148,7 +160,9 @@ void LibraryListActivity::onEnter() {
   if (index.isOpen() && index.dedupDegraded()) {
     LOG_ERR("LIB", "index was built without duplicate detection");
   }
+  const unsigned long tPinned = millis();
   resolvePinned();
+  const unsigned long tPinnedDone = millis();
   // A shelf an earlier build carried over from before sources: rebuild from the
   // enrolled sources only (the import retires the snapshot first).
   if (index.isOpen() && Storage.exists(library::LibrarySources::legacyIndexPath()))
@@ -159,6 +173,9 @@ void LibraryListActivity::onEnter() {
   // Entered while Confirm was still held (typical when launched from the home
   // menu): ignore its release, or we would open whatever sits at row 0.
   lockNextConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
+  LOG_INF("LIB", "enter: base %lu, categories %lu, recents check %lu, index open %lu, recent rows %lu, total %lu ms",
+          tCategories - enterStarted, tCategoriesDone - tCategories, tIndex - tPrune, tPinned - tIndex,
+          tPinnedDone - tPinned, millis() - enterStarted);
   requestUpdate(true);
 }
 
@@ -292,9 +309,42 @@ int LibraryListActivity::pinnedCount() const {
   return pinnedTotal;
 }
 
+namespace {
+// The pinned rows depend only on the index and the recent-books list. Matching
+// them costs a pass over every record plus a file open per recent book (~240 ms
+// for 3,000 books), so the last answer is kept for as long as neither changed.
+struct PinnedRowsCache {
+  bool valid = false;
+  uint64_t key = 0;
+  uint8_t total = 0;
+  uint16_t ascRows[RecentBooksStore::MAX_RECENT_BOOKS] = {};
+  uint8_t storeRows[RecentBooksStore::MAX_RECENT_BOOKS] = {};
+} pinnedRowsCache;
+
+uint64_t pinnedRowsKey(const library::LibraryIndexFile& index, const std::vector<RecentBook>& books) {
+  uint64_t hash = 14695981039346656037ULL;
+  const auto mix = [&hash](const void* data, size_t length) {
+    const auto* bytes = static_cast<const uint8_t*>(data);
+    for (size_t i = 0; i < length; ++i) hash = (hash ^ bytes[i]) * 1099511628211ULL;
+  };
+  const auto& head = index.header();
+  mix(&head, sizeof(head));  // sizes, counts and section offsets change with every rebuild
+  for (const auto& book : books) mix(book.path.data(), book.path.size() + 1);
+  return hash;
+}
+}  // namespace
+
 void LibraryListActivity::resolvePinned() {
   shelfStart = -1;
   const auto& books = RECENT_BOOKS.getBooks();
+  const uint64_t key = index.isOpen() ? pinnedRowsKey(index, books) : 0;
+  if (index.isOpen() && pinnedRowsCache.valid && pinnedRowsCache.key == key) {
+    pinnedTotal = pinnedRowsCache.total;
+    std::copy(std::begin(pinnedRowsCache.ascRows), std::end(pinnedRowsCache.ascRows), pinnedAscRows);
+    std::copy(std::begin(pinnedRowsCache.storeRows), std::end(pinnedRowsCache.storeRows), pinnedStoreRows);
+    refreshOverlap();
+    return;
+  }
   pinnedTotal = static_cast<uint8_t>(std::min<size_t>(books.size(), RecentBooksStore::MAX_RECENT_BOOKS));
   for (int i = 0; i < pinnedTotal; ++i) pinnedStoreRows[i] = i;
   for (int i = 0; i < pinnedTotal; i++) pinnedAscRows[i] = 0xFFFF;
@@ -327,6 +377,13 @@ void LibraryListActivity::resolvePinned() {
     pinnedStoreRows[included++] = i;
   }
   pinnedTotal = included;
+  if (index.isOpen()) {
+    pinnedRowsCache.valid = true;
+    pinnedRowsCache.key = key;
+    pinnedRowsCache.total = pinnedTotal;
+    std::copy(std::begin(pinnedAscRows), std::end(pinnedAscRows), pinnedRowsCache.ascRows);
+    std::copy(std::begin(pinnedStoreRows), std::end(pinnedStoreRows), pinnedRowsCache.storeRows);
+  }
   refreshOverlap();
 }
 
@@ -1589,6 +1646,8 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
     }
     RICKY_PERF("shelf", "start=%d records=%lu thumbs=%lu", start, perfThumbStart - perfShelfStart,
                millis() - perfThumbStart);
+    LOG_INF("LIB", "page %d: records %lu, covers %lu ms", start, perfThumbStart - perfShelfStart,
+            millis() - perfThumbStart);
     shelfStart = start;
     shelfHeight = coverHeight;
     shelfBuiltCapacity = capacity;
@@ -1747,7 +1806,9 @@ void LibraryListActivity::drawHoldHelp() const {
 void LibraryListActivity::render(RenderLock&& lock) {
   if (optionPopup.isActive()) renderPopupUnderlay();
   if (optionPopup.processRender(renderer, mappedInput)) return;
+  const unsigned long started = millis();
   UiTabListActivity::render(std::move(lock));
+  LOG_INF("LIB", "render %lu ms (panel included)", millis() - started);
 }
 
 void LibraryListActivity::drawFooter() {
