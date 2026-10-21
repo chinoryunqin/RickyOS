@@ -8,9 +8,14 @@
       "ported_sha256": "f3b27c1edabcd03c59963e9a90cdd46b10c554132569d9462742a6b3ba0cd0c0"
     },
     {
+      "path": "freeink-sdk/libs/hardware/BatteryMonitor/include/BatteryMonitor.h",
+      "baseline_sha256": "e9cb6848a141ab3adf8e43587ac2fd63bae74cd25faa3da2310df8495e79b0d4",
+      "ported_sha256": "f4fe21d26f2f6ac752b8824e713cd871ab95c5518cf294d76d871a0a9d2301aa"
+    },
+    {
       "path": "freeink-sdk/libs/hardware/BatteryMonitor/src/BatteryMonitor.cpp",
       "baseline_sha256": "f6a217520fd415968d75ac1b1e226283d397b28469ab3e44570c085d36d30eec",
-      "ported_sha256": "5365e9cd71d3d782c85956349ca14d5f39892530942f7b10bf4e3ec7936e2f2c"
+      "ported_sha256": "a9019af015d4a590975b29d13b5273c8819b6c09f66bb0a5271cf16f5e175de9"
     },
     {
       "path": "freeink-sdk/libs/hardware/InputManager/include/InputManager.h",
@@ -223,6 +228,11 @@
       "ported_sha256": "82b05af215f5657a287f02936339f5fabb95ea8f8161ef92587a7c605ebc11df"
     },
     {
+      "path": "lib/hal/BatteryDisplayFilter.h",
+      "baseline_sha256": null,
+      "ported_sha256": "eca9206e82424e41020ffd2f1a233a3e2b281fb5c14489509db1ff81112d6205"
+    },
+    {
       "path": "lib/hal/HalAudioOutput.cpp",
       "baseline_sha256": "402506af5026e44ed927ce857fa97917e029b3144793ede908c0a0d38fece482",
       "ported_sha256": "43624f45f22684436dd7a853212d098c3fd080d8dcf836ccf5a0b8d5ac7b62c0"
@@ -261,6 +271,16 @@
       "path": "lib/hal/HalGPIO.h",
       "baseline_sha256": "69f039fca010004dd61aa05b4c584e9d12c36aeda36f7168a1edfd958d0f759c",
       "ported_sha256": "988232cf588c26351d785842513c43733a8b83e22557ef2bd4bd0f25493f3d0f"
+    },
+    {
+      "path": "lib/hal/HalPowerManager.cpp",
+      "baseline_sha256": "c8021acd737310ddd402aad3bd9f953db5bcbef2064ff4736540302e3c2fb5ad",
+      "ported_sha256": "3a278622994b6c3f4b611af9d5f2baa0b3645d67370399553cc06e4196e09a9d"
+    },
+    {
+      "path": "lib/hal/HalPowerManager.h",
+      "baseline_sha256": "28f6f38e9a7b15f434f7b6576412df60b5e64969e5ccdc25b5d386ea4fe03fb2",
+      "ported_sha256": "76c5779c0cd45728308c9d85172533a62b9fdc2a9818b9327ebf80903ce7a58a"
     },
     {
       "path": "lib/hal/HalRecorder.cpp",
@@ -601,6 +621,11 @@
       "path": "src/components/icons/sources/rickyos/apps/recorder.svg",
       "baseline_sha256": null,
       "ported_sha256": "83857a5f1733566493921d49f64bed6831777329bd6d5bf200b979247f3bd4c7"
+    },
+    {
+      "path": "src/components/themes/BaseTheme.cpp",
+      "baseline_sha256": "e54b5b4ab7ec37346bf3d19929021e05a03408ff6cd347efc9fe74a317ae8f79",
+      "ported_sha256": "2f17ff9eff67ab4caec0ba0def14f2347615ade1861bc231cb4d534e9e9036b8"
     },
     {
       "path": "src/components/themes/BaseTheme.h",

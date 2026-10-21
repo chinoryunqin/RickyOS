@@ -26,14 +26,26 @@
    // wolfSSL 5.7.2's Tom's Fast Math key-generation path is unstable on the
    // ESP32-C3 (the Miller-Rabin test faults in fp_mul_comba). ESP-IDF already
    // ships mbedTLS with RSA key generation enabled, so use it for this one
+--- a/freeink-sdk/libs/hardware/BatteryMonitor/include/BatteryMonitor.h
++++ b/freeink-sdk/libs/hardware/BatteryMonitor/include/BatteryMonitor.h
+@@ -21,6 +21,8 @@
+     static constexpr int8_t PIN_NONE = -1;
+ 
+     struct Status {
++        enum class PercentageSource : uint8_t { Unknown, StateOfCharge, VoltageEstimate, CapacityEstimate };
++        PercentageSource percentageSource = PercentageSource::Unknown;
+         bool supported = false;
+         bool percentageKnown = false;
+         bool millivoltsKnown = false;
 --- a/freeink-sdk/libs/hardware/BatteryMonitor/src/BatteryMonitor.cpp
 +++ b/freeink-sdk/libs/hardware/BatteryMonitor/src/BatteryMonitor.cpp
-@@ -4,6 +4,12 @@
+@@ -4,6 +4,13 @@
  #include <BoardConfig.h>
  #include <M5Pm1.h>
  #include <esp_idf_version.h>
 +#if FREEINK_DEVICE_METALIO_PLUS
 +#include <PlusBattery.h>
++#include <PlusBatteryEstimator.h>
 +#include <plus_i2c_wire.h>
 +#include <metalio_i2c1.h>
 +#include <esp_log.h>
@@ -41,7 +53,7 @@
  #if ESP_IDF_VERSION_MAJOR < 5
  #include <esp_adc_cal.h>
  #endif
-@@ -55,6 +61,15 @@
+@@ -55,6 +62,15 @@
  
  bool readReg16(uint8_t addr, uint8_t reg, uint16_t& out) {
    if (addr == 0) return false;
@@ -57,7 +69,7 @@
    ensureWire();
    TwoWire& w = gaugeWire();
    w.beginTransmission(addr);
-@@ -65,6 +80,7 @@
+@@ -65,6 +81,7 @@
    const uint8_t hi = w.read();
    out = static_cast<uint16_t>(lo) | (static_cast<uint16_t>(hi) << 8);
    return true;
@@ -65,7 +77,7 @@
  }
  
  bool readReg8(uint8_t addr, uint8_t reg, uint8_t& out) {
-@@ -231,6 +247,16 @@
+@@ -231,6 +248,16 @@
  // SoC (0..100) from the active gauge, dispatched by type. false on I2C failure.
  bool readGaugeSoc(uint16_t& out) {
    const auto& g = BoardConfig::ACTIVE.batteryGauge;
@@ -82,6 +94,90 @@
    if (g.gaugeType == BoardConfig::GaugeType::Cw32L010Pmu) {
      uint16_t mv = 0;
      uint16_t permille = 0;
+@@ -467,6 +494,10 @@
+ }
+ 
+ uint16_t BatteryMonitor::readPercentage() const {
++#if FREEINK_DEVICE_METALIO_PLUS
++  const auto status = readStatus();
++  return status.percentageKnown ? status.percentage : 0;
++#endif
+ #if FREEINK_BATTERY_I2C_GAUGE
+   // Runtime, per active profile: gauge boards (X3, LilyGo, X4 Pro) read SoC over I2C;
+   // ADC boards (X4) in the same binary fall through to the divider path below.
+@@ -486,6 +517,12 @@
+ }
+ 
+ bool BatteryMonitor::readPercentageChecked(uint16_t& out) const {
++#if FREEINK_DEVICE_METALIO_PLUS
++  const auto status = readStatus();
++  if (!status.percentageKnown) return false;
++  out = status.percentage;
++  return true;
++#endif
+ #if FREEINK_BATTERY_I2C_GAUGE
+   if (BoardConfig::ACTIVE.batteryGauge.gaugeAddr != 0) {
+     uint16_t soc = 0;
+@@ -511,6 +548,59 @@
+ #if FREEINK_BATTERY_I2C_GAUGE
+   if (BoardConfig::ACTIVE.batteryGauge.gaugeAddr != 0) {
+     status.supported = true;
++#if FREEINK_DEVICE_METALIO_PLUS
++    // Read-only host estimate: manufacturer capacity/loaded curve plus raw
++    // coulomb deltas. Uncalibrated gauge SOC/FCC never drive the percentage.
++    {
++    const uint8_t addr = BoardConfig::ACTIVE.batteryGauge.gaugeAddr;
++    const uint32_t now = millis();
++    uint16_t mv = 0, current = 0, average = 0, counter = 0, operation = 0;
++    if (!readReg16(addr, BQ27220_VOLTAGE, mv)) {
++      plus_board::estimateBattery({}, now);
++      return status;
++    }
++    uint16_t fallback = 0;
++    if (!plus_board::batteryPercentFromMv(mv, fallback)) {
++      plus_board::estimateBattery({}, now);
++      return status;
++    }
++    status.millivoltsKnown = true;
++    status.millivolts = mv;
++    const bool currentKnown = readReg16(addr, BQ27220_CURRENT, current);
++    const int16_t signedCurrent = static_cast<int16_t>(current);
++    const bool averageKnown = readReg16(addr, 0x14, average);
++    const bool counterKnown = readReg16(addr, 0x22, counter);
++    const bool operationOk = readReg16(addr, 0x3A, operation);
++    const plus_board::BatteryTelemetry sample{mv, signedCurrent, static_cast<int16_t>(average), counter,
++                                             currentKnown, averageKnown, counterKnown,
++                                             operationOk && (operation & 0x0020) && !(operation & 0x0400)};
++    const auto estimate = plus_board::estimateBattery(sample, now);
++    status.percentageKnown = estimate.known;
++    status.percentage = estimate.percent;
++    status.percentageSource = estimate.source == plus_board::BatteryEstimateSource::UncalibratedVoltage
++                                  ? Status::PercentageSource::VoltageEstimate : Status::PercentageSource::CapacityEstimate;
++    // A nearly idle/full pack is not evidence of a charging direction.
++    status.chargingKnown = currentKnown && (signedCurrent > 5 || signedCurrent < -5);
++    status.charging = currentKnown && signedCurrent > 5;
++    static bool logged = false;
++    static uint32_t lastDiagnostic = 0;
++    if (!logged || uint32_t(now - lastDiagnostic) >= 60000) {
++      logged = true;
++      lastDiagnostic = now;
++      uint16_t soc = 0, remaining = 0, full = 0, design = 0;
++      const bool socOk = readReg16(addr, BQ27220_STATE_OF_CHARGE, soc);
++      const bool remainingOk = readReg16(addr, 0x10, remaining);
++      const bool fullOk = readReg16(addr, 0x12, full);
++      const bool designOk = readReg16(addr, 0x3C, design);
++      ESP_LOGI("PlusBattery", "mv=%u current=%d/%d soc=%u/%d rm=%u/%d fcc=%u/%d design=%u/%d op=0x%04x/%d "
++                            "estimate=%u/%d model=%u avg=%d/%d rcc=%u/%d",
++               mv, signedCurrent, currentKnown, soc, socOk, remaining, remainingOk,
++               full, fullOk, design, designOk, operation, operationOk, estimate.percent, estimate.known,
++               static_cast<unsigned>(estimate.source), static_cast<int16_t>(average), averageKnown, counter, counterKnown);
++    }
++    return status;
++    }
++#endif
+     uint16_t soc = 0;
+     if (readGaugeSoc(soc)) {
+       status.percentageKnown = true;
 --- a/freeink-sdk/libs/hardware/InputManager/include/InputManager.h
 +++ b/freeink-sdk/libs/hardware/InputManager/include/InputManager.h
 @@ -365,6 +365,11 @@
@@ -181876,6 +181972,133 @@
    g_aborted = false;
    g_lastAbortCheck = 0;
    if (abortRequested()) {
+--- /dev/null
++++ b/lib/hal/BatteryDisplayFilter.h
+@@ -0,0 +1,124 @@
++#pragma once
++
++#include <cstdint>
++
++// Display policy only: never changes battery protection, PMU/gauge configuration,
++// or the raw diagnostic sample. No heap, worker task, persistence or sleep timer.
++class BatteryDisplayFilter {
++ public:
++  static constexpr uint32_t POLL_MS = 5000;
++
++  struct Sample {
++    uint16_t percent = 0;
++    uint8_t source = 0;  // 0 unknown, 1 reported SoC, 2 voltage estimate
++    bool valid = false;
++    bool chargingKnown = false;
++    bool charging = false;
++  };
++
++  bool shouldPoll(uint32_t now) const { return !polled || uint32_t(now - lastPoll) >= POLL_MS; }
++  bool known() const { return valid; }
++  uint16_t value() const { return shown; }
++
++  uint16_t update(const Sample& sample, uint32_t now) {
++    if (!shouldPoll(now)) return shown;
++    const bool gap = polled && uint32_t(now - lastPoll) > 120000;
++    polled = true;
++    lastPoll = now;
++    if (!sample.valid || sample.source == 0 || sample.percent > 100) {
++      resetEvidence();
++      return shown;  // Transport failure is not an empty battery.
++    }
++    if (!valid) {
++      valid = true;
++      source = sample.source;
++      shown = sample.percent;
++      changedAt = now;
++    }
++    const int8_t mode = sample.chargingKnown ? (sample.charging ? 1 : 0) : -1;
++    if (gap || mode != chargeMode) {
++      resetEvidence();
++      changedAt = now;  // Do not accumulate a smoothing budget during sleep.
++      if (mode != chargeMode) {
++        chargeMode = mode;
++        modeChangedAt = now;
++      }
++    }
++
++    // Never mix PMU SoC and voltage fallback samples in a filter window.
++    if (sample.source != source) {
++      if (pendingSource != sample.source || distance(sample.percent, pendingValue) > 2) {
++        resetEvidence();
++        pendingSource = sample.source;
++        pendingValue = sample.percent;
++        evidenceAt = now;
++      }
++      if (++evidenceCount < 3 || uint32_t(now - evidenceAt) < 10000) return shown;
++      source = sample.source;
++      resetEvidence();
++      // A sustained low reading must not wait for a cosmetic rate limit.
++      if (sample.percent <= 5) {
++        shown = sample.percent;
++        changedAt = now;
++      }
++    } else if (pendingSource != 0) {
++      resetEvidence();  // An alternating source never gains confirmation.
++    }
++
++    // Two independently polled low samples bypass normal rate/settling limits.
++    if (sample.percent <= 5) {
++      if (++lowCount >= 2) {
++        shown = sample.percent;
++        changedAt = now;
++        resetEvidence();
++      }
++      return shown;
++    }
++    lowCount = 0;
++    samples[next] = sample.percent;
++    next = (next + 1) % 3;
++    if (count < 3) ++count;
++    if (count < 3) return shown;
++    const uint16_t a = samples[0], b = samples[1], c = samples[2];
++    const uint16_t target = a < b ? (b < c ? b : (a < c ? c : a)) : (a < c ? a : (b < c ? c : b));
++    if (target == shown) {
++      evidenceCount = 0;
++      return shown;
++    }
++    // Let plug/unplug voltage settle. Unknown charge state is not 'unplugged'.
++    if (uint32_t(now - modeChangedAt) < 30000) return shown;
++    const bool reversed = (chargeMode == 0 && target > shown) || (chargeMode == 1 && target < shown);
++    if (distance(target, shown) > 5 || reversed) {
++      if (evidenceCount == 0 || distance(target, pendingValue) > 2) {
++        evidenceAt = now;
++        pendingValue = target;
++        evidenceCount = 1;
++        return shown;
++      }
++      ++evidenceCount;
++      // Repeated real corrections are allowed; direction is not locked forever.
++      if (evidenceCount < 3 || uint32_t(now - evidenceAt) < (reversed ? 120000u : 30000u)) return shown;
++      shown = target;
++      changedAt = now;
++      resetEvidence();
++    } else {
++      evidenceCount = 0;
++      if (uint32_t(now - changedAt) >= 15000) {
++        shown = target > shown ? shown + 1 : shown - 1;
++        changedAt = now;
++      }
++    }
++    return shown;
++  }
++
++ private:
++  static uint16_t distance(uint16_t a, uint16_t b) { return a > b ? a - b : b - a; }
++  void resetEvidence() {
++    next = count = lowCount = evidenceCount = pendingSource = 0;
++  }
++  uint32_t lastPoll = 0, changedAt = 0, modeChangedAt = 0, evidenceAt = 0;
++  uint16_t shown = 0, pendingValue = 0, samples[3]{};
++  uint8_t source = 0, pendingSource = 0, next = 0, count = 0, lowCount = 0, evidenceCount = 0;
++  int8_t chargeMode = -1;
++  bool valid = false, polled = false;
++};
 --- a/lib/hal/HalAudioOutput.cpp
 +++ b/lib/hal/HalAudioOutput.cpp
 @@ -1,5 +1,23 @@
@@ -182260,6 +182483,78 @@
  #endif
    bool wasAnyPressed() const;
    bool wasReleased(uint8_t buttonIndex) const;
+--- a/lib/hal/HalPowerManager.cpp
++++ b/lib/hal/HalPowerManager.cpp
+@@ -440,6 +440,34 @@
+ 
+ uint16_t HalPowerManager::getBatteryPercentage() const {
+   static const BatteryMonitor battery;
++#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
++  // Nonblocking single sampler shared by the UI and main loop.
++  if (batteryPollBusy.test_and_set(std::memory_order_acquire)) return batteryDisplayPercent.load();
++  struct PollGuard {
++    std::atomic_flag& flag;
++    ~PollGuard() { flag.clear(std::memory_order_release); }
++  } guard{batteryPollBusy};
++  const uint32_t now = millis();
++  if (batteryDisplay.shouldPoll(now)) {
++    const auto status = battery.readStatus();
++    BatteryDisplayFilter::Sample sample;
++    sample.valid = status.percentageKnown;
++    sample.percent = status.percentage;
++    sample.source = static_cast<uint8_t>(status.percentageSource);
++    sample.chargingKnown = status.chargingKnown;
++    sample.charging = status.charging;
++    const auto shown = batteryDisplay.update(sample, now);
++    batteryDisplayPercent.store(batteryDisplay.known() ? shown : 101);
++    if (!batteryDiagnosticLogged || uint32_t(now - batteryDiagnosticAt) >= 60000) {
++      batteryDiagnosticLogged = true;
++      batteryDiagnosticAt = now;
++      LOG_INF("BAT", "valid=%d source=%u raw=%u mv=%u charge=%d/%d shown=%u known=%d",
++              sample.valid, sample.source, sample.percent, status.millivolts,
++              sample.chargingKnown, sample.charging, shown, batteryDisplay.known());
++    }
++  }
++  return batteryDisplayPercent.load();
++#endif
+   if (BoardConfig::ACTIVE.batteryGauge.gaugeAddr != 0) {
+     const unsigned long now = millis();
+     if (_batteryLastPollMs != 0 && (now - _batteryLastPollMs) < BATTERY_POLL_MS) {
+--- a/lib/hal/HalPowerManager.h
++++ b/lib/hal/HalPowerManager.h
+@@ -7,7 +7,9 @@
+ #include <freertos/semphr.h>
+ 
+ #include <cassert>
++#include <atomic>
+ 
++#include "BatteryDisplayFilter.h"
+ #include "HalGPIO.h"
+ 
+ class HalPowerManager;
+@@ -19,6 +21,13 @@
+ 
+   mutable int _batteryCachedPercent = 0;         // Last read battery percentage (0-100)
+   mutable unsigned long _batteryLastPollMs = 0;  // Timestamp of last battery read in milliseconds
++#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
++  mutable BatteryDisplayFilter batteryDisplay;
++  mutable std::atomic_flag batteryPollBusy = ATOMIC_FLAG_INIT;
++  mutable std::atomic<uint16_t> batteryDisplayPercent{101};  // Unknown until the first valid sample.
++  mutable uint32_t batteryDiagnosticAt = 0;
++  mutable bool batteryDiagnosticLogged = false;
++#endif
+ 
+   enum LockMode { None, NormalSpeed };
+   LockMode currentLockMode = None;
+@@ -63,7 +72,7 @@
+   static void setSideKeyBusy(bool busy);
+   static bool sideKeyBusy();
+ 
+-  // Get battery percentage (range 0-100)
++  // Get battery percentage (0-100); Pico/Plus return 101 before any valid read.
+   uint16_t getBatteryPercentage() const;
+ 
+   // RAII helper class to manage power saving locks
 --- /dev/null
 +++ b/lib/hal/HalRecorder.cpp
 @@ -0,0 +1,191 @@
@@ -188334,6 +188629,52 @@
 +<rect x="9" y="2" width="6" height="12" rx="3"/>
 +<path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/>
 +</svg>
+--- a/src/components/themes/BaseTheme.cpp
++++ b/src/components/themes/BaseTheme.cpp
+@@ -171,6 +171,7 @@
+ }
+ 
+ void BaseTheme::fillBatteryIcon(const GfxRenderer& renderer, Rect rect, uint16_t percentage) const {
++  if (percentage > 100) return;  // Unknown, not a full/empty measured battery.
+   const bool charging = gpio.isUsbConnected();
+   if (rect.width == UiHighDpiProfile::batteryWidth && rect.height == UiHighDpiProfile::batteryHeight) {
+     // The bar sits inside the body with a white gap all round (rickyBatteryIcons.h);
+@@ -213,6 +214,7 @@
+ void BaseTheme::drawBatteryLeft(const GfxRenderer& renderer, Rect rect, const bool showPercentage) const {
+   // Left aligned: icon on left, percentage on right (reader mode)
+   const uint16_t percentage = powerManager.getBatteryPercentage();
++  if (percentage > 100) return;  // Initial telemetry pending: do not invent a level or label.
+   const int y = rect.y + (UiHighDpiProfile::enabled ? 8 : 6);
+ 
+   if (showPercentage) {
+@@ -261,6 +263,7 @@
+ void BaseTheme::drawBatteryRight(const GfxRenderer& renderer, Rect rect, const bool showPercentage,
+                                  const int numericFontId) const {
+   const uint16_t percentage = powerManager.getBatteryPercentage();
++  if (percentage > 100) return;
+   // NotoSans 12 digits and the cropped battery share their visible center at this offset.
+   const int y = rect.y + (UiHighDpiProfile::enabled ? 8 : 6);
+   const int gap = UiHighDpiProfile::enabled ? UiHighDpiProfile::controlGap : batteryPercentSpacing;
+@@ -561,14 +564,16 @@
+   // (passive frames), while the uiScale FONT_SMALL is for list subtitles.
+   status.battery.text.font = freeink::ui::GfxRendererTarget::FONT_LABEL;
+ 
+-  status.showBattery = true;
+   const uint16_t percentage = powerManager.getBatteryPercentage();
+-  status.battery.percent = static_cast<uint8_t>(percentage > 100 ? 100 : percentage);
++  status.showBattery = percentage <= 100;
++  status.battery.percent = static_cast<uint8_t>(percentage > 100 ? 0 : percentage);
+   status.battery.charging = gpio.isUsbConnected();
+   // Static label buffers: headers draw on the single render task, and the
+   // strings only need to outlive the fui::header() call that consumes them.
+   static char percentText[8];
+-  if (SETTINGS.hideBatteryPercentage != CrossPointSettings::HIDE_BATTERY_PERCENTAGE::HIDE_ALWAYS) {
++  status.battery.label = "";
++  if (percentage <= 100 &&
++      SETTINGS.hideBatteryPercentage != CrossPointSettings::HIDE_BATTERY_PERCENTAGE::HIDE_ALWAYS) {
+     snprintf(percentText, sizeof(percentText), "%u%%", static_cast<unsigned>(percentage));
+     status.battery.label = percentText;
+   }
 --- a/src/components/themes/BaseTheme.h
 +++ b/src/components/themes/BaseTheme.h
 @@ -180,7 +180,8 @@

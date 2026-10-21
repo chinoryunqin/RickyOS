@@ -5,6 +5,8 @@ cd "$TASK_ROOT"
 mkdir -p .local
 clang++ -std=c++20 -Wall -Wextra -Werror tests/test_plus_framebuffer.cpp -o .local/test_plus_framebuffer
 .local/test_plus_framebuffer
+python3 tests/test_battery_stability.py
+python3 tests/test_plus_battery_curve.py
 clang -Ifirmware/rickyos-plus-1.2/upstream/freeink-sdk/libs/font/FreeInkFont/include -c firmware/rickyos-plus-1.2/upstream/freeink-sdk/libs/font/FreeInkFont/src/FontAlloc.c -o .local/plus-font-alloc.o
 clang -c firmware/rickyos-plus-1.2/upstream/lib/uzlib/src/tinflate.c -o .local/plus-font-inflate.o
 clang++ -std=c++20 -Wall -Wextra -Werror -Wno-missing-field-initializers -Wl,-dead_strip \
