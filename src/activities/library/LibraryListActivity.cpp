@@ -7,6 +7,8 @@
 #include <HalStorage.h>
 #include <I18n.h>
 #include <LibraryBuilder.h>
+#include <LibraryIncoming.h>
+#include <LibrarySources.h>
 #include <LibraryText.h>
 #include <Logging.h>
 #include <Memory.h>
@@ -101,10 +103,20 @@ void LibraryListActivity::onEnter() {
           self.batchAction();
         else if (event.value == SortTools)
           self.openShelfTools();
-        else if (!self.batchMode && event.value == ManageCategories)
-          self.openCategories();
+        else if (event.value == ManageCategories) {
+          // In batch mode this line reads "N selected · tap to cancel".
+          if (self.batchMode) {
+            RenderLock lock(self);
+            self.clearBatch();
+            self.requestUpdate();
+          } else {
+            self.openCategories();
+          }
+        }
         else if (!self.batchMode && event.value == ManageSources)
           self.openSources();
+        else if (event.value == PageJump)
+          self.promptPageJump();
       },
       this);
   categoriesReady = categories.load() != library::LibraryCategories::Load::Error;
@@ -135,6 +147,8 @@ void LibraryListActivity::onEnter() {
     LOG_ERR("LIB", "index was built without duplicate detection");
   }
   resolvePinned();
+  transferCheckPending = library::LibraryIncoming::pending();
+  transferCheckAt = millis() + 400;  // let the shelf paint first
 
   // Entered while Confirm was still held (typical when launched from the home
   // menu): ignore its release, or we would open whatever sits at row 0.
@@ -142,8 +156,112 @@ void LibraryListActivity::onEnter() {
   requestUpdate(true);
 }
 
+void LibraryListActivity::loop() {
+  // After the first paint: the import screen replaces the shelf, never the other way round.
+  if (transferCheckPending && static_cast<long>(millis() - transferCheckAt) >= 0) foldInTransfers();
+  UiTabListActivity::loop();
+  if (coverPending && !batchMode && millis() - coverIdleSince > 1500) makePendingCover();
+}
+
+void LibraryListActivity::makePendingCover() {
+  std::string path;
+  int height = 0;
+  bool last = false;
+  {
+    RenderLock lock(*this);
+    if (!coverPending || coverPageStart != shelfStart) {
+      coverPending = 0;
+      return;
+    }
+    const int slot = __builtin_ctz(coverPending);
+    coverPending &= coverPending - 1;
+    coverAttempted |= 1u << slot;
+    if (slot >= shelfCount) return;
+    path = shelfPaths[slot];
+    height = coverPageHeight;
+    last = coverPending == 0;
+  }
+  // One book per loop pass: input queued meanwhile is handled before the next.
+  // Like Home's covers: the render task is held off and the decode borrows the
+  // framebuffer, which is repainted afterwards anyway.
+  [[maybe_unused]] const auto started = millis();
+  bool generated = false;
+  bool made = false;
+  {
+    RenderLock lock(*this);
+    GfxRenderer::FrameBufferLoan loan(renderer);
+    made = !BookCoverLoader::ensureThumbnail(path, height, &generated).empty();
+  }
+  LOG_INF("LIB", "cover %s in %lu ms: %s", made ? (generated ? "made" : "found") : "unavailable", millis() - started,
+          path.c_str());
+  if (last) {
+    // One repaint for the page: the loans cleared the framebuffer, and every cover
+    // that could be made is now on the card.
+    RenderLock lock(*this);
+    shelfStart = -1;
+    requestUpdate();
+  }
+}
+
+void LibraryListActivity::foldInTransfers() {
+  transferCheckPending = false;
+  auto sources = makeUniqueNoThrow<library::LibrarySources>();
+  if (!sources) return;
+  const auto loaded = sources->load();
+  if (loaded == library::LibrarySources::Load::Error) return;  // keep the record for a later visit
+  if (loaded == library::LibrarySources::Load::Missing || sources->size() == 0) {
+    library::LibraryIncoming::clear();  // nothing enrolled: transfers are not shelf books yet
+    return;
+  }
+  struct Coverage {
+    const library::LibrarySources* sources;
+    std::array<uint8_t, library::LibrarySources::MAX_SOURCES / 8> covered{};
+  } coverage{sources.get()};
+  bool unknownChanges = false;
+  library::LibraryIncoming::read(
+      [](const char* path, void* context) {
+        auto& c = *static_cast<Coverage*>(context);
+        for (uint16_t i = 0; i < c.sources->size(); ++i)
+          if (c.sources->sourceIncludes(i, path)) c.covered[i / 8] |= uint8_t(1u << (i % 8));
+      },
+      &coverage, unknownChanges);
+  int coveredCount = 0, onlySource = -1;
+  for (uint16_t i = 0; i < sources->size(); ++i)
+    if (coverage.covered[i / 8] & (1u << (i % 8))) {
+      ++coveredCount;
+      onlySource = i;
+    }
+  if (!unknownChanges && coveredCount == 0) {
+    // Uploaded outside every enrolled folder: the reader adds those explicitly.
+    library::LibraryIncoming::clear();
+    return;
+  }
+  LibraryImportRequest request;
+  if (!unknownChanges && coveredCount == 1) {
+    request.action = LibraryImportRequest::Action::RefreshSource;
+    request.source = static_cast<uint16_t>(onlySource);
+  }
+  LOG_INF("LIB", "transfers: refresh %s (sources covered=%d, usb=%d)",
+          request.action == LibraryImportRequest::Action::RefreshSource ? "one source" : "all sources", coveredCount,
+          unknownChanges ? 1 : 0);
+  {
+    RenderLock lock(*this);
+    index.close();
+    searchTable.release();
+    app.clearTapFlash();
+  }
+  if (!startActivityForResultWith<LibraryImportActivity>(
+          [this](const ActivityResult& result) {
+            if (!result.isCancelled) library::LibraryIncoming::clear();
+            reloadIndex();
+          },
+          request))
+    reloadIndex();
+}
+
 void LibraryListActivity::onExit() {
   index.close();
+  searchTable.release();
   filtered.reset();
   Activity::onExit();
 }
@@ -250,7 +368,7 @@ void LibraryListActivity::openBookByPath(const std::string& path) {
 
 void LibraryListActivity::activateIndex(const int index) {
   if (batchMode) {
-    if (index < 0 || index >= bookRowCount() || index >= 4096) return;
+    if (index < 0 || index >= bookRowCount() || index >= library::CLIX_MAX_RECORDS) return;
     RenderLock lock(*this);
     const uint8_t bit = uint8_t(1u << (index % 8));
     const bool selected = batchSelected[index / 8] & bit;
@@ -363,6 +481,8 @@ void LibraryListActivity::promptRebuildIndex() {
 void LibraryListActivity::reloadIndex() {
   RenderLock lock(*this);
   index.close();
+  searchTable.release();
+  searchTableFailed = false;
   index.open(library::libraryIndexPath());
   degraded = index.isOpen() && index.ranksDegraded();
   resetAfterRebuild();
@@ -390,6 +510,39 @@ void LibraryListActivity::removeFromLibrary(const std::string& path) {
     reloadIndex();
 }
 
+void LibraryListActivity::toggleListView() {
+  RenderLock lock(*this);
+  // Keep the same book in view: the new page is the one that contains it.
+  SETTINGS.libraryListView = SETTINGS.libraryListView ? 0 : 1;
+  SETTINGS.saveToFile();
+  shelfStart = -1;
+  requestUpdate();
+}
+
+void LibraryListActivity::promptPageJump() {
+  if (batchMode || pageCapacity <= 0) return;
+  const int count = bookRowCount();
+  const int pages = (count + pageCapacity - 1) / pageCapacity;
+  if (pages <= 1) return;
+  app.clearTapFlash();
+  startActivityForResultWith<KeyboardEntryActivity>(
+      [this](const ActivityResult& result) {
+        swallowHeldReleases();
+        if (result.isCancelled || !std::holds_alternative<KeyboardResult>(result.data)) return;
+        const int page = std::atoi(std::get<KeyboardResult>(result.data).text.c_str());
+        RenderLock lock(*this);
+        const int total = bookRowCount();
+        const int last = (total + pageCapacity - 1) / pageCapacity;
+        if (page < 1 || total <= 0) return;
+        const int row = (std::min(page, last) - 1) * pageCapacity;
+        // Ring position 0 is the filter strip; book rows start at 1.
+        activeNav().requestSelection(row + 1);
+        shelfStart = -1;
+        requestUpdate();
+      },
+      tr(STR_LIBRARY_JUMP_PAGE), std::string(), size_t(5), InputType::Latin);
+}
+
 void LibraryListActivity::clearBatch() {
   batchMode = false;
   batchCount = 0;
@@ -407,7 +560,8 @@ void LibraryListActivity::openShelfTools() {
                                       StrId::STR_RICKY_SORT_TITLE_ASC,   StrId::STR_RICKY_SORT_TITLE_DESC,
                                       StrId::STR_RICKY_SORT_AUTHOR_ASC,  StrId::STR_RICKY_SORT_AUTHOR_DESC,
                                       StrId::STR_LIBRARY_REBUILD,        StrId::STR_LIBRARY_CATEGORIES,
-                                      StrId::STR_LIBRARY_BATCH,          StrId::STR_LIBRARY_SOURCES};
+                                      StrId::STR_LIBRARY_BATCH,          StrId::STR_LIBRARY_SOURCES,
+                                      StrId::STR_LIBRARY_VIEW_TOGGLE};
   const int selected = activeTabIndex * 2 + (isDescending(sortOrder) == (activeTabIndex == RECENT_TAB) ? 0 : 1);
   optionPopup.show(StrId::STR_RICKY_LIBRARY_TOOLS, options, std::size(options), selected, [this](int choice) {
     swallowHeldReleases();
@@ -425,6 +579,10 @@ void LibraryListActivity::openShelfTools() {
     }
     if (choice == 9) {
       openSources();
+      return;
+    }
+    if (choice == 10) {
+      toggleListView();
       return;
     }
     if (choice < 0 || choice >= 6 || degraded) return;
@@ -607,9 +765,23 @@ void LibraryListActivity::promptDeleteBookByPath(const std::string& path, const 
 }
 
 void LibraryListActivity::openSearch() {
-  // No Chinese input method yet, so a search keyboard could not type most titles:
-  // every way into Search (the Previous key on the tab strip included) stays shut.
-  return;
+  if (batchMode) return;
+  app.clearTapFlash();
+  // Chinese characters, pinyin initials ("jtyss") or Latin words all go through
+  // the same keyboard; LibrarySearchTable decides how each word matches.
+  startActivityForResultWith<KeyboardEntryActivity>(
+      [this](const ActivityResult& result) {
+        swallowHeldReleases();
+        if (result.isCancelled || !std::holds_alternative<KeyboardResult>(result.data)) return;
+        RenderLock lock(*this);
+        query = std::get<KeyboardResult>(result.data).text;
+        applyFilter();
+        auto& nav = activeNav();
+        nav.selected = 0;
+        nav.top = 0;
+        requestUpdate();
+      },
+      tr(STR_LIBRARY_SEARCH), query, size_t(64), InputType::Text);
 }
 
 void LibraryListActivity::stepTab(const int direction) {
@@ -767,8 +939,8 @@ void LibraryListActivity::restoreExpandedList() {
   requestUpdate();
 }
 
-// One pass over the sort order, keeping what matches. No index, no cache: at the
-// 4096-book format cap this is 4096 comparisons of at most 96 bytes. The result
+// One pass over the sort order, keeping what matches: from LibrarySearchTable in
+// memory when it could be built, otherwise straight from the index file. The result
 // array is allocated once with the exact upper bound and fails back to an
 // explicit message rather than letting vector growth abort the firmware.
 void LibraryListActivity::applyFilter() {
@@ -794,6 +966,11 @@ void LibraryListActivity::applyFilter() {
   const std::string needle = library::fold(query);
   const int total = static_cast<int>(index.bookCount());
   if (total <= 0) return;
+  if ((!query.empty() || categoryFilter) && !searchTable.ready() && !searchTableFailed && index.isOpen())
+    searchTableFailed = !searchTable.build(index);
+  const bool inMemory = searchTable.ready() && searchTable.size() == total;
+  const auto prepared = LibrarySearchTable::prepare(query);
+  [[maybe_unused]] const auto filterStarted = millis();
 
   auto matches = makeUniqueNoThrow<uint16_t[]>(static_cast<size_t>(total));
   if (!matches) {
@@ -805,6 +982,29 @@ void LibraryListActivity::applyFilter() {
   uint16_t matchCount = 0;
   std::string author;
   for (int row = 0; row < total; row++) {
+    if (inMemory) {
+      // Title, author, initials and category from memory; the card is read only
+      // for a reading-state filter, and only for books that already matched.
+      const uint16_t ordinal = searchTable.ordinalForRow(sortOrder, static_cast<uint16_t>(row));
+      if (ordinal == 0xFFFF || !searchTable.matches(ordinal, prepared)) continue;
+      if (categoryFilter) {
+        const bool present = categoryHashCount && std::binary_search(categoryHashes.get(),
+                                                                     categoryHashes.get() + categoryHashCount,
+                                                                     searchTable.pathHash(ordinal));
+        if (categoryFilter == 1 ? present : !present) continue;
+      }
+      if (readingFilter != 0) {
+        library::ClixRecord record{};
+        std::string path;
+        if (!index.readRecord(ordinal, record) || !index.readPath(record, path)) continue;
+        const auto* stats = READING_STATS.findBook(path);
+        const bool started = stats != nullptr;
+        const bool reading = started && !stats->completed;
+        if ((readingFilter == 1 && !reading) || (readingFilter == 2 && started)) continue;
+      }
+      matches[matchCount++] = static_cast<uint16_t>(row);
+      continue;
+    }
     const uint16_t ordinal = index.ordinalForRow(sortOrder, static_cast<uint16_t>(row));
     library::ClixRecord record{};
     if (ordinal == 0xFFFF || !index.readRecord(ordinal, record)) continue;
@@ -847,6 +1047,9 @@ void LibraryListActivity::applyFilter() {
   }
   filtered = std::move(matches);
   filteredCount = matchCount;
+  LOG_INF("LIB", "filter \"%s\" reading=%u category=%d: %u of %d books in %lu ms (%s)", query.c_str(),
+          static_cast<unsigned>(readingFilter), categoryFilter, static_cast<unsigned>(matchCount), total,
+          millis() - filterStarted, inMemory ? "memory" : "card");
 }
 
 // Staged back-out, shared by the Back button and the header's back arrow:
@@ -941,7 +1144,7 @@ bool LibraryListActivity::handleCustomInput() {
 // up to its page, so swiping back from there never left the last page. Scrolling stays
 // in UiListActivity::loop(), after the touch is routed: taking the swipe earlier left
 // the touched book pressed (drawn inverted) because its release never reached the UI.
-int LibraryListActivity::swipeScrollRows() { return SHELF_CAPACITY; }
+int LibraryListActivity::swipeScrollRows() { return pageCapacity; }
 
 bool LibraryListActivity::handleButtons() {
   const int count = listCount();
@@ -1234,9 +1437,15 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
   addStyle.align = fui::TextAlign::Center;
   screen.target().text(addRect, "+", addStyle);
   screen.frame().hit(addRect, ACTION_ADD, 0, fui::InputTouch);
+  // Search sits beside "+": with thousands of books it is the main way in.
+  auto searchRect = addRect;
+  searchRect.x = addRect.x - searchRect.width;
+  RickyPageUi::pageIcon(screen.target(), renderer, searchRect.x + (searchRect.width - 40) / 2,
+                        searchRect.y + searchRect.height / 2, icon_ricky_lookup_40);
+  screen.frame().hit(searchRect, ACTION_SEARCH, 0, fui::InputTouch);
   countRect.width = titleRect.width / 3;
-  countRect.x = addRect.x - gap - countRect.width;
-  titleRect.width -= countRect.width + addRect.width + gap * 2;
+  countRect.x = searchRect.x - gap - countRect.width;
+  titleRect.width -= countRect.width + addRect.width + searchRect.width + gap * 2;
   auto pageTitle = theme.titleText;
   pageTitle.bold = true;
   screen.target().text(titleRect, headerTitle(), pageTitle);
@@ -1310,34 +1519,42 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
                                             : tr(STR_LIBRARY_NO_RESULTS)));
     return;
   }
-  const bool multiplePages = count > SHELF_CAPACITY;
+  const bool listView = SETTINGS.libraryListView != 0;
+  const bool multiplePages = count > SHELF_CAPACITY || (listView && count > 1);
   const auto positionRect = multiplePages ? screen.takeBottom(labelHeight, gap) : fui::Rect{};
   const auto body = screen.body();
+  // List rows: title over "author · progress", sized from the real font lines.
+  const int listRowHeight = cardTextLineHeight * 2 + cardTextGap + 2 * cardInset;
+  const int capacity =
+      listView ? std::clamp(body.height / std::max(1, listRowHeight), 4, SHELF_MAX) : SHELF_CAPACITY;
+  pageCapacity = capacity;
   // One row only on a clearly wide body; a near-square one (the A4: about 480 x 420 in
   // portrait) keeps two rows, or its covers shrink to a sliver of the width.
-  const int columns = (body.width > body.height * 3 / 2 ? 2 : 1) * (SHELF_CAPACITY / 2);
-  const int rows = SHELF_CAPACITY / columns;
+  const int columns = listView ? 1 : (body.width > body.height * 3 / 2 ? 2 : 1) * (SHELF_CAPACITY / 2);
+  const int rows = capacity / columns;
   const int rowHeight = std::max(1, (body.height - gap * (rows - 1)) / rows);
   // 2:3 covers, one page of six bounded records.
-  const int coverHeight = std::max(
-      1, std::min(rowHeight - cardExtraHeight, ((body.width - gap * (columns - 1)) / columns - 16) * 3 / 2));
+  const int coverHeight =
+      listView ? 0
+               : std::max(1, std::min(rowHeight - cardExtraHeight,
+                                      ((body.width - gap * (columns - 1)) / columns - 16) * 3 / 2));
   auto& n = activeNav();
   fui::ListProps paging;
-  // Feed the existing atomic list-nav requests with four virtual one-pixel rows.
+  // Feed the existing atomic list-nav requests with virtual one-pixel rows.
   // No new input owner or second set of manually overlapping touch rectangles.
-  n.syncToProps(fui::Rect{0, 0, 1, SHELF_CAPACITY}, 1, 0, count, paging, 1);
+  n.syncToProps(fui::Rect{0, 0, 1, static_cast<int16_t>(capacity)}, 1, 0, count, paging, 1);
   const int start = n.followPending && paging.selectedIndex >= 0
-                        ? paging.selectedIndex / SHELF_CAPACITY * SHELF_CAPACITY
-                        : std::min((count - 1) / SHELF_CAPACITY * SHELF_CAPACITY,
-                                   (paging.topIndex + SHELF_CAPACITY - 1) / SHELF_CAPACITY * SHELF_CAPACITY);
-  const int visible = std::min(SHELF_CAPACITY, count - start);
-  LOG_DBG("RICKY", "shelf bounds=%d,%d,%d,%d body=%d,%d,%d,%d start=%d count=%d visible=%d cover=%d", bounds.x,
-          bounds.y, bounds.width, bounds.height, body.x, body.y, body.width, body.height, start, count, visible,
-          coverHeight);
-  if (start != shelfStart || coverHeight != shelfHeight) {
+                        ? paging.selectedIndex / capacity * capacity
+                        : std::min((count - 1) / capacity * capacity,
+                                   (paging.topIndex + capacity - 1) / capacity * capacity);
+  const int visible = std::min(capacity, count - start);
+  LOG_DBG("RICKY", "shelf bounds=%d,%d,%d,%d body=%d,%d,%d,%d start=%d count=%d visible=%d cover=%d list=%d",
+          bounds.x, bounds.y, bounds.width, bounds.height, body.x, body.y, body.width, body.height, start, count,
+          visible, coverHeight, listView ? 1 : 0);
+  if (start != shelfStart || coverHeight != shelfHeight || capacity != shelfBuiltCapacity) {
     [[maybe_unused]] const auto perfShelfStart = millis();
     shelfCount = visible;
-    // Materialize only four bounded index records; no vector of every book/cover.
+    // Materialize only one bounded page of index records; no vector of every book/cover.
     for (int i = 0; i < visible; ++i) {
       rowTextFor(start + i, shelfTitles[i], shelfAuthors[i]);
       RickyPageUi::stripBookExtension(shelfTitles[i]);
@@ -1358,7 +1575,7 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
     [[maybe_unused]] const auto perfThumbStart = millis();
     // Look up only retained thumbnail names. Painting a page must never unzip
     // EPUBs or create images; the existing title-cover design is the fallback.
-    for (int i = 0; i < visible; ++i) {
+    for (int i = 0; i < visible && !listView; ++i) {
       if (shelfPaths[i].empty()) continue;
       // A cover already drawn this session was a valid thumbnail: skip the card.
       std::string drawn = BookCoverLoader::thumbnailPath(shelfPaths[i], coverHeight);
@@ -1368,9 +1585,46 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
                millis() - perfThumbStart);
     shelfStart = start;
     shelfHeight = coverHeight;
+    shelfBuiltCapacity = capacity;
   }
+  if (listView) {
+    const int lineHeight = std::max(1, (body.height) / capacity);
+    std::string detail;
+    for (int slot = 0; slot < visible; ++slot) {
+      const int entry = start + slot;
+      const fui::Rect cell{body.x, static_cast<int16_t>(body.y + slot * lineHeight), body.width,
+                           static_cast<int16_t>(lineHeight)};
+      const bool picked = batchMode ? (batchSelected[entry / 8] & (1u << (entry % 8))) != 0
+                                    : showMainTabContentSelection() && paging.selectedIndex == entry;
+      if (picked) RickyDesignUi::fill(renderer, cell, ricky::ds::gray::kInk, ricky::ds::radius::kControl);
+      const int textHeight = cardTextLineHeight * 2 + cardTextGap;
+      const fui::Rect titleRect{static_cast<int16_t>(cell.x + cardSideInset * 2),
+                                static_cast<int16_t>(cell.y + (cell.height - textHeight) / 2),
+                                static_cast<int16_t>(cell.width - cardSideInset * 4),
+                                static_cast<int16_t>(cardTextLineHeight)};
+      const fui::Rect detailRect{titleRect.x, static_cast<int16_t>(titleRect.bottom() + cardTextGap), titleRect.width,
+                                 titleRect.height};
+      RickyDesignUi::text(renderer, titleRect, shelfTitles[slot].c_str(), RickyDesignUi::BODY, picked,
+                          fui::TextAlign::Left);
+      detail = shelfAuthors[slot].empty() ? std::string(shelfDetails[slot].data())
+                                          : shelfAuthors[slot] + " · " + shelfDetails[slot].data();
+      RickyDesignUi::secondaryText(renderer, detailRect, detail.c_str(), RickyDesignUi::CAPTION, picked,
+                                   fui::TextAlign::Left);
+      if (slot + 1 < visible && !picked)
+        screen.target().fill(fui::Rect{titleRect.x, static_cast<int16_t>(cell.bottom() - 1), titleRect.width, 1},
+                             fui::Paint::solid(fui::Color::LightGray));
+      screen.frame().hit(cell, ACTION_ROW, entry, fui::InputTouch | fui::InputLongPress);
+    }
+  }
+  if (start != coverPageStart || coverHeight != coverPageHeight) {
+    coverPageStart = start;
+    coverPageHeight = coverHeight;
+    coverAttempted = 0;
+  }
+  coverPending = 0;
+  coverIdleSince = millis();
   const int cellWidth = (body.width - gap * (columns - 1)) / columns;
-  for (int slot = 0; slot < visible; ++slot) {
+  for (int slot = 0; slot < visible && !listView; ++slot) {
     const fui::Rect cell{static_cast<int16_t>(body.x + slot % columns * (cellWidth + gap)),
                          static_cast<int16_t>(body.y + slot / columns * (rowHeight + gap)),
                          static_cast<int16_t>(cellWidth), static_cast<int16_t>(coverHeight + cardExtraHeight)};
@@ -1398,6 +1652,9 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
                                      });
       if (painted) screen.target().stroke(rect, fui::Paint::solid(fui::Color::LightGray), ricky::ds::stroke::kHairline);
     }
+    if (!painted && !shelfPaths[slot].empty() && !(coverAttempted & (1u << slot)) &&
+        BookCoverLoader::canMakeThumbnail(shelfPaths[slot], coverHeight))
+      coverPending |= 1u << slot;
     if (!painted) {
       const auto& path = shelfPaths[slot];
       const char* format = FsHelpers::hasEpubExtension(path) ? "EPUB" : FsHelpers::hasTxtExtension(path) ? "TXT" :
@@ -1423,12 +1680,16 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
   }
   n.drawnCount = count;
   n.onListRendered(start, visible, paging.selectedIndex >= start && paging.selectedIndex < start + visible);
-  snprintf(position, sizeof(position), tr(STR_RICKY_LIBRARY_PAGE), static_cast<unsigned>(start / SHELF_CAPACITY + 1),
-           static_cast<unsigned>((count + SHELF_CAPACITY - 1) / SHELF_CAPACITY), static_cast<unsigned>(count));
+  snprintf(position, sizeof(position), tr(STR_RICKY_LIBRARY_PAGE), static_cast<unsigned>(start / capacity + 1),
+           static_cast<unsigned>((count + capacity - 1) / capacity), static_cast<unsigned>(count));
   auto style = theme.smallText;
   style.align = fui::TextAlign::Right;
-  if (multiplePages) screen.target().text(positionRect, position, style);
-  GUI.drawSideScrollBar(renderer, Rect{body.x, body.y, body.width, body.height}, count, start, SHELF_CAPACITY);
+  if (multiplePages) {
+    screen.target().text(positionRect, position, style);
+    // The page readout jumps: hundreds of pages are too many to turn one by one.
+    screen.frame().hit(positionRect, ACTION_ADD, PageJump, fui::InputTouch);
+  }
+  GUI.drawSideScrollBar(renderer, Rect{body.x, body.y, body.width, body.height}, count, start, capacity);
 }
 
 // "12/69 books" at the bottom right: which book is selected, out of how many.

@@ -43,7 +43,7 @@ void LibraryCategoriesActivity::provideRow(void* ctx, uint16_t index, fui::ListI
     return;
   }
   if (index < self.leadingRows()) {
-    item.label = self.count ? (index == 0 ? tr(STR_SAVE) : tr(STR_LIBRARY_NEW_CATEGORY))
+    item.label = self.count ? (index == 0 ? tr(STR_SAVE) : tr(STR_LIBRARY_NEW_CATEGORY_ASSIGN))
                             : (index == 0   ? tr(STR_LIBRARY_ALL_CATEGORIES)
                                : index == 1 ? tr(STR_LIBRARY_UNCATEGORIZED)
                                             : tr(STR_LIBRARY_NEW_CATEGORY));
@@ -88,7 +88,33 @@ void LibraryCategoriesActivity::editName(int slot) {
         if (result.isCancelled || !std::holds_alternative<KeyboardResult>(result.data)) return;
         const auto& name = std::get<KeyboardResult>(result.data).text;
         RenderLock lock(*this);
-        if (slot < 0 ? categories.create(name.c_str()) < 0 : !categories.rename(slot, name.c_str())) showError();
+        if (slot >= 0) {
+          if (!categories.rename(slot, name.c_str())) showError();
+          requestUpdate();
+          return;
+        }
+        const int created = categories.create(name.c_str());
+        if (created < 0) {
+          showError();
+          requestUpdate();
+          return;
+        }
+        if (count) {
+          // Made while assigning: the selected books go straight in, with whatever
+          // else was ticked, and the assignment is saved.
+          const uint16_t bit = uint16_t(1u << created);
+          touched |= bit;
+          enabled |= bit;
+          if (!categories.assign(hashes.get(), count, touched, enabled)) {
+            showError();
+            requestUpdate();
+            return;
+          }
+          setResult(ActivityResult{IntervalResult{0}});
+          app.clearTapFlash();
+          finish();
+          return;
+        }
         requestUpdate();
       },
       slot < 0 ? tr(STR_LIBRARY_NEW_CATEGORY) : tr(STR_RENAME), categories.name(slot), size_t(48), InputType::Text);

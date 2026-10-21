@@ -19,7 +19,7 @@ class Epub {
  public:
   Epub(const std::string& path, const char*) : path(path) {}
 
-  bool loadMetadata(std::string& title, std::string& author) {
+  bool loadMetadata(std::string& title, std::string& author, HalFile* = nullptr) {
     ++fake::parses;
     const auto& metadata = bookMetadata[path];
     if (!metadata.success) return false;

@@ -758,7 +758,7 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
   return true;
 }
 
-bool Epub::loadMetadata(std::string& title, std::string& author) {
+bool Epub::loadMetadata(std::string& title, std::string& author, HalFile* openedArchive) {
   title.clear();
   author.clear();
 #if defined(RICKYOS_KINDLE_IMPORT)
@@ -785,7 +785,8 @@ bool Epub::loadMetadata(std::string& title, std::string& author) {
   metadataCache.reset();
 
   ZipFile zip(archiveFile());
-  if (!zip.open()) {
+  const bool adoptable = openedArchive && *openedArchive && archiveFile() == filepath;
+  if (!(adoptable ? zip.adopt(std::move(*openedArchive)) : zip.open())) {
     LOG_DBG("EBP", "Could not open ePub for package metadata: %s", filepath.c_str());
     return false;
   }
@@ -797,6 +798,18 @@ bool Epub::loadMetadata(std::string& title, std::string& author) {
 
   title = std::move(metadata.title);
   author = std::move(metadata.author);
+  return true;
+}
+
+bool Epub::probeCover(bool& declared) {
+  ZipFile zip(archiveFile());
+  if (!zip.open()) return false;
+  BookMetadataCache::BookMetadata metadata;
+  // No cache: the parser keeps the manifest in memory only for the cover lookup.
+  const bool parsed = parseContentOpf(metadata, /*writeSpineEntries=*/false, /*metadataOnly=*/false, &zip);
+  zip.close();
+  if (!parsed) return false;
+  declared = !metadata.coverItemHref.empty();
   return true;
 }
 

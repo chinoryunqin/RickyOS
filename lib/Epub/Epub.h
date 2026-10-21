@@ -76,7 +76,13 @@ class Epub {
   ~Epub() = default;
   std::string& getBasePath() { return contentBasePath; }
   bool load(bool buildIfMissing = true, bool skipLoadingCss = false);
-  bool loadMetadata(std::string& title, std::string& author);
+  // `openedArchive`, when given and open, is this EPUB already opened by the caller
+  // (a library walk); it is consumed instead of opening the file again by name.
+  bool loadMetadata(std::string& title, std::string& author, HalFile* openedArchive = nullptr);
+  // Whether the package declares a cover image (metadata, EPUB 3 property or guide
+  // page), read from the OPF alone: no reader caches are built or written. Returns
+  // false when the OPF cannot be read, leaving `declared` untouched.
+  bool probeCover(bool& declared);
   bool clearCache() const;
   void setupCacheDir() const;
   const std::string& getCachePath() const;

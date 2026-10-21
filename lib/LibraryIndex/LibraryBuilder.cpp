@@ -41,6 +41,11 @@ constexpr char CACHE_DIR[] = "/.crosspoint";
 // Sticky fallback when the marker could not be persisted (card unavailable at
 // write time): callers must still see the index as stale until a rebuild clears it.
 std::atomic<bool> dirtyInMemory{false};
+
+// Where an import spends its time, for the build summary: EPUB metadata reads
+// versus everything else in the walk (directory enumeration, stat, staging).
+uint32_t metadataReadMs = 0;
+uint32_t walkPhaseMs = 0;
 constexpr size_t LIBRARY_IO_BUFFER_SIZE = 4096;
 
 // Matches lib/FileIndex's buffer so a name this walk accepts is one the file
@@ -298,6 +303,8 @@ struct WalkState {
   const LibrarySources* sources = nullptr;
   uint16_t sourceIndex = 0;
   bool skipStagedPrior = false;
+  // The walk's open handle on the book being staged, for EPUB metadata (no reopen by name).
+  HalFile* openBook = nullptr;
   bool replayingIndex = false;
   char directFolder[256]{};
   uint16_t directFolderId = 0;
@@ -408,7 +415,10 @@ int findPrior(WalkState& st, const uint64_t pathHash) {
     st.stats->parsed++;
     Epub epub(fullPath, CACHE_DIR);
     std::string bookTitle;
-    if (epub.loadMetadata(bookTitle, author)) {
+    const uint32_t metadataStarted = millis();
+    const bool metadataLoaded = epub.loadMetadata(bookTitle, author, st.openBook);
+    metadataReadMs += millis() - metadataStarted;
+    if (metadataLoaded) {
       entry.record.metadataStatus = CLIX_METADATA_EXTRACTED;
       if (!bookTitle.empty()) {
         title = std::move(bookTitle);
@@ -493,6 +503,21 @@ void walk(WalkState& st, const std::string& path, const int depth) {
 
   const uint16_t dedupBase = st.activeDedupCount;
   const DedupFrame dedupFrame{st, dedupBase};
+  // Per-folder EPUB metadata cost: shows whether a large flat folder makes each
+  // by-path open slower (FAT name lookup is a linear directory scan).
+  struct FolderTiming {
+    const std::string& path;
+    const BuildStats* stats;
+    uint32_t metadataMs;
+    uint16_t parsed;
+    ~FolderTiming() {
+      if (!stats || stats->parsed == parsed) return;
+      const unsigned books = stats->parsed - parsed;
+      const unsigned ms = metadataReadMs - metadataMs;
+      LOG_INF("LIBIDX", "metadata %u EPUB in %ums (%ums each) under %s", books, ms, books ? ms / books : 0,
+              path.c_str());
+    }
+  } folderTiming{path, st.stats, metadataReadMs, st.stats ? st.stats->parsed : uint16_t(0)};
 
   HalFile dir = Storage.open(path.c_str());
   if (!dir || !dir.isDirectory()) {
@@ -521,6 +546,15 @@ void walk(WalkState& st, const std::string& path, const int depth) {
   uint16_t myFolderId = 0;
 
   for (HalFile entry = dir.openNextFile(); entry; entry = dir.openNextFile()) {
+    // A book's entry stays open until its record is staged, so EPUB metadata reads
+    // it through this handle instead of looking the name up again (in a 2,000-file
+    // folder that lookup made each EPUB 134 ms instead of 20 ms).
+    struct CloseEntry {
+      HalFile& file;
+      ~CloseEntry() {
+        if (file) file.close();
+      }
+    } closeEntry{entry};
     serviceBuilder(st.serviceUnits);
     if (cancellationRequested()) st.failed = true;
     if (st.failed || st.books >= CLIX_MAX_RECORDS) {
@@ -532,7 +566,7 @@ void walk(WalkState& st, const std::string& path, const int depth) {
     const bool isDir = entry.isDirectory();
     const uint32_t size = isDir ? 0 : static_cast<uint32_t>(entry.fileSize());
     const uint32_t modificationTime = isDir ? 0 : entry.modificationTime();
-    entry.close();
+    if (isDir) entry.close();
 
     if (st.nameBuf[0] == '\0' || isProtectedEntry(st.nameBuf)) continue;
     const std::string name(st.nameBuf);
@@ -617,7 +651,10 @@ void walk(WalkState& st, const std::string& path, const int depth) {
       st.folderId++;
       folderEmitted = true;
     }
-    if (!stageRecord(st, name, size, myFolderId, joinLibraryPath(path, name), modificationTime)) break;
+    st.openBook = &entry;
+    const bool staged = stageRecord(st, name, size, myFolderId, joinLibraryPath(path, name), modificationTime);
+    st.openBook = nullptr;
+    if (!staged) break;
   }
   dir.close();
 }
@@ -801,6 +838,26 @@ bool emitIndex(const char* folderStagePath, WalkState& st, const uint16_t* order
   }
   serialization::BufferedFileWriter outBuffer(out, LIBRARY_IO_BUFFER_SIZE);
 
+  // The passes below visit the stage in title and author order, i.e. at random:
+  // each small read costs a whole SD sector, several times per book (35 s for
+  // 3,000 books on the Plus). Read the stage once, sequentially, into PSRAM when
+  // it fits with headroom; otherwise keep the file reads.
+  const size_t stageBytes = static_cast<size_t>(st.books) * STAGE_STRIDE;
+  memory::ByteBuffer stageMirror;
+  if (stageBytes > 0 && memory::psramHasHeadroom(stageBytes, stageBytes, 512 * 1024)) {
+    stageMirror = memory::makePsramByteBufferUninitializedNoThrow(stageBytes);
+    for (size_t at = 0; stageMirror && at < stageBytes;) {
+      const size_t want = std::min<size_t>(32 * 1024, stageBytes - at);
+      if (!stage.seekSet(at) || stage.read(stageMirror.get() + at, want) != static_cast<int>(want)) {
+        LOG_ERR("LIBIDX", "stage mirror read failed at %u; using file reads", static_cast<unsigned>(at));
+        stageMirror.reset();
+        break;
+      }
+      at += want;
+    }
+  }
+  LOG_INF("LIBIDX", "stage %u B %s", static_cast<unsigned>(stageBytes), stageMirror ? "in PSRAM" : "read from card");
+
   // Returns false rather than spinning. A full card makes write() return 0, and
   // the old loop never advanced past it — the device simply hung mid-rebuild with
   // no message, which is worse than any error.
@@ -822,8 +879,18 @@ bool emitIndex(const char* folderStagePath, WalkState& st, const uint16_t* order
       outBuffer.write(zeros, want);
     }
   };
-  const auto readStageAt = [&stage, &ioFailed](const uint64_t offset, void* data, const size_t len) {
+  const auto readStageAt = [&stage, &ioFailed, &stageMirror, stageBytes](const uint64_t offset, void* data,
+                                                                          const size_t len) {
     if (ioFailed) return false;
+    if (stageMirror) {
+      if (offset > stageBytes || len > stageBytes - offset) {
+        LOG_ERR("LIBIDX", "record stage read out of range at %u", static_cast<unsigned>(offset));
+        ioFailed = true;
+        return false;
+      }
+      memcpy(data, stageMirror.get() + offset, len);
+      return true;
+    }
     if (!stage.seekSet(offset) || stage.read(reinterpret_cast<uint8_t*>(data), len) != static_cast<int>(len)) {
       LOG_ERR("LIBIDX", "record stage read failed at %u", static_cast<unsigned>(offset));
       ioFailed = true;
@@ -1297,6 +1364,8 @@ bool buildLibraryIndex(const char* rootPath, BuildStats& stats, const bool readM
     }
   } scope{stats};
   const uint32_t startMs = millis();
+  metadataReadMs = 0;
+  walkPhaseMs = 0;
   uint32_t serviceUnits = 0;
   stats = BuildStats{};
 
@@ -1395,6 +1464,7 @@ bool buildLibraryIndex(const char* rootPath, BuildStats& stats, const bool readM
       walkSources(st, *options->sources);
     else
       walk(st, rootPath, 0);
+    walkPhaseMs = millis() - startMs;
     st.stageOut = nullptr;
     stageFlushed = stageOut.flush();
   }
@@ -1604,6 +1674,9 @@ bool buildLibraryIndex(const char* rootPath, BuildStats& stats, const bool readM
 
   stats.walkMs = millis() - startMs;
   stats.indexReplaced = ok;
+  LOG_INF("LIBIDX", "time: walk %ums (of which EPUB metadata %ums for %u books), total %ums",
+          static_cast<unsigned>(walkPhaseMs), static_cast<unsigned>(metadataReadMs),
+          static_cast<unsigned>(stats.parsed), static_cast<unsigned>(millis() - startMs));
   LOG_INF("LIBIDX",
           "%s: %u books, %u folders, %u parsed, %u metadata reused, replaced %u, %u dup dropped, %u unreadable, "
           "%u reader data, %ums",

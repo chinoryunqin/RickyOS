@@ -414,6 +414,12 @@ bool ZipFile::open() {
   return true;
 }
 
+bool ZipFile::adopt(HalFile&& opened) {
+  close();
+  file = std::move(opened);
+  return file && file.seekSet(0);
+}
+
 bool ZipFile::close() {
   if (file) {
     // Explicit close() required: member variable persists beyond function scope

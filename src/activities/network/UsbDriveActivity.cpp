@@ -11,6 +11,8 @@
 #include "SilentRestart.h"
 #include "components/UITheme.h"
 #include "activities/home/RickyStorageActivity.h"
+#include <LibraryBuilder.h>
+#include <LibraryIncoming.h>
 #include "util/BookCoverLoader.h"
 
 namespace fui = freeink::ui;
@@ -54,6 +56,12 @@ void UsbDriveActivity::onExit() {
 #if !defined(RICKYOS_USB_PREVIEW)
   if (!restartRequested) Storage.endUsbDrive();
   RickyStorageActivity::invalidateScan();  // files may have arrived or left
+  if (!startFailed) {
+    // The computer may have added or removed books anywhere; the shelf refreshes
+    // its enrolled sources on its next entry (no walk here, USB is still unwinding).
+    library::LibraryIncoming::markUnknownChanges();
+    library::markLibraryIndexDirty();
+  }
 #endif
   Activity::onExit();
 }

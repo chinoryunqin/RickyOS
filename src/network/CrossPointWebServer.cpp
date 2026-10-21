@@ -12,6 +12,7 @@
 #include <HalStorage.h>
 #include <I18n.h>
 #include <LibraryBuilder.h>
+#include <LibraryIncoming.h>
 #include <Logging.h>
 #include <Memory.h>
 #include <ResumableFetch.h>
@@ -1165,7 +1166,10 @@ void CrossPointWebServer::handleUpload(UploadState& state) const {
         if (!filePath.endsWith("/")) filePath += "/";
         filePath += state.fileName;
         clearBookCache(filePath.c_str());
-        if (isLibraryBookFile(state.fileName)) library::markLibraryIndexDirty();
+        if (isLibraryBookFile(state.fileName)) {
+          library::LibraryIncoming::add(filePath.c_str());
+          library::markLibraryIndexDirty();
+        }
         if (isFontFile(state.fileName)) sdFontSystem.markRegistryDirty();
       }
     }
@@ -2028,7 +2032,10 @@ void CrossPointWebServer::onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* 
             wsLastCompleteAt = millis();
             LOG_DBG("WS", "Zero-byte upload complete: %s", filePath.c_str());
             clearBookCache(filePath.c_str());
-            if (isLibraryBookFile(wsUploadFileName)) library::markLibraryIndexDirty();
+            if (isLibraryBookFile(wsUploadFileName)) {
+              library::LibraryIncoming::add(filePath.c_str());
+              library::markLibraryIndexDirty();
+            }
             if (isFontFile(wsUploadFileName)) sdFontSystem.markRegistryDirty();
             wsServer->sendTXT(num, "DONE");
             wsLastProgressSent = 0;
@@ -2099,7 +2106,10 @@ void CrossPointWebServer::onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* 
         if (!filePath.endsWith("/")) filePath += "/";
         filePath += wsUploadFileName;
         clearBookCache(filePath.c_str());
-        if (isLibraryBookFile(wsUploadFileName)) library::markLibraryIndexDirty();
+        if (isLibraryBookFile(wsUploadFileName)) {
+              library::LibraryIncoming::add(filePath.c_str());
+              library::markLibraryIndexDirty();
+            }
         if (isFontFile(wsUploadFileName)) sdFontSystem.markRegistryDirty();
 
         wsServer->sendTXT(num, "DONE");

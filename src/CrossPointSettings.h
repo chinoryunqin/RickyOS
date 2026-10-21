@@ -374,6 +374,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Chosen in the reader menu; persisted outside SettingsList.
   static constexpr uint8_t READING_MODE_COUNT = 4;
   uint8_t readingMode = 0;
+  // Library shelf view, chosen in the shelf tools (not in SettingsList): 0 covers, 1 list.
+  uint8_t libraryListView = 0;
   // RickyOS badges already announced (bit per rickyBadges::Id); bit 31 marks the set as
   // seeded, so badges earned before this version are not announced all at once.
   uint32_t rickyBadgesSeen = 0;

@@ -95,6 +95,10 @@ std::string ensureThumbnail(const std::string& bookPath, const int height, bool*
     Epub epub(bookPath, "/.crosspoint");
     const std::string path = epub.getThumbBmpPath(height);
     std::string result = ensureCachedCover(path, !epub.hasCoverOverride(), generated, [&]() {
+      // A book that declares no cover would otherwise pay a full load (seconds on a
+      // large folder) only to find that out. The terminal marker then remembers it.
+      bool declared = true;
+      if (!epub.hasCoverOverride() && epub.probeCover(declared) && !declared) return false;
       if (!epub.load(true, true)) return false;
       epub.setupCacheDir();
       return epub.generateThumbBmp(height);

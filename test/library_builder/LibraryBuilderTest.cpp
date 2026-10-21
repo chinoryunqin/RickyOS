@@ -19,7 +19,7 @@ constexpr char INDEX[] = "/.crosspoint/library.idx";
 
 std::string numbered(const char* prefix, const unsigned value) {
   char text[32];
-  std::snprintf(text, sizeof(text), "%s%04u", prefix, value);
+  std::snprintf(text, sizeof(text), "%s%05u", prefix, value);  // five digits: the 16,384-book ceiling
   return text;
 }
 
@@ -334,7 +334,7 @@ TEST_F(LibraryBuilderTest, DuplicateDetectionRemainsBoundedAndFindsTrackedKeysAf
   for (unsigned i = 0; i <= LIBRARY_MAX_DEDUP_KEYS; i++) {
     fake::add("/book" + numbered("", i) + ".txt");
   }
-  fake::duplicateDirectoryEntry("/book0000.txt");
+  fake::duplicateDirectoryEntry("/book" + numbered("", 0) + ".txt");
   ASSERT_TRUE(buildLibraryIndex("/", stats, false));
   EXPECT_EQ(stats.books, LIBRARY_MAX_DEDUP_KEYS + 1);
   EXPECT_EQ(stats.duplicatesDropped, 1);

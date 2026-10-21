@@ -18,6 +18,10 @@
 
 #include "CrossPointSettings.h"
 #include "FileBrowserActivity.h"
+#include "activities/ActivityManager.h"
+#include "activities/library/LibrarySourcesActivity.h"
+#include "activities/settings/ClearCacheActivity.h"
+#include <LibrarySources.h>
 #include "SdCardFontSystem.h"
 #include "activities/RenderLock.h"
 #include "activities/settings/FontLibraryActivity.h"
@@ -47,48 +51,9 @@ void formatBytes(char* out, size_t size, uint64_t bytes) {
     snprintf(out, size, "%u MB", static_cast<unsigned>((bytes + MB / 2) / MB));
 }
 
-enum class Kind : uint8_t { Images, AnyFile };
-// Counting stops here (shown as "999+"): past it the number says nothing a reader acts on.
-constexpr int kCountCap = 999;
-
 // Set when the page is left: a folder walk stops between entries and leaves the counts
 // marked stale, so the next visit finishes them instead of the walk competing with a book.
 std::atomic<bool> scanCancel{false};
-
-bool matches(const Kind kind, const char* name) {
-  switch (kind) {
-    case Kind::Images:
-      return FsHelpers::hasImageExtension(std::string_view(name));
-    case Kind::AnyFile:
-      return true;
-  }
-  return false;
-}
-
-// Files of `kind` inside `path` and its subfolders (the standby pictures sit in
-// /images/待机图片), skipping hidden entries; capped so a huge card stays cheap.
-int countFiles(const std::string& path, const Kind kind, const int depth = 0) {
-  constexpr int kMaxDepth = 3;
-  HalFile dir = Storage.open(path.c_str());
-  if (!dir || !dir.isDirectory()) return 0;
-  int count = 0;
-  char name[256];
-  for (HalFile entry = dir.openNextFile(); entry && count < kCountCap && !scanCancel.load();
-       entry = dir.openNextFile()) {
-    name[0] = '\0';
-    entry.getName(name, sizeof(name));
-    const bool folder = entry.isDirectory();
-    entry.close();
-    if (name[0] == '.') continue;
-    if (folder) {
-      if (depth < kMaxDepth) count += countFiles(path + "/" + name, kind, depth + 1);
-    } else if (matches(kind, name)) {
-      ++count;
-    }
-  }
-  dir.close();
-  return std::min(count, kCountCap);
-}
 }  // namespace
 
 const char* RickyStorageActivity::folderFor(const int index) {
@@ -114,6 +79,8 @@ struct StorageScan {
   uint64_t total = 0;
   uint64_t free = 0;
   std::array<int, 3> counts{-1, -1, -1};  // books, images, downloads
+  bool sized = false;
+  uint64_t bookBytes = 0, cacheBytes = 0, fontBytes = 0;
 };
 constexpr const char* kStatsPath = "/.crosspoint/storage-stats.json";
 // "1" = counts out of date. Rewritten, never deleted: this page removes nothing on the card.
@@ -155,6 +122,10 @@ void saveStats() {
   doc["books"] = scan.counts[0];
   doc["images"] = scan.counts[1];
   doc["downloads"] = scan.counts[2];
+  doc["sized"] = scan.sized;
+  doc["bookBytes"] = scan.bookBytes;
+  doc["cacheBytes"] = scan.cacheBytes;
+  doc["fontBytes"] = scan.fontBytes;
   String text;
   serializeJson(doc, text);
   if (!Storage.writeFile(kStatsPath, text)) LOG_ERR("STOR", "Cannot save storage stats");
@@ -177,6 +148,10 @@ void loadStats() {
     scan.measured = scan.total > 0 && scan.free <= scan.total;
     scan.attempted = doc["attempted"] | scan.measured;
     scan.counts = {doc["books"] | -1, doc["images"] | -1, doc["downloads"] | -1};
+    scan.sized = doc["sized"] | false;
+    scan.bookBytes = doc["bookBytes"] | static_cast<uint64_t>(0);
+    scan.cacheBytes = doc["cacheBytes"] | static_cast<uint64_t>(0);
+    scan.fontBytes = doc["fontBytes"] | static_cast<uint64_t>(0);
   });
 }
 
@@ -194,26 +169,64 @@ int indexBookCount() {
   return books;
 }
 
+// Bytes under `path` (hidden entries included: reader caches live in /.crosspoint).
+uint64_t sumBytes(const std::string& path, const int depth = 0) {
+  constexpr int kMaxDepth = 4;
+  HalFile dir = Storage.open(path.c_str());
+  if (!dir || !dir.isDirectory()) return 0;
+  uint64_t bytes = 0;
+  char name[256];
+  for (HalFile entry = dir.openNextFile(); entry && !scanCancel.load(); entry = dir.openNextFile()) {
+    name[0] = '\0';
+    entry.getName(name, sizeof(name));
+    const bool folder = entry.isDirectory();
+    const uint64_t size = folder ? 0 : entry.fileSize();
+    entry.close();
+    if (folder) {
+      if (depth < kMaxDepth) bytes += sumBytes(path == "/" ? std::string("/") + name : path + "/" + name, depth + 1);
+    } else {
+      bytes += size;
+    }
+  }
+  dir.close();
+  return bytes;
+}
+
+// The Library's books by their recorded sizes: one sequential read of the index, no walk.
+uint64_t libraryBytes() {
+  auto index = makeUniqueNoThrow<library::LibraryIndexFile>();
+  if (!index || !index->open(library::libraryIndexPath())) return 0;
+  uint64_t bytes = 0;
+  library::ClixRecord records[32];
+  const uint16_t count = index->bookCount();
+  for (uint32_t first = 0; first < count && !scanCancel.load(); first += 32) {
+    const uint32_t n = std::min<uint32_t>(32, count - first);
+    if (!index->readRange(library::recordOffset(index->header(), static_cast<uint16_t>(first)), records,
+                          n * sizeof(library::ClixRecord)))
+      break;
+    for (uint32_t i = 0; i < n; ++i) bytes += records[i].fileSize;
+  }
+  index->close();
+  return bytes;
+}
+
 void countPass() {
   const uint32_t epoch = staleEpoch.load();
   const uint32_t started = millis();
-  struct Step {
-    int slot;
-    int (*count)();
-  };
-  // Books are not walked: their number is Library's (indexBookCount), read on the loop task.
-  static constexpr Step steps[] = {
-      {1, [] { return countFiles(RickyStorageLayout::IMAGES, Kind::Images); }},
-      {2, [] { return countFiles(RickyStorageLayout::DOWNLOADS, Kind::AnyFile); }},
-  };
-  for (const Step& step : steps) {
-    const int value = step.count();
-    if (scanCancel.load()) {
-      LOG_INF("STOR", "Counting paused after %u ms", static_cast<unsigned>(millis() - started));
-      return;  // stays stale: the next visit counts again
-    }
-    publish([&](StorageScan& scan) { scan.counts[step.slot] = value; });
+  // Books are not walked: their number and sizes are Library's index.
+  const uint64_t books = libraryBytes();
+  const uint64_t cache = scanCancel.load() ? 0 : sumBytes("/.crosspoint");
+  const uint64_t fonts = scanCancel.load() ? 0 : sumBytes(RickyStorageLayout::FONTS) + sumBytes("/.fonts");
+  if (scanCancel.load()) {
+    LOG_INF("STOR", "Counting paused after %u ms", static_cast<unsigned>(millis() - started));
+    return;  // stays stale: the next visit counts again
   }
+  publish([&](StorageScan& scan) {
+    scan.sized = true;
+    scan.bookBytes = books;
+    scan.cacheBytes = cache;
+    scan.fontBytes = fonts;
+  });
   LOG_INF("STOR", "Counted files in %u ms", static_cast<unsigned>(millis() - started));
   if (staleEpoch.load() == epoch && countsStale.exchange(false)) Storage.writeFile(kStalePath, "0");
 }
@@ -244,7 +257,7 @@ void startStorageScan(const bool counts) {
   // Back on the page before a paused pass ended: let it carry on and pick countsWanted up.
   scanCancel.store(false);
   if (scanRunning.exchange(true)) return;
-  // countFiles recurses three folders deep with a 256-byte name buffer per level.
+  // sumBytes recurses four folders deep with a 256-byte name buffer per level.
   if (xTaskCreate(&scanStorageTask, "RickyStorageScan", 6144, nullptr, 1, nullptr) != 1) {  // pdPASS
     LOG_ERR("STOR", "Cannot start the storage scan");
     scanRunning.store(false);
@@ -278,6 +291,10 @@ void RickyStorageActivity::applyLastScan() {
   counts[0] = scan.counts[0];
   counts[2] = scan.counts[1];
   counts[3] = scan.counts[2];
+  sized = scan.sized;
+  bookBytes = scan.bookBytes;
+  cacheBytes = scan.cacheBytes;
+  fontBytes = scan.fontBytes;
 }
 
 void RickyStorageActivity::refresh() {
@@ -297,6 +314,7 @@ void RickyStorageActivity::onEnter() {
   // the font registry found in both, not the visible folder's entries. In memory, cheap.
   counts[1] = static_cast<int>(sdFontSystem.registry().getFamilies().size());
   loadStats();
+  countLibraryFolders();
   // Library may have rebuilt its index since the last visit: take its count as it is now.
   const int indexed = indexBookCount();
   if (indexed >= 0) publish([&](StorageScan& scan) { scan.counts[0] = indexed; });
@@ -304,6 +322,16 @@ void RickyStorageActivity::onEnter() {
   // stale numbers do not authorize a directory or FAT walk.
   applyLastScan();
   requestUpdate();
+}
+
+void RickyStorageActivity::countLibraryFolders() {
+  libraryFolders = -1;
+  auto sources = makeUniqueNoThrow<library::LibrarySources>();
+  if (!sources || sources->load() == library::LibrarySources::Load::Error) return;
+  libraryFolders = 0;
+  for (uint16_t i = 0; i < sources->size(); ++i)
+    if ((*sources)[i].kind == library::SourceKind::Folder || (*sources)[i].kind == library::SourceKind::RecursiveFolder)
+      ++libraryFolders;
 }
 
 void RickyStorageActivity::onExit() {
@@ -376,92 +404,119 @@ void RickyStorageActivity::buildScreen(UiScreen& screen) {
     target.text(screen.takeBottom(smallHeight * 2, gap), tr(STR_RICKY_FOLDER_MISSING), warning);
   }
 
-  // Card sizes are fixed; leftover height becomes the gaps between them.
-  const bool wide = content.width > content.height;
-  const int columns = wide ? 4 : 2;
-  const int gridRows = 4 / columns;
   const int pad = ricky::ds::space::kCardPadding;
-  const int ring = ricky::ds::layout::kAvatarSize;
   const int summaryHeight = ricky::ds::layout::kProfileCardHeight;
-  const int cellHeight = ricky::ds::layout::kSettingsCardHeight;
+  const int rowHeight = ricky::ds::layout::kSettingsCardHeight;
   const int section = ricky::ds::space::k8;
+  char text[64];
 
-  // SD card: usage ring, free / total, opens the whole card in the file browser.
+  // SD card: what the space is made of, from the last Refresh. Opens reading-cache
+  // cleanup, the one thing on the card this page can safely give back.
   const auto summary = screen.takeTop(summaryHeight, section);
-  const bool summarySelected = focus && selected == 4;
+  const bool summarySelected = focus && selected == 0;
   RickyPageUi::card(target, summary, summarySelected);
-  screen.frame().hit(summary, ACTION_ROW, 4, fui::InputTouch);
-  const Rect ringBox{summary.x + pad, summary.y + pad, ring, ring};
-  const int percent =
-      space == Space::Ready && sdTotalBytes ? static_cast<int>((sdTotalBytes - sdFreeBytes) * 100 / sdTotalBytes) : 0;
-  RickyPageUi::usageRing(renderer, ringBox, percent, ricky::ds::stroke::kEmphasis, summarySelected);
-  char text[48];
-  snprintf(text, sizeof(text), "%d%%", percent);
-  auto centered = small;
-  centered.align = fui::TextAlign::Center;
-  centered.color = summarySelected ? fui::Color::White : fui::Color::Black;
-  if (space == Space::Ready)
-    target.text(fui::Rect{static_cast<int16_t>(ringBox.x), static_cast<int16_t>(ringBox.y + (ring - smallHeight) / 2),
-                          static_cast<int16_t>(ring), static_cast<int16_t>(smallHeight)},
-                text, centered);
-  const int textX = ringBox.x + ring + pad;
-  const int textWidth = summary.right() - textX - 24 - pad;
-  const int textTop = summary.y + (summary.height - bodyHeight - smallHeight - gap / 2) / 2;
+  screen.frame().hit(summary, ACTION_ROW, 0, fui::InputTouch);
+  const fui::Color ink = summarySelected ? fui::Color::White : fui::Color::Black;
+  const fui::Color quiet = summarySelected ? fui::Color::White : fui::Color::DarkGray;
+  const int innerX = summary.x + pad;
+  const int innerWidth = summary.width - pad * 2;
+  const int barHeight = 12;
+  const int blockHeight = bodyHeight + gap / 2 + barHeight + gap / 2 + smallHeight;
+  const int top = summary.y + (summary.height - blockHeight) / 2;
   auto strong = label;
   strong.bold = true;
-  strong.color = summarySelected ? fui::Color::White : fui::Color::Black;
-  target.text(fui::Rect{static_cast<int16_t>(textX), static_cast<int16_t>(textTop), static_cast<int16_t>(textWidth),
+  strong.color = ink;
+  target.text(fui::Rect{static_cast<int16_t>(innerX), static_cast<int16_t>(top), static_cast<int16_t>(innerWidth / 2),
                         static_cast<int16_t>(bodyHeight)},
               tr(STR_RICKY_SD_CARD), strong);
   char freeText[16], totalText[16];
   formatBytes(freeText, sizeof(freeText), sdFreeBytes);
   formatBytes(totalText, sizeof(totalText), sdTotalBytes);
   snprintf(text, sizeof(text), tr(STR_RICKY_STORAGE_SPACE), freeText, totalText);
-  centered.color = summarySelected ? fui::Color::White : fui::Color::DarkGray;
-  centered.align = fui::TextAlign::Left;
-  target.text(fui::Rect{static_cast<int16_t>(textX), static_cast<int16_t>(textTop + bodyHeight + gap / 2),
-                        static_cast<int16_t>(textWidth), static_cast<int16_t>(smallHeight)},
+  auto right = small;
+  right.align = fui::TextAlign::Right;
+  right.color = quiet;
+  target.text(fui::Rect{static_cast<int16_t>(innerX + innerWidth / 2), static_cast<int16_t>(top + bodyHeight - smallHeight),
+                        static_cast<int16_t>(innerWidth / 2), static_cast<int16_t>(smallHeight)},
               space == Space::Ready         ? text
               : space == Space::NotMeasured ? tr(STR_RICKY_SPACE_NOT_MEASURED)
               : space == Space::Measuring   ? tr(STR_LOADING)
                                             : tr(STR_NOT_AVAILABLE),
-              centered);
-  RickyPageUi::chevron(target,
-                       fui::Rect{static_cast<int16_t>(summary.right() - 24 - pad), summary.y, 24, summary.height},
-                       summarySelected);
+              right);
+  // Used space in segments: books, reader caches, then fonts and everything else.
+  const fui::Rect bar{static_cast<int16_t>(innerX), static_cast<int16_t>(top + bodyHeight + gap / 2),
+                      static_cast<int16_t>(innerWidth), static_cast<int16_t>(barHeight)};
+  target.stroke(bar, fui::Paint::solid(ink), 1, barHeight / 2);
+  if (space == Space::Ready && sdTotalBytes > 0) {
+    const uint64_t used = sdTotalBytes > sdFreeBytes ? sdTotalBytes - sdFreeBytes : 0;
+    const uint64_t books = sized ? std::min(bookBytes, used) : 0;
+    const uint64_t cache = sized ? std::min(cacheBytes, used - books) : 0;
+    const auto widthOf = [&](uint64_t bytes) {
+      return static_cast<int>(bytes * static_cast<uint64_t>(bar.width) / sdTotalBytes);
+    };
+    int x = bar.x;
+    const auto segment = [&](int width, fui::Color color) {
+      if (width <= 0) return;
+      target.fill(fui::Rect{static_cast<int16_t>(x), bar.y, static_cast<int16_t>(std::min<int>(width, bar.right() - x)),
+                            bar.height},
+                  fui::Paint::solid(color));
+      x += width;
+    };
+    segment(widthOf(books), summarySelected ? fui::Color::White : fui::Color::Black);
+    segment(widthOf(cache), summarySelected ? fui::Color::LightGray : fui::Color::DarkGray);
+    segment(std::max(widthOf(used) - widthOf(books) - widthOf(cache), used > 0 ? 1 : 0),
+            summarySelected ? fui::Color::DarkGray : fui::Color::LightGray);
+  }
+  char booksText[16], cacheText[16], otherText[16];
+  const uint64_t used = sdTotalBytes > sdFreeBytes ? sdTotalBytes - sdFreeBytes : 0;
+  formatBytes(booksText, sizeof(booksText), bookBytes);
+  formatBytes(cacheText, sizeof(cacheText), cacheBytes);
+  formatBytes(otherText, sizeof(otherText),
+              used > bookBytes + cacheBytes ? used - bookBytes - cacheBytes : 0);
+  snprintf(text, sizeof(text), tr(STR_RICKY_STORAGE_BREAKDOWN), booksText, cacheText, otherText);
+  auto legend = small;
+  legend.color = quiet;
+  target.text(fui::Rect{static_cast<int16_t>(innerX), static_cast<int16_t>(bar.bottom() + gap / 2),
+                        static_cast<int16_t>(innerWidth), static_cast<int16_t>(smallHeight)},
+              sized && space == Space::Ready ? text : tr(STR_RICKY_STORAGE_TAP_REFRESH), legend);
 
-  // Content folders as icon cards with a count, Boox-style.
-  const StrId labels[] = {StrId::STR_RICKY_BOOK_FILES, StrId::STR_FONT, StrId::STR_RICKY_IMAGES,
-                          StrId::STR_RICKY_DOWNLOADS};
-  const freeink::Icon* icons[] = {&icon_ricky_books_40, &icon_ricky_fonts_40, &icon_ricky_images_40,
-                                  &icon_ricky_downloads_40};
-  const auto grid = screen.takeTop(cellHeight * gridRows + gap * (gridRows - 1), 0);
-  for (int i = 0; i < 4; ++i) {
-    const auto rect =
-        RickyPageUi::uiRect(RickyPageLayout::cell(Rect{grid.x, grid.y, grid.width, grid.height}, i, 4, gap, columns));
-    const bool picked = focus && selected == i;
+  // Three ways in: the whole card, the Library's folders, and transfers.
+  const StrId names[] = {StrId::STR_RICKY_ALL_FILES, StrId::STR_RICKY_LIBRARY_FOLDERS, StrId::STR_FILE_TRANSFER};
+  const freeink::Icon* icons[] = {&icon_ricky_folder_40, &icon_ricky_books_40, &icon_ricky_transfer_40};
+  for (int i = 0; i < 3; ++i) {
+    const auto rect = screen.takeTop(rowHeight, i == 2 ? 0 : gap);
+    const int row = i + 1;
+    const bool picked = focus && selected == row;
     RickyPageUi::card(target, rect, picked);
-    screen.frame().hit(rect, ACTION_ROW, i, fui::InputTouch);
-    const int middle = rect.y + pad + icons[i]->h / 2;
+    screen.frame().hit(rect, ACTION_ROW, row, fui::InputTouch);
+    const int middle = rect.y + rect.height / 2;
     RickyPageUi::pageIcon(target, renderer, rect.x + pad, middle, *icons[i], picked);
-    const int x = rect.x + pad;
-    const int width = rect.right() - x - pad;
-    const int top = rect.y + 80;
+    const int x = rect.x + pad + icons[i]->w + pad;
+    const int chevronWidth = 24;
+    const int width = rect.right() - x - pad - chevronWidth;
     label.color = picked ? fui::Color::White : fui::Color::Black;
-    small.color = picked ? fui::Color::White : fui::Color::DarkGray;
-    target.text(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(top), static_cast<int16_t>(width),
-                          static_cast<int16_t>(bodyHeight)},
-                I18N.get(labels[i]), label);
-    if (counts[i] >= kCountCap)
-      snprintf(text, sizeof(text), "%d+", kCountCap);
-    else if (counts[i] >= 0)
-      snprintf(text, sizeof(text), "%d", counts[i]);
-    else
-      snprintf(text, sizeof(text), "%s", counting || space == Space::Measuring ? "…" : "—");
-    small.align = fui::TextAlign::Right;
-    target.text(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(top), static_cast<int16_t>(width),
-                          static_cast<int16_t>(smallHeight)},
-                text, small);
+    target.text(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(middle - bodyHeight / 2),
+                          static_cast<int16_t>(width), static_cast<int16_t>(bodyHeight)},
+                I18N.get(names[i]), label);
+    const char* detail = nullptr;
+    if (i == 1 && libraryFolders >= 0) {
+      snprintf(text, sizeof(text), tr(STR_RICKY_LIBRARY_FOLDER_COUNT), static_cast<unsigned>(libraryFolders));
+      detail = text;
+    } else if (i == 2) {
+      detail = tr(STR_RICKY_TRANSFER_KINDS);
+    }
+    if (detail) {
+      auto detailStyle = small;
+      detailStyle.align = fui::TextAlign::Right;
+      detailStyle.color = picked ? fui::Color::White : fui::Color::DarkGray;
+      target.text(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(middle - smallHeight / 2),
+                            static_cast<int16_t>(width), static_cast<int16_t>(smallHeight)},
+                  detail, detailStyle);
+    }
+    RickyPageUi::chevron(target,
+                         fui::Rect{static_cast<int16_t>(rect.right() - chevronWidth - pad), rect.y,
+                                   static_cast<int16_t>(chevronWidth), rect.height},
+                         picked);
   }
 }
 
@@ -472,26 +527,25 @@ void RickyStorageActivity::activateIndex(int index) {
     refresh();
     return;
   }
-  if (index == 1) {
-    // Fonts are families managed in Font Management, most of them downloaded into
-    // the hidden /.fonts: the visible /fonts folder would look empty.
-    startActivityForResultWith<FontLibraryActivity>([this](const ActivityResult&) { requestUpdate(); });
-  } else {
-    // Every content card opens its fixed folder (created at boot; recreated here
-    // if it was deleted since). The summary card opens the whole card.
-    const char* path = folderFor(index);
-    if (index < 4 && !Storage.exists(path) && !Storage.ensureDirectoryExists(path)) {
-      folderMissing = true;
+  if (index == 0) {
+    // Reading caches only: books, notes and progress files stay. Count again after.
+    startActivityForResultWith<ClearCacheActivity>([this](const ActivityResult&) {
+      invalidateScan();
       requestUpdate();
-      return;
-    }
-    // Scoped: Back in the opened folder returns here instead of climbing to "/".
-    // A rename, move or delete in there marks the scan stale (FileBrowserActivity::finishEdit);
-    // count again on the way back only then, not after every look into a folder.
+    });
+  } else if (index == 1) {
+    // Back in the opened folder climbs to the card root, then returns here.
     startActivityForResultWith<FileBrowserActivity>(
         [this](const ActivityResult&) {
           if (countsStale.load()) startStorageScan(true);
         },
-        path, FileBrowserActivity::Mode::Books, /*scoped=*/index != 4);
+        "/", FileBrowserActivity::Mode::Books, /*scoped=*/true);
+  } else if (index == 2) {
+    startActivityForResultWith<LibrarySourcesActivity>([this](const ActivityResult&) {
+      countLibraryFolders();
+      requestUpdate();
+    });
+  } else if (index == 3) {
+    activityManager.goToFileTransfer();
   }
 }

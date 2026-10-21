@@ -71,6 +71,8 @@ bool LibraryImportActivity::runImport() {
   } else if (action == Action::RemoveSource) {
     if (request.source >= sources->size()) return false;
     sources->erase(request.source);
+  } else if (action == Action::RefreshSource) {
+    if (request.source >= sources->size()) return false;
   }
   if (loaded == library::LibrarySources::Load::Missing && !library::LibrarySources::preserveLegacy()) return false;
   if (cancel.load() || !sources->save(true)) return false;
@@ -89,6 +91,11 @@ bool LibraryImportActivity::runImport() {
         build.sourceToScan = i;
         break;
       }
+  }
+  if (action == Action::RefreshSource) {
+    // One source re-read from the card; every other book replays from the index.
+    build.mergeExisting = true;
+    build.sourceToScan = request.source;
   }
   build.context = this;
   build.shouldCancel = [](void* ctx) { return static_cast<LibraryImportActivity*>(ctx)->cancel.load(); };
@@ -248,7 +255,7 @@ void LibrarySourcesActivity::pick(bool folder) {
         });
         requestUpdate();
       },
-      "/books", mode);
+      "/", mode);  // the card root: no folder is assumed to hold the books
 }
 void LibrarySourcesActivity::activateIndex(int index) {
   if (!sources || index < 0 || index >= listCount()) return;
@@ -262,18 +269,29 @@ void LibrarySourcesActivity::activateIndex(int index) {
     return;
   }
   const uint16_t source = index - 3;
-  const bool exclusion = (*sources)[source].kind == library::SourceKind::ExcludedBook;
-  const char* labels[] = {tr(STR_LIBRARY_REBUILD),
-                          exclusion ? tr(STR_LIBRARY_RESTORE_BOOK) : tr(STR_LIBRARY_REMOVE_SOURCE)};
+  const auto kind = (*sources)[source].kind;
+  const bool exclusion = kind == library::SourceKind::ExcludedBook;
+  const bool folder = kind == library::SourceKind::Folder || kind == library::SourceKind::RecursiveFolder;
   const std::string path = (*sources)[source].path;
-  options.show(tr(STR_LIBRARY_SOURCES), path.c_str(), labels, 2, 0, [this, source, exclusion, path](int choice) {
-    if (choice == 0) import({});
-    if (choice == 1) {
-      if (exclusion)
-        import({LibraryImportRequest::Action::AddBook, path});
-      else
-        import({LibraryImportRequest::Action::RemoveSource, "", false, source});
-    }
-  });
+  // A folder opens first: it is how the Library's books are found on the card.
+  const char* labels[] = {tr(STR_LIBRARY_OPEN_FOLDER), tr(STR_LIBRARY_REBUILD),
+                          exclusion ? tr(STR_LIBRARY_RESTORE_BOOK) : tr(STR_LIBRARY_REMOVE_SOURCE)};
+  const int offset = folder ? 0 : 1;
+  options.show(tr(STR_LIBRARY_SOURCES), path.c_str(), labels + offset, 3 - offset, 0,
+               [this, source, exclusion, path, offset](int picked) {
+                 const int choice = picked + offset;
+                 if (choice == 0) {
+                   // Back climbs to the folder itself, then returns to this list.
+                   startActivityForResultWith<FileBrowserActivity>([this](const ActivityResult&) { reload(); }, path,
+                                                                   FileBrowserActivity::Mode::Books, /*scoped=*/true);
+                 } else if (choice == 1) {
+                   import({LibraryImportRequest::Action::RefreshSource, "", false, source});
+                 } else if (choice == 2) {
+                   if (exclusion)
+                     import({LibraryImportRequest::Action::AddBook, path});
+                   else
+                     import({LibraryImportRequest::Action::RemoveSource, "", false, source});
+                 }
+               });
   requestUpdate();
 }

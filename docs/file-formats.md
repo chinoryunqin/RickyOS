@@ -883,7 +883,7 @@ check, not a forced metadata reread.
 
 `RANKS_DEGRADED` says one or more orders fell back to walk order because a
 checked sort allocation failed. Title and author each use a phase-local
-`SortKey[bookCount]` allocation (14 bytes per book, 57,344 bytes at the 4,096-book
+`SortKey[bookCount]` allocation (14 bytes per book, 229,376 bytes at the 16,384-book
 format ceiling); the first array is released before the second is requested.
 Sorting is therefore best effort through the full format limit rather than
 being disabled at an arbitrary library size.
@@ -916,7 +916,7 @@ All integers are explicitly little endian, independent of struct padding.
 | Section | Bytes / constraints |
 |---|---|
 | Magic | `LCT1`, 4 bytes |
-| Member count | u16, max 4096; exact file size must be `790 + count * 10 + 4` |
+| Member count | u16, max 16384 (the CLX1 book limit); exact file size must be `790 + count * 10 + 4` |
 | Category names | 16 stable slots × 49 bytes, each NUL-terminated UTF-8, max 48 name bytes; empty first byte = unused slot |
 | Members | Strictly increasing unique u64 CLX1 complete-path fingerprints + u16 nonzero category mask; bits may reference only occupied slots |
 | Checksum | FNV-1a32 of the magic, all 784 name bytes and all member bytes; count is excluded but protected by exact file size |

@@ -92,6 +92,10 @@ class LibraryIndexFile {
   // Absolute path of the book, rebuilt from its folder record.
   bool readPath(const ClixRecord& record, std::string& out);
 
+  // Raw bytes of the open index, for a caller that streams whole sections once
+  // (the in-memory search table) instead of seeking per record.
+  bool readRange(const uint32_t offset, void* dst, const size_t len) { return opened && readAt(offset, dst, len); }
+
  private:
   bool openImpl(const char* path, bool acceptStaleFold);
   bool readAt(uint32_t offset, void* dst, size_t len);

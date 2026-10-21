@@ -10,7 +10,7 @@ namespace library {
 class LibraryCategories {
  public:
   static constexpr int MAX_CATEGORIES = 16;
-  static constexpr size_t MAX_MEMBERS = 4096;
+  static constexpr size_t MAX_MEMBERS = 16384;  // CLIX_MAX_RECORDS
   static constexpr size_t NAME_BYTES = 49;  // up to 16 Chinese characters
   enum class Load { Missing, Ready, Error };
   Load load();

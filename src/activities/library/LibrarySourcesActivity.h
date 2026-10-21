@@ -10,7 +10,7 @@
 #include "components/OptionPopup.h"
 
 struct LibraryImportRequest {
-  enum class Action { Refresh, AddBook, AddFolder, RemoveSource, ExcludeBook };
+  enum class Action { Refresh, AddBook, AddFolder, RemoveSource, ExcludeBook, RefreshSource };
   Action action = Action::Refresh;
   std::string path;
   bool recursive = false;
