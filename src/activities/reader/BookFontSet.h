@@ -42,7 +42,7 @@ class BookFontSet final : public bookfonts::Resolver {
 
   // PSRAM kept free when loading a face: decoded illustrations, the chapter's text and
   // the reader glyph cache need it more than a decorative face does.
-  static constexpr size_t kPsramReserve = 768 * 1024;  // one illustration decode plus slack
+  static constexpr size_t kPsramReserve = 512 * 1024;  // one illustration decode (~400 KB) plus slack
   // Glyph cache cap per book face. A face can carry whole chapters of body text (间客 sets
   // its notes in its own Song), and a page at 18 pt needs ~300 glyphs of ~0.7 KB; a smaller
   // cache re-rasterized every page. The arena grows in 64 KB steps only as glyphs arrive
