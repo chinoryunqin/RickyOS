@@ -175,12 +175,12 @@
     {
       "path": "lib/I18n/translations/chinese.yaml",
       "baseline_sha256": "021ec5b9e5880155fea752af9c60ce83a259dd69131f9bd12ffe0ca59e3366bd",
-      "ported_sha256": "c64db9e48b034c20be31a389296afcce88119791bac87854839eb92dcdcdc9b0"
+      "ported_sha256": "13a57de713c02eb8519abc6c530950933020b0fbfc90c3cc0c9e460da671cd34"
     },
     {
       "path": "lib/I18n/translations/english.yaml",
       "baseline_sha256": "85a4d226f1400f6a185759420c63ecff5f81eeb3722afd66c312d4aec6bcb315",
-      "ported_sha256": "dc136b7e08cd77116843012313341bd7cb79924ba340878621d6d3439554e059"
+      "ported_sha256": "6e6774f8e0e48da5c747f2533dbaa65e3f88026d22c794de17c8956ee9042e9c"
     },
     {
       "path": "lib/JpegToBmpConverter/JpegToBmpConverter.cpp",
@@ -190,7 +190,32 @@
     {
       "path": "lib/LibraryIndex/LibraryBuilder.cpp",
       "baseline_sha256": "70d8edb5b759d6febf83bfc45e2331c81c34ed3a46b42ba38010367da19d04f1",
-      "ported_sha256": "2f3d11ccf9d3f530affb7d0bb60bf1e2ca004a0de25cd927a9486267491d9e76"
+      "ported_sha256": "5ed81f3e85228bd6c00882488ac7be7a749eb408a9e1c75675a9cc22ce64fcec"
+    },
+    {
+      "path": "lib/LibraryIndex/LibraryBuilder.h",
+      "baseline_sha256": "834fd19c6194d86cc97b20751ab131dc1a3dc9dff58bd071847bac07ba9e5950",
+      "ported_sha256": "cdb197c25ccf36930f873a7a7f75aa6cc90d64944254529eea8a8676392a8e94"
+    },
+    {
+      "path": "lib/LibraryIndex/LibraryCategories.cpp",
+      "baseline_sha256": null,
+      "ported_sha256": "719d96078dd049790d43ad55aae934d7c3f27fd9690e9334a7b657c887202b78"
+    },
+    {
+      "path": "lib/LibraryIndex/LibraryCategories.h",
+      "baseline_sha256": null,
+      "ported_sha256": "fcca3e5ca452a58fee37aa147e8fbeb9240ed086619d58e77013358fad8931e7"
+    },
+    {
+      "path": "lib/LibraryIndex/LibrarySources.cpp",
+      "baseline_sha256": null,
+      "ported_sha256": "19dabecdb38112054d30e77d73b0ea3deb39fdf73c200f012ca4168a013ecfa3"
+    },
+    {
+      "path": "lib/LibraryIndex/LibrarySources.h",
+      "baseline_sha256": null,
+      "ported_sha256": "432b64c6284baaa16bdcb827383a5605954f7845e9186530599a53a06e743e7d"
     },
     {
       "path": "lib/Logging/Logging.cpp",
@@ -470,7 +495,12 @@
     {
       "path": "src/activities/home/FileBrowserActivity.cpp",
       "baseline_sha256": "9ab832cdfe1b98fdcf8b525a913bef80f97bee889b225e23e22789448cfb790c",
-      "ported_sha256": "ee934d5e2d30761d8e2fa0eac2185fa1b7f9715ebae1c556c10ae71a6a0b515a"
+      "ported_sha256": "1acbd7fdadfe900bb279bf776278ae7347e9f5235e40ae14db3c50930f21fc9d"
+    },
+    {
+      "path": "src/activities/home/FileBrowserActivity.h",
+      "baseline_sha256": "d233a93d24c2a50631286982868b5dcdf2fdf5b0e7859520ce35267325b973ef",
+      "ported_sha256": "18c5e6647e9d29552a26ca2a2ce8d5614d64825c254c78d14abf4adc25124b7f"
     },
     {
       "path": "src/activities/home/InxRecentActivity.h",
@@ -478,9 +508,44 @@
       "ported_sha256": "d7578f4916c036540d1429eb5b52ad99ad2b3b19c02f030b5078dc6c7d3d4e09"
     },
     {
+      "path": "src/activities/home/RickyStorageActivity.cpp",
+      "baseline_sha256": "f0158ad4db46ac8302a207e4c0c8d3ce51b2981e10a25d9d13efda76d33afb76",
+      "ported_sha256": "a4093a9e1b17f2c02c3cb716d5c3ed6d2a932e1c69c744881255fda504b41be2"
+    },
+    {
+      "path": "src/activities/home/RickyStorageActivity.h",
+      "baseline_sha256": "efca55d6298f4165bf0b14d92f98d804964974f20483ee1e2f4371c301d4acab",
+      "ported_sha256": "460b246bac7ba43efc90381076ab317188e8d09b0e6b58bdb0850e991215803e"
+    },
+    {
+      "path": "src/activities/library/LibraryCategoriesActivity.cpp",
+      "baseline_sha256": null,
+      "ported_sha256": "3ae12a3ab9923f9cc14059cda3c37ab72fc820cd9deab1a3e8c34bb8a84b5059"
+    },
+    {
+      "path": "src/activities/library/LibraryCategoriesActivity.h",
+      "baseline_sha256": null,
+      "ported_sha256": "a3d5544d56b7a19ef86c577c2091944312cf4151e7a94495c496948347dbd746"
+    },
+    {
       "path": "src/activities/library/LibraryListActivity.cpp",
       "baseline_sha256": "390421f0e356311b536e8d9d3ec0f7805fbe83ca0ee641fec6303ce7a995c465",
-      "ported_sha256": "aa6c67107208251afe114cb0829726c6e10fa0ae4e9cd0053c39570dd20a849f"
+      "ported_sha256": "ca117a622ca84b418bcbd90d0ce443b5aa3de7cace1fce1b60244cd12baef037"
+    },
+    {
+      "path": "src/activities/library/LibraryListActivity.h",
+      "baseline_sha256": "60b38496e2531ec3078e6b74c2b148434e12a7a67cf88ed5be3ecb727c546728",
+      "ported_sha256": "b680226abc6e684390cc69160920e159b649679a4b471bd60925b68df33eb0e1"
+    },
+    {
+      "path": "src/activities/library/LibrarySourcesActivity.cpp",
+      "baseline_sha256": null,
+      "ported_sha256": "ba29af339a0b880c8bcf4eae82bfbe4c5c482152fa0e1e876b46454920e4bd67"
+    },
+    {
+      "path": "src/activities/library/LibrarySourcesActivity.h",
+      "baseline_sha256": null,
+      "ported_sha256": "697ca8d6ee48e640dd7f3d462f00c2de2f05a904941ce88d6d4bf98f1f490be3"
     },
     {
       "path": "src/activities/network/CrossPointWebServerActivity.cpp",
@@ -665,7 +730,7 @@
     {
       "path": "src/util/BootPreparation.cpp",
       "baseline_sha256": "683c1e896659b54b7724a454bd82f2b3a33f55a8d12175f9ce535f38deba093c",
-      "ported_sha256": "c360949a78eb04bcc8a2be353bfd5ee42a09cdbf433723d2e4c4db91f8835f94"
+      "ported_sha256": "7201f26c66791289af74ccbd39eae4d65f57ab66c91eb005f452c076a6d629e6"
     },
     {
       "path": "src/util/PlusButtonInput.h",
