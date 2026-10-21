@@ -68,10 +68,16 @@ BookFontSet::~BookFontSet() {
   for (auto& face : faces_) unload(face);
 }
 
-void BookFontSet::open(const Epub& epub) {
-  epub_ = &epub;
-  const CssParser* css = epub.getCssParser();
-  if (!css) return;
+void BookFontSet::open(const Epub& epub) { epub_ = &epub; }
+
+void BookFontSet::collectFaces() {
+  // Epub keeps the CSS rules only while a chapter is laid out (they are released after
+  // load and reloaded from cache by createSectionFile), so the faces are read here, on
+  // the first font-family the layout asks about, and kept for the rest of the session.
+  if (collected_ || !epub_) return;
+  const CssParser* css = epub_->getCssParser();
+  if (!css || css->empty()) return;
+  collected_ = true;
   for (uint8_t i = 0; i < css->fontFaceCount() && faces_.size() < kMaxFaces; ++i) {
     const CssParser::FontFace declared = css->fontFaceAt(i);
     if (declared.path.empty()) continue;  // a system-font name only (宋体 / 楷体 …)
@@ -84,6 +90,7 @@ void BookFontSet::open(const Epub& epub) {
 }
 
 uint8_t BookFontSet::faceForFamily(const std::string_view candidates) {
+  collectFaces();
   size_t start = 0;
   while (start <= candidates.size()) {
     size_t end = candidates.find(',', start);

@@ -84,8 +84,8 @@ def main():
                         '-I', str(ROOT / 'lib/Epub'), str(source), '-o', str(binary)], check=True)
         subprocess.run([str(binary)], check=True)
     section = (ROOT / 'lib/Epub/Epub/Section.cpp').read_text()
-    assert 'SECTION_FILE_VERSION = 89;' in section and 'SECTION_FILE_VERSION = 91;' in section
-    assert section.index('SECTION_FILE_VERSION = 89;') < section.index('SECTION_FILE_VERSION = 91;')
+    assert 'SECTION_FILE_VERSION = 89;' in section and 'SECTION_FILE_VERSION = 95;' in section
+    assert section.index('SECTION_FILE_VERSION = 89;') < section.index('SECTION_FILE_VERSION = 95;')
     print('Chapter art: width with margins, aspect, small ornaments and page bounds passed')
 
 

@@ -29,7 +29,7 @@ class BookFontSet final : public bookfonts::Resolver {
   BookFontSet(const BookFontSet&) = delete;
   BookFontSet& operator=(const BookFontSet&) = delete;
 
-  // Collect the book's faces from its parsed stylesheets. Call after Epub::load().
+  // Remember the book; its faces are collected from the stylesheets during layout.
   void open(const Epub& epub);
   bool empty() const { return faces_.empty(); }
 
@@ -59,11 +59,13 @@ class BookFontSet final : public bookfonts::Resolver {
     Face& operator=(Face&&) noexcept;
   };
 
+  void collectFaces();
   bool load(Face& face, uint8_t pointSize, int baseFontId);
   void releaseFont(Face& face);  // the TTF face only; the file bytes stay for a rebuild
   void unload(Face& face);
 
   GfxRenderer& renderer_;
   const Epub* epub_ = nullptr;
+  bool collected_ = false;
   std::vector<Face> faces_;
 };
