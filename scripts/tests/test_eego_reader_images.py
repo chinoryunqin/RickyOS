@@ -60,6 +60,8 @@ struct {bool deviceIsX3(){return false;}} gpio;
 struct {HalDisplay::Controller getController(){return HalDisplay::Controller::UC8279;}} display;
 struct {bool isSwitchPending(){return false;}} activityManager;
 struct Page {bool imagesAreAllJpeg()const{return true;}} object;
+// The stub panel has 4 gray levels, so the native 16-level page path never applies.
+bool nativeGray16Page(const Page&){return false;}
 namespace ReaderUtils {
 HalDisplay::RefreshMode consumeRefreshMode(int& debt){if(debt<=1){debt=5;return HalDisplay::HALF_REFRESH;}--debt;return HalDisplay::FAST_REFRESH;}
 void displayWithRefreshCycle(Renderer& r,int& debt,bool=false){r.displayBuffer(consumeRefreshMode(debt),DisplayRefreshContext::ImageReading);}

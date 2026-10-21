@@ -18,7 +18,7 @@ constexpr size_t kMaxRules = 1500;
 constexpr size_t kMaxUniqueStyles = 256;
 constexpr size_t kCacheHeaderBytes = sizeof(uint8_t) * 2 + sizeof(uint16_t);
 constexpr size_t kStyleEnumPrefixBytes = 5;
-constexpr size_t kStyleLengthFieldCount = 11;
+constexpr size_t kStyleLengthFieldCount = 12;
 constexpr size_t kStyleLengthBytes = sizeof(decltype(CssLength::value)) + sizeof(uint8_t);
 
 class CssParserTest : public ::testing::Test {
@@ -59,8 +59,10 @@ class CssParserTest : public ::testing::Test {
 
     HalFile source;
     EXPECT_TRUE(HalStorage::getInstance().openFileForRead("TST", sourcePath.string(), source));
-    return parser.loadFromStream(source);
+    return parser.loadFromStream(source, stylesheetPath);
   }
+
+  std::string stylesheetPath;
 
   fs::path directory_;
 };
@@ -290,3 +292,136 @@ TEST_F(CssParserTest, CacheHydrationRejectsNonFiniteStyleLengths) {
 }
 
 }  // namespace
+
+TEST_F(CssParserTest, BookTypographySizeColorAndFamily) {
+  CssParser parser(cachePath());
+  ASSERT_EQ(loadCss(parser,
+                    "p.ss2 { font-size: 0.8em; color: #696969; font-family: \"mm\", \"kt\", serif; }\n"
+                    ".big { font-size: 150%; color: rgb(0, 0, 128); }\n"
+                    ".kw { font-size: x-large; color: Maroon; }\n"
+                    ".bad { font-size: -2em; color: transparent; }\n"),
+            CssParser::ParseResult::Complete);
+  const CssStyle ss2 = parser.resolveStyle("p", "ss2");
+  ASSERT_TRUE(ss2.hasFontSize());
+  EXPECT_FLOAT_EQ(ss2.fontSize.value, 0.8f);
+  EXPECT_EQ(ss2.fontSize.unit, CssUnit::Em);
+  ASSERT_TRUE(ss2.hasColor());
+  EXPECT_EQ(ss2.colorLuma, 105);  // #696969
+  ASSERT_TRUE(ss2.hasFontFamily());
+  EXPECT_EQ(parser.familyAt(ss2.fontFamily), "\"mm\", \"kt\", serif");
+
+  const CssStyle big = parser.resolveStyle("div", "big");
+  EXPECT_EQ(big.fontSize.unit, CssUnit::Percent);
+  EXPECT_FLOAT_EQ(big.fontSize.value, 150.0f);
+  EXPECT_EQ(big.colorLuma, 15);  // navy: dark
+  const CssStyle kw = parser.resolveStyle("span", "kw");
+  EXPECT_FLOAT_EQ(kw.fontSize.value, 1.5f);
+  EXPECT_EQ(kw.fontSize.unit, CssUnit::Em);
+  EXPECT_EQ(kw.colorLuma, 38);  // maroon
+  const CssStyle bad = parser.resolveStyle("span", "bad");
+  EXPECT_FALSE(bad.hasFontSize());
+  EXPECT_FALSE(bad.hasColor());
+
+  // style="" keeps its family only through the parser that owns the pool.
+  EXPECT_FALSE(CssParser::parseInlineStyle("font-family: kk").hasFontFamily());
+  const CssStyle inlineStyle = parser.parseInlineStyleWithFamilies("font-family: kk; color: #000");
+  ASSERT_TRUE(inlineStyle.hasFontFamily());
+  EXPECT_EQ(parser.familyAt(inlineStyle.fontFamily), "kk");
+  EXPECT_EQ(parser.parseInlineStyleWithFamilies("font-family: kk").fontFamily, inlineStyle.fontFamily);
+}
+
+TEST_F(CssParserTest, FontFaceRulesResolveAgainstTheirStylesheet) {
+  stylesheetPath = "OEBPS/Styles/fonts.css";
+  std::string longSrc;
+  for (int i = 0; i < 60; ++i) longSrc += "local(\"Song" + std::to_string(i) + "\"),";
+  CssParser parser(cachePath());
+  ASSERT_EQ(loadCss(parser,
+                    "@font-face { font-family: \"cc\"; src: url(\"../Fonts/cc.ttf\"); }\n"
+                    "@font-face { font-family:\"zw\"; src: local(\"宋体\"),local(\"明体\"), " + longSrc +
+                        " url(../Fonts/zw.ttf), url(res:///opt/sony/ebook/FONT/zw.ttf); }\n"
+                    "@font-face { font-family: kt; src: local(\"楷体\"), local(\"Kaiti SC\"); }\n"
+                    "@font-face { font-family: web; src: url(http://example.com/a.ttf); }\n"
+                    "@font-face { font-family: \"cc\"; src: url(../Fonts/other.ttf); }\n"
+                    "p { font-family: \"cc\"; }\n"),
+            CssParser::ParseResult::Complete);
+  ASSERT_EQ(parser.fontFaceCount(), 3);
+  EXPECT_EQ(parser.fontFaceAt(0).family, "cc");
+  EXPECT_EQ(parser.fontFaceAt(0).path, "OEBPS/Fonts/cc.ttf");
+  EXPECT_EQ(parser.fontFaceAt(1).family, "zw");
+  EXPECT_EQ(parser.fontFaceAt(1).path, "OEBPS/Fonts/zw.ttf");
+  EXPECT_EQ(parser.fontFaceAt(1).category, CssParser::FontCategory::Serif);
+  EXPECT_EQ(parser.fontFaceAt(2).family, "kt");
+  EXPECT_EQ(parser.fontFaceAt(2).path, "");
+  EXPECT_EQ(parser.fontFaceAt(2).category, CssParser::FontCategory::Kai);
+  // The @font-face font-family names a face; only the p rule selects one.
+  EXPECT_EQ(parser.ruleCount(), 1u);
+  EXPECT_EQ(parser.familyAt(parser.resolveStyle("p", "").fontFamily), "\"cc\"");
+}
+
+TEST_F(CssParserTest, FontNameCategories) {
+  using C = CssParser::FontCategory;
+  EXPECT_EQ(CssParser::classifyFontName("宋体"), C::Serif);
+  EXPECT_EQ(CssParser::classifyFontName("DK-XIAOBIAOSONG"), C::Serif);
+  EXPECT_EQ(CssParser::classifyFontName("仿宋_GB2312"), C::FangSong);
+  EXPECT_EQ(CssParser::classifyFontName("STKaiti"), C::Kai);
+  EXPECT_EQ(CssParser::classifyFontName("DK-HEITI"), C::Sans);
+  EXPECT_EQ(CssParser::classifyFontName("sans-serif"), C::Sans);
+  EXPECT_EQ(CssParser::classifyFontName("serif"), C::Serif);
+  EXPECT_EQ(CssParser::classifyFontName("Yuanti SC"), C::Round);
+  EXPECT_EQ(CssParser::classifyFontName("Caecilia"), C::None);
+}
+
+TEST_F(CssParserTest, CacheKeepsFamiliesAndFontFaces) {
+  stylesheetPath = "OEBPS/Styles/main.css";
+  CssParser writer(cachePath());
+  ASSERT_EQ(loadCss(writer,
+                    "@font-face { font-family: mm; src: url(../Fonts/mm.ttf); }\n"
+                    ".a { font-family: \"kk\", serif; font-size: 1.1em; color: #333; }\n"
+                    ".b { font-family: mm; }\n"),
+            CssParser::ParseResult::Complete);
+  ASSERT_TRUE(writer.saveToCache(true));
+  CssParser reader(cachePath());
+  ASSERT_EQ(reader.loadFromCache(), CssParser::CacheLoadResult::Complete);
+  const CssStyle a = reader.resolveStyle("p", "a");
+  EXPECT_EQ(reader.familyAt(a.fontFamily), "\"kk\", serif");
+  EXPECT_FLOAT_EQ(a.fontSize.value, 1.1f);
+  EXPECT_EQ(a.colorLuma, 51);
+  EXPECT_EQ(reader.familyAt(reader.resolveStyle("p", "b").fontFamily), "mm");
+  ASSERT_EQ(reader.fontFaceCount(), 1);
+  EXPECT_EQ(reader.fontFaceAt(0).path, "OEBPS/Fonts/mm.ttf");
+  EXPECT_EQ(writer.inspectCache(), CssParser::CacheStatus::Complete);
+}
+
+TEST_F(CssParserTest, DescendantSelectorsMatchAncestors) {
+  CssParser parser(cachePath());
+  ASSERT_EQ(loadCss(parser,
+                    "p { font-size: 1em; }\n"
+                    "div.bt p { font-family: mm; font-size: 0.85em; }\n"
+                    "h2.mm > b { color: #800000; }\n"
+                    "div.a.b span { color: #666666; }\n"
+                    "a:link { color: #366; }\n"),
+            CssParser::ParseResult::Complete);
+  EXPECT_TRUE(parser.hasDescendantRules());
+  const CssParser::ElementRef inBt[] = {{"div", "bt"}, {"body", ""}};
+  const CssStyle p = parser.resolveStyle("p", "", inBt, 2);
+  EXPECT_EQ(parser.familyAt(p.fontFamily), "mm");
+  EXPECT_FLOAT_EQ(p.fontSize.value, 0.85f);
+  const CssParser::ElementRef plain[] = {{"div", "other"}, {"body", ""}};
+  EXPECT_FALSE(parser.resolveStyle("p", "", plain, 2).hasFontFamily());
+  EXPECT_FLOAT_EQ(parser.resolveStyle("p", "", plain, 2).fontSize.value, 1.0f);
+  // '>' matched as a descendant; tags are case-insensitive.
+  const CssParser::ElementRef deep[] = {{"span", ""}, {"H2", "mm x"}};
+  EXPECT_EQ(parser.resolveStyle("b", "", deep, 2).colorLuma, 38);
+  // Every class of a compound must be present.
+  const CssParser::ElementRef onlyA[] = {{"div", "a"}};
+  const CssParser::ElementRef both[] = {{"p", ""}, {"div", "b a"}};
+  EXPECT_FALSE(parser.resolveStyle("span", "", onlyA, 1).hasColor());
+  EXPECT_EQ(parser.resolveStyle("span", "", both, 2).colorLuma, 102);
+  // Without ancestors, the plain lookup ignores descendant rules.
+  EXPECT_FALSE(parser.resolveStyle("p", "").hasFontFamily());
+
+  ASSERT_TRUE(parser.saveToCache(true));
+  CssParser reader(cachePath());
+  ASSERT_EQ(reader.loadFromCache(), CssParser::CacheLoadResult::Complete);
+  EXPECT_EQ(reader.familyAt(reader.resolveStyle("p", "", inBt, 2).fontFamily), "mm");
+}

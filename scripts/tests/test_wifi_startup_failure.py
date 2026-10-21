@@ -132,7 +132,7 @@ struct {
 namespace DNSReplyCode { constexpr int NoError = 0; }
 struct DNSServer {
  void setErrorReplyCode(int) {}
- void start(int, const char*, IPAddress) { ++dnsCalls; }
+ bool start(int, const char*, IPAddress) { ++dnsCalls; return true; }
 };
 DNSServer* dnsServer = nullptr;
 void stopDnsServer() { delete dnsServer; dnsServer = nullptr; }

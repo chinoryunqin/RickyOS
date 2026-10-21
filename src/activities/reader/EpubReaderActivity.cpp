@@ -2896,13 +2896,17 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
 #endif
   // Night mode also renders crisp B/W.
   const bool grayscaleEnabled = allowReaderGrayscale && !renderer.isInverted();
-  const bool needsTextGrayscale = grayscaleEnabled && SETTINGS.textAntiAliasing;
+  [[maybe_unused]] const bool needsTextGrayscale = grayscaleEnabled && SETTINGS.textAntiAliasing;
   // Images write the BW buffer directly; keep them, backgrounds and faux bold on the existing path.
   // RickyOS: every text face (2-bit downloaded fonts too) and synthetic bold draw straight
   // into the 16-level frame, and JPEG illustrations decode into it, so anti-aliased pages
   // take the single-render path.
-  // The A4 keeps its finished B/W page (allowReaderGrayscale is false there).
-  const bool use16LevelText = grayscaleEnabled && nativeGray16Page(*page);
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
+  const bool use16LevelText = nativeGray16Page(*page);
+#else
+  const bool use16LevelText =
+      needsTextGrayscale && (!pageHasImages || page->imagesAreAllJpeg()) && renderer.getGrayscaleLevels() == 16;
+#endif
   const bool needsAnyGrayscale = grayscaleEnabled && (SETTINGS.textAntiAliasing || pageHasImages);
   const bool absoluteImageGrayscale = grayscaleEnabled && pageHasImages && !gpio.deviceIsX3() &&
                                       display.getController() == HalDisplay::Controller::UC8279 &&

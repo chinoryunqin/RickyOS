@@ -38,7 +38,7 @@ ImageBlock::ImageBlock(const std::string&, const std::string&, int16_t, int16_t)
 void ImageBlock::releaseRenderCache() {}
 void ImageBlock::clearSessionRenderFailures() {}
 static ImageRenderError legacyError = ImageRenderError::Failed;
-bool ImageBlock::render(GfxRenderer&, int, int, PixelCachePolicy, ImageRenderError* error) {
+bool ImageBlock::render(GfxRenderer&, int, int, PixelCachePolicy, ImageRenderError* error, CancelCheck) {
   if (error) *error = legacyError;
   return false;
 }

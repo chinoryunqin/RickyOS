@@ -96,6 +96,9 @@ struct CssPropertyFlags {
   uint16_t direction : 1;
   uint16_t verticalAlign : 1;
   uint16_t listStyleType : 1;
+  uint16_t fontSize : 1;
+  uint16_t color : 1;
+  uint16_t fontFamily : 1;
 
   CssPropertyFlags()
       : textAlign(0),
@@ -116,12 +119,15 @@ struct CssPropertyFlags {
         display(0),
         direction(0),
         verticalAlign(0),
-        listStyleType(0) {}
+        listStyleType(0),
+        fontSize(0),
+        color(0),
+        fontFamily(0) {}
 
   [[nodiscard]] bool anySet() const {
     return textAlign || fontStyle || fontWeight || textDecoration || textIndent || marginTop || marginBottom ||
            marginLeft || marginRight || paddingTop || paddingBottom || paddingLeft || paddingRight || imageHeight ||
-           imageWidth || display || direction || verticalAlign || listStyleType;
+           imageWidth || display || direction || verticalAlign || listStyleType || fontSize || color || fontFamily;
   }
 
   void clearAll() {
@@ -129,13 +135,14 @@ struct CssPropertyFlags {
     marginTop = marginBottom = marginLeft = marginRight = 0;
     paddingTop = paddingBottom = paddingLeft = paddingRight = 0;
     imageHeight = imageWidth = display = direction = verticalAlign = listStyleType = 0;
+    fontSize = color = fontFamily = 0;
   }
 };
 
-// Cache serializes defined flags as uint32_t with bit indices 0..18.
+// Cache serializes defined flags as uint32_t with bit indices 0..21.
 static_assert(sizeof(CssPropertyFlags) <= sizeof(uint32_t),
               "CssPropertyFlags exceeds 32 bits; update cache read/write in CssParser.cpp");
-static_assert(sizeof(CssPropertyFlags) * 8 >= 19,
+static_assert(sizeof(CssPropertyFlags) * 8 >= 22,
               "CssPropertyFlags has fewer bits than properties; update bitfield widths");
 
 // Represents a collection of CSS style properties
@@ -162,6 +169,14 @@ struct CssStyle {
   CssDisplay display = CssDisplay::Block;                       // display property (Block or None)
   CssVerticalAlign verticalAlign = CssVerticalAlign::Baseline;  // vertical-align (super/sub positioning)
   CssListStyleType listStyleType = CssListStyleType::Disc;      // list-style-type (Disc or None)
+  // Book typography (applied when the reader keeps the book's own styles).
+  // fontSize: em / % scale the parent's size; px / pt are absolute CSS pixels.
+  CssLength fontSize;
+  // Text color as luminance, 0 = black .. 255 = white (the panel shows gray, not hue).
+  uint8_t colorLuma = 0;
+  // 1-based index into the owning CssParser's font-family pool (the declared candidate
+  // list, resolved to a face at layout time); 0 = none.
+  uint16_t fontFamily = 0;
 
   CssPropertyFlags defined;  // Tracks which properties were explicitly set
 
@@ -244,6 +259,18 @@ struct CssStyle {
       listStyleType = base.listStyleType;
       defined.listStyleType = 1;
     }
+    if (base.hasFontSize()) {
+      fontSize = base.fontSize;
+      defined.fontSize = 1;
+    }
+    if (base.hasColor()) {
+      colorLuma = base.colorLuma;
+      defined.color = 1;
+    }
+    if (base.hasFontFamily()) {
+      fontFamily = base.fontFamily;
+      defined.fontFamily = 1;
+    }
   }
 
   [[nodiscard]] bool hasTextAlign() const { return defined.textAlign; }
@@ -265,6 +292,9 @@ struct CssStyle {
   [[nodiscard]] bool hasDirection() const { return defined.direction; }
   [[nodiscard]] bool hasVerticalAlign() const { return defined.verticalAlign; }
   [[nodiscard]] bool hasListStyleType() const { return defined.listStyleType; }
+  [[nodiscard]] bool hasFontSize() const { return defined.fontSize; }
+  [[nodiscard]] bool hasColor() const { return defined.color; }
+  [[nodiscard]] bool hasFontFamily() const { return defined.fontFamily; }
 
   void reset() {
     textAlign = CssTextAlign::Left;
@@ -279,6 +309,9 @@ struct CssStyle {
     display = CssDisplay::Block;
     verticalAlign = CssVerticalAlign::Baseline;
     listStyleType = CssListStyleType::Disc;
+    fontSize = CssLength{};
+    colorLuma = 0;
+    fontFamily = 0;
     defined.clearAll();
   }
 };

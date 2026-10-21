@@ -13,6 +13,8 @@ class FontDecompressor {
   };
 
   void clearCache() { clearCacheCount++; }
+  // Per-page clear: drops the page buffer only, hot groups stay.
+  void clearPageCache() { clearPageCacheCount++; }
   int prewarmCache(const EpdFontData* fontData, const char* text) {
     auto& call = prewarmCalls[prewarmCallCount++];
     call.fontData = fontData;
@@ -25,4 +27,5 @@ class FontDecompressor {
   PrewarmCall prewarmCalls[4] = {};
   int prewarmCallCount = 0;
   int clearCacheCount = 0;
+  int clearPageCacheCount = 0;
 };

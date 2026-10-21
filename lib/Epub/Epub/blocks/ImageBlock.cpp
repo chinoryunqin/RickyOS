@@ -432,12 +432,12 @@ bool ImageBlock::renderInternal(GfxRenderer& renderer, const int x, const int y,
   // 16-level pages: a JPEG decodes straight into the native frame at full gray depth.
   // The pixel cache holds dithered 4-level samples written past the 16-level buffer,
   // which made illustrations look dark and blotchy.
-  if (renderToFramebuffer && renderer.isGrayscale16Active() &&
 #if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
-      true) {
+  constexpr bool kNativeAnyFormat = true;  // PNG too, with its alpha kept
 #else
-      isJpegPath(imagePath)) {
+  constexpr bool kNativeAnyFormat = false;
 #endif
+  if (renderToFramebuffer && renderer.isGrayscale16Active() && (kNativeAnyFormat || isJpegPath(imagePath))) {
     if (!srcPath.empty() && !ensureExtracted(cancellation)) {
       if (error) *error = cancellation.isCancelled() ? ImageRenderError::Cancelled : ImageRenderError::Failed;
       if (!cancellation.isCancelled()) renderPlaceholder(renderer, x, y);

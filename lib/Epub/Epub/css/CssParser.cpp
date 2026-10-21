@@ -173,12 +173,13 @@ std::string_view stripTrailingImportant(std::string_view value) {
 constexpr std::array STYLE_LENGTH_FIELDS = {
     &CssStyle::textIndent,   &CssStyle::marginTop,   &CssStyle::marginBottom,  &CssStyle::marginLeft,
     &CssStyle::marginRight,  &CssStyle::paddingTop,  &CssStyle::paddingBottom, &CssStyle::paddingLeft,
-    &CssStyle::paddingRight, &CssStyle::imageHeight, &CssStyle::imageWidth,
+    &CssStyle::paddingRight, &CssStyle::imageHeight, &CssStyle::imageWidth,  &CssStyle::fontSize,
 };
 constexpr size_t STYLE_LENGTH_FIELD_COUNT = STYLE_LENGTH_FIELDS.size();
+// ... + display, verticalAlign, listStyleType + colorLuma, fontFamily (u16) + defined bits.
 constexpr size_t STYLE_WIRE_BYTES =
-    5 + STYLE_LENGTH_FIELD_COUNT * (sizeof(decltype(CssLength::value)) + 1) + 3 + sizeof(uint32_t);
-constexpr uint32_t CSS_DEFINED_BITS_MASK = (1u << 19) - 1;
+    5 + STYLE_LENGTH_FIELD_COUNT * (sizeof(decltype(CssLength::value)) + 1) + 3 + 3 + sizeof(uint32_t);
+constexpr uint32_t CSS_DEFINED_BITS_MASK = (1u << 22) - 1;
 
 void encodeStyleWire(const CssStyle& style, uint8_t (&out)[STYLE_WIRE_BYTES]) {
   size_t offset = 0;
@@ -199,6 +200,9 @@ void encodeStyleWire(const CssStyle& style, uint8_t (&out)[STYLE_WIRE_BYTES]) {
   out[offset++] = static_cast<uint8_t>(style.display);
   out[offset++] = static_cast<uint8_t>(style.verticalAlign);
   out[offset++] = static_cast<uint8_t>(style.listStyleType);
+  out[offset++] = style.colorLuma;
+  memcpy(out + offset, &style.fontFamily, sizeof(style.fontFamily));
+  offset += sizeof(style.fontFamily);
 
   uint32_t definedBits = 0;
   if (style.defined.textAlign) definedBits |= 1 << 0;
@@ -220,6 +224,9 @@ void encodeStyleWire(const CssStyle& style, uint8_t (&out)[STYLE_WIRE_BYTES]) {
   if (style.defined.direction) definedBits |= 1 << 16;
   if (style.defined.verticalAlign) definedBits |= 1 << 17;
   if (style.defined.listStyleType) definedBits |= 1 << 18;
+  if (style.defined.fontSize) definedBits |= 1 << 19;
+  if (style.defined.color) definedBits |= 1 << 20;
+  if (style.defined.fontFamily) definedBits |= 1 << 21;
   memcpy(out + offset, &definedBits, sizeof(definedBits));
 }
 
@@ -265,6 +272,9 @@ bool decodeStyleWire(const uint8_t (&in)[STYLE_WIRE_BYTES], CssStyle& style) {
   style.display = static_cast<CssDisplay>(display);
   style.verticalAlign = static_cast<CssVerticalAlign>(verticalAlign);
   style.listStyleType = static_cast<CssListStyleType>(listStyleType);
+  style.colorLuma = in[offset++];
+  memcpy(&style.fontFamily, in + offset, sizeof(style.fontFamily));
+  offset += sizeof(style.fontFamily);
 
   uint32_t definedBits = 0;
   memcpy(&definedBits, in + offset, sizeof(definedBits));
@@ -288,10 +298,257 @@ bool decodeStyleWire(const uint8_t (&in)[STYLE_WIRE_BYTES], CssStyle& style) {
   style.defined.direction = (definedBits & 1 << 16) != 0;
   style.defined.verticalAlign = (definedBits & 1 << 17) != 0;
   style.defined.listStyleType = (definedBits & 1 << 18) != 0;
+  style.defined.fontSize = (definedBits & 1 << 19) != 0;
+  style.defined.color = (definedBits & 1 << 20) != 0;
+  style.defined.fontFamily = (definedBits & 1 << 21) != 0;
   return true;
 }
 
+// font-size keywords as em of the parent (CSS absolute-size table, medium = 1).
+bool fontSizeKeyword(const std::string_view value, CssLength& out) {
+  struct Keyword {
+    std::string_view name;
+    float em;
+  };
+  static constexpr Keyword KEYWORDS[] = {
+      {"xx-small", 0.5625f}, {"x-small", 0.625f}, {"small", 0.8125f}, {"medium", 1.0f}, {"large", 1.125f},
+      {"x-large", 1.5f},     {"xx-large", 2.0f},  {"xxx-large", 3.0f}, {"smaller", 0.8333f}, {"larger", 1.2f},
+  };
+  for (const auto& keyword : KEYWORDS) {
+    if (iequalsAscii(value, keyword.name)) {
+      out = CssLength{keyword.em, CssUnit::Em};
+      return true;
+    }
+  }
+  return false;
+}
+
+int hexDigit(const char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  const char lower = asciiToLower(c);
+  if (lower >= 'a' && lower <= 'f') return lower - 'a' + 10;
+  return -1;
+}
+
+uint8_t lumaOf(const int r, const int g, const int b) {
+  // Rec. 601 weights: what the reader perceives as darkness on a gray panel.
+  const int luma = (299 * r + 587 * g + 114 * b + 500) / 1000;
+  return static_cast<uint8_t>(std::clamp(luma, 0, 255));
+}
+
+// CSS color -> luminance. Accepts #rgb, #rgba, #rrggbb, #rrggbbaa, rgb()/rgba() and the named
+// colors e-books actually use. False for transparent / inherit / currentColor / unknown.
+bool parseColorLuma(std::string_view value, uint8_t& luma) {
+  value = trimCssWhitespace(value);
+  if (value.empty()) return false;
+  if (value.front() == '#') {
+    const std::string_view hex = value.substr(1);
+    int rgb[3] = {};
+    if (hex.size() == 3 || hex.size() == 4) {
+      for (int i = 0; i < 3; ++i) {
+        const int d = hexDigit(hex[i]);
+        if (d < 0) return false;
+        rgb[i] = d * 17;
+      }
+    } else if (hex.size() == 6 || hex.size() == 8) {
+      for (int i = 0; i < 3; ++i) {
+        const int hi = hexDigit(hex[2 * i]);
+        const int lo = hexDigit(hex[2 * i + 1]);
+        if (hi < 0 || lo < 0) return false;
+        rgb[i] = hi * 16 + lo;
+      }
+    } else {
+      return false;
+    }
+    luma = lumaOf(rgb[0], rgb[1], rgb[2]);
+    return true;
+  }
+  const size_t open = value.find('(');
+  if (open != std::string_view::npos) {
+    const std::string_view function = trimCssWhitespace(value.substr(0, open));
+    if (!iequalsAscii(function, "rgb") && !iequalsAscii(function, "rgba")) return false;
+    const size_t close = value.find(')', open);
+    if (close == std::string_view::npos) return false;
+    int rgb[3] = {};
+    int count = 0;
+    bool ok = true;
+    forEachDelimitedToken(value.substr(open + 1, close - open - 1),
+                          [](const char c) { return c == ',' || c == '/' || isCssWhitespace(c); },
+                          [&](std::string_view token) {
+                            if (count >= 3) return;  // alpha is ignored
+                            float number = 0;
+                            const bool percent = !token.empty() && token.back() == '%';
+                            if (percent) token.remove_suffix(1);
+                            if (!tryParseFloat(token, number)) {
+                              ok = false;
+                              return;
+                            }
+                            rgb[count++] = std::clamp(static_cast<int>(percent ? number * 2.55f : number), 0, 255);
+                          });
+    if (!ok || count < 3) return false;
+    luma = lumaOf(rgb[0], rgb[1], rgb[2]);
+    return true;
+  }
+  struct Named {
+    std::string_view name;
+    uint8_t r, g, b;
+  };
+  static constexpr Named NAMED[] = {
+      {"black", 0, 0, 0},           {"white", 255, 255, 255},     {"gray", 128, 128, 128},
+      {"grey", 128, 128, 128},       {"silver", 192, 192, 192},    {"darkgray", 169, 169, 169},
+      {"darkgrey", 169, 169, 169},   {"dimgray", 105, 105, 105},   {"dimgrey", 105, 105, 105},
+      {"lightgray", 211, 211, 211},  {"lightgrey", 211, 211, 211}, {"red", 255, 0, 0},
+      {"maroon", 128, 0, 0},         {"darkred", 139, 0, 0},       {"brown", 165, 42, 42},
+      {"navy", 0, 0, 128},           {"blue", 0, 0, 255},          {"darkblue", 0, 0, 139},
+      {"midnightblue", 25, 25, 112}, {"green", 0, 128, 0},         {"darkgreen", 0, 100, 0},
+      {"teal", 0, 128, 128},         {"purple", 128, 0, 128},      {"olive", 128, 128, 0},
+      {"orange", 255, 165, 0},       {"darkslategray", 47, 79, 79}, {"darkslateblue", 72, 61, 139},
+      {"saddlebrown", 139, 69, 19},
+  };
+  for (const auto& named : NAMED) {
+    if (iequalsAscii(value, named.name)) {
+      luma = lumaOf(named.r, named.g, named.b);
+      return true;
+    }
+  }
+  return false;
+}
+
+// url(...) relative to the stylesheet's own path inside the book. Empty for absolute
+// schemes (res://, http:, data:) and paths that climb above the book root.
+std::string resolveStylesheetUrl(const std::string_view stylesheetPath, std::string_view url) {
+  url = trimCssWhitespace(url);
+  if (url.size() >= 2 && (url.front() == '"' || url.front() == '\'') && url.back() == url.front()) {
+    url = url.substr(1, url.size() - 2);
+  }
+  const size_t cut = url.find_first_of("?#");
+  if (cut != std::string_view::npos) url = url.substr(0, cut);
+  if (url.empty() || url.find(':') != std::string_view::npos) return {};
+  std::string joined;
+  if (url.front() != '/') {
+    const size_t slash = stylesheetPath.rfind('/');
+    if (slash != std::string_view::npos) joined.assign(stylesheetPath.substr(0, slash + 1));
+  }
+  joined.append(url.data(), url.size());
+  // Collapse "." and ".." segments.
+  std::string out;
+  size_t start = 0;
+  while (start <= joined.size()) {
+    size_t end = joined.find('/', start);
+    if (end == std::string::npos) end = joined.size();
+    const std::string_view segment(joined.data() + start, end - start);
+    if (segment == "..") {
+      if (out.empty()) return {};
+      const size_t previous = out.rfind('/');
+      out.erase(previous == std::string::npos ? 0 : previous);
+    } else if (!segment.empty() && segment != ".") {
+      if (!out.empty()) out.push_back('/');
+      out.append(segment.data(), segment.size());
+    }
+    start = end + 1;
+  }
+  return out;
+}
+
 }  // anonymous namespace
+
+namespace {
+bool containsAsciiCaseless(const std::string_view haystack, const std::string_view lowerNeedle) {
+  if (lowerNeedle.size() > haystack.size()) return false;
+  for (size_t i = 0; i + lowerNeedle.size() <= haystack.size(); ++i) {
+    if (iequalsAscii(haystack.substr(i, lowerNeedle.size()), lowerNeedle)) return true;
+  }
+  return false;
+}
+}  // namespace
+
+CssParser::FontCategory CssParser::classifyFontName(const std::string_view name) {
+  const auto has = [name](const std::string_view needle) {
+    return name.find(needle) != std::string_view::npos || containsAsciiCaseless(name, needle);
+  };
+  // Order matters: 仿宋 contains 宋, and sans-serif contains serif.
+  if (has("仿宋") || has("fangsong") || has("fang song")) return FontCategory::FangSong;
+  if (has("楷") || has("kai")) return FontCategory::Kai;
+  if (has("圆") || has("圓") || has("yuan") || has("round")) return FontCategory::Round;
+  if (has("黑") || has("hei") || has("雅黑") || has("yahei") || has("gothic") || has("sans") || has("pingfang") ||
+      has("苹方")) {
+    return FontCategory::Sans;
+  }
+  if (has("宋") || has("song") || has("明") || has("ming") || has("serif")) return FontCategory::Serif;
+  return FontCategory::None;
+}
+
+uint16_t CssParser::internFamily(std::string_view candidates) const {
+  candidates = trimCssWhitespace(candidates);
+  if (candidates.empty() || candidates.size() > 1024) return 0;
+  for (uint16_t i = 0; i < familyCount_; ++i) {
+    if (familyAt(i + 1) == candidates) return i + 1;
+  }
+  if (familyCount_ >= MAX_FONT_FAMILIES || familyCharsUsed_ + candidates.size() > MAX_FAMILY_CHARS) return 0;
+  if (!familyOffsets_) {
+    familyOffsets_ = makeUniqueNoThrow<uint32_t[]>(MAX_FONT_FAMILIES + 1);
+    familyChars_ = makeUniqueNoThrow<char[]>(MAX_FAMILY_CHARS);
+    if (!familyOffsets_ || !familyChars_) {
+      familyOffsets_.reset();
+      familyChars_.reset();
+      return 0;
+    }
+    familyOffsets_[0] = 0;
+  }
+  memcpy(familyChars_.get() + familyCharsUsed_, candidates.data(), candidates.size());
+  familyCharsUsed_ += static_cast<uint32_t>(candidates.size());
+  familyOffsets_[++familyCount_] = familyCharsUsed_;
+  return familyCount_;
+}
+
+std::string_view CssParser::familyAt(const uint16_t index) const {
+  if (index == 0 || index > familyCount_ || !familyOffsets_) return {};
+  const uint32_t begin = familyOffsets_[index - 1];
+  return {familyChars_.get() + begin, familyOffsets_[index] - begin};
+}
+
+bool CssParser::addFontFace(std::string_view family, const std::string_view path, const FontCategory category) {
+  family = trimCssWhitespace(family);
+  if (family.size() >= 2 && (family.front() == '"' || family.front() == '\'') && family.back() == family.front()) {
+    family = trimCssWhitespace(family.substr(1, family.size() - 2));
+  }
+  if (family.empty() || (path.empty() && category == FontCategory::None)) return false;
+  for (uint8_t i = 0; i < fontFaceCount_; ++i) {
+    // The first declaration of a family wins, as in a browser's first matching rule.
+    if (fontFaceAt(i).family == family) return false;
+  }
+  if (fontFaceCount_ >= MAX_FONT_FACES || family.size() > UINT16_MAX || path.size() > UINT16_MAX ||
+      faceCharsUsed_ + family.size() + path.size() > MAX_FACE_CHARS) {
+    return false;
+  }
+  if (!faces_) {
+    faces_ = makeUniqueNoThrow<FaceRecord[]>(MAX_FONT_FACES);
+    faceChars_ = makeUniqueNoThrow<char[]>(MAX_FACE_CHARS);
+    if (!faces_ || !faceChars_) {
+      faces_.reset();
+      faceChars_.reset();
+      return false;
+    }
+  }
+  FaceRecord& record = faces_[fontFaceCount_++];
+  record.familyOff = static_cast<uint16_t>(faceCharsUsed_);
+  record.familyLen = static_cast<uint16_t>(family.size());
+  memcpy(faceChars_.get() + faceCharsUsed_, family.data(), family.size());
+  faceCharsUsed_ += static_cast<uint32_t>(family.size());
+  record.pathOff = static_cast<uint16_t>(faceCharsUsed_);
+  record.pathLen = static_cast<uint16_t>(path.size());
+  memcpy(faceChars_.get() + faceCharsUsed_, path.data(), path.size());
+  faceCharsUsed_ += static_cast<uint32_t>(path.size());
+  record.category = category;
+  return true;
+}
+
+CssParser::FontFace CssParser::fontFaceAt(const uint8_t index) const {
+  if (index >= fontFaceCount_ || !faces_) return {};
+  const FaceRecord& record = faces_[index];
+  return {std::string_view(faceChars_.get() + record.familyOff, record.familyLen),
+          std::string_view(faceChars_.get() + record.pathOff, record.pathLen), record.category};
+}
 
 int CssParser::compareEntryToPieces(const SelectorEntry& entry, const std::string_view p0, const std::string_view p1,
                                     const std::string_view p2) const {
@@ -412,6 +669,7 @@ CssParser::PoolResult CssParser::internStyle(const CssStyle& style, uint16_t& in
 }
 
 CssParser::RuleInsertResult CssParser::insertOrMerge(const std::string_view selector, const CssStyle& style) {
+  descendantIndexDirty_ = true;  // inserts shift store indices
   bool exact = false;
   const size_t position = lowerBound(selector, {}, {}, exact);
   if (exact) {
@@ -565,7 +823,7 @@ bool CssParser::tryInterpretLength(std::string_view val, CssLength& out) {
 
 // Declaration parsing
 
-void CssParser::parseDeclarationIntoStyle(std::string_view decl, CssStyle& style) {
+void CssParser::parseDeclarationIntoStyle(std::string_view decl, CssStyle& style, const CssParser* owner) {
   const size_t colonPos = decl.find(':');
   if (colonPos == std::string_view::npos || colonPos == 0) return;
 
@@ -667,6 +925,26 @@ void CssParser::parseDeclarationIntoStyle(std::string_view decl, CssStyle& style
       style.verticalAlign = CssVerticalAlign::Sub;
       style.defined.verticalAlign = 1;
     }
+  } else if (iequalsAscii(name, "font-size")) {
+    CssLength size;
+    if (fontSizeKeyword(value, size) || (tryInterpretLength(value, size) && size.value > 0)) {
+      style.fontSize = size;
+      style.defined.fontSize = 1;
+    }
+  } else if (iequalsAscii(name, "color")) {
+    uint8_t luma = 0;
+    if (parseColorLuma(value, luma)) {
+      style.colorLuma = luma;
+      style.defined.color = 1;
+    }
+  } else if (iequalsAscii(name, "font-family")) {
+    if (owner) {
+      const uint16_t family = owner->internFamily(value);
+      if (family != 0) {
+        style.fontFamily = family;
+        style.defined.fontFamily = 1;
+      }
+    }
   } else if (iequalsAscii(name, "list-style-type")) {
     const std::string_view listStyleValue = stripTrailingImportant(value);
     style.listStyleType = iequalsAscii(listStyleValue, "none") ? CssListStyleType::None : CssListStyleType::Disc;
@@ -674,14 +952,14 @@ void CssParser::parseDeclarationIntoStyle(std::string_view decl, CssStyle& style
   }
 }
 
-CssStyle CssParser::parseDeclarations(std::string_view declBlock) {
+CssStyle CssParser::parseDeclarations(std::string_view declBlock, const CssParser* owner) {
   CssStyle style;
 
   size_t start = 0;
   for (size_t i = 0; i <= declBlock.size(); ++i) {
     if (i == declBlock.size() || declBlock[i] == ';') {
       if (i > start) {
-        parseDeclarationIntoStyle(declBlock.substr(start, i - start), style);
+        parseDeclarationIntoStyle(declBlock.substr(start, i - start), style, owner);
       }
       start = i + 1;
     }
@@ -720,8 +998,25 @@ void CssParser::processRuleBlockWithStyle(std::string_view selectorGroup, const 
         //   '*'  wildcard
         //   ' '  descendant combinator
         // Single-pass scan via find_first_of instead of eight sequential find() calls.
-        constexpr std::string_view kUnsupportedSelectorChars = "+>[:#~* ";
+        // Descendant (' ') and child ('>') combinators between simple compounds are kept:
+        // book stylesheets style "div.bt p" or "h2.mm b". '>' is matched as a descendant.
+        constexpr std::string_view kUnsupportedSelectorChars = "+[:#~*";
         if (sel.find_first_of(kUnsupportedSelectorChars) != std::string_view::npos) return;
+        char normalized[MAX_SELECTOR_LENGTH];
+        size_t normalizedLen = 0;
+        bool pendingSpace = false;
+        for (const char c : sel) {
+          if (isCssWhitespace(c) || c == '>') {
+            pendingSpace = normalizedLen > 0;
+            continue;
+          }
+          if (pendingSpace) normalized[normalizedLen++] = ' ';
+          pendingSpace = false;
+          normalized[normalizedLen++] = c;
+        }
+        if (normalizedLen == 0) return;
+        sel = std::string_view(normalized, normalizedLen);
+        if (sel.find(' ') != std::string_view::npos) descendantIndexDirty_ = true;
 
         if (ruleGrowthStopped_) {
           // Continue the cascade for stored selectors without retrying failed
@@ -743,7 +1038,7 @@ void CssParser::processRuleBlockWithStyle(std::string_view selectorGroup, const 
 
 // Main parsing entry point
 
-CssParser::ParseResult CssParser::loadFromStream(HalFile& source) {
+CssParser::ParseResult CssParser::loadFromStream(HalFile& source, const std::string_view stylesheetPath) {
   if (!source) {
     LOG_ERR("CSS", "Cannot read from invalid file");
     return ParseResult::Error;
@@ -762,6 +1057,125 @@ CssParser::ParseResult CssParser::loadFromStream(HalFile& source) {
   bool inAtRule = false;
   int atDepth = 0;
 
+  // @font-face, read as it streams: src lists run past 1 KB (a dozen local() names per
+  // face), so each comma-separated source is handled on its own instead of buffered whole.
+  enum class FaceDecl : uint8_t { None, Family, Src, Other };
+  struct FontFaceReader {
+    char keyword[16];
+    size_t keywordLen = 0;
+    bool keywordDone = false;
+    bool active = false;
+    char name[24];
+    size_t nameLen = 0;
+    bool inValue = false;
+    FaceDecl decl = FaceDecl::None;
+    char part[256];
+    size_t partLen = 0;
+    bool partOverflow = false;
+    char quote = 0;
+    int parens = 0;
+    char family[96];
+    size_t familyLen = 0;
+    std::string path;
+    FontCategory category = FontCategory::None;
+  };
+  auto face = makeUniqueNoThrow<FontFaceReader>();  // ~400 B kept off the parse stack
+  const auto resetFace = [&face]() {
+    if (!face) return;
+    face->keywordLen = 0;
+    face->keywordDone = false;
+    face->active = false;
+    face->nameLen = 0;
+    face->inValue = false;
+    face->decl = FaceDecl::None;
+    face->partLen = 0;
+    face->partOverflow = false;
+    face->quote = 0;
+    face->parens = 0;
+    face->familyLen = 0;
+    face->path.clear();
+    face->category = FontCategory::None;
+  };
+  const auto endFacePart = [&]() {
+    if (!face || face->partOverflow) {
+      if (face) face->partLen = 0, face->partOverflow = false;
+      return;
+    }
+    const std::string_view part = trimCssWhitespace(std::string_view(face->part, face->partLen));
+    face->partLen = 0;
+    if (part.empty()) return;
+    if (face->decl == FaceDecl::Family) {
+      const size_t n = std::min(part.size(), sizeof(face->family));
+      memcpy(face->family, part.data(), n);
+      face->familyLen = n;
+    } else if (face->decl == FaceDecl::Src) {
+      const size_t open = part.find('(');
+      const size_t close = part.rfind(')');
+      if (open == std::string_view::npos || close == std::string_view::npos || close < open) return;
+      const std::string_view function = trimCssWhitespace(part.substr(0, open));
+      const std::string_view argument = part.substr(open + 1, close - open - 1);
+      if (iequalsAscii(function, "url") && face->path.empty() && !stylesheetPath.empty()) {
+        face->path = resolveStylesheetUrl(stylesheetPath, argument);
+      } else if (iequalsAscii(function, "local") && face->category == FontCategory::None) {
+        face->category = classifyFontName(argument);
+      }
+    }
+  };
+  const auto faceChar = [&](const char c) {
+    if (!face) return;
+    const auto push = [&](char ch) {
+      if (face->partLen < sizeof(face->part)) {
+        face->part[face->partLen++] = ch;
+      } else {
+        face->partOverflow = true;
+      }
+    };
+    if (!face->inValue) {
+      if (c == ':') {
+        const std::string_view name = trimCssWhitespace(std::string_view(face->name, face->nameLen));
+        face->decl = iequalsAscii(name, "font-family") ? FaceDecl::Family
+                     : iequalsAscii(name, "src")        ? FaceDecl::Src
+                                                        : FaceDecl::Other;
+        face->inValue = true;
+        face->partLen = 0;
+        face->partOverflow = false;
+      } else if (c == ';') {
+        face->nameLen = 0;
+      } else if (face->nameLen < sizeof(face->name)) {
+        face->name[face->nameLen++] = c;
+      }
+      return;
+    }
+    if (face->quote) {
+      if (c == face->quote) face->quote = 0;
+      push(c);
+      return;
+    }
+    if (c == '"' || c == '\'') {
+      face->quote = c;
+      push(c);
+      return;
+    }
+    if (c == '(') ++face->parens;
+    if (c == ')' && face->parens > 0) --face->parens;
+    if (face->parens == 0 && (c == ';' || (c == ',' && face->decl == FaceDecl::Src))) {
+      endFacePart();
+      if (c == ';') {
+        face->inValue = false;
+        face->nameLen = 0;
+        face->decl = FaceDecl::None;
+      }
+      return;
+    }
+    push(c);
+  };
+  const auto finishFace = [&]() {
+    if (!face) return;
+    if (face->inValue) endFacePart();
+    addFontFace(std::string_view(face->family, face->familyLen), face->path, face->category);
+    resetFace();
+  };
+
   int bodyDepth = 0;
   bool skippingRule = false;
   bool selectorTruncated = false;
@@ -771,13 +1185,27 @@ CssParser::ParseResult CssParser::loadFromStream(HalFile& source) {
 
   auto handleChar = [&](const char c) {
     if (inAtRule) {
+      if (face && !face->keywordDone) {
+        if (c != '{' && c != ';' && !isCssWhitespace(c)) {
+          if (face->keywordLen < sizeof(face->keyword)) face->keyword[face->keywordLen++] = c;
+          return;
+        }
+        face->keywordDone = true;
+        face->active = iequalsAscii(std::string_view(face->keyword, face->keywordLen), "font-face");
+        if (isCssWhitespace(c)) return;
+      }
       if (c == '{') {
         ++atDepth;
       } else if (c == '}') {
         if (atDepth > 0) --atDepth;
-        if (atDepth == 0) inAtRule = false;
+        if (atDepth == 0) {
+          if (face && face->active) finishFace();
+          inAtRule = false;
+        }
       } else if (c == ';' && atDepth == 0) {
         inAtRule = false;
+      } else if (face && face->active && atDepth == 1) {
+        faceChar(c);
       }
       return;
     }
@@ -789,6 +1217,7 @@ CssParser::ParseResult CssParser::loadFromStream(HalFile& source) {
       if (c == '@' && selector.empty()) {
         inAtRule = true;
         atDepth = 0;
+        resetFace();
         return;
       }
       if (c == '{') {
@@ -814,7 +1243,7 @@ CssParser::ParseResult CssParser::loadFromStream(HalFile& source) {
       --bodyDepth;
       if (bodyDepth == 0) {
         if (!skippingRule && !declarationTruncated && !declBuffer.empty()) {
-          parseDeclarationIntoStyle(declBuffer, currentStyle);
+          parseDeclarationIntoStyle(declBuffer, currentStyle, this);
         }
         if (!skippingRule) {
           processRuleBlockWithStyle(selector, currentStyle);
@@ -834,7 +1263,7 @@ CssParser::ParseResult CssParser::loadFromStream(HalFile& source) {
     if (!skippingRule) {
       if (c == ';') {
         if (!declarationTruncated && !declBuffer.empty()) {
-          parseDeclarationIntoStyle(declBuffer, currentStyle);
+          parseDeclarationIntoStyle(declBuffer, currentStyle, this);
         }
         declBuffer.clear();
         declarationTruncated = false;
@@ -902,6 +1331,83 @@ CssParser::ParseResult CssParser::loadFromStream(HalFile& source) {
 
 // Style resolution
 
+void CssParser::indexDescendantRules() const {
+  descendantIndexDirty_ = false;
+  descendantCount_ = 0;
+  for (uint16_t i = 0; i < entryCount_; ++i) {
+    if (selectorAt(i).find(' ') == std::string_view::npos) continue;
+    if (!descendantRules_) {
+      descendantRules_ = makeUniqueNoThrow<uint16_t[]>(MAX_DESCENDANT_RULES);
+      if (!descendantRules_) return;
+    }
+    if (descendantCount_ >= MAX_DESCENDANT_RULES) return;
+    descendantRules_[descendantCount_++] = i;
+  }
+}
+
+bool CssParser::hasDescendantRules() const {
+  if (descendantIndexDirty_) indexDescendantRules();
+  return descendantCount_ > 0;
+}
+
+namespace {
+bool hasClass(const std::string_view classes, const std::string_view wanted) {
+  bool found = false;
+  forEachDelimitedToken(classes, isCssWhitespace, [&](std::string_view cls) { found = found || cls == wanted; });
+  return found;
+}
+
+bool equalsCaseless(const std::string_view a, const std::string_view b) {
+  return a.size() == b.size() &&
+         std::equal(a.begin(), a.end(), b.begin(), [](char x, char y) { return asciiToLower(x) == asciiToLower(y); });
+}
+
+// One compound: "tag", ".class" or "tag.class" (all classes of a.b.c must be present).
+bool compoundMatches(const std::string_view compound, const std::string_view tag, const std::string_view classes) {
+  const size_t dot = compound.find('.');
+  const std::string_view compoundTag = compound.substr(0, dot);
+  if (!compoundTag.empty() && !equalsCaseless(compoundTag, tag)) return false;
+  if (dot == std::string_view::npos) return true;
+  std::string_view rest = compound.substr(dot + 1);
+  while (true) {
+    const size_t next = rest.find('.');
+    if (!hasClass(classes, rest.substr(0, next))) return false;
+    if (next == std::string_view::npos) return true;
+    rest = rest.substr(next + 1);
+  }
+}
+}  // namespace
+
+CssStyle CssParser::resolveStyle(const std::string_view tagName, const std::string_view classAttr,
+                                 const ElementRef* ancestors, const size_t ancestorCount) const {
+  CssStyle result = resolveStyle(tagName, classAttr);
+  if (!hasDescendantRules()) return result;
+  for (uint16_t r = 0; r < descendantCount_; ++r) {
+    const uint16_t entry = descendantRules_[r];
+    std::string_view selector = selectorAt(entry);
+    // Rightmost compound must be this element; then walk outward through the ancestors.
+    size_t space = selector.rfind(' ');
+    if (!compoundMatches(selector.substr(space + 1), tagName, classAttr)) continue;
+    selector = selector.substr(0, space);
+    size_t next = 0;
+    bool matched = true;
+    while (true) {
+      space = selector.rfind(' ');
+      const std::string_view compound = space == std::string_view::npos ? selector : selector.substr(space + 1);
+      while (next < ancestorCount && !compoundMatches(compound, ancestors[next].tag, ancestors[next].classes)) ++next;
+      if (next >= ancestorCount) {
+        matched = false;
+        break;
+      }
+      ++next;
+      if (space == std::string_view::npos) break;
+      selector = selector.substr(0, space);
+    }
+    if (matched) result.applyOver(stylePool_[entries_[entry].styleIndex]);
+  }
+  return result;
+}
+
 CssStyle CssParser::resolveStyle(std::string_view tagName, std::string_view classAttr) const {
   CssStyle result;
 
@@ -934,6 +1440,10 @@ CssStyle CssParser::resolveStyle(std::string_view tagName, std::string_view clas
 // Inline style parsing (static - doesn't need rule database)
 
 CssStyle CssParser::parseInlineStyle(std::string_view styleValue) { return parseDeclarations(styleValue); }
+
+CssStyle CssParser::parseInlineStyleWithFamilies(std::string_view styleValue) const {
+  return parseDeclarations(styleValue, this);
+}
 
 // Cache serialization
 
@@ -1018,6 +1528,26 @@ CssParser::CacheStatus CssParser::inspectCache() const {
     }
   }
 
+  uint16_t familyCount = 0;
+  if (file.read(&familyCount, sizeof(familyCount)) != sizeof(familyCount) || familyCount > MAX_FONT_FAMILIES) {
+    return CacheStatus::Invalid;
+  }
+  for (uint16_t i = 0; i < familyCount; ++i) {
+    uint16_t length = 0;
+    if (file.read(&length, sizeof(length)) != sizeof(length) || !skipBytes(length)) return CacheStatus::Invalid;
+  }
+  uint8_t faceCount = 0;
+  if (file.read(&faceCount, sizeof(faceCount)) != sizeof(faceCount) || faceCount > MAX_FONT_FACES) {
+    return CacheStatus::Invalid;
+  }
+  for (uint8_t i = 0; i < faceCount; ++i) {
+    for (int part = 0; part < 2; ++part) {
+      uint16_t length = 0;
+      if (file.read(&length, sizeof(length)) != sizeof(length) || !skipBytes(length)) return CacheStatus::Invalid;
+    }
+    if (!skipBytes(1)) return CacheStatus::Invalid;
+  }
+
   if (file.available() != 0) {
     return CacheStatus::Invalid;
   }
@@ -1071,6 +1601,26 @@ bool CssParser::saveToCache(const bool complete) const {
     encodeStyleWire(stylePool_[entries_[i].styleIndex], styleWire);
     writeBytes(styleWire, sizeof(styleWire));
     if (!writeOk) break;
+  }
+
+  // font-family candidate lists (rules hold 1-based indices into them), then @font-face.
+  writeBytes(&familyCount_, sizeof(familyCount_));
+  for (uint16_t i = 1; i <= familyCount_ && writeOk; ++i) {
+    const std::string_view family = familyAt(i);
+    const auto length = static_cast<uint16_t>(family.size());
+    writeBytes(&length, sizeof(length));
+    writeBytes(family.data(), length);
+  }
+  writeByte(fontFaceCount_);
+  for (uint8_t i = 0; i < fontFaceCount_ && writeOk; ++i) {
+    const FontFace fontFace = fontFaceAt(i);
+    const auto familyLength = static_cast<uint16_t>(fontFace.family.size());
+    const auto pathLength = static_cast<uint16_t>(fontFace.path.size());
+    writeBytes(&familyLength, sizeof(familyLength));
+    writeBytes(fontFace.family.data(), familyLength);
+    writeBytes(&pathLength, sizeof(pathLength));
+    writeBytes(fontFace.path.data(), pathLength);
+    writeByte(static_cast<uint8_t>(fontFace.category));
   }
 
   if (!writeOk || !file.close()) {
@@ -1211,6 +1761,50 @@ CssParser::CacheLoadResult CssParser::loadFromCache() {
       clear();
       return CacheLoadResult::Invalid;
     }
+  }
+
+  // Pools after the rules. Interning in order reproduces the saved 1-based indices, which
+  // the rules above refer to; the saved pools hold no duplicates.
+  char text[1024];
+  const auto readText = [&file, &text](std::string_view& out) {
+    uint16_t length = 0;
+    if (file.read(&length, sizeof(length)) != sizeof(length) || length > sizeof(text)) return false;
+    if (length > 0 && file.read(text, length) != length) return false;
+    out = std::string_view(text, length);
+    return true;
+  };
+  uint16_t familyCount = 0;
+  if (file.read(&familyCount, sizeof(familyCount)) != sizeof(familyCount) || familyCount > MAX_FONT_FAMILIES) {
+    clear();
+    return CacheLoadResult::Invalid;
+  }
+  for (uint16_t i = 0; i < familyCount; ++i) {
+    std::string_view family;
+    if (!readText(family) || internFamily(family) != i + 1) {
+      clear();
+      return CacheLoadResult::Invalid;
+    }
+  }
+  uint8_t faceCount = 0;
+  if (file.read(&faceCount, sizeof(faceCount)) != sizeof(faceCount) || faceCount > MAX_FONT_FACES) {
+    clear();
+    return CacheLoadResult::Invalid;
+  }
+  std::string familyCopy;
+  for (uint8_t i = 0; i < faceCount; ++i) {
+    std::string_view family;
+    std::string_view path;
+    uint8_t category = 0;
+    if (!readText(family)) {
+      clear();
+      return CacheLoadResult::Invalid;
+    }
+    familyCopy.assign(family.data(), family.size());  // text[] is reused for the path
+    if (!readText(path) || file.read(&category, 1) != 1 || category > static_cast<uint8_t>(FontCategory::Round)) {
+      clear();
+      return CacheLoadResult::Invalid;
+    }
+    addFontFace(familyCopy, path, static_cast<FontCategory>(category));
   }
 
   if (file.available() != 0) {

@@ -466,7 +466,7 @@ CssParser::ParseResult Epub::parseCssFiles(const CssParser::CacheStatus existing
       parseResult = CssParser::ParseResult::Error;
       continue;
     }
-    const CssParser::ParseResult streamResult = cssParser->loadFromStream(tempCssFile);
+    const CssParser::ParseResult streamResult = cssParser->loadFromStream(tempCssFile, cssPath);
     // Explicitly close() file before calling Storage.remove()
     tempCssFile.close();
     Storage.remove(tmpCssPath.c_str());
