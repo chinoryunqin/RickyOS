@@ -21,6 +21,11 @@ class GfxRenderer {
     return left == 0 || left == ' ' || right == ' ' ? 0 : tracking;
   }
   bool isFontCacheScanning() const { return false; }
+  // Text tone for a run (book color); the fixture draws nothing, so it only has to exist.
+  class TextInkScope {
+   public:
+    TextInkScope(const GfxRenderer&, uint8_t) {}
+  };
   // Vertical text turns runs by switching the orientation around a draw.
   enum Orientation { Portrait, LandscapeClockwise, PortraitInverted, LandscapeCounterClockwise };
   Orientation orientation = Portrait;

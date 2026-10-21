@@ -24,6 +24,8 @@
 #include "Epub/converters/ImageDimsProbe.h"
 #include "Epub/converters/ImageToFramebufferDecoder.h"
 #include "Epub/htmlEntities.h"
+#include "Epub/BookFonts.h"
+#include "Epub/WordLook.h"
 #if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
 #include "Epub/ReaderImageLayout.h"
 #endif
@@ -336,6 +338,67 @@ void ChapterHtmlSlimParser::setCurrentPageVisibleOffset(const uint32_t offset) {
   currentPageVisibleOffsetSet = true;
 }
 
+void ChapterHtmlSlimParser::pruneElementPath() {
+  while (elementPathSize > 0 && elementPath[elementPathSize - 1].depth >= depth) --elementPathSize;
+}
+
+CssStyle ChapterHtmlSlimParser::resolveElementStyle(const char* tag, const std::string_view classes) const {
+  if (!cssParser->hasDescendantRules() || elementPathSize == 0) return cssParser->resolveStyle(tag, classes);
+  CssParser::ElementRef ancestors[kMaxElementPath];
+  size_t count = 0;
+  for (size_t i = elementPathSize; i-- > 0;) {
+    ancestors[count++] = {elementPath[i].tag, elementPath[i].classes};
+  }
+  return cssParser->resolveStyle(tag, classes, ancestors, count);
+}
+
+void ChapterHtmlSlimParser::pushElementFrame(const char* tag, const std::string_view classes, const CssStyle& style) {
+  pruneElementPath();
+  if (!elementPath) {
+    elementPath = makeUniqueNoThrow<ElementFrame[]>(kMaxElementPath);
+    if (!elementPath) return;  // styles still apply; only descendant rules / inheritance are lost
+  }
+  if (elementPathSize >= kMaxElementPath) return;
+  ElementFrame& frame = elementPath[elementPathSize++];
+  frame = ElementFrame{};
+  frame.depth = depth;
+  strlcpy(frame.tag, tag, sizeof(frame.tag));
+  const size_t classBytes = std::min(classes.size(), sizeof(frame.classes) - 1);
+  memcpy(frame.classes, classes.data(), classBytes);
+  frame.classes[classBytes] = '\0';
+  if (style.hasFontFamily()) {
+    if (auto* fonts = bookfonts::active()) {
+      frame.hasFace = true;
+      frame.face = fonts->faceForFamily(cssParser->familyAt(style.fontFamily));
+    }
+  }
+  if (style.hasColor()) {
+    frame.hasInk = true;
+    frame.ink = wordlook::inkForLuma(style.colorLuma);
+  }
+}
+
+uint32_t ChapterHtmlSlimParser::currentWordLook() {
+  if (!embeddedStyle || !elementPath) return wordlook::kDefault;
+  pruneElementPath();
+  uint8_t face = 0;
+  uint8_t ink = 0;
+  bool faceFound = false;
+  bool inkFound = false;
+  for (size_t i = elementPathSize; i-- > 0 && !(faceFound && inkFound);) {
+    const ElementFrame& frame = elementPath[i];
+    if (!faceFound && frame.hasFace) {
+      face = frame.face;
+      faceFound = true;
+    }
+    if (!inkFound && frame.hasInk) {
+      ink = frame.ink;
+      inkFound = true;
+    }
+  }
+  return wordlook::make(face, ink);
+}
+
 // flush the contents of partWordBuffer to currentTextBlock
 void ChapterHtmlSlimParser::flushPartWordBuffer() {
   if (hasFailed()) return;
@@ -379,7 +442,8 @@ void ChapterHtmlSlimParser::flushPartWordBuffer() {
     }
     linkId = currentFootnoteLinkId;
   }
-  currentTextBlock->addWord(partWordBuffer, fontStyle, false, nextWordContinues, partWordVisibleOffset, linkId);
+  currentTextBlock->addWord(partWordBuffer, fontStyle, false, nextWordContinues, partWordVisibleOffset, linkId,
+                            currentWordLook());
   if (insideTableCell && !tableRowStacked) {
     tableCellTextBytes += wordBytes;
     if (currentTextBlock->size() > MAX_GRID_TABLE_CELL_WORDS) {
@@ -814,11 +878,13 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
   // before tag-specific branches emit any content or metadata.
   CssStyle cssStyle;
   if (self->cssParser) {
-    cssStyle = self->cssParser->resolveStyle(name, classAttr);
+    cssStyle = self->resolveElementStyle(name, classAttr);
     if (!styleAttr.empty()) {
-      CssStyle inlineStyle = CssParser::parseInlineStyle(styleAttr);
+      CssStyle inlineStyle = self->cssParser->parseInlineStyleWithFamilies(styleAttr);
       cssStyle.applyOver(inlineStyle);
     }
+    // Every element joins the path, whichever branch below takes it.
+    self->pushElementFrame(name, classAttr, cssStyle);
   }
 
   // HTML hidden attribute overrides CSS display.

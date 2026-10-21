@@ -96,6 +96,26 @@ class ChapterHtmlSlimParser {
     bool hasSub = false, sub = false;
   };
   std::vector<StyleStackEntry> inlineStyleStack;
+
+  // Open elements from the body down: their tag and classes (for descendant selectors such
+  // as "div.bt p") and the book face / text tone they set, which CSS inherits. An entry
+  // whose depth is >= the current depth belongs to a closed element and is pruned lazily,
+  // like inlineStyleStack. Deeper nesting than kMaxElementPath keeps the last frames' looks.
+  struct ElementFrame {
+    int depth = 0;
+    char tag[12] = {};
+    char classes[52] = {};
+    bool hasFace = false, hasInk = false;
+    uint8_t face = 0;
+    uint8_t ink = 0;
+  };
+  static constexpr size_t kMaxElementPath = 32;
+  std::unique_ptr<ElementFrame[]> elementPath;
+  size_t elementPathSize = 0;
+  void pruneElementPath();
+  void pushElementFrame(const char* tag, std::string_view classes, const CssStyle& style);
+  CssStyle resolveElementStyle(const char* tag, std::string_view classes) const;
+  uint32_t currentWordLook();
   std::vector<BlockStyle> blockStyleStack;  // accumulated block styles from open ancestor elements
   CssStyle currentCssStyle;
   bool effectiveBold = false;

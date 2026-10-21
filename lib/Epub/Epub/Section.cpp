@@ -55,18 +55,21 @@ namespace {
 //   82 / 83 - reserved: Plus pagination with collapsed margins (with imageOutset)
 //   84 / 85 - adjacent vertical margins collapse (CSS): max(bottom, next top), not the sum
 //   86 / 87 - Read Pico: collapsed margins plus the chapter-art imageOutset header field
+//   88 / 89 - book typography: TextBlock flags byte + per-word looks (face, tone, size)
+//   90 / 91 - the same on the Read Pico (imageOutset header)
+//   92 / 93 - the same on the Metalio Plus (imageOutset header)
 // Boards without the imageOutset field come first: host tests read the first declaration.
 #if !FREEINK_DEVICE_METALIO_PLUS && !FREEINK_DEVICE_READPICO
-constexpr uint8_t SECTION_FILE_VERSION = 85;
+constexpr uint8_t SECTION_FILE_VERSION = 89;
 constexpr uint32_t IMAGE_LAYOUT_HEADER_SIZE = 0;
 #elif FREEINK_DEVICE_READPICO
 // A uint16 imageOutset follows verticalText, as on the Plus; its own number keeps a
 // card moved between devices from reading another board's pagination as its own.
-constexpr uint8_t SECTION_FILE_VERSION = 87;
+constexpr uint8_t SECTION_FILE_VERSION = 91;
 constexpr uint32_t IMAGE_LAYOUT_HEADER_SIZE = sizeof(uint16_t);
 #else
 // Plus-only v81 adds a uint16 imageOutset after verticalText; v83 collapses margins.
-constexpr uint8_t SECTION_FILE_VERSION = 83;
+constexpr uint8_t SECTION_FILE_VERSION = 93;
 constexpr uint32_t IMAGE_LAYOUT_HEADER_SIZE = sizeof(uint16_t);
 #endif
 // Written into the version field while a build is in progress; patched to

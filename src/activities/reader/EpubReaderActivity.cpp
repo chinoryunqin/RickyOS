@@ -363,6 +363,7 @@ void EpubReaderActivity::onExit() {
 #if RICKYOS_PRODUCT
   rickyBadgeNotice::announceNew(renderer);
 #endif
+  bookFonts_.reset();  // unregisters the book's faces and frees their bytes
   ReaderActivity::onExit();
 #if FREEINK_DEVICE_READPICO
   // The last page is 16-level; a fast B/W frame over it leaves its gray text behind,
@@ -463,6 +464,16 @@ bool EpubReaderActivity::loadBook() {
     return false;
   }
   epub = std::move(loadedEpub);
+
+  // The book's own fonts, when its styles are kept (loaded on first use).
+  bookFonts_.reset();
+  if (SETTINGS.embeddedStyle) {
+    bookFonts_ = makeUniqueNoThrow<BookFontSet>(renderer);
+    if (bookFonts_) {
+      bookFonts_->open(*epub);
+      bookfonts::setActive(bookFonts_.get());
+    }
+  }
 
   ImageBlock::clearSessionRenderFailures();
   ImageBlock::setExtractor(epub.get(), [](void* ctx, const char* src, const char* dest, CancelCheck cancellation) {

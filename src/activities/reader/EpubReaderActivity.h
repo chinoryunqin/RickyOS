@@ -11,6 +11,7 @@
 #include <optional>
 #include <vector>
 
+#include "BookFontSet.h"
 #include "BookmarkEntry.h"
 #include "ChapterPosition.h"
 #include "EpubReaderMenuActivity.h"
@@ -33,6 +34,7 @@
 
 class EpubReaderActivity final : public ReaderActivity {
   std::shared_ptr<Epub> epub;
+  std::unique_ptr<BookFontSet> bookFonts_;
   std::unique_ptr<Section> section = nullptr;
   int currentSpineIndex = 0;
   int nextPageNumber = 0;
