@@ -180695,8 +180695,12 @@
      LOG_ERR("EBP", "Could not update mappings and sizes");
      return false;
    }
-@@ -730,6 +761,12 @@
- bool Epub::loadMetadata(std::string& title, std::string& author) {
+@@ -727,9 +758,15 @@
+   return true;
+ }
+ 
+-bool Epub::loadMetadata(std::string& title, std::string& author) {
++bool Epub::loadMetadata(std::string& title, std::string& author, HalFile* openedArchive) {
    title.clear();
    author.clear();
 +#if defined(RICKYOS_KINDLE_IMPORT)
@@ -180708,16 +180712,38 @@
  
    if (Txt::isTxtOrMd(filepath)) {
      title = utf8ComposeNfc(FsHelpers::getFileNameWithoutExtension(filepath));
-@@ -747,7 +784,7 @@
+@@ -747,8 +784,9 @@
    }
    metadataCache.reset();
  
 -  ZipFile zip(filepath);
+-  if (!zip.open()) {
 +  ZipFile zip(archiveFile());
-   if (!zip.open()) {
++  const bool adoptable = openedArchive && *openedArchive && archiveFile() == filepath;
++  if (!(adoptable ? zip.adopt(std::move(*openedArchive)) : zip.open())) {
      LOG_DBG("EBP", "Could not open ePub for package metadata: %s", filepath.c_str());
      return false;
-@@ -886,9 +923,17 @@
+   }
+@@ -760,6 +798,18 @@
+ 
+   title = std::move(metadata.title);
+   author = std::move(metadata.author);
++  return true;
++}
++
++bool Epub::probeCover(bool& declared) {
++  ZipFile zip(archiveFile());
++  if (!zip.open()) return false;
++  BookMetadataCache::BookMetadata metadata;
++  // No cache: the parser keeps the manifest in memory only for the cover lookup.
++  const bool parsed = parseContentOpf(metadata, /*writeSpineEntries=*/false, /*metadataOnly=*/false, &zip);
++  zip.close();
++  if (!parsed) return false;
++  declared = !metadata.coverItemHref.empty();
+   return true;
+ }
+ 
+@@ -886,9 +936,17 @@
      setupCacheDir();
      return generateThumbBmpForCover(height, companionCover);
    }
@@ -180736,7 +180762,7 @@
    if (!metadata || !zip) {
      LOG_ERR("EBP", "OOM: cover metadata");
      return false;
-@@ -986,7 +1031,7 @@
+@@ -986,7 +1044,7 @@
      return content;
    }
  
@@ -180745,7 +180771,7 @@
    if (!content) {
      LOG_DBG("EBP", "Failed to read item %s", path.c_str());
      return nullptr;
-@@ -1033,7 +1078,7 @@
+@@ -1033,7 +1091,7 @@
      return true;
    }
  
@@ -180754,7 +180780,7 @@
  }
  
  bool Epub::extractItemToFile(const std::string& itemHref, const std::string& destPath, CancelCheck cancellation) const {
-@@ -1065,7 +1110,7 @@
+@@ -1065,7 +1123,7 @@
      return false;
    }
    const std::string path = FsHelpers::normalisePath(itemHref);
@@ -180780,6 +180806,21 @@
    // the base path for items in the EPUB file
    std::string contentBasePath;
    // Uniq cache key based on filepath
+@@ -68,7 +76,13 @@
+   ~Epub() = default;
+   std::string& getBasePath() { return contentBasePath; }
+   bool load(bool buildIfMissing = true, bool skipLoadingCss = false);
+-  bool loadMetadata(std::string& title, std::string& author);
++  // `openedArchive`, when given and open, is this EPUB already opened by the caller
++  // (a library walk); it is consumed instead of opening the file again by name.
++  bool loadMetadata(std::string& title, std::string& author, HalFile* openedArchive = nullptr);
++  // Whether the package declares a cover image (metadata, EPUB 3 property or guide
++  // page), read from the OPF alone: no reader caches are built or written. Returns
++  // false when the OPF cannot be read, leaving `declared` untouched.
++  bool probeCover(bool& declared);
+   bool clearCache() const;
+   void setupCacheDir() const;
+   const std::string& getCachePath() const;
 --- a/lib/Epub/Epub/ReaderRenderSpec.h
 +++ b/lib/Epub/Epub/ReaderRenderSpec.h
 @@ -36,8 +36,16 @@
@@ -181506,7 +181547,7 @@
  STR_RICKY_GESTURE_CONTROL: "顶部下滑打开控制中心"
  STR_RICKY_GESTURE_STATUS: "点状态栏打开控制中心"
  STR_RICKY_GESTURE_TOUCH_TURN: "触屏翻页"
-@@ -1600,3 +1619,102 @@
+@@ -1600,3 +1619,111 @@
  STR_RICKY_HELP_FEEDBACK_3: "通过你现有的 Ricky AI Studio 联系渠道发送反馈。本页面不会自动上传设备信息。官网入口可扫码打开。"
  STR_RICKY_MENU_AUTO_TURN: "自动翻页"
  STR_RICKY_MENU_PROGRESS: "阅读进度"
@@ -181520,7 +181561,16 @@
 +STR_LIBRARY_CATEGORY_ERROR: "操作失败。分类名不能重复，最多 16 个分类，请检查存储后重试。"
 +STR_LIBRARY_DELETE_CATEGORY_NOTE: "只删除分类，不删除书籍。"
 +STR_LIBRARY_BATCH: "批量管理"
-+STR_LIBRARY_BATCH_SELECTED: "已选 %u 本 · 返回取消"
++STR_LIBRARY_VIEW_TOGGLE: "切换列表 / 封面视图"
++STR_LIBRARY_JUMP_PAGE: "跳到第几页"
++STR_RICKY_STORAGE_BREAKDOWN: "书籍 %s · 缓存 %s · 其他 %s"
++STR_RICKY_STORAGE_TAP_REFRESH: "点右上角「刷新」统计各项占用"
++STR_RICKY_LIBRARY_FOLDERS: "书库文件夹"
++STR_RICKY_LIBRARY_FOLDER_COUNT: "%u 个文件夹"
++STR_RICKY_TRANSFER_KINDS: "Wi-Fi / USB"
++STR_LIBRARY_OPEN_FOLDER: "打开文件夹"
++STR_LIBRARY_BATCH_SELECTED: "已选 %u 本 · 点这里取消"
++STR_LIBRARY_NEW_CATEGORY_ASSIGN: "新建分类并放入所选"
 +
 +STR_RICKY_CC_WARMTH: "冷暖"
 +STR_RICKY_CC_LIGHT_ON: "已开启"
@@ -181644,7 +181694,7 @@
  STR_RICKY_GESTURE_CONTROL: "Swipe down from the top: Control center"
  STR_RICKY_GESTURE_STATUS: "Tap the status bar: Control center"
  STR_RICKY_GESTURE_TOUCH_TURN: "Touch page turns"
-@@ -1622,3 +1641,102 @@
+@@ -1622,3 +1641,111 @@
  STR_RICKY_HELP_FEEDBACK_3: "Send feedback through your existing Ricky AI Studio contact channel. This page does not upload device information. Scan the website QR code to visit the site."
  STR_RICKY_MENU_AUTO_TURN: "Auto page turn"
  STR_RICKY_MENU_PROGRESS: "Reading progress"
@@ -181658,7 +181708,16 @@
 +STR_LIBRARY_CATEGORY_ERROR: "Could not save. Use a unique name, at most 16 categories, and check storage before retrying."
 +STR_LIBRARY_DELETE_CATEGORY_NOTE: "Delete this category only. Books will not be deleted."
 +STR_LIBRARY_BATCH: "Batch select"
-+STR_LIBRARY_BATCH_SELECTED: "%u selected · Back to cancel"
++STR_LIBRARY_VIEW_TOGGLE: "Switch list / cover view"
++STR_LIBRARY_JUMP_PAGE: "Go to page"
++STR_RICKY_STORAGE_BREAKDOWN: "Books %s · Cache %s · Other %s"
++STR_RICKY_STORAGE_TAP_REFRESH: "Tap Refresh to measure what uses the space"
++STR_RICKY_LIBRARY_FOLDERS: "Library folders"
++STR_RICKY_LIBRARY_FOLDER_COUNT: "%u folders"
++STR_RICKY_TRANSFER_KINDS: "Wi-Fi / USB"
++STR_LIBRARY_OPEN_FOLDER: "Open folder"
++STR_LIBRARY_BATCH_SELECTED: "%u selected · tap to cancel"
++STR_LIBRARY_NEW_CATEGORY_ASSIGN: "New category with the selection"
 +
 +STR_RICKY_CC_WARMTH: "Warmth"
 +STR_RICKY_CC_LIGHT_ON: "On"
@@ -181788,16 +181847,21 @@
  
  constexpr char INDEX_PATH[] = "/.crosspoint/library.idx";
  constexpr char NEW_PATH[] = "/.crosspoint/library.new";
-@@ -30,7 +40,7 @@
+@@ -30,7 +40,12 @@
  constexpr char CACHE_DIR[] = "/.crosspoint";
  // Sticky fallback when the marker could not be persisted (card unavailable at
  // write time): callers must still see the index as stale until a rebuild clears it.
 -bool dirtyInMemory = false;
 +std::atomic<bool> dirtyInMemory{false};
++
++// Where an import spends its time, for the build summary: EPUB metadata reads
++// versus everything else in the walk (directory enumeration, stat, staging).
++uint32_t metadataReadMs = 0;
++uint32_t walkPhaseMs = 0;
  constexpr size_t LIBRARY_IO_BUFFER_SIZE = 4096;
  
  // Matches lib/FileIndex's buffer so a name this walk accepts is one the file
-@@ -90,6 +100,7 @@
+@@ -90,6 +105,7 @@
  // counter keeps the delay out of tight per-byte operations while bounding CPU
  // work between yields.
  void serviceBuilder(uint32_t& workUnits) {
@@ -181805,7 +181869,7 @@
    if ((++workUnits & 0x1Fu) == 0) delay(1);
  }
  
-@@ -145,6 +156,7 @@
+@@ -145,6 +161,7 @@
  }
  
  bool installNewIndex() {
@@ -181813,7 +181877,7 @@
    const bool hadPrevious = Storage.exists(INDEX_PATH);
  
    // A backup beside a live index is left by a successful install interrupted
-@@ -189,8 +201,7 @@
+@@ -189,8 +206,7 @@
  }
  
  bool isBookName(const std::string& name) {
@@ -181823,7 +181887,7 @@
  }
  
  // Hidden entries (including macOS AppleDouble sidecars) and system folders such
-@@ -283,6 +294,13 @@
+@@ -283,6 +299,15 @@
    bool dedupDegraded = false;
    bool failed = false;
    bool readMetadata = false;
@@ -181831,13 +181895,15 @@
 +  const LibrarySources* sources = nullptr;
 +  uint16_t sourceIndex = 0;
 +  bool skipStagedPrior = false;
++  // The walk's open handle on the book being staged, for EPUB metadata (no reopen by name).
++  HalFile* openBook = nullptr;
 +  bool replayingIndex = false;
 +  char directFolder[256]{};
 +  uint16_t directFolderId = 0;
    LibraryIndexFile* previous = nullptr;
    BuildStats* stats = nullptr;
    uint16_t enriched = 0;
-@@ -318,6 +336,17 @@
+@@ -318,6 +343,17 @@
  [[gnu::noinline]] bool stageRecord(WalkState& st, const std::string& name, const uint32_t fileSize,
                                     const uint16_t folderId, const std::string& fullPath,
                                     const uint32_t modificationTime) {
@@ -181855,7 +181921,7 @@
    StagedEntry& entry = *st.stagedEntry;
    memset(&entry, 0, sizeof(entry));
    // The filename is a fallback for the title and nothing else: no parsing, and
-@@ -331,7 +360,12 @@
+@@ -331,7 +367,12 @@
    entry.pathHash = clixPathHash(fullPath.data(), fullPath.size());
    const int priorIndex = findPrior(st, entry.pathHash);
  
@@ -181869,7 +181935,7 @@
    const uint8_t expectedStatus = extractionExpected ? CLIX_METADATA_EXTRACTED : CLIX_METADATA_NOT_ATTEMPTED;
    bool reuseMetadata = false;
    ClixRecord priorRecord{};
-@@ -341,9 +375,10 @@
+@@ -341,9 +382,10 @@
        return false;
      }
      reuseMetadata =
@@ -181883,7 +181949,19 @@
    }
  
    if (reuseMetadata) {
-@@ -441,6 +476,7 @@
+@@ -373,7 +415,10 @@
+     st.stats->parsed++;
+     Epub epub(fullPath, CACHE_DIR);
+     std::string bookTitle;
+-    if (epub.loadMetadata(bookTitle, author)) {
++    const uint32_t metadataStarted = millis();
++    const bool metadataLoaded = epub.loadMetadata(bookTitle, author, st.openBook);
++    metadataReadMs += millis() - metadataStarted;
++    if (metadataLoaded) {
+       entry.record.metadataStatus = CLIX_METADATA_EXTRACTED;
+       if (!bookTitle.empty()) {
+         title = std::move(bookTitle);
+@@ -441,6 +486,7 @@
  
    st.stageOut->write(&entry, STAGE_STRIDE);
    st.books++;
@@ -181891,7 +181969,7 @@
    if (buildProgressFn) buildProgressFn(st.books, buildProgressContext);
    return true;
  }
-@@ -452,7 +488,8 @@
+@@ -452,10 +498,26 @@
  };
  
  void walk(WalkState& st, const std::string& path, const int depth) {
@@ -181901,15 +181979,50 @@
  
    const uint16_t dedupBase = st.activeDedupCount;
    const DedupFrame dedupFrame{st, dedupBase};
-@@ -485,6 +522,7 @@
++  // Per-folder EPUB metadata cost: shows whether a large flat folder makes each
++  // by-path open slower (FAT name lookup is a linear directory scan).
++  struct FolderTiming {
++    const std::string& path;
++    const BuildStats* stats;
++    uint32_t metadataMs;
++    uint16_t parsed;
++    ~FolderTiming() {
++      if (!stats || stats->parsed == parsed) return;
++      const unsigned books = stats->parsed - parsed;
++      const unsigned ms = metadataReadMs - metadataMs;
++      LOG_INF("LIBIDX", "metadata %u EPUB in %ums (%ums each) under %s", books, ms, books ? ms / books : 0,
++              path.c_str());
++    }
++  } folderTiming{path, st.stats, metadataReadMs, st.stats ? st.stats->parsed : uint16_t(0)};
+ 
+   HalFile dir = Storage.open(path.c_str());
+   if (!dir || !dir.isDirectory()) {
+@@ -484,7 +546,17 @@
+   uint16_t myFolderId = 0;
  
    for (HalFile entry = dir.openNextFile(); entry; entry = dir.openNextFile()) {
++    // A book's entry stays open until its record is staged, so EPUB metadata reads
++    // it through this handle instead of looking the name up again (in a 2,000-file
++    // folder that lookup made each EPUB 134 ms instead of 20 ms).
++    struct CloseEntry {
++      HalFile& file;
++      ~CloseEntry() {
++        if (file) file.close();
++      }
++    } closeEntry{entry};
      serviceBuilder(st.serviceUnits);
 +    if (cancellationRequested()) st.failed = true;
      if (st.failed || st.books >= CLIX_MAX_RECORDS) {
        entry.close();
        break;
-@@ -500,9 +538,10 @@
+@@ -494,15 +566,16 @@
+     const bool isDir = entry.isDirectory();
+     const uint32_t size = isDir ? 0 : static_cast<uint32_t>(entry.fileSize());
+     const uint32_t modificationTime = isDir ? 0 : entry.modificationTime();
+-    entry.close();
++    if (isDir) entry.close();
+ 
+     if (st.nameBuf[0] == '\0' || isProtectedEntry(st.nameBuf)) continue;
      const std::string name(st.nameBuf);
      // RickyOS's own font and picture folders never hold books; with large font
      // families and wallpaper sets they were most of what a rebuild walked.
@@ -181921,7 +182034,7 @@
        const size_t resumePosition = dir.position();
        dir.close();
        walk(st, joinLibraryPath(path, name), depth + 1);
-@@ -518,6 +557,7 @@
+@@ -518,6 +591,7 @@
        continue;
      }
      if (!isBookName(name)) continue;
@@ -181929,8 +182042,15 @@
  
      // A zero-length book is a dangling directory entry: the name enumerates but
      // the contents do not exist. Counted rather than silently dropped.
-@@ -580,6 +620,141 @@
-     if (!stageRecord(st, name, size, myFolderId, joinLibraryPath(path, name), modificationTime)) break;
+@@ -577,9 +651,147 @@
+       st.folderId++;
+       folderEmitted = true;
+     }
+-    if (!stageRecord(st, name, size, myFolderId, joinLibraryPath(path, name), modificationTime)) break;
++    st.openBook = &entry;
++    const bool staged = stageRecord(st, name, size, myFolderId, joinLibraryPath(path, name), modificationTime);
++    st.openBook = nullptr;
++    if (!staged) break;
    }
    dir.close();
 +}
@@ -182071,7 +182191,54 @@
  }
  
  // Shared by the offset and write passes so the name-blob layout has one source of
-@@ -1102,7 +1277,25 @@
+@@ -625,6 +837,26 @@
+     return false;
+   }
+   serialization::BufferedFileWriter outBuffer(out, LIBRARY_IO_BUFFER_SIZE);
++
++  // The passes below visit the stage in title and author order, i.e. at random:
++  // each small read costs a whole SD sector, several times per book (35 s for
++  // 3,000 books on the Plus). Read the stage once, sequentially, into PSRAM when
++  // it fits with headroom; otherwise keep the file reads.
++  const size_t stageBytes = static_cast<size_t>(st.books) * STAGE_STRIDE;
++  memory::ByteBuffer stageMirror;
++  if (stageBytes > 0 && memory::psramHasHeadroom(stageBytes, stageBytes, 512 * 1024)) {
++    stageMirror = memory::makePsramByteBufferUninitializedNoThrow(stageBytes);
++    for (size_t at = 0; stageMirror && at < stageBytes;) {
++      const size_t want = std::min<size_t>(32 * 1024, stageBytes - at);
++      if (!stage.seekSet(at) || stage.read(stageMirror.get() + at, want) != static_cast<int>(want)) {
++        LOG_ERR("LIBIDX", "stage mirror read failed at %u; using file reads", static_cast<unsigned>(at));
++        stageMirror.reset();
++        break;
++      }
++      at += want;
++    }
++  }
++  LOG_INF("LIBIDX", "stage %u B %s", static_cast<unsigned>(stageBytes), stageMirror ? "in PSRAM" : "read from card");
+ 
+   // Returns false rather than spinning. A full card makes write() return 0, and
+   // the old loop never advanced past it — the device simply hung mid-rebuild with
+@@ -647,8 +879,18 @@
+       outBuffer.write(zeros, want);
+     }
+   };
+-  const auto readStageAt = [&stage, &ioFailed](const uint64_t offset, void* data, const size_t len) {
++  const auto readStageAt = [&stage, &ioFailed, &stageMirror, stageBytes](const uint64_t offset, void* data,
++                                                                          const size_t len) {
+     if (ioFailed) return false;
++    if (stageMirror) {
++      if (offset > stageBytes || len > stageBytes - offset) {
++        LOG_ERR("LIBIDX", "record stage read out of range at %u", static_cast<unsigned>(offset));
++        ioFailed = true;
++        return false;
++      }
++      memcpy(data, stageMirror.get() + offset, len);
++      return true;
++    }
+     if (!stage.seekSet(offset) || stage.read(reinterpret_cast<uint8_t*>(data), len) != static_cast<int>(len)) {
+       LOG_ERR("LIBIDX", "record stage read failed at %u", static_cast<unsigned>(offset));
+       ioFailed = true;
+@@ -1102,8 +1344,28 @@
    buildProgressContext = context;
  }
  
@@ -182096,9 +182263,12 @@
 +    }
 +  } scope{stats};
    const uint32_t startMs = millis();
++  metadataReadMs = 0;
++  walkPhaseMs = 0;
    uint32_t serviceUnits = 0;
    stats = BuildStats{};
-@@ -1198,7 +1391,10 @@
+ 
+@@ -1198,7 +1460,11 @@
    {
      serialization::BufferedFileWriter stageOut(st.stage, LIBRARY_IO_BUFFER_SIZE);
      st.stageOut = &stageOut;
@@ -182107,10 +182277,11 @@
 +      walkSources(st, *options->sources);
 +    else
 +      walk(st, rootPath, 0);
++    walkPhaseMs = millis() - startMs;
      st.stageOut = nullptr;
      stageFlushed = stageOut.flush();
    }
-@@ -1222,8 +1418,8 @@
+@@ -1222,8 +1488,8 @@
    stats.unchanged = st.reused;
    stats.enriched = st.enriched;
  
@@ -182121,6 +182292,16 @@
      previous.close();
      Storage.remove(STAGE_PATH);
      Storage.remove(folderStagePath.c_str());
+@@ -1408,6 +1674,9 @@
+ 
+   stats.walkMs = millis() - startMs;
+   stats.indexReplaced = ok;
++  LOG_INF("LIBIDX", "time: walk %ums (of which EPUB metadata %ums for %u books), total %ums",
++          static_cast<unsigned>(walkPhaseMs), static_cast<unsigned>(metadataReadMs),
++          static_cast<unsigned>(stats.parsed), static_cast<unsigned>(millis() - startMs));
+   LOG_INF("LIBIDX",
+           "%s: %u books, %u folders, %u parsed, %u metadata reused, replaced %u, %u dup dropped, %u unreadable, "
+           "%u reader data, %ums",
 --- a/lib/LibraryIndex/LibraryBuilder.h
 +++ b/lib/LibraryIndex/LibraryBuilder.h
 @@ -25,6 +25,20 @@
@@ -182458,7 +182639,7 @@
 +class LibraryCategories {
 + public:
 +  static constexpr int MAX_CATEGORIES = 16;
-+  static constexpr size_t MAX_MEMBERS = 4096;
++  static constexpr size_t MAX_MEMBERS = 16384;  // CLIX_MAX_RECORDS
 +  static constexpr size_t NAME_BYTES = 49;  // up to 16 Chinese characters
 +  enum class Load { Missing, Ready, Error };
 +  Load load();
@@ -182483,9 +182664,157 @@
 +  bool rewrite(const uint64_t* hashes = nullptr, size_t count = 0, uint16_t touched = 0, uint16_t enabled = 0);
 +};
 +}  // namespace library
+--- a/lib/LibraryIndex/LibraryFormat.h
++++ b/lib/LibraryIndex/LibraryFormat.h
+@@ -43,7 +43,7 @@
+ 
+ // A 2000-book card already produces a 429 KiB index. This hard bound keeps every
+ // record count and permutation ordinal representable by uint16_t.
+-inline constexpr uint16_t CLIX_MAX_RECORDS = 4096;
++inline constexpr uint16_t CLIX_MAX_RECORDS = 16384;
+ 
+ // Complete-path fingerprint stored in front of every record's name blob.
+ // Shared by the builder's reconciliation and the browser's recent-book lookup,
+--- /dev/null
++++ b/lib/LibraryIndex/LibraryIncoming.cpp
+@@ -0,0 +1,90 @@
++#include "LibraryIncoming.h"
++
++#include <HalStorage.h>
++#include <Logging.h>
++
++#include <cstring>
++
++namespace library {
++namespace {
++
++constexpr char kPath[] = "/.crosspoint/library-incoming.txt";
++constexpr char kUnknown[] = "*";  // a line of its own: every source may have changed
++constexpr size_t kLineMax = 512;
++
++bool appendLine(const char* line) {
++  Storage.mkdir("/.crosspoint");
++  HalFile file = Storage.open(kPath, O_WRONLY | O_CREAT | O_APPEND);
++  if (!file || !file.isOpen()) {
++    LOG_ERR("LIBIN", "cannot open %s", kPath);
++    return false;
++  }
++  const size_t length = strlen(line);
++  const bool ok = file.write(reinterpret_cast<const uint8_t*>(line), length) == length &&
++                  file.write(reinterpret_cast<const uint8_t*>("\n"), 1) == 1;
++  file.flush();
++  return ok;
++}
++
++// Counts lines without holding them: the record stays a few kilobytes at most.
++size_t lineCount() {
++  HalFile file;
++  if (!Storage.openFileForRead("LIBIN", kPath, file)) return 0;
++  size_t lines = 0;
++  uint8_t buffer[256];
++  for (int got; (got = file.read(buffer, sizeof(buffer))) > 0;)
++    for (int i = 0; i < got; ++i) lines += buffer[i] == '\n';
++  return lines;
++}
++
++}  // namespace
++
++bool LibraryIncoming::add(const char* path) {
++  if (!path || !*path || strlen(path) >= kLineMax || strchr(path, '\n')) return false;
++  if (lineCount() >= MAX_PATHS) return markUnknownChanges();
++  return appendLine(path);
++}
++
++bool LibraryIncoming::markUnknownChanges() { return appendLine(kUnknown); }
++
++bool LibraryIncoming::pending() { return Storage.exists(kPath); }
++
++bool LibraryIncoming::read(void (*visit)(const char*, void*), void* context, bool& unknownChanges) {
++  unknownChanges = false;
++  HalFile file;
++  if (!Storage.openFileForRead("LIBIN", kPath, file)) return false;
++  char line[kLineMax];
++  size_t used = 0;
++  bool overlong = false;
++  const auto finish = [&]() {
++    line[used] = '\0';
++    if (!overlong && used > 0) {
++      if (strcmp(line, kUnknown) == 0)
++        unknownChanges = true;
++      else if (visit)
++        visit(line, context);
++    }
++    used = 0;
++    overlong = false;
++  };
++  uint8_t buffer[256];
++  for (int got; (got = file.read(buffer, sizeof(buffer))) > 0;) {
++    for (int i = 0; i < got; ++i) {
++      if (buffer[i] == '\n') {
++        finish();
++      } else if (used + 1 < sizeof(line)) {
++        line[used++] = static_cast<char>(buffer[i]);
++      } else {
++        overlong = true;
++      }
++    }
++  }
++  finish();
++  return true;
++}
++
++void LibraryIncoming::clear() {
++  if (Storage.exists(kPath) && !Storage.remove(kPath)) LOG_ERR("LIBIN", "cannot clear %s", kPath);
++}
++
++}  // namespace library
+--- /dev/null
++++ b/lib/LibraryIndex/LibraryIncoming.h
+@@ -0,0 +1,28 @@
++#pragma once
++
++#include <cstddef>
++
++// Books a transfer wrote since the shelf last folded them in.
++//
++// The browser upload knows each finished file; the USB drive only knows that the
++// computer had the card, so it records "anything may have changed". Both just
++// append to a small file (/.crosspoint/library-incoming.txt): no directory walk or
++// metadata read runs in the transfer path. The shelf reads the record on entry and
++// refreshes only the enrolled sources that cover these paths.
++namespace library {
++
++class LibraryIncoming {
++ public:
++  static constexpr size_t MAX_PATHS = 200;
++  // One uploaded book. Beyond MAX_PATHS the record degrades to unknown changes.
++  static bool add(const char* path);
++  // The USB host had the card: every enrolled source may have changed.
++  static bool markUnknownChanges();
++  static bool pending();
++  // Calls `visit(path, context)` for each recorded path; `unknownChanges` reports
++  // whether a USB session (or an overflow) asked for every source.
++  static bool read(void (*visit)(const char* path, void* context), void* context, bool& unknownChanges);
++  static void clear();
++};
++
++}  // namespace library
+--- a/lib/LibraryIndex/LibraryIndexFile.h
++++ b/lib/LibraryIndex/LibraryIndexFile.h
+@@ -92,6 +92,10 @@
+   // Absolute path of the book, rebuilt from its folder record.
+   bool readPath(const ClixRecord& record, std::string& out);
+ 
++  // Raw bytes of the open index, for a caller that streams whole sections once
++  // (the in-memory search table) instead of seeking per record.
++  bool readRange(const uint32_t offset, void* dst, const size_t len) { return opened && readAt(offset, dst, len); }
++
+  private:
+   bool openImpl(const char* path, bool acceptStaleFold);
+   bool readAt(uint32_t offset, void* dst, size_t len);
 --- /dev/null
 +++ b/lib/LibraryIndex/LibrarySources.cpp
-@@ -0,0 +1,202 @@
+@@ -0,0 +1,204 @@
 +#include "LibrarySources.h"
 +
 +#include <HalStorage.h>
@@ -182668,6 +182997,8 @@
 +  return false;
 +}
 +const char* LibrarySources::legacyIndexPath() { return kLegacy; }
++bool LibrarySources::retireLegacy() { return !Storage.exists(kLegacy) || Storage.remove(kLegacy); }
++bool LibrarySources::enrolled() { return Storage.exists(kPath); }
 +bool LibrarySources::preserveLegacy() {
 +  if (Storage.exists(kPath) || Storage.exists(kLegacy)) return true;
 +  if (!recoverLibraryIndex()) return false;
@@ -182690,7 +183021,7 @@
 +}  // namespace library
 --- /dev/null
 +++ b/lib/LibraryIndex/LibrarySources.h
-@@ -0,0 +1,48 @@
+@@ -0,0 +1,53 @@
 +#pragma once
 +
 +#include <cstdint>
@@ -182727,6 +183058,11 @@
 +  // Snapshot ONLY the old catalog, not the SD card, on first opt-in. This
 +  // preserves existing users' shelves without silently enrolling the root.
 +  static bool preserveLegacy();
++  // RickyOS keeps no pre-sources shelf: the Library is exactly the enrolled sources.
++  // Removes a snapshot an earlier build kept (books on the card are untouched).
++  static bool retireLegacy();
++  // Whether the reader has enrolled anything yet (the sources file exists).
++  static bool enrolled();
 +  static const char* legacyIndexPath();
 +
 + private:
@@ -182851,7 +183187,14 @@
  int64_t trustedNow() {
 --- a/lib/WeReadWebApi/src/WeReadClient.cpp
 +++ b/lib/WeReadWebApi/src/WeReadClient.cpp
-@@ -10,7 +10,7 @@
+@@ -5,12 +5,14 @@
+ #include <Epub.h>
+ #include <HalClock.h>
+ #include <JpegToBmpConverter.h>
++#include <LibraryBuilder.h>
++#include <LibraryIncoming.h>
+ #include <Logging.h>
+ #include <MD5Builder.h>
  #include <Memory.h>
  #include <PngToBmpConverter.h>
  #include <StreamingJsonParser.h>
@@ -182860,7 +183203,7 @@
  #include <strings.h>
  
  #include <algorithm>
-@@ -237,12 +237,12 @@
+@@ -237,12 +239,12 @@
  bool sha256Hex(const char* value, char* out, const size_t outSize) {
    if (!value || !out || outSize < 65) return false;
    uint8_t digest[32];
@@ -182879,6 +183222,47 @@
    if (!ok) return false;
    for (size_t i = 0; i < sizeof(digest); ++i) snprintf(out + i * 2, outSize - i * 2, "%02x", digest[i]);
    out[64] = '\0';
+@@ -2902,6 +2904,12 @@
+          remote.appIdHash == WeReadProtocol::hashAppId(localAppId, strlen(localAppId));
+ }
+ 
++void Operation::noteBookForLibrary() {
++  if (outputPath_.empty()) return;
++  library::LibraryIncoming::add(outputPath_.c_str());
++  library::markLibraryIndexDirty();
++}
++
+ void Operation::persistInitialProgress() {
+   const bool saved = initialProgressValid_ && initialProgressFraction_ > 0.0f
+                          ? WeReadStore::saveInitialProgress(book_.bookId, initialProgressFraction_)
+@@ -3139,6 +3147,7 @@
+     return fail(Error::SdCard);
+   }
+   if (!persistCoverOverride()) LOG_ERR("WR", "Failed to persist EPUB cover override");
++  noteBookForLibrary();
+   cleanupTransient(bookDir_, "");
+   if (!WeReadStore::saveSession(session_)) return fail(Error::SdCard);
+   persistInitialProgress();
+@@ -4228,6 +4237,7 @@
+       }
+       HalFile packaged;
+       const uint64_t packageBytes = Storage.openFileForRead("WR", outputPath_, packaged) ? packaged.fileSize64() : 0;
++      noteBookForLibrary();
+       LOG_INF("WR", "package complete: ms=%lu bytes=%llu images=%s", millis() - packageStartedAt,
+               static_cast<unsigned long long>(packageBytes),
+               options_.imagePolicy == WeReadStore::ImagePolicy::Embed ? "embed" : "exclude");
+--- a/lib/WeReadWebApi/src/WeReadClient.h
++++ b/lib/WeReadWebApi/src/WeReadClient.h
+@@ -350,6 +350,9 @@
+   bool sameRemotePosition() const;
+   bool remoteAppIdMatchesLocal() const;
+   void persistInitialProgress();
++  // The cached EPUB is on the card: the Library folds it in on its next visit when an
++  // enrolled source covers it (as for a browser upload).
++  void noteBookForLibrary();
+   Error decideProgress();
+   Error fetchReaderOnce();
+   Error fetchShardOnce(const char* endpoint, const std::string& destination);
 --- a/lib/WeReadWebApi/src/WeReadHttpClient.cpp
 +++ b/lib/WeReadWebApi/src/WeReadHttpClient.cpp
 @@ -6,6 +6,10 @@
@@ -182905,6 +183289,33 @@
    g_aborted = false;
    g_lastAbortCheck = 0;
    if (abortRequested()) {
+--- a/lib/ZipFile/ZipFile.cpp
++++ b/lib/ZipFile/ZipFile.cpp
+@@ -414,6 +414,12 @@
+   return true;
+ }
+ 
++bool ZipFile::adopt(HalFile&& opened) {
++  close();
++  file = std::move(opened);
++  return file && file.seekSet(0);
++}
++
+ bool ZipFile::close() {
+   if (file) {
+     // Explicit close() required: member variable persists beyond function scope
+--- a/lib/ZipFile/ZipFile.h
++++ b/lib/ZipFile/ZipFile.h
+@@ -70,6 +70,9 @@
+   // It is NOT recommended to pre-open it for any kind of inflation due to memory constraints
+   bool isOpen() const { return !!file; }
+   bool open();
++  // Take over a handle the caller already opened on this archive (a directory
++  // walk's entry), sparing a by-name lookup that is linear in the folder size.
++  bool adopt(HalFile&& opened);
+   bool close();
+   bool getInflatedFileSize(const char* filename, size_t* size);
+   // Batch lookup: scan ZIP central dir once and fill sizes for matching targets.
 --- a/lib/hal/HalAudioOutput.cpp
 +++ b/lib/hal/HalAudioOutput.cpp
 @@ -1,5 +1,23 @@
@@ -183792,7 +184203,7 @@
  constexpr uint32_t appBit(const AppId id) { return uint32_t{1} << static_cast<uint8_t>(id); }
 --- a/src/CrossPointSettings.cpp
 +++ b/src/CrossPointSettings.cpp
-@@ -236,6 +236,11 @@
+@@ -236,10 +236,16 @@
      }
    }
  
@@ -183804,7 +184215,12 @@
    doc["fakeBoldVersion"] = FAKE_BOLD_VERSION;
    // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
    doc["frontButtonBack"] = frontButtonBack;
-@@ -277,9 +282,11 @@
+   doc["readingMode"] = readingMode;
++  doc["libraryListView"] = libraryListView;
+   doc["rickyBadgesSeen"] = rickyBadgesSeen;
+   doc["frontButtonConfirm"] = frontButtonConfirm;
+   doc["frontButtonLeft"] = frontButtonLeft;
+@@ -277,9 +283,11 @@
    doc["rickyHomePhrase"] = rickyHomePhrase;
    doc["rickyGestureBack"] = rickyGestureBack;
    doc["rickyGestureHome"] = rickyGestureHome;
@@ -183816,7 +184232,7 @@
    doc["rickyTextWeight"] = rickyTextWeight;
    doc["rickyStandbyFace"] = rickyStandbyFace;
    doc["rickyAutoOffIndex"] = rickyAutoOffIndex;
-@@ -311,6 +318,7 @@
+@@ -311,6 +319,7 @@
  bool CrossPointSettings::fromJson(JsonVariantConst doc) {
    CrossPointSettings& s = *this;
    bool needsResave = false;
@@ -183824,7 +184240,15 @@
  
    auto clamp = [](uint8_t val, uint8_t maxVal, uint8_t def) -> uint8_t { return val < maxVal ? val : def; };
  
-@@ -445,6 +453,14 @@
+@@ -401,6 +410,7 @@
+   // Reading mode lives in the reader menu, not in SettingsList, so it loads here.
+   // The custom reading background became the puppy reading mode.
+   rickyBadgesSeen = doc["rickyBadgesSeen"] | static_cast<uint32_t>(0);
++  libraryListView = (doc["libraryListView"] | static_cast<uint8_t>(0)) != 0 ? 1 : 0;
+   if (doc["readingMode"].isNull()) {
+     readingMode = (doc["readingBackgroundEnabled"] | static_cast<uint8_t>(0)) != 0 ? 1 : 0;  // 1 = Puppy
+     if (readingMode != 0) needsResave = true;
+@@ -445,6 +455,14 @@
      needsResave = true;
    }
    // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
@@ -183839,7 +184263,7 @@
    frontButtonBack = clamp(doc["frontButtonBack"] | (uint8_t)FRONT_HW_BACK, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_BACK);
    frontButtonConfirm =
        clamp(doc["frontButtonConfirm"] | (uint8_t)FRONT_HW_CONFIRM, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_CONFIRM);
-@@ -513,6 +529,7 @@
+@@ -513,6 +531,7 @@
    // Missing keys take the defaults: Home swipe starts off for everyone, as agreed.
    rickyGestureBack = (doc["rickyGestureBack"] | 1) ? 1 : 0;
    rickyGestureHome = (doc["rickyGestureHome"] | 0) ? 1 : 0;
@@ -183859,7 +184283,16 @@
  
  class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   private:
-@@ -377,6 +380,11 @@
+@@ -366,6 +369,8 @@
+   // Chosen in the reader menu; persisted outside SettingsList.
+   static constexpr uint8_t READING_MODE_COUNT = 4;
+   uint8_t readingMode = 0;
++  // Library shelf view, chosen in the shelf tools (not in SettingsList): 0 covers, 1 list.
++  uint8_t libraryListView = 0;
+   // RickyOS badges already announced (bit per rickyBadges::Id); bit 31 marks the set as
+   // seeded, so badges earned before this version are not announced all at once.
+   uint32_t rickyBadgesSeen = 0;
+@@ -377,6 +382,11 @@
    // X4 Pro: double-click power toggles the frontlight. Disabling frees the
    // power button for shortPwrBtn actions without the double-click wait.
    uint8_t doubleClickPwrLight = 1;
@@ -183871,7 +184304,7 @@
    uint8_t homeButtonTapAction = static_cast<uint8_t>(HomeButtonAction::Home);
    uint8_t homeButtonDoubleTapAction = static_cast<uint8_t>(HomeButtonAction::ToggleFrontlight);
    uint8_t homeButtonLongPressAction = static_cast<uint8_t>(HomeButtonAction::ReaderMenu);
-@@ -503,6 +511,7 @@
+@@ -503,6 +513,7 @@
    // last lines of a page and on the tab bar, so readers left books by accident.
    uint8_t rickyGestureBack = 1;     // swipe right from the left side: Back
    uint8_t rickyGestureHome = 0;     // swipe up from the bottom: Home
@@ -183879,7 +184312,7 @@
    uint8_t rickyGestureControl = 1;  // swipe down from the top: control center
    uint8_t rickyGestureStatus = 1;   // tap the status bar: control center
    // Body-text stroke weight in the reader: 0 thinnest .. 2 the font as drawn .. 4 boldest.
-@@ -567,6 +576,7 @@
+@@ -567,6 +578,7 @@
    uint8_t showReaderMenu = READER_MENU_TAP;
    // Frontlight quick-panel state. Brightness and warmth remain persisted even
    // when restore-on-wake is disabled.
@@ -187445,7 +187878,67 @@
    bool wantsGraySettle() const override { return true; }
 --- a/src/activities/home/RickyStorageActivity.cpp
 +++ b/src/activities/home/RickyStorageActivity.cpp
-@@ -110,6 +110,7 @@
+@@ -18,6 +18,10 @@
+ 
+ #include "CrossPointSettings.h"
+ #include "FileBrowserActivity.h"
++#include "activities/ActivityManager.h"
++#include "activities/library/LibrarySourcesActivity.h"
++#include "activities/settings/ClearCacheActivity.h"
++#include <LibrarySources.h>
+ #include "SdCardFontSystem.h"
+ #include "activities/RenderLock.h"
+ #include "activities/settings/FontLibraryActivity.h"
+@@ -47,48 +51,9 @@
+     snprintf(out, size, "%u MB", static_cast<unsigned>((bytes + MB / 2) / MB));
+ }
+ 
+-enum class Kind : uint8_t { Images, AnyFile };
+-// Counting stops here (shown as "999+"): past it the number says nothing a reader acts on.
+-constexpr int kCountCap = 999;
+-
+ // Set when the page is left: a folder walk stops between entries and leaves the counts
+ // marked stale, so the next visit finishes them instead of the walk competing with a book.
+ std::atomic<bool> scanCancel{false};
+-
+-bool matches(const Kind kind, const char* name) {
+-  switch (kind) {
+-    case Kind::Images:
+-      return FsHelpers::hasImageExtension(std::string_view(name));
+-    case Kind::AnyFile:
+-      return true;
+-  }
+-  return false;
+-}
+-
+-// Files of `kind` inside `path` and its subfolders (the standby pictures sit in
+-// /images/待机图片), skipping hidden entries; capped so a huge card stays cheap.
+-int countFiles(const std::string& path, const Kind kind, const int depth = 0) {
+-  constexpr int kMaxDepth = 3;
+-  HalFile dir = Storage.open(path.c_str());
+-  if (!dir || !dir.isDirectory()) return 0;
+-  int count = 0;
+-  char name[256];
+-  for (HalFile entry = dir.openNextFile(); entry && count < kCountCap && !scanCancel.load();
+-       entry = dir.openNextFile()) {
+-    name[0] = '\0';
+-    entry.getName(name, sizeof(name));
+-    const bool folder = entry.isDirectory();
+-    entry.close();
+-    if (name[0] == '.') continue;
+-    if (folder) {
+-      if (depth < kMaxDepth) count += countFiles(path + "/" + name, kind, depth + 1);
+-    } else if (matches(kind, name)) {
+-      ++count;
+-    }
+-  }
+-  dir.close();
+-  return std::min(count, kCountCap);
+-}
+ }  // namespace
+ 
+ const char* RickyStorageActivity::folderFor(const int index) {
+@@ -110,9 +75,12 @@
  namespace {
  struct StorageScan {
    bool measured = false;
@@ -187453,7 +187946,12 @@
    uint64_t total = 0;
    uint64_t free = 0;
    std::array<int, 3> counts{-1, -1, -1};  // books, images, downloads
-@@ -150,6 +151,7 @@
++  bool sized = false;
++  uint64_t bookBytes = 0, cacheBytes = 0, fontBytes = 0;
+ };
+ constexpr const char* kStatsPath = "/.crosspoint/storage-stats.json";
+ // "1" = counts out of date. Rewritten, never deleted: this page removes nothing on the card.
+@@ -150,9 +118,14 @@
    JsonDocument doc;
    doc["total"] = scan.total;
    doc["free"] = scan.free;
@@ -187461,15 +187959,109 @@
    doc["books"] = scan.counts[0];
    doc["images"] = scan.counts[1];
    doc["downloads"] = scan.counts[2];
-@@ -173,6 +175,7 @@
++  doc["sized"] = scan.sized;
++  doc["bookBytes"] = scan.bookBytes;
++  doc["cacheBytes"] = scan.cacheBytes;
++  doc["fontBytes"] = scan.fontBytes;
+   String text;
+   serializeJson(doc, text);
+   if (!Storage.writeFile(kStatsPath, text)) LOG_ERR("STOR", "Cannot save storage stats");
+@@ -173,7 +146,12 @@
      scan.total = doc["total"] | static_cast<uint64_t>(0);
      scan.free = doc["free"] | static_cast<uint64_t>(0);
      scan.measured = scan.total > 0 && scan.free <= scan.total;
 +    scan.attempted = doc["attempted"] | scan.measured;
      scan.counts = {doc["books"] | -1, doc["images"] | -1, doc["downloads"] | -1};
++    scan.sized = doc["sized"] | false;
++    scan.bookBytes = doc["bookBytes"] | static_cast<uint64_t>(0);
++    scan.cacheBytes = doc["cacheBytes"] | static_cast<uint64_t>(0);
++    scan.fontBytes = doc["fontBytes"] | static_cast<uint64_t>(0);
    });
  }
-@@ -220,6 +223,7 @@
+ 
+@@ -191,26 +169,64 @@
+   return books;
+ }
+ 
++// Bytes under `path` (hidden entries included: reader caches live in /.crosspoint).
++uint64_t sumBytes(const std::string& path, const int depth = 0) {
++  constexpr int kMaxDepth = 4;
++  HalFile dir = Storage.open(path.c_str());
++  if (!dir || !dir.isDirectory()) return 0;
++  uint64_t bytes = 0;
++  char name[256];
++  for (HalFile entry = dir.openNextFile(); entry && !scanCancel.load(); entry = dir.openNextFile()) {
++    name[0] = '\0';
++    entry.getName(name, sizeof(name));
++    const bool folder = entry.isDirectory();
++    const uint64_t size = folder ? 0 : entry.fileSize();
++    entry.close();
++    if (folder) {
++      if (depth < kMaxDepth) bytes += sumBytes(path == "/" ? std::string("/") + name : path + "/" + name, depth + 1);
++    } else {
++      bytes += size;
++    }
++  }
++  dir.close();
++  return bytes;
++}
++
++// The Library's books by their recorded sizes: one sequential read of the index, no walk.
++uint64_t libraryBytes() {
++  auto index = makeUniqueNoThrow<library::LibraryIndexFile>();
++  if (!index || !index->open(library::libraryIndexPath())) return 0;
++  uint64_t bytes = 0;
++  library::ClixRecord records[32];
++  const uint16_t count = index->bookCount();
++  for (uint32_t first = 0; first < count && !scanCancel.load(); first += 32) {
++    const uint32_t n = std::min<uint32_t>(32, count - first);
++    if (!index->readRange(library::recordOffset(index->header(), static_cast<uint16_t>(first)), records,
++                          n * sizeof(library::ClixRecord)))
++      break;
++    for (uint32_t i = 0; i < n; ++i) bytes += records[i].fileSize;
++  }
++  index->close();
++  return bytes;
++}
++
+ void countPass() {
+   const uint32_t epoch = staleEpoch.load();
+   const uint32_t started = millis();
+-  struct Step {
+-    int slot;
+-    int (*count)();
+-  };
+-  // Books are not walked: their number is Library's (indexBookCount), read on the loop task.
+-  static constexpr Step steps[] = {
+-      {1, [] { return countFiles(RickyStorageLayout::IMAGES, Kind::Images); }},
+-      {2, [] { return countFiles(RickyStorageLayout::DOWNLOADS, Kind::AnyFile); }},
+-  };
+-  for (const Step& step : steps) {
+-    const int value = step.count();
+-    if (scanCancel.load()) {
+-      LOG_INF("STOR", "Counting paused after %u ms", static_cast<unsigned>(millis() - started));
+-      return;  // stays stale: the next visit counts again
+-    }
+-    publish([&](StorageScan& scan) { scan.counts[step.slot] = value; });
+-  }
++  // Books are not walked: their number and sizes are Library's index.
++  const uint64_t books = libraryBytes();
++  const uint64_t cache = scanCancel.load() ? 0 : sumBytes("/.crosspoint");
++  const uint64_t fonts = scanCancel.load() ? 0 : sumBytes(RickyStorageLayout::FONTS) + sumBytes("/.fonts");
++  if (scanCancel.load()) {
++    LOG_INF("STOR", "Counting paused after %u ms", static_cast<unsigned>(millis() - started));
++    return;  // stays stale: the next visit counts again
++  }
++  publish([&](StorageScan& scan) {
++    scan.sized = true;
++    scan.bookBytes = books;
++    scan.cacheBytes = cache;
++    scan.fontBytes = fonts;
++  });
+   LOG_INF("STOR", "Counted files in %u ms", static_cast<unsigned>(millis() - started));
+   if (staleEpoch.load() == epoch && countsStale.exchange(false)) Storage.writeFile(kStalePath, "0");
+ }
+@@ -220,6 +236,7 @@
    const bool measured = RickyFreeSpace::measure(total, free);
    publish([&](StorageScan& scan) {
      scan.measured = measured;
@@ -187477,17 +188069,33 @@
      scan.total = total;
      scan.free = free;
    });
-@@ -265,7 +269,8 @@
+@@ -240,7 +257,7 @@
+   // Back on the page before a paused pass ended: let it carry on and pick countsWanted up.
+   scanCancel.store(false);
+   if (scanRunning.exchange(true)) return;
+-  // countFiles recurses three folders deep with a 256-byte name buffer per level.
++  // sumBytes recurses four folders deep with a 256-byte name buffer per level.
+   if (xTaskCreate(&scanStorageTask, "RickyStorageScan", 6144, nullptr, 1, nullptr) != 1) {  // pdPASS
+     LOG_ERR("STOR", "Cannot start the storage scan");
+     scanRunning.store(false);
+@@ -265,26 +282,24 @@
    seenScans = scanGeneration.load();
    counting = scanRunning.load();
    if (!have) return;  // never measured on this card: keep the placeholders
 -  space = scan.measured ? Space::Ready : (counting ? Space::Measuring : Space::Unavailable);
-+  space = scan.measured ? Space::Ready : counting ? Space::Measuring
-+      : scan.attempted ? Space::Unavailable : Space::NotMeasured;
++  space = scan.measured    ? Space::Ready
++          : counting       ? Space::Measuring
++          : scan.attempted ? Space::Unavailable
++                           : Space::NotMeasured;
    sdTotalBytes = scan.total;
    sdFreeBytes = scan.free;
    counts[0] = scan.counts[0];
-@@ -274,17 +279,8 @@
+   counts[2] = scan.counts[1];
+   counts[3] = scan.counts[2];
++  sized = scan.sized;
++  bookBytes = scan.bookBytes;
++  cacheBytes = scan.cacheBytes;
++  fontBytes = scan.fontBytes;
  }
  
  void RickyStorageActivity::refresh() {
@@ -187507,7 +188115,7 @@
    const int indexed = indexBookCount();
    if (indexed >= 0) publish([&](StorageScan& scan) { scan.counts[0] = indexed; });
    invalidateScan();
-@@ -299,16 +295,11 @@
+@@ -299,18 +314,24 @@
    // the font registry found in both, not the visible folder's entries. In memory, cheap.
    counts[1] = static_cast<int>(sdFontSystem.registry().getFamilies().size());
    loadStats();
@@ -187516,6 +188124,7 @@
 -    std::lock_guard<std::mutex> lock(scanMutex);
 -    freeOld = !freeMeasured || millis() - freeMeasuredMs > kFreeSpaceMaxAgeMs;
 -  }
++  countLibraryFolders();
    // Library may have rebuilt its index since the last visit: take its count as it is now.
    const int indexed = indexBookCount();
    if (indexed >= 0) publish([&](StorageScan& scan) { scan.counts[0] = indexed; });
@@ -187525,18 +188134,267 @@
 +  // stale numbers do not authorize a directory or FAT walk.
    applyLastScan();
    requestUpdate();
++}
++
++void RickyStorageActivity::countLibraryFolders() {
++  libraryFolders = -1;
++  auto sources = makeUniqueNoThrow<library::LibrarySources>();
++  if (!sources || sources->load() == library::LibrarySources::Load::Error) return;
++  libraryFolders = 0;
++  for (uint16_t i = 0; i < sources->size(); ++i)
++    if ((*sources)[i].kind == library::SourceKind::Folder || (*sources)[i].kind == library::SourceKind::RecursiveFolder)
++      ++libraryFolders;
  }
-@@ -429,6 +420,7 @@
-   target.text(fui::Rect{static_cast<int16_t>(textX), static_cast<int16_t>(textTop + bodyHeight + gap / 2),
-                         static_cast<int16_t>(textWidth), static_cast<int16_t>(smallHeight)},
-               space == Space::Ready       ? text
+ 
+ void RickyStorageActivity::onExit() {
+@@ -383,91 +404,119 @@
+     target.text(screen.takeBottom(smallHeight * 2, gap), tr(STR_RICKY_FOLDER_MISSING), warning);
+   }
+ 
+-  // Card sizes are fixed; leftover height becomes the gaps between them.
+-  const bool wide = content.width > content.height;
+-  const int columns = wide ? 4 : 2;
+-  const int gridRows = 4 / columns;
+   const int pad = ricky::ds::space::kCardPadding;
+-  const int ring = ricky::ds::layout::kAvatarSize;
+   const int summaryHeight = ricky::ds::layout::kProfileCardHeight;
+-  const int cellHeight = ricky::ds::layout::kSettingsCardHeight;
++  const int rowHeight = ricky::ds::layout::kSettingsCardHeight;
+   const int section = ricky::ds::space::k8;
+-
+-  // SD card: usage ring, free / total, opens the whole card in the file browser.
++  char text[64];
++
++  // SD card: what the space is made of, from the last Refresh. Opens reading-cache
++  // cleanup, the one thing on the card this page can safely give back.
+   const auto summary = screen.takeTop(summaryHeight, section);
+-  const bool summarySelected = focus && selected == 4;
++  const bool summarySelected = focus && selected == 0;
+   RickyPageUi::card(target, summary, summarySelected);
+-  screen.frame().hit(summary, ACTION_ROW, 4, fui::InputTouch);
+-  const Rect ringBox{summary.x + pad, summary.y + pad, ring, ring};
+-  const int percent =
+-      space == Space::Ready && sdTotalBytes ? static_cast<int>((sdTotalBytes - sdFreeBytes) * 100 / sdTotalBytes) : 0;
+-  RickyPageUi::usageRing(renderer, ringBox, percent, ricky::ds::stroke::kEmphasis, summarySelected);
+-  char text[48];
+-  snprintf(text, sizeof(text), "%d%%", percent);
+-  auto centered = small;
+-  centered.align = fui::TextAlign::Center;
+-  centered.color = summarySelected ? fui::Color::White : fui::Color::Black;
+-  if (space == Space::Ready)
+-    target.text(fui::Rect{static_cast<int16_t>(ringBox.x), static_cast<int16_t>(ringBox.y + (ring - smallHeight) / 2),
+-                          static_cast<int16_t>(ring), static_cast<int16_t>(smallHeight)},
+-                text, centered);
+-  const int textX = ringBox.x + ring + pad;
+-  const int textWidth = summary.right() - textX - 24 - pad;
+-  const int textTop = summary.y + (summary.height - bodyHeight - smallHeight - gap / 2) / 2;
++  screen.frame().hit(summary, ACTION_ROW, 0, fui::InputTouch);
++  const fui::Color ink = summarySelected ? fui::Color::White : fui::Color::Black;
++  const fui::Color quiet = summarySelected ? fui::Color::White : fui::Color::DarkGray;
++  const int innerX = summary.x + pad;
++  const int innerWidth = summary.width - pad * 2;
++  const int barHeight = 12;
++  const int blockHeight = bodyHeight + gap / 2 + barHeight + gap / 2 + smallHeight;
++  const int top = summary.y + (summary.height - blockHeight) / 2;
+   auto strong = label;
+   strong.bold = true;
+-  strong.color = summarySelected ? fui::Color::White : fui::Color::Black;
+-  target.text(fui::Rect{static_cast<int16_t>(textX), static_cast<int16_t>(textTop), static_cast<int16_t>(textWidth),
++  strong.color = ink;
++  target.text(fui::Rect{static_cast<int16_t>(innerX), static_cast<int16_t>(top), static_cast<int16_t>(innerWidth / 2),
+                         static_cast<int16_t>(bodyHeight)},
+               tr(STR_RICKY_SD_CARD), strong);
+   char freeText[16], totalText[16];
+   formatBytes(freeText, sizeof(freeText), sdFreeBytes);
+   formatBytes(totalText, sizeof(totalText), sdTotalBytes);
+   snprintf(text, sizeof(text), tr(STR_RICKY_STORAGE_SPACE), freeText, totalText);
+-  centered.color = summarySelected ? fui::Color::White : fui::Color::DarkGray;
+-  centered.align = fui::TextAlign::Left;
+-  target.text(fui::Rect{static_cast<int16_t>(textX), static_cast<int16_t>(textTop + bodyHeight + gap / 2),
+-                        static_cast<int16_t>(textWidth), static_cast<int16_t>(smallHeight)},
+-              space == Space::Ready       ? text
+-              : space == Space::Measuring ? tr(STR_LOADING)
+-                                          : tr(STR_NOT_AVAILABLE),
+-              centered);
+-  RickyPageUi::chevron(target,
+-                       fui::Rect{static_cast<int16_t>(summary.right() - 24 - pad), summary.y, 24, summary.height},
+-                       summarySelected);
+-
+-  // Content folders as icon cards with a count, Boox-style.
+-  const StrId labels[] = {StrId::STR_RICKY_BOOK_FILES, StrId::STR_FONT, StrId::STR_RICKY_IMAGES,
+-                          StrId::STR_RICKY_DOWNLOADS};
+-  const freeink::Icon* icons[] = {&icon_ricky_books_40, &icon_ricky_fonts_40, &icon_ricky_images_40,
+-                                  &icon_ricky_downloads_40};
+-  const auto grid = screen.takeTop(cellHeight * gridRows + gap * (gridRows - 1), 0);
+-  for (int i = 0; i < 4; ++i) {
+-    const auto rect =
+-        RickyPageUi::uiRect(RickyPageLayout::cell(Rect{grid.x, grid.y, grid.width, grid.height}, i, 4, gap, columns));
+-    const bool picked = focus && selected == i;
++  auto right = small;
++  right.align = fui::TextAlign::Right;
++  right.color = quiet;
++  target.text(fui::Rect{static_cast<int16_t>(innerX + innerWidth / 2), static_cast<int16_t>(top + bodyHeight - smallHeight),
++                        static_cast<int16_t>(innerWidth / 2), static_cast<int16_t>(smallHeight)},
++              space == Space::Ready         ? text
 +              : space == Space::NotMeasured ? tr(STR_RICKY_SPACE_NOT_MEASURED)
-               : space == Space::Measuring ? tr(STR_LOADING)
-                                           : tr(STR_NOT_AVAILABLE),
-               centered);
++              : space == Space::Measuring   ? tr(STR_LOADING)
++                                            : tr(STR_NOT_AVAILABLE),
++              right);
++  // Used space in segments: books, reader caches, then fonts and everything else.
++  const fui::Rect bar{static_cast<int16_t>(innerX), static_cast<int16_t>(top + bodyHeight + gap / 2),
++                      static_cast<int16_t>(innerWidth), static_cast<int16_t>(barHeight)};
++  target.stroke(bar, fui::Paint::solid(ink), 1, barHeight / 2);
++  if (space == Space::Ready && sdTotalBytes > 0) {
++    const uint64_t used = sdTotalBytes > sdFreeBytes ? sdTotalBytes - sdFreeBytes : 0;
++    const uint64_t books = sized ? std::min(bookBytes, used) : 0;
++    const uint64_t cache = sized ? std::min(cacheBytes, used - books) : 0;
++    const auto widthOf = [&](uint64_t bytes) {
++      return static_cast<int>(bytes * static_cast<uint64_t>(bar.width) / sdTotalBytes);
++    };
++    int x = bar.x;
++    const auto segment = [&](int width, fui::Color color) {
++      if (width <= 0) return;
++      target.fill(fui::Rect{static_cast<int16_t>(x), bar.y, static_cast<int16_t>(std::min<int>(width, bar.right() - x)),
++                            bar.height},
++                  fui::Paint::solid(color));
++      x += width;
++    };
++    segment(widthOf(books), summarySelected ? fui::Color::White : fui::Color::Black);
++    segment(widthOf(cache), summarySelected ? fui::Color::LightGray : fui::Color::DarkGray);
++    segment(std::max(widthOf(used) - widthOf(books) - widthOf(cache), used > 0 ? 1 : 0),
++            summarySelected ? fui::Color::DarkGray : fui::Color::LightGray);
++  }
++  char booksText[16], cacheText[16], otherText[16];
++  const uint64_t used = sdTotalBytes > sdFreeBytes ? sdTotalBytes - sdFreeBytes : 0;
++  formatBytes(booksText, sizeof(booksText), bookBytes);
++  formatBytes(cacheText, sizeof(cacheText), cacheBytes);
++  formatBytes(otherText, sizeof(otherText),
++              used > bookBytes + cacheBytes ? used - bookBytes - cacheBytes : 0);
++  snprintf(text, sizeof(text), tr(STR_RICKY_STORAGE_BREAKDOWN), booksText, cacheText, otherText);
++  auto legend = small;
++  legend.color = quiet;
++  target.text(fui::Rect{static_cast<int16_t>(innerX), static_cast<int16_t>(bar.bottom() + gap / 2),
++                        static_cast<int16_t>(innerWidth), static_cast<int16_t>(smallHeight)},
++              sized && space == Space::Ready ? text : tr(STR_RICKY_STORAGE_TAP_REFRESH), legend);
++
++  // Three ways in: the whole card, the Library's folders, and transfers.
++  const StrId names[] = {StrId::STR_RICKY_ALL_FILES, StrId::STR_RICKY_LIBRARY_FOLDERS, StrId::STR_FILE_TRANSFER};
++  const freeink::Icon* icons[] = {&icon_ricky_folder_40, &icon_ricky_books_40, &icon_ricky_transfer_40};
++  for (int i = 0; i < 3; ++i) {
++    const auto rect = screen.takeTop(rowHeight, i == 2 ? 0 : gap);
++    const int row = i + 1;
++    const bool picked = focus && selected == row;
+     RickyPageUi::card(target, rect, picked);
+-    screen.frame().hit(rect, ACTION_ROW, i, fui::InputTouch);
+-    const int middle = rect.y + pad + icons[i]->h / 2;
++    screen.frame().hit(rect, ACTION_ROW, row, fui::InputTouch);
++    const int middle = rect.y + rect.height / 2;
+     RickyPageUi::pageIcon(target, renderer, rect.x + pad, middle, *icons[i], picked);
+-    const int x = rect.x + pad;
+-    const int width = rect.right() - x - pad;
+-    const int top = rect.y + 80;
++    const int x = rect.x + pad + icons[i]->w + pad;
++    const int chevronWidth = 24;
++    const int width = rect.right() - x - pad - chevronWidth;
+     label.color = picked ? fui::Color::White : fui::Color::Black;
+-    small.color = picked ? fui::Color::White : fui::Color::DarkGray;
+-    target.text(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(top), static_cast<int16_t>(width),
+-                          static_cast<int16_t>(bodyHeight)},
+-                I18N.get(labels[i]), label);
+-    if (counts[i] >= kCountCap)
+-      snprintf(text, sizeof(text), "%d+", kCountCap);
+-    else if (counts[i] >= 0)
+-      snprintf(text, sizeof(text), "%d", counts[i]);
+-    else
+-      snprintf(text, sizeof(text), "%s", counting || space == Space::Measuring ? "…" : "—");
+-    small.align = fui::TextAlign::Right;
+-    target.text(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(top), static_cast<int16_t>(width),
+-                          static_cast<int16_t>(smallHeight)},
+-                text, small);
++    target.text(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(middle - bodyHeight / 2),
++                          static_cast<int16_t>(width), static_cast<int16_t>(bodyHeight)},
++                I18N.get(names[i]), label);
++    const char* detail = nullptr;
++    if (i == 1 && libraryFolders >= 0) {
++      snprintf(text, sizeof(text), tr(STR_RICKY_LIBRARY_FOLDER_COUNT), static_cast<unsigned>(libraryFolders));
++      detail = text;
++    } else if (i == 2) {
++      detail = tr(STR_RICKY_TRANSFER_KINDS);
++    }
++    if (detail) {
++      auto detailStyle = small;
++      detailStyle.align = fui::TextAlign::Right;
++      detailStyle.color = picked ? fui::Color::White : fui::Color::DarkGray;
++      target.text(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(middle - smallHeight / 2),
++                            static_cast<int16_t>(width), static_cast<int16_t>(smallHeight)},
++                  detail, detailStyle);
++    }
++    RickyPageUi::chevron(target,
++                         fui::Rect{static_cast<int16_t>(rect.right() - chevronWidth - pad), rect.y,
++                                   static_cast<int16_t>(chevronWidth), rect.height},
++                         picked);
+   }
+ }
+ 
+@@ -478,26 +527,25 @@
+     refresh();
+     return;
+   }
+-  if (index == 1) {
+-    // Fonts are families managed in Font Management, most of them downloaded into
+-    // the hidden /.fonts: the visible /fonts folder would look empty.
+-    startActivityForResultWith<FontLibraryActivity>([this](const ActivityResult&) { requestUpdate(); });
+-  } else {
+-    // Every content card opens its fixed folder (created at boot; recreated here
+-    // if it was deleted since). The summary card opens the whole card.
+-    const char* path = folderFor(index);
+-    if (index < 4 && !Storage.exists(path) && !Storage.ensureDirectoryExists(path)) {
+-      folderMissing = true;
++  if (index == 0) {
++    // Reading caches only: books, notes and progress files stay. Count again after.
++    startActivityForResultWith<ClearCacheActivity>([this](const ActivityResult&) {
++      invalidateScan();
+       requestUpdate();
+-      return;
+-    }
+-    // Scoped: Back in the opened folder returns here instead of climbing to "/".
+-    // A rename, move or delete in there marks the scan stale (FileBrowserActivity::finishEdit);
+-    // count again on the way back only then, not after every look into a folder.
++    });
++  } else if (index == 1) {
++    // Back in the opened folder climbs to the card root, then returns here.
+     startActivityForResultWith<FileBrowserActivity>(
+         [this](const ActivityResult&) {
+           if (countsStale.load()) startStorageScan(true);
+         },
+-        path, FileBrowserActivity::Mode::Books, /*scoped=*/index != 4);
+-  }
+-}
++        "/", FileBrowserActivity::Mode::Books, /*scoped=*/true);
++  } else if (index == 2) {
++    startActivityForResultWith<LibrarySourcesActivity>([this](const ActivityResult&) {
++      countLibraryFolders();
++      requestUpdate();
++    });
++  } else if (index == 3) {
++    activityManager.goToFileTransfer();
++  }
++}
 --- a/src/activities/home/RickyStorageActivity.h
 +++ b/src/activities/home/RickyStorageActivity.h
-@@ -26,11 +26,11 @@
+@@ -13,8 +13,9 @@
+   }
+ 
+  protected:
+-  // Four folder cards and the SD summary (0..4), then the header's Refresh.
+-  static constexpr int kCardCount = 5;
++  // The SD summary (0), then All files, Library folders and Transfer (1..3), then the
++  // header's Refresh.
++  static constexpr int kCardCount = 4;
+   static constexpr int kRefreshAction = kCardCount;
+   int listCount() const override { return kCardCount + 1; }
+   void onEnter() override;
+@@ -26,19 +27,24 @@
    void drawFooter() override;
  
   private:
@@ -187550,7 +188408,12 @@
    uint64_t sdTotalBytes = 0;
    uint64_t sdFreeBytes = 0;
    std::array<int, 4> counts{-1, -1, -1, -1};  // books, fonts, images, downloads; -1 = unknown
-@@ -38,7 +38,7 @@
++  // What the used space is made of (from the last Refresh); sized = false until measured.
++  bool sized = false;
++  uint64_t bookBytes = 0, cacheBytes = 0, fontBytes = 0;
++  int libraryFolders = -1;  // enrolled Library folders; -1 = unknown
++  void countLibraryFolders();
+   uint32_t seenScans = 0;                     // background results already applied to this page
    bool counting = false;                      // a background pass is running
  
   public:
@@ -187561,7 +188424,7 @@
   private:
 --- /dev/null
 +++ b/src/activities/library/LibraryCategoriesActivity.cpp
-@@ -0,0 +1,186 @@
+@@ -0,0 +1,212 @@
 +#include "LibraryCategoriesActivity.h"
 +
 +#include <I18n.h>
@@ -187607,7 +188470,7 @@
 +    return;
 +  }
 +  if (index < self.leadingRows()) {
-+    item.label = self.count ? (index == 0 ? tr(STR_SAVE) : tr(STR_LIBRARY_NEW_CATEGORY))
++    item.label = self.count ? (index == 0 ? tr(STR_SAVE) : tr(STR_LIBRARY_NEW_CATEGORY_ASSIGN))
 +                            : (index == 0   ? tr(STR_LIBRARY_ALL_CATEGORIES)
 +                               : index == 1 ? tr(STR_LIBRARY_UNCATEGORIZED)
 +                                            : tr(STR_LIBRARY_NEW_CATEGORY));
@@ -187652,7 +188515,33 @@
 +        if (result.isCancelled || !std::holds_alternative<KeyboardResult>(result.data)) return;
 +        const auto& name = std::get<KeyboardResult>(result.data).text;
 +        RenderLock lock(*this);
-+        if (slot < 0 ? categories.create(name.c_str()) < 0 : !categories.rename(slot, name.c_str())) showError();
++        if (slot >= 0) {
++          if (!categories.rename(slot, name.c_str())) showError();
++          requestUpdate();
++          return;
++        }
++        const int created = categories.create(name.c_str());
++        if (created < 0) {
++          showError();
++          requestUpdate();
++          return;
++        }
++        if (count) {
++          // Made while assigning: the selected books go straight in, with whatever
++          // else was ticked, and the assignment is saved.
++          const uint16_t bit = uint16_t(1u << created);
++          touched |= bit;
++          enabled |= bit;
++          if (!categories.assign(hashes.get(), count, touched, enabled)) {
++            showError();
++            requestUpdate();
++            return;
++          }
++          setResult(ActivityResult{IntervalResult{0}});
++          app.clearTapFlash();
++          finish();
++          return;
++        }
 +        requestUpdate();
 +      },
 +      slot < 0 ? tr(STR_LIBRARY_NEW_CATEGORY) : tr(STR_RENAME), categories.name(slot), size_t(48), InputType::Text);
@@ -187793,7 +188682,12 @@
 +};
 --- a/src/activities/library/LibraryListActivity.cpp
 +++ b/src/activities/library/LibraryListActivity.cpp
-@@ -10,12 +10,15 @@
+@@ -7,15 +7,20 @@
+ #include <HalStorage.h>
+ #include <I18n.h>
+ #include <LibraryBuilder.h>
++#include <LibraryIncoming.h>
++#include <LibrarySources.h>
  #include <LibraryText.h>
  #include <Logging.h>
  #include <Memory.h>
@@ -187809,7 +188703,7 @@
  #include "MappedInputManager.h"
  #include "ReadingStatsStore.h"
  #include "RecentBooksStore.h"
-@@ -83,20 +86,34 @@
+@@ -83,20 +88,44 @@
  }
  
  void LibraryListActivity::onEnter() {
@@ -187833,10 +188727,20 @@
 +          self.batchAction();
 +        else if (event.value == SortTools)
 +          self.openShelfTools();
-+        else if (!self.batchMode && event.value == ManageCategories)
-+          self.openCategories();
++        else if (event.value == ManageCategories) {
++          // In batch mode this line reads "N selected · tap to cancel".
++          if (self.batchMode) {
++            RenderLock lock(self);
++            self.clearBatch();
++            self.requestUpdate();
++          } else {
++            self.openCategories();
++          }
++        }
 +        else if (!self.batchMode && event.value == ManageSources)
 +          self.openSources();
++        else if (event.value == PageJump)
++          self.promptPageJump();
 +      },
 +      this);
 +  categoriesReady = categories.load() != library::LibraryCategories::Load::Error;
@@ -187849,7 +188753,7 @@
          RenderLock lock(self);
          self.readingFilter = event.value;
          self.applyFilter();
-@@ -105,52 +122,14 @@
+@@ -105,57 +134,27 @@
          self.requestUpdate();
        },
        this);
@@ -187901,14 +188805,133 @@
 -  }
 +  // Dirty means an explicit update is available, not permission to walk the
 +  // card on entry. A retained catalog remains usable while imports are pending.
-+  index.open(library::libraryIndexPath());
++  // Nothing enrolled yet: an index left by an earlier whole-card scan is not the
++  // Library, which starts empty until the reader adds folders or books.
++  if (library::LibrarySources::enrolled()) index.open(library::libraryIndexPath());
    degraded = index.isOpen() && index.ranksDegraded();
    if (index.isOpen() && index.dedupDegraded()) {
      LOG_ERR("LIB", "index was built without duplicate detection");
-@@ -165,23 +144,8 @@
+   }
+   resolvePinned();
++  // A shelf an earlier build carried over from before sources: rebuild from the
++  // enrolled sources only (the import retires the snapshot first).
++  if (index.isOpen() && Storage.exists(library::LibrarySources::legacyIndexPath()))
++    library::LibraryIncoming::markUnknownChanges();
++  transferCheckPending = library::LibraryIncoming::pending();
++  transferCheckAt = millis() + 400;  // let the shelf paint first
  
+   // Entered while Confirm was still held (typical when launched from the home
+   // menu): ignore its release, or we would open whatever sits at row 0.
+@@ -163,25 +162,114 @@
+   requestUpdate(true);
+ }
+ 
++void LibraryListActivity::loop() {
++  // After the first paint: the import screen replaces the shelf, never the other way round.
++  if (transferCheckPending && static_cast<long>(millis() - transferCheckAt) >= 0) foldInTransfers();
++  UiTabListActivity::loop();
++  if (coverPending && !batchMode && millis() - coverIdleSince > 1500) makePendingCover();
++}
++
++void LibraryListActivity::makePendingCover() {
++  std::string path;
++  int height = 0;
++  bool last = false;
++  {
++    RenderLock lock(*this);
++    if (!coverPending || coverPageStart != shelfStart) {
++      coverPending = 0;
++      return;
++    }
++    const int slot = __builtin_ctz(coverPending);
++    coverPending &= coverPending - 1;
++    coverAttempted |= 1u << slot;
++    if (slot >= shelfCount) return;
++    path = shelfPaths[slot];
++    height = coverPageHeight;
++    last = coverPending == 0;
++  }
++  // One book per loop pass: input queued meanwhile is handled before the next.
++  // Like Home's covers: the render task is held off and the decode borrows the
++  // framebuffer, which is repainted afterwards anyway.
++  [[maybe_unused]] const auto started = millis();
++  bool generated = false;
++  bool made = false;
++  {
++    RenderLock lock(*this);
++    GfxRenderer::FrameBufferLoan loan(renderer);
++    made = !BookCoverLoader::ensureThumbnail(path, height, &generated).empty();
++  }
++  LOG_INF("LIB", "cover %s in %lu ms: %s", made ? (generated ? "made" : "found") : "unavailable", millis() - started,
++          path.c_str());
++  if (last) {
++    // One repaint for the page: the loans cleared the framebuffer, and every cover
++    // that could be made is now on the card.
++    RenderLock lock(*this);
++    shelfStart = -1;
++    requestUpdate();
++  }
++}
++
++void LibraryListActivity::foldInTransfers() {
++  transferCheckPending = false;
++  auto sources = makeUniqueNoThrow<library::LibrarySources>();
++  if (!sources) return;
++  const auto loaded = sources->load();
++  if (loaded == library::LibrarySources::Load::Error) return;  // keep the record for a later visit
++  if (loaded == library::LibrarySources::Load::Missing || sources->size() == 0) {
++    library::LibraryIncoming::clear();  // nothing enrolled: transfers are not shelf books yet
++    return;
++  }
++  struct Coverage {
++    const library::LibrarySources* sources;
++    std::array<uint8_t, library::LibrarySources::MAX_SOURCES / 8> covered{};
++  } coverage{sources.get()};
++  bool unknownChanges = false;
++  library::LibraryIncoming::read(
++      [](const char* path, void* context) {
++        auto& c = *static_cast<Coverage*>(context);
++        for (uint16_t i = 0; i < c.sources->size(); ++i)
++          if (c.sources->sourceIncludes(i, path)) c.covered[i / 8] |= uint8_t(1u << (i % 8));
++      },
++      &coverage, unknownChanges);
++  int coveredCount = 0, onlySource = -1;
++  for (uint16_t i = 0; i < sources->size(); ++i)
++    if (coverage.covered[i / 8] & (1u << (i % 8))) {
++      ++coveredCount;
++      onlySource = i;
++    }
++  if (!unknownChanges && coveredCount == 0) {
++    // Uploaded outside every enrolled folder: the reader adds those explicitly.
++    library::LibraryIncoming::clear();
++    return;
++  }
++  LibraryImportRequest request;
++  if (!unknownChanges && coveredCount == 1) {
++    request.action = LibraryImportRequest::Action::RefreshSource;
++    request.source = static_cast<uint16_t>(onlySource);
++  }
++  LOG_INF("LIB", "transfers: refresh %s (sources covered=%d, usb=%d)",
++          request.action == LibraryImportRequest::Action::RefreshSource ? "one source" : "all sources", coveredCount,
++          unknownChanges ? 1 : 0);
++  {
++    RenderLock lock(*this);
++    index.close();
++    searchTable.release();
++    app.clearTapFlash();
++  }
++  if (!startActivityForResultWith<LibraryImportActivity>(
++          [this](const ActivityResult& result) {
++            if (!result.isCancelled) library::LibraryIncoming::clear();
++            reloadIndex();
++          },
++          request))
++    reloadIndex();
++}
++
  void LibraryListActivity::onExit() {
    index.close();
++  searchTable.release();
 +  filtered.reset();
    Activity::onExit();
 -}
@@ -187930,7 +188953,7 @@
  }
  
  void LibraryListActivity::swallowHeldReleases() {
-@@ -199,7 +163,7 @@
+@@ -199,7 +287,7 @@
  // list the reader narrowed down on purpose, and the ascending toggle asks for
  // oldest-first, which pinned fresh reads would contradict.
  int LibraryListActivity::pinnedCount() const {
@@ -187939,7 +188962,7 @@
    if (activeTabIndex != RECENT_TAB || !query.empty() || !isDescending(sortOrder)) return 0;
    return pinnedTotal;
  }
-@@ -208,6 +172,7 @@
+@@ -208,6 +296,7 @@
    shelfStart = -1;
    const auto& books = RECENT_BOOKS.getBooks();
    pinnedTotal = static_cast<uint8_t>(std::min<size_t>(books.size(), RecentBooksStore::MAX_RECENT_BOOKS));
@@ -187947,7 +188970,7 @@
    for (int i = 0; i < pinnedTotal; i++) pinnedAscRows[i] = 0xFFFF;
    if (pinnedTotal > 0 && index.isOpen()) {
      library::BookIdentity identities[RecentBooksStore::MAX_RECENT_BOOKS];
-@@ -229,6 +194,15 @@
+@@ -229,6 +318,15 @@
        pinnedTotal = 0;
      }
    }
@@ -187963,7 +188986,7 @@
    refreshOverlap();
  }
  
-@@ -249,7 +223,7 @@
+@@ -249,7 +347,7 @@
    if (selectedEntry() < pinnedCount()) {
      const auto& books = RECENT_BOOKS.getBooks();
      if (selectedEntry() >= static_cast<int>(books.size())) return;
@@ -187972,12 +188995,12 @@
    } else {
      if (!index.isOpen()) return;
      const uint16_t ordinal = index.ordinalForRow(sortOrder, static_cast<uint16_t>(rowFor(selectedEntry())));
-@@ -275,6 +249,17 @@
+@@ -275,6 +373,17 @@
  }
  
  void LibraryListActivity::activateIndex(const int index) {
 +  if (batchMode) {
-+    if (index < 0 || index >= bookRowCount() || index >= 4096) return;
++    if (index < 0 || index >= bookRowCount() || index >= library::CLIX_MAX_RECORDS) return;
 +    RenderLock lock(*this);
 +    const uint8_t bit = uint8_t(1u << (index % 8));
 +    const bool selected = batchSelected[index / 8] & bit;
@@ -187990,7 +189013,7 @@
    if (groupsCollapsed) {
      expandGroup(index);
    } else {
-@@ -289,7 +274,13 @@
+@@ -289,7 +398,13 @@
  bool LibraryListActivity::deleteEligible() const { return !groupsCollapsed && (!query.empty() || !groupable()); }
  
  void LibraryListActivity::onRowLongPress(const int index) {
@@ -188005,7 +189028,7 @@
      showRecentBookOptions(index);
    } else if (deleteEligible()) {
      promptDeleteBook(index);
-@@ -312,8 +303,8 @@
+@@ -312,8 +427,8 @@
    if (isStoreRow) {
      const auto& books = RECENT_BOOKS.getBooks();
      if (entry >= static_cast<int>(books.size())) return;
@@ -188016,7 +189039,7 @@
    } else {
      if (!index.isOpen()) return;
      const uint16_t ordinal = index.ordinalForRow(sortOrder, static_cast<uint16_t>(rowFor(entry)));
-@@ -326,10 +317,12 @@
+@@ -326,10 +441,12 @@
      }
    }
  
@@ -188032,7 +189055,7 @@
                     [this, path, title, isStoreRow](const int choice) {
                       swallowHeldReleases();
                       switch (choice) {
-@@ -337,20 +330,16 @@
+@@ -337,20 +454,16 @@
                           openBookByPath(path);
                           break;
                         case 1:
@@ -188059,7 +189082,7 @@
                           break;
                         default:
                           break;
-@@ -359,17 +348,169 @@
+@@ -359,17 +472,209 @@
    requestUpdate();
  }
  
@@ -188084,7 +189107,9 @@
    index.close();
 -  rebuildIndex();
 -  if (!index.open(library::libraryIndexPath())) LOG_ERR("LIB", "cannot open library index");
-+  index.open(library::libraryIndexPath());
++  searchTable.release();
++  searchTableFailed = false;
++  if (library::LibrarySources::enrolled()) index.open(library::libraryIndexPath());
 +  degraded = index.isOpen() && index.ranksDegraded();
    resetAfterRebuild();
 -  requestUpdate(true);
@@ -188112,6 +189137,39 @@
 +    reloadIndex();
 +}
 +
++void LibraryListActivity::toggleListView() {
++  RenderLock lock(*this);
++  // Keep the same book in view: the new page is the one that contains it.
++  SETTINGS.libraryListView = SETTINGS.libraryListView ? 0 : 1;
++  SETTINGS.saveToFile();
++  shelfStart = -1;
++  requestUpdate();
++}
++
++void LibraryListActivity::promptPageJump() {
++  if (batchMode || pageCapacity <= 0) return;
++  const int count = bookRowCount();
++  const int pages = (count + pageCapacity - 1) / pageCapacity;
++  if (pages <= 1) return;
++  app.clearTapFlash();
++  startActivityForResultWith<KeyboardEntryActivity>(
++      [this](const ActivityResult& result) {
++        swallowHeldReleases();
++        if (result.isCancelled || !std::holds_alternative<KeyboardResult>(result.data)) return;
++        const int page = std::atoi(std::get<KeyboardResult>(result.data).text.c_str());
++        RenderLock lock(*this);
++        const int total = bookRowCount();
++        const int last = (total + pageCapacity - 1) / pageCapacity;
++        if (page < 1 || total <= 0) return;
++        const int row = (std::min(page, last) - 1) * pageCapacity;
++        // Ring position 0 is the filter strip; book rows start at 1.
++        activeNav().requestSelection(row + 1);
++        shelfStart = -1;
++        requestUpdate();
++      },
++      tr(STR_LIBRARY_JUMP_PAGE), std::string(), size_t(5), InputType::Latin);
++}
++
 +void LibraryListActivity::clearBatch() {
 +  batchMode = false;
 +  batchCount = 0;
@@ -188129,7 +189187,8 @@
 +                                      StrId::STR_RICKY_SORT_TITLE_ASC,   StrId::STR_RICKY_SORT_TITLE_DESC,
 +                                      StrId::STR_RICKY_SORT_AUTHOR_ASC,  StrId::STR_RICKY_SORT_AUTHOR_DESC,
 +                                      StrId::STR_LIBRARY_REBUILD,        StrId::STR_LIBRARY_CATEGORIES,
-+                                      StrId::STR_LIBRARY_BATCH,          StrId::STR_LIBRARY_SOURCES};
++                                      StrId::STR_LIBRARY_BATCH,          StrId::STR_LIBRARY_SOURCES,
++                                      StrId::STR_LIBRARY_VIEW_TOGGLE};
 +  const int selected = activeTabIndex * 2 + (isDescending(sortOrder) == (activeTabIndex == RECENT_TAB) ? 0 : 1);
 +  optionPopup.show(StrId::STR_RICKY_LIBRARY_TOOLS, options, std::size(options), selected, [this](int choice) {
 +    swallowHeldReleases();
@@ -188147,6 +189206,10 @@
 +    }
 +    if (choice == 9) {
 +      openSources();
++      return;
++    }
++    if (choice == 10) {
++      toggleListView();
 +      return;
 +    }
 +    if (choice < 0 || choice >= 6 || degraded) return;
@@ -188236,7 +189299,7 @@
  }
  
  void LibraryListActivity::resetAfterRebuild() {
-@@ -456,17 +597,11 @@
+@@ -456,25 +761,33 @@
          if (!Storage.remove(path.c_str())) LOG_ERR("LIB", "cannot delete %s", path.c_str());
          RickyStorageActivity::invalidateScan();
          if (RECENT_BOOKS.removeByPath(path)) RECENT_BOOKS.saveToFile();
@@ -188255,7 +189318,32 @@
      }
    });
  }
-@@ -488,6 +623,7 @@
+ 
+ void LibraryListActivity::openSearch() {
+-  // No Chinese input method yet, so a search keyboard could not type most titles:
+-  // every way into Search (the Previous key on the tab strip included) stays shut.
+-  return;
++  if (batchMode) return;
++  app.clearTapFlash();
++  // Chinese characters, pinyin initials ("jtyss") or Latin words all go through
++  // the same keyboard; LibrarySearchTable decides how each word matches.
++  startActivityForResultWith<KeyboardEntryActivity>(
++      [this](const ActivityResult& result) {
++        swallowHeldReleases();
++        if (result.isCancelled || !std::holds_alternative<KeyboardResult>(result.data)) return;
++        RenderLock lock(*this);
++        query = std::get<KeyboardResult>(result.data).text;
++        applyFilter();
++        auto& nav = activeNav();
++        nav.selected = 0;
++        nav.top = 0;
++        requestUpdate();
++      },
++      tr(STR_LIBRARY_SEARCH), query, size_t(64), InputType::Text);
+ }
+ 
+ void LibraryListActivity::stepTab(const int direction) {
+@@ -488,6 +801,7 @@
  }
  
  void LibraryListActivity::selectTab(const int index, const bool toggleIfActive) {
@@ -188263,7 +189351,7 @@
    if (index < 0 || index >= TAB_SLOTS) return;
    if (toggleIfActive && index == activeTab()) descendingTabs ^= static_cast<uint8_t>(1u << index);
    sortOrder = orderForTab(index, descendingTabs);
-@@ -518,7 +654,7 @@
+@@ -518,7 +832,7 @@
  }
  
  int LibraryListActivity::bookRowCount() const {
@@ -188272,7 +189360,7 @@
    if (!query.empty()) return static_cast<int>(filteredCount);
    // Pinned books already in the index are skipped below the pins, not doubled;
    // pinned books the index missed still show, so the difference stays split.
-@@ -533,7 +669,7 @@
+@@ -533,7 +847,7 @@
  // With pins active, entries below pinnedCount() belong to the store and must
  // not reach this; the rest walk past the pinned books' own sort rows.
  int LibraryListActivity::rowFor(const int entry) const {
@@ -188281,7 +189369,18 @@
      if (entry < 0 || entry >= static_cast<int>(filteredCount) || !filtered) return 0;
      return filtered[entry];
    }
-@@ -645,7 +781,15 @@
+@@ -631,8 +945,8 @@
+   requestUpdate();
+ }
+ 
+-// One pass over the sort order, keeping what matches. No index, no cache: at the
+-// 4096-book format cap this is 4096 comparisons of at most 96 bytes. The result
++// One pass over the sort order, keeping what matches: from LibrarySearchTable in
++// memory when it could be built, otherwise straight from the index file. The result
+ // array is allocated once with the exact upper bound and fails back to an
+ // explicit message rather than letting vector growth abort the firmware.
+ void LibraryListActivity::applyFilter() {
+@@ -645,11 +959,24 @@
    // The header shows the active query in place of the screen title, so the
    // reader can see what narrowed the list without reopening the keyboard.
    headerSearchTitle = query.empty() ? std::string() : "“" + query + "”";
@@ -188298,7 +189397,42 @@
  
    const std::string needle = library::fold(query);
    const int total = static_cast<int>(index.bookCount());
-@@ -664,10 +808,22 @@
+   if (total <= 0) return;
++  if ((!query.empty() || categoryFilter) && !searchTable.ready() && !searchTableFailed && index.isOpen())
++    searchTableFailed = !searchTable.build(index);
++  const bool inMemory = searchTable.ready() && searchTable.size() == total;
++  const auto prepared = LibrarySearchTable::prepare(query);
++  [[maybe_unused]] const auto filterStarted = millis();
+ 
+   auto matches = makeUniqueNoThrow<uint16_t[]>(static_cast<size_t>(total));
+   if (!matches) {
+@@ -661,13 +988,48 @@
+   uint16_t matchCount = 0;
+   std::string author;
+   for (int row = 0; row < total; row++) {
++    if (inMemory) {
++      // Title, author, initials and category from memory; the card is read only
++      // for a reading-state filter, and only for books that already matched.
++      const uint16_t ordinal = searchTable.ordinalForRow(sortOrder, static_cast<uint16_t>(row));
++      if (ordinal == 0xFFFF || !searchTable.matches(ordinal, prepared)) continue;
++      if (categoryFilter) {
++        const bool present = categoryHashCount && std::binary_search(categoryHashes.get(),
++                                                                     categoryHashes.get() + categoryHashCount,
++                                                                     searchTable.pathHash(ordinal));
++        if (categoryFilter == 1 ? present : !present) continue;
++      }
++      if (readingFilter != 0) {
++        library::ClixRecord record{};
++        std::string path;
++        if (!index.readRecord(ordinal, record) || !index.readPath(record, path)) continue;
++        const auto* stats = READING_STATS.findBook(path);
++        const bool started = stats != nullptr;
++        const bool reading = started && !stats->completed;
++        if ((readingFilter == 1 && !reading) || (readingFilter == 2 && started)) continue;
++      }
++      matches[matchCount++] = static_cast<uint16_t>(row);
++      continue;
++    }
      const uint16_t ordinal = index.ordinalForRow(sortOrder, static_cast<uint16_t>(row));
      library::ClixRecord record{};
      if (ordinal == 0xFFFF || !index.readRecord(ordinal, record)) continue;
@@ -188322,7 +189456,16 @@
        const bool started = stats != nullptr;
        const bool reading = started && !stats->completed;
        if ((readingFilter == 1 && !reading) || (readingFilter == 2 && started)) continue;
-@@ -697,6 +853,12 @@
+@@ -691,12 +1053,21 @@
+   }
+   filtered = std::move(matches);
+   filteredCount = matchCount;
++  LOG_INF("LIB", "filter \"%s\" reading=%u category=%d: %u of %d books in %lu ms (%s)", query.c_str(),
++          static_cast<unsigned>(readingFilter), categoryFilter, static_cast<unsigned>(matchCount), total,
++          millis() - filterStarted, inMemory ? "memory" : "card");
+ }
+ 
+ // Staged back-out, shared by the Back button and the header's back arrow:
  // clear the search, expand collapsed groups, return focus to the tabs, then
  // leave for home.
  void LibraryListActivity::handleBackAction() {
@@ -188335,7 +189478,7 @@
    auto& nav = activeNav();
    if (!query.empty()) {
      query.clear();
-@@ -737,7 +899,7 @@
+@@ -737,7 +1108,7 @@
    if (entry < pinnedCount()) {
      const auto& books = RECENT_BOOKS.getBooks();
      if (entry < 0 || entry >= static_cast<int>(books.size())) return false;
@@ -188344,7 +189487,16 @@
      title = book.title;
      author = book.author;
      if (fileName) *fileName = book.path;
-@@ -790,6 +952,10 @@
+@@ -779,7 +1150,7 @@
+ // up to its page, so swiping back from there never left the last page. Scrolling stays
+ // in UiListActivity::loop(), after the touch is routed: taking the swipe earlier left
+ // the touched book pressed (drawn inverted) because its release never reached the UI.
+-int LibraryListActivity::swipeScrollRows() { return SHELF_CAPACITY; }
++int LibraryListActivity::swipeScrollRows() { return pageCapacity; }
+ 
+ bool LibraryListActivity::handleButtons() {
+   const int count = listCount();
+@@ -790,6 +1161,10 @@
    // ActivityManager::loop() before any activity runs, so it cannot land in
    // the freshly opened confirmation and select its default.
    if (mappedInput.wasLongPressed(MappedInputManager::Button::Confirm, LONG_PRESS_MS)) {
@@ -188355,7 +189507,7 @@
      if (tabsFocused()) {
        if (!degraded) toggleSortDirection();
      } else if (isRecentSort(sortOrder)) {
-@@ -811,7 +977,10 @@
+@@ -811,7 +1186,10 @@
  
    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
      if (tabsFocused()) {
@@ -188367,7 +189519,7 @@
        return true;
      }
      if (count > 0) activateIndex(selectedEntry());
-@@ -838,7 +1007,7 @@
+@@ -838,7 +1216,7 @@
    });
    // Search is an activation: defer it so holding Previous can still step tabs.
    buttonNavigator.onPreviousRelease([this] {
@@ -188376,7 +189528,7 @@
    });
    // A held button steps tabs while the strip has focus (the base behaviour
    // Settings keeps) and page-jumps once the selection is down in the rows,
-@@ -1020,7 +1189,7 @@
+@@ -1020,7 +1398,7 @@
  bool LibraryListActivity::entryPath(int entry, std::string& path) {
    if (entry < 0 || entry >= bookRowCount()) return false;
    if (entry < pinnedCount()) {
@@ -188385,7 +189537,7 @@
      return true;
    }
    const auto ordinal = index.ordinalForRow(sortOrder, rowFor(entry));
-@@ -1047,13 +1216,27 @@
+@@ -1047,13 +1425,33 @@
    constexpr int cardInset = 8;
    constexpr int cardTextGap = 8;
    constexpr int cardSideInset = 6;
@@ -188408,15 +189560,21 @@
 +  addStyle.align = fui::TextAlign::Center;
 +  screen.target().text(addRect, "+", addStyle);
 +  screen.frame().hit(addRect, ACTION_ADD, 0, fui::InputTouch);
++  // Search sits beside "+": with thousands of books it is the main way in.
++  auto searchRect = addRect;
++  searchRect.x = addRect.x - searchRect.width;
++  RickyPageUi::pageIcon(screen.target(), renderer, searchRect.x + (searchRect.width - 40) / 2,
++                        searchRect.y + searchRect.height / 2, icon_ricky_lookup_40);
++  screen.frame().hit(searchRect, ACTION_SEARCH, 0, fui::InputTouch);
    countRect.width = titleRect.width / 3;
 -  countRect.x = titleRect.right() - countRect.width;
 -  titleRect.width -= countRect.width + gap;
-+  countRect.x = addRect.x - gap - countRect.width;
-+  titleRect.width -= countRect.width + addRect.width + gap * 2;
++  countRect.x = searchRect.x - gap - countRect.width;
++  titleRect.width -= countRect.width + addRect.width + searchRect.width + gap * 2;
    auto pageTitle = theme.titleText;
    pageTitle.bold = true;
    screen.target().text(titleRect, headerTitle(), pageTitle);
-@@ -1071,7 +1254,7 @@
+@@ -1071,7 +1469,7 @@
    moreRect.width = moreWidth;
    RickyPageUi::pageIcon(screen.target(), renderer, moreRect.x + (moreRect.width - 40) / 2,
                          moreRect.y + moreRect.height / 2, icon_ricky_filter_40);
@@ -188425,7 +189583,7 @@
    const StrId filterLabels[] = {StrId::STR_RICKY_BOOKS_ALL, StrId::STR_RICKY_BOOKS_READING,
                                  StrId::STR_RICKY_BOOKS_UNREAD};
    int widestLabel = 0;
-@@ -1100,16 +1283,39 @@
+@@ -1100,37 +1498,69 @@
      label.align = fui::TextAlign::Center;
      screen.target().text(labelRect, I18N.get(filterLabels[i]), label);
    }
@@ -188459,25 +189617,62 @@
 +                                            : tr(STR_LIBRARY_NO_RESULTS)));
      return;
    }
-   const bool multiplePages = count > SHELF_CAPACITY;
+-  const bool multiplePages = count > SHELF_CAPACITY;
++  const bool listView = SETTINGS.libraryListView != 0;
++  const bool multiplePages = count > SHELF_CAPACITY || (listView && count > 1);
    const auto positionRect = multiplePages ? screen.takeBottom(labelHeight, gap) : fui::Rect{};
    const auto body = screen.body();
 -  const int columns = body.width > body.height ? 6 : 3;
+-  const int rows = SHELF_CAPACITY / columns;
++  // List rows: title over "author · progress", sized from the real font lines.
++  const int listRowHeight = cardTextLineHeight * 2 + cardTextGap + 2 * cardInset;
++  const int capacity =
++      listView ? std::clamp(body.height / std::max(1, listRowHeight), 4, SHELF_MAX) : SHELF_CAPACITY;
++  pageCapacity = capacity;
 +  // One row only on a clearly wide body; a near-square one (the A4: about 480 x 420 in
 +  // portrait) keeps two rows, or its covers shrink to a sliver of the width.
-+  const int columns = (body.width > body.height * 3 / 2 ? 2 : 1) * (SHELF_CAPACITY / 2);
-   const int rows = SHELF_CAPACITY / columns;
++  const int columns = listView ? 1 : (body.width > body.height * 3 / 2 ? 2 : 1) * (SHELF_CAPACITY / 2);
++  const int rows = capacity / columns;
    const int rowHeight = std::max(1, (body.height - gap * (rows - 1)) / rows);
    // 2:3 covers, one page of six bounded records.
-@@ -1129,6 +1335,7 @@
-           bounds.y, bounds.width, bounds.height, body.x, body.y, body.width, body.height, start, count, visible,
-           coverHeight);
-   if (start != shelfStart || coverHeight != shelfHeight) {
+-  const int coverHeight = std::max(
+-      1, std::min(rowHeight - cardExtraHeight, ((body.width - gap * (columns - 1)) / columns - 16) * 3 / 2));
++  const int coverHeight =
++      listView ? 0
++               : std::max(1, std::min(rowHeight - cardExtraHeight,
++                                      ((body.width - gap * (columns - 1)) / columns - 16) * 3 / 2));
+   auto& n = activeNav();
+   fui::ListProps paging;
+-  // Feed the existing atomic list-nav requests with four virtual one-pixel rows.
++  // Feed the existing atomic list-nav requests with virtual one-pixel rows.
+   // No new input owner or second set of manually overlapping touch rectangles.
+-  n.syncToProps(fui::Rect{0, 0, 1, SHELF_CAPACITY}, 1, 0, count, paging, 1);
++  n.syncToProps(fui::Rect{0, 0, 1, static_cast<int16_t>(capacity)}, 1, 0, count, paging, 1);
+   const int start = n.followPending && paging.selectedIndex >= 0
+-                        ? paging.selectedIndex / SHELF_CAPACITY * SHELF_CAPACITY
+-                        : std::min((count - 1) / SHELF_CAPACITY * SHELF_CAPACITY,
+-                                   (paging.topIndex + SHELF_CAPACITY - 1) / SHELF_CAPACITY * SHELF_CAPACITY);
+-  const int visible = std::min(SHELF_CAPACITY, count - start);
+-  LOG_DBG("RICKY", "shelf bounds=%d,%d,%d,%d body=%d,%d,%d,%d start=%d count=%d visible=%d cover=%d", bounds.x,
+-          bounds.y, bounds.width, bounds.height, body.x, body.y, body.width, body.height, start, count, visible,
+-          coverHeight);
+-  if (start != shelfStart || coverHeight != shelfHeight) {
++                        ? paging.selectedIndex / capacity * capacity
++                        : std::min((count - 1) / capacity * capacity,
++                                   (paging.topIndex + capacity - 1) / capacity * capacity);
++  const int visible = std::min(capacity, count - start);
++  LOG_DBG("RICKY", "shelf bounds=%d,%d,%d,%d body=%d,%d,%d,%d start=%d count=%d visible=%d cover=%d list=%d",
++          bounds.x, bounds.y, bounds.width, bounds.height, body.x, body.y, body.width, body.height, start, count,
++          visible, coverHeight, listView ? 1 : 0);
++  if (start != shelfStart || coverHeight != shelfHeight || capacity != shelfBuiltCapacity) {
 +    [[maybe_unused]] const auto perfShelfStart = millis();
      shelfCount = visible;
-     // Materialize only four bounded index records; no vector of every book/cover.
+-    // Materialize only four bounded index records; no vector of every book/cover.
++    // Materialize only one bounded page of index records; no vector of every book/cover.
      for (int i = 0; i < visible; ++i) {
-@@ -1138,7 +1345,7 @@
+       rowTextFor(start + i, shelfTitles[i], shelfAuthors[i]);
+       RickyPageUi::stripBookExtension(shelfTitles[i]);
+@@ -1138,7 +1568,7 @@
        const auto& path = shelfPaths[i];
        // Reading state only: "EPUB · 已读 12%" overflowed a three-column card, and the
        // format already shows on generated covers.
@@ -188486,7 +189681,7 @@
        if (stats && stats->lastProgressPercent >= 100)
          snprintf(shelfDetails[i].data(), shelfDetails[i].size(), "%s", tr(STR_RICKY_BOOK_FINISHED));
        else if (stats)
-@@ -1148,24 +1355,17 @@
+@@ -1148,33 +1578,65 @@
          snprintf(shelfDetails[i].data(), shelfDetails[i].size(), "%s", tr(STR_RICKY_BOOK_UNREAD));
        shelfCovers[i].clear();
      }
@@ -188494,10 +189689,11 @@
 -    // Do not loan a framebuffer that already contains the header and controls.
 -    // Existing thumbnail parsers use fallible temporary scratch, released per
 -    // book; a failed conversion leaves the cover placeholder usable.
+-    for (int i = 0; i < visible; ++i) {
 +    [[maybe_unused]] const auto perfThumbStart = millis();
 +    // Look up only retained thumbnail names. Painting a page must never unzip
 +    // EPUBs or create images; the existing title-cover design is the fallback.
-     for (int i = 0; i < visible; ++i) {
++    for (int i = 0; i < visible && !listView; ++i) {
        if (shelfPaths[i].empty()) continue;
        // A cover already drawn this session was a valid thumbnail: skip the card.
        std::string drawn = BookCoverLoader::thumbnailPath(shelfPaths[i], coverHeight);
@@ -188517,8 +189713,48 @@
 +               millis() - perfThumbStart);
      shelfStart = start;
      shelfHeight = coverHeight;
-   }
-@@ -1174,7 +1374,9 @@
+-  }
++    shelfBuiltCapacity = capacity;
++  }
++  if (listView) {
++    const int lineHeight = std::max(1, (body.height) / capacity);
++    std::string detail;
++    for (int slot = 0; slot < visible; ++slot) {
++      const int entry = start + slot;
++      const fui::Rect cell{body.x, static_cast<int16_t>(body.y + slot * lineHeight), body.width,
++                           static_cast<int16_t>(lineHeight)};
++      const bool picked = batchMode ? (batchSelected[entry / 8] & (1u << (entry % 8))) != 0
++                                    : showMainTabContentSelection() && paging.selectedIndex == entry;
++      if (picked) RickyDesignUi::fill(renderer, cell, ricky::ds::gray::kInk, ricky::ds::radius::kControl);
++      const int textHeight = cardTextLineHeight * 2 + cardTextGap;
++      const fui::Rect titleRect{static_cast<int16_t>(cell.x + cardSideInset * 2),
++                                static_cast<int16_t>(cell.y + (cell.height - textHeight) / 2),
++                                static_cast<int16_t>(cell.width - cardSideInset * 4),
++                                static_cast<int16_t>(cardTextLineHeight)};
++      const fui::Rect detailRect{titleRect.x, static_cast<int16_t>(titleRect.bottom() + cardTextGap), titleRect.width,
++                                 titleRect.height};
++      RickyDesignUi::text(renderer, titleRect, shelfTitles[slot].c_str(), RickyDesignUi::BODY, picked,
++                          fui::TextAlign::Left);
++      detail = shelfAuthors[slot].empty() ? std::string(shelfDetails[slot].data())
++                                          : shelfAuthors[slot] + " · " + shelfDetails[slot].data();
++      RickyDesignUi::secondaryText(renderer, detailRect, detail.c_str(), RickyDesignUi::CAPTION, picked,
++                                   fui::TextAlign::Left);
++      if (slot + 1 < visible && !picked)
++        screen.target().fill(fui::Rect{titleRect.x, static_cast<int16_t>(cell.bottom() - 1), titleRect.width, 1},
++                             fui::Paint::solid(fui::Color::LightGray));
++      screen.frame().hit(cell, ACTION_ROW, entry, fui::InputTouch | fui::InputLongPress);
++    }
++  }
++  if (start != coverPageStart || coverHeight != coverPageHeight) {
++    coverPageStart = start;
++    coverPageHeight = coverHeight;
++    coverAttempted = 0;
++  }
++  coverPending = 0;
++  coverIdleSince = millis();
+   const int cellWidth = (body.width - gap * (columns - 1)) / columns;
+-  for (int slot = 0; slot < visible; ++slot) {
++  for (int slot = 0; slot < visible && !listView; ++slot) {
      const fui::Rect cell{static_cast<int16_t>(body.x + slot % columns * (cellWidth + gap)),
                           static_cast<int16_t>(body.y + slot / columns * (rowHeight + gap)),
                           static_cast<int16_t>(cellWidth), static_cast<int16_t>(coverHeight + cardExtraHeight)};
@@ -188529,8 +189765,13 @@
      if (picked) RickyDesignUi::fill(renderer, cell, ricky::ds::gray::kInk, ricky::ds::radius::kControl);
      const int coverWidth = coverHeight * 2 / 3;
      const fui::Rect rect{static_cast<int16_t>(cell.x + (cell.width - coverWidth) / 2),
-@@ -1198,7 +1400,9 @@
+@@ -1196,9 +1658,14 @@
+                                      });
+       if (painted) screen.target().stroke(rect, fui::Paint::solid(fui::Color::LightGray), ricky::ds::stroke::kHairline);
      }
++    if (!painted && !shelfPaths[slot].empty() && !(coverAttempted & (1u << slot)) &&
++        BookCoverLoader::canMakeThumbnail(shelfPaths[slot], coverHeight))
++      coverPending |= 1u << slot;
      if (!painted) {
        const auto& path = shelfPaths[slot];
 -      const char* format = FsHelpers::hasEpubExtension(path) ? "EPUB" : FsHelpers::hasTxtExtension(path) ? "TXT" : "MD";
@@ -188540,7 +189781,7 @@
        RickyDesignUi::cover(renderer, rect, shelfTitles[slot].c_str(), format);
      }
      const fui::Rect titleRect{static_cast<int16_t>(cell.x + cardSideInset),
-@@ -1211,8 +1415,10 @@
+@@ -1211,18 +1678,24 @@
      // never mixes the caption and body sizes.
      RickyDesignUi::text(renderer, titleRect, shelfTitles[slot].c_str(), RickyDesignUi::BODY, picked,
                          fui::TextAlign::Center);
@@ -188553,6 +189794,24 @@
      screen.frame().hit(cell, ACTION_ROW, start + slot, fui::InputTouch | fui::InputLongPress);
    }
    n.drawnCount = count;
+   n.onListRendered(start, visible, paging.selectedIndex >= start && paging.selectedIndex < start + visible);
+-  snprintf(position, sizeof(position), tr(STR_RICKY_LIBRARY_PAGE), static_cast<unsigned>(start / SHELF_CAPACITY + 1),
+-           static_cast<unsigned>((count + SHELF_CAPACITY - 1) / SHELF_CAPACITY), static_cast<unsigned>(count));
++  snprintf(position, sizeof(position), tr(STR_RICKY_LIBRARY_PAGE), static_cast<unsigned>(start / capacity + 1),
++           static_cast<unsigned>((count + capacity - 1) / capacity), static_cast<unsigned>(count));
+   auto style = theme.smallText;
+   style.align = fui::TextAlign::Right;
+-  if (multiplePages) screen.target().text(positionRect, position, style);
+-  GUI.drawSideScrollBar(renderer, Rect{body.x, body.y, body.width, body.height}, count, start, SHELF_CAPACITY);
++  if (multiplePages) {
++    screen.target().text(positionRect, position, style);
++    // The page readout jumps: hundreds of pages are too many to turn one by one.
++    screen.frame().hit(positionRect, ACTION_ADD, PageJump, fui::InputTouch);
++  }
++  GUI.drawSideScrollBar(renderer, Rect{body.x, body.y, body.width, body.height}, count, start, capacity);
+ }
+ 
+ // "12/69 books" at the bottom right: which book is selected, out of how many.
 --- a/src/activities/library/LibraryListActivity.h
 +++ b/src/activities/library/LibraryListActivity.h
 @@ -1,5 +1,6 @@
@@ -188562,7 +189821,23 @@
  #include <LibraryIndexFile.h>
  
  #include <array>
-@@ -71,11 +72,22 @@
+@@ -8,6 +9,7 @@
+ #include <string>
+ #include <vector>
+ 
++#include "LibrarySearchTable.h"
+ #include "RecentBooksStore.h"
+ #include "activities/UiTabListActivity.h"
+ #include "components/OptionPopup.h"
+@@ -37,6 +39,7 @@
+ 
+   void onEnter() override;
+   void onExit() override;
++  void loop() override;
+   MainTab mainTab() const override { return MainTab::Library; }
+   void selectMainTabContentEdge(MainTabContentEdge edge) override {
+     activeNav().requestSelection(MainTabs::contentEdgeIndex(edge, listCount()) + 1);
+@@ -71,11 +74,26 @@
    static constexpr freeink::ui::ActionId ACTION_SEARCH = ACTION_TAB_USER;
    static constexpr freeink::ui::ActionId ACTION_REBUILD = ACTION_SEARCH + 1;
    static constexpr freeink::ui::ActionId ACTION_BACK = ACTION_REBUILD + 1;
@@ -188573,6 +189848,10 @@
 -  bool rebuildIndex();
 +  static constexpr freeink::ui::ActionId ACTION_ADD = ACTION_BACK + 8;
 +  void openSources();
++  // Books a transfer wrote since the last visit: refresh the sources that cover them.
++  void foldInTransfers();
++  bool transferCheckPending = false;
++  unsigned long transferCheckAt = 0;
 +  void reloadIndex();
 +  void removeFromLibrary(const std::string& path);
 +  void openCategories();
@@ -188585,12 +189864,22 @@
 +  bool categoriesReady = true;
 +  bool batchMode = false;
 +  uint16_t batchCount = 0;
-+  std::array<uint8_t, 512> batchSelected{};  // max CLIX 4096 entries, no heap
-+  enum ToolAction { ManageSources, ManageCategories, BatchSelect, SortTools };
++  std::array<uint8_t, library::CLIX_MAX_RECORDS / 8> batchSelected{};  // one bit per indexed book, no heap
++  enum ToolAction { ManageSources, ManageCategories, BatchSelect, SortTools, PageJump };
  
    // Input
    void openSelectedBook();
-@@ -189,6 +201,7 @@
+@@ -146,6 +164,9 @@
+   void refreshOverlap();
+ 
+   library::LibraryIndexFile index;
++  // Built on the first search, released with the shelf or when the index changes.
++  LibrarySearchTable searchTable;
++  bool searchTableFailed = false;  // one failed build per index; retried after a reload
+   int activeTabIndex = 0;
+   library::SortOrder sortOrder = library::SortOrder::RecentDesc;
+   // One bit per tab; Recent starts descending (newest first).
+@@ -189,6 +210,7 @@
    uint16_t pinnedAscRows[RecentBooksStore::MAX_RECENT_BOOKS] = {};
    uint16_t overlapRows[RecentBooksStore::MAX_RECENT_BOOKS] = {};
    uint8_t pinnedTotal = 0;
@@ -188598,7 +189887,7 @@
    uint8_t overlapCount = 0;
  
    bool lockNextConfirmRelease = false;
-@@ -197,9 +210,12 @@
+@@ -197,15 +219,34 @@
    // Row options modal (Recent long-press menu); owned here so it outlives the
    // touch event that opened it.
    OptionPopup optionPopup;
@@ -188610,11 +189899,410 @@
    static constexpr freeink::ui::ActionId ACTION_READING_FILTER = ACTION_BACK + 1;
 -  static constexpr freeink::ui::ActionId ACTION_SHELF_OPTIONS = ACTION_READING_FILTER + 1;
    uint8_t readingFilter = 0;
++  // The list view fits many more rows than the cover grid; the arrays hold the
++  // densest page either view can draw.
++  static constexpr int SHELF_MAX = 16;
++  int pageCapacity = SHELF_CAPACITY;
    int shelfStart = -1;
    int shelfHeight = 0;
+   int shelfCount = 0;
+-  std::array<std::string, SHELF_CAPACITY> shelfTitles{}, shelfAuthors{}, shelfPaths{}, shelfCovers{};
+-  std::array<std::array<char, 56>, SHELF_CAPACITY> shelfDetails{};
++  int shelfBuiltCapacity = 0;
++  std::array<std::string, SHELF_MAX> shelfTitles{}, shelfAuthors{}, shelfPaths{}, shelfCovers{};
++  std::array<std::array<char, 56>, SHELF_MAX> shelfDetails{};
++  void toggleListView();
++  // Covers for the page on screen, made one at a time once the shelf has been
++  // idle a moment (painting itself never unzips a book). Written by the render
++  // task, consumed by loop() under the render lock.
++  void makePendingCover();
++  uint32_t coverPending = 0;   // slots on the current page whose thumbnail is missing
++  uint32_t coverAttempted = 0;  // slots already tried on this page (no retry loop)
++  int coverPageStart = -1;
++  int coverPageHeight = 0;
++  unsigned long coverIdleSince = 0;
++  void promptPageJump();
+   void buildRickyShelf(UiScreen& screen);
+   bool entryPath(int entry, std::string& path);
+ };
+--- /dev/null
++++ b/src/activities/library/LibrarySearchTable.cpp
+@@ -0,0 +1,309 @@
++#include "LibrarySearchTable.h"
++
++#include <LibraryText.h>
++#include <Logging.h>
++
++#include <algorithm>
++#include <cstdlib>
++#include <cstring>
++
++#include "util/PinyinDictionary.h"
++
++namespace {
++
++// PSRAM first; the desktop simulator (no PSRAM) and small tables use the heap.
++memory::ByteBuffer allocate(const size_t bytes) {
++  if (bytes == 0) return {};
++  auto buffer = memory::makePsramByteBufferUninitializedNoThrow(bytes);
++#if defined(BOARD_HAS_PSRAM)
++  if (!buffer && bytes <= 64 * 1024) buffer = memory::ByteBuffer{static_cast<uint8_t*>(std::malloc(bytes))};
++#else
++  if (!buffer) buffer = memory::ByteBuffer{static_cast<uint8_t*>(std::malloc(bytes))};
++#endif
++  return buffer;
++}
++
++// One UTF-8 code point from `text` at `at`; advances `at`. Invalid bytes read as
++// themselves so a damaged name cannot stall the walk.
++uint32_t nextCodepoint(std::string_view text, size_t& at) {
++  const auto byte = static_cast<uint8_t>(text[at++]);
++  if (byte < 0x80) return byte;
++  int extra = byte >= 0xF0 ? 3 : byte >= 0xE0 ? 2 : byte >= 0xC0 ? 1 : 0;
++  uint32_t cp = byte & (0x3F >> extra);
++  while (extra-- > 0 && at < text.size() && (static_cast<uint8_t>(text[at]) & 0xC0) == 0x80)
++    cp = (cp << 6) | (static_cast<uint8_t>(text[at++]) & 0x3F);
++  return cp;
++}
++
++// Pinyin initials of every character the input method knows: code point and a
++// 26-bit mask of possible first letters (a polyphone sets several bits).
++struct InitialEntry {
++  uint16_t codepoint;
++  uint32_t mask;
++};
++
++class PinyinInitials {
++ public:
++  bool load() {
++    if (table_) return true;
++    using namespace ricky_pinyin_data;
++    const size_t total = std::size(characters);
++    auto buffer = allocate(total * sizeof(InitialEntry));
++    if (!buffer) return false;
++    auto* out = reinterpret_cast<InitialEntry*>(buffer.get());
++    size_t used = 0;
++    for (const auto& syllable : syllables) {
++      const uint32_t letter = (syllable.key >> 25) & 31;  // first of six 5-bit letters, 'a' = 1
++      if (letter == 0 || letter > 26) continue;
++      for (uint16_t i = 0; i < syllable.count && syllable.offset + i < total; ++i)
++        out[used++] = InitialEntry{characters[syllable.offset + i], 1u << (letter - 1)};
++    }
++    std::sort(out, out + used, [](const InitialEntry& a, const InitialEntry& b) { return a.codepoint < b.codepoint; });
++    size_t unique = 0;
++    for (size_t i = 0; i < used; ++i) {
++      if (unique > 0 && out[unique - 1].codepoint == out[i].codepoint)
++        out[unique - 1].mask |= out[i].mask;
++      else
++        out[unique++] = out[i];
++    }
++    table_ = std::move(buffer);
++    count_ = unique;
++    return true;
++  }
++  uint32_t maskFor(const uint32_t cp) const {
++    if (cp > 0xFFFF || !table_) return 0;
++    const auto* begin = reinterpret_cast<const InitialEntry*>(table_.get());
++    const auto* end = begin + count_;
++    const auto* it = std::lower_bound(begin, end, cp, [](const InitialEntry& e, uint32_t v) { return e.codepoint < v; });
++    return it != end && it->codepoint == cp ? it->mask : 0;
++  }
++
++ private:
++  memory::ByteBuffer table_;
++  size_t count_ = 0;
++};
++
++PinyinInitials initials;
++
++bool isAsciiLetter(const uint32_t cp) { return cp >= 'a' && cp <= 'z'; }
++
++// Initials of a folded string: each Chinese character contributes its pinyin
++// initial(s); each Latin word contributes its first letter; numbers and
++// punctuation contribute nothing, so "金田一37歲事件簿" reads j t y s s j b.
++template <typename Sink>
++void forEachInitial(std::string_view folded, Sink&& sink) {
++  bool wordStart = true;
++  for (size_t at = 0; at < folded.size();) {
++    const uint32_t cp = nextCodepoint(folded, at);
++    if (isAsciiLetter(cp)) {
++      if (wordStart) sink(1u << (cp - 'a'));
++      wordStart = false;
++      continue;
++    }
++    wordStart = true;
++    const uint32_t mask = initials.maskFor(cp);
++    if (mask) sink(mask);
++  }
++}
++
++bool initialsContain(const uint32_t* masks, const uint16_t count, std::string_view letters) {
++  if (letters.empty() || letters.size() > count) return false;
++  for (size_t start = 0; start + letters.size() <= count; ++start) {
++    size_t k = 0;
++    while (k < letters.size() && (masks[start + k] & (1u << (letters[k] - 'a')))) ++k;
++    if (k == letters.size()) return true;
++  }
++  return false;
++}
++
++bool hasNonAscii(std::string_view text) {
++  return std::any_of(text.begin(), text.end(), [](char c) { return static_cast<uint8_t>(c) >= 0x80; });
++}
++
++bool allAsciiLetters(std::string_view text) {
++  return !text.empty() && std::all_of(text.begin(), text.end(), [](char c) { return c >= 'a' && c <= 'z'; });
++}
++
++constexpr size_t kChunkRecords = 64;  // 8 KiB of records per read
++
++}  // namespace
++
++bool LibrarySearchTable::build(library::LibraryIndexFile& index) {
++  release();
++  const auto& head = index.header();
++  const uint16_t count = index.bookCount();
++  if (count == 0) return false;
++  const unsigned long started = millis();
++  if (!initials.load()) {
++    LOG_ERR("LIBSRCH", "no memory for the pinyin initials table");
++    return false;
++  }
++
++  // The name blob holds the authors; read it once, sequentially.
++  auto blob = allocate(head.nameLen);
++  auto chunk = allocate(kChunkRecords * sizeof(library::ClixRecord));
++  if (!blob || !chunk || !index.readRange(head.nameStart, blob.get(), head.nameLen)) {
++    LOG_ERR("LIBSRCH", "cannot load the name section (%u B)", static_cast<unsigned>(head.nameLen));
++    return false;
++  }
++  const std::string_view names(reinterpret_cast<const char*>(blob.get()), head.nameLen);
++  const auto authorOf = [&names](const library::ClixRecord& r) -> std::string_view {
++    const size_t at = static_cast<size_t>(r.nameOff) + sizeof(uint64_t) + r.nameLen;
++    if (r.nameLen == 0 || at >= names.size()) return {};
++    const size_t len = static_cast<uint8_t>(names[at]);
++    return at + 1 + len <= names.size() ? names.substr(at + 1, len) : std::string_view{};
++  };
++  const auto hashOf = [&names](const library::ClixRecord& r) -> uint64_t {
++    uint64_t hash = 0;
++    if (static_cast<size_t>(r.nameOff) + sizeof(hash) <= names.size()) std::memcpy(&hash, names.data() + r.nameOff, sizeof(hash));
++    return hash;
++  };
++
++  // Two passes over the records: sizes, then contents. Folding an author twice
++  // is cheaper than holding every folded string in a growable heap buffer.
++  const auto forEachRecord = [&](auto&& visit) -> bool {
++    auto* records = reinterpret_cast<library::ClixRecord*>(chunk.get());
++    for (uint32_t first = 0; first < count; first += kChunkRecords) {
++      const uint32_t n = std::min<uint32_t>(kChunkRecords, count - first);
++      if (!index.readRange(library::recordOffset(head, static_cast<uint16_t>(first)), records,
++                           n * sizeof(library::ClixRecord)))
++        return false;
++      for (uint32_t i = 0; i < n; ++i) visit(static_cast<uint16_t>(first + i), records[i]);
++    }
++    return true;
++  };
++
++  size_t textBytes = 0, maskCount = 0;
++  if (!forEachRecord([&](uint16_t, const library::ClixRecord& r) {
++        const std::string_view title(r.fold, std::min<size_t>(r.foldLen, library::CLIX_FOLD_BYTES));
++        const std::string author = library::fold(authorOf(r));
++        textBytes += title.size() + author.size() + 2;
++        forEachInitial(title, [&](uint32_t) { ++maskCount; });
++        forEachInitial(author, [&](uint32_t) { ++maskCount; });
++      })) {
++    LOG_ERR("LIBSRCH", "record read failed");
++    return false;
++  }
++
++  entries_ = allocate(static_cast<size_t>(count) * sizeof(Entry));
++  text_ = allocate(textBytes);
++  masks_ = allocate(std::max<size_t>(maskCount, 1) * sizeof(uint32_t));
++  authorOrder_ = allocate(static_cast<size_t>(count) * sizeof(uint16_t));
++  arrivalOrder_ = allocate(static_cast<size_t>(count) * sizeof(uint16_t));
++  if (!entries_ || !text_ || !masks_ || !authorOrder_ || !arrivalOrder_ ||
++      !index.readRange(library::authorOrderOffset(head, 0), authorOrder_.get(), count * sizeof(uint16_t)) ||
++      !index.readRange(library::arrivalOrderOffset(head, 0), arrivalOrder_.get(), count * sizeof(uint16_t))) {
++    LOG_ERR("LIBSRCH", "no memory for %u books (%u B text, %u initials)", static_cast<unsigned>(count),
++            static_cast<unsigned>(textBytes), static_cast<unsigned>(maskCount));
++    release();
++    return false;
++  }
++
++  auto* entries = reinterpret_cast<Entry*>(entries_.get());
++  auto* text = reinterpret_cast<char*>(text_.get());
++  auto* masks = reinterpret_cast<uint32_t*>(masks_.get());
++  size_t textAt = 0, maskAt = 0;
++  bool overflow = false;
++  const bool read = forEachRecord([&](uint16_t ordinal, const library::ClixRecord& r) {
++    const std::string_view title(r.fold, std::min<size_t>(r.foldLen, library::CLIX_FOLD_BYTES));
++    const std::string author = library::fold(authorOf(r));
++    Entry& e = entries[ordinal];
++    e = Entry{};
++    e.pathHash = hashOf(r);
++    if (textAt + title.size() + author.size() + 2 > textBytes) {
++      overflow = true;
++      return;
++    }
++    e.text = static_cast<uint32_t>(textAt);
++    std::memcpy(text + textAt, title.data(), title.size());
++    textAt += title.size();
++    text[textAt++] = '\0';
++    std::memcpy(text + textAt, author.data(), author.size());
++    textAt += author.size();
++    text[textAt++] = '\0';
++    e.initials = static_cast<uint32_t>(maskAt);
++    const auto push = [&](uint32_t mask) {
++      if (maskAt < maskCount) masks[maskAt++] = mask;
++      else overflow = true;
++    };
++    const size_t titleStart = maskAt;
++    forEachInitial(title, push);
++    e.titleInitials = static_cast<uint16_t>(std::min<size_t>(maskAt - titleStart, 0xFFFF));
++    const size_t authorStart = maskAt;
++    forEachInitial(author, push);
++    e.authorInitials = static_cast<uint16_t>(std::min<size_t>(maskAt - authorStart, 0xFFFF));
++  });
++  if (!read || overflow) {
++    LOG_ERR("LIBSRCH", "search table build failed (read=%d overflow=%d)", read ? 1 : 0, overflow ? 1 : 0);
++    release();
++    return false;
++  }
++  count_ = count;
++  LOG_INF("LIBSRCH", "search table: %u books, %u B text, %u initials, %lu ms", static_cast<unsigned>(count),
++          static_cast<unsigned>(textBytes), static_cast<unsigned>(maskCount), millis() - started);
++  return true;
++}
++
++void LibrarySearchTable::release() {
++  count_ = 0;
++  entries_.reset();
++  text_.reset();
++  masks_.reset();
++  authorOrder_.reset();
++  arrivalOrder_.reset();
++}
++
++uint16_t LibrarySearchTable::ordinalForRow(const library::SortOrder order, const uint16_t row) const {
++  using library::SortOrder;
++  if (row >= count_) return 0xFFFF;
++  const uint16_t reversed = static_cast<uint16_t>(count_ - 1 - row);
++  const auto* author = reinterpret_cast<const uint16_t*>(authorOrder_.get());
++  const auto* arrival = reinterpret_cast<const uint16_t*>(arrivalOrder_.get());
++  uint16_t ordinal = 0xFFFF;
++  switch (order) {
++    case SortOrder::TitleAsc: return row;
++    case SortOrder::TitleDesc: return reversed;
++    case SortOrder::AuthorAsc: ordinal = author[row]; break;
++    case SortOrder::AuthorDesc: ordinal = author[reversed]; break;
++    case SortOrder::RecentAsc: ordinal = arrival[row]; break;
++    case SortOrder::RecentDesc: ordinal = arrival[reversed]; break;
++  }
++  return ordinal < count_ ? ordinal : 0xFFFF;
++}
++
++uint64_t LibrarySearchTable::pathHash(const uint16_t ordinal) const {
++  return ordinal < count_ ? reinterpret_cast<const Entry*>(entries_.get())[ordinal].pathHash : 0;
++}
++
++LibrarySearchTable::Query LibrarySearchTable::prepare(const std::string& raw) { return Query{library::fold(raw)}; }
++
++bool LibrarySearchTable::matchesWord(const Entry& e, std::string_view word) const {
++  const char* text = reinterpret_cast<const char*>(text_.get()) + e.text;
++  const std::string_view title(text);
++  const std::string_view author(text + title.size() + 1);
++  if (hasNonAscii(word)) {
++    // Chinese has no spaces between words: any substring of the title or author.
++    return title.find(word) != std::string_view::npos || author.find(word) != std::string_view::npos;
++  }
++  // Latin words keep the prefix-of-a-word rule, so "dar mat" still finds a book.
++  if (library::matchesQuery(title, word) || library::matchesQuery(author, word)) return true;
++  if (!allAsciiLetters(word)) return false;
++  const auto* masks = reinterpret_cast<const uint32_t*>(masks_.get()) + e.initials;
++  return initialsContain(masks, e.titleInitials, word) ||
++         initialsContain(masks + e.titleInitials, e.authorInitials, word);
++}
++
++bool LibrarySearchTable::matches(const uint16_t ordinal, const Query& query) const {
++  if (ordinal >= count_) return false;
++  if (query.folded.empty()) return true;
++  const Entry& e = reinterpret_cast<const Entry*>(entries_.get())[ordinal];
++  std::string_view rest(query.folded);
++  while (!rest.empty()) {
++    const size_t space = rest.find(' ');
++    const std::string_view word = rest.substr(0, space);
++    if (!word.empty() && !matchesWord(e, word)) return false;
++    if (space == std::string_view::npos) break;
++    rest.remove_prefix(space + 1);
++  }
++  return true;
++}
+--- /dev/null
++++ b/src/activities/library/LibrarySearchTable.h
+@@ -0,0 +1,60 @@
++#pragma once
++
++#include <LibraryIndexFile.h>
++#include <Memory.h>
++
++#include <cstdint>
++#include <string>
++#include <string_view>
++
++// In-memory search over the whole library, built once when the reader first
++// searches and released with the shelf.
++//
++// Searching the index file directly costs one or two random SD reads per book
++// for every keystroke (title record, then the author in the name blob); with a
++// few thousand books that is seconds per key. This table streams the record and
++// name sections once (sequential reads) into PSRAM and answers every later key
++// from memory: folded title, folded author, the pinyin initials of both, the
++// path fingerprint for the category filter, and both on-card permutations so a
++// row in any sort order maps to its record without a seek.
++//
++// Every allocation is fallible. A failed build leaves the table empty and the
++// shelf falls back to the file-backed filter.
++class LibrarySearchTable {
++ public:
++  bool build(library::LibraryIndexFile& index);
++  void release();
++  bool ready() const { return count_ != 0; }
++  uint16_t size() const { return count_; }
++
++  // Record ordinal shown at `row` in `order` (the in-memory twin of
++  // LibraryIndexFile::ordinalForRow); 0xFFFF when out of range.
++  uint16_t ordinalForRow(library::SortOrder order, uint16_t row) const;
++  uint64_t pathHash(uint16_t ordinal) const;
++
++  // A query prepared once per search: folded words, and for words of plain
++  // ASCII letters their initials form.
++  struct Query {
++    std::string folded;
++    bool empty() const { return folded.empty(); }
++  };
++  static Query prepare(const std::string& raw);
++  bool matches(uint16_t ordinal, const Query& query) const;
++
++ private:
++  struct Entry {
++    uint32_t text;      // title fold, '\0', author fold, '\0' in text_
++    uint32_t initials;  // first mask in masks_: title initials, then author initials
++    uint16_t titleInitials;
++    uint16_t authorInitials;
++    uint64_t pathHash;
++  };
++  bool matchesWord(const Entry& entry, std::string_view word) const;
++
++  uint16_t count_ = 0;
++  memory::ByteBuffer entries_;
++  memory::ByteBuffer text_;
++  memory::ByteBuffer masks_;
++  memory::ByteBuffer authorOrder_;
++  memory::ByteBuffer arrivalOrder_;
++};
 --- /dev/null
 +++ b/src/activities/library/LibrarySourcesActivity.cpp
-@@ -0,0 +1,279 @@
+@@ -0,0 +1,297 @@
 +#include "LibrarySourcesActivity.h"
 +
 +#include <Arduino.h>
@@ -188671,41 +190359,48 @@
 +  if (loaded == library::LibrarySources::Load::Error || cancel.load()) return false;
 +  const auto action = request.action;
 +  using Action = LibraryImportRequest::Action;
-+  bool narrowerFolder = false;
 +  if (action == Action::AddBook || action == Action::AddFolder) {
 +    HalFile target = Storage.open(request.path.c_str());
 +    if (!target || target.isDirectory() != (action == Action::AddFolder)) return false;
 +    const auto kind = action == Action::AddBook ? library::SourceKind::Book
 +                      : request.recursive       ? library::SourceKind::RecursiveFolder
 +                                                : library::SourceKind::Folder;
-+    for (uint16_t i = 0; i < sources->size(); ++i)
-+      if (request.path == (*sources)[i].path && (*sources)[i].kind == library::SourceKind::RecursiveFolder &&
-+          kind == library::SourceKind::Folder)
-+        narrowerFolder = true;
 +    if (!sources->add(request.path.c_str(), kind)) return false;
 +  } else if (action == Action::ExcludeBook) {
 +    if (!sources->exclude(request.path.c_str())) return false;
 +  } else if (action == Action::RemoveSource) {
 +    if (request.source >= sources->size()) return false;
 +    sources->erase(request.source);
++  } else if (action == Action::RefreshSource) {
++    if (request.source >= sources->size()) return false;
 +  }
-+  if (loaded == library::LibrarySources::Load::Missing && !library::LibrarySources::preserveLegacy()) return false;
++  // The shelf before managed sources is not carried over: the Library starts empty
++  // and holds exactly what the reader enrolls.
++  if (!library::LibrarySources::retireLegacy()) return false;
 +  if (cancel.load() || !sources->save(true)) return false;
 +  library::markLibraryIndexDirty();
 +  library::BuildOptions build;
 +  build.sources = sources.get();
++  // Every merge keeps only books an enrolled source still covers, so nothing from
++  // an earlier whole-card index survives into the managed shelf.
 +  if (action == Action::ExcludeBook || action == Action::RemoveSource) {
 +    build.mergeExisting = true;
-+    build.filterExistingSources = action == Action::RemoveSource;
++    build.filterExistingSources = true;
 +  }
 +  if (action == Action::AddBook || action == Action::AddFolder) {
 +    build.mergeExisting = true;
-+    build.filterExistingSources = narrowerFolder;
++    build.filterExistingSources = true;
 +    for (uint16_t i = 0; i < sources->size(); ++i)
 +      if (request.path == (*sources)[i].path) {
 +        build.sourceToScan = i;
 +        break;
 +      }
++  }
++  if (action == Action::RefreshSource) {
++    // One source re-read from the card; every other book replays from the index.
++    build.mergeExisting = true;
++    build.filterExistingSources = true;
++    build.sourceToScan = request.source;
 +  }
 +  build.context = this;
 +  build.shouldCancel = [](void* ctx) { return static_cast<LibraryImportActivity*>(ctx)->cancel.load(); };
@@ -188865,7 +190560,7 @@
 +        });
 +        requestUpdate();
 +      },
-+      "/books", mode);
++      "/", mode);  // the card root: no folder is assumed to hold the books
 +}
 +void LibrarySourcesActivity::activateIndex(int index) {
 +  if (!sources || index < 0 || index >= listCount()) return;
@@ -188879,19 +190574,30 @@
 +    return;
 +  }
 +  const uint16_t source = index - 3;
-+  const bool exclusion = (*sources)[source].kind == library::SourceKind::ExcludedBook;
-+  const char* labels[] = {tr(STR_LIBRARY_REBUILD),
-+                          exclusion ? tr(STR_LIBRARY_RESTORE_BOOK) : tr(STR_LIBRARY_REMOVE_SOURCE)};
++  const auto kind = (*sources)[source].kind;
++  const bool exclusion = kind == library::SourceKind::ExcludedBook;
++  const bool folder = kind == library::SourceKind::Folder || kind == library::SourceKind::RecursiveFolder;
 +  const std::string path = (*sources)[source].path;
-+  options.show(tr(STR_LIBRARY_SOURCES), path.c_str(), labels, 2, 0, [this, source, exclusion, path](int choice) {
-+    if (choice == 0) import({});
-+    if (choice == 1) {
-+      if (exclusion)
-+        import({LibraryImportRequest::Action::AddBook, path});
-+      else
-+        import({LibraryImportRequest::Action::RemoveSource, "", false, source});
-+    }
-+  });
++  // A folder opens first: it is how the Library's books are found on the card.
++  const char* labels[] = {tr(STR_LIBRARY_OPEN_FOLDER), tr(STR_LIBRARY_REBUILD),
++                          exclusion ? tr(STR_LIBRARY_RESTORE_BOOK) : tr(STR_LIBRARY_REMOVE_SOURCE)};
++  const int offset = folder ? 0 : 1;
++  options.show(tr(STR_LIBRARY_SOURCES), path.c_str(), labels + offset, 3 - offset, 0,
++               [this, source, exclusion, path, offset](int picked) {
++                 const int choice = picked + offset;
++                 if (choice == 0) {
++                   // Back climbs to the folder itself, then returns to this list.
++                   startActivityForResultWith<FileBrowserActivity>([this](const ActivityResult&) { reload(); }, path,
++                                                                   FileBrowserActivity::Mode::Books, /*scoped=*/true);
++                 } else if (choice == 1) {
++                   import({LibraryImportRequest::Action::RefreshSource, "", false, source});
++                 } else if (choice == 2) {
++                   if (exclusion)
++                     import({LibraryImportRequest::Action::AddBook, path});
++                   else
++                     import({LibraryImportRequest::Action::RemoveSource, "", false, source});
++                 }
++               });
 +  requestUpdate();
 +}
 --- /dev/null
@@ -188909,7 +190615,7 @@
 +#include "components/OptionPopup.h"
 +
 +struct LibraryImportRequest {
-+  enum class Action { Refresh, AddBook, AddFolder, RemoveSource, ExcludeBook };
++  enum class Action { Refresh, AddBook, AddFolder, RemoveSource, ExcludeBook, RefreshSource };
 +  Action action = Action::Refresh;
 +  std::string path;
 +  bool recursive = false;
@@ -188994,6 +190700,30 @@
  
    LOG_DBG("WEBACT", "Free heap after AP start: %d bytes", ESP.getFreeHeap());
  
+--- a/src/activities/network/UsbDriveActivity.cpp
++++ b/src/activities/network/UsbDriveActivity.cpp
+@@ -11,6 +11,8 @@
+ #include "SilentRestart.h"
+ #include "components/UITheme.h"
+ #include "activities/home/RickyStorageActivity.h"
++#include <LibraryBuilder.h>
++#include <LibraryIncoming.h>
+ #include "util/BookCoverLoader.h"
+ 
+ namespace fui = freeink::ui;
+@@ -54,6 +56,12 @@
+ #if !defined(RICKYOS_USB_PREVIEW)
+   if (!restartRequested) Storage.endUsbDrive();
+   RickyStorageActivity::invalidateScan();  // files may have arrived or left
++  if (!startFailed) {
++    // The computer may have added or removed books anywhere; the shelf refreshes
++    // its enrolled sources on its next entry (no walk here, USB is still unwinding).
++    library::LibraryIncoming::markUnknownChanges();
++    library::markLibraryIndexDirty();
++  }
+ #endif
+   Activity::onExit();
+ }
 --- a/src/activities/network/WifiSelectionActivity.cpp
 +++ b/src/activities/network/WifiSelectionActivity.cpp
 @@ -1,5 +1,10 @@
@@ -191269,7 +192999,7 @@
  #endif
 --- a/src/network/CrossPointWebServer.cpp
 +++ b/src/network/CrossPointWebServer.cpp
-@@ -2,12 +2,16 @@
+@@ -2,15 +2,20 @@
  
  #include <ArduinoJson.h>
  #include <BoardConfig.h>
@@ -191286,7 +193016,11 @@
  #include <HalStorage.h>
  #include <I18n.h>
  #include <LibraryBuilder.h>
-@@ -69,7 +73,29 @@
++#include <LibraryIncoming.h>
+ #include <Logging.h>
+ #include <Memory.h>
+ #include <ResumableFetch.h>
+@@ -69,7 +74,29 @@
  // between requests, and so outbound TLS can reuse that memory immediately.
  class CrossPointHttpServer final : public WebServer {
   public:
@@ -191317,7 +193051,7 @@
  
    void releaseRequestArguments() {
  #ifdef SIMULATOR
-@@ -101,8 +127,7 @@
+@@ -101,8 +128,7 @@
  // Formats the library index tracks (LibraryIndex isBookName): an upload of any
  // of these must mark the index dirty so the next Library entry rebuilds it.
  bool isLibraryBookFile(const String& filename) {
@@ -191327,7 +193061,7 @@
  }
  // A font sent through the plain file upload (not the font installer) still has to reach
  // the font list; the registry is otherwise re-scanned only at boot.
-@@ -238,7 +263,14 @@
+@@ -238,7 +264,14 @@
  
    // Disable WiFi sleep to improve responsiveness and prevent 'unreachable' errors.
    // This is critical for reliable web server operation on ESP32.
@@ -191342,7 +193076,7 @@
    // Default varies by ESP32 core version. The activity's loss-recovery loop
    // relies on driver retries during transient disconnects.
    WiFi.setAutoReconnect(true);
-@@ -454,6 +486,9 @@
+@@ -454,6 +487,9 @@
    fontUpload.buffer.reset();
    fileListBatch.reset();
    LOG_DBG("WEB", "Web server stopped and deleted");
@@ -191352,7 +193086,7 @@
    LOG_DBG("WEB", "[MEM] Free heap after delete server: %d bytes", ESP.getFreeHeap());
  
    // Note: Static upload variables (uploadFileName, uploadPath, uploadError) are declared
-@@ -487,6 +522,9 @@
+@@ -487,6 +523,9 @@
  
    // Print debug every 10 seconds to confirm handleClient is being called
    if (millis() - lastDebugPrint > 10000) {
@@ -191362,7 +193096,7 @@
      LOG_DBG("WEB", "handleClient active, server running on port %d", port);
      lastDebugPrint = millis();
    }
-@@ -544,15 +582,25 @@
+@@ -544,15 +583,25 @@
    constexpr unsigned long RESPONSE_DEADLINE_MS = 60000;
    size_t offset = 0;
    unsigned long lastProgress = millis();
@@ -191389,7 +193123,7 @@
      if (written > 0) {
        offset += static_cast<size_t>(written);
        lastProgress = millis();
-@@ -588,16 +636,42 @@
+@@ -588,16 +637,42 @@
    for (size_t offset = 0; offset < len; offset += CHUNK_SIZE) {
      const size_t chunkLength = std::min(CHUNK_SIZE, len - offset);
      if (!writeClientWithDeadline(server->client(), data + offset, chunkLength, responseStart)) {
@@ -191433,7 +193167,7 @@
    const auto page = localizedPage(web_zh_cn::HomePageHtml, sizeof(web_zh_cn::HomePageHtml), web_en::HomePageHtml,
                                    sizeof(web_en::HomePageHtml));
    if (sendCompressedContent(server.get(), "text/html", page.data, page.size)) {
-@@ -623,8 +697,7 @@
+@@ -623,8 +698,7 @@
    // API requests (/api/*) still return 404 so XHR errors surface correctly
    // see https://en.wikipedia.org/wiki/Captive_portal#Detection
    if (apMode && !server->uri().startsWith("/api/")) {
@@ -191443,6 +193177,42 @@
      return;
    }
  
+@@ -1108,7 +1182,10 @@
+         if (!filePath.endsWith("/")) filePath += "/";
+         filePath += state.fileName;
+         clearBookCache(filePath.c_str());
+-        if (isLibraryBookFile(state.fileName)) library::markLibraryIndexDirty();
++        if (isLibraryBookFile(state.fileName)) {
++          library::LibraryIncoming::add(filePath.c_str());
++          library::markLibraryIndexDirty();
++        }
+         if (isFontFile(state.fileName)) sdFontSystem.markRegistryDirty();
+       }
+     }
+@@ -1971,7 +2048,10 @@
+             wsLastCompleteAt = millis();
+             LOG_DBG("WS", "Zero-byte upload complete: %s", filePath.c_str());
+             clearBookCache(filePath.c_str());
+-            if (isLibraryBookFile(wsUploadFileName)) library::markLibraryIndexDirty();
++            if (isLibraryBookFile(wsUploadFileName)) {
++              library::LibraryIncoming::add(filePath.c_str());
++              library::markLibraryIndexDirty();
++            }
+             if (isFontFile(wsUploadFileName)) sdFontSystem.markRegistryDirty();
+             wsServer->sendTXT(num, "DONE");
+             wsLastProgressSent = 0;
+@@ -2042,7 +2122,10 @@
+         if (!filePath.endsWith("/")) filePath += "/";
+         filePath += wsUploadFileName;
+         clearBookCache(filePath.c_str());
+-        if (isLibraryBookFile(wsUploadFileName)) library::markLibraryIndexDirty();
++        if (isLibraryBookFile(wsUploadFileName)) {
++              library::LibraryIncoming::add(filePath.c_str());
++              library::markLibraryIndexDirty();
++            }
+         if (isFontFile(wsUploadFileName)) sdFontSystem.markRegistryDirty();
+ 
+         wsServer->sendTXT(num, "DONE");
 --- a/src/network/CrossPointWebServer.h
 +++ b/src/network/CrossPointWebServer.h
 @@ -1,6 +1,10 @@
@@ -191821,7 +193591,18 @@
 +#endif
 --- a/src/util/BookCoverLoader.cpp
 +++ b/src/util/BookCoverLoader.cpp
-@@ -146,7 +146,7 @@
+@@ -95,6 +95,10 @@
+     Epub epub(bookPath, "/.crosspoint");
+     const std::string path = epub.getThumbBmpPath(height);
+     std::string result = ensureCachedCover(path, !epub.hasCoverOverride(), generated, [&]() {
++      // A book that declares no cover would otherwise pay a full load (seconds on a
++      // large folder) only to find that out. The terminal marker then remembers it.
++      bool declared = true;
++      if (!epub.hasCoverOverride() && epub.probeCover(declared) && !declared) return false;
+       if (!epub.load(true, true)) return false;
+       epub.setupCacheDir();
+       return epub.generateThumbBmp(height);
+@@ -146,7 +150,7 @@
  }
  
  bool isOutdatedThumbnail(const Bitmap& bitmap) {
