@@ -1,5 +1,6 @@
 #pragma once
 
+#include <LibraryCategories.h>
 #include <LibraryIndexFile.h>
 
 #include <array>
@@ -71,11 +72,22 @@ class LibraryListActivity final : public UiTabListActivity {
   static constexpr freeink::ui::ActionId ACTION_SEARCH = ACTION_TAB_USER;
   static constexpr freeink::ui::ActionId ACTION_REBUILD = ACTION_SEARCH + 1;
   static constexpr freeink::ui::ActionId ACTION_BACK = ACTION_REBUILD + 1;
-
-  // Walk the card and write a fresh index. Blocking, with a popup: at ~70 books
-  // it is well under a second, and it only runs when the index is missing or the
-  // user asks.
-  bool rebuildIndex();
+  static constexpr freeink::ui::ActionId ACTION_ADD = ACTION_BACK + 8;
+  void openSources();
+  void reloadIndex();
+  void removeFromLibrary(const std::string& path);
+  void openCategories();
+  void openShelfTools();
+  void assignCategories(const std::string& path = {});
+  void batchAction();
+  void clearBatch();
+  library::LibraryCategories categories;
+  int categoryFilter = 0;  // 0 all, 1 uncategorized, 2..17 stable category slot
+  bool categoriesReady = true;
+  bool batchMode = false;
+  uint16_t batchCount = 0;
+  std::array<uint8_t, 512> batchSelected{};  // max CLIX 4096 entries, no heap
+  enum ToolAction { ManageSources, ManageCategories, BatchSelect, SortTools };
 
   // Input
   void openSelectedBook();
@@ -189,6 +201,7 @@ class LibraryListActivity final : public UiTabListActivity {
   uint16_t pinnedAscRows[RecentBooksStore::MAX_RECENT_BOOKS] = {};
   uint16_t overlapRows[RecentBooksStore::MAX_RECENT_BOOKS] = {};
   uint8_t pinnedTotal = 0;
+  uint8_t pinnedStoreRows[RecentBooksStore::MAX_RECENT_BOOKS] = {};
   uint8_t overlapCount = 0;
 
   bool lockNextConfirmRelease = false;
@@ -203,7 +216,6 @@ class LibraryListActivity final : public UiTabListActivity {
   static constexpr int SHELF_CAPACITY = 6;  // One bounded 3 x 2 page, never all card records.
 #endif
   static constexpr freeink::ui::ActionId ACTION_READING_FILTER = ACTION_BACK + 1;
-  static constexpr freeink::ui::ActionId ACTION_SHELF_OPTIONS = ACTION_READING_FILTER + 1;
   uint8_t readingFilter = 0;
   int shelfStart = -1;
   int shelfHeight = 0;

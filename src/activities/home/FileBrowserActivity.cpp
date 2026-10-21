@@ -16,6 +16,7 @@
 #include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
 #include "activities/home/RickyStorageActivity.h"
+#include "activities/library/LibrarySourcesActivity.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/RickyDesignUi.h"
@@ -98,11 +99,16 @@ void FileBrowserActivity::loadFiles() {
       }
       files.emplace_back(entryName + "/");
     } else {
-      if (browserState == BrowserState::ChoosingMoveDestination) continue;
+      if (browserState == BrowserState::ChoosingMoveDestination || mode == Mode::PickLibraryFolder) continue;
       std::string_view filename{fileNameBuffer.get()};
       switch (mode) {
         case Mode::Books:
           files.emplace_back(filename);
+          break;
+        case Mode::PickLibraryBook:
+          if (FsHelpers::hasReflowableBookExtension(filename)) files.emplace_back(filename);
+          break;
+        case Mode::PickLibraryFolder:
           break;
         case Mode::PickFirmware:
           if (FsHelpers::checkFileExtension(filename, ".bin")) files.emplace_back(filename);
@@ -121,7 +127,8 @@ void FileBrowserActivity::loadFiles() {
   }
   root.close();
   FsHelpers::sortFileList(files);
-  if (browserState == BrowserState::ChoosingMoveDestination) files.insert(files.begin(), MOVE_HERE_ENTRY);
+  if (browserState == BrowserState::ChoosingMoveDestination || mode == Mode::PickLibraryFolder)
+    files.insert(files.begin(), MOVE_HERE_ENTRY);
   rebuildRowItems();
 }
 
@@ -250,7 +257,6 @@ void FileBrowserActivity::onEnter() {
 }
 
 void FileBrowserActivity::onExit() {
-  metadataDirectory_.close();
   Activity::onExit();
   files.clear();
   rowNames.clear();
@@ -264,7 +270,6 @@ void FileBrowserActivity::onExit() {
 }
 
 void FileBrowserActivity::resetMetadata() {
-  metadataDirectory_.close();
   metadataStart_ = -1;
   metadataSlot_ = -1;
   metadata_ = {};
@@ -280,7 +285,6 @@ void FileBrowserActivity::loop() {
 void FileBrowserActivity::updateMetadata() {
   const int requested = requestedMetadataStart_.load();
   if (requested != metadataStart_) {
-    metadataDirectory_.close();
     RenderLock lock(RenderLock::Mode::Try);
     if (!lock.ownsLock()) return;
     metadataStart_ = requested;
@@ -291,27 +295,27 @@ void FileBrowserActivity::updateMetadata() {
   if (metadataSlot_ < 0) {
     RenderLock lock(RenderLock::Mode::Try);
     if (!lock.ownsLock()) return;
-    // File sizes before directory counts: a huge first folder cannot hold up
-    // the sizes of every file below it. No recursive walk is performed.
-    for (int directories = 0; directories < 2 && metadataSlot_ < 0; ++directories) {
-      for (int slot = 0; slot < METADATA_WINDOW; ++slot) {
-        const int index = metadataStart_ + slot;
-        if (index >= static_cast<int>(files.size())) break;
-        const auto& entry = files[index];
-        if (metadata_[slot].done || entry == MOVE_HERE_ENTRY || entry.empty()) continue;
-        const bool directory = entry.back() == '/';
-        if (directory != static_cast<bool>(directories)) continue;
-        const int length =
-            snprintf(metadataPath_, sizeof(metadataPath_), "%s%s%.*s", basepath.c_str(), basepath == "/" ? "" : "/",
-                     static_cast<int>(entry.size() - (directory ? 1 : 0)), entry.c_str());
-        if (length < 0 || length >= static_cast<int>(sizeof(metadataPath_))) {
-          metadata_[slot].done = true;
-          continue;
-        }
-        metadataSlot_ = slot;
-        directoryCount_ = 0;
-        break;
+    // File sizes only. A folder label must never enumerate its children just
+    // to display an item count (16 visible folders could mean 16 huge walks).
+    for (int slot = 0; slot < METADATA_WINDOW; ++slot) {
+      const int index = metadataStart_ + slot;
+      if (index >= static_cast<int>(files.size())) break;
+      const auto& entry = files[index];
+      if (metadata_[slot].done || entry == MOVE_HERE_ENTRY || entry.empty()) continue;
+      const bool directory = entry.back() == '/';
+      if (directory) {
+        metadata_[slot].done = true;
+        continue;
       }
+      const int length =
+          snprintf(metadataPath_, sizeof(metadataPath_), "%s%s%.*s", basepath.c_str(), basepath == "/" ? "" : "/",
+                   static_cast<int>(entry.size() - (directory ? 1 : 0)), entry.c_str());
+      if (length < 0 || length >= static_cast<int>(sizeof(metadataPath_))) {
+        metadata_[slot].done = true;
+        continue;
+      }
+      metadataSlot_ = slot;
+      break;
     }
   }
   if (metadataSlot_ < 0) {
@@ -324,7 +328,7 @@ void FileBrowserActivity::updateMetadata() {
   uint64_t value = 0;
   bool done = false;
   bool known = false;
-  if (!metadataDirectory_) {
+  {
     auto entry = Storage.open(metadataPath_);
     if (!entry) {
       done = true;
@@ -332,26 +336,7 @@ void FileBrowserActivity::updateMetadata() {
       value = entry.fileSize64();
       known = done = true;
     } else {
-      metadataDirectory_ = std::move(entry);
-    }
-  }
-  if (metadataDirectory_) {
-    const auto started = millis();
-    // Bounded per-pass work, including a time check between HAL operations.
-    // A single slow SD operation cannot be preempted; hardware testing remains required.
-    for (int entries = 0; entries < 24 && millis() - started < 3; ++entries) {
-      auto child = metadataDirectory_.openNextFile();
-      if (!child) {
-        value = directoryCount_;
-        known = done = true;
-        metadataDirectory_.close();
-        break;
-      }
-      child.getName(fileNameBuffer.get(), NAME_BUFFER_SIZE);
-      if ((!SETTINGS.showHiddenFiles && fileNameBuffer[0] == '.') ||
-          strcmp(fileNameBuffer.get(), "System Volume Information") == 0)
-        continue;
-      ++directoryCount_;
+      done = true;  // directory replaced the file after listing: no child walk
     }
   }
   if (done) {
@@ -474,9 +459,13 @@ void FileBrowserActivity::showEditMenu() {
   if (FsHelpers::isProtectedPathComponent(entry)) return;
 
   if (UITheme::getInstance().hasMainTabs()) {
-    const char* actions[] = {tr(STR_RENAME), tr(STR_MOVE), tr(STR_DELETE)};
-    editPopup.show(entry.c_str(), actions, static_cast<int>(std::size(actions)), 0,
-                   [this](const int index) { executeEditAction(static_cast<EditAction>(index)); });
+    const bool book = FsHelpers::hasReflowableBookExtension(files[nav.selected]);
+    const char* actions[] = {tr(STR_LIBRARY_ADD_BOOK), tr(STR_RENAME), tr(STR_MOVE), tr(STR_DELETE)};
+    static constexpr EditAction order[] = {EditAction::AddToLibrary, EditAction::Rename, EditAction::Move,
+                                           EditAction::Delete};
+    editPopup.show(entry.c_str(), actions + (book ? 0 : 1), book ? 4 : 3, 0, [this, book](const int index) {
+      if (index >= 0 && index < (book ? 4 : 3)) executeEditAction(order[index + (book ? 0 : 1)]);
+    });
   } else {
     constexpr StrId actions[] = {StrId::STR_OPEN, StrId::STR_DELETE, StrId::STR_RENAME, StrId::STR_MOVE};
     static constexpr EditAction order[] = {EditAction::Open, EditAction::Delete, EditAction::Rename, EditAction::Move};
@@ -489,6 +478,11 @@ void FileBrowserActivity::showEditMenu() {
 
 void FileBrowserActivity::executeEditAction(const EditAction action) {
   switch (action) {
+    case EditAction::AddToLibrary:
+      startActivityForResultWith<LibraryImportActivity>(
+          [this](const ActivityResult&) { requestUpdate(); },
+          LibraryImportRequest{LibraryImportRequest::Action::AddBook, selectedPath()});
+      return;
     case EditAction::Rename:
       promptRename();
       return;
@@ -721,6 +715,11 @@ void FileBrowserActivity::activateSelected() {
   if (nav.selected < 0 || nav.selected >= listCount()) return;
 
   const std::string& entry = files[nav.selected];
+  if (mode == Mode::PickLibraryFolder && entry == MOVE_HERE_ENTRY) {
+    setResult(ActivityResult{FilePathResult{basepath}});
+    finish();
+    return;
+  }
   if (browserState == BrowserState::ChoosingMoveDestination && entry == MOVE_HERE_ENTRY) {
     completeMove();
     return;
@@ -985,6 +984,8 @@ void FileBrowserActivity::drawChrome() {
   std::string folderName =
       browserState == BrowserState::ChoosingMoveDestination ? std::string(tr(STR_MOVE))
       : mode == Mode::PickFirmware                          ? std::string(tr(STR_SELECT_FIRMWARE_FILE))
+      : mode == Mode::PickLibraryBook                       ? std::string(tr(STR_LIBRARY_ADD_BOOK))
+      : mode == Mode::PickLibraryFolder                     ? std::string(tr(STR_LIBRARY_ADD_FOLDER))
       : mode == Mode::PickPng                               ? std::string(tr(STR_CUSTOM_IMAGE))
       : mode == Mode::PickWallpaper
           ? std::string(tr(STR_RICKY_SELECT_WALLPAPER))
@@ -1047,7 +1048,7 @@ void FileBrowserActivity::provideRow(void* ctx, const uint16_t index, fui::ListI
   if (index >= self->files.size()) return;
   const std::string& entry = self->files[index];
   if (entry == MOVE_HERE_ENTRY) {
-    item.label = tr(STR_MOVE_HERE);
+    item.label = self->mode == Mode::PickLibraryFolder ? tr(STR_LIBRARY_SELECT_FOLDER) : tr(STR_MOVE_HERE);
     item.actionValue = static_cast<int16_t>(index);
     return;
   }

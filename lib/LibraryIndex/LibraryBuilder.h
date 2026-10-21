@@ -25,6 +25,20 @@
 #include "LibraryFormat.h"
 
 namespace library {
+class LibrarySources;
+
+struct BuildOptions {
+  const LibrarySources* sources = nullptr;
+  bool (*shouldCancel)(void*) = nullptr;
+  void (*progress)(uint16_t, void*) = nullptr;
+  void* context = nullptr;
+  // Additions merge the retained index and scan just this source. Explicit
+  // Refresh/removal rebuilds selected sources; neither mode walks the SD root
+  // unless the user actually enrolled it.
+  bool mergeExisting = false;
+  bool filterExistingSources = false;
+  int sourceToScan = -1;
+};
 
 // Directory levels below the scan root that are walked. The measured corpus is
 // two deep (genre/author/book); the cap exists because a corrupted FAT can
@@ -56,6 +70,7 @@ struct BuildStats {
   bool indexReplaced = false;
   bool ranksDegraded = false;
   bool dedupDegraded = false;
+  bool cancelled = false;
 };
 
 // Walk `rootPath`, write `/.crosspoint/library.idx`, and report what happened.
@@ -66,7 +81,8 @@ struct BuildStats {
 // book over its filename. It reads an existing cache when available; otherwise
 // it stops the normal EPUB parser at the end of <metadata>, before the manifest,
 // without building the reader's spine, TOC, CSS, or section caches.
-bool buildLibraryIndex(const char* rootPath, BuildStats& stats, bool readMetadata = false);
+bool buildLibraryIndex(const char* rootPath, BuildStats& stats, bool readMetadata = false,
+                       const BuildOptions* options = nullptr);
 
 // Optional progress for a long walk (e.g. the boot-time preparation screen): called
 // once per book staged, on the building task. Pass nullptr to clear.
@@ -75,6 +91,8 @@ void setBuildProgress(BuildProgressFn fn, void* context);
 
 // Live index path, shared by the builder and activity.
 const char* libraryIndexPath();
+// Recover an interrupted index rename before the first managed-source snapshot.
+bool recoverLibraryIndex();
 
 // A successful book transfer marks the retained index stale. The next Library
 // entry rebuilds it through the normal reconciliation path.

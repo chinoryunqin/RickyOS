@@ -138,6 +138,11 @@ void refreshRecentCovers(Status& status) {
 }  // namespace
 
 void run(GfxRenderer& renderer) {
+#if defined(RICKYOS_PRODUCT) && RICKYOS_PRODUCT
+  // Firmware updates and dirty markers do not authorize whole-card scans.
+  (void)renderer;
+  return;
+#endif
   const bool newFirmware = !preparedForThisFirmware();
   const bool library = libraryNeedsBuild();
   if (!newFirmware && !library) return;

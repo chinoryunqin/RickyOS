@@ -896,3 +896,38 @@ make a real book disappear.
 
 `selfSize` is the expected file size. Comparing it against the real one is a free
 truncation guard: a build cut short by a power failure cannot pass.
+
+## LSR1 — explicitly selected library sources
+
+`/.crosspoint/library-sources.v1` is separate from CLX1. Byte order is little
+endian: `LSR1` (4 bytes), rule count (u16, max 128), rules, checksum (u32).
+Each rule is kind (u8: 1 folder, 2 recursive folder, 3 book, 4 excluded book),
+path byte length (u8, 1..255), and that many UTF-8 path bytes without NUL.
+Paths must be canonical absolute paths without dot segments or control bytes.
+Checksum is FNV-1a32 over all preceding bytes. Exact EOF is required.
+`.tmp` and `.bak` support checked install/rollback. On first opt-in, the old
+CLX1 file is copied to `library-legacy.idx` as finite references, not a scan root.
+
+## LCT1 — manual library categories
+
+`/.crosspoint/library-categories.v1` does not alter CLX1 or reading progress.
+All integers are explicitly little endian, independent of struct padding.
+
+| Section | Bytes / constraints |
+|---|---|
+| Magic | `LCT1`, 4 bytes |
+| Member count | u16, max 4096; exact file size must be `790 + count * 10 + 4` |
+| Category names | 16 stable slots × 49 bytes, each NUL-terminated UTF-8, max 48 name bytes; empty first byte = unused slot |
+| Members | Strictly increasing unique u64 CLX1 complete-path fingerprints + u16 nonzero category mask; bits may reference only occupied slots |
+| Checksum | FNV-1a32 of the magic, all 784 name bytes and all member bytes; count is excluded but protected by exact file size |
+
+Duplicate names, blank-only/control-containing names, invalid UTF-8, unordered
+records, unknown mask bits, invalid checksums and truncated files are rejected.
+Updates stream/merge into `.tmp`, close/check writes, rotate the old file to
+`.bak`, then install the temporary file. A missing current file is recovered
+from `.bak`; a corrupt current file is not silently overwritten with emptiness.
+Deleting a category clears its bit before its slot can be reused. It never
+deletes or moves a book. Unclassified books have no member record.
+Paths survive index sorting/rebuild but externally renamed or moved books have
+new identities, as in CLX1 reconciliation. Category files are not device-internal
+Flash assets: they live alongside the SD-based catalog.

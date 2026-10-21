@@ -110,6 +110,7 @@ const char* RickyStorageActivity::folderFor(const int index) {
 namespace {
 struct StorageScan {
   bool measured = false;
+  bool attempted = false;
   uint64_t total = 0;
   uint64_t free = 0;
   std::array<int, 3> counts{-1, -1, -1};  // books, images, downloads
@@ -150,6 +151,7 @@ void saveStats() {
   JsonDocument doc;
   doc["total"] = scan.total;
   doc["free"] = scan.free;
+  doc["attempted"] = scan.attempted;
   doc["books"] = scan.counts[0];
   doc["images"] = scan.counts[1];
   doc["downloads"] = scan.counts[2];
@@ -173,6 +175,7 @@ void loadStats() {
     scan.total = doc["total"] | static_cast<uint64_t>(0);
     scan.free = doc["free"] | static_cast<uint64_t>(0);
     scan.measured = scan.total > 0 && scan.free <= scan.total;
+    scan.attempted = doc["attempted"] | scan.measured;
     scan.counts = {doc["books"] | -1, doc["images"] | -1, doc["downloads"] | -1};
   });
 }
@@ -220,6 +223,7 @@ void scanStorageTask(void*) {
   const bool measured = RickyFreeSpace::measure(total, free);
   publish([&](StorageScan& scan) {
     scan.measured = measured;
+    scan.attempted = true;
     scan.total = total;
     scan.free = free;
   });
@@ -265,7 +269,10 @@ void RickyStorageActivity::applyLastScan() {
   seenScans = scanGeneration.load();
   counting = scanRunning.load();
   if (!have) return;  // never measured on this card: keep the placeholders
-  space = scan.measured ? Space::Ready : (counting ? Space::Measuring : Space::Unavailable);
+  space = scan.measured    ? Space::Ready
+          : counting       ? Space::Measuring
+          : scan.attempted ? Space::Unavailable
+                           : Space::NotMeasured;
   sdTotalBytes = scan.total;
   sdFreeBytes = scan.free;
   counts[0] = scan.counts[0];
@@ -274,17 +281,8 @@ void RickyStorageActivity::applyLastScan() {
 }
 
 void RickyStorageActivity::refresh() {
-  // Refresh exists for a card changed elsewhere (a computer), which Library cannot see
-  // either: rebuild Library's index first, exactly as Library's own rebuild does (~2 s on
-  // a measured card), so the book count is the one Library will show.
-  {
-    RenderLock lock(*this);
-    GUI.drawPopup(renderer, tr(STR_LIBRARY_REBUILDING));
-    library::BuildStats stats;
-    if (!library::buildLibraryIndex("/", stats, SETTINGS.libraryUseMetadata != 0)) {
-      LOG_ERR("STOR", "Library index rebuild failed");
-    }
-  }
+  // Storage statistics are explicit, independent work. They never change the
+  // user's Library sources or rebuild the catalog.
   const int indexed = indexBookCount();
   if (indexed >= 0) publish([&](StorageScan& scan) { scan.counts[0] = indexed; });
   invalidateScan();
@@ -299,16 +297,11 @@ void RickyStorageActivity::onEnter() {
   // the font registry found in both, not the visible folder's entries. In memory, cheap.
   counts[1] = static_cast<int>(sdFontSystem.registry().getFamilies().size());
   loadStats();
-  bool freeOld;
-  {
-    std::lock_guard<std::mutex> lock(scanMutex);
-    freeOld = !freeMeasured || millis() - freeMeasuredMs > kFreeSpaceMaxAgeMs;
-  }
   // Library may have rebuilt its index since the last visit: take its count as it is now.
   const int indexed = indexBookCount();
   if (indexed >= 0) publish([&](StorageScan& scan) { scan.counts[0] = indexed; });
-  const bool countsOld = countsStale.load();
-  if (freeOld || countsOld) startStorageScan(countsOld);
+  // Cached summary only on entry. Refresh explicitly requests statistics;
+  // stale numbers do not authorize a directory or FAT walk.
   applyLastScan();
   requestUpdate();
 }
@@ -428,9 +421,10 @@ void RickyStorageActivity::buildScreen(UiScreen& screen) {
   centered.align = fui::TextAlign::Left;
   target.text(fui::Rect{static_cast<int16_t>(textX), static_cast<int16_t>(textTop + bodyHeight + gap / 2),
                         static_cast<int16_t>(textWidth), static_cast<int16_t>(smallHeight)},
-              space == Space::Ready       ? text
-              : space == Space::Measuring ? tr(STR_LOADING)
-                                          : tr(STR_NOT_AVAILABLE),
+              space == Space::Ready         ? text
+              : space == Space::NotMeasured ? tr(STR_RICKY_SPACE_NOT_MEASURED)
+              : space == Space::Measuring   ? tr(STR_LOADING)
+                                            : tr(STR_NOT_AVAILABLE),
               centered);
   RickyPageUi::chevron(target,
                        fui::Rect{static_cast<int16_t>(summary.right() - 24 - pad), summary.y, 24, summary.height},

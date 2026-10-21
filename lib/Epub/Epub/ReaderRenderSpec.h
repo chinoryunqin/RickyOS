@@ -1,4 +1,7 @@
 #pragma once
+#if __has_include(<BoardConfig.h>)
+#include <BoardConfig.h>
+#endif
 #include <cstdint>
 
 #include "FirstLineIndent.h"

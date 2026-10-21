@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Epub/BookFonts.h>
+#include <VectorFontSupport.h>
 
 #include <cstdint>
 #include <memory>
@@ -65,7 +66,9 @@ class BookFontSet final : public bookfonts::Resolver {
     uint32_t refusedAt = 0;  // millis() of the last PSRAM refusal, 0 = none
     uint8_t* bytes = nullptr;  // malloc'd by Epub::readItemContentsToBytes
     size_t length = 0;
+#if CROSSPOINT_VECTOR_FONTS
     std::unique_ptr<TtfEpdFont> font;
+#endif
     int fontId = 0;
     uint8_t pointSize = 0;
     // Defined in the .cpp, where TtfEpdFont is complete (unique_ptr of an incomplete type).

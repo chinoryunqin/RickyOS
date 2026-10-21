@@ -1,6 +1,10 @@
 add_executable(LibraryBuilderTest
   LibraryBuilderTest.cpp
+  LibrarySourcesTest.cpp
+  LibraryCategoriesTest.cpp
   ${REPO_ROOT}/lib/LibraryIndex/LibraryBuilder.cpp
+  ${REPO_ROOT}/lib/LibraryIndex/LibrarySources.cpp
+  ${REPO_ROOT}/lib/LibraryIndex/LibraryCategories.cpp
   ${REPO_ROOT}/lib/LibraryIndex/LibraryIndexFile.cpp
   ${REPO_ROOT}/lib/LibraryIndex/LibraryFormat.cpp
   ${REPO_ROOT}/lib/LibraryIndex/LibraryText.cpp

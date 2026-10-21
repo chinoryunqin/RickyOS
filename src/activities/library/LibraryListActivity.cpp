@@ -10,12 +10,15 @@
 #include <LibraryText.h>
 #include <Logging.h>
 #include <Memory.h>
+#include <RickyPerf.h>
 #include <Utf8.h>
 
 #include <algorithm>
 #include <cstdio>
 
 #include "CrossPointSettings.h"
+#include "LibraryCategoriesActivity.h"
+#include "LibrarySourcesActivity.h"
 #include "MappedInputManager.h"
 #include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
@@ -35,7 +38,6 @@
 #include "util/BookCacheUtils.h"
 #include "util/BookCoverLoader.h"
 #include "util/PanelTileCache.h"
-#include <RickyPerf.h>
 
 namespace fui = freeink::ui;
 
@@ -84,20 +86,34 @@ LibraryListActivity::LibraryListActivity(GfxRenderer& renderer, MappedInputManag
 }
 
 void LibraryListActivity::onEnter() {
-  // One lock across the base lifecycle AND the data phase: the base onEnter
-  // schedules a paint, and the render task must not read the index or the
-  // filter before they are in place. The rebuild also needs the lock: the
-  // render task's SD-loaded fonts read glyph data at draw time, and the walk
-  // needs the card to itself.
+  // Publish one coherent cached page. No scan/EPUB parsing runs under this lock.
   RenderLock lock(*this);
   UiTabListActivity::onEnter();
   app.on(ACTION_SEARCH, &LibraryListActivity::searchActionTrampoline, this);
   app.on(ACTION_BACK, &LibraryListActivity::backActionTrampoline, this);
   app.on(
+      ACTION_ADD,
+      [](const fui::ActionEvent& event, void* ctx) {
+        auto& self = *static_cast<LibraryListActivity*>(ctx);
+        // Six handler slots: row/tab + search/back + tools/filter. Multiplex
+        // toolbar values instead of silently overflowing the fixed host table.
+        if (event.value == BatchSelect)
+          self.batchAction();
+        else if (event.value == SortTools)
+          self.openShelfTools();
+        else if (!self.batchMode && event.value == ManageCategories)
+          self.openCategories();
+        else if (!self.batchMode && event.value == ManageSources)
+          self.openSources();
+      },
+      this);
+  categoriesReady = categories.load() != library::LibraryCategories::Load::Error;
+  app.on(
       ACTION_READING_FILTER,
       [](const fui::ActionEvent& event, void* user) {
         auto& self = *static_cast<LibraryListActivity*>(user);
         if (event.value < 0 || event.value > 2) return;
+        if (self.batchMode) return;
         RenderLock lock(self);
         self.readingFilter = event.value;
         self.applyFilter();
@@ -106,52 +122,14 @@ void LibraryListActivity::onEnter() {
         self.requestUpdate();
       },
       this);
-  app.on(
-      ACTION_SHELF_OPTIONS,
-      [](const fui::ActionEvent&, void* user) {
-        auto& self = *static_cast<LibraryListActivity*>(user);
-        RenderLock lock(self);
-        self.app.clearTapFlash();
-        static constexpr StrId options[] = {StrId::STR_RICKY_SORT_RECENT_DESC, StrId::STR_RICKY_SORT_RECENT_ASC,
-                                            StrId::STR_RICKY_SORT_TITLE_ASC,   StrId::STR_RICKY_SORT_TITLE_DESC,
-                                            StrId::STR_RICKY_SORT_AUTHOR_ASC,  StrId::STR_RICKY_SORT_AUTHOR_DESC,
-                                            StrId::STR_LIBRARY_REBUILD};
-        const int selected =
-            self.activeTabIndex * 2 + (isDescending(self.sortOrder) == (self.activeTabIndex == RECENT_TAB) ? 0 : 1);
-        self.optionPopup.show(StrId::STR_RICKY_LIBRARY_TOOLS, options, std::size(options), selected,
-                              [&self](int choice) {
-                                if (choice == 6) {
-                                  self.promptRebuildIndex();
-                                  return;
-                                }
-                                if (choice < 0 || choice >= 6 || self.degraded) return;
-                                const int tab = choice / 2;
-                                const bool descending = tab == RECENT_TAB ? choice % 2 == 0 : choice % 2 != 0;
-                                if (descending)
-                                  self.descendingTabs |= static_cast<uint8_t>(1u << tab);
-                                else
-                                  self.descendingTabs &= static_cast<uint8_t>(~(1u << tab));
-                                self.selectTab(tab, false);
-                              });
-        self.requestUpdate();
-      },
-      this);
 
   // Recent is backed by the resident store. Prune before opening the index so
   // its persistence write never overlaps the long-lived index reader.
   if (RECENT_BOOKS.pruneMissing()) RECENT_BOOKS.saveToFile();
 
-  // Rebuild when the index is missing, invalid, or was built with the other
-  // metadata mode. Otherwise entering the screen stays instant.
-  const bool readMetadata = SETTINGS.libraryUseMetadata != 0;
-  const bool rebuildNeeded = library::isLibraryIndexDirty() || !index.open(library::libraryIndexPath()) ||
-                             index.header().metadataEnabled != readMetadata;
-  if (rebuildNeeded) {
-    index.close();
-    GUI.drawPopup(renderer, tr(STR_LIBRARY_REBUILDING));
-    rebuildIndex();
-    if (!index.open(library::libraryIndexPath())) LOG_ERR("LIB", "cannot open library index");
-  }
+  // Dirty means an explicit update is available, not permission to walk the
+  // card on entry. A retained catalog remains usable while imports are pending.
+  index.open(library::libraryIndexPath());
   degraded = index.isOpen() && index.ranksDegraded();
   if (index.isOpen() && index.dedupDegraded()) {
     LOG_ERR("LIB", "index was built without duplicate detection");
@@ -166,23 +144,8 @@ void LibraryListActivity::onEnter() {
 
 void LibraryListActivity::onExit() {
   index.close();
+  filtered.reset();
   Activity::onExit();
-}
-
-bool LibraryListActivity::rebuildIndex() {
-  library::BuildStats stats;
-  const bool ok = library::buildLibraryIndex("/", stats, SETTINGS.libraryUseMetadata != 0);
-  if (!ok) {
-    LOG_ERR("LIB", "index build failed");
-    return false;
-  }
-  LOG_INF("LIB", "reconciled: %u unchanged, %u added, %u renamed, %u removed, %u enriched (%u dup, %u unreadable)",
-          static_cast<unsigned>(stats.unchanged), static_cast<unsigned>(stats.added),
-          static_cast<unsigned>(stats.renamed), static_cast<unsigned>(stats.removed),
-          static_cast<unsigned>(stats.enriched), static_cast<unsigned>(stats.duplicatesDropped),
-          static_cast<unsigned>(stats.unreadableSkipped));
-  if (stats.dedupDegraded) LOG_ERR("LIB", "rebuild completed without duplicate detection");
-  return true;
 }
 
 void LibraryListActivity::swallowHeldReleases() {
@@ -200,7 +163,7 @@ int LibraryListActivity::selectedEntry() const {
 // list the reader narrowed down on purpose, and the ascending toggle asks for
 // oldest-first, which pinned fresh reads would contradict.
 int LibraryListActivity::pinnedCount() const {
-  if (readingFilter != 0) return 0;
+  if (readingFilter != 0 || categoryFilter != 0) return 0;
   if (activeTabIndex != RECENT_TAB || !query.empty() || !isDescending(sortOrder)) return 0;
   return pinnedTotal;
 }
@@ -209,6 +172,7 @@ void LibraryListActivity::resolvePinned() {
   shelfStart = -1;
   const auto& books = RECENT_BOOKS.getBooks();
   pinnedTotal = static_cast<uint8_t>(std::min<size_t>(books.size(), RecentBooksStore::MAX_RECENT_BOOKS));
+  for (int i = 0; i < pinnedTotal; ++i) pinnedStoreRows[i] = i;
   for (int i = 0; i < pinnedTotal; i++) pinnedAscRows[i] = 0xFFFF;
   if (pinnedTotal > 0 && index.isOpen()) {
     library::BookIdentity identities[RecentBooksStore::MAX_RECENT_BOOKS];
@@ -230,6 +194,15 @@ void LibraryListActivity::resolvePinned() {
       pinnedTotal = 0;
     }
   }
+  // Only enrolled books belong to Library. Opening a file directly from
+  // Storage must not enroll it through the recent-books overlay.
+  uint8_t included = 0;
+  for (uint8_t i = 0; i < pinnedTotal; ++i) {
+    if (pinnedAscRows[i] == 0xFFFF) continue;
+    pinnedAscRows[included] = pinnedAscRows[i];
+    pinnedStoreRows[included++] = i;
+  }
+  pinnedTotal = included;
   refreshOverlap();
 }
 
@@ -250,7 +223,7 @@ void LibraryListActivity::openSelectedBook() {
   if (selectedEntry() < pinnedCount()) {
     const auto& books = RECENT_BOOKS.getBooks();
     if (selectedEntry() >= static_cast<int>(books.size())) return;
-    path = books[static_cast<size_t>(selectedEntry())].path;
+    path = books[pinnedStoreRows[selectedEntry()]].path;
   } else {
     if (!index.isOpen()) return;
     const uint16_t ordinal = index.ordinalForRow(sortOrder, static_cast<uint16_t>(rowFor(selectedEntry())));
@@ -276,6 +249,17 @@ void LibraryListActivity::openBookByPath(const std::string& path) {
 }
 
 void LibraryListActivity::activateIndex(const int index) {
+  if (batchMode) {
+    if (index < 0 || index >= bookRowCount() || index >= 4096) return;
+    RenderLock lock(*this);
+    const uint8_t bit = uint8_t(1u << (index % 8));
+    const bool selected = batchSelected[index / 8] & bit;
+    batchSelected[index / 8] ^= bit;
+    batchCount += selected ? -1 : 1;
+    app.clearTapFlash();
+    requestUpdate();
+    return;
+  }
   if (groupsCollapsed) {
     expandGroup(index);
   } else {
@@ -290,7 +274,13 @@ void LibraryListActivity::activateIndex(const int index) {
 bool LibraryListActivity::deleteEligible() const { return !groupsCollapsed && (!query.empty() || !groupable()); }
 
 void LibraryListActivity::onRowLongPress(const int index) {
-  if (isRecentSort(sortOrder)) {
+  if (batchMode) {
+    activateIndex(index);
+    return;
+  }
+  if (UITheme::getInstance().hasMainTabs() && !groupsCollapsed) {
+    showRecentBookOptions(index);
+  } else if (isRecentSort(sortOrder)) {
     showRecentBookOptions(index);
   } else if (deleteEligible()) {
     promptDeleteBook(index);
@@ -313,8 +303,8 @@ void LibraryListActivity::showRecentBookOptions(const int entry) {
   if (isStoreRow) {
     const auto& books = RECENT_BOOKS.getBooks();
     if (entry >= static_cast<int>(books.size())) return;
-    path = books[static_cast<size_t>(entry)].path;
-    title = books[static_cast<size_t>(entry)].title;
+    path = books[pinnedStoreRows[entry]].path;
+    title = books[pinnedStoreRows[entry]].title;
   } else {
     if (!index.isOpen()) return;
     const uint16_t ordinal = index.ordinalForRow(sortOrder, static_cast<uint16_t>(rowFor(entry)));
@@ -327,10 +317,12 @@ void LibraryListActivity::showRecentBookOptions(const int entry) {
     }
   }
 
-  const char* STORE_OPTIONS[] = {tr(STR_OPEN), tr(STR_REMOVE_FROM_RECENTS), tr(STR_DELETE), tr(STR_LIBRARY_REBUILD)};
-  const char* INDEX_OPTIONS[] = {tr(STR_OPEN), tr(STR_DELETE), tr(STR_LIBRARY_REBUILD)};
+  const char* STORE_OPTIONS[] = {tr(STR_OPEN), tr(STR_LIBRARY_REMOVE_BOOK), tr(STR_DELETE),
+                                 tr(STR_LIBRARY_ASSIGN_CATEGORY), tr(STR_REMOVE_FROM_RECENTS)};
+  const char* INDEX_OPTIONS[] = {tr(STR_OPEN), tr(STR_LIBRARY_REMOVE_BOOK), tr(STR_DELETE),
+                                 tr(STR_LIBRARY_ASSIGN_CATEGORY)};
   app.clearTapFlash();
-  optionPopup.show(tr(STR_LIBRARY), title.c_str(), isStoreRow ? STORE_OPTIONS : INDEX_OPTIONS, isStoreRow ? 4 : 3, 0,
+  optionPopup.show(tr(STR_LIBRARY), title.c_str(), isStoreRow ? STORE_OPTIONS : INDEX_OPTIONS, isStoreRow ? 5 : 4, 0,
                    [this, path, title, isStoreRow](const int choice) {
                      swallowHeldReleases();
                      switch (choice) {
@@ -338,20 +330,16 @@ void LibraryListActivity::showRecentBookOptions(const int entry) {
                          openBookByPath(path);
                          break;
                        case 1:
-                         if (isStoreRow) {
-                           promptRemoveRecentBook(path, title);
-                         } else {
-                           promptDeleteBookByPath(path, title);
-                         }
+                         removeFromLibrary(path);
                          break;
                        case 2:
-                         if (isStoreRow)
-                           promptDeleteBookByPath(path, title);
-                         else
-                           promptRebuildIndex();
+                         promptDeleteBookByPath(path, title);
                          break;
                        case 3:
-                         if (isStoreRow) promptRebuildIndex();
+                         assignCategories(path);
+                         break;
+                       case 4:
+                         if (isStoreRow) promptRemoveRecentBook(path, title);
                          break;
                        default:
                          break;
@@ -360,17 +348,169 @@ void LibraryListActivity::showRecentBookOptions(const int entry) {
   requestUpdate();
 }
 
-// Manual index refresh, same card discipline as the onEnter rebuild: the walk
-// wants the card to itself, and the render task must not read the index (or
-// the filter) around it.
+// Explicit updates have their own cancellable activity, never a blocking popup.
 void LibraryListActivity::promptRebuildIndex() {
+  {
+    RenderLock lock(*this);
+    index.close();
+    app.clearTapFlash();
+  }
+  if (!startActivityForResultWith<LibraryImportActivity>([this](const ActivityResult&) { reloadIndex(); },
+                                                         LibraryImportRequest{}))
+    reloadIndex();
+}
+
+void LibraryListActivity::reloadIndex() {
   RenderLock lock(*this);
-  GUI.drawPopup(renderer, tr(STR_LIBRARY_REBUILDING));
   index.close();
-  rebuildIndex();
-  if (!index.open(library::libraryIndexPath())) LOG_ERR("LIB", "cannot open library index");
+  index.open(library::libraryIndexPath());
+  degraded = index.isOpen() && index.ranksDegraded();
   resetAfterRebuild();
-  requestUpdate(true);
+  swallowHeldReleases();
+  requestUpdate();
+}
+void LibraryListActivity::openSources() {
+  {
+    RenderLock lock(*this);
+    index.close();
+    app.clearTapFlash();
+  }
+  if (!startActivityForResultWith<LibrarySourcesActivity>([this](const ActivityResult&) { reloadIndex(); }))
+    reloadIndex();
+}
+void LibraryListActivity::removeFromLibrary(const std::string& path) {
+  {
+    RenderLock lock(*this);
+    index.close();
+    app.clearTapFlash();
+  }
+  if (!startActivityForResultWith<LibraryImportActivity>(
+          [this](const ActivityResult&) { reloadIndex(); },
+          LibraryImportRequest{LibraryImportRequest::Action::ExcludeBook, path}))
+    reloadIndex();
+}
+
+void LibraryListActivity::clearBatch() {
+  batchMode = false;
+  batchCount = 0;
+  batchSelected.fill(0);
+  app.clearTapFlash();
+}
+void LibraryListActivity::openShelfTools() {
+  if (batchMode) {
+    batchAction();
+    return;
+  }
+  RenderLock lock(*this);
+  app.clearTapFlash();
+  static constexpr StrId options[] = {StrId::STR_RICKY_SORT_RECENT_DESC, StrId::STR_RICKY_SORT_RECENT_ASC,
+                                      StrId::STR_RICKY_SORT_TITLE_ASC,   StrId::STR_RICKY_SORT_TITLE_DESC,
+                                      StrId::STR_RICKY_SORT_AUTHOR_ASC,  StrId::STR_RICKY_SORT_AUTHOR_DESC,
+                                      StrId::STR_LIBRARY_REBUILD,        StrId::STR_LIBRARY_CATEGORIES,
+                                      StrId::STR_LIBRARY_BATCH,          StrId::STR_LIBRARY_SOURCES};
+  const int selected = activeTabIndex * 2 + (isDescending(sortOrder) == (activeTabIndex == RECENT_TAB) ? 0 : 1);
+  optionPopup.show(StrId::STR_RICKY_LIBRARY_TOOLS, options, std::size(options), selected, [this](int choice) {
+    swallowHeldReleases();
+    if (choice == 6) {
+      promptRebuildIndex();
+      return;
+    }
+    if (choice == 7) {
+      openCategories();
+      return;
+    }
+    if (choice == 8) {
+      batchAction();
+      return;
+    }
+    if (choice == 9) {
+      openSources();
+      return;
+    }
+    if (choice < 0 || choice >= 6 || degraded) return;
+    RenderLock lock(*this);
+    const int tab = choice / 2;
+    const bool descending = tab == RECENT_TAB ? choice % 2 == 0 : choice % 2 != 0;
+    if (descending)
+      descendingTabs |= static_cast<uint8_t>(1u << tab);
+    else
+      descendingTabs &= static_cast<uint8_t>(~(1u << tab));
+    selectTab(tab, false);
+  });
+  requestUpdate();
+}
+void LibraryListActivity::batchAction() {
+  if (batchMode) {
+    if (batchCount) assignCategories();
+    return;
+  }
+  RenderLock lock(*this);
+  clearBatch();
+  batchMode = true;
+  requestUpdate();
+}
+void LibraryListActivity::openCategories() {
+  app.clearTapFlash();
+  startActivityForResultWith<LibraryCategoriesActivity>([this](const ActivityResult& result) {
+    RenderLock lock(*this);
+    categoriesReady = categories.load() != library::LibraryCategories::Load::Error;
+    if (!result.isCancelled && std::holds_alternative<IntervalResult>(result.data))
+      categoryFilter = std::get<IntervalResult>(result.data).value;
+    if (categoryFilter < 0 || categoryFilter > 17 || (categoryFilter >= 2 && !*categories.name(categoryFilter - 2)))
+      categoryFilter = 0;
+    applyFilter();
+    activeNav().reset();
+    swallowHeldReleases();
+    requestUpdate();
+  });
+}
+void LibraryListActivity::assignCategories(const std::string& path) {
+  const size_t count = path.empty() ? batchCount : 1;
+  if (!count) return;
+  // At most 32 KB, only for the user's explicit batch transaction, released
+  // on leaving the child. No second vector of paths or physical book reads.
+  auto hashes = makeUniqueNoThrow<uint64_t[]>(count);
+  bool ok = bool(hashes);
+  size_t written = 0;
+  {
+    RenderLock lock(*this);
+    if (ok && !path.empty())
+      hashes[written++] = library::clixPathHash(path.data(), path.size());
+    else if (ok) {
+      std::string bookPath;
+      for (int entry = 0; entry < bookRowCount(); ++entry) {
+        if (!(batchSelected[entry / 8] & (1u << (entry % 8)))) continue;
+        if (written >= count || !entryPath(entry, bookPath)) {
+          ok = false;
+          break;
+        }
+        hashes[written++] = library::clixPathHash(bookPath.data(), bookPath.size());
+      }
+    }
+    if (!ok || written != count) {
+      LOG_ERR("LIBCAT", "cannot prepare category selection (%u books)", static_cast<unsigned>(count));
+      const char* choices[] = {tr(STR_DONE)};
+      optionPopup.showMessage(tr(STR_LIBRARY_CATEGORIES), tr(STR_LIBRARY_CATEGORY_ERROR), choices, 1, 0, [](int) {});
+      requestUpdate();
+      return;
+    }
+    std::sort(hashes.get(), hashes.get() + written);
+    written = std::unique(hashes.get(), hashes.get() + written) - hashes.get();
+    app.clearTapFlash();
+  }
+  startActivityForResultWith<LibraryCategoriesActivity>(
+      [this](const ActivityResult& result) {
+        RenderLock lock(*this);
+        categoriesReady = categories.load() != library::LibraryCategories::Load::Error;
+        if (!result.isCancelled) clearBatch();
+        if (categoryFilter >= 2 && !*categories.name(categoryFilter - 2)) categoryFilter = 0;
+        // A cancelled batch retains its selection and order. No membership edits
+        // are committed until Save; names created in the child remain available.
+        if (!batchMode) applyFilter();
+        swallowHeldReleases();
+        requestUpdate();
+      },
+      std::move(hashes), written);
 }
 
 void LibraryListActivity::resetAfterRebuild() {
@@ -457,17 +597,11 @@ void LibraryListActivity::promptDeleteBookByPath(const std::string& path, const 
         if (!Storage.remove(path.c_str())) LOG_ERR("LIB", "cannot delete %s", path.c_str());
         RickyStorageActivity::invalidateScan();
         if (RECENT_BOOKS.removeByPath(path)) RECENT_BOOKS.saveToFile();
-        GUI.drawPopup(renderer, tr(STR_LIBRARY_REBUILDING));
-        rebuildIndex();
       }
       if (!index.open(library::libraryIndexPath())) LOG_ERR("LIB", "cannot reopen library index");
-      if (!result.isCancelled) {
-        resetAfterRebuild();
-      }
     }
     if (!result.isCancelled) {
-      closeRouting();
-      requestUpdate(true);
+      promptRebuildIndex();
     }
   });
 }
@@ -489,6 +623,7 @@ void LibraryListActivity::onTabAction(const int index) {
 }
 
 void LibraryListActivity::selectTab(const int index, const bool toggleIfActive) {
+  if (batchMode) return;
   if (index < 0 || index >= TAB_SLOTS) return;
   if (toggleIfActive && index == activeTab()) descendingTabs ^= static_cast<uint8_t>(1u << index);
   sortOrder = orderForTab(index, descendingTabs);
@@ -519,7 +654,7 @@ fui::TabIndicator LibraryListActivity::tabIndicator(const int index) const {
 }
 
 int LibraryListActivity::bookRowCount() const {
-  if (readingFilter != 0) return filteredCount;
+  if (readingFilter != 0 || categoryFilter != 0) return filteredCount;
   if (!query.empty()) return static_cast<int>(filteredCount);
   // Pinned books already in the index are skipped below the pins, not doubled;
   // pinned books the index missed still show, so the difference stays split.
@@ -534,7 +669,7 @@ int LibraryListActivity::listCount() const { return groupsCollapsed ? static_cas
 // With pins active, entries below pinnedCount() belong to the store and must
 // not reach this; the rest walk past the pinned books' own sort rows.
 int LibraryListActivity::rowFor(const int entry) const {
-  if (!query.empty() || readingFilter != 0) {
+  if (!query.empty() || readingFilter != 0 || categoryFilter != 0) {
     if (entry < 0 || entry >= static_cast<int>(filteredCount) || !filtered) return 0;
     return filtered[entry];
   }
@@ -646,7 +781,15 @@ void LibraryListActivity::applyFilter() {
   // The header shows the active query in place of the screen title, so the
   // reader can see what narrowed the list without reopening the keyboard.
   headerSearchTitle = query.empty() ? std::string() : "“" + query + "”";
-  if (query.empty() && readingFilter == 0) return;
+  if (query.empty() && readingFilter == 0 && categoryFilter == 0) return;
+
+  std::unique_ptr<uint64_t[]> categoryHashes;
+  size_t categoryHashCount = 0;
+  if (categoryFilter &&
+      (!categoriesReady || !categories.loadHashes(categoryFilter - 2, categoryHashes, categoryHashCount))) {
+    filterFailed = true;
+    return;
+  }
 
   const std::string needle = library::fold(query);
   const int total = static_cast<int>(index.bookCount());
@@ -665,10 +808,22 @@ void LibraryListActivity::applyFilter() {
     const uint16_t ordinal = index.ordinalForRow(sortOrder, static_cast<uint16_t>(row));
     library::ClixRecord record{};
     if (ordinal == 0xFFFF || !index.readRecord(ordinal, record)) continue;
+    if (categoryFilter) {
+      uint64_t hash = 0;
+      if (!index.readPathHash(record, hash)) {
+        filterFailed = true;
+        return;
+      }
+      const bool present =
+          categoryHashCount && std::binary_search(categoryHashes.get(), categoryHashes.get() + categoryHashCount, hash);
+      if (categoryFilter == 1 ? present : !present) continue;
+    }
     if (readingFilter != 0) {
       std::string path;
       if (!index.readPath(record, path)) continue;
-      const auto* stats = READING_STATS.findMatchingBookForPath(path);
+      // Shelf filtering must not content-hash every unread file. Path aliases
+      // are already resident; content reconciliation belongs to book opening.
+      const auto* stats = READING_STATS.findBook(path);
       const bool started = stats != nullptr;
       const bool reading = started && !stats->completed;
       if ((readingFilter == 1 && !reading) || (readingFilter == 2 && started)) continue;
@@ -698,6 +853,12 @@ void LibraryListActivity::applyFilter() {
 // clear the search, expand collapsed groups, return focus to the tabs, then
 // leave for home.
 void LibraryListActivity::handleBackAction() {
+  if (batchMode) {
+    RenderLock lock(*this);
+    clearBatch();
+    requestUpdate();
+    return;
+  }
   auto& nav = activeNav();
   if (!query.empty()) {
     query.clear();
@@ -738,7 +899,7 @@ bool LibraryListActivity::rowTextFor(const int entry, std::string& title, std::s
   if (entry < pinnedCount()) {
     const auto& books = RECENT_BOOKS.getBooks();
     if (entry < 0 || entry >= static_cast<int>(books.size())) return false;
-    const auto& book = books[static_cast<size_t>(entry)];
+    const auto& book = books[pinnedStoreRows[entry]];
     title = book.title;
     author = book.author;
     if (fileName) *fileName = book.path;
@@ -791,6 +952,10 @@ bool LibraryListActivity::handleButtons() {
   // ActivityManager::loop() before any activity runs, so it cannot land in
   // the freshly opened confirmation and select its default.
   if (mappedInput.wasLongPressed(MappedInputManager::Button::Confirm, LONG_PRESS_MS)) {
+    if (batchMode) {
+      batchAction();  // physical-button path to assigning a cross-page batch
+      return true;
+    }
     if (tabsFocused()) {
       if (!degraded) toggleSortDirection();
     } else if (isRecentSort(sortOrder)) {
@@ -812,7 +977,10 @@ bool LibraryListActivity::handleButtons() {
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     if (tabsFocused()) {
-      stepTab(1);
+      if (batchMode)
+        batchAction();
+      else
+        stepTab(1);
       return true;
     }
     if (count > 0) activateIndex(selectedEntry());
@@ -839,7 +1007,7 @@ void LibraryListActivity::navigateButtons() {
   });
   // Search is an activation: defer it so holding Previous can still step tabs.
   buttonNavigator.onPreviousRelease([this] {
-    if (navigationStartedOnTabs && tabsFocused() && !degraded) openSearch();
+    if (navigationStartedOnTabs && tabsFocused()) openShelfTools();
   });
   // A held button steps tabs while the strip has focus (the base behaviour
   // Settings keeps) and page-jumps once the selection is down in the rows,
@@ -1021,7 +1189,7 @@ void LibraryListActivity::buildScreen(UiScreen& screen) {
 bool LibraryListActivity::entryPath(int entry, std::string& path) {
   if (entry < 0 || entry >= bookRowCount()) return false;
   if (entry < pinnedCount()) {
-    path = RECENT_BOOKS.getBooks()[entry].path;
+    path = RECENT_BOOKS.getBooks()[pinnedStoreRows[entry]].path;
     return true;
   }
   const auto ordinal = index.ordinalForRow(sortOrder, rowFor(entry));
@@ -1059,9 +1227,16 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
   const int count = bookRowCount();
   auto titleRect = screen.takeTop(ricky::ds::layout::kPageHeaderHeight, 0);
   auto countRect = titleRect;
+  auto addRect = titleRect;
+  addRect.width = ricky::ds::layout::kTouchMin;
+  addRect.x = titleRect.right() - addRect.width;
+  auto addStyle = theme.titleText;
+  addStyle.align = fui::TextAlign::Center;
+  screen.target().text(addRect, "+", addStyle);
+  screen.frame().hit(addRect, ACTION_ADD, 0, fui::InputTouch);
   countRect.width = titleRect.width / 3;
-  countRect.x = titleRect.right() - countRect.width;
-  titleRect.width -= countRect.width + gap;
+  countRect.x = addRect.x - gap - countRect.width;
+  titleRect.width -= countRect.width + addRect.width + gap * 2;
   auto pageTitle = theme.titleText;
   pageTitle.bold = true;
   screen.target().text(titleRect, headerTitle(), pageTitle);
@@ -1079,7 +1254,7 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
   moreRect.width = moreWidth;
   RickyPageUi::pageIcon(screen.target(), renderer, moreRect.x + (moreRect.width - 40) / 2,
                         moreRect.y + moreRect.height / 2, icon_ricky_filter_40);
-  screen.frame().hit(moreRect, ACTION_SHELF_OPTIONS, 0, fui::InputTouch);
+  screen.frame().hit(moreRect, ACTION_ADD, SortTools, fui::InputTouch);
   const StrId filterLabels[] = {StrId::STR_RICKY_BOOKS_ALL, StrId::STR_RICKY_BOOKS_READING,
                                 StrId::STR_RICKY_BOOKS_UNREAD};
   int widestLabel = 0;
@@ -1108,10 +1283,31 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
     label.align = fui::TextAlign::Center;
     screen.target().text(labelRect, I18N.get(filterLabels[i]), label);
   }
+  // Category is independent of reading status. One quiet line, not another
+  // strip of chips; category and batch actions share the drawn/hit geometry.
+  auto categoryRow = screen.takeTop(ricky::ds::layout::kTouchMin, gap);
+  auto categoryRect = categoryRow;
+  categoryRect.width = (categoryRow.width - gap) * 2 / 3;
+  auto batchRect = categoryRow;
+  batchRect.x = categoryRect.right() + gap;
+  batchRect.width = categoryRow.right() - batchRect.x;
+  auto caption = theme.smallText;
+  caption.color = fui::Color::DarkGray;
+  char selectedText[64];
+  snprintf(selectedText, sizeof(selectedText), tr(STR_LIBRARY_BATCH_SELECTED), static_cast<unsigned>(batchCount));
+  const char* categoryName = categoryFilter == 0   ? tr(STR_LIBRARY_ALL_CATEGORIES)
+                             : categoryFilter == 1 ? tr(STR_LIBRARY_UNCATEGORIZED)
+                                                   : categories.name(categoryFilter - 2);
+  screen.target().text(categoryRect, batchMode ? selectedText : categoryName, caption);
+  caption.align = fui::TextAlign::Right;
+  screen.target().text(batchRect, batchMode ? tr(STR_LIBRARY_ASSIGN_CATEGORY) : tr(STR_LIBRARY_BATCH), caption);
+  screen.frame().hit(categoryRect, ACTION_ADD, ManageCategories, fui::InputTouch);
+  screen.frame().hit(batchRect, ACTION_ADD, BatchSelect, fui::InputTouch);
   if (count == 0) {
-    screen.centeredText(
-        filterFailed ? tr(STR_LIBRARY_SEARCH_UNAVAILABLE)
-                     : (query.empty() && readingFilter == 0 ? tr(STR_LIBRARY_EMPTY) : tr(STR_LIBRARY_NO_RESULTS)));
+    screen.centeredText(filterFailed ? tr(STR_LIBRARY_SEARCH_UNAVAILABLE)
+                                     : (query.empty() && readingFilter == 0 && categoryFilter == 0
+                                            ? tr(STR_LIBRARY_NOT_ENROLLED)
+                                            : tr(STR_LIBRARY_NO_RESULTS)));
     return;
   }
   const bool multiplePages = count > SHELF_CAPACITY;
@@ -1149,7 +1345,7 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
       const auto& path = shelfPaths[i];
       // Reading state only: "EPUB · 已读 12%" overflowed a three-column card, and the
       // format already shows on generated covers.
-      const auto* stats = READING_STATS.findMatchingBookForPath(path);
+      const auto* stats = READING_STATS.findBook(path);
       if (stats && stats->lastProgressPercent >= 100)
         snprintf(shelfDetails[i].data(), shelfDetails[i].size(), "%s", tr(STR_RICKY_BOOK_FINISHED));
       else if (stats)
@@ -1159,27 +1355,17 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
         snprintf(shelfDetails[i].data(), shelfDetails[i].size(), "%s", tr(STR_RICKY_BOOK_UNREAD));
       shelfCovers[i].clear();
     }
-    index.close();
     [[maybe_unused]] const auto perfThumbStart = millis();
-    // Do not loan a framebuffer that already contains the header and controls.
-    // Existing thumbnail parsers use fallible temporary scratch, released per
-    // book; a failed conversion leaves the cover placeholder usable.
+    // Look up only retained thumbnail names. Painting a page must never unzip
+    // EPUBs or create images; the existing title-cover design is the fallback.
     for (int i = 0; i < visible; ++i) {
       if (shelfPaths[i].empty()) continue;
       // A cover already drawn this session was a valid thumbnail: skip the card.
       std::string drawn = BookCoverLoader::thumbnailPath(shelfPaths[i], coverHeight);
-      shelfCovers[i] = !drawn.empty() && PanelTileCache::hasOwner(drawn)
-                           ? std::move(drawn)
-                           : BookCoverLoader::ensureThumbnail(shelfPaths[i], coverHeight);
+      shelfCovers[i] = std::move(drawn);  // cached-only; missing files use the designed title cover
     }
     RICKY_PERF("shelf", "start=%d records=%lu thumbs=%lu", start, perfThumbStart - perfShelfStart,
                millis() - perfThumbStart);
-    if (!index.open(library::libraryIndexPath())) {
-      LOG_ERR("LIB", "cannot reopen shelf index");
-      shelfStart = -1;
-      requestUpdate();
-      return;
-    }
     shelfStart = start;
     shelfHeight = coverHeight;
   }
@@ -1188,7 +1374,9 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
     const fui::Rect cell{static_cast<int16_t>(body.x + slot % columns * (cellWidth + gap)),
                          static_cast<int16_t>(body.y + slot / columns * (rowHeight + gap)),
                          static_cast<int16_t>(cellWidth), static_cast<int16_t>(coverHeight + cardExtraHeight)};
-    const bool picked = showMainTabContentSelection() && paging.selectedIndex == start + slot;
+    const int entry = start + slot;
+    const bool picked = batchMode ? (batchSelected[entry / 8] & (1u << (entry % 8))) != 0
+                                  : showMainTabContentSelection() && paging.selectedIndex == entry;
     if (picked) RickyDesignUi::fill(renderer, cell, ricky::ds::gray::kInk, ricky::ds::radius::kControl);
     const int coverWidth = coverHeight * 2 / 3;
     const fui::Rect rect{static_cast<int16_t>(cell.x + (cell.width - coverWidth) / 2),

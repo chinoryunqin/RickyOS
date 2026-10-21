@@ -92,10 +92,26 @@ def patch_retained_gray(dependency):
         driver.write_text(source.replace(anchor, RETAINED_GRAY + anchor))
 
 
+def patch_dns_result(dependency):
+    """Match Arduino DNSServer::start's bool result in the pinned host stub."""
+    path = Path(dependency) / 'src/DNSServer.h'
+    source = path.read_text()
+    for argument in ('const IPAddress &ip', 'const char *ip'):
+        old = f'void start(int port, const char *name, {argument}) {{}}'
+        new = f'bool start(int port, const char *name, {argument}) {{ return true; }}'
+        if new in source:
+            continue
+        if source.count(old) != 1:
+            raise RuntimeError('Simulator DNS stub changed; review its start result.')
+        source = source.replace(old, new)
+    path.write_text(source)
+
+
 if 'Import' in globals():
     Import('env')  # noqa: F821 -- supplied by PlatformIO/SCons
     if env.subst('$PIOENV') in ('simulator_rickyos', 'simulator_rickyos_eego_a4'):  # noqa: F821
         dependency = Path(env.subst('$PROJECT_LIBDEPS_DIR')) / env.subst('$PIOENV') / 'simulator'  # noqa: F821
         patch_task_notify(dependency / 'src/freertos/task.h')
+        patch_dns_result(dependency)
         if env.subst('$PIOENV') == 'simulator_rickyos':
             patch_retained_gray(dependency)

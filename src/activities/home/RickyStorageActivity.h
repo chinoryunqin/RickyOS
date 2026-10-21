@@ -26,11 +26,11 @@ class RickyStorageActivity final : public UiListActivity {
   void drawFooter() override;
 
  private:
-  enum class Space : uint8_t { Measuring, Ready, Unavailable };
+  enum class Space : uint8_t { NotMeasured, Measuring, Ready, Unavailable };
   // Folder behind a content card; the first existing candidate wins.
   static const char* folderFor(int index);
   bool folderMissing = false;
-  Space space = Space::Measuring;
+  Space space = Space::NotMeasured;
   uint64_t sdTotalBytes = 0;
   uint64_t sdFreeBytes = 0;
   std::array<int, 4> counts{-1, -1, -1, -1};  // books, fonts, images, downloads; -1 = unknown
@@ -38,7 +38,7 @@ class RickyStorageActivity final : public UiListActivity {
   bool counting = false;                      // a background pass is running
 
  public:
-  // Something changed the card (a delete, an import): count again on the next visit.
+  // Something changed the card: saved counts are stale; Refresh recomputes them.
   static void invalidateScan();
 
  private:

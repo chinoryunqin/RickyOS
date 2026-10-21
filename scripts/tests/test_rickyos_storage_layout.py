@@ -81,7 +81,7 @@ class RickyStorageLayoutTest(unittest.TestCase):
         self.assertNotIn('Storage.getSpace', enter)
         # Saved numbers first; free space when old, counts only when marked stale.
         self.assertIn('loadStats();', enter)
-        self.assertIn('if (freeOld || countsOld) startStorageScan(countsOld);', enter)
+        self.assertNotIn('startStorageScan(', enter)
         self.assertIn('indexBookCount()', enter)
         scan = body(page, 'void scanStorageTask(void*)')
         # Sliced free-space walk: one long FAT scan used to hold the SD lock for seconds.
@@ -101,8 +101,7 @@ class RickyStorageLayoutTest(unittest.TestCase):
         self.assertIn('library::isLibraryIndexDirty()', body(page, 'int indexBookCount()'))
         self.assertIn('scanCancel.store(true);', body(page, 'void RickyStorageActivity::onExit()'))
         refresh = body(page, 'void RickyStorageActivity::refresh()')
-        self.assertIn('library::buildLibraryIndex("/", stats, SETTINGS.libraryUseMetadata != 0)', refresh)
-        self.assertLess(refresh.index('buildLibraryIndex'), refresh.index('indexBookCount()'))
+        self.assertNotIn('buildLibraryIndex', refresh)
         self.assertIn('startStorageScan(true);', refresh)
         self.assertIn('Storage.writeFile(kStalePath, "1")', body(page, 'void RickyStorageActivity::invalidateScan()'))
         walk = body(page, 'int countFiles(')
