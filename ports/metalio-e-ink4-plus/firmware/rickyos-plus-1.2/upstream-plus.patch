@@ -188703,7 +188703,16 @@
  #include "MappedInputManager.h"
  #include "ReadingStatsStore.h"
  #include "RecentBooksStore.h"
-@@ -83,20 +88,44 @@
+@@ -39,6 +44,8 @@
+ namespace fui = freeink::ui;
+ 
+ namespace {
++// Recent books that vanished are pruned at most every ten minutes, and after transfers.
++unsigned long lastRecentPrune = 0;
+ constexpr int SIDE_PADDING = 12;
+ constexpr unsigned long LONG_PRESS_MS = 1000;
+ 
+@@ -83,20 +90,47 @@
  }
  
  void LibraryListActivity::onEnter() {
@@ -188714,10 +188723,11 @@
 -  // needs the card to itself.
 +  // Publish one coherent cached page. No scan/EPUB parsing runs under this lock.
    RenderLock lock(*this);
++  const unsigned long enterStarted = millis();
    UiTabListActivity::onEnter();
    app.on(ACTION_SEARCH, &LibraryListActivity::searchActionTrampoline, this);
    app.on(ACTION_BACK, &LibraryListActivity::backActionTrampoline, this);
-   app.on(
++  app.on(
 +      ACTION_ADD,
 +      [](const fui::ActionEvent& event, void* ctx) {
 +        auto& self = *static_cast<LibraryListActivity*>(ctx);
@@ -188743,8 +188753,10 @@
 +          self.promptPageJump();
 +      },
 +      this);
++  const unsigned long tCategories = millis();
 +  categoriesReady = categories.load() != library::LibraryCategories::Load::Error;
-+  app.on(
++  const unsigned long tCategoriesDone = millis();
+   app.on(
        ACTION_READING_FILTER,
        [](const fui::ActionEvent& event, void* user) {
          auto& self = *static_cast<LibraryListActivity*>(user);
@@ -188753,7 +188765,7 @@
          RenderLock lock(self);
          self.readingFilter = event.value;
          self.applyFilter();
-@@ -105,57 +134,27 @@
+@@ -105,83 +139,154 @@
          self.requestUpdate();
        },
        this);
@@ -188790,8 +188802,8 @@
  
    // Recent is backed by the resident store. Prune before opening the index so
    // its persistence write never overlaps the long-lived index reader.
-   if (RECENT_BOOKS.pruneMissing()) RECENT_BOOKS.saveToFile();
- 
+-  if (RECENT_BOOKS.pruneMissing()) RECENT_BOOKS.saveToFile();
+-
 -  // Rebuild when the index is missing, invalid, or was built with the other
 -  // metadata mode. Otherwise entering the screen stays instant.
 -  const bool readMetadata = SETTINGS.libraryUseMetadata != 0;
@@ -188803,6 +188815,15 @@
 -    rebuildIndex();
 -    if (!index.open(library::libraryIndexPath())) LOG_ERR("LIB", "cannot open library index");
 -  }
++  const unsigned long tPrune = millis();
++  // Checking every recent book on the card is ~230 ms; books rarely vanish between
++  // two visits, so it runs on the first visit, after transfers and every ten minutes.
++  if (lastRecentPrune == 0 || millis() - lastRecentPrune > 10UL * 60 * 1000 || library::LibraryIncoming::pending()) {
++    lastRecentPrune = millis() | 1;
++    if (RECENT_BOOKS.pruneMissing()) RECENT_BOOKS.saveToFile();
++  }
++  const unsigned long tIndex = millis();
++
 +  // Dirty means an explicit update is available, not permission to walk the
 +  // card on entry. A retained catalog remains usable while imports are pending.
 +  // Nothing enrolled yet: an index left by an earlier whole-card scan is not the
@@ -188812,7 +188833,9 @@
    if (index.isOpen() && index.dedupDegraded()) {
      LOG_ERR("LIB", "index was built without duplicate detection");
    }
++  const unsigned long tPinned = millis();
    resolvePinned();
++  const unsigned long tPinnedDone = millis();
 +  // A shelf an earlier build carried over from before sources: rebuild from the
 +  // enrolled sources only (the import retires the snapshot first).
 +  if (index.isOpen() && Storage.exists(library::LibrarySources::legacyIndexPath()))
@@ -188822,10 +188845,13 @@
  
    // Entered while Confirm was still held (typical when launched from the home
    // menu): ignore its release, or we would open whatever sits at row 0.
-@@ -163,25 +162,114 @@
+   lockNextConfirmRelease = mappedInput.isPressed(MappedInputManager::Button::Confirm);
++  LOG_INF("LIB", "enter: base %lu, categories %lu, recents check %lu, index open %lu, recent rows %lu, total %lu ms",
++          tCategories - enterStarted, tCategoriesDone - tCategories, tIndex - tPrune, tPinned - tIndex,
++          tPinnedDone - tPinned, millis() - enterStarted);
    requestUpdate(true);
- }
- 
++}
++
 +void LibraryListActivity::loop() {
 +  // After the first paint: the import screen replaces the shelf, never the other way round.
 +  if (transferCheckPending && static_cast<long>(millis() - transferCheckAt) >= 0) foldInTransfers();
@@ -188927,8 +188953,8 @@
 +          },
 +          request))
 +    reloadIndex();
-+}
-+
+ }
+ 
  void LibraryListActivity::onExit() {
    index.close();
 +  searchTable.release();
@@ -188953,7 +188979,7 @@
  }
  
  void LibraryListActivity::swallowHeldReleases() {
-@@ -199,7 +287,7 @@
+@@ -199,15 +304,49 @@
  // list the reader narrowed down on purpose, and the ascending toggle asks for
  // oldest-first, which pinned fresh reads would contradict.
  int LibraryListActivity::pinnedCount() const {
@@ -188962,15 +188988,49 @@
    if (activeTabIndex != RECENT_TAB || !query.empty() || !isDescending(sortOrder)) return 0;
    return pinnedTotal;
  }
-@@ -208,6 +296,7 @@
++
++namespace {
++// The pinned rows depend only on the index and the recent-books list. Matching
++// them costs a pass over every record plus a file open per recent book (~240 ms
++// for 3,000 books), so the last answer is kept for as long as neither changed.
++struct PinnedRowsCache {
++  bool valid = false;
++  uint64_t key = 0;
++  uint8_t total = 0;
++  uint16_t ascRows[RecentBooksStore::MAX_RECENT_BOOKS] = {};
++  uint8_t storeRows[RecentBooksStore::MAX_RECENT_BOOKS] = {};
++} pinnedRowsCache;
++
++uint64_t pinnedRowsKey(const library::LibraryIndexFile& index, const std::vector<RecentBook>& books) {
++  uint64_t hash = 14695981039346656037ULL;
++  const auto mix = [&hash](const void* data, size_t length) {
++    const auto* bytes = static_cast<const uint8_t*>(data);
++    for (size_t i = 0; i < length; ++i) hash = (hash ^ bytes[i]) * 1099511628211ULL;
++  };
++  const auto& head = index.header();
++  mix(&head, sizeof(head));  // sizes, counts and section offsets change with every rebuild
++  for (const auto& book : books) mix(book.path.data(), book.path.size() + 1);
++  return hash;
++}
++}  // namespace
+ 
+ void LibraryListActivity::resolvePinned() {
    shelfStart = -1;
    const auto& books = RECENT_BOOKS.getBooks();
++  const uint64_t key = index.isOpen() ? pinnedRowsKey(index, books) : 0;
++  if (index.isOpen() && pinnedRowsCache.valid && pinnedRowsCache.key == key) {
++    pinnedTotal = pinnedRowsCache.total;
++    std::copy(std::begin(pinnedRowsCache.ascRows), std::end(pinnedRowsCache.ascRows), pinnedAscRows);
++    std::copy(std::begin(pinnedRowsCache.storeRows), std::end(pinnedRowsCache.storeRows), pinnedStoreRows);
++    refreshOverlap();
++    return;
++  }
    pinnedTotal = static_cast<uint8_t>(std::min<size_t>(books.size(), RecentBooksStore::MAX_RECENT_BOOKS));
 +  for (int i = 0; i < pinnedTotal; ++i) pinnedStoreRows[i] = i;
    for (int i = 0; i < pinnedTotal; i++) pinnedAscRows[i] = 0xFFFF;
    if (pinnedTotal > 0 && index.isOpen()) {
      library::BookIdentity identities[RecentBooksStore::MAX_RECENT_BOOKS];
-@@ -229,6 +318,15 @@
+@@ -229,6 +368,22 @@
        pinnedTotal = 0;
      }
    }
@@ -188983,10 +189043,17 @@
 +    pinnedStoreRows[included++] = i;
 +  }
 +  pinnedTotal = included;
++  if (index.isOpen()) {
++    pinnedRowsCache.valid = true;
++    pinnedRowsCache.key = key;
++    pinnedRowsCache.total = pinnedTotal;
++    std::copy(std::begin(pinnedAscRows), std::end(pinnedAscRows), pinnedRowsCache.ascRows);
++    std::copy(std::begin(pinnedStoreRows), std::end(pinnedStoreRows), pinnedRowsCache.storeRows);
++  }
    refreshOverlap();
  }
  
-@@ -249,7 +347,7 @@
+@@ -249,7 +404,7 @@
    if (selectedEntry() < pinnedCount()) {
      const auto& books = RECENT_BOOKS.getBooks();
      if (selectedEntry() >= static_cast<int>(books.size())) return;
@@ -188995,7 +189062,7 @@
    } else {
      if (!index.isOpen()) return;
      const uint16_t ordinal = index.ordinalForRow(sortOrder, static_cast<uint16_t>(rowFor(selectedEntry())));
-@@ -275,6 +373,17 @@
+@@ -275,6 +430,17 @@
  }
  
  void LibraryListActivity::activateIndex(const int index) {
@@ -189013,7 +189080,7 @@
    if (groupsCollapsed) {
      expandGroup(index);
    } else {
-@@ -289,7 +398,13 @@
+@@ -289,7 +455,13 @@
  bool LibraryListActivity::deleteEligible() const { return !groupsCollapsed && (!query.empty() || !groupable()); }
  
  void LibraryListActivity::onRowLongPress(const int index) {
@@ -189028,7 +189095,7 @@
      showRecentBookOptions(index);
    } else if (deleteEligible()) {
      promptDeleteBook(index);
-@@ -312,8 +427,8 @@
+@@ -312,8 +484,8 @@
    if (isStoreRow) {
      const auto& books = RECENT_BOOKS.getBooks();
      if (entry >= static_cast<int>(books.size())) return;
@@ -189039,7 +189106,7 @@
    } else {
      if (!index.isOpen()) return;
      const uint16_t ordinal = index.ordinalForRow(sortOrder, static_cast<uint16_t>(rowFor(entry)));
-@@ -326,10 +441,12 @@
+@@ -326,10 +498,12 @@
      }
    }
  
@@ -189055,7 +189122,7 @@
                     [this, path, title, isStoreRow](const int choice) {
                       swallowHeldReleases();
                       switch (choice) {
-@@ -337,20 +454,16 @@
+@@ -337,20 +511,16 @@
                           openBookByPath(path);
                           break;
                         case 1:
@@ -189082,7 +189149,7 @@
                           break;
                         default:
                           break;
-@@ -359,17 +472,209 @@
+@@ -359,17 +529,209 @@
    requestUpdate();
  }
  
@@ -189299,7 +189366,7 @@
  }
  
  void LibraryListActivity::resetAfterRebuild() {
-@@ -456,25 +761,33 @@
+@@ -456,25 +818,33 @@
          if (!Storage.remove(path.c_str())) LOG_ERR("LIB", "cannot delete %s", path.c_str());
          RickyStorageActivity::invalidateScan();
          if (RECENT_BOOKS.removeByPath(path)) RECENT_BOOKS.saveToFile();
@@ -189343,7 +189410,7 @@
  }
  
  void LibraryListActivity::stepTab(const int direction) {
-@@ -488,6 +801,7 @@
+@@ -488,6 +858,7 @@
  }
  
  void LibraryListActivity::selectTab(const int index, const bool toggleIfActive) {
@@ -189351,7 +189418,7 @@
    if (index < 0 || index >= TAB_SLOTS) return;
    if (toggleIfActive && index == activeTab()) descendingTabs ^= static_cast<uint8_t>(1u << index);
    sortOrder = orderForTab(index, descendingTabs);
-@@ -518,7 +832,7 @@
+@@ -518,7 +889,7 @@
  }
  
  int LibraryListActivity::bookRowCount() const {
@@ -189360,7 +189427,7 @@
    if (!query.empty()) return static_cast<int>(filteredCount);
    // Pinned books already in the index are skipped below the pins, not doubled;
    // pinned books the index missed still show, so the difference stays split.
-@@ -533,7 +847,7 @@
+@@ -533,7 +904,7 @@
  // With pins active, entries below pinnedCount() belong to the store and must
  // not reach this; the rest walk past the pinned books' own sort rows.
  int LibraryListActivity::rowFor(const int entry) const {
@@ -189369,7 +189436,7 @@
      if (entry < 0 || entry >= static_cast<int>(filteredCount) || !filtered) return 0;
      return filtered[entry];
    }
-@@ -631,8 +945,8 @@
+@@ -631,8 +1002,8 @@
    requestUpdate();
  }
  
@@ -189380,7 +189447,7 @@
  // array is allocated once with the exact upper bound and fails back to an
  // explicit message rather than letting vector growth abort the firmware.
  void LibraryListActivity::applyFilter() {
-@@ -645,11 +959,24 @@
+@@ -645,11 +1016,24 @@
    // The header shows the active query in place of the screen title, so the
    // reader can see what narrowed the list without reopening the keyboard.
    headerSearchTitle = query.empty() ? std::string() : "“" + query + "”";
@@ -189406,7 +189473,7 @@
  
    auto matches = makeUniqueNoThrow<uint16_t[]>(static_cast<size_t>(total));
    if (!matches) {
-@@ -661,13 +988,48 @@
+@@ -661,13 +1045,48 @@
    uint16_t matchCount = 0;
    std::string author;
    for (int row = 0; row < total; row++) {
@@ -189456,7 +189523,7 @@
        const bool started = stats != nullptr;
        const bool reading = started && !stats->completed;
        if ((readingFilter == 1 && !reading) || (readingFilter == 2 && started)) continue;
-@@ -691,12 +1053,21 @@
+@@ -691,12 +1110,21 @@
    }
    filtered = std::move(matches);
    filteredCount = matchCount;
@@ -189478,7 +189545,7 @@
    auto& nav = activeNav();
    if (!query.empty()) {
      query.clear();
-@@ -737,7 +1108,7 @@
+@@ -737,7 +1165,7 @@
    if (entry < pinnedCount()) {
      const auto& books = RECENT_BOOKS.getBooks();
      if (entry < 0 || entry >= static_cast<int>(books.size())) return false;
@@ -189487,7 +189554,7 @@
      title = book.title;
      author = book.author;
      if (fileName) *fileName = book.path;
-@@ -779,7 +1150,7 @@
+@@ -779,7 +1207,7 @@
  // up to its page, so swiping back from there never left the last page. Scrolling stays
  // in UiListActivity::loop(), after the touch is routed: taking the swipe earlier left
  // the touched book pressed (drawn inverted) because its release never reached the UI.
@@ -189496,7 +189563,7 @@
  
  bool LibraryListActivity::handleButtons() {
    const int count = listCount();
-@@ -790,6 +1161,10 @@
+@@ -790,6 +1218,10 @@
    // ActivityManager::loop() before any activity runs, so it cannot land in
    // the freshly opened confirmation and select its default.
    if (mappedInput.wasLongPressed(MappedInputManager::Button::Confirm, LONG_PRESS_MS)) {
@@ -189507,7 +189574,7 @@
      if (tabsFocused()) {
        if (!degraded) toggleSortDirection();
      } else if (isRecentSort(sortOrder)) {
-@@ -811,7 +1186,10 @@
+@@ -811,7 +1243,10 @@
  
    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
      if (tabsFocused()) {
@@ -189519,7 +189586,7 @@
        return true;
      }
      if (count > 0) activateIndex(selectedEntry());
-@@ -838,7 +1216,7 @@
+@@ -838,7 +1273,7 @@
    });
    // Search is an activation: defer it so holding Previous can still step tabs.
    buttonNavigator.onPreviousRelease([this] {
@@ -189528,7 +189595,7 @@
    });
    // A held button steps tabs while the strip has focus (the base behaviour
    // Settings keeps) and page-jumps once the selection is down in the rows,
-@@ -1020,7 +1398,7 @@
+@@ -1020,7 +1455,7 @@
  bool LibraryListActivity::entryPath(int entry, std::string& path) {
    if (entry < 0 || entry >= bookRowCount()) return false;
    if (entry < pinnedCount()) {
@@ -189537,7 +189604,7 @@
      return true;
    }
    const auto ordinal = index.ordinalForRow(sortOrder, rowFor(entry));
-@@ -1047,13 +1425,33 @@
+@@ -1047,13 +1482,33 @@
    constexpr int cardInset = 8;
    constexpr int cardTextGap = 8;
    constexpr int cardSideInset = 6;
@@ -189574,7 +189641,7 @@
    auto pageTitle = theme.titleText;
    pageTitle.bold = true;
    screen.target().text(titleRect, headerTitle(), pageTitle);
-@@ -1071,7 +1469,7 @@
+@@ -1071,7 +1526,7 @@
    moreRect.width = moreWidth;
    RickyPageUi::pageIcon(screen.target(), renderer, moreRect.x + (moreRect.width - 40) / 2,
                          moreRect.y + moreRect.height / 2, icon_ricky_filter_40);
@@ -189583,7 +189650,7 @@
    const StrId filterLabels[] = {StrId::STR_RICKY_BOOKS_ALL, StrId::STR_RICKY_BOOKS_READING,
                                  StrId::STR_RICKY_BOOKS_UNREAD};
    int widestLabel = 0;
-@@ -1100,37 +1498,69 @@
+@@ -1100,37 +1555,69 @@
      label.align = fui::TextAlign::Center;
      screen.target().text(labelRect, I18N.get(filterLabels[i]), label);
    }
@@ -189672,7 +189739,7 @@
      for (int i = 0; i < visible; ++i) {
        rowTextFor(start + i, shelfTitles[i], shelfAuthors[i]);
        RickyPageUi::stripBookExtension(shelfTitles[i]);
-@@ -1138,7 +1568,7 @@
+@@ -1138,7 +1625,7 @@
        const auto& path = shelfPaths[i];
        // Reading state only: "EPUB · 已读 12%" overflowed a three-column card, and the
        // format already shows on generated covers.
@@ -189681,7 +189748,7 @@
        if (stats && stats->lastProgressPercent >= 100)
          snprintf(shelfDetails[i].data(), shelfDetails[i].size(), "%s", tr(STR_RICKY_BOOK_FINISHED));
        else if (stats)
-@@ -1148,33 +1578,65 @@
+@@ -1148,33 +1635,67 @@
          snprintf(shelfDetails[i].data(), shelfDetails[i].size(), "%s", tr(STR_RICKY_BOOK_UNREAD));
        shelfCovers[i].clear();
      }
@@ -189711,6 +189778,8 @@
 +    }
 +    RICKY_PERF("shelf", "start=%d records=%lu thumbs=%lu", start, perfThumbStart - perfShelfStart,
 +               millis() - perfThumbStart);
++    LOG_INF("LIB", "page %d: records %lu, covers %lu ms", start, perfThumbStart - perfShelfStart,
++            millis() - perfThumbStart);
      shelfStart = start;
      shelfHeight = coverHeight;
 -  }
@@ -189765,7 +189834,7 @@
      if (picked) RickyDesignUi::fill(renderer, cell, ricky::ds::gray::kInk, ricky::ds::radius::kControl);
      const int coverWidth = coverHeight * 2 / 3;
      const fui::Rect rect{static_cast<int16_t>(cell.x + (cell.width - coverWidth) / 2),
-@@ -1196,9 +1658,14 @@
+@@ -1196,9 +1717,14 @@
                                       });
        if (painted) screen.target().stroke(rect, fui::Paint::solid(fui::Color::LightGray), ricky::ds::stroke::kHairline);
      }
@@ -189781,7 +189850,7 @@
        RickyDesignUi::cover(renderer, rect, shelfTitles[slot].c_str(), format);
      }
      const fui::Rect titleRect{static_cast<int16_t>(cell.x + cardSideInset),
-@@ -1211,18 +1678,24 @@
+@@ -1211,18 +1737,24 @@
      // never mixes the caption and body sizes.
      RickyDesignUi::text(renderer, titleRect, shelfTitles[slot].c_str(), RickyDesignUi::BODY, picked,
                          fui::TextAlign::Center);
@@ -189812,6 +189881,16 @@
  }
  
  // "12/69 books" at the bottom right: which book is selected, out of how many.
+@@ -1274,7 +1806,9 @@
+ void LibraryListActivity::render(RenderLock&& lock) {
+   if (optionPopup.isActive()) renderPopupUnderlay();
+   if (optionPopup.processRender(renderer, mappedInput)) return;
++  const unsigned long started = millis();
+   UiTabListActivity::render(std::move(lock));
++  LOG_INF("LIB", "render %lu ms (panel included)", millis() - started);
+ }
+ 
+ void LibraryListActivity::drawFooter() {
 --- a/src/activities/library/LibraryListActivity.h
 +++ b/src/activities/library/LibraryListActivity.h
 @@ -1,5 +1,6 @@

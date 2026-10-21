@@ -565,7 +565,7 @@
     {
       "path": "src/activities/library/LibraryListActivity.cpp",
       "baseline_sha256": "390421f0e356311b536e8d9d3ec0f7805fbe83ca0ee641fec6303ce7a995c465",
-      "ported_sha256": "32e42e4110008aff909e62c615005d88efc5abc6296cf6d6b7a9f9519eeee638"
+      "ported_sha256": "069bdfec7bbdfc448e269e7453a94ece12df5e11947323fcd566ff508e1f776a"
     },
     {
       "path": "src/activities/library/LibraryListActivity.h",
