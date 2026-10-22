@@ -167,7 +167,8 @@ int main(){
         self.assertNotIn('RickyStandbySettingsActivity', settings)
         page = (ROOT / 'src/activities/apps/standby/RickyStandbySettingsActivity.cpp').read_text()
         self.assertIn('FileBrowserActivity::Mode::PickWallpaper', page)
-        self.assertIn('startActivityForResultWith<ImageViewerActivity>(previewDone, entry->path, true, sticker)', page)
+        self.assertIn('previewDone, entry->path, true, sticker,', page)
+        self.assertIn('ImageViewerActivity::WallpaperTarget::PowerOff', page)
         self.assertIn('FileBrowserActivity::Mode::PickPng', page)
         viewer = (ROOT / 'src/activities/util/ImageViewerActivity.cpp').read_text()
         on_enter = method(viewer, 'void ImageViewerActivity::onEnter(')
@@ -186,7 +187,8 @@ int main(){
         self.assertIn('copied == expected', install)
         self.assertIn('if (!SETTINGS.saveToFile())', install)
         self.assertIn('SETTINGS.sleepScreen = previousMode', install)
-        self.assertIn('Storage.rename(SLEEP_IMAGE_BACKUP_PATH, SLEEP_IMAGE_PATH)', install)
+        self.assertIn('Storage.rename(backup, destination)', install)
+        self.assertIn('powerOff ? POWER_OFF_IMAGE_BACKUP_PATH : SLEEP_IMAGE_BACKUP_PATH', install)
 
     def test_sleep_network_toasts_do_not_damage_retained_page(self):
         # No plugin delivery on the way into sleep any more: nothing joins Wi-Fi or

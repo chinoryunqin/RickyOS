@@ -1,4 +1,5 @@
 #include "BatteryMonitor.h"
+#include "PmuBatterySample.h"
 
 #include <Arduino.h>
 #include <BoardConfig.h>
@@ -220,7 +221,7 @@ bool cw2017EnsureProfile(const uint8_t addr) {
 bool readPmuBattery(uint16_t& millivolts, uint16_t& socPermille, uint8_t& chargeState) {
   if (g_pmuBatteryHook == nullptr) return false;
   millivolts = 0;
-  socPermille = 0;
+  socPermille = freeink::battery::SOC_UNKNOWN;
   chargeState = 0;
   return g_pmuBatteryHook(millivolts, socPermille, chargeState);
 }
@@ -232,17 +233,12 @@ bool readGaugeSoc(uint16_t& out) {
     uint16_t mv = 0;
     uint16_t permille = 0;
     uint8_t charge = 0;
-    if (!readPmuBattery(mv, permille, charge)) return false;
-    if (permille > 0 && permille <= 1000) {
-      out = static_cast<uint16_t>(permille / 10);
+    if (!readPmuBattery(mv, permille, charge) || !freeink::battery::validPackMillivolts(mv)) return false;
+    if (permille <= 1000) {
+      out = static_cast<uint16_t>((permille + 5u) / 10u);
       return true;
     }
-    // permille 0 is the board's "unknown" (the protocol's 0xFFFF sentinel is
-    // reported as 0), so it cannot be read as an empty pack. Resolve it from the
-    // pack voltage the PMU did report, off the same 1S Li-ion curve as the ADC
-    // path, rather than asserting a level nobody measured.
-    if (mv == 0) return false;
-    out = BatteryMonitor::percentageFromMillivolts(mv);
+    out = freeink::battery::readPicoVoltagePercent(mv);
     return true;
   }
   if (g.gaugeType == BoardConfig::GaugeType::Cw2017) {
@@ -288,7 +284,7 @@ bool readGaugeMillivolts(uint16_t& out) {
     if (!readPmuBattery(mv, permille, charge)) return false;
     // The PMU reports the pack voltage directly (no ADC divider) and 0 when it
     // flags the value invalid, which is a failed read, not 0 mV.
-    if (mv == 0) return false;
+    if (!freeink::battery::validPackMillivolts(mv)) return false;
     out = mv;
     return true;
   }
@@ -333,24 +329,9 @@ bool readGaugeCharging(bool& known) {
       known = false;
       return false;
     }
-    // pmu_charge_state values (read_pico_pmu_protocol.h): CHARGING = 2,
-    // FULL_INFERRED = 3. A full pack still on the charger counts as charging,
-    // matching this project's other externally-powered gauge boards (Paper Mono:
-    // external supply present means charging). UNKNOWN stays unknown so a caller
-    // can fall back to a STAT pin instead of being told "not charging".
-    switch (charge) {
-      case 2:  // PMU_CHARGE_CHARGING
-      case 3:  // PMU_CHARGE_FULL_INFERRED
-        known = true;
-        return true;
-      case 1:  // PMU_CHARGE_NOT_CHARGING
-      case 4:  // PMU_CHARGE_FAULT
-        known = true;
-        return false;
-      default:  // PMU_CHARGE_UNKNOWN
-        known = false;
-        return false;
-    }
+    const auto state = freeink::battery::readPicoChargeState(charge);
+    known = state.known && freeink::battery::validPackMillivolts(mv);
+    return known && state.charging;
   }
   if (g.chargerAddr != 0) {
     uint8_t status = 0;
@@ -378,11 +359,22 @@ bool readGaugeCharging(bool& known) {
 // charge state this stays true at 100%, which is exactly the case that makes
 // charge-based USB inference wrong.
 //
-// Only the BQ25896 answers this. The BQ27220 gauge measures the BATTERY, not
-// the input rail, so there is deliberately no gauge fallback here — reporting
-// "no external power" from a gauge that cannot see the input would be a lie.
+// The Read Pico PMU also reports inferred charger presence (NOT_CHARGING,
+// CHARGING, FULL_INFERRED); keep its qualification/limitations distinct from a
+// measured input rail. BQ27220 measures the battery, so it has no such fallback.
 bool readChargerExternalPower(bool& known) {
   const auto& g = BoardConfig::ACTIVE.batteryGauge;
+  if (g.gaugeType == BoardConfig::GaugeType::Cw32L010Pmu) {
+    uint16_t mv = 0, soc = freeink::battery::SOC_UNKNOWN;
+    uint8_t charge = 0;
+    if (!readPmuBattery(mv, soc, charge) || !freeink::battery::validPackMillivolts(mv)) {
+      known = false;
+      return false;
+    }
+    const auto state = freeink::battery::readPicoChargeState(charge);
+    known = state.known;
+    return known && state.externalPower;
+  }
   if (g.chargerAddr == 0) {
     known = false;
     return false;
@@ -494,6 +486,26 @@ BatteryMonitor::Status BatteryMonitor::readStatus() const {
 #if FREEINK_BATTERY_I2C_GAUGE
   if (BoardConfig::ACTIVE.batteryGauge.gaugeAddr != 0) {
     status.supported = true;
+    if (BoardConfig::ACTIVE.batteryGauge.gaugeType == BoardConfig::GaugeType::Cw32L010Pmu) {
+      uint16_t soc = freeink::battery::SOC_UNKNOWN;
+      uint16_t mv = 0;
+      uint8_t charge = 0;
+      // One CRC-checked PMU frame, not three separately sampled fields.
+      if (!readPmuBattery(mv, soc, charge) || !freeink::battery::validPackMillivolts(mv)) return status;
+      status.millivoltsKnown = true;
+      status.millivolts = mv;
+      status.percentageKnown = true;
+      status.percentage = soc <= 1000 ? (soc + 5u) / 10u : freeink::battery::readPicoVoltagePercent(mv);
+      status.percentageSource = soc <= 1000 ? Status::PercentageSource::PmuVoltageEstimate
+                                          : Status::PercentageSource::VoltageEstimate;
+      const auto state = freeink::battery::readPicoChargeState(charge);
+      status.chargingKnown = status.externalPowerKnown = state.known;
+      status.charging = state.charging;
+      status.externalPower = state.externalPower;
+      status.pmuSocPermille = soc <= 1000 ? soc : freeink::battery::SOC_UNKNOWN;
+      status.pmuChargeState = charge;
+      return status;
+    }
     uint16_t soc = 0;
     if (readGaugeSoc(soc)) {
       status.percentageKnown = true;

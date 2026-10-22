@@ -71,9 +71,10 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
         self.assertLess(render.index('renderNative(renderer, viewport)'), render.index('renderer.clearScreen();'))
         # Leaving a 16-gray picture: the next page must not refresh differentially over it.
         self.assertIn('renderer.requestNextRefresh(HalDisplay::FULL_REFRESH);', body(self.activity, 'void StandbyActivity::onExit()'))
-        picker = body(self.activity, 'void StandbyActivity::openPicturePicker(')
+        page = (ROOT / 'src/activities/apps/standby/RickyStandbySettingsActivity.cpp').read_text()
+        picker = body(page, 'void RickyStandbySettingsActivity::openPicturePicker(')
         self.assertIn('FileBrowserActivity::Mode::PickWallpaper', picker)
-        self.assertIn('startActivityForResultWith<ImageViewerActivity>(reload, entry->path, true)', picker)
+        self.assertIn('previewDone, entry->path, true, sticker,', picker)
 
     def test_overlay_setting_is_persisted_and_translated(self):
         header = (ROOT / 'src/CrossPointSettings.h').read_text()
@@ -118,8 +119,8 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
         install = body(viewer, 'bool ImageViewerActivity::doSetSleepCover(')
         self.assertIn('static char buffer[4096];', install)
         options = body(viewer, 'void ImageViewerActivity::showSleepCoverOptions()')
-        self.assertEqual(options.count('wallpaperPicker'), 3)  # product and legacy PNG paths
-        self.assertEqual(options.count('finish();'), 4)
+        self.assertEqual(options.count('wallpaperPicker'), 4)  # independent power-off, product and legacy PNG paths
+        self.assertEqual(options.count('finish();'), 5)
         self.assertIn('index == 1 ? doSetSticker()', options)
         self.assertIn('!activityManager.isSwitchPending()) onEnter();', body(viewer, 'void ImageViewerActivity::loop()'))
 

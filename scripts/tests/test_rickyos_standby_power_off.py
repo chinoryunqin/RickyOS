@@ -1,4 +1,4 @@
-"""RickyOS Standby & power-off page: styles move to Standby, power-off keeps three screens."""
+"""RickyOS Standby & power-off page, including an independent power-off picture."""
 from pathlib import Path
 import unittest
 
@@ -20,7 +20,7 @@ class RickyStandbyPowerOffTest(unittest.TestCase):
 struct CrossPointSettings {
   enum { DARK = 0, LIGHT, CUSTOM, COVER, BLANK, COVER_CUSTOM, QUICK_RESUME, TRANSPARENT };
   enum { RICKY_STANDBY_PICTURE = 0, RICKY_STANDBY_CALENDAR, RICKY_STANDBY_COVER, RICKY_STANDBY_KEEP_PAGE, RICKY_STANDBY_TRANSPARENT };
-  enum { RICKY_POWER_OFF_SAME = 0, RICKY_POWER_OFF_DEFAULT, RICKY_POWER_OFF_BLANK };
+  enum { RICKY_POWER_OFF_SAME = 0, RICKY_POWER_OFF_DEFAULT, RICKY_POWER_OFF_BLANK, RICKY_POWER_OFF_CUSTOM };
   uint8_t sleepScreen = LIGHT, rickyStandbyFace = 0, rickyPowerOffScreen = 0;
   uint8_t rickySleepScreenMode() const;
 };
@@ -38,6 +38,11 @@ int main() {
   s.rickyPowerOffScreen = S::RICKY_POWER_OFF_BLANK; assert(s.rickySleepScreenMode() == S::BLANK);
   s.rickyPowerOffScreen = S::RICKY_POWER_OFF_DEFAULT; assert(s.rickySleepScreenMode() == S::LIGHT);
   s.sleepScreen = S::DARK; assert(s.rickySleepScreenMode() == S::DARK);
+  s.rickyPowerOffScreen = S::RICKY_POWER_OFF_CUSTOM;
+  for (uint8_t face = 0; face < 5; ++face) {
+    s.rickyStandbyFace = face;
+    assert(s.rickySleepScreenMode() == S::CUSTOM);
+  }
 }
 '''
         run_cpp(program, defines=('RICKYOS_PRODUCT',))
@@ -57,6 +62,7 @@ int main() {
         rows = method(page, 'void RickyStandbySettingsActivity::rebuildRows()')
         off = rows[:rows.index('return;')]
         self.assertIn('add(PowerOffScreen);', off)
+        self.assertIn('add(ChoosePowerOffPicture);', off)
         self.assertIn('add(AutoPowerOff);', off)
         self.assertNotIn('add(Style);', off)
         # Picking and downloading only for the picture; fit, filter and corner for picture and cover.

@@ -174,12 +174,14 @@ constexpr std::array STYLE_LENGTH_FIELDS = {
     &CssStyle::textIndent,   &CssStyle::marginTop,   &CssStyle::marginBottom,  &CssStyle::marginLeft,
     &CssStyle::marginRight,  &CssStyle::paddingTop,  &CssStyle::paddingBottom, &CssStyle::paddingLeft,
     &CssStyle::paddingRight, &CssStyle::imageHeight, &CssStyle::imageWidth,  &CssStyle::fontSize,
+    &CssStyle::borderWidth,  &CssStyle::borderRadius,
 };
 constexpr size_t STYLE_LENGTH_FIELD_COUNT = STYLE_LENGTH_FIELDS.size();
-// ... + display, verticalAlign, listStyleType + colorLuma, fontFamily (u16) + defined bits.
+// ... + display, verticalAlign, listStyleType + colorLuma, fontFamily (u16), backgroundLuma,
+// borderLuma + defined bits.
 constexpr size_t STYLE_WIRE_BYTES =
-    5 + STYLE_LENGTH_FIELD_COUNT * (sizeof(decltype(CssLength::value)) + 1) + 3 + 3 + sizeof(uint32_t);
-constexpr uint32_t CSS_DEFINED_BITS_MASK = (1u << 22) - 1;
+    5 + STYLE_LENGTH_FIELD_COUNT * (sizeof(decltype(CssLength::value)) + 1) + 3 + 5 + sizeof(uint32_t);
+constexpr uint32_t CSS_DEFINED_BITS_MASK = (1u << 25) - 1;
 
 void encodeStyleWire(const CssStyle& style, uint8_t (&out)[STYLE_WIRE_BYTES]) {
   size_t offset = 0;
@@ -203,6 +205,8 @@ void encodeStyleWire(const CssStyle& style, uint8_t (&out)[STYLE_WIRE_BYTES]) {
   out[offset++] = style.colorLuma;
   memcpy(out + offset, &style.fontFamily, sizeof(style.fontFamily));
   offset += sizeof(style.fontFamily);
+  out[offset++] = style.backgroundLuma;
+  out[offset++] = style.borderLuma;
 
   uint32_t definedBits = 0;
   if (style.defined.textAlign) definedBits |= 1 << 0;
@@ -227,6 +231,9 @@ void encodeStyleWire(const CssStyle& style, uint8_t (&out)[STYLE_WIRE_BYTES]) {
   if (style.defined.fontSize) definedBits |= 1 << 19;
   if (style.defined.color) definedBits |= 1 << 20;
   if (style.defined.fontFamily) definedBits |= 1 << 21;
+  if (style.defined.background) definedBits |= 1 << 22;
+  if (style.defined.border) definedBits |= 1 << 23;
+  if (style.defined.borderRadius) definedBits |= 1 << 24;
   memcpy(out + offset, &definedBits, sizeof(definedBits));
 }
 
@@ -275,6 +282,8 @@ bool decodeStyleWire(const uint8_t (&in)[STYLE_WIRE_BYTES], CssStyle& style) {
   style.colorLuma = in[offset++];
   memcpy(&style.fontFamily, in + offset, sizeof(style.fontFamily));
   offset += sizeof(style.fontFamily);
+  style.backgroundLuma = in[offset++];
+  style.borderLuma = in[offset++];
 
   uint32_t definedBits = 0;
   memcpy(&definedBits, in + offset, sizeof(definedBits));
@@ -301,6 +310,62 @@ bool decodeStyleWire(const uint8_t (&in)[STYLE_WIRE_BYTES], CssStyle& style) {
   style.defined.fontSize = (definedBits & 1 << 19) != 0;
   style.defined.color = (definedBits & 1 << 20) != 0;
   style.defined.fontFamily = (definedBits & 1 << 21) != 0;
+  style.defined.background = (definedBits & 1 << 22) != 0;
+  style.defined.border = (definedBits & 1 << 23) != 0;
+  style.defined.borderRadius = (definedBits & 1 << 24) != 0;
+  return true;
+}
+
+// Space-separated tokens of a shorthand value, keeping functions such as rgba(…) and
+// url(…) whole.
+template <typename Visit>
+void forEachShorthandToken(std::string_view value, Visit&& visit) {
+  size_t i = 0;
+  while (i < value.size()) {
+    while (i < value.size() && isCssWhitespace(value[i])) ++i;
+    const size_t start = i;
+    int depth = 0;
+    while (i < value.size() && (depth > 0 || !isCssWhitespace(value[i]))) {
+      if (value[i] == '(') ++depth;
+      if (value[i] == ')' && depth > 0) --depth;
+      ++i;
+    }
+    if (i > start) visit(value.substr(start, i - start));
+  }
+}
+
+bool parseColorLuma(std::string_view value, uint8_t& luma, float* alpha = nullptr);
+
+// A color over white paper, as the panel shows it: alpha blends toward white.
+uint8_t lumaOverPaper(const uint8_t luma, const float alpha) {
+  return static_cast<uint8_t>(std::clamp(255.0f - alpha * (255.0f - luma) + 0.5f, 0.0f, 255.0f));
+}
+
+// The color part of `background` / `background-color`; images and positions are ignored.
+bool parseBackgroundLuma(std::string_view value, uint8_t& luma) {
+  bool found = false;
+  forEachShorthandToken(stripTrailingImportant(value), [&](std::string_view token) {
+    if (found) return;
+    if (iequalsAscii(token, "transparent") || iequalsAscii(token, "none")) {
+      luma = 255;
+      found = true;
+      return;
+    }
+    uint8_t color = 255;
+    float alpha = 1.0f;
+    if (parseColorLuma(token, color, &alpha)) {
+      luma = lumaOverPaper(color, alpha);
+      found = true;
+    }
+  });
+  return found;
+}
+
+bool borderWidthKeyword(const std::string_view token, CssLength& width) {
+  if (iequalsAscii(token, "thin")) width = CssLength{1.0f, CssUnit::Pixels};
+  else if (iequalsAscii(token, "medium")) width = CssLength{3.0f, CssUnit::Pixels};
+  else if (iequalsAscii(token, "thick")) width = CssLength{5.0f, CssUnit::Pixels};
+  else return false;
   return true;
 }
 
@@ -338,7 +403,8 @@ uint8_t lumaOf(const int r, const int g, const int b) {
 
 // CSS color -> luminance. Accepts #rgb, #rgba, #rrggbb, #rrggbbaa, rgb()/rgba() and the named
 // colors e-books actually use. False for transparent / inherit / currentColor / unknown.
-bool parseColorLuma(std::string_view value, uint8_t& luma) {
+bool parseColorLuma(std::string_view value, uint8_t& luma, float* alpha) {
+  if (alpha) *alpha = 1.0f;
   value = trimCssWhitespace(value);
   if (value.empty()) return false;
   if (value.front() == '#') {
@@ -350,6 +416,7 @@ bool parseColorLuma(std::string_view value, uint8_t& luma) {
         if (d < 0) return false;
         rgb[i] = d * 17;
       }
+      if (hex.size() == 4 && alpha && hexDigit(hex[3]) >= 0) *alpha = hexDigit(hex[3]) / 15.0f;
     } else if (hex.size() == 6 || hex.size() == 8) {
       for (int i = 0; i < 3; ++i) {
         const int hi = hexDigit(hex[2 * i]);
@@ -357,6 +424,8 @@ bool parseColorLuma(std::string_view value, uint8_t& luma) {
         if (hi < 0 || lo < 0) return false;
         rgb[i] = hi * 16 + lo;
       }
+      if (hex.size() == 8 && alpha && hexDigit(hex[6]) >= 0 && hexDigit(hex[7]) >= 0)
+        *alpha = (hexDigit(hex[6]) * 16 + hexDigit(hex[7])) / 255.0f;
     } else {
       return false;
     }
@@ -375,12 +444,16 @@ bool parseColorLuma(std::string_view value, uint8_t& luma) {
     forEachDelimitedToken(value.substr(open + 1, close - open - 1),
                           [](const char c) { return c == ',' || c == '/' || isCssWhitespace(c); },
                           [&](std::string_view token) {
-                            if (count >= 3) return;  // alpha is ignored
                             float number = 0;
                             const bool percent = !token.empty() && token.back() == '%';
                             if (percent) token.remove_suffix(1);
                             if (!tryParseFloat(token, number)) {
                               ok = false;
+                              return;
+                            }
+                            if (count >= 3) {
+                              if (count == 3 && alpha) *alpha = std::clamp(percent ? number / 100.0f : number, 0.0f, 1.0f);
+                              ++count;
                               return;
                             }
                             rgb[count++] = std::clamp(static_cast<int>(percent ? number * 2.55f : number), 0, 255);
@@ -938,6 +1011,82 @@ void CssParser::parseDeclarationIntoStyle(std::string_view decl, CssStyle& style
     if (parseColorLuma(value, luma)) {
       style.colorLuma = luma;
       style.defined.color = 1;
+    }
+  } else if (iequalsAscii(name, "background") || iequalsAscii(name, "background-color")) {
+    uint8_t luma = 255;
+    if (parseBackgroundLuma(value, luma)) {
+      style.backgroundLuma = luma;
+      style.defined.background = 1;
+    }
+  } else if (iequalsAscii(name, "border")) {
+    // width, style and color in any order; only a uniform border is drawn.
+    CssLength width{3.0f, CssUnit::Pixels};  // CSS medium when only a style is given
+    uint8_t luma = style.hasColor() ? style.colorLuma : 0;
+    bool visible = false;
+    forEachShorthandToken(stripTrailingImportant(value), [&](std::string_view token) {
+      CssLength length;
+      uint8_t color = 0;
+      float alpha = 1.0f;
+      if (borderWidthKeyword(token, width)) return;
+      if (iequalsAscii(token, "none") || iequalsAscii(token, "hidden")) {
+        visible = false;
+        width = CssLength{};
+        return;
+      }
+      if (iequalsAscii(token, "solid") || iequalsAscii(token, "dotted") || iequalsAscii(token, "dashed") ||
+          iequalsAscii(token, "double") || iequalsAscii(token, "groove") || iequalsAscii(token, "ridge") ||
+          iequalsAscii(token, "inset") || iequalsAscii(token, "outset")) {
+        visible = true;
+        return;
+      }
+      if (tryInterpretLength(token, length)) {
+        width = length;
+        return;
+      }
+      if (parseColorLuma(token, color, &alpha)) luma = lumaOverPaper(color, alpha);
+    });
+    style.borderWidth = visible ? width : CssLength{};
+    style.borderLuma = luma;
+    style.defined.border = 1;
+  } else if (iequalsAscii(name, "border-width")) {
+    std::string_view widths[4];
+    const size_t count = collectEdgeValueTokens(value, widths);
+    CssLength first;
+    bool uniform = count > 0 && (borderWidthKeyword(widths[0], first) || tryInterpretLength(widths[0], first));
+    for (size_t i = 1; uniform && i < count; ++i) {
+      CssLength other;
+      uniform = (borderWidthKeyword(widths[i], other) || tryInterpretLength(widths[i], other)) &&
+                other.value == first.value && other.unit == first.unit;
+    }
+    // Per-side widths (a rule above or below) are not panels: no border.
+    style.borderWidth = uniform ? first : CssLength{};
+    if (!style.hasBorder()) style.borderLuma = style.hasColor() ? style.colorLuma : 0;
+    style.defined.border = 1;
+  } else if (iequalsAscii(name, "border-color")) {
+    uint8_t color = 0;
+    float alpha = 1.0f;
+    std::string_view colors[4];
+    if (collectEdgeValueTokens(value, colors) > 0 && parseColorLuma(colors[0], color, &alpha)) {
+      // A color alone draws nothing (the style defaults to none); it only tints a border.
+      style.borderLuma = lumaOverPaper(color, alpha);
+      if (!style.hasBorder()) style.borderWidth = CssLength{};
+      style.defined.border = 1;
+    }
+  } else if (iequalsAscii(name, "border-style")) {
+    const std::string_view kind = trimCssWhitespace(stripTrailingImportant(value));
+    if (iequalsAscii(kind, "none") || iequalsAscii(kind, "hidden")) {
+      style.borderWidth = CssLength{};
+      style.defined.border = 1;
+    } else if (!kind.empty() && !style.hasBorder()) {
+      style.borderWidth = CssLength{3.0f, CssUnit::Pixels};  // medium
+      style.defined.border = 1;
+    }
+  } else if (iequalsAscii(name, "border-radius")) {
+    std::string_view radii[4];
+    CssLength radius;
+    if (collectEdgeValueTokens(value, radii) > 0 && tryInterpretLength(radii[0], radius)) {
+      style.borderRadius = radius;
+      style.defined.borderRadius = 1;
     }
   } else if (iequalsAscii(name, "font-family")) {
     if (owner) {

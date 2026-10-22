@@ -21,6 +21,9 @@ public:
     static constexpr int8_t PIN_NONE = -1;
 
     struct Status {
+        // Keep existing source IDs stable; 3 is reserved for Plus's host capacity estimate.
+        enum class PercentageSource : uint8_t { Unknown = 0, StateOfCharge = 1, VoltageEstimate = 2, PmuVoltageEstimate = 4 };
+        PercentageSource percentageSource = PercentageSource::Unknown;
         bool supported = false;
         bool percentageKnown = false;
         bool millivoltsKnown = false;
@@ -30,6 +33,10 @@ public:
         uint16_t millivolts = 0;
         bool charging = false;
         bool externalPower = false;
+        // Read Pico diagnostic fields. PMU percentage is voltage/latch based,
+        // not a coulomb measurement. Invalid/unavailable raw SOC stays 0xffff.
+        uint16_t pmuSocPermille = 0xffff;
+        uint8_t pmuChargeState = 0;
         // Raw M5PM1 telemetry for diagnostics; -1 when not read (non-PM1 boards
         // or failed I/O). VIN is the DC input rail, 5VINOUT the bidirectional
         // USB-C rail, powerSource the PM1's PWR_SRC bitmap (reg 0x04 [2:0]:
@@ -78,9 +85,10 @@ public:
     //
     // This is NOT isCharging(): a full battery stops charging while still
     // plugged in, so isCharging() goes false with the cable still attached.
-    // Only a source that reports the input rail itself can answer this, so it
-    // is currently the BQ25896's REG0B — VBUS_STAT[7:5] plus PG_STAT — and
-    // nothing else. Boards without that charger IC cannot observe it.
+    // Sources are BQ25896 REG0B (VBUS_STAT/PG_STAT) and M5 input rails.
+    // Read Pico can instead report PMU-inferred charger presence;
+    // its FULL_INFERRED state remains present after active charging stops.
+    // Other boards without observable charger/input telemetry leave it unknown.
     //
     // `known` (optional, out) is set false when the board has no way to tell,
     // or the read failed. Callers MUST branch on it: a bare false means "no
@@ -108,8 +116,8 @@ public:
     // device-agnostic — the same split as Rtc::setPmuTimeHooks.
     //
     //   * batteryMv: pack voltage in mV.
-    //   * socPermille: state of charge, 0..1000; the device's "unknown" sentinel
-    //     is reported as 0 (the callers then derive the level from batteryMv).
+    //   * socPermille: state of charge, 0..1000 (including a valid zero);
+    //     0xFFFF means unknown, so callers may derive a voltage estimate.
     //   * chargeState: the device's own charge-state code — 0 unknown,
     //     1 not charging, 2 charging, 3 full, 4 fault.
     // Returns false when the device is absent, the frame fails its checksum, or

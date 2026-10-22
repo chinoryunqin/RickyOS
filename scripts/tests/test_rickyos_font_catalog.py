@@ -118,8 +118,10 @@ class RickyFontCatalogTest(unittest.TestCase):
         self.assertIn(f'"https://github.com/{repo}/releases/latest/download/fonts.json"', header)
         self.assertIn(f'"https://cdn.jsdelivr.net/gh/{repo}@latest/mirror.json"', header)
         activity = (ROOT / "src/activities/settings/FontDownloadActivity.cpp").read_text()
-        block = re.search(r"  // RickyOS lists its own catalog.*?\n  \}\n", activity, re.S).group(0)
-        self.assertIn("if (purpose_ != Purpose::ReaderAutoInstall)", block)  # NotoSansSC stays on CrossMux
+        block = re.search(r"  // Both paths are owned:.*?\n  \}\n", activity, re.S).group(0)
+        self.assertIn("if (purpose_ != Purpose::ReaderAutoInstall)", block)
+        self.assertIn("RickyReaderResources::FONT_MANIFEST_FORMAT", activity)
+        self.assertNotIn("CrossMuxEndpoints", activity)
         self.assertIn("RickyFontCatalog::manifestFor(attempt)", block)  # one order, whatever the region
         self.assertIn("if (result == HttpDownloader::OK) break;", activity)
         self.assertIn(f'"https://fastly.jsdelivr.net/gh/{repo}@latest/mirror.json"', header)

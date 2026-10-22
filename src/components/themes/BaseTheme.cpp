@@ -172,6 +172,7 @@ void BaseTheme::drawBatteryLightningBolt(const GfxRenderer& renderer, int boltX,
 }
 
 void BaseTheme::fillBatteryIcon(const GfxRenderer& renderer, Rect rect, uint16_t percentage) const {
+  if (percentage > 100) return;  // Unknown, not a full/empty measured battery.
   const bool charging = gpio.isUsbConnected();
   if (rect.width == UiHighDpiProfile::batteryWidth && rect.height == UiHighDpiProfile::batteryHeight) {
     // The bar sits inside the body with a white gap all round (rickyBatteryIcons.h);
@@ -214,6 +215,7 @@ void BaseTheme::fillBatteryIcon(const GfxRenderer& renderer, Rect rect, uint16_t
 void BaseTheme::drawBatteryLeft(const GfxRenderer& renderer, Rect rect, const bool showPercentage) const {
   // Left aligned: icon on left, percentage on right (reader mode)
   const uint16_t percentage = powerManager.getBatteryPercentage();
+  if (percentage > 100) return;  // Initial telemetry pending: do not invent a level or label.
   const int y = rect.y + (UiHighDpiProfile::enabled ? 8 : 6);
 
   if (showPercentage) {
@@ -262,6 +264,7 @@ bool BaseTheme::drawCoverThumbFill(const GfxRenderer& renderer, const Bitmap& bi
 void BaseTheme::drawBatteryRight(const GfxRenderer& renderer, Rect rect, const bool showPercentage,
                                  const int numericFontId) const {
   const uint16_t percentage = powerManager.getBatteryPercentage();
+  if (percentage > 100) return;
   // NotoSans 12 digits and the cropped battery share their visible center at this offset.
   const int y = rect.y + (UiHighDpiProfile::enabled ? 8 : 6);
   const int gap = UiHighDpiProfile::enabled ? UiHighDpiProfile::controlGap : batteryPercentSpacing;
@@ -562,14 +565,16 @@ void BaseTheme::applyHeaderStatus(const GfxRenderer& renderer, freeink::ui::Head
   // (passive frames), while the uiScale FONT_SMALL is for list subtitles.
   status.battery.text.font = freeink::ui::GfxRendererTarget::FONT_LABEL;
 
-  status.showBattery = true;
   const uint16_t percentage = powerManager.getBatteryPercentage();
-  status.battery.percent = static_cast<uint8_t>(percentage > 100 ? 100 : percentage);
+  status.showBattery = percentage <= 100;
+  status.battery.percent = static_cast<uint8_t>(percentage > 100 ? 0 : percentage);
   status.battery.charging = gpio.isUsbConnected();
   // Static label buffers: headers draw on the single render task, and the
   // strings only need to outlive the fui::header() call that consumes them.
   static char percentText[8];
-  if (SETTINGS.hideBatteryPercentage != CrossPointSettings::HIDE_BATTERY_PERCENTAGE::HIDE_ALWAYS) {
+  status.battery.label = "";
+  if (percentage <= 100 &&
+      SETTINGS.hideBatteryPercentage != CrossPointSettings::HIDE_BATTERY_PERCENTAGE::HIDE_ALWAYS) {
     snprintf(percentText, sizeof(percentText), "%u%%", static_cast<unsigned>(percentage));
     status.battery.label = percentText;
   }

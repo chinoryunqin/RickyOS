@@ -3,6 +3,7 @@
 #include <BoardConfig.h>
 #if FREEINK_DEVICE_READPICO
 #include <BoardReadPico.h>
+#include <PmuBatterySample.h>
 #endif
 #include <Logging.h>
 #include <PowerManager.h>
@@ -439,6 +440,45 @@ HalPowerManager::LightSleepWakeReason HalPowerManager::lightSleepFor(const uint3
 
 uint16_t HalPowerManager::getBatteryPercentage() const {
   static const BatteryMonitor battery;
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+  // UI and main-loop callers share one on-demand sampler. A busy reader returns
+  // the atomic last-good display value, never waits for a second I2C transfer.
+  if (batteryPollBusy.test_and_set(std::memory_order_acquire)) return batteryDisplayPercent.load();
+  struct PollGuard {
+    std::atomic_flag& flag;
+    ~PollGuard() { flag.clear(std::memory_order_release); }
+  } guard{batteryPollBusy};
+  const uint32_t now = millis();
+  if (batteryDisplay.shouldPoll(now)) {
+    const auto status = battery.readStatus();
+    BatteryDisplayFilter::Sample sample;
+    sample.valid = status.percentageKnown;
+    sample.percent = status.percentage;
+    sample.source = static_cast<uint8_t>(status.percentageSource);
+    sample.chargingKnown = status.chargingKnown;
+    sample.charging = status.charging;
+    const auto shown = batteryDisplay.update(sample, now);
+    batteryDisplayPercent.store(batteryDisplay.known() ? shown : 101);
+    constexpr uint32_t diagnosticPeriodMs = FREEINK_DEVICE_READPICO ? 30000 : 60000;
+    if (!batteryDiagnosticLogged || uint32_t(now - batteryDiagnosticAt) >= diagnosticPeriodMs) {
+      batteryDiagnosticLogged = true;
+      batteryDiagnosticAt = now;
+      LOG_INF("BAT", "valid=%d source=%u raw=%u mv=%u charge=%d/%d shown=%u known=%d",
+              sample.valid, sample.source, sample.percent, status.millivolts,
+              sample.chargingKnown, sample.charging, shown, batteryDisplay.known());
+#if FREEINK_DEVICE_READPICO
+      // Same snapshot, no extra I2C read/forced ADC sample/refresh or Flash write.
+      // Comparing these estimates is diagnosis, not an independent SOC reference.
+      LOG_INF("BATREF", "mv=%u pmu=%u curve=%u state=%u ext=%d/%d shown=%u valid=%d source=%u",
+              status.millivolts, status.pmuSocPermille,
+              status.millivoltsKnown ? freeink::battery::readPicoVoltagePermille(status.millivolts) : 65535u,
+              status.pmuChargeState, status.externalPowerKnown, status.externalPower,
+              batteryDisplay.known() ? shown : 101, sample.valid, sample.source);
+#endif
+    }
+  }
+  return batteryDisplayPercent.load();
+#endif
   if (BoardConfig::ACTIVE.batteryGauge.gaugeAddr != 0) {
     const unsigned long now = millis();
     if (_batteryLastPollMs != 0 && (now - _batteryLastPollMs) < BATTERY_POLL_MS) {

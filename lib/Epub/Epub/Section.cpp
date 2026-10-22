@@ -62,18 +62,27 @@ namespace {
 //   96 / 97 - bookFontsKey in the header (fingerprint of the book's usable faces)
 //   98 / 99 - the same on the Read Pico (imageOutset header)
 //  100 /101 - the same on the Metalio Plus (imageOutset header)
+//  102 /103 - CSS panels: TextBlock flag bit 2 carries a BlockBox (background / border)
+//  104 /105 - the same on the Read Pico (imageOutset header)
+//  106 /107 - the same on the Metalio Plus (imageOutset header)
+//  108 /109 - a panel ends with its element (the paragraph after </div> no longer joins it)
+//  110 /111 - the same on the Read Pico (imageOutset header)
+//  112 /113 - the same on the Metalio Plus (imageOutset header)
+//  114 /115 - a closed container's bottom spacing lands before the next block, not after it
+//  116 /117 - the same on the Read Pico (imageOutset header)
+//  118 /119 - the same on the Metalio Plus (imageOutset header)
 // Boards without the imageOutset field come first: host tests read the first declaration.
 #if !FREEINK_DEVICE_METALIO_PLUS && !FREEINK_DEVICE_READPICO
-constexpr uint8_t SECTION_FILE_VERSION = 97;
+constexpr uint8_t SECTION_FILE_VERSION = 115;
 constexpr uint32_t IMAGE_LAYOUT_HEADER_SIZE = 0;
 #elif FREEINK_DEVICE_READPICO
 // A uint16 imageOutset follows verticalText, as on the Plus; its own number keeps a
 // card moved between devices from reading another board's pagination as its own.
-constexpr uint8_t SECTION_FILE_VERSION = 99;
+constexpr uint8_t SECTION_FILE_VERSION = 117;
 constexpr uint32_t IMAGE_LAYOUT_HEADER_SIZE = sizeof(uint16_t);
 #else
 // Plus-only v81 adds a uint16 imageOutset after verticalText; v83 collapses margins.
-constexpr uint8_t SECTION_FILE_VERSION = 101;
+constexpr uint8_t SECTION_FILE_VERSION = 119;
 constexpr uint32_t IMAGE_LAYOUT_HEADER_SIZE = sizeof(uint16_t);
 #endif
 // Written into the version field while a build is in progress; patched to

@@ -1560,8 +1560,18 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
       if (self->hasFailed()) return;
     } else {
       self->currentCssStyle = cssStyle;
-      const auto accumulated = self->blockStyleStack.back().getCombinedBlockStyle(userAlignmentBlockStyle,
-                                                                                  BlockStyle::CombineAxis::Horizontal);
+      auto accumulated = self->blockStyleStack.back().getCombinedBlockStyle(userAlignmentBlockStyle,
+                                                                            BlockStyle::CombineAxis::Horizontal);
+      if (self->embeddedStyle && userAlignmentBlockStyle.box.decorated()) {
+        // The panel spans this element's border box: everything inside the margins.
+        accumulated.box = userAlignmentBlockStyle.box;
+        if (++self->nextBoxId == 0) self->nextBoxId = 1;
+        accumulated.box.id = self->nextBoxId;
+        const int left = accumulated.leftInset() - userAlignmentBlockStyle.paddingLeft;
+        const int right = accumulated.rightInset() - userAlignmentBlockStyle.paddingRight;
+        accumulated.box.left = static_cast<int16_t>(std::max(0, left));
+        accumulated.box.width = static_cast<int16_t>(std::max(0, static_cast<int>(self->viewportWidth) - left - right));
+      }
       self->blockStyleStack.push_back(accumulated);
       self->startNewTextBlock(accumulated.withoutBottom());
       if (self->hasFailed()) return;
@@ -2189,7 +2199,17 @@ void XMLCALL ChapterHtmlSlimParser::endElement(void* userData, const XML_Char* n
       // Apply closing element's bottom margin to the current text block so
       // container spacing appears after the element's content (on the last child),
       // not on the first child via the empty-block merge in startNewTextBlock.
-      if (self->currentTextBlock) {
+      if (self->currentTextBlock && self->currentTextBlock->isEmpty() && self->currentPage) {
+        // The last child is already laid out; an empty block here would carry the
+        // spacing into the next paragraph and put it after that paragraph instead.
+        // Close the container now: its padding (a panel's lower edge) and its margin,
+        // which still collapses with the next block's top margin.
+        const BlockStyle& closing = self->blockStyleStack.back();
+        if (closing.paddingBottom > 0) {
+          self->currentPageNextY = static_cast<int16_t>(self->currentPageNextY + closing.paddingBottom);
+        }
+        self->pendingMarginBottom = std::max<int16_t>(self->pendingMarginBottom, std::max<int16_t>(closing.marginBottom, 0));
+      } else if (self->currentTextBlock) {
         const auto style = self->currentTextBlock->getBlockStyle();
         self->currentTextBlock->setBlockStyle(style.addBottom(self->blockStyleStack.back()));
       }

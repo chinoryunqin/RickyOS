@@ -20,7 +20,6 @@
 #include "FileBrowserActivity.h"
 #include "activities/ActivityManager.h"
 #include "activities/library/LibrarySourcesActivity.h"
-#include "activities/settings/ClearCacheActivity.h"
 #include <LibrarySources.h>
 #include "SdCardFontSystem.h"
 #include "activities/RenderLock.h"
@@ -192,15 +191,29 @@ uint64_t sumBytes(const std::string& path, const int depth = 0) {
   return bytes;
 }
 
-// The Library's books by their recorded sizes: one sequential read of the index, no walk.
+void logScanPhase(const char* phase) {
+#ifndef SIMULATOR
+  LOG_INF("STOR", "Stats %s, stack remaining=%u", phase,
+          static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
+#else
+  LOG_INF("STOR", "Stats %s", phase);
+#endif
+}
+
+// The Library's books by their recorded sizes: sequential index reads, no walk.
 uint64_t libraryBytes() {
   auto index = makeUniqueNoThrow<library::LibraryIndexFile>();
   if (!index || !index->open(library::libraryIndexPath())) return 0;
   uint64_t bytes = 0;
-  library::ClixRecord records[32];
+  // This runs on the 6 KiB scan task, not the larger UI stack. A 4 KiB
+  // records[32] frame leaves too little room for nested SdFat/SDMMC calls.
+  // Eight records still read whole sectors (1 KiB) with no extra heap usage.
+  constexpr uint32_t kBatchRecords = 8;
+  library::ClixRecord records[kBatchRecords];
+  static_assert(sizeof(records) <= 1024, "Storage scan record scratch must fit its task stack");
   const uint16_t count = index->bookCount();
-  for (uint32_t first = 0; first < count && !scanCancel.load(); first += 32) {
-    const uint32_t n = std::min<uint32_t>(32, count - first);
+  for (uint32_t first = 0; first < count && !scanCancel.load(); first += kBatchRecords) {
+    const uint32_t n = std::min<uint32_t>(kBatchRecords, count - first);
     if (!index->readRange(library::recordOffset(index->header(), static_cast<uint16_t>(first)), records,
                           n * sizeof(library::ClixRecord)))
       break;
@@ -214,9 +227,13 @@ void countPass() {
   const uint32_t epoch = staleEpoch.load();
   const uint32_t started = millis();
   // Books are not walked: their number and sizes are Library's index.
+  logScanPhase("books start");
   const uint64_t books = libraryBytes();
+  logScanPhase("books done / cache start");
   const uint64_t cache = scanCancel.load() ? 0 : sumBytes("/.crosspoint");
+  logScanPhase("cache done / fonts start");
   const uint64_t fonts = scanCancel.load() ? 0 : sumBytes(RickyStorageLayout::FONTS) + sumBytes("/.fonts");
+  logScanPhase("fonts done");
   if (scanCancel.load()) {
     LOG_INF("STOR", "Counting paused after %u ms", static_cast<unsigned>(millis() - started));
     return;  // stays stale: the next visit counts again
@@ -233,7 +250,9 @@ void countPass() {
 
 void scanStorageTask(void*) {
   uint64_t total = 0, free = 0;
+  logScanPhase("free space start");
   const bool measured = RickyFreeSpace::measure(total, free);
+  logScanPhase("free space done");
   publish([&](StorageScan& scan) {
     scan.measured = measured;
     scan.attempted = true;
@@ -247,6 +266,7 @@ void scanStorageTask(void*) {
   }
   while (!scanCancel.load() && countsWanted.exchange(false)) countPass();
   saveStats();
+  logScanPhase("saved");
   scanRunning.store(false);
   scanGeneration.fetch_add(1);  // the page drops its "counting" state
   vTaskDelete(nullptr);
@@ -410,12 +430,10 @@ void RickyStorageActivity::buildScreen(UiScreen& screen) {
   const int section = ricky::ds::space::k8;
   char text[64];
 
-  // SD card: what the space is made of, from the last Refresh. Opens reading-cache
-  // cleanup, the one thing on the card this page can safely give back.
+  // SD card: display the last statistics; this summary has no action or focus.
   const auto summary = screen.takeTop(summaryHeight, section);
-  const bool summarySelected = focus && selected == 0;
+  constexpr bool summarySelected = false;
   RickyPageUi::card(target, summary, summarySelected);
-  screen.frame().hit(summary, ACTION_ROW, 0, fui::InputTouch);
   const fui::Color ink = summarySelected ? fui::Color::White : fui::Color::Black;
   const fui::Color quiet = summarySelected ? fui::Color::White : fui::Color::DarkGray;
   const int innerX = summary.x + pad;
@@ -485,7 +503,7 @@ void RickyStorageActivity::buildScreen(UiScreen& screen) {
   const freeink::Icon* icons[] = {&icon_ricky_folder_40, &icon_ricky_books_40, &icon_ricky_transfer_40};
   for (int i = 0; i < 3; ++i) {
     const auto rect = screen.takeTop(rowHeight, i == 2 ? 0 : gap);
-    const int row = i + 1;
+    const int row = i;
     const bool picked = focus && selected == row;
     RickyPageUi::card(target, rect, picked);
     screen.frame().hit(rect, ACTION_ROW, row, fui::InputTouch);
@@ -528,24 +546,18 @@ void RickyStorageActivity::activateIndex(int index) {
     return;
   }
   if (index == 0) {
-    // Reading caches only: books, notes and progress files stay. Count again after.
-    startActivityForResultWith<ClearCacheActivity>([this](const ActivityResult&) {
-      invalidateScan();
-      requestUpdate();
-    });
-  } else if (index == 1) {
     // Back in the opened folder climbs to the card root, then returns here.
     startActivityForResultWith<FileBrowserActivity>(
         [this](const ActivityResult&) {
           if (countsStale.load()) startStorageScan(true);
         },
         "/", FileBrowserActivity::Mode::Books, /*scoped=*/true);
-  } else if (index == 2) {
+  } else if (index == 1) {
     startActivityForResultWith<LibrarySourcesActivity>([this](const ActivityResult&) {
       countLibraryFolders();
       requestUpdate();
     });
-  } else if (index == 3) {
+  } else if (index == 2) {
     activityManager.goToFileTransfer();
   }
 }

@@ -309,18 +309,38 @@ polarity and the existing FAST transfer/cache path remain. Sleep plugin delivery
 receives no renderer on this path, so loading popups and handler toasts cannot
 replace the retained reading page. Stock builds retain their moon indicator.
 
-Product Settings → Power & Standby → Choose Standby Image opens an image-only
+Product Apps → 屏保 → Standby → Choose Standby Image opens an image-only
 file picker followed by ImageViewer preview. BMP/PNG/JPG/JPEG are accepted.
-The child returns to Settings on Back; cancellation does not install anything.
-Settings row/catalog vectors are released before pushing the picker/decoder.
+Back from preview returns to the same folder; cancelling the file picker returns
+to the settings page without installing anything.
 JPEG uses the existing fallible decoder and exclusive framebuffer scratch loan
 to produce an on-SD Gray8 BMP; no extra full-screen buffer or resident decoder
 is added. Successful preview is required before the Set Wallpaper action, which
 reuses the existing checked-copy and settings-save rollback to `/sleep.bmp`.
-The original file remains untouched. The independent idle Keep Page option can
-still override a wallpaper on automatic sleep; turn it off to use wallpaper then.
+The original file remains untouched. The selected standby face determines whether
+standby displays the picture, book cover, calendar, retained page or sticker.
 Power-loss/FAT recovery, decoder memory limits, night-mode polarity and e-paper
 quality require device acceptance rather than simulator claims.
+
+The product Apps → 屏保 (Standby & power-off) page has separate Standby and
+Power-off tabs. Power-off → Choose power-off image opens the same BMP/PNG/JPEG
+picker/preview with an explicit `WallpaperTarget::PowerOff`. Confirming installs
+`/poweroff.bmp` and selects `RICKY_POWER_OFF_CUSTOM` (appended saved ID 3), without
+changing `/sleep.bmp`, the standby face, or the legacy sleep-screen setting.
+The existing Same as standby, Default and Blank IDs remain 0/1/2. Picker cancel
+and returning from a preview keep the original target. PNG power-off pictures
+use the converted complete image, not transparent-page/sticker mode. Fit/filter
+preferences remain shared; only image selection and the selected face are separate.
+The installer reuses its existing 4096-byte copy buffer and decoder; there is
+no second framebuffer or resident image allocation. Checked copies stage through
+`/poweroff.bmp.part` and preserve `/poweroff.bmp.bak` until settings save succeeds;
+ordinary copy/rename/save failures restore the previous picture/settings where
+the filesystem permits. A missing/invalid independent image renders the default
+power-off screen, never the standby or random `/sleep` images. This is not an
+atomic power-loss transaction; card removal/read-only media/interrupted writes
+and actual e-paper output still require hardware testing. Regression checks:
+`test_rickyos_power_off_wallpaper.py`, `test_rickyos_standby_power_off.py`, and
+`test_native_grayscale.py` (recording HAL, not a physical panel).
 
 ### WiFi connection status
 

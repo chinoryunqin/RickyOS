@@ -28,6 +28,7 @@ namespace {
 namespace fui = freeink::ui;
 using Settings = CrossPointSettings;
 constexpr char kPicture[] = "/sleep.bmp";
+constexpr char kPowerOffPicture[] = "/poweroff.bmp";
 
 // Standby styles in the order people pick them; stored values differ (RICKY_STANDBY_FACE).
 constexpr uint8_t kStyles[] = {Settings::RICKY_STANDBY_PICTURE, Settings::RICKY_STANDBY_COVER,
@@ -56,14 +57,15 @@ constexpr StrId kAutoOffLabels[] = {StrId::STR_RICKY_NEVER,   StrId::STR_RICKY_H
                                     StrId::STR_RICKY_HOURS_6, StrId::STR_RICKY_HOURS_12, StrId::STR_RICKY_HOURS_24};
 static_assert(std::size(kAutoOffLabels) == Settings::RICKY_AUTO_OFF_COUNT);
 constexpr StrId kPowerOffLabels[] = {StrId::STR_RICKY_POWER_OFF_SAME, StrId::STR_RICKY_SLEEP_LIGHT,
-                                     StrId::STR_RICKY_SLEEP_BLANK};
+                                     StrId::STR_RICKY_SLEEP_BLANK, StrId::STR_RICKY_POWER_OFF_CUSTOM};
 static_assert(std::size(kPowerOffLabels) == Settings::RICKY_POWER_OFF_SCREEN_COUNT);
 
 constexpr StrId kRowLabels[] = {
     StrId::STR_RICKY_STANDBY_STYLE, StrId::STR_RICKY_SELECT_WALLPAPER,   StrId::STR_RICKY_WALLPAPER_DOWNLOAD,
     StrId::STR_RICKY_PICTURE_FIT,   StrId::STR_RICKY_PICTURE_FILTER,     StrId::STR_RICKY_STANDBY_INFO,
     StrId::STR_RICKY_AUTO_STANDBY,  StrId::STR_RICKY_STANDBY_NOW,        StrId::STR_RICKY_POWER_OFF_SCREEN,
-    StrId::STR_RICKY_AUTO_OFF,      StrId::STR_RICKY_SELECT_TRANSPARENT, StrId::STR_RICKY_CLEAR_TRANSPARENT};
+    StrId::STR_RICKY_AUTO_OFF,      StrId::STR_RICKY_SELECT_TRANSPARENT, StrId::STR_RICKY_CLEAR_TRANSPARENT,
+    StrId::STR_RICKY_SELECT_POWER_OFF_WALLPAPER};
 static_assert(std::size(kRowLabels) == RickyStandbySettingsActivity::RowKinds);
 
 int styleIndex() {
@@ -111,6 +113,7 @@ void RickyStandbySettingsActivity::rebuildRows() {
   auto add = [this](const Row row) { rows_[rowCount_++] = row; };
   if (tab_ == PowerOffTab) {
     add(PowerOffScreen);
+    add(ChoosePowerOffPicture);
     add(AutoPowerOff);
     return;
   }
@@ -215,10 +218,12 @@ void RickyStandbySettingsActivity::drawPreview(const Rect& box) const {
   renderer.drawRoundedRect(box.x, box.y, box.width, box.height, 2, 10, true);
   const bool off = tab_ == PowerOffTab;
   const bool sameAsStandby = !off || SETTINGS.rickyPowerOffScreen == Settings::RICKY_POWER_OFF_SAME;
-  const bool picture = sameAsStandby && SETTINGS.rickyStandbyFace == Settings::RICKY_STANDBY_PICTURE;
+  const bool customPowerOff = off && SETTINGS.rickyPowerOffScreen == Settings::RICKY_POWER_OFF_CUSTOM;
+  const bool picture = customPowerOff ||
+                       (sameAsStandby && SETTINGS.rickyStandbyFace == Settings::RICKY_STANDBY_PICTURE);
   if (picture) {
     HalFile file;
-    if (Storage.openFileForRead("STANDBY", kPicture, file)) {
+    if (Storage.openFileForRead("STANDBY", customPowerOff ? kPowerOffPicture : kPicture, file)) {
       Bitmap bitmap(file, true);
       if (bitmap.parseHeaders() == BmpReaderError::Ok) {
         const int innerWidth = box.width - 8;
@@ -236,7 +241,8 @@ void RickyStandbySettingsActivity::drawPreview(const Rect& box) const {
   // Nothing to draw small: name what the screen shows inside the frame.
   const char* label = picture         ? tr(STR_RICKY_STANDBY_EMPTY)
                       : sameAsStandby ? I18N.get(kStyleLabels[styleIndex()])
-                                      : I18N.get(kPowerOffLabels[std::min<int>(SETTINGS.rickyPowerOffScreen, 2)]);
+                                      : I18N.get(kPowerOffLabels[std::min<int>(SETTINGS.rickyPowerOffScreen,
+                                                                             std::size(kPowerOffLabels) - 1)]);
   const int lineHeight = renderer.getLineHeight(SMALL_FONT_ID);
   UITheme::drawCenteredText(renderer, box, SMALL_FONT_ID, box.y + (box.height - lineHeight) / 2, label);
 }
@@ -293,22 +299,26 @@ void RickyStandbySettingsActivity::buildScreen(UiScreen& screen) {
   }
 }
 
-void RickyStandbySettingsActivity::openPicturePicker(const std::string& folder, const bool sticker) {
+void RickyStandbySettingsActivity::openPicturePicker(const std::string& folder, const bool sticker,
+                                                     const bool powerOff) {
   // Back from the preview returns to the list it was opened from, not to this page.
-  const auto previewDone = [this, sticker](const ActivityResult& result) {
+  const auto previewDone = [this, sticker, powerOff](const ActivityResult& result) {
     const auto* entry = std::get_if<FilePathResult>(&result.data);
     if (result.isCancelled && entry) {
-      openPicturePicker(FsHelpers::extractFolderPath(entry->path), sticker);
+      openPicturePicker(FsHelpers::extractFolderPath(entry->path), sticker, powerOff);
       return;
     }
     rebuildRows();
     requestUpdate();
   };
   if (!startActivityForResultWith<FileBrowserActivity>(
-          [this, previewDone, sticker](const ActivityResult& result) {
+          [this, previewDone, sticker, powerOff](const ActivityResult& result) {
             const auto* entry = std::get_if<FilePathResult>(&result.data);
             if (result.isCancelled || !entry ||
-                !startActivityForResultWith<ImageViewerActivity>(previewDone, entry->path, true, sticker)) {
+                !startActivityForResultWith<ImageViewerActivity>(
+                    previewDone, entry->path, true, sticker,
+                    powerOff ? ImageViewerActivity::WallpaperTarget::PowerOff
+                             : ImageViewerActivity::WallpaperTarget::Standby)) {
               requestUpdate();
             }
           },
@@ -328,6 +338,9 @@ void RickyStandbySettingsActivity::activateIndex(const int index) {
       break;
     case ChoosePicture:
       openPicturePicker();
+      return;
+    case ChoosePowerOffPicture:
+      openPicturePicker(RickyStorageLayout::IMAGES, false, true);
       return;
     case ChooseSticker:
       openPicturePicker(RickyStorageLayout::IMAGES, true);
@@ -364,7 +377,7 @@ void RickyStandbySettingsActivity::activateIndex(const int index) {
       return;
     case PowerOffScreen:
       showOption(optionPopup, StrId::STR_RICKY_POWER_OFF_SCREEN, kPowerOffLabels,
-                 std::min<int>(SETTINGS.rickyPowerOffScreen, 2),
+                 std::min<int>(SETTINGS.rickyPowerOffScreen, std::size(kPowerOffLabels) - 1),
                  [](const int chosen) { SETTINGS.rickyPowerOffScreen = static_cast<uint8_t>(chosen); });
       break;
     case AutoPowerOff:

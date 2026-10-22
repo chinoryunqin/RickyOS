@@ -99,6 +99,9 @@ struct CssPropertyFlags {
   uint16_t fontSize : 1;
   uint16_t color : 1;
   uint16_t fontFamily : 1;
+  uint16_t background : 1;
+  uint16_t border : 1;
+  uint16_t borderRadius : 1;
 
   CssPropertyFlags()
       : textAlign(0),
@@ -122,12 +125,16 @@ struct CssPropertyFlags {
         listStyleType(0),
         fontSize(0),
         color(0),
-        fontFamily(0) {}
+        fontFamily(0),
+        background(0),
+        border(0),
+        borderRadius(0) {}
 
   [[nodiscard]] bool anySet() const {
     return textAlign || fontStyle || fontWeight || textDecoration || textIndent || marginTop || marginBottom ||
            marginLeft || marginRight || paddingTop || paddingBottom || paddingLeft || paddingRight || imageHeight ||
-           imageWidth || display || direction || verticalAlign || listStyleType || fontSize || color || fontFamily;
+           imageWidth || display || direction || verticalAlign || listStyleType || fontSize || color || fontFamily ||
+           background || border || borderRadius;
   }
 
   void clearAll() {
@@ -136,13 +143,14 @@ struct CssPropertyFlags {
     paddingTop = paddingBottom = paddingLeft = paddingRight = 0;
     imageHeight = imageWidth = display = direction = verticalAlign = listStyleType = 0;
     fontSize = color = fontFamily = 0;
+    background = border = borderRadius = 0;
   }
 };
 
-// Cache serializes defined flags as uint32_t with bit indices 0..21.
+// Cache serializes defined flags as uint32_t with bit indices 0..24.
 static_assert(sizeof(CssPropertyFlags) <= sizeof(uint32_t),
               "CssPropertyFlags exceeds 32 bits; update cache read/write in CssParser.cpp");
-static_assert(sizeof(CssPropertyFlags) * 8 >= 22,
+static_assert(sizeof(CssPropertyFlags) * 8 >= 25,
               "CssPropertyFlags has fewer bits than properties; update bitfield widths");
 
 // Represents a collection of CSS style properties
@@ -177,6 +185,12 @@ struct CssStyle {
   // 1-based index into the owning CssParser's font-family pool (the declared candidate
   // list, resolved to a face at layout time); 0 = none.
   uint16_t fontFamily = 0;
+  // Block decoration: a panel behind the block's lines (background over white paper and a
+  // uniform border, both as luminance), with rounded corners.
+  uint8_t backgroundLuma = 255;
+  uint8_t borderLuma = 0;
+  CssLength borderWidth;
+  CssLength borderRadius;
 
   CssPropertyFlags defined;  // Tracks which properties were explicitly set
 
@@ -271,6 +285,19 @@ struct CssStyle {
       fontFamily = base.fontFamily;
       defined.fontFamily = 1;
     }
+    if (base.hasBackground()) {
+      backgroundLuma = base.backgroundLuma;
+      defined.background = 1;
+    }
+    if (base.hasBorder()) {
+      borderWidth = base.borderWidth;
+      borderLuma = base.borderLuma;
+      defined.border = 1;
+    }
+    if (base.hasBorderRadius()) {
+      borderRadius = base.borderRadius;
+      defined.borderRadius = 1;
+    }
   }
 
   [[nodiscard]] bool hasTextAlign() const { return defined.textAlign; }
@@ -295,6 +322,9 @@ struct CssStyle {
   [[nodiscard]] bool hasFontSize() const { return defined.fontSize; }
   [[nodiscard]] bool hasColor() const { return defined.color; }
   [[nodiscard]] bool hasFontFamily() const { return defined.fontFamily; }
+  [[nodiscard]] bool hasBackground() const { return defined.background; }
+  [[nodiscard]] bool hasBorder() const { return defined.border; }
+  [[nodiscard]] bool hasBorderRadius() const { return defined.borderRadius; }
 
   void reset() {
     textAlign = CssTextAlign::Left;
@@ -312,6 +342,9 @@ struct CssStyle {
     fontSize = CssLength{};
     colorLuma = 0;
     fontFamily = 0;
+    backgroundLuma = 255;
+    borderLuma = 0;
+    borderWidth = borderRadius = CssLength{};
     defined.clearAll();
   }
 };

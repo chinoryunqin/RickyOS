@@ -224,6 +224,7 @@ bool pmuParseIdentity(const uint8_t* raw) {
   if (raw[0] != 'P' || raw[1] != 'M' || raw[2] != 'U') return false;
   // IDENTITY: 'PMU' + fields, crc16 over the first 30 bytes at [30..31].
   if (!crcOk(raw, 30, rd16(&raw[30]))) return false;
+  logLine("[RDP] PMU identity proto=%u.%u fw=%u.%u.%u hw=%u\r\n", raw[4], raw[5], raw[6], raw[7], raw[8], raw[9]);
   g_pmuBootId = rd32(&raw[12]);
   return true;
 }
@@ -783,7 +784,7 @@ uint8_t keyStripHook() {
 
 bool pmuBattery(uint16_t& mV, uint16_t& socPermille, uint8_t& chargeState) {
   mV = 0;
-  socPermille = 0;
+  socPermille = kPmuSocUnknown;
   chargeState = 0;
   if (!g_pmuPresent) return false;
 
@@ -799,9 +800,9 @@ bool pmuBattery(uint16_t& mV, uint16_t& socPermille, uint8_t& chargeState) {
 
   mV = rd16(&raw[0]);
   // 0xFFFF is the protocol's "unknown" sentinel.
-  socPermille = (socValid && soc != kPmuSocUnknown) ? soc : 0;
+  socPermille = (socValid && soc <= 1000) ? soc : kPmuSocUnknown;
   chargeState = raw[4];
-  return mV != 0;
+  return mV >= 2700 && mV <= 4400;
 }
 
 bool pmuTimeGet(uint32_t& unixSec, bool& synced) {

@@ -836,3 +836,57 @@ TEST_F(SectionMemoryTest, ParagraphSpacingLevelsRoundTripWithoutCollapsingToBool
 }
 
 }  // namespace
+
+TEST_F(ChapterHtmlSlimParserTest, PanelEndsWithItsElement) {
+  const std::string cssPath = "/tmp/crossmux-panel-test.css";
+  std::ofstream(cssPath) << "div.num3 { margin: 1.5em 5%; padding: 1.2em; background: rgba(153, 255, 204, 0.5); "
+                            "border: 1px solid #33cccc; border-radius: 8px; }\n";
+  HalFile source;
+  ASSERT_TRUE(Storage.openFileForRead("TEST", cssPath, source));
+  ASSERT_EQ(cssParser.loadFromStream(source), CssParser::ParseResult::Complete);
+  struct Line {
+    uint16_t box;
+    int16_t left;
+    int16_t y;
+    uint8_t padBottom;
+  };
+  std::vector<Line> lines;
+  const auto collect = [&lines](const Page& page) {
+    for (const auto& e : page.elements) {
+      if (e->getTag() != TAG_PageLine) continue;
+      const auto& style = static_cast<const PageLine&>(*e).getBlock()->getBlockStyle();
+      lines.push_back({style.box.id, style.leftInset(), e->yPos, style.box.padBottom});
+    }
+  };
+  parser.completePageFn = [&](std::unique_ptr<Page> page, uint16_t, uint16_t, uint32_t) { collect(*page); };
+  parser.blockStyleStack.assign(1, BlockStyle{});
+  const XML_Char* num3[] = {"class", "num3", nullptr};
+  const XML_Char* none[] = {nullptr};
+  const auto para = [&](const char* text) {
+    ChapterHtmlSlimParser::startElement(&parser, "p", none);
+    ChapterHtmlSlimParser::characterData(&parser, text, strlen(text));
+    ChapterHtmlSlimParser::endElement(&parser, "p");
+  };
+  para("before");
+  for (int i = 0; i < 2; ++i) {
+    ChapterHtmlSlimParser::startElement(&parser, "div", num3);
+    para("inside");
+    ChapterHtmlSlimParser::endElement(&parser, "div");
+    para("after");
+  }
+  parser.makePages();
+  if (parser.currentPage) collect(*parser.currentPage);
+  std::filesystem::remove(cssPath);
+
+  ASSERT_EQ(lines.size(), 5u);
+  EXPECT_EQ(lines[0].box, 0u);
+  EXPECT_NE(lines[1].box, 0u);
+  EXPECT_GT(lines[1].left, 0);  // margin + padding + border
+  EXPECT_EQ(lines[2].box, 0u);  // the paragraph after </div> is outside the panel
+  // ... and below the panel's lower padding and margin, not just the next line down.
+  const int lineHeight = renderer.getLineHeight(0);
+  EXPECT_GT(lines[2].y, lines[1].y + lineHeight + lines[1].padBottom);
+  EXPECT_NE(lines[3].box, 0u);
+  EXPECT_NE(lines[3].box, lines[1].box);
+  EXPECT_EQ(lines[4].box, 0u);
+}

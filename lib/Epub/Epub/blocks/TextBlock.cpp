@@ -17,6 +17,7 @@
 namespace {
 constexpr uint8_t kFlagFocus = 1 << 0;
 constexpr uint8_t kFlagLooks = 1 << 1;
+constexpr uint8_t kFlagBox = 1 << 2;  // a BlockBox follows the block style
 }  // namespace
 
 size_t TextBlock::arenaSize(const uint16_t wordCount, const bool hasFocus, const bool hasLooks,
@@ -438,7 +439,8 @@ bool TextBlock::serialize(HalFile& file) const {
   // exactly the on-disk layout (see TextBlock.h), so one write covers all
   // per-word arrays and the text blob.
   serialization::writePod(file, numWords);
-  serialization::writePod(file, static_cast<uint8_t>((focusPresent ? kFlagFocus : 0) | (looksPresent ? kFlagLooks : 0)));
+  serialization::writePod(file, static_cast<uint8_t>((focusPresent ? kFlagFocus : 0) | (looksPresent ? kFlagLooks : 0) |
+                                                     (blockStyle.box.id != 0 ? kFlagBox : 0)));
   serialization::writePod(file, textBytes);
   if (numWords > 0) {
     const size_t size = arenaSize(numWords, focusPresent, looksPresent, textBytes);
@@ -469,6 +471,7 @@ bool TextBlock::serialize(HalFile& file) const {
   serialization::writePod(file, blockStyle.isRtl);
   serialization::writePod(file, blockStyle.directionDefined);
   serialization::writePod(file, blockStyle.characterSpacing);
+  if (blockStyle.box.id != 0) serialization::writePod(file, blockStyle.box);
 
   return true;
 }
@@ -489,7 +492,7 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
     LOG_ERR("TXB", "Deserialization failed: word count %u exceeds maximum", wc);
     return nullptr;
   }
-  if ((flags & ~(kFlagFocus | kFlagLooks)) != 0) {
+  if ((flags & ~(kFlagFocus | kFlagLooks | kFlagBox)) != 0) {
     LOG_ERR("TXB", "Deserialization failed: unknown flags %02x", flags);
     return nullptr;
   }
@@ -575,6 +578,10 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
       !serialization::readPod(file, blockStyle.directionDefined) ||
       !serialization::readPod(file, blockStyle.characterSpacing)) {
     LOG_ERR("TXB", "Deserialization failed: truncated block style");
+    return nullptr;
+  }
+  if ((flags & kFlagBox) != 0 && (!serialization::readPod(file, blockStyle.box) || blockStyle.box.id == 0)) {
+    LOG_ERR("TXB", "Deserialization failed: truncated panel");
     return nullptr;
   }
 

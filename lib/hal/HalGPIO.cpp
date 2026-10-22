@@ -341,6 +341,13 @@ bool HalGPIO::isUsbConnected() const {
   // a /STAT pin — and reports false on boards with no battery telemetry at all.
   // Caveat: charge termination at 100% reads as "not connected".
   static const BatteryMonitor battery;
+#if FREEINK_DEVICE_READPICO
+  // Preserve external-power detection at charge termination. FULL_INFERRED is
+  // a connected cable according to the PMU, not active battery charging.
+  bool known = false;
+  const bool present = battery.isExternalPowerPresent(&known);
+  return known && present;
+#endif
   return battery.isCharging();
 }
 

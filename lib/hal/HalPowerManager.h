@@ -7,7 +7,9 @@
 #include <freertos/semphr.h>
 
 #include <cassert>
+#include <atomic>
 
+#include "BatteryDisplayFilter.h"
 #include "HalGPIO.h"
 
 class HalPowerManager;
@@ -19,6 +21,13 @@ class HalPowerManager {
 
   mutable int _batteryCachedPercent = 0;         // Last read battery percentage (0-100)
   mutable unsigned long _batteryLastPollMs = 0;  // Timestamp of last battery read in milliseconds
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+  mutable BatteryDisplayFilter batteryDisplay;
+  mutable std::atomic_flag batteryPollBusy = ATOMIC_FLAG_INIT;
+  mutable std::atomic<uint16_t> batteryDisplayPercent{101};  // Unknown until the first valid sample.
+  mutable uint32_t batteryDiagnosticAt = 0;
+  mutable bool batteryDiagnosticLogged = false;
+#endif
 
   enum LockMode { None, NormalSpeed };
   LockMode currentLockMode = None;
@@ -63,7 +72,7 @@ class HalPowerManager {
   static void setSideKeyBusy(bool busy);
   static bool sideKeyBusy();
 
-  // Get battery percentage (range 0-100)
+  // Get battery percentage (0-100); Pico/Plus return 101 before any valid read.
   uint16_t getBatteryPercentage() const;
 
   // RAII helper class to manage power saving locks

@@ -112,7 +112,7 @@ struct GfxRenderer {
   void endGrayscale16Offscreen() {}
 };
 constexpr int TAG_PageLine=1, TAG_PageImage=2;
-int renders=0, cancelAt=0;
+int renders=0, cancelAt=0, panelRenders=0;
 struct Block {bool isEmpty() const {return false;} int getRubyShift(int) const {return 0;}};
 struct PageLine {
   int xPos=0, yPos=0;
@@ -146,6 +146,7 @@ struct Page {
   Page() {for(int i=0;i<3;++i) {auto p=std::make_unique<PageLine>(); p->yPos=i; elements.push_back(std::move(p));}}
   bool hasImages() const {return images;}
   bool hasImagesNeedingDecode() const {return images;}
+  void renderPanels(GfxRenderer&,int,int,int) const {++panelRenders;}
   bool warmImages(GfxRenderer& r,int,int,CancelCheck c) {
     ++imageWarms;r.frame.fill(0x11);r.mode=GfxRenderer::GRAYSCALE_MSB;
     if(cancelImage) activityManager.cancelled=true;
@@ -209,7 +210,7 @@ struct EpubReaderActivity {
 void reset() {
   assert(memory::live==0);
   memory::allocations=0; memory::failAt=0; memory::headroom=true;
-  activityManager={}; SETTINGS={}; renders=0; cancelAt=0;
+  activityManager={}; SETTINGS={}; renders=0; cancelAt=0; panelRenders=0;
 }
 int main() {
   reset();
@@ -222,6 +223,7 @@ int main() {
     assert(r.renderer.frame==original && r.renderer.mode==GfxRenderer::BW);
     assert(r.pageCacheMissingCodepoint_[0]==0x4E05 && r.pageCacheMissingCodepoint_[1]==0x4E03);
     assert(memory::live==8 && memory::allocations==8);
+    assert(panelRenders>0);  // Cached line drawing includes the page's CSS panels.
     for(int slot=0;slot<r.kPageCacheSlots;++slot)
       assert(r.pageCacheBase_[slot].get()[0]==1 && r.pageCacheLsb_[slot].get()[0]==2 && r.pageCacheMsb_[slot].get()[0]==3);
     r.renderIdle(0); assert(r.section->loads==2);

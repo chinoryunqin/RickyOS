@@ -32,6 +32,7 @@
 #include <functional>
 #include <iterator>
 #include <limits>
+#include <utility>
 #if CROSSPOINT_VECTOR_FONTS
 #include <TtfEpdFont.h>
 #endif
@@ -2357,8 +2358,10 @@ void EpubReaderActivity::rememberCurrentContentOffset() {
 // only JPEG ones (they decode straight into the frame). Must match use16LevelText.
 bool EpubReaderActivity::nativeGray16Page(const Page& page) const {
 #if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
+  // Gray content (illustrations, a CSS panel's fill) needs the gray frame whatever the
+  // text setting; with anti-aliasing off the text in it is quantized to black and white.
   return !renderer.isInverted() && renderer.getGrayscaleLevels() == 16 &&
-         (SETTINGS.textAntiAliasing || page.hasImages());
+         (SETTINGS.textAntiAliasing || page.hasImages() || page.hasPanelFill());
 #else
   return SETTINGS.textAntiAliasing && !renderer.isInverted() && renderer.getGrayscaleLevels() == 16 &&
          page.imagesAreAllJpeg();
@@ -2721,6 +2724,7 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
     GfxRenderer::SyntheticBoldScope syntheticBold(renderer, key.fakeBold);
     GfxRenderer::TextWeightScope textWeight(renderer, readerTextWeightCurve(key.textWeight),
                                             readerTextWeightSpread(key.textWeight));
+    if (!vertical) page->renderPanels(renderer, key.spec.fontId, key.left, key.top);
     for (const auto& element : page->elements) {
       if (cancelled()) return false;
       if (!renderCachedElement(*element)) return false;
@@ -2760,6 +2764,7 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
       GfxRenderer::SyntheticBoldScope syntheticBold(renderer, key.fakeBold);
       GfxRenderer::TextWeightScope textWeight(renderer, readerTextWeightCurve(key.textWeight),
                                               readerTextWeightSpread(key.textWeight));
+      if (!vertical) page->renderPanels(renderer, key.spec.fontId, key.left, key.top);
       for (const auto& element : page->elements) {
         if (cancelled()) return false;
         if (!renderCachedElement(*element)) return false;
@@ -3040,6 +3045,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     // twice (more flash, more time), and the 16-level waveform is a full-screen one anyway,
     // so ghosting is still cleared.
   } else if (combinedGrayscaleBase) {
+    if (std::exchange(lastPageHadPanelFill_, false)) pagesUntilFullRefresh = 1;  // clear the gray panel
     ReaderUtils::displayBaseWithRefreshCycle(renderer, pagesUntilFullRefresh, manualRefreshPending);
   } else if (pageHasImages) {
     // Image pages use one base refresh before the grayscale pass. FAST leaves
@@ -3056,6 +3062,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       pagesUntilFullRefresh = 1;
     }
   } else {
+    if (std::exchange(lastPageHadPanelFill_, false)) pagesUntilFullRefresh = 1;  // clear the gray panel
     ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh, overlapRefresh);
   }
   const auto tDisplay = millis();
@@ -3120,7 +3127,12 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       // driven, so no flash); the page the refresh cycle marks as due cleans with GC16.
       // (The simulator's HAL comes from an external package without this switch.)
       const auto refresh = ReaderUtils::consumeRefreshMode(pagesUntilFullRefresh);
-      display.setNextGray16Profile(refresh == HalDisplay::FAST_REFRESH ? 1 : 2);
+      // The text-turn table leaves the old page's black text showing through a gray panel
+      // fill, and the fill showing after it: clean the turn onto and off such a page.
+      const bool panelFill = !vertical && page->hasPanelFill();
+      const bool panelTurn = panelFill || lastPageHadPanelFill_;
+      lastPageHadPanelFill_ = panelFill;
+      display.setNextGray16Profile(refresh == HalDisplay::FAST_REFRESH && !panelTurn ? 1 : 2);
 #endif
       const auto tCommit = millis();
       if (renderer.commitGrayscale16()) {

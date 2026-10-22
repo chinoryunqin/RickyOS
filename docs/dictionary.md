@@ -27,10 +27,12 @@ Not supported: `.syn` synonym files (ignored), dictionaries with 64-bit index of
 
 Online dictionaries are installed under `/.dictionaries/`. Downloads are verified before the old version is replaced, and interrupted installations are recovered the next time the manager opens. Only folders carrying the manager's `.crossmux-resource` marker can be updated or deleted online.
 
-The content profile selected by the current UI language chooses the CrossMux API
-at runtime: China uses `crossmux.cn`, Global uses `crossmux.com`. The UI language
-is also sent as the `lang` query parameter. Both regions use
-`/api/assets/dictionaries/manifest`; third-party configured URLs are unchanged.
+RickyOS uses its own versioned resource catalog, independent of the UI language:
+`https://rickyos-1309217881.cos.ap-guangzhou.myqcloud.com/dictionaries/m1/cos.json`.
+The current catalog contains ECDICT, FreeDict and Open English WordNet. Chinese
+UI uses each item's `nameZh` when present; other languages use its default name.
+Existing installed dictionaries and manual imports remain compatible. This
+resource migration does not change the dictionary engine or installation format.
 
 ### Copy manually
 

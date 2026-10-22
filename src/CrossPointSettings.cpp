@@ -886,6 +886,7 @@ unsigned long CrossPointSettings::getSleepTimeoutMs() const {
 
 uint8_t CrossPointSettings::rickySleepScreenMode() const {
   if (rickyPowerOffScreen == RICKY_POWER_OFF_BLANK) return BLANK;
+  if (rickyPowerOffScreen == RICKY_POWER_OFF_CUSTOM) return CUSTOM;
   if (rickyPowerOffScreen == RICKY_POWER_OFF_SAME) {
     switch (rickyStandbyFace) {
       case RICKY_STANDBY_PICTURE:

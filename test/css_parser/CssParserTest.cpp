@@ -18,7 +18,7 @@ constexpr size_t kMaxRules = 1500;
 constexpr size_t kMaxUniqueStyles = 256;
 constexpr size_t kCacheHeaderBytes = sizeof(uint8_t) * 2 + sizeof(uint16_t);
 constexpr size_t kStyleEnumPrefixBytes = 5;
-constexpr size_t kStyleLengthFieldCount = 12;
+constexpr size_t kStyleLengthFieldCount = 14;
 constexpr size_t kStyleLengthBytes = sizeof(decltype(CssLength::value)) + sizeof(uint8_t);
 
 class CssParserTest : public ::testing::Test {
@@ -328,6 +328,36 @@ TEST_F(CssParserTest, BookTypographySizeColorAndFamily) {
   ASSERT_TRUE(inlineStyle.hasFontFamily());
   EXPECT_EQ(parser.familyAt(inlineStyle.fontFamily), "kk");
   EXPECT_EQ(parser.parseInlineStyleWithFamilies("font-family: kk").fontFamily, inlineStyle.fontFamily);
+}
+
+TEST_F(CssParserTest, PanelBackgroundBorderAndRadius) {
+  CssParser parser(cachePath());
+  ASSERT_EQ(loadCss(parser,
+                    "div.num3 { padding: 1.2em; background: rgba(153, 255, 204, 0.5); border: 1px solid #33cccc; "
+                    "border-radius: 8px; }\n"
+                    ".gray { background-color: #ddd; border: none; }\n"
+                    ".thick { border: thick dashed; }\n"
+                    ".rule { border-width: 0 0 1px 0; border-style: solid; }\n"
+                    ".tint { border-color: red; }\n"
+                    ".pic { background: url(bg.png) no-repeat; }\n"),
+            CssParser::ParseResult::Complete);
+  const CssStyle num3 = parser.resolveStyle("div", "num3");
+  ASSERT_TRUE(num3.hasBackground());
+  EXPECT_EQ(num3.backgroundLuma, 237);  // luma 219 at half alpha over white
+  ASSERT_TRUE(num3.hasBorder());
+  EXPECT_FLOAT_EQ(num3.borderWidth.value, 1.0f);
+  EXPECT_EQ(num3.borderWidth.unit, CssUnit::Pixels);
+  EXPECT_EQ(num3.borderLuma, 158);
+  ASSERT_TRUE(num3.hasBorderRadius());
+  EXPECT_FLOAT_EQ(num3.borderRadius.value, 8.0f);
+
+  const CssStyle gray = parser.resolveStyle("p", "gray");
+  EXPECT_EQ(gray.backgroundLuma, 221);
+  EXPECT_LE(gray.borderWidth.value, 0.0f);
+  EXPECT_FLOAT_EQ(parser.resolveStyle("p", "thick").borderWidth.value, 5.0f);
+  EXPECT_LE(parser.resolveStyle("p", "rule").borderWidth.value, 0.0f);  // one side only: not a panel
+  EXPECT_LE(parser.resolveStyle("p", "tint").borderWidth.value, 0.0f);  // no style, no border
+  EXPECT_FALSE(parser.resolveStyle("p", "pic").hasBackground());
 }
 
 TEST_F(CssParserTest, FontFaceRulesResolveAgainstTheirStylesheet) {

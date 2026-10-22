@@ -41,6 +41,7 @@ class EpubReaderActivity final : public ReaderActivity {
   std::optional<uint16_t> pendingPageJump;
   std::string pendingAnchor;
   int cachedSpineIndex = 0;
+  bool lastPageHadPanelFill_ = false;  // the shown page has a gray CSS panel (clean the turn off it)
   int cachedChapterTotalPageCount = 0;
   std::optional<uint32_t> cachedVisibleTextOffset;
   std::optional<uint32_t> currentPageVisibleOffset;

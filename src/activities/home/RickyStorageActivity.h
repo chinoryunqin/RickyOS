@@ -13,9 +13,9 @@ class RickyStorageActivity final : public UiListActivity {
   }
 
  protected:
-  // The SD summary (0), then All files, Library folders and Transfer (1..3), then the
-  // header's Refresh.
-  static constexpr int kCardCount = 4;
+  // The SD summary is display-only. All files, Library folders and Transfer
+  // (0..2) are followed by the header's Refresh.
+  static constexpr int kCardCount = 3;
   static constexpr int kRefreshAction = kCardCount;
   int listCount() const override { return kCardCount + 1; }
   void onEnter() override;

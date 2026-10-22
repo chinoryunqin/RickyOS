@@ -27,9 +27,9 @@
 #include "components/SubpageLayout.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
-#include "network/CrossMuxEndpoints.h"
 #include "network/HttpDownloader.h"
 #include "network/RickyFontCatalog.h"
+#include "network/RickyReaderResources.h"
 
 namespace fui = freeink::ui;
 
@@ -359,8 +359,13 @@ bool FontDownloadActivity::fetchAndParseManifest() {
     return false;
   }
   char manifestUrl[160];
+  if (purpose_ == Purpose::ReaderAutoInstall && !RickyReaderResources::ENABLED) {
+    LOG_ERR("FONT", "Reader resource service is disabled");
+    errorMessage_ = tr(STR_DOWNLOAD_FAILED);
+    return false;
+  }
   const int manifestUrlLength =
-      snprintf(manifestUrl, sizeof(manifestUrl), CrossMuxEndpoints::FONT_MANIFEST_FORMAT, CrossMuxEndpoints::host(),
+      snprintf(manifestUrl, sizeof(manifestUrl), RickyReaderResources::FONT_MANIFEST_FORMAT,
                FONT_MANIFEST_URL_STRINGIFY(FONTS_MANIFEST_VERSION), FONT_MANIFEST_URL_STRINGIFY(CPFONT_VERSION));
   if (manifestUrlLength < 0 || static_cast<size_t>(manifestUrlLength) >= sizeof(manifestUrl)) {
     LOG_ERR("FONT", "Manifest URL exceeds %zu bytes", sizeof(manifestUrl));
@@ -368,7 +373,7 @@ bool FontDownloadActivity::fetchAndParseManifest() {
     return false;
   }
   const char* manifestUrls[RickyFontCatalog::MANIFEST_COUNT] = {manifestUrl};
-  // RickyOS lists its own catalog; the reader's automatic NotoSansSC install stays on CrossMux.
+  // Both paths are owned: ordinary families and ABI-versioned missing-glyph fonts.
   if (purpose_ != Purpose::ReaderAutoInstall) {
     for (int attempt = 0; attempt < RickyFontCatalog::MANIFEST_COUNT; ++attempt)
       manifestUrls[attempt] = RickyFontCatalog::manifestFor(attempt);
@@ -376,7 +381,7 @@ bool FontDownloadActivity::fetchAndParseManifest() {
   NetworkStartup::logMemory("font manifest request");
   auto result = HttpDownloader::HTTP_ERROR;
   for (const char* url : manifestUrls) {
-    if (url == nullptr) continue;  // a route that is off (COS unconfigured), or past CrossMux's one
+    if (url == nullptr) continue;  // a disabled route, or beyond the automatic installer's single route
     result = HttpDownloader::downloadIndex(url, MANIFEST_TMP);
     if (result == HttpDownloader::OK) break;
     LOG_ERR("FONT", "Failed to fetch manifest from %s", url);
@@ -427,7 +432,8 @@ bool FontDownloadActivity::fetchAndParseManifest() {
 
   baseUrl_ = doc["baseUrl"] | "";
   if (baseUrl_.empty() || baseUrl_.size() > kMaxBaseUrlBytes || baseUrl_.rfind("https://", 0) != 0 ||
-      baseUrl_.back() != '/') {
+      baseUrl_.back() != '/' ||
+      (purpose_ == Purpose::ReaderAutoInstall && !RickyReaderResources::isOwnedUrl(baseUrl_.c_str()))) {
     LOG_ERR("FONT", "Manifest has invalid baseUrl");
     errorMessage_ = "Invalid font manifest";
     return false;
@@ -436,7 +442,8 @@ bool FontDownloadActivity::fetchAndParseManifest() {
     const char* url = mirror.as<const char*>();
     const size_t length = url ? strlen(url) : 0;
     if (length == 0 || length > kMaxBaseUrlBytes || strncmp(url, "https://", 8) != 0 || url[length - 1] != '/' ||
-        mirrorUrls_.size() >= kMaxMirrors) {
+        mirrorUrls_.size() >= kMaxMirrors ||
+        (purpose_ == Purpose::ReaderAutoInstall && !RickyReaderResources::isOwnedUrl(url))) {
       LOG_ERR("FONT", "Ignoring invalid manifest mirror");
       continue;
     }

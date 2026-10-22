@@ -54,7 +54,7 @@ class CssParser {
   };
 
   // Bump when CSS cache format or rules change; section caches are invalidated when this changes
-  static constexpr uint8_t CSS_CACHE_VERSION = 13;
+  static constexpr uint8_t CSS_CACHE_VERSION = 14;  // 14: background, border, border-radius
 
   // System-font categories named by local() sources or by family names such as 宋体 / serif.
   // The reader maps them to its own downloadable faces when installed.

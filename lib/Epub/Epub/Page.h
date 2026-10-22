@@ -103,6 +103,11 @@ class Page {
   // Lines as columns, right to left from `right`, each `columnWidth` wide (VerticalText.h).
   void renderVertical(GfxRenderer& renderer, int fontId, int right, int top, int columnWidth) const;
   void renderImages(GfxRenderer& renderer, int fontId, int xOffset, int yOffset) const;
+  // CSS panels (background / border) behind the lines; render() draws them first. Callers
+  // that draw element by element (the page cache) call this before the elements.
+  void renderPanels(GfxRenderer& renderer, int fontId, int xOffset, int yOffset) const;
+  // A panel on this page is filled with gray: entering or leaving it needs a clean refresh.
+  bool hasPanelFill() const;
   void renderWithImagePlaceholders(GfxRenderer& renderer, int fontId, int xOffset, int yOffset) const;
   void extractImagesNeedingDecode();
   bool warmImages(GfxRenderer& renderer, int xOffset, int yOffset, CancelCheck cancellation);

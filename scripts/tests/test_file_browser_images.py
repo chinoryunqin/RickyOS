@@ -16,7 +16,7 @@ class FileBrowserImagesTest(unittest.TestCase):
         helpers = '\n'.join(method(fs, name) for name in (
             'bool checkFileExtension(', 'bool hasJpgExtension(', 'bool hasPngExtension(',
             'bool hasBmpExtension(', 'bool hasImageExtension(', 'bool hasEpubExtension(',
-            'bool hasTxtExtension(', 'bool hasMarkdownExtension(',
+            'bool hasTxtExtension(', 'bool hasMarkdownExtension(', 'bool hasReflowableBookExtension(',
             'bool naturalLess(', 'void sortFileList(', 'std::string extractFolderPath(',
             'bool isProtectedPathComponent(', 'bool isSameOrDescendantPath('))
         methods = '\n'.join((
@@ -141,7 +141,7 @@ struct ImageViewerActivity {
 };
 std::string joinPath(const std::string& parent, const std::string& name) { return parent + "/" + name; }
 struct FileBrowserActivity {
- enum class Mode { Books, PickFirmware, PickPng, PickAvatar, PickWallpaper };
+ enum class Mode { Books, PickFirmware, PickPng, PickAvatar, PickWallpaper, PickLibraryFolder, PickLibraryBook };
  enum class BrowserState { Browsing, ChoosingMoveDestination };
  Mode mode = Mode::Books; BrowserState browserState = BrowserState::Browsing;
  int prewarmedStart = -1;
@@ -182,6 +182,8 @@ int main() {
    assert((browser.files == std::vector<std::string>{"nested/", "3.PNG"}));
    browser.mode = FileBrowserActivity::Mode::PickFirmware; browser.loadFiles();
    assert((browser.files == std::vector<std::string>{"nested/", "update.bin"}));
+   browser.mode = FileBrowserActivity::Mode::PickWallpaper; browser.loadFiles();
+   assert((browser.files == std::vector<std::string>{"nested/", "2.bmp", "3.PNG", "4.jpg", "10.JPEG"}));
    ImageViewerActivity viewer; viewer.filePath = std::string(dir) + "/4.jpg";
    viewer.loadSiblingImages();
    assert((viewer.siblingImages == std::vector<std::string>{"2.bmp", "3.PNG", "4.jpg", "10.JPEG"}));

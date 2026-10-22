@@ -1,6 +1,8 @@
 #include "Page.h"
 
 #include <GfxRenderer.h>
+
+#include <algorithm>
 #include <Logging.h>
 #include <Memory.h>
 #include <Serialization.h>
@@ -17,7 +19,64 @@ void renderFilteredPageElements(const std::vector<std::unique_ptr<PageElement>>&
   }
 }
 
+// Panels behind runs of lines that share a BlockBox (CSS background / border). Each run
+// on a page is drawn as one closed panel from the first line's top minus its padding to
+// the last line's bottom plus its padding; a panel continuing on the next page starts a
+// new run there. Drawn before any element, so text and images sit on top.
+void renderBlockBoxes(const std::vector<std::unique_ptr<PageElement>>& elements, GfxRenderer& renderer,
+                      const int fontId, const int xOffset, const int yOffset) {
+  const int lineHeight = renderer.getLineHeight(fontId);
+  const bool gray16 = renderer.isGrayscale16Active();
+  size_t i = 0;
+  while (i < elements.size()) {
+    if (elements[i]->getTag() != TAG_PageLine) {
+      ++i;
+      continue;
+    }
+    const BlockBox box = static_cast<const PageLine&>(*elements[i]).getBlock()->getBlockStyle().box;
+    if (box.id == 0) {
+      ++i;
+      continue;
+    }
+    const int top = elements[i]->yPos;
+    int bottom = top;
+    int spacing = lineHeight;
+    int previousY = top;
+    size_t j = i;
+    for (; j < elements.size(); ++j) {
+      if (elements[j]->getTag() != TAG_PageLine) continue;  // an image inside the panel
+      if (static_cast<const PageLine&>(*elements[j]).getBlock()->getBlockStyle().box.id != box.id) break;
+      if (elements[j]->yPos > previousY) spacing = std::min(spacing, elements[j]->yPos - previousY);
+      previousY = elements[j]->yPos;
+      bottom = elements[j]->yPos;
+    }
+    const int x = xOffset + box.left;
+    const int y = std::max(0, yOffset + top - box.padTop);
+    const int height = yOffset + bottom + spacing + box.padBottom - y;
+    if (box.width > 0 && height > 0) {
+      if (gray16 && box.fillLuma < 250) {
+        renderer.fillRoundedRect(x, y, box.width, height, box.radius, box.fillLuma >= 160 ? LightGray : DarkGray);
+      }
+      if (box.border > 0) renderer.drawRoundedRect(x, y, box.width, height, box.border, box.radius, true);
+    }
+    i = j;
+  }
+}
+
 }  // namespace
+
+void Page::renderPanels(GfxRenderer& renderer, const int fontId, const int xOffset, const int yOffset) const {
+  renderBlockBoxes(elements, renderer, fontId, xOffset, yOffset);
+}
+
+bool Page::hasPanelFill() const {
+  for (const auto& element : elements) {
+    if (element->getTag() != TAG_PageLine) continue;
+    const BlockBox& box = static_cast<const PageLine&>(*element).getBlock()->getBlockStyle().box;
+    if (box.id != 0 && box.fillLuma < 250) return true;
+  }
+  return false;
+}
 
 void Page::addFootnote(const char* number, const char* href) {
   if (footnotes.size() >= MAX_FOOTNOTES_PER_PAGE || footnotes.allocationFailed()) return;
@@ -176,6 +235,7 @@ std::unique_ptr<PageHorizontalRule> PageHorizontalRule::deserialize(HalFile& fil
 }
 
 void Page::render(GfxRenderer& renderer, const int fontId, const int xOffset, const int yOffset) const {
+  renderPanels(renderer, fontId, xOffset, yOffset);
   renderFilteredPageElements(elements, renderer, fontId, xOffset, yOffset, [](const PageElement&) { return true; });
 }
 
@@ -191,6 +251,7 @@ void Page::renderImages(GfxRenderer& renderer, const int fontId, const int xOffs
 
 void Page::renderWithImagePlaceholders(GfxRenderer& renderer, const int fontId, const int xOffset,
                                        const int yOffset) const {
+  renderPanels(renderer, fontId, xOffset, yOffset);
   for (const auto& element : elements) {
     if (element->getTag() == TAG_PageImage) {
       static_cast<const PageImage&>(*element).renderPlaceholder(renderer, xOffset, yOffset);

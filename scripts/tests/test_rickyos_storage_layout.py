@@ -8,12 +8,12 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def run_cpp(program):
+def run_cpp(program, extra_flags=()):
     with tempfile.TemporaryDirectory(prefix='free-space-') as directory:
         cpp = Path(directory) / 'check.cpp'
         exe = Path(directory) / 'check'
         cpp.write_text(program)
-        subprocess.run(['c++', '-std=c++20', '-Wall', '-Wextra', '-Werror', str(cpp), '-o', str(exe)], check=True)
+        subprocess.run(['c++', '-std=c++20', '-Wall', '-Wextra', '-Werror', *extra_flags, str(cpp), '-o', str(exe)], check=True)
         subprocess.run([str(exe)], check=True)
 
 
@@ -72,7 +72,7 @@ class RickyStorageLayoutTest(unittest.TestCase):
         self.assertLess(main.index('READING_STATS.loadFromFile()'), main.index('RickyStorageLayout::migrateLegacyBooks()'))
 
 
-    def test_storage_counts_files_in_subfolders_and_font_families(self):
+    def test_storage_manual_breakdown_uses_index_sizes_and_bounded_folder_walks(self):
         page = (ROOT / 'src/activities/home/RickyStorageActivity.cpp').read_text()
         enter = body(page, 'void RickyStorageActivity::onEnter()')
         self.assertIn('sdFontSystem.registry().getFamilies().size()', enter)
@@ -90,9 +90,12 @@ class RickyStorageLayoutTest(unittest.TestCase):
         self.assertLess(scan.index('publish('), scan.index('countPass()'))
         self.assertIn('saveStats();', scan)
         count = body(page, 'void countPass()')
-        self.assertIn('countFiles(RickyStorageLayout::IMAGES, Kind::Images)', count)
-        self.assertIn('countFiles(RickyStorageLayout::DOWNLOADS, Kind::AnyFile)', count)
-        # Each count is shown as it lands; a pass paused by leaving the page stays stale.
+        self.assertIn('libraryBytes()', count)
+        self.assertIn('sumBytes("/.crosspoint")', count)
+        self.assertIn('sumBytes(RickyStorageLayout::FONTS) + sumBytes("/.fonts")', count)
+        for field in ('scan.bookBytes = books', 'scan.cacheBytes = cache', 'scan.fontBytes = fonts'):
+            self.assertIn(field, count)
+        # A cancelled pass must not publish partial totals as a complete measurement.
         self.assertLess(count.index('if (scanCancel.load())'), count.index('publish('))
         self.assertIn('staleEpoch.load() == epoch', count)
         # Books are Library's number only: no walk of our own that Library would contradict.
@@ -104,28 +107,48 @@ class RickyStorageLayoutTest(unittest.TestCase):
         self.assertNotIn('buildLibraryIndex', refresh)
         self.assertIn('startStorageScan(true);', refresh)
         self.assertIn('Storage.writeFile(kStalePath, "1")', body(page, 'void RickyStorageActivity::invalidateScan()'))
-        walk = body(page, 'int countFiles(')
-        self.assertIn("if (name[0] == '.') continue;", walk)
-        self.assertIn('countFiles(path + "/" + name, kind, depth + 1)', walk)
-        self.assertIn('startActivityForResultWith<FontLibraryActivity>', body(page, 'void RickyStorageActivity::activateIndex('))
+        books = body(page, 'uint64_t libraryBytes()')
+        self.assertIn('index->readRange(', books)
+        self.assertIn('records[i].fileSize', books)
+        self.assertNotIn('openNextFile(', books)
+        walk = body(page, 'uint64_t sumBytes(')
+        self.assertIn('constexpr int kMaxDepth = 4;', walk)
+        self.assertIn('if (depth < kMaxDepth)', walk)
+        self.assertIn('!scanCancel.load()', walk)
+        actions = body(page, 'void RickyStorageActivity::activateIndex(')
+        for activity in ('FileBrowserActivity', 'LibrarySourcesActivity'):
+            self.assertIn('startActivityForResultWith<' + activity + '>', actions)
+        self.assertIn('activityManager.goToFileTransfer()', actions)
 
-
-if __name__ == '__main__':
-    unittest.main()
+    def test_storage_summary_cannot_open_cache_cleanup_or_take_button_focus(self):
+        page = (ROOT / 'src/activities/home/RickyStorageActivity.cpp').read_text()
+        header = (ROOT / 'src/activities/home/RickyStorageActivity.h').read_text()
+        self.assertNotIn('ClearCacheActivity', page)
+        self.assertNotIn('hit(summary,', page)
+        self.assertIn('constexpr bool summarySelected = false;', page)
+        self.assertIn('kCardCount = 3;', header)
+        self.assertIn('const int row = i;', page)
+        actions = body(page, 'void RickyStorageActivity::activateIndex(')
+        self.assertRegex(actions, r'if \(index == 0\) \{\s*//[^\n]*\n\s*startActivityForResultWith<FileBrowserActivity>')
+        self.assertIn('} else if (index == 1) {\n    startActivityForResultWith<LibrarySourcesActivity>', actions)
+        self.assertIn('} else if (index == 2) {\n    activityManager.goToFileTransfer();', actions)
+        # Only the summary loses its interaction: the existing statistics refresh remains.
+        self.assertIn('if (index == kRefreshAction)', actions)
+        self.assertIn('refresh();', actions)
 
     def test_free_space_walk_holds_the_sd_lock_one_slice_at_a_time(self):
         source = (ROOT / 'src/util/RickyFreeSpace.cpp').read_text()
         walk = body(source, 'bool measure(uint64_t& totalBytes, uint64_t& freeBytes) {\n  totalBytes = 0;')
         loop = walk[walk.index('for (uint32_t sector = 0;'):]
         # The lock is scoped to the read of one slice; counting and the yield run without it.
-        locked = loop[loop.index('HalStorage::StorageLock lock;'):loop.index('freeClusters += countSlice(')]
+        locked = loop[loop.index('HalStorage::StorageLock lock;'):loop.index('freeClusters +=')]
         self.assertIn('readSectors(geometry.tableStart + sector, slice.get(), count)', locked)
-        self.assertLess(loop.index('freeClusters += countSlice('), loop.index('taskYIELD();'))
+        self.assertLess(loop.index('freeClusters +='), loop.index('taskYIELD();'))
         self.assertIn('rawBlockDevice() != geometry.device', locked)
         self.assertIn('constexpr uint32_t kSliceSectors = 16;', source)
         # Recount only after something changed: a folder visit alone does not.
         page = (ROOT / 'src/activities/home/RickyStorageActivity.cpp').read_text()
-        self.assertIn('if (scanStale.load()) startStorageScan();', page)
+        self.assertIn('if (countsStale.load()) startStorageScan(true);', page)
         browser = (ROOT / 'src/activities/home/FileBrowserActivity.cpp').read_text()
         self.assertIn('RickyStorageActivity::invalidateScan();', body(browser, 'void FileBrowserActivity::finishEdit('))
         # The simulator has no FAT to walk.
@@ -172,4 +195,63 @@ int main() {
 }
 '''
         run_cpp(program)
+
+    def test_production_book_byte_sum_has_bounded_stack_and_exact_batches(self):
+        page = (ROOT / 'src/activities/home/RickyStorageActivity.cpp').read_text()
+        method = body(page, 'uint64_t libraryBytes()')
+        program = r'''
+#include <algorithm>
+#include <atomic>
+#include <cassert>
+#include <cstring>
+#include <memory>
+#include <vector>
+''' + '#include "' + str(ROOT / 'lib/LibraryIndex/LibraryFormat.h') + '"\n' + r'''
+std::atomic<bool> scanCancel{false};
+bool allocationFails = false, openFails = false;
+std::vector<library::ClixRecord> rows;
+size_t readCount = 0, largestRead = 0, closes = 0;
+namespace library {
+const char* libraryIndexPath() { return "index"; }
+class LibraryIndexFile {
+  ClixHeader head{};
+ public:
+  bool open(const char*) { head.bookCount = rows.size(); return !openFails; }
+  uint16_t bookCount() const { return head.bookCount; }
+  const ClixHeader& header() const { return head; }
+  bool readRange(uint32_t offset, void* destination, size_t bytes) {
+    assert(bytes <= 1024 && bytes % sizeof(ClixRecord) == 0);
+    assert(offset == readCount * 1024 && offset + bytes <= rows.size() * sizeof(ClixRecord));
+    ++readCount; largestRead = std::max(largestRead, bytes);
+    std::memcpy(destination, reinterpret_cast<const unsigned char*>(rows.data()) + offset, bytes);
+    return true;
+  }
+  void close() { ++closes; }
+};
+}
+template<class T> std::unique_ptr<T> makeUniqueNoThrow() {
+  return allocationFails ? nullptr : std::unique_ptr<T>(new T);
+}
+''' + method + r'''
+int main() {
+  for (unsigned count : {0u, 1u, 7u, 8u, 9u, 31u, 32u, 33u, 3000u, 16384u}) {
+    rows.assign(count, {}); readCount = largestRead = closes = 0;
+    uint64_t expected = 0;
+    for (unsigned i = 0; i < count; ++i) {
+      rows[i].fileSize = 0xffff0000u + i;
+      expected += rows[i].fileSize;
+    }
+    assert(libraryBytes() == expected);
+    assert(readCount == (count + 7) / 8 && largestRead <= 1024 && closes == 1);
+  }
+  allocationFails = true; assert(libraryBytes() == 0); allocationFails = false;
+  openFails = true; assert(libraryBytes() == 0); openFails = false;
+  scanCancel = true; readCount = 0; assert(libraryBytes() == 0 && readCount == 0);
+}
+'''
+        run_cpp(program, ('-Wframe-larger-than=2048', '-fsanitize=address,undefined', '-fno-omit-frame-pointer'))
+
+
+if __name__ == '__main__':
+    unittest.main()
 

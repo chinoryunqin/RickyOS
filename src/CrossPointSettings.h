@@ -467,11 +467,12 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   };
   uint8_t rickyStandbyFace = RICKY_STANDBY_PICTURE;
   // What stays on the screen once the device is off: what Standby showed, the RickyOS
-  // rest screen, or nothing. Replaces choosing among the sleepScreen modes directly.
+  // rest screen, nothing, or an independent picture. Saved IDs are append-only.
   enum RICKY_POWER_OFF_SCREEN : uint8_t {
     RICKY_POWER_OFF_SAME = 0,
     RICKY_POWER_OFF_DEFAULT,
     RICKY_POWER_OFF_BLANK,
+    RICKY_POWER_OFF_CUSTOM,  // independent /poweroff.bmp; append to preserve saved values
     RICKY_POWER_OFF_SCREEN_COUNT
   };
   uint8_t rickyPowerOffScreen = RICKY_POWER_OFF_DEFAULT;

@@ -690,6 +690,24 @@ int main(int argc, char** argv) {
   sleepProbe.renderCustomSleepScreen();
   assert(commits == beforeFiltered);  // Existing filters must not enter native output.
   SETTINGS.sleepScreenCoverFilter = CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER;
+  // Power-off owns a different file. It must render without /sleep.bmp, and a
+  // missing/invalid power-off image must not quietly show the standby picture.
+  assert(Storage.rename("/sleep.bmp", "/poweroff.bmp"));
+  SETTINGS.rickyPowerOffScreen = CrossPointSettings::RICKY_POWER_OFF_CUSTOM;
+  const int beforePowerOff = commits;
+  sleepProbe.renderCustomSleepScreen();
+  assert(commits == beforePowerOff + 1 && sleepProbe.defaults == 1 && !loan);
+  assert(Storage.rename("/poweroff.bmp", "/sleep.bmp"));
+  sleepProbe.renderCustomSleepScreen();
+  assert(commits == beforePowerOff + 1 && sleepProbe.defaults == 2 && !loan);
+  {
+    std::ofstream invalid(std::string(argv[2]) + "/poweroff.bmp", std::ios::binary);
+    invalid << "not-a-bitmap";
+  }
+  sleepProbe.renderCustomSleepScreen();
+  assert(commits == beforePowerOff + 1 && sleepProbe.defaults == 3 && !loan);
+  assert(Storage.remove("/poweroff.bmp"));
+  SETTINGS.rickyPowerOffScreen = CrossPointSettings::RICKY_POWER_OFF_SAME;
   assert(commits > 0 && cancels > 0);
 
   // Portrait panels walk glyphs column by column (panel memory order); landscape keeps

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -9,8 +10,10 @@
 
 class ImageViewerActivity final : public Activity {
  public:
+  enum class WallpaperTarget : uint8_t { Standby, PowerOff };
   ImageViewerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string filePath,
-                      bool wallpaperPicker = false, bool stickerPicker = false);
+                      bool wallpaperPicker = false, bool stickerPicker = false,
+                      WallpaperTarget wallpaperTarget = WallpaperTarget::Standby);
 
   void onEnter() override;
   void onExit() override;
@@ -29,6 +32,7 @@ class ImageViewerActivity final : public Activity {
   std::string previewPath;  // the converted BMP shown for a PNG/JPEG
   bool wallpaperPicker = false;
   bool stickerPicker = false;
+  WallpaperTarget wallpaperTarget = WallpaperTarget::Standby;
   bool imageReady = false;
   std::vector<std::string> siblingImages;
   int currentImageIndex = -1;

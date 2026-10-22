@@ -120,6 +120,7 @@ class ChapterHtmlSlimParser {
   CssStyle resolveElementStyle(const char* tag, std::string_view classes) const;
   uint32_t currentWordLook();
   std::vector<BlockStyle> blockStyleStack;  // accumulated block styles from open ancestor elements
+  uint16_t nextBoxId = 0;                   // BlockBox ids for CSS panels in this chapter
   CssStyle currentCssStyle;
   bool effectiveBold = false;
   bool effectiveItalic = false;

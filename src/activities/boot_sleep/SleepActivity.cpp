@@ -624,23 +624,25 @@ void SleepActivity::onEnter() {
 void SleepActivity::renderCustomSleepScreen() const {
   const bool native = renderer.getGrayscaleLevels() == 16 &&
                       SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER;
-  // Look for sleep.bmp on the root of the sd card to determine if we should
-  // render a custom sleep screen instead of the default.
-  // This takes priority over the /sleep folder.
+  const bool independent = SETTINGS.rickyPowerOffScreen == CrossPointSettings::RICKY_POWER_OFF_CUSTOM;
+  const char* picturePath = independent ? "/poweroff.bmp" : "/sleep.bmp";
+  // An independent power-off image must never fall back to the standby image.
   HalFile file;
-  if (Storage.openFileForRead("SLP", "/sleep.bmp", file)) {
+  if (Storage.openFileForRead("SLP", picturePath, file)) {
     Bitmap bitmap(file, !native,
                   renderer.grayscaleCapabilities(sleepGrayscaleMode(renderer)).supported() &&
                       display.getController() == HalDisplay::Controller::SSD1677 &&
                       SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER);
     if (bitmap.parseHeaders() == BmpReaderError::Ok) {
-      LOG_DBG("SLP", "Loading: /sleep.bmp");
+      LOG_DBG("SLP", "Loading: %s", picturePath);
       renderBitmapSleepScreen(bitmap, false, native);
       file.close();
       return;
     }
     file.close();
   }
+
+  if (independent) return renderDefaultSleepScreen();
 
   std::string selectedPath;
   if (!selectRandomSleepFile("/.sleep", SleepRecentKind::Standard, selectedPath)) {

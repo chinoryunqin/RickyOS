@@ -64,6 +64,8 @@ def main():
     class CrossPointSettings {
      public:
       enum SLEEP_SCREEN_MODE : uint8_t { LIGHT, CUSTOM };
+      enum { RICKY_POWER_OFF_SAME, RICKY_POWER_OFF_DEFAULT, RICKY_POWER_OFF_BLANK, RICKY_POWER_OFF_CUSTOM };
+      uint8_t rickyPowerOffScreen = RICKY_POWER_OFF_SAME;
       enum class SLEEP_SCREEN_COVER_MODE { FIT, CROP };
       enum class SLEEP_SCREEN_COVER_FILTER { NO_FILTER, BLACK_AND_WHITE, INVERTED_BLACK_AND_WHITE };
       SLEEP_SCREEN_COVER_MODE sleepScreenCoverMode = SLEEP_SCREEN_COVER_MODE::FIT;
