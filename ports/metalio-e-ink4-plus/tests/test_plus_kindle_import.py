@@ -65,6 +65,7 @@ MAIN = r'''
 #include <cassert>
 #include <cstdio>
 #include <filesystem>
+#include <iterator>
 int main(int argc,char**argv){
  assert(argc==3);std::string title,author,archive;kindle::Error error;bool rebuilt;
  assert(kindle::supported(argv[1]));assert(!kindle::supported("a.azw"));
@@ -74,6 +75,22 @@ int main(int argc,char**argv){
  auto stamp=std::filesystem::last_write_time(archive);
  assert(kindle::prepare(argv[1],argv[2],archive,rebuilt,error)&&!rebuilt);
  assert(std::filesystem::last_write_time(archive)==stamp);
+ {
+  // A v2 marker (whole-file CRC) from an older build is verified once and adopted.
+  std::ifstream in(argv[1],std::ios::binary);std::string bytes((std::istreambuf_iterator<char>(in)),{});
+  uint32_t crc=~0u;for(unsigned char c:bytes){crc^=c;for(int b=0;b<8;++b)crc=(crc>>1)^((0u-(crc&1))&0xedb88320);}crc=~crc;
+  const auto marker=[&](uint32_t sum){uint8_t m[16]={'R','K','I',2};uint32_t n=bytes.size();
+   for(int i=0;i<4;++i){m[4+i]=uint8_t(n>>(8*i));m[8+i]=uint8_t(sum>>(8*i));}
+   std::ofstream o(std::string(argv[2])+"/kindle.v2",std::ios::binary|std::ios::trunc);o.write(reinterpret_cast<char*>(m),16);};
+  marker(crc);
+  assert(kindle::prepare(argv[1],argv[2],archive,rebuilt,error)&&!rebuilt);
+  assert(std::filesystem::last_write_time(archive)==stamp);
+  {std::ifstream m(std::string(argv[2])+"/kindle.v2",std::ios::binary);char v[4];m.read(v,4);assert(v[3]==3);}
+  assert(kindle::prepare(argv[1],argv[2],archive,rebuilt,error)&&!rebuilt);
+  marker(crc^1);  // a v2 marker that no longer matches the source rebuilds
+  assert(kindle::prepare(argv[1],argv[2],archive,rebuilt,error)&&rebuilt);
+  stamp=std::filesystem::last_write_time(archive);
+ }
  // Only disposable source copies are passed to this executable.
  {std::ofstream p(std::string(argv[2])+"/progress.bin");p<<"keep-progress";}
  {std::ofstream p(std::string(argv[2])+"/cover.override");p<<"keep-user-cover";}

@@ -6,6 +6,7 @@
 #include <Logging.h>
 #include <Epub/htmlEntities.h>
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdio>
 #include <cstring>
@@ -15,7 +16,7 @@
 namespace kindle {
 namespace {
 constexpr uint32_t kInvalid = 0xffffffff, kMaxChapter = 2 * 1024 * 1024;
-constexpr size_t kBufferSize = 8192;
+constexpr size_t kBufferSize = 32 * 1024;  // fewer, larger SD transfers for comic-sized images
 constexpr uint32_t kMaxSections = 4096, kMaxFragments = 16384, kMaxToc = 4096, kMaxResources = 8192;
 constexpr uint16_t kCp1252[32] = {0x20ac,0xfffd,0x201a,0x192,0x201e,0x2026,0x2020,0x2021,
   0x2c6,0x2030,0x160,0x2039,0x152,0xfffd,0x17d,0xfffd,0xfffd,0x2018,0x2019,0x201c,0x201d,0x2022,
@@ -36,13 +37,20 @@ uint32_t be32(const uint8_t* p) {
 }
 void le16(uint8_t* p, uint16_t v) { p[0] = v; p[1] = v >> 8; }
 void le32(uint8_t* p, uint32_t v) { le16(p, v); le16(p + 2, v >> 16); }
-uint32_t crc32(uint32_t crc, const uint8_t* data, size_t size) {
-  // No extra 1 KiB mutable RAM table; the import is not a per-page operation.
-  crc = ~crc;
-  for (size_t i = 0; i < size; ++i) {
-    crc ^= data[i];
-    for (unsigned b = 0; b < 8; ++b) crc = (crc >> 1) ^ ((0u - (crc & 1)) & 0xedb88320);
+// Built at compile time into read-only data: no RAM table. A comic copies tens of MB
+// through this, where the bit-at-a-time loop cost several seconds.
+constexpr auto kCrcTable = [] {
+  std::array<uint32_t, 256> table{};
+  for (uint32_t i = 0; i < 256; ++i) {
+    uint32_t c = i;
+    for (unsigned b = 0; b < 8; ++b) c = (c >> 1) ^ ((0u - (c & 1)) & 0xedb88320);
+    table[i] = c;
   }
+  return table;
+}();
+uint32_t crc32(uint32_t crc, const uint8_t* data, size_t size) {
+  crc = ~crc;
+  for (size_t i = 0; i < size; ++i) crc = kCrcTable[(crc ^ data[i]) & 0xff] ^ (crc >> 8);
   return ~crc;
 }
 bool readAt(void* context, uint32_t offset, void* output, size_t size) {
@@ -216,6 +224,7 @@ class Importer {
   bool allocate(memory::ByteBuffer& data, size_t bytes) {
     data = buffer(bytes); return data ? true : fail(Error::OutOfMemory);
   }
+  // Whole-file CRC: the v2 cache marker's identity, kept to adopt old caches once.
   bool fingerprint(uint32_t& crc) {
     crc = 0;
     for (uint32_t off = 0; off < input.size;) {
@@ -223,6 +232,30 @@ class Importer {
       if (cancelled()) return false;
       if (!readAt(&source, off, work.get(), n)) return fail(Error::Io);
       crc = crc32(crc, work.get(), n); off += n;
+    }
+    return true;
+  }
+  // Identity checked on every open: the PDB header and record table (dates, record
+  // offsets), the first and last 64 KiB and 16 evenly spaced 4 KiB samples, with the
+  // size beside it in the marker. Reading the whole file instead took most of the open
+  // time of a 60 MB comic whose cache was already built.
+  bool identity(uint32_t& crc) {
+    crc = 0;
+    const auto span = [&](uint32_t off, uint32_t length) {
+      while (length) {
+        const size_t n = std::min<uint32_t>(kBufferSize, length);
+        if (cancelled()) return false;
+        if (!readAt(&source, off, work.get(), n)) return fail(Error::Io);
+        crc = crc32(crc, work.get(), n); off += n; length -= n;
+      }
+      return true;
+    };
+    constexpr uint32_t kEdge = 64 * 1024, kSample = 4096, kSamples = 16;
+    const uint32_t table = std::min<uint32_t>(input.size, 78 + document.absoluteRecordCount() * 8);
+    if (!span(0, std::max(table, std::min(input.size, kEdge)))) return false;
+    if (input.size > kEdge && !span(input.size - kEdge, kEdge)) return false;
+    for (uint32_t i = 1; i <= kSamples && input.size > kSample; ++i) {
+      if (!span(uint32_t(uint64_t(input.size - kSample) * i / (kSamples + 1)), kSample)) return false;
     }
     return true;
   }
@@ -789,15 +822,35 @@ bool prepare(const std::string& path, const std::string& cache, std::string& arc
   if (!importer) { error = Error::OutOfMemory; LOG_ERR("KINDLE", "OOM: import reader"); return false; }
   if (!importer->open(path, cancellation)) { error = importer->error; return false; }
   uint32_t checksum;
-  if (!importer->fingerprint(checksum)) { error = importer->error; return false; }
+  if (!importer->identity(checksum)) { error = importer->error; return false; }
   const std::string finalPath = cache + "/kindle.epub", markerPath = cache + kMarkerName;
-  uint8_t expected[16] = {'R','K','I',2}, actual[16] = {};
+  uint8_t expected[16] = {'R','K','I',3}, actual[16] = {};
   le32(expected + 4, importer->input.size); le32(expected + 8, checksum);
+  const auto writeMarker = [&] {
+    HalFile marker;
+    return Storage.openFileForWrite("KINDLE", markerPath, marker) &&
+           marker.write(expected, sizeof(expected)) == sizeof(expected);
+  };
   {
     HalFile marker;
     if (Storage.exists(finalPath.c_str()) && Storage.openFileForRead("KINDLE", markerPath, marker) &&
-        marker.fileSize() == sizeof(actual) && marker.read(actual, sizeof(actual)) == sizeof(actual) &&
-        !memcmp(expected, actual, sizeof(actual))) { archive = finalPath; return true; }
+        marker.fileSize() == sizeof(actual) && marker.read(actual, sizeof(actual)) == sizeof(actual)) {
+      marker.close();
+      if (!memcmp(expected, actual, sizeof(actual))) { archive = finalPath; return true; }
+      // A cache built before the sampled identity (v2, whole-file CRC): verify it the old
+      // way once and adopt it, rather than converting the whole book again.
+      uint8_t legacy[16] = {'R','K','I',2};
+      uint32_t whole;
+      le32(legacy + 4, importer->input.size);
+      if (!memcmp(legacy, actual, 8)) {
+        if (!importer->fingerprint(whole)) { error = importer->error; return false; }
+        le32(legacy + 8, whole);
+        if (!memcmp(legacy, actual, sizeof(actual)) && writeMarker()) {
+          LOG_INF("KINDLE", "Adopted reading cache from the previous marker");
+          archive = finalPath; return true;
+        }
+      }
+    }
   }
   if (!Storage.ensureDirectoryExists(cache.c_str())) { error = Error::Io; return false; }
   const std::string rawPath = cache + "/.kindle.raw.tmp", zipPath = cache + "/.kindle.epub.tmp", central = cache + "/.kindle.central.tmp";
@@ -816,12 +869,7 @@ bool prepare(const std::string& path, const std::string& cache, std::string& arc
   if (!Storage.replaceFile(zipPath.c_str(), finalPath.c_str())) { error = Error::Io; return false; }
   // Remove only derived layout data for this book, never progress or user files.
   if (!invalidateDerived(cache)) { error = Error::Io; return false; }
-  {
-    HalFile marker;
-    if (!Storage.openFileForWrite("KINDLE", markerPath, marker) || marker.write(expected, sizeof(expected)) != sizeof(expected)) {
-      error = Error::Io; return false;
-    }
-  }
+  if (!writeMarker()) { error = Error::Io; return false; }
   rebuilt = true; archive = finalPath;
   LOG_INF("KINDLE", "Imported source into private reading cache");
   return true;
