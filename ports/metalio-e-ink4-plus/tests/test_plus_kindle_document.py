@@ -82,14 +82,19 @@ int main(int argc,char**argv){
 }
 '''
 
-def fixture(text, compression=1, text_record=None, extras=()):
+def fixture(text, compression=1, text_record=None, extras=(), exth=()):
     title = b'Synthetic reader test'
-    record = bytearray(248 + len(title))
+    # Optional EXTH records (type, bytes) sit right after the 232-byte MOBI header.
+    block = b''.join(struct.pack('>II', kind, 8 + len(value)) + value for kind, value in exth)
+    block = b'EXTH' + struct.pack('>II', 12 + len(block), len(exth)) + block if exth else b''
+    record = bytearray(248 + len(block) + len(title))
     struct.pack_into('>HHIHHH', record, 0, compression, 0, len(text), 1, 4096, 0)
     record[16:20] = b'MOBI'
-    for offset, value in {20:232, 24:2, 28:65001, 36:6, 84:248, 88:len(title), 108:0xffffffff, 244:0xffffffff}.items():
+    for offset, value in {20:232, 24:2, 28:65001, 36:6, 84:248 + len(block), 88:len(title), 108:0xffffffff,
+                          128:64 if exth else 0, 244:0xffffffff}.items():
         struct.pack_into('>I', record, offset, value)
-    record[248:] = title
+    record[248:248 + len(block)] = block
+    record[248 + len(block):] = title
     if compression == 17480:
         struct.pack_into('>II', record, 112, 2, 2)
     records = [record, text if text_record is None else text_record, *extras]

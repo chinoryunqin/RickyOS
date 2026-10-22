@@ -204,6 +204,12 @@ def run(samples,reference):
         synthetic.write_bytes(fixture('<html><body><h1>测试</h1><p>中文 &amp; ASCII</p></body></html>'.encode()))
         subprocess.run([str(exe),str(synthetic),str(work/'synthetic-cache')],check=True)
         validate(work/'synthetic-cache/kindle.epub')
+        # Fixed-layout books (Kmoe comics: one image per page) import like any other book.
+        fixed=work/'fixed-layout.mobi'
+        fixed.write_bytes(fixture(b'<html><body><p>page</p></body></html>',
+                                  exth=((122,b'true'),(123,b'comic'),(527,b'rtl'))))
+        subprocess.run([str(exe),str(fixed),str(work/'fixed-cache')],check=True)
+        validate(work/'fixed-cache/kindle.epub')
         for name,html,encoding in (
             ('entities','<html><body><p>&copy; &mdash; &nbsp; 中文</p></body></html>'.encode(),65001),
             ('legacy-html',b'<html><body><mbp:pagebreak/><p align=center>one<p>two<br>three</body></html>',65001),
