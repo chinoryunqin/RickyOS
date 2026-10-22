@@ -415,8 +415,9 @@ class BaseTheme {
   // drawPopup() with room for fillPopupProgress() below the message and an empty track,
   // so a long task shows how far it has come.
   Rect drawProgressPopup(const GfxRenderer& renderer, const char* message) const;
+  // `message`, when set, is a wrapped body under the title (themes without one ignore it).
   virtual void drawOptionPopup(const GfxRenderer& renderer, const char* title, const std::vector<std::string>& options,
-                               int selectedIndex) const;
+                               int selectedIndex, const char* message = nullptr) const;
   virtual void fillPopupProgress(const GfxRenderer& renderer, const Rect& layout, const int progress) const;
 
  private:

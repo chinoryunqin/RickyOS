@@ -411,13 +411,14 @@ InxTheme::MenuRowGeometry InxTheme::getMenuRowGeometry(const GfxRenderer&, const
 }
 
 void InxTheme::drawOptionPopup(const GfxRenderer& renderer, const char* title, const std::vector<std::string>& options,
-                               const int selectedIndex) const {
+                               const int selectedIndex, const char* message) const {
   if (options.empty()) return;
 
   const int optionCount = static_cast<int>(options.size());
   const int selected = std::clamp(selectedIndex, 0, optionCount - 1);
-  const auto layout =
-      InxOptionGeometry::layout(UITheme::getInstance().getScreenSafeArea(renderer, true, false), optionCount, selected);
+  const bool hasMessage = message && message[0];
+  const auto layout = InxOptionGeometry::layout(UITheme::getInstance().getScreenSafeArea(renderer, true, false),
+                                                optionCount, selected, hasMessage);
   const int visibleRows = layout.rows;
   const int maxStart = optionCount - visibleRows;
   const int start = layout.first;
@@ -428,14 +429,26 @@ void InxTheme::drawOptionPopup(const GfxRenderer& renderer, const char* title, c
   const bool selectionVisible = UITheme::getInstance().showSelectionCursor();
 
   renderer.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, ricky::ds::radius::kContainer, Color::White);
-  RickyDesignUi::text(renderer,
-                      {static_cast<int16_t>(panelX + 32), static_cast<int16_t>(panelY),
-                       static_cast<int16_t>(panelWidth - 64), static_cast<int16_t>(InxOptionGeometry::headerHeight)},
-                      title, RickyDesignUi::HEADLINE);
+  const bool hasTitle = title && title[0];
+  if (hasTitle) {
+    RickyDesignUi::text(renderer,
+                        {static_cast<int16_t>(panelX + 32), static_cast<int16_t>(panelY),
+                         static_cast<int16_t>(panelWidth - 64), static_cast<int16_t>(InxOptionGeometry::headerHeight)},
+                        title, RickyDesignUi::HEADLINE);
+  }
+  if (hasMessage) {
+    // Message-only dialogs (no title) start the body at the top of the header.
+    const int top = panelY + (hasTitle ? InxOptionGeometry::headerHeight : InxOptionGeometry::headerHeight / 3);
+    const int bottom = panelY + layout.header;
+    RickyDesignUi::text(renderer,
+                        {static_cast<int16_t>(panelX + 32), static_cast<int16_t>(top),
+                         static_cast<int16_t>(panelWidth - 64), static_cast<int16_t>(bottom - top)},
+                        message, RickyDesignUi::BODY, false, freeink::ui::TextAlign::Left, 4);
+  }
 
   for (int slot = 0; slot < visibleRows; ++slot) {
     const int optionIndex = start + slot;
-    const int rowY = panelY + InxOptionGeometry::headerHeight + slot * InxOptionGeometry::rowHeight;
+    const int rowY = panelY + layout.header + slot * InxOptionGeometry::rowHeight;
     const bool isSelected = selectionVisible && optionIndex == selected;
     if (isSelected) {
       const Rect row = layout.optionRect(slot);
@@ -449,7 +462,7 @@ void InxTheme::drawOptionPopup(const GfxRenderer& renderer, const char* title, c
 
   if (optionCount > visibleRows) {
     const int trackX = panelX + panelWidth - 10;
-    const int trackY = panelY + InxOptionGeometry::headerHeight;
+    const int trackY = panelY + layout.header;
     const int trackHeight = visibleRows * InxOptionGeometry::rowHeight;
     const int thumbHeight = std::max(8, trackHeight * visibleRows / optionCount);
     const int thumbY = trackY + start * (trackHeight - thumbHeight) / maxStart;

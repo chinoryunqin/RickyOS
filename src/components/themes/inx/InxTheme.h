@@ -172,7 +172,7 @@ class InxTheme final : public LyraTheme {
   MenuRowGeometry getMenuRowGeometry(const GfxRenderer& renderer, const Rect& rect, int selectedIndex,
                                      int rowCount) const override;
   void drawOptionPopup(const GfxRenderer& renderer, const char* title, const std::vector<std::string>& options,
-                       int selectedIndex) const override;
+                       int selectedIndex, const char* message = nullptr) const override;
   void drawMainTabBar(const GfxRenderer& renderer, Rect rect, MainTab selected) const override;
   void drawMainTabStatusBar(const GfxRenderer& renderer, Rect rect) const override;
 };

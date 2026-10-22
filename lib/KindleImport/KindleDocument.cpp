@@ -128,7 +128,6 @@ bool Document::parseHeader(uint32_t& boundary) {
       if (type == 503) copyText(header_.title, sizeof(header_.title), p + at + 8, len - 8);
       if (type == 121 && len == 12) boundary = be32(p + at + 8);
       if (type == 201 && len == 12) header_.cover = be32(p + at + 8);
-      if (type == 122 && len >= 12 && !memcmp(p + at + 8, "true", 4)) return fail(Error::Unsupported);
       at += len;
     }
   }

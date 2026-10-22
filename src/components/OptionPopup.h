@@ -214,7 +214,7 @@ class OptionPopup {
     if (!upstreamStyle && UITheme::getInstance().hasMainTabs()) {
       const int optionCount = static_cast<int>(ownedStrings.size());
       const auto layout = InxOptionGeometry::layout(UITheme::getInstance().getScreenSafeArea(renderer, true, false),
-                                                    optionCount, selectedIndex);
+                                                    optionCount, selectedIndex, !message.empty());
       visibleOptionRows = layout.rows;
       const auto& panel = layout.panel;
       frame.hit(fui::Rect{static_cast<int16_t>(panel.x), static_cast<int16_t>(panel.y),
@@ -226,7 +226,8 @@ class OptionPopup {
                             static_cast<int16_t>(row.height)},
                   ACTION_OPTION, static_cast<int16_t>(layout.first + slot), fui::InputTouch);
       }
-      GUI.drawOptionPopup(renderer, title.c_str(), ownedStrings, selectedIndex);
+      GUI.drawOptionPopup(renderer, title.c_str(), ownedStrings, selectedIndex,
+                          message.empty() ? nullptr : message.c_str());
       interactions.publish();
       uiReady = true;
       return;

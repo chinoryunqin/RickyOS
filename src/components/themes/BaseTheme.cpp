@@ -1454,7 +1454,7 @@ void BaseTheme::drawActionButton(const GfxRenderer& renderer, const Rect rect, c
 }
 
 void BaseTheme::drawOptionPopup(const GfxRenderer& renderer, const char* title, const std::vector<std::string>& options,
-                                int selectedIndex) const {
+                                int selectedIndex, const char* /*message*/) const {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
