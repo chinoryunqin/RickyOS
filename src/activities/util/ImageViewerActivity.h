@@ -15,6 +15,10 @@ class ImageViewerActivity final : public Activity {
                       bool wallpaperPicker = false, bool stickerPicker = false,
                       WallpaperTarget wallpaperTarget = WallpaperTarget::Standby);
 
+  // What the file holds, read from its first bytes: saved pictures often carry the wrong
+  // extension (a JPEG named .png), and a decoder chosen by name then rejects them.
+  enum class ImageKind : uint8_t { Bmp, Png, Jpeg };
+
   void onEnter() override;
   void onExit() override;
   void loop() override;
@@ -23,6 +27,7 @@ class ImageViewerActivity final : public Activity {
  private:
   void loadSiblingImages();
   bool isPng() const;
+  bool isJpeg() const;
   bool preparePreview();
   bool doSetSleepCover(const char* sourcePath, bool transparent);
   bool doSetSticker();
@@ -30,6 +35,7 @@ class ImageViewerActivity final : public Activity {
 
   std::string filePath;
   std::string previewPath;  // the converted BMP shown for a PNG/JPEG
+  ImageKind imageKind = ImageKind::Bmp;
   bool wallpaperPicker = false;
   bool stickerPicker = false;
   WallpaperTarget wallpaperTarget = WallpaperTarget::Standby;

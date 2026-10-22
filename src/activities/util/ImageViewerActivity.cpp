@@ -10,6 +10,7 @@
 #include <PngToBmpConverter.h>
 
 #include <algorithm>
+#include <cstring>
 
 #include "CrossPointSettings.h"
 #include "activities/apps/standby/KeepPageFace.h"
@@ -122,7 +123,26 @@ void ImageViewerActivity::loadSiblingImages() {
   }
 }
 
-bool ImageViewerActivity::isPng() const { return FsHelpers::hasPngExtension(filePath); }
+namespace {
+// The signature decides; the extension is only the fallback for a file too short to tell.
+ImageViewerActivity::ImageKind sniffImageKind(const std::string& path) {
+  using Kind = ImageViewerActivity::ImageKind;
+  uint8_t head[8] = {};
+  HalFile file;
+  if (Storage.openFileForRead("IMAGE", path.c_str(), file) && file.read(head, sizeof(head)) == sizeof(head)) {
+    static constexpr uint8_t kPng[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+    if (memcmp(head, kPng, sizeof(kPng)) == 0) return Kind::Png;
+    if (head[0] == 0xFF && head[1] == 0xD8 && head[2] == 0xFF) return Kind::Jpeg;
+    if (head[0] == 'B' && head[1] == 'M') return Kind::Bmp;
+  }
+  if (FsHelpers::hasPngExtension(path)) return Kind::Png;
+  if (FsHelpers::hasJpgExtension(path)) return Kind::Jpeg;
+  return Kind::Bmp;
+}
+}  // namespace
+
+bool ImageViewerActivity::isPng() const { return imageKind == ImageKind::Png; }
+bool ImageViewerActivity::isJpeg() const { return imageKind == ImageKind::Jpeg; }
 
 bool ImageViewerActivity::preparePreview() {
   previewPath = previewCachePath(filePath);
@@ -169,7 +189,8 @@ void ImageViewerActivity::onEnter() {
   // commit below clears what was underneath.
   Rect popupRect = GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
   GUI.fillPopupProgress(renderer, popupRect, 20);  // Initial 20% progress
-  const bool needsPreview = isPng() || FsHelpers::hasJpgExtension(filePath);
+  imageKind = sniffImageKind(filePath);
+  const bool needsPreview = isPng() || isJpeg();
   const unsigned long tPrep = millis();
   const bool prepared = !needsPreview || preparePreview();
   LOG_DBG("IMGV", "timing: preview %lu ms", millis() - tPrep);
@@ -437,7 +458,7 @@ void ImageViewerActivity::showSleepCoverOptions() {
   if (!imageReady) return;
   if (wallpaperTarget == WallpaperTarget::PowerOff) {
     // Power-off is a complete still image, never the retained-page sticker mode.
-    const char* source = isPng() || FsHelpers::hasJpgExtension(filePath) ? previewPath.c_str() : filePath.c_str();
+    const char* source = isPng() || isJpeg() ? previewPath.c_str() : filePath.c_str();
     if (doSetSleepCover(source, false) && wallpaperPicker) finish();
     return;
   }
@@ -447,7 +468,7 @@ void ImageViewerActivity::showSleepCoverOptions() {
   }
   if (!isPng()) {
     // Picking a wallpaper ends here: return to the page that asked, which shows the new picture.
-    if (doSetSleepCover(FsHelpers::hasJpgExtension(filePath) ? previewPath.c_str() : filePath.c_str(), false) &&
+    if (doSetSleepCover(isJpeg() ? previewPath.c_str() : filePath.c_str(), false) &&
         wallpaperPicker)
       finish();
     return;
