@@ -168,12 +168,33 @@ static const EpdWaveformMode s_ui_turn_mode = {
     .range_data = &s_ui_turn_ranges[0],
 };
 
+// Reader turn: the UI-turn table (the Read Pico's text turn: trimmed GL16, left-aligned,
+// unchanged pixels held, new black written without erasing first), so a page lands at
+// once, plus a short balanced re-drive of retained black (to == from == 0): a few erase
+// phases, then as many darkening ones. Fully held, black strokes that stay across turns
+// faded; the vendor's full 18 + 18 erase and rewrite kept them dark but read as a blink.
+#define MY_READER_TURN_FRAMES MY_UI_TURN_FRAMES
+#define MY_READER_TURN_PULSE 5  // erase phases, then as many darkening ones
+static uint8_t s_turn_data[MY_READER_TURN_FRAMES][16][4];
+static const EpdWaveformPhases s_turn_phases = {
+    .phases = MY_READER_TURN_FRAMES,
+    .phase_times = NULL,
+    .luts = (const uint8_t*)&s_turn_data[0],
+};
+static const EpdWaveformPhases* s_turn_ranges[] = { &s_turn_phases };
+static const EpdWaveformMode s_turn_mode = {
+    .type = 0x3,  // MODE_GC16_FAST in epdiy.h, otherwise unused here: MY_MODE_READER_TURN
+    .temp_ranges = 1,
+    .range_data = &s_turn_ranges[0],
+};
+
 static const EpdWaveformMode* s_modes[] = {
     &s_du_mode,
     &s_gc16_mode,
     &s_gl16_mode,
     &s_reader_gl16_mode,
     &s_ui_turn_mode,
+    &s_turn_mode,
 };
 
 const EpdWaveform MY_WAVEFORM = {
@@ -281,6 +302,12 @@ void my_waveform_init(void) {
             s_reader_gl16_data[f][gray][gray / 4] &=
                 (uint8_t)~(3u << (6 - 2 * (gray % 4)));
         }
+    }
+    memset(s_turn_data, 0, sizeof(s_turn_data));
+    memcpy(s_turn_data, s_ui_turn_data, sizeof(s_ui_turn_data));
+    for (int f = 0; f < MY_READER_TURN_PULSE; f++) {
+        lut_or(s_turn_data, f, 0, 0, 2);
+        lut_or(s_turn_data, f + MY_READER_TURN_PULSE, 0, 0, 1);
     }
     ESP_LOGD(TAG, "reader GL16=%d (short experiment=%d)",
              MY_READER_GL16_FRAMES, RICKYOS_PLUS_READER_SHORT_WAVEFORM);

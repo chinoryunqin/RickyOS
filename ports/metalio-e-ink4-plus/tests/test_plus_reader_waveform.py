@@ -25,7 +25,22 @@ static int action(const EpdWaveformPhases* p,int f,int to,int from) {
 }
 int main(void) {
     my_waveform_init();
-    assert(MY_WAVEFORM.num_modes==5); // Measurement mode never leaks into default builds.
+    assert(MY_WAVEFORM.num_modes==6); // Measurement mode never leaks into default builds.
+    // Reader turn: the UI-turn table (37 phases, unchanged pixels held) plus a short
+    // balanced re-drive of retained black: 5 erase phases, then 5 darkening ones.
+    const EpdWaveformPhases* turn=mode(MY_MODE_READER_TURN);
+    const EpdWaveformPhases* uiTurn=mode(MY_MODE_UI_TURN);
+    assert(turn->phases==37);
+    {
+        int erase=0,dark=0;
+        for(int f=0; f<turn->phases; ++f){erase+=action(turn,f,0,0)==2; dark+=action(turn,f,0,0)==1;}
+        assert(erase==5 && dark==5 && action(turn,0,0,0)==2 && action(turn,5,0,0)==1);
+        assert(action(turn,0,0,15)==1); // white to black: darkening from phase 0
+        for(int to=0; to<16; ++to) for(int from=0; from<16; ++from) for(int f=0; f<turn->phases; ++f) {
+            if(to==0 && from==0) continue;
+            assert(action(turn,f,to,from)==action(uiTurn,f,to,from)); // all else as the UI turn
+        }
+    }
     // UI turn (Read Pico text-turn table): 37 phases, unchanged pixels held, sequences toward
     // white start on the first beat (left-aligned), toward black never begin with an erase.
     const EpdWaveformPhases* ui=mode(MY_MODE_UI_TURN);

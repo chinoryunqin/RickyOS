@@ -23,7 +23,7 @@ template <class... A> static void ESP_LOGI(const char*, const char*, A...) {}
 static int64_t esp_timer_get_time() { return 0; }
 constexpr int W=1216,H=684,N=W*H/2;
 struct EpdRect {int x,y,width,height;};
-enum EpdDrawMode {MODE_GC16=1,MODE_DU=2,MODE_GL16=3,MODE_GL16_FAST=6,MODE_GL4=10,MODE_GL16_INV=11};
+enum EpdDrawMode {MODE_GC16=1,MODE_DU=2,MODE_GL16=3,MODE_GL16_FAST=6,MODE_GL4=10,MODE_GL16_INV=11,MODE_GC16_FAST=12};
 constexpr int MODE_PACKING_1PPB_DIFFERENCE=16;
 enum EpdDrawError {EPD_DRAW_SUCCESS=0,EPD_DRAW_EMPTY_LINE_QUEUE=1};
 struct EpdiyHighlevelState {uint8_t *front_fb,*back_fb,*difference_fb; bool* dirty_lines; uint8_t* dirty_columns; void* waveform;};
@@ -109,7 +109,7 @@ int main(){
  d.beginGrayscale16();memcpy(front,back,N);front[1]=0x88;
  metalioPlusSetGray16Profile(1);assert(d.commitGrayscale16(proxy));
  // An ordinary reader turn drives every row and column with the vendor GL16 (faint-ink fix).
- assert(selectedModes.size()==submissions+1 && selectedModes.back()==MODE_GL16 && full==fullBefore+1);
+ assert(selectedModes.size()==submissions+1 && selectedModes.back()==MODE_GC16_FAST && full==fullBefore+1);
  d.beginGrayscale16();memcpy(front,back,N);front[1]=0x99;
  metalioPlusSetGray16Profile(2);assert(d.commitGrayscale16(proxy));
  assert(selectedModes.back()==MODE_GC16); // Cycle/manual cleanup is never suppressed.

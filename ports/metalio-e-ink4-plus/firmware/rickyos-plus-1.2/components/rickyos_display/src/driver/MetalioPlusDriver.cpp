@@ -292,7 +292,9 @@ class MetalioPlusDriver final : public PanelDriver {
     const int64_t startedUs = esp_timer_get_time();
     epd_poweron();
     auto result = EPD_DRAW_EMPTY_LINE_QUEUE;
-    if (epd_board_metalio_eink4_plus_tps_ok()) result = epd_hl_update_screen_full(hl, MODE_GL16, 25);
+    // The reader-turn table (MODE_GC16_FAST slot, my_waveform.c): the page lands at once
+    // and black strokes that stay are briefly re-driven to keep their ink.
+    if (epd_board_metalio_eink4_plus_tps_ok()) result = epd_hl_update_screen_full(hl, MODE_GC16_FAST, 25);
     epd_poweroff();
     ESP_LOGI("PlusDisplay", "turn GL16 full result=0x%x ms=%lld", result, (esp_timer_get_time() - startedUs) / 1000);
     return result;
