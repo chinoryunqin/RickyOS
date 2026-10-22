@@ -132,9 +132,16 @@ class MetalioPlusDriver final : public PanelDriver {
     } else {
       ledger_ = {};
       const bool full = profile != 1;
-      // Only an ordinary reader turn selects the short/held-diagonal variant. UI,
-      // manual/cycle cleanup and an unknown optical baseline keep their tables.
-      success = refresh(MetalioEpd_Hl(), full ? MODE_GC16 : MODE_GL16_FAST, full) == EPD_DRAW_SUCCESS;
+      // An ordinary reader turn drives the whole screen with the vendor GL16, as the vendor
+      // firmware does. The held-diagonal table and the changed-rows mask left a stroke that
+      // stays black across turns undriven until the next cleanup, so text faded between
+      // cleanups (users saw faint ink; refreshing it only every 4th turn still read faint).
+      // Its black-to-black cell erases and rewrites: retained strokes blink, ink stays full.
+      if (!full && state_ != OpticalState::Unknown) {
+        success = refreshTurn(MetalioEpd_Hl()) == EPD_DRAW_SUCCESS;
+      } else {
+        success = refresh(MetalioEpd_Hl(), full ? MODE_GC16 : MODE_GL16_FAST, full) == EPD_DRAW_SUCCESS;
+      }
     }
     state_ = success ? OpticalState::Gray : OpticalState::Unknown;
 #if RICKYOS_PLUS_SCREEN_DUMP
@@ -278,6 +285,17 @@ class MetalioPlusDriver final : public PanelDriver {
     if (result != EPD_DRAW_SUCCESS) return false;
     ledger_ = candidate;
     return true;
+  }
+  // Every row and column driven with the vendor GL16 table (black stays black by being
+  // erased and rewritten), as the vendor firmware turns a page.
+  EpdDrawError refreshTurn(EpdiyHighlevelState* hl) {
+    const int64_t startedUs = esp_timer_get_time();
+    epd_poweron();
+    auto result = EPD_DRAW_EMPTY_LINE_QUEUE;
+    if (epd_board_metalio_eink4_plus_tps_ok()) result = epd_hl_update_screen_full(hl, MODE_GL16, 25);
+    epd_poweroff();
+    ESP_LOGI("PlusDisplay", "turn GL16 full result=0x%x ms=%lld", result, (esp_timer_get_time() - startedUs) / 1000);
+    return result;
   }
   EpdDrawError refresh(EpdiyHighlevelState* hl, EpdDrawMode waveform, bool full) {
     // A native gray frame and a full application/page change need a clean

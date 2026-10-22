@@ -105,9 +105,11 @@ int main(){
  d.beginGrayscale16();front[0]=0;assert(d.commitGrayscale16(proxy));assert(cleared==1);
  assert(selectedModes.back()==MODE_GC16); // Unknown always restores the optical baseline.
  const auto submissions=selectedModes.size();
+ const int fullBefore=full;
  d.beginGrayscale16();memcpy(front,back,N);front[1]=0x88;
  metalioPlusSetGray16Profile(1);assert(d.commitGrayscale16(proxy));
- assert(selectedModes.size()==submissions+1 && selectedModes.back()==MODE_GL16_FAST);
+ // An ordinary reader turn drives every row and column with the vendor GL16 (faint-ink fix).
+ assert(selectedModes.size()==submissions+1 && selectedModes.back()==MODE_GL16 && full==fullBefore+1);
  d.beginGrayscale16();memcpy(front,back,N);front[1]=0x99;
  metalioPlusSetGray16Profile(2);assert(d.commitGrayscale16(proxy));
  assert(selectedModes.back()==MODE_GC16); // Cycle/manual cleanup is never suppressed.
