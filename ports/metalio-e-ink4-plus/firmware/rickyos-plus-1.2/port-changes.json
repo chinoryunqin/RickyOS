@@ -10,12 +10,12 @@
     {
       "path": "freeink-sdk/libs/hardware/BatteryMonitor/include/BatteryMonitor.h",
       "baseline_sha256": "e9cb6848a141ab3adf8e43587ac2fd63bae74cd25faa3da2310df8495e79b0d4",
-      "ported_sha256": "f4fe21d26f2f6ac752b8824e713cd871ab95c5518cf294d76d871a0a9d2301aa"
+      "ported_sha256": "bf456615fcc765b3a26cb29006791180e517e8b3edd1f9f62462a25b2d55ee13"
     },
     {
       "path": "freeink-sdk/libs/hardware/BatteryMonitor/src/BatteryMonitor.cpp",
       "baseline_sha256": "f6a217520fd415968d75ac1b1e226283d397b28469ab3e44570c085d36d30eec",
-      "ported_sha256": "a9019af015d4a590975b29d13b5273c8819b6c09f66bb0a5271cf16f5e175de9"
+      "ported_sha256": "d91d1f333b96b4898a9d25b5d5d8c5c3cafa80d147dd69d662fe304f8468a05a"
     },
     {
       "path": "freeink-sdk/libs/hardware/InputManager/include/InputManager.h",
@@ -428,6 +428,11 @@
       "ported_sha256": "fa8d9bbd9c946d36494483d6dee4fb55e3a1ea0e10793cf8adc78b08abbb73c0"
     },
     {
+      "path": "src/activities/Activity.cpp",
+      "baseline_sha256": "e7981a965a7468c6848d27c272501d1608fd23702a3eb00dfbab74c701062a73",
+      "ported_sha256": "7c6343d94b569da668167bd6023cd688f95a7988c32dcc1ccc221322c5ef82e9"
+    },
+    {
       "path": "src/activities/Activity.h",
       "baseline_sha256": "c74bf393fe04cb637ad900c9856c12efadf3251fbc318b5dedb229ce3a71a012",
       "ported_sha256": "ac1c6ea01dd8d495fe67e8d766fed78455b3a6e41b4013e250046ad3ab6623a4"
@@ -698,6 +703,16 @@
       "ported_sha256": "bf7fe5d8526e3637face903c4778d7ef6d4e454505a71ba1e9d177204a2fa0d4"
     },
     {
+      "path": "src/activities/util/ImageViewerActivity.cpp",
+      "baseline_sha256": "2ce0b62995eaea1b70f33432e01d9f22253163cbae59aca5b56944d8c8b66070",
+      "ported_sha256": "b17743d1c5b3c3f877966b179c37ed5b4fc8191cb9e0c490f059be04c4eb7220"
+    },
+    {
+      "path": "src/activities/util/ImageViewerActivity.h",
+      "baseline_sha256": "d68b0fd94aa4344dd1c07b98144a35e6b3c0b7dded3c1b723a7874e88f0b18ec",
+      "ported_sha256": "6c4bca4552e44307fd692588a4c19b6fbceeb256009d86a80b6b0cac0daf119e"
+    },
+    {
       "path": "src/components/OptionPopup.h",
       "baseline_sha256": "6eac94c75a2a250fcc759c91100c9aa52b0c51c611b6f5919a3ad590acd3f8b5",
       "ported_sha256": "4fb05269ef9e0d341cd2f0970abace7aa5d0189420ffb2cf92bee6bcc65f0d25"
@@ -770,7 +785,7 @@
     {
       "path": "src/main.cpp",
       "baseline_sha256": "a9593200335b30dace971723992905ac8ce0beb05159ecb6d17d837bdb73fdc5",
-      "ported_sha256": "73f8630ba1140ee895cbaa0e25e1498a437c3145e40c9febfda03709dcebe5d4"
+      "ported_sha256": "935d54256395f22688eec21eca77f4a62ae60ebb8fe50f6f2ab424edcb57e648"
     },
     {
       "path": "src/network/CrossPointWebServer.cpp",
