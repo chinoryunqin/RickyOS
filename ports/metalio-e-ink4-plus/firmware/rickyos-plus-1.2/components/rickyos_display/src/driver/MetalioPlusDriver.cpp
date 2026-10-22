@@ -263,8 +263,12 @@ class MetalioPlusDriver final : public PanelDriver {
       for (uint8_t i = 0; i < plan.count; ++i) {
         const auto& step = plan.steps[i];
         EpdRect area = {step.area.x, step.area.y, step.area.width, step.area.height};
+        // As on the Read Pico, an ordinary UI step uses the text-turn table (MODE_GL16_INV
+        // slot, see my_waveform.c): unchanged pixels are not driven and the old and new
+        // marks cross-fade, so tab icons and labels do not flash and a moved marker fades
+        // rather than being wiped. The ledger's cleanup steps still clean with GC16.
         result = step.cleanup ? epd_hl_update_area_full(hl, MODE_GC16, 25, area)
-                              : epd_hl_update_area(hl, MODE_GL16, 25, area);
+                              : epd_hl_update_area(hl, MODE_GL16_INV, 25, area);
         if (result != EPD_DRAW_SUCCESS) break;
       }
     }

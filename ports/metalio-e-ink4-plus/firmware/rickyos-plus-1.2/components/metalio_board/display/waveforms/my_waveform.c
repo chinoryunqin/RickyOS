@@ -148,11 +148,32 @@ static const EpdWaveformMode s_reader_gl16_mode = {
     .range_data = &s_reader_gl16_ranges[0],
 };
 
+// UI turn (tab switches and other regional UI updates), the Read Pico's text-turn table:
+// trimmed GL16, every (to, from) sequence left-aligned so erasing the old and drawing the
+// new start together (a cross-fade, no white field), unchanged pixels not driven, and a
+// pixel turning black pushed straight to black instead of erasing to white first. The
+// trim's shorter erase leaves a moved marker faintly visible; regular GC16 cleanups of
+// the regional ledger clear it.
+#define MY_UI_TURN_FRAMES 37
+static uint8_t s_ui_turn_data[MY_UI_TURN_FRAMES][16][4];
+static const EpdWaveformPhases s_ui_turn_phases = {
+    .phases = MY_UI_TURN_FRAMES,
+    .phase_times = NULL,
+    .luts = (const uint8_t*)&s_ui_turn_data[0],
+};
+static const EpdWaveformPhases* s_ui_turn_ranges[] = { &s_ui_turn_phases };
+static const EpdWaveformMode s_ui_turn_mode = {
+    .type = 0xB,  // MODE_GL16_INV in epdiy.h, otherwise unused here: MY_MODE_UI_TURN
+    .temp_ranges = 1,
+    .range_data = &s_ui_turn_ranges[0],
+};
+
 static const EpdWaveformMode* s_modes[] = {
     &s_du_mode,
     &s_gc16_mode,
     &s_gl16_mode,
     &s_reader_gl16_mode,
+    &s_ui_turn_mode,
 };
 
 const EpdWaveform MY_WAVEFORM = {
@@ -162,8 +183,55 @@ const EpdWaveform MY_WAVEFORM = {
     .temp_intervals = my_waveform_intervals,
 };
 
+static void left_align(const uint8_t (*src)[16][4], int frames, uint8_t (*dst)[16][4]) {
+    memset(dst, 0, (size_t)frames * 16 * 4);
+    for (int to = 0; to < 16; to++) {
+        for (int from = 0; from < 16; from++) {
+            uint8_t seq[64];
+            for (int f = 0; f < frames; f++) seq[f] = (uint8_t)lut_get(src, f, to, from);
+            int a = 0;
+            while (a < frames && seq[a] == 0) a++;
+            int z = frames;
+            while (z > a && seq[z - 1] == 0) z--;
+            for (int f = a; f < z; f++) lut_or(dst, f - a, to, from, seq[f]);
+        }
+    }
+}
+
+// Built in the GL scratch (the trim needs room for the full source), which the caller
+// restores afterwards.
+static void ui_turn_build(void) {
+    const my_waveform_trim_t trim = {
+        .erase_max = MY_TRIM_ERASE_MAX,
+        .sat_cut = MY_TRIM_SAT_CUT,
+        .white_sat_cut = MY_TRIM_WHITE_SAT_CUT,
+        .hold = MY_TRIM_HOLD,
+    };
+    const int frames = my_waveform_trim(&my_gl_25_0, &trim, s_gl16_data);
+    assert(frames == MY_UI_TURN_FRAMES);
+    gl16_white_tick(s_gl16_data, frames);
+    left_align((const uint8_t (*)[16][4])s_gl16_data, MY_UI_TURN_FRAMES, s_ui_turn_data);
+    for (int f = 0; f < MY_UI_TURN_FRAMES; f++) {
+        for (int v = 0; v < 16; v++) {
+            s_ui_turn_data[f][v][v / 4] &= (uint8_t)~(3u << (6 - 2 * (v % 4)));
+        }
+    }
+    // Target black (to != 15): drop the leading erase-to-white (action 2) so the new mark
+    // goes straight to black. Target white keeps its erase: that is what clears the old.
+    for (int to = 0; to < 15; to++) {
+        for (int from = 0; from < 16; from++) {
+            int f = 0;
+            while (f < MY_UI_TURN_FRAMES && lut_get((const uint8_t (*)[16][4])s_ui_turn_data, f, to, from) == 2) {
+                s_ui_turn_data[f][to][from / 4] &= (uint8_t)~(3u << (6 - 2 * (from % 4)));
+                ++f;
+            }
+        }
+    }
+}
+
 void my_waveform_init(void) {
     complete_du_build();
+    ui_turn_build();
 
 #if MY_WAVEFORM_TRIM
     const my_waveform_trim_t trim = {

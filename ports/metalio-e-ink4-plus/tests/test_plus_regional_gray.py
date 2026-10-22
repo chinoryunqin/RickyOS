@@ -23,13 +23,13 @@ template <class... A> static void ESP_LOGI(const char*, const char*, A...) {}
 static int64_t esp_timer_get_time() { return 0; }
 constexpr int W=1216,H=684,N=W*H/2;
 struct EpdRect {int x,y,width,height;};
-enum EpdDrawMode {MODE_GC16=1,MODE_DU=2,MODE_GL16=3,MODE_GL16_FAST=6,MODE_GL4=10};
+enum EpdDrawMode {MODE_GC16=1,MODE_DU=2,MODE_GL16=3,MODE_GL16_FAST=6,MODE_GL4=10,MODE_GL16_INV=11};
 constexpr int MODE_PACKING_1PPB_DIFFERENCE=16;
 enum EpdDrawError {EPD_DRAW_SUCCESS=0,EPD_DRAW_EMPTY_LINE_QUEUE=1};
 struct EpdiyHighlevelState {uint8_t *front_fb,*back_fb,*difference_fb; bool* dirty_lines; uint8_t* dirty_columns; void* waveform;};
 uint8_t front[N],back[N],diff[N*2],cols[W/2]; bool lines[H];
 EpdiyHighlevelState hl{front,back,diff,lines,cols,nullptr};
-struct Call {EpdRect area; bool cleanup;};
+struct Call {EpdRect area; bool cleanup; int mode;};
 std::vector<Call> calls;
 int powered=0,off=0,full=0,cleared=0,failDraw=0;
 std::vector<int> selectedModes;
@@ -48,7 +48,7 @@ EpdRect epd_difference_image_cropped(const uint8_t* to,const uint8_t* from,EpdRe
 EpdDrawError epd_draw_base(EpdRect,const uint8_t*,EpdRect a,int mode,int,bool*,uint8_t* columns,void*){
  assert(a.x==0 && a.y==0 && a.width==W && a.height==H);
  bool any=false;for(int x=0;x<W/2;++x)any|=columns[x]!=0;assert(any);
- calls.push_back({a,(mode&15)==MODE_GC16});
+ calls.push_back({a,(mode&15)==MODE_GC16,mode&15});
  if(failDraw && --failDraw==0)return EPD_DRAW_EMPTY_LINE_QUEUE;
  return EPD_DRAW_SUCCESS;
 }
@@ -120,6 +120,7 @@ int main(){
  d.beginGrayscale16();memcpy(front,back,N);front[0]=0x88;front[100]=0;front[W/2-1]=0;
  calls.clear();assert(d.commitGrayscale16(proxy));assert(calls.size()==2);
  assert(calls[0].cleanup && !calls[1].cleanup);assert(back[0]==0x88 && back[W/2-1]==0);
+ assert(calls[1].mode==MODE_GL16_INV); // An ordinary UI step takes the UI-turn table.
  d.beginGrayscale16();assert(front[0]==255);assert(metalioPlusRestoreGray16Baseline(proxy));assert(front[0]==0x88);
  front[0]=0;metalioPlusSetGray16UiRefresh(0,0,0,0,1,1);d.cancelGrayscale16();assert(front[0]==0x88);
  assert(proxy[0]==0xff); // >=8 gray proxy is white.

@@ -114,7 +114,8 @@ void lcd_do_update(RenderContext_t* ctx) {
     // Text turns (GL16_FAST) and UI area updates (GL16) share the scheduling; it only
     // overlaps preparing the next phase with scanning this one, never the waveform.
     const int lookaheadMode = ctx->mode & 0x3f;
-    if ((lookaheadMode == MODE_GL16_FAST || lookaheadMode == MODE_GL16) && (ctx->mode & MODE_PACKING_1PPB_DIFFERENCE)
+    if ((lookaheadMode == MODE_GL16_FAST || lookaheadMode == MODE_GL16 || lookaheadMode == MODE_GL16_INV) &&
+        (ctx->mode & MODE_PACKING_1PPB_DIFFERENCE)
         && ctx->phase_times == NULL && ctx->cycle_frames > 1 && ctx->lines_total > s_prefill_lines
         && ctx->line_threads && ctx->line_ready) {
         lcd_do_update_lookahead(ctx);
