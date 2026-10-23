@@ -95,6 +95,38 @@ bool writeField(const Field& field) {
   return true;
 }
 
+uint16_t opStatus() {
+  uint16_t status = 0xffff;
+  read16(0x3a, status);
+  return status;
+}
+
+// TI SLUUBD4A data-memory write: select the 32-byte block, read it, change the
+// field, write all 32 bytes back to MACData, then MACDataSum over address + 32
+// bytes and MACDataLen 36. Used when the short write above does not take.
+bool writeFieldBlock(const Field& field) {
+  const uint16_t base = field.address & ~uint16_t(31);
+  const unsigned offset = field.address - base;
+  if (offset > 30 || !write16(0x3e, base)) return false;
+  delay(2);
+  uint8_t block[32]{};
+  if (plus_i2c_read(kAddr, 0x40, block, sizeof(block)) != ESP_OK) return false;
+  block[offset] = uint8_t(field.value >> 8);
+  block[offset + 1] = uint8_t(field.value & 0xff);
+  uint8_t frame[34];
+  frame[0] = uint8_t(base & 0xff);
+  frame[1] = uint8_t(base >> 8);
+  for (unsigned i = 0; i < 32; ++i) frame[2 + i] = block[i];
+  if (plus_i2c_write(kAddr, 0x3e, frame, sizeof(frame)) != ESP_OK) return false;
+  delay(1);
+  uint8_t sum = 0;
+  for (uint8_t byte : frame) sum = uint8_t(sum + byte);
+  const uint8_t tail[2] = {uint8_t(0xff - sum), uint8_t(sizeof(frame) + 2)};
+  if (plus_i2c_write(kAddr, 0x60, tail, sizeof(tail)) != ESP_OK) return false;
+  delay(10);
+  return true;
+}
+
 bool fieldsMatch() {
   for (const auto& field : kFields) {
     uint16_t value = 0;
@@ -130,14 +162,30 @@ bool configureGauge() {
   ESP_LOGI(TAG, "config: writing pack values (design was %u, op=0x%04x)", design, status);
   control(kUnsealKey1);
   control(kUnsealKey2);
+  ESP_LOGI(TAG, "config: after unseal op=0x%04x", opStatus());
   control(kFullAccessKey);
   control(kFullAccessKey);
+  ESP_LOGI(TAG, "config: after full-access keys op=0x%04x (SEC 1 = full access)", opStatus());
   bool step = write16(0x3e, kEnterCfgUpdate) && waitStatus(kCfgUpdateBit, true, 2000);
-  if (!step) ESP_LOGE(TAG, "config: CFGUPDATE not entered");
+  ESP_LOGI(TAG, "config: enter CONFIG UPDATE ok=%d op=0x%04x", step, opStatus());
+  if (!step) {
+    // Some firmware takes the subcommand through Control() (0x00) instead of 0x3E.
+    step = control(kEnterCfgUpdate) && waitStatus(kCfgUpdateBit, true, 2000);
+    ESP_LOGI(TAG, "config: enter via Control() ok=%d op=0x%04x", step, opStatus());
+  }
   for (const auto& field : kFields) {
     if (!step) break;
     step = writeField(field);
-    ESP_LOGI(TAG, "config: %s(0x%04x)=%u written=%d", field.name, field.address, field.value, step);
+    uint16_t back = 0;
+    bool read = readField(field.address, back);
+    ESP_LOGI(TAG, "config: %s(0x%04x)=%u short write=%d readback=%u/%d", field.name, field.address, field.value,
+             step, back, read);
+    if (step && (!read || back != field.value)) {
+      step = writeFieldBlock(field);
+      read = readField(field.address, back);
+      ESP_LOGI(TAG, "config: %s block write=%d readback=%u/%d", field.name, step, back, read);
+    }
+    if (step && (!read || back != field.value)) step = false;
   }
   // Always leave CONFIG UPDATE, even after a failed write; REINIT applies the values.
   write16(0x3e, kExitCfgUpdateReinit);
