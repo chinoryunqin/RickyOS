@@ -36,7 +36,8 @@ class P14RestoreAudit(unittest.TestCase):
                          method(local, 'bool epd_board_metalio_eink4_plus_sleep_restore_rails_staged('))
         # Both board sequences use the CURRENT production transport below. This
         # comparison isolates board bit transitions, not OEM legacy-IDF timing.
-        code = r'''
+        # Standby wake inputs: the OEM arms P17 only; RickyOS also arms both side keys.
+        code = ('#define WAKE_DIR 0x80\n' if oem else '#define WAKE_DIR 0x83\n') + r'''
 #include <cassert>
 #include <cstdint>
 #include <cstddef>
@@ -106,7 +107,7 @@ void park(){
  epd_board_metalio_eink4_plus_ioexp_mask_for_sleep();
  assert(epd_board_metalio_eink4_plus_ioexp_enable_power_wake_pin());
  epd_board_metalio_eink4_plus_sleep_cut_rails();
- assert(regs[2]==0 && regs[3]==0x87 && regs[6]==0 && regs[7]==0x80);
+ assert(regs[2]==0 && regs[3]==0x87 && regs[6]==0 && regs[7]==WAKE_DIR);
 }
 void checkP14(){
  assert(frames.size()==2);
@@ -127,13 +128,13 @@ int main(){
  // The void compatibility API must also refuse rails after a failed restore.
  setup();park();failReg=7;
  epd_board_metalio_eink4_plus_ioexp_restore_keys();
- assert(regs[7]==0x80 && regs[3]==0x04);
+ assert(regs[7]==WAKE_DIR && regs[3]==0x04);
  failReg=-1;frames.clear();
 '''
         code += (' epd_board_metalio_eink4_plus_sleep_restore_rails();checkP14();\n'
                  if oem else ' epd_board_metalio_eink4_plus_sleep_restore_rails();assert(frames.empty());\n')
         code += r'''
- assert(regs[7]==0x80); // The injected failed direction write did not stick.
+ assert(regs[7]==WAKE_DIR); // The injected failed direction write did not stick.
 '''
         if not oem:
             code += r'''

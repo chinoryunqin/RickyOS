@@ -99,8 +99,9 @@ using esp_err_t=int;constexpr int ESP_OK=0;
 bool s_ioexp_ok=true,locked=false,failLock=false;
 uint8_t registers[8]{},expectedP0=0,s_p1_out=0;
 constexpr uint8_t CFG_P0_INPUT_MASK=0xc0,CFG_P1_INPUT_MASK=0xe3;
-constexpr int EPD_IO_POWER=15;
+[[maybe_unused]] constexpr int EPD_IO_POWER=15;
 #define CFG_IO_BIT(io) (1u << (unsigned(io)&7u))
+constexpr uint8_t CFG_P1_SLEEP_WAKE_KEYS=0x83; // power + both side keys
 uint8_t p0_output_value(){return expectedP0;}
 uint8_t pca9555_get_addr(){return 0x21;}
 std::vector<int> commands;int failAt=-1;
@@ -116,7 +117,7 @@ int plus_i2c_read(uint8_t addr,uint8_t reg,uint8_t* out,size_t count){
 void setup(bool parked){
  registers[2]=expectedP0=parked?0:0x20;registers[3]=s_p1_out=parked?0x87:0x14;
  registers[4]=registers[5]=0;registers[6]=parked?0:CFG_P0_INPUT_MASK;
- registers[7]=parked?0x80:CFG_P1_INPUT_MASK;
+ registers[7]=parked?0x83:CFG_P1_INPUT_MASK;
  commands.clear();
 }
 int main(){

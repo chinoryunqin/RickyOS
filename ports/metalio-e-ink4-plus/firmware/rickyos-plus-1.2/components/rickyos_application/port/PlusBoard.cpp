@@ -227,6 +227,20 @@ StandbyWake observePowerRelease() {
   return down ? StandbyWake::PowerButtonHeld : StandbyWake::Failed;
 }
 
+// A side key woke static standby: leave Standby like a power-key short press,
+// after the key is released so the next screen does not also see it as a page
+// turn. Stack only; bounded to 2 s (a held key then belongs to the input owner).
+StandbyWake observeSideKeyRelease() {
+  const uint32_t started = millis();
+  while (uint32_t(millis() - started) < 2000) {
+    uint8_t p0 = 0, p1 = 0;
+    if (!readInputs(p0, p1)) return StandbyWake::Failed;
+    if ((p1 & 3) == 3) return StandbyWake::PowerButton;
+    delay(10);
+  }
+  return StandbyWake::PowerButtonHeld;
+}
+
 uint8_t buttons() {
   uint8_t value = 0xff;
   if (!metalio_i2c1_lock(20)) return 0;
@@ -557,7 +571,7 @@ static StandbyWake standbySleepOnce(const uint32_t seconds, StandbyStorage* stor
     wakeInputsValid = error == ESP_OK && readInputs(p0, p1);
     STANDBY_DIAG("wake latch: valid=%u p1=%02x cause=%d other=%u", wakeInputsValid, p1, static_cast<int>(cause),
                  otherWakes);
-    if (!staticPark || !wakeInputsValid || (p1 & kPowerKeyMask) == 0) break;
+    if (!staticPark || !wakeInputsValid || (p1 & kAllKeyMask) != kAllKeyMask) break;
     const uint32_t slept = millis() - sleepStarted;
     if (cause == ESP_SLEEP_WAKEUP_TIMER || slept + 1000u >= sleepBudgetMs) break;
     // A shared-IRQ pulse (IMU, TPS, charger): the read above cleared the
@@ -619,6 +633,7 @@ static StandbyWake standbySleepOnce(const uint32_t seconds, StandbyStorage* stor
     if ((wakeP1 & 3) != 3) return StandbyWake::Failed;
     return observePowerRelease();
   }
+  if (staticPark && (wakeP1 & 3) != 3) return observeSideKeyRelease();
   // GPIO2 also carries RTC/IMU/TPS events. A pulse already released before the
   // first successful read cannot be attributed to P17; never invent a key press.
   const bool deadline = staticPark && uint32_t(millis() - sleepStarted) + 1000u >= sleepBudgetMs;
