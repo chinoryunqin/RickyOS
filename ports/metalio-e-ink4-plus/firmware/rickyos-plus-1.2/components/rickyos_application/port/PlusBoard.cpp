@@ -1,5 +1,6 @@
 #include "PlusBoard.h"
 #include "PlusAudio.h"
+#include "PlusGaugeDump.h"
 #include "PlusSleepBreadcrumb.h"
 #if defined(RICKYOS_PLUS_STATIC_STANDBY) && defined(RICKYOS_STANDBY_DIAG)
 #include <esp_attr.h>
@@ -273,6 +274,7 @@ bool begin() {
   epd_board_metalio_eink4_plus_tp_reset();
   InputManager::setButtonHook(buttons);
   freeink::PowerManager::setHostShutdownHook(shutdown);
+  dumpGaugeConfig();  // diagnostic builds only; read-only
   boardReady = true;
   return true;
 }
