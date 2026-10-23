@@ -436,6 +436,7 @@ static StandbyWake standbySleepOnce(const uint32_t seconds, StandbyStorage* stor
 #if defined(RICKYOS_PLUS_STATIC_STANDBY)
   StandbyImu imu;
   bool storageStopped = false, sdPadsTouched = false, keysTouched = false, railsTouched = false;
+  [[maybe_unused]] bool p5Touched = false;
   const auto restorePeripherals = [&] {
     bool ok = true;
     bool keysRestored = true;
@@ -450,6 +451,13 @@ static StandbyWake standbySleepOnce(const uint32_t seconds, StandbyStorage* stor
         if (phase < 6) sleepCheckpoint(static_cast<SleepStage>(static_cast<uint32_t>(SleepStage::RailP14Write) + phase));
       });
     }
+#if defined(RICKYOS_PLUS_STANDBY_CUT_P5)
+    if (p5Touched && keysRestored) {
+      sleepCheckpoint(SleepStage::RailP5Write);
+      railsRestored = epd_board_metalio_eink4_plus_sleep_restore_p5() && railsRestored;
+      sleepCheckpoint(SleepStage::RailP5Waited);
+    }
+#endif
     const bool ioRestored = keysRestored && (!keysTouched || epd_board_metalio_eink4_plus_sleep_io_checked(false));
     sleepCheckpoint(SleepStage::SdRelease);
     const bool padsRestored = !sdPadsTouched || MetalioSd_ResumeBusChecked();
@@ -496,6 +504,11 @@ static StandbyWake standbySleepOnce(const uint32_t seconds, StandbyStorage* stor
       railsTouched = true;
       sleepCheckpoint(SleepStage::RailsOff);
       epd_board_metalio_eink4_plus_sleep_cut_rails();
+#elif defined(RICKYOS_PLUS_STANDBY_CUT_P5)
+      // P14 stays on (the panel needs it); only P5 goes off and comes back on wake.
+      p5Touched = true;
+      sleepCheckpoint(SleepStage::RailsOff);
+      epd_board_metalio_eink4_plus_sleep_cut_p5();
 #elif defined(RICKYOS_PLUS_STANDBY_LAZY_BT)
       // P5 stays on; P14 goes off and stays off after wake (audio restores it).
       sleepCheckpoint(SleepStage::RailsOff);

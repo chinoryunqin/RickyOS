@@ -53,6 +53,10 @@ void epd_board_metalio_eink4_plus_ana_sw_set(bool high);
 void epd_board_metalio_eink4_plus_sleep_park_bt_pa(void);
 /** Audio start: P14 back on if standby left it off; true when it was just powered (let the module boot). */
 bool epd_board_metalio_eink4_plus_bt_pa_resume(void);
+/** Standby: P5 (camera/screen rail) off; P14 untouched. */
+void epd_board_metalio_eink4_plus_sleep_cut_p5(void);
+/** Wake: P5 back on, then a 40 ms settle. Call after the keys are restored. */
+bool epd_board_metalio_eink4_plus_sleep_restore_p5(void);
 void epd_board_metalio_eink4_plus_sleep_cut_rails(void);
 
 /**

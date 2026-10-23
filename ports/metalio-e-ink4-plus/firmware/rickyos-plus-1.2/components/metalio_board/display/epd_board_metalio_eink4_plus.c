@@ -243,6 +243,29 @@ bool epd_board_metalio_eink4_plus_bt_pa_resume(void) {
     return true;
 }
 
+// Standby (P5 only): the camera/screen rail is most of the parked current
+// (~8 mA: park1 both rails cut ~2-3 mA, park5 P14 cut ~10 mA, park4 none ~10.5 mA).
+// P14 stays on: with it off the panel did not change after wake (park5-8).
+void epd_board_metalio_eink4_plus_sleep_cut_p5(void) {
+    if (!s_ioexp_ok) {
+        return;
+    }
+    s_cam_scr_on = 0;
+    p0_write();
+    ESP_LOGI(TAG, "standby: P5 (camera/screen) off");
+}
+
+bool epd_board_metalio_eink4_plus_sleep_restore_p5(void) {
+    if (!s_ioexp_ok) {
+        return false;
+    }
+    s_cam_scr_on = CFG_PIN_CAM_SCR;
+    const bool ok = pca9555_set_value(config_reg.port, p0_output_value(), CFG_PORT_CTRL) == ESP_OK;
+    vTaskDelay(pdMS_TO_TICKS(40));  // let the rail settle before the first refresh
+    ESP_LOGI(TAG, "standby: P5 (camera/screen) back on ok=%d", ok);
+    return ok;
+}
+
 void epd_board_metalio_eink4_plus_sleep_cut_rails(void) {
     s_sleep_keys_restored = false;
     if (!s_ioexp_ok) {
