@@ -20,12 +20,17 @@
 #include "epdiy.h"
 #include "lcd_driver.h"
 #include "render_lcd.h"
+#include "lcd_fault.h"
 
 // declare vector optimized line mask application.
 void epd_apply_line_mask_VE(uint8_t* line, const uint8_t* mask, int mask_len);
 
 // Same proven prefill as the legacy path. Never reduce it for the experiment.
 static int s_prefill_lines = 192;
+static uint32_t s_first_fault;
+uint32_t epd_lcd_get_first_fault(void) {
+    return __atomic_load_n(&s_first_fault, __ATOMIC_ACQUIRE);
+}
 #if RICKYOS_PLUS_PHASE_LOOKAHEAD
 // The driver already owns one serialized RenderContext. Reuse its two internal
 // per-row arrays as alternating ready maps; no extra queues, frames or tasks.
@@ -48,6 +53,7 @@ retrieve_line_isr(RenderContext_t* ctx, uint8_t* buf) {
 
     if (!__atomic_load_n(&ctx->line_ready[ctx->lines_consumed],__ATOMIC_ACQUIRE) ||
         thread >= NUM_RENDER_THREADS) {
+        lcd_note_first_fault(&s_first_fault, LCD_FAULT_ROW_NOT_READY, ctx->lines_consumed, thread);
         __atomic_fetch_or(&ctx->error, EPD_DRAW_EMPTY_LINE_QUEUE, __ATOMIC_RELEASE);
         memset(buf, 0x00, ctx->display_width / 4);
         ctx->lines_consumed += 1;
@@ -57,6 +63,7 @@ retrieve_line_isr(RenderContext_t* ctx, uint8_t* buf) {
     LineQueue_t* lq = &ctx->line_queues[thread];
 
     if (lq_read(lq, buf) != 0) {
+        lcd_note_first_fault(&s_first_fault, LCD_FAULT_QUEUE_EMPTY, ctx->lines_consumed, thread);
         __atomic_fetch_or(&ctx->error, EPD_DRAW_EMPTY_LINE_QUEUE, __ATOMIC_RELEASE);
         memset(buf, 0x00, ctx->display_width / 4);
     }
@@ -75,6 +82,7 @@ static void IRAM_ATTR handle_lcd_frame_done(RenderContext_t* ctx) {
 
     // 扫描先于供数结束时置错，禁止残留行进入下一相位
     if (ctx->lines_consumed < ctx->lines_total) {
+        lcd_note_first_fault(&s_first_fault, LCD_FAULT_FRAME_SHORT, ctx->lines_consumed, -1);
         __atomic_fetch_or(&ctx->error, EPD_DRAW_EMPTY_LINE_QUEUE, __ATOMIC_RELEASE);
     }
 
@@ -151,10 +159,12 @@ void lcd_do_update(RenderContext_t* ctx) {
         // start both feeder tasks；开扫由 feeder 预填够行后触发
         xTaskNotifyGive(ctx->feed_tasks[!xPortGetCoreID()]);
         xTaskNotifyGive(ctx->feed_tasks[xPortGetCoreID()]);
+        unsigned pending = (1u << NUM_RENDER_THREADS) - 1;
 
         if (xSemaphoreTake(ctx->frame_done, pdMS_TO_TICKS(2000)) != pdTRUE) {
+            lcd_note_first_fault(&s_first_fault, LCD_FAULT_FRAME_TIMEOUT, -1, -1);
             ESP_LOGE("epd_lcd", "LCD frame %d/%d timeout", k + 1, ctx->cycle_frames);
-            ctx->error |= EPD_DRAW_EMPTY_LINE_QUEUE;
+            __atomic_fetch_or(&ctx->error, EPD_DRAW_EMPTY_LINE_QUEUE, __ATOMIC_RELEASE);
             epd_lcd_line_source_cb(NULL, NULL);
             epd_lcd_abort_frame();
             xSemaphoreTake(ctx->frame_done, 0);
@@ -162,8 +172,11 @@ void lcd_do_update(RenderContext_t* ctx) {
 
         for (int i = 0; i < NUM_RENDER_THREADS; i++) {
             if (xSemaphoreTake(ctx->feed_done_smphr[i], pdMS_TO_TICKS(2000)) != pdTRUE) {
+                lcd_note_first_fault(&s_first_fault, LCD_FAULT_FEED_TIMEOUT, -1, i);
                 ESP_LOGE("epd_lcd", "feed %d timeout @frame %d", i, k);
-                ctx->error |= EPD_DRAW_EMPTY_LINE_QUEUE;
+                __atomic_fetch_or(&ctx->error, EPD_DRAW_EMPTY_LINE_QUEUE, __ATOMIC_RELEASE);
+            } else {
+                pending &= ~(1u << i);
             }
         }
 
@@ -175,7 +188,22 @@ void lcd_do_update(RenderContext_t* ctx) {
                      (long long)period_us);
         }
 
-        if (ctx->error) {
+        if (__atomic_load_n(&ctx->error, __ATOMIC_ACQUIRE)) {
+            epd_lcd_line_source_cb(NULL, NULL);
+            epd_lcd_abort_frame();
+            // A timed-out take did not consume the worker's eventual ack.
+            // Stop DMA first, then join every pending producer before resetting
+            // queues or returning a reusable context (including to standby).
+            // Match the lookahead path's existing fail-closed contract if a
+            // worker cannot quiesce; returning would expose stale writes.
+            for (int i = 0; i < NUM_RENDER_THREADS; ++i) {
+                if ((pending & (1u << i)) &&
+                    xSemaphoreTake(ctx->feed_done_smphr[i], pdMS_TO_TICKS(2000)) != pdTRUE) {
+                    ESP_LOGE("epd_lcd", "feed %d failed to quiesce; cannot reuse render context", i);
+                    abort();
+                }
+            }
+            xSemaphoreTake(ctx->frame_done, 0);
             for (int i = 0; i < NUM_RENDER_THREADS; i++) {
                 lq_reset(&ctx->line_queues[i]);
             }
@@ -189,6 +217,9 @@ void lcd_do_update(RenderContext_t* ctx) {
     epd_lcd_frame_done_cb(NULL, NULL);
 
     epd_set_mode(0);
+    if (__atomic_load_n(&ctx->error, __ATOMIC_ACQUIRE)) {
+        ESP_LOGE("epd_lcd", "first fault since boot=0x%08lx", (unsigned long)epd_lcd_get_first_fault());
+    }
     // Restore after success, timeout or rejected timing; tests cannot leak
     // their gate/line setting into a later UI, clear or reading update.
     if (!epd_lcd_set_line_timing(0, 0)) ctx->error |= EPD_DRAW_NO_PHASES_AVAILABLE;
@@ -267,6 +298,7 @@ void epd_push_pixels_lcd(RenderContext_t* ctx, short time, int color) {
     epd_set_mode(1);
     epd_lcd_start_frame();
     if (xSemaphoreTake(ctx->frame_done, pdMS_TO_TICKS(2000)) != pdTRUE) {
+        lcd_note_first_fault(&s_first_fault, LCD_FAULT_FRAME_TIMEOUT, -1, -1);
         ctx->error |= EPD_DRAW_EMPTY_LINE_QUEUE;
         epd_lcd_line_source_cb(NULL, NULL);
         epd_lcd_frame_done_cb(NULL, NULL);
@@ -334,6 +366,8 @@ lcd_calculate_frame(RenderContext_t* ctx, int thread_id) {
             for (int row=0;row<l;++row) {
                 while (!__atomic_load_n(&ctx->line_ready[row],__ATOMIC_ACQUIRE)) {
                     if (__atomic_load_n(&ctx->error, __ATOMIC_ACQUIRE) || esp_timer_get_time()>ready_deadline) {
+                        if (!__atomic_load_n(&ctx->error, __ATOMIC_ACQUIRE))
+                            lcd_note_first_fault(&s_first_fault, LCD_FAULT_PREFILL_TIMEOUT, row, thread_id);
                         __atomic_fetch_or(&ctx->error, EPD_DRAW_EMPTY_LINE_QUEUE, __ATOMIC_RELEASE); return;
                     }
                     vTaskDelay(0);
@@ -349,7 +383,6 @@ lcd_calculate_frame(RenderContext_t* ctx, int thread_id) {
             int wait_iters = 0;
             while (buf == NULL) {
                 if (__atomic_load_n(&ctx->error, __ATOMIC_ACQUIRE)) {
-                    if (!lookahead) lq_reset(lq);
                     return;
                 }
                 buf = lq_current(lq);
@@ -361,8 +394,8 @@ lcd_calculate_frame(RenderContext_t* ctx, int thread_id) {
                 // start it; spinning at feeder priority would deadlock it.
                 vTaskDelay(lookahead ? 1 : 0);
                 if (++wait_iters > 30000) {
+                    lcd_note_first_fault(&s_first_fault, LCD_FAULT_QUEUE_TIMEOUT, l, thread_id);
                     __atomic_fetch_or(&ctx->error, EPD_DRAW_EMPTY_LINE_QUEUE, __ATOMIC_RELEASE);
-                    if (!lookahead) lq_reset(lq);
                     return;
                 }
             }
@@ -382,7 +415,6 @@ lcd_calculate_frame(RenderContext_t* ctx, int thread_id) {
         int wait_iters = 0;
         while (buf == NULL) {
             if (__atomic_load_n(&ctx->error, __ATOMIC_ACQUIRE)) {
-                if (!lookahead) lq_reset(lq);
                 return;
             }
             buf = lq_current(lq);
@@ -391,8 +423,8 @@ lcd_calculate_frame(RenderContext_t* ctx, int thread_id) {
             }
             vTaskDelay(lookahead ? 1 : 0);
             if (++wait_iters > 30000) {
+                lcd_note_first_fault(&s_first_fault, LCD_FAULT_QUEUE_TIMEOUT, l, thread_id);
                 __atomic_fetch_or(&ctx->error, EPD_DRAW_EMPTY_LINE_QUEUE, __ATOMIC_RELEASE);
-                if (!lookahead) lq_reset(lq);
                 return;
             }
         }

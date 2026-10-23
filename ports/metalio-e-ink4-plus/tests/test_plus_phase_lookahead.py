@@ -14,7 +14,7 @@ STUBS = {
     'esp_attr.h': '#pragma once\n#define IRAM_ATTR\n',
     'esp_err.h': '#pragma once\ntypedef int esp_err_t;\n',
     'driver/gpio.h': '#pragma once\ntypedef int gpio_num_t;\n',
-    'esp_log.h': '#pragma once\n#define ESP_LOGI(...) ((void)0)\n#define ESP_LOGD(...) ((void)0)\n#define ESP_LOGE(...) ((void)0)\n',
+    'esp_log.h': '#pragma once\nvoid host_error_log(const char*);\n#define ESP_LOGI(...) ((void)0)\n#define ESP_LOGD(...) ((void)0)\n#define ESP_LOGE(tag,fmt,...) host_error_log(fmt)\n',
     'esp_timer.h': '#pragma once\n#include <stdint.h>\nint64_t esp_timer_get_time(void);\n',
     'rom/cache.h': '#pragma once\n',
     'epd_board.h': '#pragma once\n#include <assert.h>\n#include <stdbool.h>\nvoid epd_set_mode(bool);\n',
@@ -64,6 +64,7 @@ MAIN = r'''
 #include "output_common/render_context.h"
 #include "output_lcd/render_lcd.h"
 #include "output_lcd/lcd_driver.h"
+#include "output_lcd/lcd_fault.h"
 struct HostSemaphore {pthread_mutex_t mutex;pthread_cond_t cond;int count;};
 struct HostTask {pthread_mutex_t mutex;pthread_cond_t cond;int count,id;bool stop;pthread_t thread;};
 static RenderContext_t ctx;
@@ -77,11 +78,25 @@ static pthread_t scan_thread;
 static bool scan_joinable;
 static atomic_bool scanning,aborted;
 static atomic_int scan_count,expected_phase,overlapped,render_mode;
+static atomic_int active_feeders;
 static int fault,slow;
 static atomic_bool fault_taken;
+static atomic_bool stalled_row;
 static uint8_t* input;
 static bool* dirty;
 static uint8_t lut[1024],mask[4]={255,15,240,0};
+void host_error_log(const char* format){
+ if(strstr(format,"cannot reuse render context"))fputs("PRODUCTION_QUIESCE_GUARD\n",stderr);
+}
+// Reset is a controller operation, after DMA stops and both workers finish.
+// Execute the actual atomic ring implementation behind this ownership check.
+#define lq_reset lq_reset_unchecked
+#include "output_common/line_queue.c"
+#undef lq_reset
+void lq_reset(LineQueue_t* q){
+ assert(!atomic_load(&scanning) && !atomic_load(&active_feeders));
+ lq_reset_unchecked(q);
+}
 int64_t esp_timer_get_time(void){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return t.tv_sec*1000000LL+t.tv_nsec/1000;}
 static void nap(int us){struct timespec t={us/1000000,(us%1000000)*1000};nanosleep(&t,NULL);}
 // Host threads have no FreeRTOS priorities. A tight sched_yield() can consume
@@ -100,7 +115,9 @@ static void sem_give(struct HostSemaphore* s){
 int xSemaphoreGiveFromISR(SemaphoreHandle_t s,BaseType_t* awoken){(void)awoken;sem_give(s);return pdTRUE;}
 int xSemaphoreTake(SemaphoreHandle_t s,TickType_t ms){
  if(s==&frame_sem && fault==1 && atomic_load(&scan_count)==2 && !atomic_exchange(&fault_taken,true))return pdFALSE;
+ if(s==&frame_sem && fault==9 && !atomic_exchange(&fault_taken,true))return pdFALSE;
  if(fault==5 && s==&feed_sem[0])return pdFALSE; // Lost/stuck worker acknowledgement: must fail closed.
+ if(fault==6 && s==&feed_sem[0] && !atomic_exchange(&fault_taken,true))return pdFALSE; // Deadline expires; completion follows.
  pthread_mutex_lock(&s->mutex);
  struct timespec end;clock_gettime(CLOCK_REALTIME,&end);
  end.tv_sec+=ms/1000;end.tv_nsec+=(long)(ms%1000)*1000000;
@@ -120,7 +137,9 @@ static void* feeder(void* pointer){
    while(!task->count&&!task->stop)pthread_cond_wait(&task->cond,&task->mutex);
    if(task->stop){pthread_mutex_unlock(&task->mutex);return NULL;}
    assert(task->count==1);task->count=0;pthread_mutex_unlock(&task->mutex);
-   lcd_calculate_frame(&ctx,task->id);sem_give(&feed_sem[task->id]);
+   atomic_fetch_add(&active_feeders,1);
+   lcd_calculate_frame(&ctx,task->id);
+   atomic_fetch_sub(&active_feeders,1);sem_give(&feed_sem[task->id]);
  }
 }
 void epd_set_mode(bool value){atomic_store(&render_mode,value);}
@@ -133,8 +152,13 @@ void epd_lcd_frame_done_cb(frame_done_func_t cb,void* payload){if(cb)atomic_stor
 static uint8_t sample(int row,int phase,int x){return (uint8_t)((row+phase*17+x*31)&255)&mask[x];}
 static void* scanner(void* unused){
  (void)unused;const int phase=atomic_load(&expected_phase);
+ if(fault==7 && phase==0){
+   // Coordinate the injection, not physical ISR timing: exactly one producer
+   // stalls after prefill. All earlier rows are committed before scanning.
+   while(!atomic_load(&stalled_row) || !__atomic_load_n(&ctx.line_ready[192],__ATOMIC_ACQUIRE))nap(10);
+ }
  uint8_t row_data[4];
- for(int row=0;row<ctx.lines_total && !atomic_load(&aborted);row++){
+ for(int row=0;row<ctx.lines_total && !atomic_load(&aborted) && fault!=8;row++){
    line_cb_func_t cb=atomic_load(&source_cb);if(!cb)break;
    cb(atomic_load(&source_payload),row_data);
    if(!__atomic_load_n(&ctx.error,__ATOMIC_ACQUIRE)) {
@@ -144,7 +168,7 @@ static void* scanner(void* unused){
    if(row%8==7)nap(140);
  }
  atomic_store(&scanning,false);
- frame_done_func_t done=atomic_load(&done_cb);if(done)done(atomic_load(&done_payload));
+ frame_done_func_t done=atomic_load(&done_cb);if(done && fault!=9)done(atomic_load(&done_payload));
  return NULL;
 }
 int64_t epd_lcd_start_frame_at(int64_t deadline){
@@ -166,6 +190,10 @@ static void build(uint8_t* dest,const EpdWaveformPhases* phases,int phase){
 static void lookup(const uint32_t* source,uint8_t* dest,const uint8_t* table,uint32_t width){
  assert(width==16);const uint8_t* bytes=(const uint8_t*)source;int row=bytes[0]+256*bytes[1];int phase=table[0];
  if(slow&&row==11)nap(3000); // One producer is late: committed-prefix barrier must wait.
+ if(fault==7 && phase==0 && row==193){
+   atomic_store(&stalled_row,true);
+   while(!__atomic_load_n(&ctx.error,__ATOMIC_ACQUIRE))nap(10);
+ }
  if(phase>0 && atomic_load(&scanning)&&atomic_load(&expected_phase)==phase-1)atomic_fetch_add(&overlapped,1);
  if((fault==2&&phase==1&&row==100)||(fault==3&&phase==0&&row==10))
    __atomic_fetch_or(&ctx.error,EPD_DRAW_EMPTY_LINE_QUEUE,__ATOMIC_RELEASE);
@@ -173,9 +201,10 @@ static void lookup(const uint32_t* source,uint8_t* dest,const uint8_t* table,uin
 }
 int main(int argc,char** argv){
  fault=argc>1?atoi(argv[1]):0;slow=argc>2?atoi(argv[2]):0;const bool gl16=argc>3&&atoi(argv[3]);
+ const bool legacy=argc>4&&atoi(argv[4]);
  memset(&ctx,0,sizeof(ctx));ctx.display_width=16;ctx.display_height=684;ctx.lines_total=688;
  ctx.area=(EpdRect){0,0,16,684};ctx.crop_to=(EpdRect){0,10,16,600};
- ctx.mode=(gl16?MODE_GL16:MODE_GL16_FAST)|MODE_PACKING_1PPB_DIFFERENCE;ctx.cycle_frames=48;
+ ctx.mode=(legacy?MODE_GC16:gl16?MODE_GL16:MODE_GL16_FAST)|MODE_PACKING_1PPB_DIFFERENCE;ctx.cycle_frames=48;
  ctx.data_ptr=input=calloc(684,16);dirty=calloc(684,sizeof(bool));assert(input&&dirty);
  for(int row=0;row<684;row++){input[row*16]=row&255;input[row*16+1]=row>>8;dirty[row]=row%7!=0;}
  ctx.drawn_lines=dirty;ctx.line_mask=mask;ctx.conversion_lut=lut;ctx.lut_build_func=build;ctx.lut_lookup_func=lookup;
@@ -190,17 +219,32 @@ int main(int argc,char** argv){
    assert(!pthread_create(&t->thread,NULL,feeder,t));
  }
  lcd_do_update(&ctx);
- assert(fault!=5); // A missing worker ack must never return to context reuse.
+ if(fault==5)return 97; // A returned context is a failure, distinct from production abort().
  if(scan_joinable){pthread_join(scan_thread,NULL);scan_joinable=false;}
  assert(ctx.line_ready==original_ready&&ctx.line_threads==original_threads);
  assert(!atomic_load(&source_cb)&&!atomic_load(&done_cb)&&!atomic_load(&render_mode));
+ const uint32_t first_fault=epd_lcd_get_first_fault();
+ if(fault==7)assert(first_fault==((193u<<16)|(1u<<8)|LCD_FAULT_ROW_NOT_READY));
+ if(fault==8)assert(first_fault==((0u<<16)|(255u<<8)|LCD_FAULT_FRAME_SHORT));
+ if(fault==9)assert(first_fault==((65535u<<16)|(255u<<8)|LCD_FAULT_FRAME_TIMEOUT));
  if(fault){assert(ctx.error);}else{
-   assert(!ctx.error&&ctx.current_frame==48&&atomic_load(&scan_count)==48&&atomic_load(&overlapped)>0);
+   assert(!ctx.error&&ctx.current_frame==48&&atomic_load(&scan_count)==48);
+   assert(legacy?atomic_load(&overlapped)==0:atomic_load(&overlapped)>0);
+ }
+ // Context reuse / sleep may follow only after ALL callbacks and workers stop.
+ assert(!atomic_load(&scanning) && !atomic_load(&active_feeders));
+ for(int i=0;i<2;++i){
+   assert(!feed_sem[i].count);
+   assert(atomic_load(&ctx.line_queues[i].current)==atomic_load(&ctx.line_queues[i].last));
+ }
+ if(!fault || legacy){
    // Reuse the same context on the legacy GC path after a pipelined cycle.
+   fault=0;
    ctx.error=0;ctx.current_frame=0;ctx.cycle_frames=3;phases.phases=3;
    ctx.mode=MODE_GC16|MODE_PACKING_1PPB_DIFFERENCE;atomic_store(&scan_count,0);
    lcd_do_update(&ctx);assert(!ctx.error&&ctx.current_frame==3&&atomic_load(&scan_count)==3);
    if(scan_joinable){pthread_join(scan_thread,NULL);scan_joinable=false;}
+   assert(epd_lcd_get_first_fault()==first_fault); // A later successful redraw cannot overwrite first evidence.
  }
  for(int i=0;i<2;i++){
    assert(!feed_sem[i].count);pthread_mutex_lock(&tasks[i].mutex);tasks[i].stop=true;
@@ -224,18 +268,33 @@ with tempfile.TemporaryDirectory(prefix='plus-phase-lookahead-') as folder:
         dest.write_text(code)
     (work / 'main.c').write_text(MAIN)
     binary = work / 'test'
-    subprocess.run(['clang', '-std=c11', '-D_POSIX_C_SOURCE=200809L', '-DRICKYOS_PLUS_PHASE_LOOKAHEAD=1',
+    compile_args = ['clang', '-std=c11', '-D_POSIX_C_SOURCE=200809L', '-DRICKYOS_PLUS_PHASE_LOOKAHEAD=1',
                     '-Wall', '-Wextra', '-Werror', '-Wno-unknown-attributes', '-Wno-unused-variable',
                     '-Wno-unused-but-set-variable', '-Wno-unused-parameter',
                     '-fsanitize=address,undefined', '-pthread', '-include', 'assert.h',
                     '-I', str(work), '-I', str(DISPLAY), str(work / 'main.c'),
                     str(DISPLAY / 'output_lcd/render_lcd.c'), str(DISPLAY / 'output_common/render_context.c'),
-                    str(DISPLAY / 'output_common/line_queue.c'), '-o', str(binary)], check=True)
-    for fault, slow in ((0, 0), (0, 1), (1, 0), (2, 0), (3, 0), (4, 0)):
+                    '-o', str(binary)]
+    subprocess.run(compile_args, check=True)
+    # Ordinary GC/DU scheduling shares the two workers but has its own recovery.
+    # A timed-out acknowledgement arriving later must be drained before reuse.
+    for fault, slow in ((6, 0), (0, 0), (0, 1), (1, 0), (2, 0), (3, 0), (4, 0), (7, 0), (8, 0), (9, 0)):
+        subprocess.run([str(binary), str(fault), str(slow), '0', '1'], check=True, timeout=20)
+    for fault, slow in ((0, 0), (0, 1), (1, 0), (2, 0), (3, 0), (4, 0), (7, 0), (8, 0), (9, 0)):
         subprocess.run([str(binary), str(fault), str(slow)], check=True, timeout=20)
     # UI area updates (GL16) take the same pipeline, with the same exact order and cleanup.
     for fault, slow in ((0, 0), (0, 1), (2, 0)):
         subprocess.run([str(binary), str(fault), str(slow), '1'], check=True, timeout=20)
-    fatal = subprocess.run([str(binary), '5', '0'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
-    assert fatal.returncode == -signal.SIGABRT, 'Unacknowledged producer must not return a reusable context'
-print('Actual LCD lookahead (GL16_FAST and GL16): 48 phases exact row/mask/crop order, next-phase overlap, delayed peer, frame/prefix/feed failure cleanup, fatal quiesce guard and following legacy GC passed (ASan/UBSan)')
+    def check_stuck_worker(*args):
+        fatal = subprocess.run([str(binary), *args], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=20)
+        assert fatal.returncode == -signal.SIGABRT and b'PRODUCTION_QUIESCE_GUARD' in fatal.stderr, \
+            'Production quiescence guard must abort; a harness assertion or returned context is not success'
+    check_stuck_worker('5', '0')
+    check_stuck_worker('5', '0', '0', '1')
+    # The non-lookahead build must retain the same recovery ownership contract.
+    compile_args[3] = '-DRICKYOS_PLUS_PHASE_LOOKAHEAD=0'
+    subprocess.run(compile_args, check=True)
+    for fault, slow in ((6, 0), (0, 0), (0, 1), (1, 0), (2, 0), (3, 0), (4, 0), (7, 0), (8, 0), (9, 0)):
+        subprocess.run([str(binary), str(fault), str(slow), '0', '1'], check=True, timeout=20)
+    check_stuck_worker('5', '0', '0', '1')
+print('Actual LCD legacy GC and lookahead GL16_FAST/GL16: exact row/mask/crop order, delayed peer/ack, exclusive queue reset, frame/prefix/feed failure cleanup, recovery redraw, and production fatal quiesce guards passed (ASan/UBSan)')

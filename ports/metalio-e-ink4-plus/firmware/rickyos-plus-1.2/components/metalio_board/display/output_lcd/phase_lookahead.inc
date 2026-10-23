@@ -5,6 +5,7 @@ static bool wait_phase_feeders(RenderContext_t* ctx, unsigned* pending) {
     for (int i = 0; i < NUM_RENDER_THREADS; ++i) {
         if (!(*pending & (1u << i))) continue;
         if (xSemaphoreTake(ctx->feed_done_smphr[i], pdMS_TO_TICKS(2000)) != pdTRUE) {
+            lcd_note_first_fault(&s_first_fault, LCD_FAULT_FEED_TIMEOUT, -1, i);
             __atomic_fetch_or(&ctx->error, EPD_DRAW_EMPTY_LINE_QUEUE, __ATOMIC_RELEASE);
             return false;
         }
@@ -23,6 +24,8 @@ static bool wait_phase_prefill(RenderContext_t* ctx) {
     for (int row = 0; row < s_prefill_lines; ++row) {
         while (!__atomic_load_n(&ctx->line_ready[row], __ATOMIC_ACQUIRE)) {
             if (__atomic_load_n(&ctx->error, __ATOMIC_ACQUIRE) || esp_timer_get_time() >= deadline) {
+                if (!__atomic_load_n(&ctx->error, __ATOMIC_ACQUIRE))
+                    lcd_note_first_fault(&s_first_fault, LCD_FAULT_PREFILL_TIMEOUT, row, -1);
                 __atomic_fetch_or(&ctx->error, EPD_DRAW_EMPTY_LINE_QUEUE, __ATOMIC_RELEASE);
                 return false;
             }
@@ -82,6 +85,7 @@ static void lcd_do_update_lookahead(RenderContext_t* ctx) {
             start_phase_feeders(ctx, &pending);
         }
         if (xSemaphoreTake(ctx->frame_done, pdMS_TO_TICKS(2000)) != pdTRUE) {
+            lcd_note_first_fault(&s_first_fault, LCD_FAULT_FRAME_TIMEOUT, -1, -1);
             __atomic_fetch_or(&ctx->error, EPD_DRAW_EMPTY_LINE_QUEUE, __ATOMIC_RELEASE);
             break;
         }

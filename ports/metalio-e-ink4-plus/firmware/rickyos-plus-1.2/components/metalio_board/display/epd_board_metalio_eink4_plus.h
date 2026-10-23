@@ -55,6 +55,12 @@ void epd_board_metalio_eink4_plus_sleep_cut_rails(void);
  * @brief 浅睡醒后恢复 P14 → P5
  */
 void epd_board_metalio_eink4_plus_sleep_restore_rails(void);
+// Static sleep: separate load steps by 40 ms; callback phases 0..5 are
+// P14 write/wait/waited, then P5 write/wait/waited. No rail writes unless
+// checked key restoration succeeded AND its register state still matches.
+bool epd_board_metalio_eink4_plus_sleep_restore_rails_staged(bool keys_restored, void (*trace)(unsigned));
+// Verify output latches AND directions; a failed I2C write must block sleep.
+bool epd_board_metalio_eink4_plus_sleep_io_checked(bool parked);
 
 /**
  * @brief 读 TCA 扩展脚输入电平（0..15；高口=io>>3，位=io&7）
@@ -107,6 +113,8 @@ void epd_board_metalio_eink4_plus_bus_latch_for_sleep(void);
  * @brief 浅睡醒后：解除 hold 并重新 epd_lcd_init
  */
 void epd_board_metalio_eink4_plus_bus_restore(void);
+// A failed rebuild stays unavailable and retryable; no abort on resource failure.
+bool epd_board_metalio_eink4_plus_bus_restore_checked(void);
 
 /**
  * @brief 入睡前：Port0/Port1 全部改输出；TPS 控制脚置低；音量/电源脚驱空闲高；P17 随后改输入唤醒
@@ -123,6 +131,9 @@ bool epd_board_metalio_eink4_plus_ioexp_enable_power_wake_pin(void);
  * @brief 浅睡醒后：恢复 Port0/Port1 默认输入输出（音量键等）
  */
 void epd_board_metalio_eink4_plus_ioexp_restore_keys(void);
+// Checks every write/read and verifies output, polarity and direction registers
+// before the caller may restore peripheral rails. No retries or rail changes.
+bool epd_board_metalio_eink4_plus_ioexp_restore_keys_checked(void);
 
 /**
  * @brief 向开关机芯片发关机脉冲：IO_P13 高/低各 PWR_PULSE_INTERVAL_MS，共 PWR_PULSE_COUNT 次

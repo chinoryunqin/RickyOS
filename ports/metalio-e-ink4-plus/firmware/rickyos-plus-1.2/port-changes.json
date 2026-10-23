@@ -275,12 +275,12 @@
     {
       "path": "lib/hal/HalPowerManager.cpp",
       "baseline_sha256": "c8021acd737310ddd402aad3bd9f953db5bcbef2064ff4736540302e3c2fb5ad",
-      "ported_sha256": "3a278622994b6c3f4b611af9d5f2baa0b3645d67370399553cc06e4196e09a9d"
+      "ported_sha256": "7620be77048a09490df419f72f67f1df7a5003bb2652a64567e955839ab7fba2"
     },
     {
       "path": "lib/hal/HalPowerManager.h",
       "baseline_sha256": "28f6f38e9a7b15f434f7b6576412df60b5e64969e5ccdc25b5d386ea4fe03fb2",
-      "ported_sha256": "76c5779c0cd45728308c9d85172533a62b9fdc2a9818b9327ebf80903ce7a58a"
+      "ported_sha256": "c559ee92d3845e0450429eb79941048318bc2fc6936c181269677f9994deb80b"
     },
     {
       "path": "lib/hal/HalRecorder.cpp",
@@ -295,7 +295,7 @@
     {
       "path": "lib/hal/HalStorage.cpp",
       "baseline_sha256": "8b12b963ffa643f66bbeb74bcb754d54fbe570417af171b569170d653dcfd870",
-      "ported_sha256": "2317487b2dcbc040eee178ff1ccbf86a1a15686f17c87a82d501664126b641ba"
+      "ported_sha256": "5af6f1034044f1df66ad8cd2afeefc6d7a37ac242e3b96d52caba93ca3231288"
     },
     {
       "path": "lib/hal/HalSystem.cpp",
@@ -470,7 +470,7 @@
     {
       "path": "src/activities/apps/standby/StandbyActivity.cpp",
       "baseline_sha256": "29dde67945a5e69415ed2f40ca0d287d364f1ff7bf74cc241dd3ead386105696",
-      "ported_sha256": "2eaf25637a72a53eb6947ef2b110278bea727629afe7acf44bf0f3e8e4933da6"
+      "ported_sha256": "e1c9012e31d45f781b5ce84b84fcba2b130d80432a23a24c2b178a2971f4535f"
     },
     {
       "path": "src/activities/apps/standby/StandbyActivity.h",
@@ -635,7 +635,7 @@
     {
       "path": "src/main.cpp",
       "baseline_sha256": "a9593200335b30dace971723992905ac8ce0beb05159ecb6d17d837bdb73fdc5",
-      "ported_sha256": "73f8630ba1140ee895cbaa0e25e1498a437c3145e40c9febfda03709dcebe5d4"
+      "ported_sha256": "d12a5ecac44ac5a9c08050c7152df927b7d2fc086ff79e6ad54e74f64c6f1760"
     },
     {
       "path": "src/network/CrossPointWebServer.cpp",
@@ -706,6 +706,11 @@
       "path": "src/util/UserGuide.h",
       "baseline_sha256": "a5b2cbbfcab52fda78526019ae3f3a16e7523e3b81bf8bbaa016b82b620e7596",
       "ported_sha256": "f077c58e6ff59f7ef36f6e92fdf732d0063f0a9c1b5102644795797eae462ef3"
+    },
+    {
+      "path": "lib/hal/HalStorage.h",
+      "baseline_sha256": "77fef824405ef1faf3f96612d9590073fd37c7eafaa425172b8dd009e45d2c9e",
+      "ported_sha256": "53484b3ffd0cae792344524a34c8568fa3e53a0d6621510b8efe8a766ce79767"
     }
   ],
   "feature_sources": {

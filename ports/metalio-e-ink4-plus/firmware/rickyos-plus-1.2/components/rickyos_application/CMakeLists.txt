@@ -615,7 +615,7 @@ idf_component_register(
   "${APP_ROOT}/freeink-sdk/libs/font/FreeInkFont/third_party/freetype/include"
   "${APP_ROOT}/freeink-sdk/libs/font/FreeInkFont/third_party/stb"
  REQUIRES rickyos_storage rickyos_display rickyos_platform arduino-esp32-4.0.0-RC1
-    metalio_board mdns esp_timer esp_pm esp_app_format app_update esp_http_server nvs_flash esp-tls
+    metalio_board mdns esp_driver_usb_serial_jtag esp_timer esp_pm esp_app_format app_update esp_http_server nvs_flash esp-tls
 )
 target_compile_features(${COMPONENT_LIB} PUBLIC cxx_std_20)
 # Enable the validated Plus network-owner power cap in ordinary firmware.
@@ -658,6 +658,34 @@ endif()
 if("$ENV{RICKYOS_PLUS_READER_TIMING}" STREQUAL "1")
   target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_READER_TIMING=1)
 endif()
+# Reuse the bounded RAM standby trace so unplugged wake events can be replayed
+# after USB reconnects. PlusBoard independently blocks a connected USB host.
+# Explicit experimental opt-in only; repeated physical display recovery failed.
+# Trace logging does not enable sleep. Ordinary battery builds keep it disabled.
+# Isolate awake-idle CPU power from the failing sleep/restore path. Both
+# comparison builds must leave sleep off; reject accidental mixed experiments.
+if(NOT "$ENV{RICKYOS_PLUS_IDLE_FREQ_MHZ}" STREQUAL "")
+  if(NOT "$ENV{RICKYOS_PLUS_IDLE_FREQ_MHZ}" MATCHES "^(40|80)$")
+    message(FATAL_ERROR "RICKYOS_PLUS_IDLE_FREQ_MHZ must be 40 or 80")
+  endif()
+  if("$ENV{RICKYOS_PLUS_STANDBY_SLEEP}" STREQUAL "1")
+    message(FATAL_ERROR "Idle-frequency comparison requires Plus standby sleep disabled")
+  endif()
+  target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_IDLE_FREQ_MHZ=$ENV{RICKYOS_PLUS_IDLE_FREQ_MHZ})
+endif()
+if("$ENV{RICKYOS_PLUS_STANDBY_SLEEP}" STREQUAL "1")
+  target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_STANDBY_SLEEP=1)
+endif()
+if("$ENV{RICKYOS_PLUS_STATIC_STANDBY}" STREQUAL "1")
+  if(NOT "$ENV{RICKYOS_PLUS_STANDBY_SLEEP}" STREQUAL "1")
+    message(FATAL_ERROR "Static standby requires explicit Plus standby sleep opt-in")
+  endif()
+  target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_STATIC_STANDBY=1)
+endif()
+if("$ENV{RICKYOS_PLUS_STANDBY_DIAG}" STREQUAL "1")
+  target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_STANDBY_DIAG=1)
+endif()
+
 # The release version; a diagnostic build may set RICKYOS_PLUS_VERSION (e.g. an older
 # number to exercise an over-the-air update).
 set(RICKYOS_PLUS_APP_VERSION "1.2.4")
