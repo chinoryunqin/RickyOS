@@ -201,14 +201,13 @@ int main(){
  reset();cause=ESP_SLEEP_WAKEUP_EXT1;keyAfterWake=true;lcdRestoreMs=1000;
  assert(plus_board::standbyStaticSleep(60,lease)==StandbyWake::PowerButton);clean();lcdRestoreMs=0;
  reset();cause=ESP_SLEEP_WAKEUP_EXT1;
- // A released shared-IRQ pulse is not a key. Static standby sleeps again in place,
- // peripherals still parked, until the deadline: one park and one restore per session.
- assert(plus_board::standbyStaticSleep(60,lease)==StandbyWake::Timer);
- assert(sleeps>1 && lcdRestores==1 && usbRevives==1 && std::count(calls.begin(),calls.end(),std::string("rails_restore"))==1);
+ // OEM latch: an expander IRQ while parked is a key, even when the tap was already
+ // released at the first read. One park, one sleep, one restore, then leave Standby.
+ assert(plus_board::standbyStaticSleep(60,lease)==StandbyWake::PowerButton);
+ assert(sleeps==1 && lcdRestores==1 && usbRevives==1 && std::count(calls.begin(),calls.end(),std::string("rails_restore"))==1);
  assert(std::count(calls.begin(),calls.end(),std::string("rails_cut"))==1);clean();
- // A line that stays low after the wake ends the session awake instead of spinning.
  reset();cause=ESP_SLEEP_WAKEUP_EXT1;irqLowAfterWake=true;
- assert(plus_board::standbyStaticSleep(60,lease)==StandbyWake::Failed && sleeps==1);irqLow=false;clean();
+ assert(plus_board::standbyStaticSleep(60,lease)==StandbyWake::PowerButton && sleeps==1);irqLow=false;clean();
  for(int failure=0;failure<8;++failure){
   reset();switch(failure){case 0:suspendFail=true;break;case 1:sdFail=true;break;case 2:imuFail=true;break;
    case 3:parkCheckFail=true;break;case 4:remountFail=true;break;case 5:restoreCheckFail=true;break;case 6:fault="sleep";break;default:keysRestoreFail=true;}

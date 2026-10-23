@@ -572,6 +572,10 @@ static StandbyWake standbySleepOnce(const uint32_t seconds, StandbyStorage* stor
     STANDBY_DIAG("wake latch: valid=%u p1=%02x cause=%d other=%u", wakeInputsValid, p1, static_cast<int>(cause),
                  otherWakes);
     if (!staticPark || !wakeInputsValid || (p1 & kAllKeyMask) != kAllKeyMask) break;
+    // OEM latch (397): with IMU, TPS and RTC silenced, an expander IRQ while
+    // parked is a key. A quick tap is often released before this first read,
+    // and re-sleeping on it made the power key look dead (park5).
+    if (cause == ESP_SLEEP_WAKEUP_EXT1) break;
     const uint32_t slept = millis() - sleepStarted;
     if (cause == ESP_SLEEP_WAKEUP_TIMER || slept + 1000u >= sleepBudgetMs) break;
     // A shared-IRQ pulse (IMU, TPS, charger): the read above cleared the
@@ -634,6 +638,8 @@ static StandbyWake standbySleepOnce(const uint32_t seconds, StandbyStorage* stor
     return observePowerRelease();
   }
   if (staticPark && (wakeP1 & 3) != 3) return observeSideKeyRelease();
+  // Already released: a tap that ended before the latch read still leaves Standby.
+  if (staticPark && cause == ESP_SLEEP_WAKEUP_EXT1) return StandbyWake::PowerButton;
   // GPIO2 also carries RTC/IMU/TPS events. A pulse already released before the
   // first successful read cannot be attributed to P17; never invent a key press.
   const bool deadline = staticPark && uint32_t(millis() - sleepStarted) + 1000u >= sleepBudgetMs;
