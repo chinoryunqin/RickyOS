@@ -90,4 +90,8 @@ python3 tests/test_plus_usb_retry.py
 python3 tests/test_plus_ota_manifest.py
 python3 tests/test_plus_kindle_document.py
 python3 tests/test_plus_kindle_import.py
+python3 tests/test_plus_pico_features.py
+python3 tests/test_plus_source_recording.py
+python3 tests/test_plus_storage_summary.py
+python3 tests/test_plus_release_idf.py
 python3 ../../scripts/tests/test_skill_gomoku.py

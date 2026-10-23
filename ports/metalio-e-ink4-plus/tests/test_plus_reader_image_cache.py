@@ -65,9 +65,10 @@ struct Section {
 int main() {
  ReaderRenderSpec spec;
  spec.fontId=7;spec.viewportWidth=620;spec.viewportHeight=1000;
-#if FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
  spec.imageOutset=24;
 #endif
+ spec.bookFontsKey=0x12345678;
  Section s;s.writeSectionFileHeader(spec);
  assert(s.file.bytes.size()==HEADER_SIZE);
  assert(s.file.bytes[0]==0); // Interrupted writer never publishes a valid cache.
@@ -87,23 +88,23 @@ int main() {
  assert(!(spec==other) && !s.loadSectionFile(other));
  Storage.bytes[0]=SECTION_FILE_PARTIAL_VERSION;
  assert(s.loadSectionFile(spec)); // Same header key for interrupted / complete builds.
+ other=spec;other.bookFontsKey++;
+ assert(!(spec==other) && !s.loadSectionFile(other));
+ for(uint8_t old:{79,81,83,199,201,203}) {
+   Storage.bytes=complete;Storage.bytes[0]=old;
+   assert(!s.loadSectionFile(spec));
+ }
 #if FREEINK_DEVICE_METALIO_PLUS
- assert(SECTION_FILE_VERSION==83 && SECTION_FILE_PARTIAL_VERSION==199);
+ assert(SECTION_FILE_VERSION==119 && SECTION_FILE_PARTIAL_VERSION==163);
  other=spec;other.imageOutset=0;
  assert(!(spec==other) && !s.loadSectionFile(other));
- Storage.bytes=complete;Storage.bytes[0]=79;
- assert(!s.loadSectionFile(spec));
- Storage.bytes[0]=203; // Previous partial sentinel.
- assert(!s.loadSectionFile(spec));
- Storage.bytes[0]=81;  // Plus pagination before collapsed margins.
- assert(!s.loadSectionFile(spec));
- Storage.bytes[0]=201; // Its partial sentinel.
- assert(!s.loadSectionFile(spec));
+#elif FREEINK_DEVICE_READPICO
+ assert(SECTION_FILE_VERSION==117 && SECTION_FILE_PARTIAL_VERSION==165);
+ other=spec;other.imageOutset=0;
+ assert(!(spec==other) && !s.loadSectionFile(other));
 #else
- assert(SECTION_FILE_VERSION==79 && SECTION_FILE_PARTIAL_VERSION==203);
- assert(IMAGE_LAYOUT_HEADER_SIZE==0); // Shared Pico/C3 disk layout unchanged.
- Storage.bytes=complete;Storage.bytes[0]=81;
- assert(!s.loadSectionFile(spec));
+ assert(SECTION_FILE_VERSION==115 && SECTION_FILE_PARTIAL_VERSION==167);
+ assert(IMAGE_LAYOUT_HEADER_SIZE==0);
 #endif
 }
 '''
@@ -111,10 +112,11 @@ int main() {
 with tempfile.TemporaryDirectory(prefix='plus-image-cache-') as directory:
     work = Path(directory)
     (work / 'test.cpp').write_text(PROGRAM)
-    for plus in (0, 1):
-        binary = work / f'test-{plus}'
+    for plus, pico in ((0, 0), (0, 1), (1, 0)):
+        binary = work / f'test-{plus}-{pico}'
         subprocess.run(['clang++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
                         '-fsanitize=address,undefined', f'-DFREEINK_DEVICE_METALIO_PLUS={plus}',
+                        f'-DFREEINK_DEVICE_READPICO={pico}',
                         '-I', str(EPUB), str(work / 'test.cpp'), '-o', str(binary)], check=True)
         subprocess.run([str(binary)], check=True)
-print('Production section header: Plus v83/partial199 (old v81/201 rejected), image-width key, every truncated header rejected; Pico/C3 v79 unchanged')
+print('Production section headers: Plus119/163, Pico117/165, generic115/167; legacy caches, font key, image-width key and truncated headers checked')

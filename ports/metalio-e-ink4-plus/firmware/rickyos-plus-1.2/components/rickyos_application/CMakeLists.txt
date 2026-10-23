@@ -6,6 +6,7 @@ idf_component_register(
   "${APP_ROOT}/src/util/BootPreparation.cpp"
   "${APP_ROOT}/src/util/PanelTileCache.cpp"
   "${APP_ROOT}/src/activities/reader/ReaderChrome.cpp"
+  "${APP_ROOT}/src/activities/reader/BookFontSet.cpp"
   "${APP_ROOT}/src/activities/apps/reading-stats/RickyMonthReportActivity.cpp"
   "${APP_ROOT}/src/activities/apps/reading-stats/RickyBadgesActivity.cpp"
   "port/LoggingProxy.cpp"
@@ -480,6 +481,7 @@ idf_component_register(
   "${APP_ROOT}/lib/Epub/Epub/Page.cpp"
   "${APP_ROOT}/lib/Epub/Epub/ParsedText.cpp"
   "${APP_ROOT}/lib/Epub/Epub/WordStore.cpp"
+  "${APP_ROOT}/lib/Epub/Epub/BookFonts.cpp"
   "${APP_ROOT}/lib/Epub/Epub/Section.cpp"
   "${APP_ROOT}/lib/Epub/Epub/htmlEntities.cpp"
   "${APP_ROOT}/lib/Epub/Epub/BookMetadataCache.cpp"
@@ -706,7 +708,7 @@ endif()
 
 # The release version; a diagnostic build may set RICKYOS_PLUS_VERSION (e.g. an older
 # number to exercise an over-the-air update).
-set(RICKYOS_PLUS_APP_VERSION "1.2.5")
+set(RICKYOS_PLUS_APP_VERSION "1.2.6")
 if(NOT "$ENV{RICKYOS_PLUS_VERSION}" STREQUAL "")
   set(RICKYOS_PLUS_APP_VERSION "$ENV{RICKYOS_PLUS_VERSION}")
 endif()

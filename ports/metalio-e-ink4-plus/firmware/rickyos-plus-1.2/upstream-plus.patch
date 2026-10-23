@@ -180787,6 +180787,15 @@
        if (!FsHelpers::hasCssExtension(entryPath)) {
          return;
        }
+@@ -463,7 +466,7 @@
+       parseResult = CssParser::ParseResult::Error;
+       continue;
+     }
+-    const CssParser::ParseResult streamResult = cssParser->loadFromStream(tempCssFile);
++    const CssParser::ParseResult streamResult = cssParser->loadFromStream(tempCssFile, cssPath);
+     // Explicitly close() file before calling Storage.remove()
+     tempCssFile.close();
+     Storage.remove(tmpCssPath.c_str());
 @@ -512,6 +515,9 @@
  // means normal ZIP reads should be used. A hard error refuses the open with a
  // user-presentable reason.
@@ -180967,119 +180976,553 @@
    bool clearCache() const;
    void setupCacheDir() const;
    const std::string& getCachePath() const;
+--- a/lib/Epub/Epub/Page.cpp
++++ b/lib/Epub/Epub/Page.cpp
+@@ -1,6 +1,8 @@
+ #include "Page.h"
+ 
+ #include <GfxRenderer.h>
++
++#include <algorithm>
+ #include <Logging.h>
+ #include <Memory.h>
+ #include <Serialization.h>
+@@ -17,7 +19,64 @@
+   }
+ }
+ 
++// Panels behind runs of lines that share a BlockBox (CSS background / border). Each run
++// on a page is drawn as one closed panel from the first line's top minus its padding to
++// the last line's bottom plus its padding; a panel continuing on the next page starts a
++// new run there. Drawn before any element, so text and images sit on top.
++void renderBlockBoxes(const std::vector<std::unique_ptr<PageElement>>& elements, GfxRenderer& renderer,
++                      const int fontId, const int xOffset, const int yOffset) {
++  const int lineHeight = renderer.getLineHeight(fontId);
++  const bool gray16 = renderer.isGrayscale16Active();
++  size_t i = 0;
++  while (i < elements.size()) {
++    if (elements[i]->getTag() != TAG_PageLine) {
++      ++i;
++      continue;
++    }
++    const BlockBox box = static_cast<const PageLine&>(*elements[i]).getBlock()->getBlockStyle().box;
++    if (box.id == 0) {
++      ++i;
++      continue;
++    }
++    const int top = elements[i]->yPos;
++    int bottom = top;
++    int spacing = lineHeight;
++    int previousY = top;
++    size_t j = i;
++    for (; j < elements.size(); ++j) {
++      if (elements[j]->getTag() != TAG_PageLine) continue;  // an image inside the panel
++      if (static_cast<const PageLine&>(*elements[j]).getBlock()->getBlockStyle().box.id != box.id) break;
++      if (elements[j]->yPos > previousY) spacing = std::min(spacing, elements[j]->yPos - previousY);
++      previousY = elements[j]->yPos;
++      bottom = elements[j]->yPos;
++    }
++    const int x = xOffset + box.left;
++    const int y = std::max(0, yOffset + top - box.padTop);
++    const int height = yOffset + bottom + spacing + box.padBottom - y;
++    if (box.width > 0 && height > 0) {
++      if (gray16 && box.fillLuma < 250) {
++        renderer.fillRoundedRect(x, y, box.width, height, box.radius, box.fillLuma >= 160 ? LightGray : DarkGray);
++      }
++      if (box.border > 0) renderer.drawRoundedRect(x, y, box.width, height, box.border, box.radius, true);
++    }
++    i = j;
++  }
++}
++
+ }  // namespace
++
++void Page::renderPanels(GfxRenderer& renderer, const int fontId, const int xOffset, const int yOffset) const {
++  renderBlockBoxes(elements, renderer, fontId, xOffset, yOffset);
++}
++
++bool Page::hasPanelFill() const {
++  for (const auto& element : elements) {
++    if (element->getTag() != TAG_PageLine) continue;
++    const BlockBox& box = static_cast<const PageLine&>(*element).getBlock()->getBlockStyle().box;
++    if (box.id != 0 && box.fillLuma < 250) return true;
++  }
++  return false;
++}
+ 
+ void Page::addFootnote(const char* number, const char* href) {
+   if (footnotes.size() >= MAX_FOOTNOTES_PER_PAGE || footnotes.allocationFailed()) return;
+@@ -176,6 +235,7 @@
+ }
+ 
+ void Page::render(GfxRenderer& renderer, const int fontId, const int xOffset, const int yOffset) const {
++  renderPanels(renderer, fontId, xOffset, yOffset);
+   renderFilteredPageElements(elements, renderer, fontId, xOffset, yOffset, [](const PageElement&) { return true; });
+ }
+ 
+@@ -191,6 +251,7 @@
+ 
+ void Page::renderWithImagePlaceholders(GfxRenderer& renderer, const int fontId, const int xOffset,
+                                        const int yOffset) const {
++  renderPanels(renderer, fontId, xOffset, yOffset);
+   for (const auto& element : elements) {
+     if (element->getTag() == TAG_PageImage) {
+       static_cast<const PageImage&>(*element).renderPlaceholder(renderer, xOffset, yOffset);
+--- a/lib/Epub/Epub/Page.h
++++ b/lib/Epub/Epub/Page.h
+@@ -103,6 +103,11 @@
+   // Lines as columns, right to left from `right`, each `columnWidth` wide (VerticalText.h).
+   void renderVertical(GfxRenderer& renderer, int fontId, int right, int top, int columnWidth) const;
+   void renderImages(GfxRenderer& renderer, int fontId, int xOffset, int yOffset) const;
++  // CSS panels (background / border) behind the lines; render() draws them first. Callers
++  // that draw element by element (the page cache) call this before the elements.
++  void renderPanels(GfxRenderer& renderer, int fontId, int xOffset, int yOffset) const;
++  // A panel on this page is filled with gray: entering or leaving it needs a clean refresh.
++  bool hasPanelFill() const;
+   void renderWithImagePlaceholders(GfxRenderer& renderer, int fontId, int xOffset, int yOffset) const;
+   void extractImagesNeedingDecode();
+   bool warmImages(GfxRenderer& renderer, int xOffset, int yOffset, CancelCheck cancellation);
+--- a/lib/Epub/Epub/ParsedText.cpp
++++ b/lib/Epub/Epub/ParsedText.cpp
+@@ -1,4 +1,7 @@
+ #include "ParsedText.h"
++
++#include "BookFonts.h"
++#include "WordLook.h"
+ 
+ #include <BidiUtils.h>
+ #include <GfxRenderer.h>
+@@ -440,8 +443,15 @@
+   return false;
+ }
+ 
++int ParsedText::fontIdAt(const size_t i, const int fontId) const {
++  if (i >= wordLooks.size()) return fontId;
++  const uint32_t look = wordLooks[i];
++  return bookfonts::fontIdFor(wordlook::face(look), fontId, wordlook::size(look));
++}
++
+ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle, const bool underline,
+-                         const bool attachToPrevious, const uint32_t visibleTextOffset, const uint8_t linkId) {
++                         const bool attachToPrevious, const uint32_t visibleTextOffset, const uint8_t linkId,
++                         const uint32_t look) {
+   if (word.empty()) return;
+ 
+   // The device fonts carry no combining-mark positioning, so EPUB text stored in NFD
+@@ -469,6 +479,7 @@
+     if (!storeWord(token, stored)) return;
+     words.push_back(stored);
+     wordStyles.push_back(style);
++    wordLooks.push_back(look);
+     wordContinues.push_back(continues);
+     wordNoSpaceBefore.push_back(noSpaceBefore);
+     wordFocusBoundary.push_back(focusBoundary);
+@@ -512,6 +523,7 @@
+     }
+ 
+     wordStyles.reserve(newCapacity);
++    wordLooks.reserve(newCapacity);
+     wordContinues.reserve(newCapacity);
+     wordNoSpaceBefore.reserve(newCapacity);
+     wordFocusBoundary.reserve(newCapacity);
+@@ -839,6 +851,7 @@
+     for (size_t i = 0; i < consumed; ++i) wordStore.release(words[i]);
+     words.erase(words.begin(), words.begin() + consumed);
+     wordStyles.erase(wordStyles.begin(), wordStyles.begin() + consumed);
++    wordLooks.erase(wordLooks.begin(), wordLooks.begin() + consumed);
+     wordContinues.erase(wordContinues.begin(), wordContinues.begin() + consumed);
+     wordNoSpaceBefore.erase(wordNoSpaceBefore.begin(), wordNoSpaceBefore.begin() + consumed);
+     wordFocusBoundary.erase(wordFocusBoundary.begin(), wordFocusBoundary.begin() + consumed);
+@@ -936,7 +949,7 @@
+   wordWidths.reserve(words.size());
+ 
+   for (size_t i = 0; i < words.size(); ++i) {
+-    wordWidths.push_back(measureFocusWordWidth(renderer, fontId, wordAt(i), wordStyles[i], wordFocusBoundary[i],
++    wordWidths.push_back(measureFocusWordWidth(renderer, fontIdAt(i, fontId), wordAt(i), wordStyles[i], wordFocusBoundary[i],
+                                                blockStyle.characterSpacing, wordSpacingPercent));
+   }
+ 
+@@ -1283,7 +1296,7 @@
+       if (offset == 0 || offset >= word.size()) continue;
+ 
+       const bool needsHyphen = info.requiresInsertedHyphen;
+-      const int prefixWidth = measureFocusWordWidth(renderer, fontId, word.substr(0, offset), style,
++      const int prefixWidth = measureFocusWordWidth(renderer, fontIdAt(wordIndex, fontId), word.substr(0, offset), style,
+                                                     focusBoundaryBefore(focusBoundary, offset),
+                                                     blockStyle.characterSpacing, wordSpacingPercent, needsHyphen);
+       if (prefixWidth > availableWidth || prefixWidth <= chosenWidth) {
+@@ -1342,6 +1355,8 @@
+   // Insert the remainder word (with matching style and continuation flag) directly after the prefix.
+   words.insert(words.begin() + wordIndex + 1, remainderStored);
+   wordStyles.insert(wordStyles.begin() + wordIndex + 1, style);
++  const uint32_t look = wordLooks[wordIndex];  // copied: the insert may reallocate
++  wordLooks.insert(wordLooks.begin() + wordIndex + 1, look);
+   insertVisibleOffset(wordIndex + 1, remainderOffset);
+   // Emphasis follows the text across the split, so a break at or after the boundary leaves the
+   // remainder fully regular.
+@@ -1421,6 +1436,10 @@
+   lineWords.reserve(lineWordCount);
+   std::vector<EpdFontFamily::Style> lineWordStyles;
+   lineWordStyles.reserve(lineWordCount);
++  std::vector<uint32_t> lineWordLooks;
++  bool lineHasLooks = false;
++  for (size_t i = 0; i < lineWordCount; ++i) lineHasLooks = lineHasLooks || wordLooks[lastBreakAt + i] != 0;
++  if (lineHasLooks) lineWordLooks.reserve(lineWordCount);
+ 
+   for (size_t i = 0; i < lineWordCount; ++i) {
+     // Copy out of the arena: TextBlock construction and bidi reorder below
+@@ -1432,6 +1451,7 @@
+     }
+     lineWords.push_back(std::move(word));
+     lineWordStyles.push_back(wordStyles[lastBreakAt + i]);
++    if (lineHasLooks) lineWordLooks.push_back(wordLooks[lastBreakAt + i]);
+   }
+ 
+   // Calculate total word width for this line, count actual word gaps,
+@@ -1494,6 +1514,7 @@
+   if (willReorder) {
+     reorderedWordsScratch.clear();
+     reorderedStylesScratch.clear();
++    reorderedLooksScratch.clear();
+     reorderedWidthsScratch.clear();
+     reorderedContinuesScratch.clear();
+     reorderedNoSpaceBeforeScratch.clear();
+@@ -1509,6 +1530,7 @@
+       const uint16_t src = visualOrderScratch[i];
+       reorderedWordsScratch.push_back(std::move(lineWords[src]));
+       reorderedStylesScratch.push_back(lineWordStyles[src]);
++      if (lineHasLooks) reorderedLooksScratch.push_back(lineWordLooks[src]);
+       reorderedWidthsScratch.push_back(wordWidths[lastBreakAt + src]);
+       reorderedFocusBoundaryScratch.push_back(wordFocusBoundary[lastBreakAt + src]);
+ 
+@@ -1621,6 +1643,7 @@
+ 
+     lineWords.swap(reorderedWordsScratch);
+     lineWordStyles.swap(reorderedStylesScratch);
++    if (lineHasLooks) lineWordLooks.swap(reorderedLooksScratch);
+   } else {
+     // Standard LTR/RTL positioning loop when no visual reordering is needed
+     if (blockStyle.isRtl) {
+@@ -1763,7 +1786,7 @@
+     // TextBlock flattens the vectors into its arena; they stay owned here and die at return.
+     auto block = makeUniqueNoThrow<TextBlock>(lineWords, lineXPos, lineWordStyles, std::vector<uint8_t>{},
+                                               std::vector<uint16_t>{}, blockStyle, std::move(lineRubyTexts),
+-                                              std::move(lineLinks));
++                                              std::move(lineLinks), lineWordLooks);
+     if (!block || !block->valid()) {
+       LOG_ERR("PTX", "OOM: TextBlock arena allocation failed");
+       return false;
+@@ -1780,13 +1803,16 @@
+   for (size_t i = 0; i < lineWordCount; i++) {
+     const uint8_t boundary = focusBoundaryAt(i);
+     outBoundaries.push_back(boundary);
++    const int wordFont = lineHasLooks ? bookfonts::fontIdFor(wordlook::face(lineWordLooks[i]), fontId,
++                                                             wordlook::size(lineWordLooks[i]))
++                                      : fontId;
+     outSuffixX.push_back(boundary == 0 ? 0
+-                                       : measureFocusPrefixAdvance(renderer, fontId, lineWords[i], lineWordStyles[i],
++                                       : measureFocusPrefixAdvance(renderer, wordFont, lineWords[i], lineWordStyles[i],
+                                                                    boundary, blockStyle.characterSpacing));
+   }
+ 
+   auto block = makeUniqueNoThrow<TextBlock>(lineWords, lineXPos, lineWordStyles, outBoundaries, outSuffixX, blockStyle,
+-                                            std::move(lineRubyTexts), std::move(lineLinks));
++                                            std::move(lineRubyTexts), std::move(lineLinks), lineWordLooks);
+   if (!block || !block->valid()) {
+     LOG_ERR("PTX", "OOM: TextBlock arena allocation failed");
+     return false;
+--- a/lib/Epub/Epub/ParsedText.h
++++ b/lib/Epub/Epub/ParsedText.h
+@@ -36,6 +36,8 @@
+   WordStore wordStore;
+   std::deque<WordStore::StoredWord> words;
+   std::vector<EpdFontFamily::Style> wordStyles;
++  // Book face / tone / size per token (WordLook.h), in lockstep with wordStyles.
++  std::vector<uint32_t> wordLooks;
+   // Boundary flags use all four combinations:
+   //   continues=false, noSpace=false: ordinary breakable word gap
+   //   continues=false, noSpace=true:  breakable zero-width, stretchable CJK/Korean gap
+@@ -78,6 +80,7 @@
+   bool droppedWords = false;
+   std::vector<std::string> reorderedWordsScratch;
+   std::vector<EpdFontFamily::Style> reorderedStylesScratch;
++  std::vector<uint32_t> reorderedLooksScratch;
+   std::vector<uint16_t> reorderedWidthsScratch;
+   std::vector<bool> reorderedContinuesScratch;
+   std::vector<bool> reorderedNoSpaceBeforeScratch;
+@@ -85,6 +88,8 @@
+   std::vector<uint16_t> visualOrderScratch;
+ 
+   std::string_view wordAt(const size_t i) const { return wordStore.view(words[i]); }
++  // The font a token is measured and drawn in: its book face, else the reader font.
++  int fontIdAt(size_t i, int fontId) const;
+   bool storeWord(std::string_view text, WordStore::StoredWord& out);
+   uint32_t visibleOffsetBaseAt(size_t wordIndex) const;
+   uint32_t visibleOffsetAt(size_t wordIndex) const;
+@@ -128,7 +133,7 @@
+   ~ParsedText() = default;
+ 
+   void addWord(std::string word, EpdFontFamily::Style fontStyle, bool underline = false, bool attachToPrevious = false,
+-               uint32_t visibleTextOffset = 0, uint8_t linkId = 0);
++               uint32_t visibleTextOffset = 0, uint8_t linkId = 0, uint32_t look = 0);
+   uint8_t addLinkTarget(const char* href);
+   bool linkTargetMatches(uint8_t linkId, const char* href) const;
+   void setRubyForWordAt(size_t index, const std::string& ruby);
 --- a/lib/Epub/Epub/ReaderRenderSpec.h
 +++ b/lib/Epub/Epub/ReaderRenderSpec.h
-@@ -36,8 +36,16 @@
+@@ -1,4 +1,7 @@
+ #pragma once
++#if __has_include(<BoardConfig.h>)
++#include <BoardConfig.h>
++#endif
+ #include <cstdint>
+ 
+ #include "FirstLineIndent.h"
+@@ -36,8 +39,19 @@
    // Lines are laid out as columns (VerticalText.h): the caller swaps the viewport so
    // viewportWidth is the column height and viewportHeight the width the columns fill.
    bool verticalText = false;
-+#if FREEINK_DEVICE_METALIO_PLUS
++  // Fingerprint of the book's usable fonts (BookFontSet); 0 = none or the book's styles off.
++  // Pagination measured words in those faces, so a change re-lays the chapter out.
++  uint32_t bookFontsKey = 0;
++#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
 +  // Chapter art can extend into the horizontal text margins, never into a
 +  // decorated reading frame. Part of the Plus section-cache layout key.
 +  uint16_t imageOutset = 0;
 +#endif
  
    bool operator==(const ReaderRenderSpec& other) const {
-+#if FREEINK_DEVICE_METALIO_PLUS
++#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
 +    if (imageOutset != other.imageOutset) return false;
 +#endif
      return fontId == other.fontId && lineCompression == other.lineCompression &&
             extraParagraphSpacing == other.extraParagraphSpacing && firstLineIndent == other.firstLineIndent &&
             paragraphIndentSpaces == other.paragraphIndentSpaces && characterSpacing == other.characterSpacing &&
+@@ -45,6 +59,7 @@
+            viewportWidth == other.viewportWidth && viewportHeight == other.viewportHeight &&
+            hyphenationEnabled == other.hyphenationEnabled && embeddedStyle == other.embeddedStyle &&
+            imageRendering == other.imageRendering && focusReadingEnabled == other.focusReadingEnabled &&
+-           collectTouchLinks == other.collectTouchLinks && verticalText == other.verticalText;
++           collectTouchLinks == other.collectTouchLinks && verticalText == other.verticalText &&
++           bookFontsKey == other.bookFontsKey;
+   }
+ };
 --- a/lib/Epub/Epub/Section.cpp
 +++ b/lib/Epub/Epub/Section.cpp
-@@ -51,7 +51,17 @@
+@@ -51,7 +51,40 @@
  //   74 / 75 - character and word spacing in the render spec and cached text
  //   76 / 77 - independent Western paragraph indentation width
  //   78 / 79 - vertical text (columns, right to left) in the render spec
-+#if FREEINK_DEVICE_METALIO_PLUS
-+// Plus-only v81 adds a uint16 imageOutset after verticalText. Rebuild old complete
-+// AND partial pagination; Pico/C3 keep v79 and their unchanged binary header.
-+// v83: adjacent vertical margins collapse (CSS max, not the sum), so every Plus
-+// pagination built before it is stale.
-+constexpr uint8_t SECTION_FILE_VERSION = 83;
+-constexpr uint8_t SECTION_FILE_VERSION = 79;
++//   80 / 81 - reserved: the Metalio Plus imageOutset header field
++//   82 / 83 - reserved: Plus pagination with collapsed margins (with imageOutset)
++//   84 / 85 - adjacent vertical margins collapse (CSS): max(bottom, next top), not the sum
++//   86 / 87 - Read Pico: collapsed margins plus the chapter-art imageOutset header field
++//   88 / 89 - book typography: TextBlock flags byte + per-word looks (face, tone, size)
++//   90 / 91 - the same on the Read Pico (imageOutset header)
++//   92 / 93 - the same on the Metalio Plus (imageOutset header)
++//   94 / 95 - Read Pico: book faces collected during layout (v91 test builds had none)
++//   96 / 97 - bookFontsKey in the header (fingerprint of the book's usable faces)
++//   98 / 99 - the same on the Read Pico (imageOutset header)
++//  100 /101 - the same on the Metalio Plus (imageOutset header)
++//  102 /103 - CSS panels: TextBlock flag bit 2 carries a BlockBox (background / border)
++//  104 /105 - the same on the Read Pico (imageOutset header)
++//  106 /107 - the same on the Metalio Plus (imageOutset header)
++//  108 /109 - a panel ends with its element (the paragraph after </div> no longer joins it)
++//  110 /111 - the same on the Read Pico (imageOutset header)
++//  112 /113 - the same on the Metalio Plus (imageOutset header)
++//  114 /115 - a closed container's bottom spacing lands before the next block, not after it
++//  116 /117 - the same on the Read Pico (imageOutset header)
++//  118 /119 - the same on the Metalio Plus (imageOutset header)
++// Boards without the imageOutset field come first: host tests read the first declaration.
++#if !FREEINK_DEVICE_METALIO_PLUS && !FREEINK_DEVICE_READPICO
++constexpr uint8_t SECTION_FILE_VERSION = 115;
++constexpr uint32_t IMAGE_LAYOUT_HEADER_SIZE = 0;
++#elif FREEINK_DEVICE_READPICO
++// A uint16 imageOutset follows verticalText, as on the Plus; its own number keeps a
++// card moved between devices from reading another board's pagination as its own.
++constexpr uint8_t SECTION_FILE_VERSION = 117;
 +constexpr uint32_t IMAGE_LAYOUT_HEADER_SIZE = sizeof(uint16_t);
 +#else
- constexpr uint8_t SECTION_FILE_VERSION = 79;
-+constexpr uint32_t IMAGE_LAYOUT_HEADER_SIZE = 0;
++// Plus-only v81 adds a uint16 imageOutset after verticalText; v83 collapses margins.
++constexpr uint8_t SECTION_FILE_VERSION = 119;
++constexpr uint32_t IMAGE_LAYOUT_HEADER_SIZE = sizeof(uint16_t);
 +#endif
  // Written into the version field while a build is in progress; patched to
  // SECTION_FILE_VERSION only when the build is finalized. An abandoned /
  // crash-interrupted .bin therefore carries version 0, which loadSectionFile rejects
-@@ -73,7 +83,7 @@
+@@ -73,7 +106,7 @@
                                   sizeof(uint8_t) + sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint16_t) +
                                   sizeof(bool) + sizeof(bool) + sizeof(uint8_t) + sizeof(bool) + sizeof(bool) +
                                   sizeof(uint32_t) * 5 + sizeof(int8_t) + sizeof(uint8_t) + sizeof(uint8_t) +
 -                                 sizeof(bool);
-+                                 sizeof(bool) + IMAGE_LAYOUT_HEADER_SIZE;
++                                 sizeof(bool) + IMAGE_LAYOUT_HEADER_SIZE + sizeof(uint32_t);
  // Called only between layout/render operations; no borrowed glyph pointer is live.
  void reclaimLayoutCaches(GfxRenderer& renderer, const char* stage) {
  #ifndef BOARD_HAS_PSRAM
-@@ -139,7 +149,8 @@
+@@ -139,7 +172,8 @@
                           sizeof(spec.hyphenationEnabled) + sizeof(spec.embeddedStyle) + sizeof(spec.imageRendering) +
                           sizeof(spec.focusReadingEnabled) + sizeof(spec.collectTouchLinks) + sizeof(uint32_t) +
                           sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) +
 -                         sizeof(spec.characterSpacing) + sizeof(spec.wordSpacingPercent) + sizeof(spec.verticalText),
 +                         sizeof(spec.characterSpacing) + sizeof(spec.wordSpacingPercent) + sizeof(spec.verticalText) +
-+                         IMAGE_LAYOUT_HEADER_SIZE,
++                         IMAGE_LAYOUT_HEADER_SIZE + sizeof(spec.bookFontsKey),
        "Header size mismatch");
    // Written as the incomplete sentinel; finalizeBuild() patches it to
    // SECTION_FILE_VERSION as the last step, committing the file.
-@@ -160,6 +171,9 @@
+@@ -160,6 +194,10 @@
    serialization::writePod(file, spec.characterSpacing);
    serialization::writePod(file, spec.wordSpacingPercent);
    serialization::writePod(file, spec.verticalText);
-+#if FREEINK_DEVICE_METALIO_PLUS
++#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
 +  serialization::writePod(file, spec.imageOutset);
 +#endif
++  serialization::writePod(file, spec.bookFontsKey);
    serialization::writePod(file, pageCount);  // Placeholder for page count (will be initially 0, patched later)
    serialization::writePod(file, static_cast<uint32_t>(0));  // Placeholder for LUT offset (patched later)
    serialization::writePod(file, static_cast<uint32_t>(0));  // Placeholder for anchor map offset (patched later)
-@@ -206,7 +220,10 @@
+@@ -206,7 +244,10 @@
      int8_t fileCharacterSpacing = 0;
      uint8_t fileWordSpacingPercent = 100;
      bool fileVerticalText = false;
 -    const bool headerValid =
-+#if FREEINK_DEVICE_METALIO_PLUS
++#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
 +    uint16_t fileImageOutset = 0;
 +#endif
 +    bool headerValid =
          serialization::readPod(file, fileFontId) && serialization::readPod(file, fileLineCompression) &&
          serialization::readPod(file, fileExtraParagraphSpacing) && serialization::readPod(file, fileFirstLineIndent) &&
          serialization::readPod(file, fileParagraphIndentSpaces) &&
-@@ -216,6 +233,12 @@
+@@ -216,6 +257,14 @@
          serialization::readPod(file, fileFocusReadingEnabled) && serialization::readPod(file, fileCollectTouchLinks) &&
          serialization::readPod(file, fileCharacterSpacing) && serialization::readPod(file, fileWordSpacingPercent) &&
          serialization::readPod(file, fileVerticalText);
-+#if FREEINK_DEVICE_METALIO_PLUS
++#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
 +    headerValid = headerValid && serialization::readPod(file, fileImageOutset);
 +    const bool imageLayoutMatches = spec.imageOutset == fileImageOutset;
 +#else
 +    const bool imageLayoutMatches = true;
 +#endif
++    uint32_t fileBookFontsKey = 0;
++    headerValid = headerValid && serialization::readPod(file, fileBookFontsKey);
  
      if (!headerValid || spec.fontId != fileFontId || spec.lineCompression != fileLineCompression ||
          spec.extraParagraphSpacing != fileExtraParagraphSpacing || spec.firstLineIndent != fileFirstLineIndent ||
-@@ -224,7 +247,8 @@
+@@ -224,7 +273,8 @@
          spec.hyphenationEnabled != fileHyphenationEnabled || spec.embeddedStyle != fileEmbeddedStyle ||
          spec.imageRendering != fileImageRendering || spec.focusReadingEnabled != fileFocusReadingEnabled ||
          spec.collectTouchLinks != fileCollectTouchLinks || spec.characterSpacing != fileCharacterSpacing ||
 -        spec.wordSpacingPercent != fileWordSpacingPercent || spec.verticalText != fileVerticalText) {
 +        spec.wordSpacingPercent != fileWordSpacingPercent || spec.verticalText != fileVerticalText ||
-+        !imageLayoutMatches) {
++        !imageLayoutMatches || spec.bookFontsKey != fileBookFontsKey) {
        file.close();
        LOG_ERR("SCT", "Deserialization failed: Parameters do not match");
        clearCache();
-@@ -504,6 +528,9 @@
+@@ -504,6 +554,9 @@
    ctx->parser->setTxtChapterBoundaries(txtChapterBoundaries);
    ctx->parser->setTextSpacing(spec.characterSpacing, spec.wordSpacingPercent);
    ctx->parser->setParagraphIndentSpaces(spec.paragraphIndentSpaces);
-+#if FREEINK_DEVICE_METALIO_PLUS
++#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
 +  ctx->parser->setImageOutset(spec.imageOutset);
 +#endif
    Hyphenator::setPreferredLanguage(epub->getLanguage());
  
    if (!build_->parser->beginParse()) {
+--- a/lib/Epub/Epub/blocks/BlockStyle.h
++++ b/lib/Epub/Epub/blocks/BlockStyle.h
+@@ -4,6 +4,23 @@
+ #include <cstdint>
+ 
+ #include "Epub/css/CssStyle.h"
++
++// A panel behind a block's lines (CSS background / border / border-radius). The parser
++// numbers each decorated element and places it; every line inside carries it, and a page
++// draws one rounded panel per run of lines with the same id (closed on each page).
++struct BlockBox {
++  uint16_t id = 0;         // 0 = no panel
++  int16_t left = 0;        // outer left edge, from the content area's left
++  int16_t width = 0;       // outer width
++  uint8_t padTop = 0;      // padding + border above the first line
++  uint8_t padBottom = 0;   // padding + border below the last line
++  uint8_t border = 0;      // border width, px
++  uint8_t radius = 0;      // corner radius, px
++  uint8_t fillLuma = 255;  // 255 = no fill
++  uint8_t borderLuma = 0;
++  [[nodiscard]] bool decorated() const { return fillLuma < 250 || border > 0; }
++};
++static_assert(sizeof(BlockBox) == 12, "BlockBox is written to the section cache as is");
+ 
+ /**
+  * BlockStyle - Block-level styling properties
+@@ -33,11 +50,16 @@
+   bool textAlignDefined = false;   // true if text-align was explicitly set in CSS
+   bool isRtl = false;              // true if resolved direction is RTL
+   bool directionDefined = false;   // true if direction was explicitly set in CSS/HTML
++  // The book's CSS set a top or bottom margin: its spacing is the book's, and the reader's
++  // extra paragraph spacing is not added on top. Layout-only, not serialized.
++  bool verticalMarginDefined = false;
+ 
+   // Set when this block was created by a <br> element. Used by startNewTextBlock to inject
+   // a full line-height gap when the <br> block stays empty (section-break use case).
+   // NOT propagated through getCombinedBlockStyle so it can't leak into sibling blocks.
+   bool fromBrElement = false;
++
++  BlockBox box;
+ 
+   // Combined insets (margin + padding)
+   [[nodiscard]] int16_t leftInset() const { return marginLeft + paddingLeft; }
+@@ -80,6 +102,10 @@
+   // Properties on the other axis are kept from the child unchanged.
+   [[nodiscard]] BlockStyle getCombinedBlockStyle(const BlockStyle& child, CombineAxis axis) const {
+     BlockStyle result = child;
++    // Lines inside a panel keep it; a nested panel (placed by the parser) replaces it.
++    // Vertical merges an empty block into the next one: the incoming block decides, or the
++    // paragraph after a closed panel would join it.
++    if (axis == CombineAxis::Horizontal && child.box.id == 0) result.box = box;
+ 
+     if (axis == CombineAxis::Horizontal) {
+       result.marginLeft = static_cast<int16_t>(child.marginLeft + marginLeft);
+@@ -99,6 +125,7 @@
+       result.marginBottom = std::max(child.marginBottom, marginBottom);
+       result.paddingTop = static_cast<int16_t>(child.paddingTop + paddingTop);
+       result.paddingBottom = static_cast<int16_t>(child.paddingBottom + paddingBottom);
++      result.verticalMarginDefined = child.verticalMarginDefined || verticalMarginDefined;
+     }
+ 
+     // Direction is not axis-specific. Inherit from parent when child doesn't define it.
+@@ -123,6 +150,7 @@
+     const auto maxHorizontalInsetPx = static_cast<int16_t>(emSize * MAX_HORIZONTAL_INSET_EM);
+     // Resolve all CssLength values to pixels using the current font's em size and viewport width
+     blockStyle.marginTop = cssStyle.marginTop.toPixelsInt16(emSize, vw);
++    blockStyle.verticalMarginDefined = cssStyle.hasMarginTop() || cssStyle.hasMarginBottom();
+     blockStyle.marginBottom = cssStyle.marginBottom.toPixelsInt16(emSize, vw);
+     blockStyle.marginLeft = std::min(cssStyle.marginLeft.toPixelsInt16(emSize, vw), maxHorizontalInsetPx);
+     blockStyle.marginRight = std::min(cssStyle.marginRight.toPixelsInt16(emSize, vw), maxHorizontalInsetPx);
+@@ -150,6 +178,24 @@
+       blockStyle.isRtl = (cssStyle.direction == CssTextDirection::Rtl);
+       blockStyle.directionDefined = true;
+     }
++    // Panel look. Placement (id, left, width) needs the parent's insets: the parser does it.
++    const int border = cssStyle.hasBorder() ? std::clamp<int>(cssStyle.borderWidth.toPixelsInt16(emSize, vw), 0, 8) : 0;
++    const uint8_t fill = cssStyle.hasBackground() ? cssStyle.backgroundLuma : 255;
++    if (fill < 250 || border > 0) {
++      // Text stays clear of the border.
++      blockStyle.paddingTop = static_cast<int16_t>(blockStyle.paddingTop + border);
++      blockStyle.paddingBottom = static_cast<int16_t>(blockStyle.paddingBottom + border);
++      blockStyle.paddingLeft = static_cast<int16_t>(blockStyle.paddingLeft + border);
++      blockStyle.paddingRight = static_cast<int16_t>(blockStyle.paddingRight + border);
++      blockStyle.box.border = static_cast<uint8_t>(border);
++      blockStyle.box.borderLuma = cssStyle.borderLuma;
++      blockStyle.box.fillLuma = fill;
++      blockStyle.box.radius = cssStyle.hasBorderRadius()
++                                  ? static_cast<uint8_t>(std::clamp<int>(cssStyle.borderRadius.toPixelsInt16(emSize, vw), 0, 40))
++                                  : 0;
++      blockStyle.box.padTop = static_cast<uint8_t>(std::clamp<int>(blockStyle.paddingTop, 0, 255));
++      blockStyle.box.padBottom = static_cast<uint8_t>(std::clamp<int>(blockStyle.paddingBottom, 0, 255));
++    }
+     return blockStyle;
+   }
+ };
 --- a/lib/Epub/Epub/blocks/ImageBlock.cpp
 +++ b/lib/Epub/Epub/blocks/ImageBlock.cpp
 @@ -372,8 +372,8 @@
@@ -181136,6 +181579,321 @@
    bool cacheDecodedImage(GfxRenderer& renderer, int x, int y, CancelCheck cancellation = {});
    bool serialize(HalFile& file);
    static std::unique_ptr<ImageBlock> deserialize(HalFile& file);
+--- a/lib/Epub/Epub/blocks/TextBlock.cpp
++++ b/lib/Epub/Epub/blocks/TextBlock.cpp
+@@ -10,11 +10,21 @@
+ #include <cstring>
+ 
+ #include "../../../../src/fontIds.h"
++#include "../BookFonts.h"
+ #include "../VerticalText.h"
+-
+-size_t TextBlock::arenaSize(const uint16_t wordCount, const bool hasFocus, const uint16_t textBytes) {
+-  // Layout documented in TextBlock.h: 16-bit arrays first, then 8-bit arrays, then text.
++#include "../WordLook.h"
++
++namespace {
++constexpr uint8_t kFlagFocus = 1 << 0;
++constexpr uint8_t kFlagLooks = 1 << 1;
++constexpr uint8_t kFlagBox = 1 << 2;  // a BlockBox follows the block style
++}  // namespace
++
++size_t TextBlock::arenaSize(const uint16_t wordCount, const bool hasFocus, const bool hasLooks,
++                            const uint16_t textBytes) {
++  // Layout documented in TextBlock.h: the 32-bit array, 16-bit arrays, 8-bit arrays, then text.
+   size_t size = static_cast<size_t>(wordCount) * (sizeof(uint16_t) + sizeof(int16_t) + sizeof(uint8_t));
++  if (hasLooks) size += static_cast<size_t>(wordCount) * sizeof(uint32_t);
+   if (hasFocus) {
+     size += static_cast<size_t>(wordCount) * (sizeof(uint16_t) + sizeof(uint8_t));
+   }
+@@ -24,6 +34,11 @@
+ void TextBlock::bindArenaPointers() {
+   uint8_t* base = arena.get();
+   const size_t wc = numWords;
++  looksArr = nullptr;
++  if (looksPresent) {
++    looksArr = reinterpret_cast<const uint32_t*>(base);
++    base += wc * sizeof(uint32_t);
++  }
+   textOffArr = reinterpret_cast<const uint16_t*>(base);
+   xposArr = reinterpret_cast<const int16_t*>(base + wc * 2);
+   size_t off = wc * 4;
+@@ -43,7 +58,8 @@
+ TextBlock::TextBlock(const std::vector<std::string>& words, const std::vector<int16_t>& wordXpos,
+                      const std::vector<EpdFontFamily::Style>& wordStyles, const std::vector<uint8_t>& focusBoundary,
+                      const std::vector<uint16_t>& focusSuffixX, const BlockStyle& blockStyle,
+-                     std::vector<std::string> rubyTexts, std::vector<LinkSpan> linkSpans)
++                     std::vector<std::string> rubyTexts, std::vector<LinkSpan> linkSpans,
++                     const std::vector<uint32_t>& wordLooks)
+     : blockStyle(blockStyle), rubyTexts(std::move(rubyTexts)), linkSpans(std::move(linkSpans)) {
+   // Same invariant as deserialize(): a block never holds an all-empty rubyTexts, so a
+   // ruby-less line costs nothing beyond its arena. The layout engine hands one over for
+@@ -68,6 +84,11 @@
+ 
+   numWords = static_cast<uint16_t>(words.size());
+   focusPresent = hasFocus;
++  // Looks are optional too, and an all-default line drops them entirely.
++  looksPresent = false;
++  if (wordLooks.size() == words.size()) {
++    for (const uint32_t look : wordLooks) looksPresent = looksPresent || look != wordlook::kDefault;
++  }
+   if (numWords == 0) {
+     return;  // valid empty block, no arena
+   }
+@@ -80,12 +101,13 @@
+     LOG_ERR("TXB", "Construction failed: text size %u exceeds arena limit", static_cast<uint32_t>(totalText));
+     numWords = 0;
+     focusPresent = false;
++    looksPresent = false;
+     isValid = false;
+     return;
+   }
+   textBytes = static_cast<uint16_t>(totalText);
+ 
+-  const size_t size = arenaSize(numWords, focusPresent, textBytes);
++  const size_t size = arenaSize(numWords, focusPresent, looksPresent, textBytes);
+   arena = makeUniqueNoThrow<uint8_t[]>(size);
+   if (!arena) {
+     // Evict rebuildable caches (SD-font mini data, render glyph cache) and
+@@ -98,6 +120,7 @@
+     numWords = 0;
+     textBytes = 0;
+     focusPresent = false;
++    looksPresent = false;
+     isValid = false;
+     return;
+   }
+@@ -117,6 +140,10 @@
+     off += static_cast<uint16_t>(words[i].size());
+     text[off++] = '\0';
+   }
++  if (looksPresent) {
++    auto* looks = const_cast<uint32_t*>(looksArr);
++    for (uint16_t i = 0; i < numWords; i++) looks[i] = wordLooks[i];
++  }
+   if (focusPresent) {
+     auto* suffixX = const_cast<uint16_t*>(focusSuffixXArr);
+     auto* boundary = const_cast<uint8_t*>(focusBoundaryArr);
+@@ -150,12 +177,14 @@
+ 
+   // Turned text starting `y` down the column: drawn as plain text in the turned frame,
+   // centred across the column.
++  int wordFont = fontId;  // the current word's face (book font or the reader's)
+   const auto drawTurned = [&](const char* text, const int y, const EpdFontFamily::Style style) {
+     const auto turned = verticalText::toTurned(centerX, y, screenWidth);
+     renderer.setOrientation(
+         static_cast<GfxRenderer::Orientation>(verticalText::turnedOrientation(static_cast<uint8_t>(orientation))));
+     const int baseline = turned.y + em * verticalText::kRotatedCenterPercent / 100;
+-    renderer.drawText(fontId, turned.x, baseline - ascender, text, true, style, BidiUtils::BidiBaseDir::LTR, tracking);
++    renderer.drawText(wordFont, turned.x, baseline - ascender, text, true, style, BidiUtils::BidiBaseDir::LTR,
++                      tracking);
+     renderer.setOrientation(orientation);
+   };
+ 
+@@ -165,6 +194,9 @@
+     const uint16_t length = wordTextLen(i);
+     const EpdFontFamily::Style style = wordStyle(i);
+     const int wordTop = top + xposArr[i];
++    const uint32_t look = wordLook(i);
++    wordFont = bookfonts::fontIdFor(wordlook::face(look), fontId, wordlook::size(look));
++    const GfxRenderer::TextInkScope ink(renderer, wordlook::ink(look));
+ 
+     // A word with nothing upright (Latin, digits, a dash run) turns as one run, keeping
+     // its kerning; its turned length is the advance the layout measured.
+@@ -200,16 +232,16 @@
+       const size_t bytes = std::min<size_t>(static_cast<size_t>(cursor - start), sizeof(glyph) - 1);
+       memcpy(glyph, start, bytes);
+       glyph[bytes] = '\0';
+-      const int advance = renderer.getTextAdvanceX(fontId, glyph, style, tracking);
++      const int advance = renderer.getTextAdvanceX(wordFont, glyph, style, tracking);
+       switch (verticalText::placementFor(cp)) {
+         case Placement::Upright:
+-          renderer.drawText(fontId, centerX - advance / 2,
++          renderer.drawText(wordFont, centerX - advance / 2,
+                             y + advance * verticalText::kUprightBaselinePercent / 100 - ascender, glyph, true, style,
+                             BidiUtils::BidiBaseDir::LTR, 0);
+           break;
+         case Placement::CornerTopRight: {
+           const int shift = advance * verticalText::kCornerShiftPercent / 100;
+-          renderer.drawText(fontId, centerX - advance / 2 + shift,
++          renderer.drawText(wordFont, centerX - advance / 2 + shift,
+                             y - shift + advance * verticalText::kUprightBaselinePercent / 100 - ascender, glyph, true,
+                             style, BidiUtils::BidiBaseDir::LTR, 0);
+           break;
+@@ -301,6 +333,10 @@
+     const char* word = wordText(i);
+     const int wordX = xposArr[i] + x;
+     const EpdFontFamily::Style currentStyle = wordStyle(i);
++    // The book's own face and tone for this word (the reader font and black by default).
++    const uint32_t look = wordLook(i);
++    const int wordFont = bookfonts::fontIdFor(wordlook::face(look), fontId, wordlook::size(look));
++    const GfxRenderer::TextInkScope ink(renderer, wordlook::ink(look));
+     const auto baseDir =
+         static_cast<BidiUtils::BidiBaseDir>(BidiUtils::detectParagraphLevel(word, blockStyle.isRtl ? 1 : 0));
+     const uint8_t boundary = focusBoundary(i);
+@@ -332,11 +368,11 @@
+           std::min<size_t>({static_cast<size_t>(boundary), static_cast<size_t>(wordTextLen(i)), sizeof(boldBuf) - 1});
+       memcpy(boldBuf, word, boldLen);
+       boldBuf[boldLen] = '\0';
+-      renderer.drawText(fontId, drawX, wordY, boldBuf, true, boldStyle, baseDir, tracking);
++      renderer.drawText(wordFont, drawX, wordY, boldBuf, true, boldStyle, baseDir, tracking);
+       const int suffixX = drawX + focusSuffixXArr[i];
+-      renderer.drawText(fontId, suffixX, wordY, word + boldLen, true, currentStyle, baseDir, tracking);
++      renderer.drawText(wordFont, suffixX, wordY, word + boldLen, true, currentStyle, baseDir, tracking);
+     } else {
+-      renderer.drawText(fontId, drawX, wordY, word, true, currentStyle, baseDir, tracking);
++      renderer.drawText(wordFont, drawX, wordY, word, true, currentStyle, baseDir, tracking);
+     }
+ 
+     // Horizontal ruby text rendering
+@@ -353,7 +389,7 @@
+ 
+     if (EpdFontFamily::hasTextDecoration(currentStyle)) {
+       int lineStartX = drawX;
+-      int lineWidth = renderer.getTextAdvanceX(fontId, word, currentStyle, tracking, baseDir,
++      int lineWidth = renderer.getTextAdvanceX(wordFont, word, currentStyle, tracking, baseDir,
+                                                GfxRenderer::TextMeasureMode::Rendered);
+       // SUP/SUB glyphs are rendered at 50% scale; halve the underline to match (#2255).
+       if ((currentStyle & (EpdFontFamily::SUP | EpdFontFamily::SUB)) != 0) {
+@@ -364,9 +400,9 @@
+       if (wordTextLen(i) >= 3 && static_cast<uint8_t>(word[0]) == 0xE2 && static_cast<uint8_t>(word[1]) == 0x80 &&
+           static_cast<uint8_t>(word[2]) == 0x83) {
+         const char* visibleText = word + 3;
+-        lineStartX += renderer.getTextAdvanceX(fontId, "\xe2\x80\x83", currentStyle, tracking, baseDir,
++        lineStartX += renderer.getTextAdvanceX(wordFont, "\xe2\x80\x83", currentStyle, tracking, baseDir,
+                                                GfxRenderer::TextMeasureMode::Rendered);
+-        lineWidth = renderer.getTextAdvanceX(fontId, visibleText, currentStyle, tracking, baseDir,
++        lineWidth = renderer.getTextAdvanceX(wordFont, visibleText, currentStyle, tracking, baseDir,
+                                              GfxRenderer::TextMeasureMode::Rendered);
+       }
+ 
+@@ -403,10 +439,11 @@
+   // exactly the on-disk layout (see TextBlock.h), so one write covers all
+   // per-word arrays and the text blob.
+   serialization::writePod(file, numWords);
+-  serialization::writePod(file, static_cast<uint8_t>(focusPresent ? 1 : 0));
++  serialization::writePod(file, static_cast<uint8_t>((focusPresent ? kFlagFocus : 0) | (looksPresent ? kFlagLooks : 0) |
++                                                     (blockStyle.box.id != 0 ? kFlagBox : 0)));
+   serialization::writePod(file, textBytes);
+   if (numWords > 0) {
+-    const size_t size = arenaSize(numWords, focusPresent, textBytes);
++    const size_t size = arenaSize(numWords, focusPresent, looksPresent, textBytes);
+     if (file.write(arena.get(), size) != size) {
+       LOG_ERR("TXB", "Serialization failed: arena write (%u bytes)", static_cast<uint32_t>(size));
+       return false;
+@@ -434,15 +471,16 @@
+   serialization::writePod(file, blockStyle.isRtl);
+   serialization::writePod(file, blockStyle.directionDefined);
+   serialization::writePod(file, blockStyle.characterSpacing);
++  if (blockStyle.box.id != 0) serialization::writePod(file, blockStyle.box);
+ 
+   return true;
+ }
+ 
+ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
+   uint16_t wc = 0;
+-  uint8_t hasFocus = 0;
++  uint8_t flags = 0;
+   uint16_t textBytes = 0;
+-  if (!serialization::readPod(file, wc) || !serialization::readPod(file, hasFocus) ||
++  if (!serialization::readPod(file, wc) || !serialization::readPod(file, flags) ||
+       !serialization::readPod(file, textBytes)) {
+     LOG_ERR("TXB", "Deserialization failed: truncated header");
+     return nullptr;
+@@ -454,6 +492,10 @@
+     LOG_ERR("TXB", "Deserialization failed: word count %u exceeds maximum", wc);
+     return nullptr;
+   }
++  if ((flags & ~(kFlagFocus | kFlagLooks | kFlagBox)) != 0) {
++    LOG_ERR("TXB", "Deserialization failed: unknown flags %02x", flags);
++    return nullptr;
++  }
+   if ((wc == 0 && textBytes != 0) || (wc > 0 && textBytes < wc)) {
+     LOG_ERR("TXB", "Deserialization failed: bad text size %u for %u words", textBytes, wc);
+     return nullptr;
+@@ -467,10 +509,11 @@
+   }
+   block->numWords = wc;
+   block->textBytes = textBytes;
+-  block->focusPresent = hasFocus != 0;
++  block->focusPresent = (flags & kFlagFocus) != 0;
++  block->looksPresent = (flags & kFlagLooks) != 0;
+ 
+   if (wc > 0) {
+-    const size_t size = arenaSize(wc, block->focusPresent, textBytes);
++    const size_t size = arenaSize(wc, block->focusPresent, block->looksPresent, textBytes);
+     block->arena = makeUniqueNoThrow<uint8_t[]>(size);
+     if (!block->arena) {
+       LOG_ERR("TXB", "OOM: arena %u bytes", static_cast<uint32_t>(size));
+@@ -537,6 +580,10 @@
+     LOG_ERR("TXB", "Deserialization failed: truncated block style");
+     return nullptr;
+   }
++  if ((flags & kFlagBox) != 0 && (!serialization::readPod(file, blockStyle.box) || blockStyle.box.id == 0)) {
++    LOG_ERR("TXB", "Deserialization failed: truncated panel");
++    return nullptr;
++  }
+ 
+   return block;
+ }
+--- a/lib/Epub/Epub/blocks/TextBlock.h
++++ b/lib/Epub/Epub/blocks/TextBlock.h
+@@ -18,9 +18,10 @@
+ // vector-of-string layout cost ~250 throwing allocations per page load, which
+ // was the primary driver of heap fragmentation on the ESP32-C3.
+ //
+-// Arena layout, in order (2-byte alignment holds by construction: all 16-bit
+-// arrays come first and the arena base is allocator-aligned; RISC-V faults on
+-// unaligned multi-byte access):
++// Arena layout, in order (alignment holds by construction: the 32-bit array comes
++// first, then the 16-bit arrays, and the arena base is allocator-aligned; RISC-V
++// faults on unaligned multi-byte access):
++//   uint32_t looks[wordCount]          present only when looksPresent (WordLook.h)
+ //   uint16_t textOff[wordCount]        byte offset of word i's text in text[]
+ //   int16_t  xpos[wordCount]
+ //   uint16_t focusSuffixX[wordCount]   present only when focusPresent
+@@ -52,12 +53,14 @@
+   uint16_t numWords = 0;
+   uint16_t textBytes = 0;  // total size of the text region, including NULs
+   bool focusPresent = false;
++  bool looksPresent = false;  // a word on this line uses a book face, tone or size
+   bool isValid = true;
+   // The ONLY allocation: makeUniqueNoThrow, so OOM yields an invalid block
+   // instead of abort() (bare new is not nothrow with -fno-exceptions).
+   std::unique_ptr<uint8_t[]> arena;
+   // Typed views into the arena, bound once after the arena is filled. All
+   // 16-bit bases sit at even offsets, so direct dereference is alignment-safe.
++  const uint32_t* looksArr = nullptr;  // null when !looksPresent
+   const uint16_t* textOffArr = nullptr;
+   const int16_t* xposArr = nullptr;
+   const uint16_t* focusSuffixXArr = nullptr;  // null when !focusPresent
+@@ -70,7 +73,7 @@
+   std::vector<LinkSpan> linkSpans;
+ 
+   TextBlock() = default;  // deserialize() fills the fields directly
+-  static size_t arenaSize(uint16_t wordCount, bool hasFocus, uint16_t textBytes);
++  static size_t arenaSize(uint16_t wordCount, bool hasFocus, bool hasLooks, uint16_t textBytes);
+   void bindArenaPointers();
+ 
+  public:
+@@ -80,7 +83,8 @@
+   explicit TextBlock(const std::vector<std::string>& words, const std::vector<int16_t>& wordXpos,
+                      const std::vector<EpdFontFamily::Style>& wordStyles, const std::vector<uint8_t>& focusBoundary,
+                      const std::vector<uint16_t>& focusSuffixX, const BlockStyle& blockStyle = BlockStyle(),
+-                     std::vector<std::string> rubyTexts = {}, std::vector<LinkSpan> linkSpans = {});
++                     std::vector<std::string> rubyTexts = {}, std::vector<LinkSpan> linkSpans = {},
++                     const std::vector<uint32_t>& wordLooks = {});
+   ~TextBlock() override = default;
+   TextBlock(const TextBlock&) = delete;
+   TextBlock& operator=(const TextBlock&) = delete;
+@@ -99,6 +103,7 @@
+   int16_t wordXpos(const uint16_t i) const { return xposArr[i]; }
+   EpdFontFamily::Style wordStyle(const uint16_t i) const { return static_cast<EpdFontFamily::Style>(stylesArr[i]); }
+   uint8_t focusBoundary(const uint16_t i) const { return focusPresent ? focusBoundaryArr[i] : 0; }
++  uint32_t wordLook(const uint16_t i) const { return looksPresent ? looksArr[i] : 0; }
+   uint16_t focusSuffixX(const uint16_t i) const { return focusPresent ? focusSuffixXArr[i] : 0; }
+   bool hasRuby() const;
+   int getRubyShift(int ascender) const { return hasRuby() ? (ascender / 2) : 0; }
 --- a/lib/Epub/Epub/converters/ImageDecoderFactory.cpp
 +++ b/lib/Epub/Epub/converters/ImageDecoderFactory.cpp
 @@ -3,6 +3,7 @@
@@ -181413,19 +182171,1235 @@
      }
      ctx.nextDstY = ctx.dstHeight;
    }
+--- a/lib/Epub/Epub/css/CssParser.cpp
++++ b/lib/Epub/Epub/css/CssParser.cpp
+@@ -173,12 +173,15 @@
+ constexpr std::array STYLE_LENGTH_FIELDS = {
+     &CssStyle::textIndent,   &CssStyle::marginTop,   &CssStyle::marginBottom,  &CssStyle::marginLeft,
+     &CssStyle::marginRight,  &CssStyle::paddingTop,  &CssStyle::paddingBottom, &CssStyle::paddingLeft,
+-    &CssStyle::paddingRight, &CssStyle::imageHeight, &CssStyle::imageWidth,
++    &CssStyle::paddingRight, &CssStyle::imageHeight, &CssStyle::imageWidth,  &CssStyle::fontSize,
++    &CssStyle::borderWidth,  &CssStyle::borderRadius,
+ };
+ constexpr size_t STYLE_LENGTH_FIELD_COUNT = STYLE_LENGTH_FIELDS.size();
++// ... + display, verticalAlign, listStyleType + colorLuma, fontFamily (u16), backgroundLuma,
++// borderLuma + defined bits.
+ constexpr size_t STYLE_WIRE_BYTES =
+-    5 + STYLE_LENGTH_FIELD_COUNT * (sizeof(decltype(CssLength::value)) + 1) + 3 + sizeof(uint32_t);
+-constexpr uint32_t CSS_DEFINED_BITS_MASK = (1u << 19) - 1;
++    5 + STYLE_LENGTH_FIELD_COUNT * (sizeof(decltype(CssLength::value)) + 1) + 3 + 5 + sizeof(uint32_t);
++constexpr uint32_t CSS_DEFINED_BITS_MASK = (1u << 25) - 1;
+ 
+ void encodeStyleWire(const CssStyle& style, uint8_t (&out)[STYLE_WIRE_BYTES]) {
+   size_t offset = 0;
+@@ -199,6 +202,11 @@
+   out[offset++] = static_cast<uint8_t>(style.display);
+   out[offset++] = static_cast<uint8_t>(style.verticalAlign);
+   out[offset++] = static_cast<uint8_t>(style.listStyleType);
++  out[offset++] = style.colorLuma;
++  memcpy(out + offset, &style.fontFamily, sizeof(style.fontFamily));
++  offset += sizeof(style.fontFamily);
++  out[offset++] = style.backgroundLuma;
++  out[offset++] = style.borderLuma;
+ 
+   uint32_t definedBits = 0;
+   if (style.defined.textAlign) definedBits |= 1 << 0;
+@@ -220,6 +228,12 @@
+   if (style.defined.direction) definedBits |= 1 << 16;
+   if (style.defined.verticalAlign) definedBits |= 1 << 17;
+   if (style.defined.listStyleType) definedBits |= 1 << 18;
++  if (style.defined.fontSize) definedBits |= 1 << 19;
++  if (style.defined.color) definedBits |= 1 << 20;
++  if (style.defined.fontFamily) definedBits |= 1 << 21;
++  if (style.defined.background) definedBits |= 1 << 22;
++  if (style.defined.border) definedBits |= 1 << 23;
++  if (style.defined.borderRadius) definedBits |= 1 << 24;
+   memcpy(out + offset, &definedBits, sizeof(definedBits));
+ }
+ 
+@@ -265,6 +279,11 @@
+   style.display = static_cast<CssDisplay>(display);
+   style.verticalAlign = static_cast<CssVerticalAlign>(verticalAlign);
+   style.listStyleType = static_cast<CssListStyleType>(listStyleType);
++  style.colorLuma = in[offset++];
++  memcpy(&style.fontFamily, in + offset, sizeof(style.fontFamily));
++  offset += sizeof(style.fontFamily);
++  style.backgroundLuma = in[offset++];
++  style.borderLuma = in[offset++];
+ 
+   uint32_t definedBits = 0;
+   memcpy(&definedBits, in + offset, sizeof(definedBits));
+@@ -288,10 +307,323 @@
+   style.defined.direction = (definedBits & 1 << 16) != 0;
+   style.defined.verticalAlign = (definedBits & 1 << 17) != 0;
+   style.defined.listStyleType = (definedBits & 1 << 18) != 0;
++  style.defined.fontSize = (definedBits & 1 << 19) != 0;
++  style.defined.color = (definedBits & 1 << 20) != 0;
++  style.defined.fontFamily = (definedBits & 1 << 21) != 0;
++  style.defined.background = (definedBits & 1 << 22) != 0;
++  style.defined.border = (definedBits & 1 << 23) != 0;
++  style.defined.borderRadius = (definedBits & 1 << 24) != 0;
+   return true;
+ }
+ 
++// Space-separated tokens of a shorthand value, keeping functions such as rgba(…) and
++// url(…) whole.
++template <typename Visit>
++void forEachShorthandToken(std::string_view value, Visit&& visit) {
++  size_t i = 0;
++  while (i < value.size()) {
++    while (i < value.size() && isCssWhitespace(value[i])) ++i;
++    const size_t start = i;
++    int depth = 0;
++    while (i < value.size() && (depth > 0 || !isCssWhitespace(value[i]))) {
++      if (value[i] == '(') ++depth;
++      if (value[i] == ')' && depth > 0) --depth;
++      ++i;
++    }
++    if (i > start) visit(value.substr(start, i - start));
++  }
++}
++
++bool parseColorLuma(std::string_view value, uint8_t& luma, float* alpha = nullptr);
++
++// A color over white paper, as the panel shows it: alpha blends toward white.
++uint8_t lumaOverPaper(const uint8_t luma, const float alpha) {
++  return static_cast<uint8_t>(std::clamp(255.0f - alpha * (255.0f - luma) + 0.5f, 0.0f, 255.0f));
++}
++
++// The color part of `background` / `background-color`; images and positions are ignored.
++bool parseBackgroundLuma(std::string_view value, uint8_t& luma) {
++  bool found = false;
++  forEachShorthandToken(stripTrailingImportant(value), [&](std::string_view token) {
++    if (found) return;
++    if (iequalsAscii(token, "transparent") || iequalsAscii(token, "none")) {
++      luma = 255;
++      found = true;
++      return;
++    }
++    uint8_t color = 255;
++    float alpha = 1.0f;
++    if (parseColorLuma(token, color, &alpha)) {
++      luma = lumaOverPaper(color, alpha);
++      found = true;
++    }
++  });
++  return found;
++}
++
++bool borderWidthKeyword(const std::string_view token, CssLength& width) {
++  if (iequalsAscii(token, "thin")) width = CssLength{1.0f, CssUnit::Pixels};
++  else if (iequalsAscii(token, "medium")) width = CssLength{3.0f, CssUnit::Pixels};
++  else if (iequalsAscii(token, "thick")) width = CssLength{5.0f, CssUnit::Pixels};
++  else return false;
++  return true;
++}
++
++// font-size keywords as em of the parent (CSS absolute-size table, medium = 1).
++bool fontSizeKeyword(const std::string_view value, CssLength& out) {
++  struct Keyword {
++    std::string_view name;
++    float em;
++  };
++  static constexpr Keyword KEYWORDS[] = {
++      {"xx-small", 0.5625f}, {"x-small", 0.625f}, {"small", 0.8125f}, {"medium", 1.0f}, {"large", 1.125f},
++      {"x-large", 1.5f},     {"xx-large", 2.0f},  {"xxx-large", 3.0f}, {"smaller", 0.8333f}, {"larger", 1.2f},
++  };
++  for (const auto& keyword : KEYWORDS) {
++    if (iequalsAscii(value, keyword.name)) {
++      out = CssLength{keyword.em, CssUnit::Em};
++      return true;
++    }
++  }
++  return false;
++}
++
++int hexDigit(const char c) {
++  if (c >= '0' && c <= '9') return c - '0';
++  const char lower = asciiToLower(c);
++  if (lower >= 'a' && lower <= 'f') return lower - 'a' + 10;
++  return -1;
++}
++
++uint8_t lumaOf(const int r, const int g, const int b) {
++  // Rec. 601 weights: what the reader perceives as darkness on a gray panel.
++  const int luma = (299 * r + 587 * g + 114 * b + 500) / 1000;
++  return static_cast<uint8_t>(std::clamp(luma, 0, 255));
++}
++
++// CSS color -> luminance. Accepts #rgb, #rgba, #rrggbb, #rrggbbaa, rgb()/rgba() and the named
++// colors e-books actually use. False for transparent / inherit / currentColor / unknown.
++bool parseColorLuma(std::string_view value, uint8_t& luma, float* alpha) {
++  if (alpha) *alpha = 1.0f;
++  value = trimCssWhitespace(value);
++  if (value.empty()) return false;
++  if (value.front() == '#') {
++    const std::string_view hex = value.substr(1);
++    int rgb[3] = {};
++    if (hex.size() == 3 || hex.size() == 4) {
++      for (int i = 0; i < 3; ++i) {
++        const int d = hexDigit(hex[i]);
++        if (d < 0) return false;
++        rgb[i] = d * 17;
++      }
++      if (hex.size() == 4 && alpha && hexDigit(hex[3]) >= 0) *alpha = hexDigit(hex[3]) / 15.0f;
++    } else if (hex.size() == 6 || hex.size() == 8) {
++      for (int i = 0; i < 3; ++i) {
++        const int hi = hexDigit(hex[2 * i]);
++        const int lo = hexDigit(hex[2 * i + 1]);
++        if (hi < 0 || lo < 0) return false;
++        rgb[i] = hi * 16 + lo;
++      }
++      if (hex.size() == 8 && alpha && hexDigit(hex[6]) >= 0 && hexDigit(hex[7]) >= 0)
++        *alpha = (hexDigit(hex[6]) * 16 + hexDigit(hex[7])) / 255.0f;
++    } else {
++      return false;
++    }
++    luma = lumaOf(rgb[0], rgb[1], rgb[2]);
++    return true;
++  }
++  const size_t open = value.find('(');
++  if (open != std::string_view::npos) {
++    const std::string_view function = trimCssWhitespace(value.substr(0, open));
++    if (!iequalsAscii(function, "rgb") && !iequalsAscii(function, "rgba")) return false;
++    const size_t close = value.find(')', open);
++    if (close == std::string_view::npos) return false;
++    int rgb[3] = {};
++    int count = 0;
++    bool ok = true;
++    forEachDelimitedToken(value.substr(open + 1, close - open - 1),
++                          [](const char c) { return c == ',' || c == '/' || isCssWhitespace(c); },
++                          [&](std::string_view token) {
++                            float number = 0;
++                            const bool percent = !token.empty() && token.back() == '%';
++                            if (percent) token.remove_suffix(1);
++                            if (!tryParseFloat(token, number)) {
++                              ok = false;
++                              return;
++                            }
++                            if (count >= 3) {
++                              if (count == 3 && alpha) *alpha = std::clamp(percent ? number / 100.0f : number, 0.0f, 1.0f);
++                              ++count;
++                              return;
++                            }
++                            rgb[count++] = std::clamp(static_cast<int>(percent ? number * 2.55f : number), 0, 255);
++                          });
++    if (!ok || count < 3) return false;
++    luma = lumaOf(rgb[0], rgb[1], rgb[2]);
++    return true;
++  }
++  struct Named {
++    std::string_view name;
++    uint8_t r, g, b;
++  };
++  static constexpr Named NAMED[] = {
++      {"black", 0, 0, 0},           {"white", 255, 255, 255},     {"gray", 128, 128, 128},
++      {"grey", 128, 128, 128},       {"silver", 192, 192, 192},    {"darkgray", 169, 169, 169},
++      {"darkgrey", 169, 169, 169},   {"dimgray", 105, 105, 105},   {"dimgrey", 105, 105, 105},
++      {"lightgray", 211, 211, 211},  {"lightgrey", 211, 211, 211}, {"red", 255, 0, 0},
++      {"maroon", 128, 0, 0},         {"darkred", 139, 0, 0},       {"brown", 165, 42, 42},
++      {"navy", 0, 0, 128},           {"blue", 0, 0, 255},          {"darkblue", 0, 0, 139},
++      {"midnightblue", 25, 25, 112}, {"green", 0, 128, 0},         {"darkgreen", 0, 100, 0},
++      {"teal", 0, 128, 128},         {"purple", 128, 0, 128},      {"olive", 128, 128, 0},
++      {"orange", 255, 165, 0},       {"darkslategray", 47, 79, 79}, {"darkslateblue", 72, 61, 139},
++      {"saddlebrown", 139, 69, 19},
++  };
++  for (const auto& named : NAMED) {
++    if (iequalsAscii(value, named.name)) {
++      luma = lumaOf(named.r, named.g, named.b);
++      return true;
++    }
++  }
++  return false;
++}
++
++// url(...) relative to the stylesheet's own path inside the book. Empty for absolute
++// schemes (res://, http:, data:) and paths that climb above the book root.
++std::string resolveStylesheetUrl(const std::string_view stylesheetPath, std::string_view url) {
++  url = trimCssWhitespace(url);
++  if (url.size() >= 2 && (url.front() == '"' || url.front() == '\'') && url.back() == url.front()) {
++    url = url.substr(1, url.size() - 2);
++  }
++  const size_t cut = url.find_first_of("?#");
++  if (cut != std::string_view::npos) url = url.substr(0, cut);
++  if (url.empty() || url.find(':') != std::string_view::npos) return {};
++  std::string joined;
++  if (url.front() != '/') {
++    const size_t slash = stylesheetPath.rfind('/');
++    if (slash != std::string_view::npos) joined.assign(stylesheetPath.substr(0, slash + 1));
++  }
++  joined.append(url.data(), url.size());
++  // Collapse "." and ".." segments.
++  std::string out;
++  size_t start = 0;
++  while (start <= joined.size()) {
++    size_t end = joined.find('/', start);
++    if (end == std::string::npos) end = joined.size();
++    const std::string_view segment(joined.data() + start, end - start);
++    if (segment == "..") {
++      if (out.empty()) return {};
++      const size_t previous = out.rfind('/');
++      out.erase(previous == std::string::npos ? 0 : previous);
++    } else if (!segment.empty() && segment != ".") {
++      if (!out.empty()) out.push_back('/');
++      out.append(segment.data(), segment.size());
++    }
++    start = end + 1;
++  }
++  return out;
++}
++
+ }  // anonymous namespace
++
++namespace {
++bool containsAsciiCaseless(const std::string_view haystack, const std::string_view lowerNeedle) {
++  if (lowerNeedle.size() > haystack.size()) return false;
++  for (size_t i = 0; i + lowerNeedle.size() <= haystack.size(); ++i) {
++    if (iequalsAscii(haystack.substr(i, lowerNeedle.size()), lowerNeedle)) return true;
++  }
++  return false;
++}
++}  // namespace
++
++CssParser::FontCategory CssParser::classifyFontName(const std::string_view name) {
++  const auto has = [name](const std::string_view needle) {
++    return name.find(needle) != std::string_view::npos || containsAsciiCaseless(name, needle);
++  };
++  // Order matters: 仿宋 contains 宋, and sans-serif contains serif.
++  if (has("仿宋") || has("fangsong") || has("fang song")) return FontCategory::FangSong;
++  if (has("楷") || has("kai")) return FontCategory::Kai;
++  if (has("圆") || has("圓") || has("yuan") || has("round")) return FontCategory::Round;
++  if (has("黑") || has("hei") || has("雅黑") || has("yahei") || has("gothic") || has("sans") || has("pingfang") ||
++      has("苹方")) {
++    return FontCategory::Sans;
++  }
++  if (has("宋") || has("song") || has("明") || has("ming") || has("serif")) return FontCategory::Serif;
++  return FontCategory::None;
++}
++
++uint16_t CssParser::internFamily(std::string_view candidates) const {
++  candidates = trimCssWhitespace(candidates);
++  if (candidates.empty() || candidates.size() > 1024) return 0;
++  for (uint16_t i = 0; i < familyCount_; ++i) {
++    if (familyAt(i + 1) == candidates) return i + 1;
++  }
++  if (familyCount_ >= MAX_FONT_FAMILIES || familyCharsUsed_ + candidates.size() > MAX_FAMILY_CHARS) return 0;
++  if (!familyOffsets_) {
++    familyOffsets_ = makeUniqueNoThrow<uint32_t[]>(MAX_FONT_FAMILIES + 1);
++    familyChars_ = makeUniqueNoThrow<char[]>(MAX_FAMILY_CHARS);
++    if (!familyOffsets_ || !familyChars_) {
++      familyOffsets_.reset();
++      familyChars_.reset();
++      return 0;
++    }
++    familyOffsets_[0] = 0;
++  }
++  memcpy(familyChars_.get() + familyCharsUsed_, candidates.data(), candidates.size());
++  familyCharsUsed_ += static_cast<uint32_t>(candidates.size());
++  familyOffsets_[++familyCount_] = familyCharsUsed_;
++  return familyCount_;
++}
++
++std::string_view CssParser::familyAt(const uint16_t index) const {
++  if (index == 0 || index > familyCount_ || !familyOffsets_) return {};
++  const uint32_t begin = familyOffsets_[index - 1];
++  return {familyChars_.get() + begin, familyOffsets_[index] - begin};
++}
++
++bool CssParser::addFontFace(std::string_view family, const std::string_view path, const FontCategory category) {
++  family = trimCssWhitespace(family);
++  if (family.size() >= 2 && (family.front() == '"' || family.front() == '\'') && family.back() == family.front()) {
++    family = trimCssWhitespace(family.substr(1, family.size() - 2));
++  }
++  if (family.empty() || (path.empty() && category == FontCategory::None)) return false;
++  for (uint8_t i = 0; i < fontFaceCount_; ++i) {
++    // Repeats of one family are kept in order: the reader takes the first whose file exists
++    // (books often declare a name twice, the first time for a file they never shipped).
++    const FontFace existing = fontFaceAt(i);
++    if (existing.family == family && existing.path == path && existing.category == category) return false;
++  }
++  if (fontFaceCount_ >= MAX_FONT_FACES || family.size() > UINT16_MAX || path.size() > UINT16_MAX ||
++      faceCharsUsed_ + family.size() + path.size() > MAX_FACE_CHARS) {
++    return false;
++  }
++  if (!faces_) {
++    faces_ = makeUniqueNoThrow<FaceRecord[]>(MAX_FONT_FACES);
++    faceChars_ = makeUniqueNoThrow<char[]>(MAX_FACE_CHARS);
++    if (!faces_ || !faceChars_) {
++      faces_.reset();
++      faceChars_.reset();
++      return false;
++    }
++  }
++  FaceRecord& record = faces_[fontFaceCount_++];
++  record.familyOff = static_cast<uint16_t>(faceCharsUsed_);
++  record.familyLen = static_cast<uint16_t>(family.size());
++  memcpy(faceChars_.get() + faceCharsUsed_, family.data(), family.size());
++  faceCharsUsed_ += static_cast<uint32_t>(family.size());
++  record.pathOff = static_cast<uint16_t>(faceCharsUsed_);
++  record.pathLen = static_cast<uint16_t>(path.size());
++  memcpy(faceChars_.get() + faceCharsUsed_, path.data(), path.size());
++  faceCharsUsed_ += static_cast<uint32_t>(path.size());
++  record.category = category;
++  return true;
++}
++
++CssParser::FontFace CssParser::fontFaceAt(const uint8_t index) const {
++  if (index >= fontFaceCount_ || !faces_) return {};
++  const FaceRecord& record = faces_[index];
++  return {std::string_view(faceChars_.get() + record.familyOff, record.familyLen),
++          std::string_view(faceChars_.get() + record.pathOff, record.pathLen), record.category};
++}
+ 
+ int CssParser::compareEntryToPieces(const SelectorEntry& entry, const std::string_view p0, const std::string_view p1,
+                                     const std::string_view p2) const {
+@@ -412,6 +744,7 @@
+ }
+ 
+ CssParser::RuleInsertResult CssParser::insertOrMerge(const std::string_view selector, const CssStyle& style) {
++  descendantIndexDirty_ = true;  // inserts shift store indices
+   bool exact = false;
+   const size_t position = lowerBound(selector, {}, {}, exact);
+   if (exact) {
+@@ -565,7 +898,7 @@
+ 
+ // Declaration parsing
+ 
+-void CssParser::parseDeclarationIntoStyle(std::string_view decl, CssStyle& style) {
++void CssParser::parseDeclarationIntoStyle(std::string_view decl, CssStyle& style, const CssParser* owner) {
+   const size_t colonPos = decl.find(':');
+   if (colonPos == std::string_view::npos || colonPos == 0) return;
+ 
+@@ -667,6 +1000,102 @@
+       style.verticalAlign = CssVerticalAlign::Sub;
+       style.defined.verticalAlign = 1;
+     }
++  } else if (iequalsAscii(name, "font-size")) {
++    CssLength size;
++    if (fontSizeKeyword(value, size) || (tryInterpretLength(value, size) && size.value > 0)) {
++      style.fontSize = size;
++      style.defined.fontSize = 1;
++    }
++  } else if (iequalsAscii(name, "color")) {
++    uint8_t luma = 0;
++    if (parseColorLuma(value, luma)) {
++      style.colorLuma = luma;
++      style.defined.color = 1;
++    }
++  } else if (iequalsAscii(name, "background") || iequalsAscii(name, "background-color")) {
++    uint8_t luma = 255;
++    if (parseBackgroundLuma(value, luma)) {
++      style.backgroundLuma = luma;
++      style.defined.background = 1;
++    }
++  } else if (iequalsAscii(name, "border")) {
++    // width, style and color in any order; only a uniform border is drawn.
++    CssLength width{3.0f, CssUnit::Pixels};  // CSS medium when only a style is given
++    uint8_t luma = style.hasColor() ? style.colorLuma : 0;
++    bool visible = false;
++    forEachShorthandToken(stripTrailingImportant(value), [&](std::string_view token) {
++      CssLength length;
++      uint8_t color = 0;
++      float alpha = 1.0f;
++      if (borderWidthKeyword(token, width)) return;
++      if (iequalsAscii(token, "none") || iequalsAscii(token, "hidden")) {
++        visible = false;
++        width = CssLength{};
++        return;
++      }
++      if (iequalsAscii(token, "solid") || iequalsAscii(token, "dotted") || iequalsAscii(token, "dashed") ||
++          iequalsAscii(token, "double") || iequalsAscii(token, "groove") || iequalsAscii(token, "ridge") ||
++          iequalsAscii(token, "inset") || iequalsAscii(token, "outset")) {
++        visible = true;
++        return;
++      }
++      if (tryInterpretLength(token, length)) {
++        width = length;
++        return;
++      }
++      if (parseColorLuma(token, color, &alpha)) luma = lumaOverPaper(color, alpha);
++    });
++    style.borderWidth = visible ? width : CssLength{};
++    style.borderLuma = luma;
++    style.defined.border = 1;
++  } else if (iequalsAscii(name, "border-width")) {
++    std::string_view widths[4];
++    const size_t count = collectEdgeValueTokens(value, widths);
++    CssLength first;
++    bool uniform = count > 0 && (borderWidthKeyword(widths[0], first) || tryInterpretLength(widths[0], first));
++    for (size_t i = 1; uniform && i < count; ++i) {
++      CssLength other;
++      uniform = (borderWidthKeyword(widths[i], other) || tryInterpretLength(widths[i], other)) &&
++                other.value == first.value && other.unit == first.unit;
++    }
++    // Per-side widths (a rule above or below) are not panels: no border.
++    style.borderWidth = uniform ? first : CssLength{};
++    if (!style.hasBorder()) style.borderLuma = style.hasColor() ? style.colorLuma : 0;
++    style.defined.border = 1;
++  } else if (iequalsAscii(name, "border-color")) {
++    uint8_t color = 0;
++    float alpha = 1.0f;
++    std::string_view colors[4];
++    if (collectEdgeValueTokens(value, colors) > 0 && parseColorLuma(colors[0], color, &alpha)) {
++      // A color alone draws nothing (the style defaults to none); it only tints a border.
++      style.borderLuma = lumaOverPaper(color, alpha);
++      if (!style.hasBorder()) style.borderWidth = CssLength{};
++      style.defined.border = 1;
++    }
++  } else if (iequalsAscii(name, "border-style")) {
++    const std::string_view kind = trimCssWhitespace(stripTrailingImportant(value));
++    if (iequalsAscii(kind, "none") || iequalsAscii(kind, "hidden")) {
++      style.borderWidth = CssLength{};
++      style.defined.border = 1;
++    } else if (!kind.empty() && !style.hasBorder()) {
++      style.borderWidth = CssLength{3.0f, CssUnit::Pixels};  // medium
++      style.defined.border = 1;
++    }
++  } else if (iequalsAscii(name, "border-radius")) {
++    std::string_view radii[4];
++    CssLength radius;
++    if (collectEdgeValueTokens(value, radii) > 0 && tryInterpretLength(radii[0], radius)) {
++      style.borderRadius = radius;
++      style.defined.borderRadius = 1;
++    }
++  } else if (iequalsAscii(name, "font-family")) {
++    if (owner) {
++      const uint16_t family = owner->internFamily(value);
++      if (family != 0) {
++        style.fontFamily = family;
++        style.defined.fontFamily = 1;
++      }
++    }
+   } else if (iequalsAscii(name, "list-style-type")) {
+     const std::string_view listStyleValue = stripTrailingImportant(value);
+     style.listStyleType = iequalsAscii(listStyleValue, "none") ? CssListStyleType::None : CssListStyleType::Disc;
+@@ -674,14 +1103,14 @@
+   }
+ }
+ 
+-CssStyle CssParser::parseDeclarations(std::string_view declBlock) {
++CssStyle CssParser::parseDeclarations(std::string_view declBlock, const CssParser* owner) {
+   CssStyle style;
+ 
+   size_t start = 0;
+   for (size_t i = 0; i <= declBlock.size(); ++i) {
+     if (i == declBlock.size() || declBlock[i] == ';') {
+       if (i > start) {
+-        parseDeclarationIntoStyle(declBlock.substr(start, i - start), style);
++        parseDeclarationIntoStyle(declBlock.substr(start, i - start), style, owner);
+       }
+       start = i + 1;
+     }
+@@ -720,8 +1149,25 @@
+         //   '*'  wildcard
+         //   ' '  descendant combinator
+         // Single-pass scan via find_first_of instead of eight sequential find() calls.
+-        constexpr std::string_view kUnsupportedSelectorChars = "+>[:#~* ";
++        // Descendant (' ') and child ('>') combinators between simple compounds are kept:
++        // book stylesheets style "div.bt p" or "h2.mm b". '>' is matched as a descendant.
++        constexpr std::string_view kUnsupportedSelectorChars = "+[:#~*";
+         if (sel.find_first_of(kUnsupportedSelectorChars) != std::string_view::npos) return;
++        char normalized[MAX_SELECTOR_LENGTH];
++        size_t normalizedLen = 0;
++        bool pendingSpace = false;
++        for (const char c : sel) {
++          if (isCssWhitespace(c) || c == '>') {
++            pendingSpace = normalizedLen > 0;
++            continue;
++          }
++          if (pendingSpace) normalized[normalizedLen++] = ' ';
++          pendingSpace = false;
++          normalized[normalizedLen++] = c;
++        }
++        if (normalizedLen == 0) return;
++        sel = std::string_view(normalized, normalizedLen);
++        if (sel.find(' ') != std::string_view::npos) descendantIndexDirty_ = true;
+ 
+         if (ruleGrowthStopped_) {
+           // Continue the cascade for stored selectors without retrying failed
+@@ -743,7 +1189,7 @@
+ 
+ // Main parsing entry point
+ 
+-CssParser::ParseResult CssParser::loadFromStream(HalFile& source) {
++CssParser::ParseResult CssParser::loadFromStream(HalFile& source, const std::string_view stylesheetPath) {
+   if (!source) {
+     LOG_ERR("CSS", "Cannot read from invalid file");
+     return ParseResult::Error;
+@@ -761,6 +1207,125 @@
+ 
+   bool inAtRule = false;
+   int atDepth = 0;
++
++  // @font-face, read as it streams: src lists run past 1 KB (a dozen local() names per
++  // face), so each comma-separated source is handled on its own instead of buffered whole.
++  enum class FaceDecl : uint8_t { None, Family, Src, Other };
++  struct FontFaceReader {
++    char keyword[16];
++    size_t keywordLen = 0;
++    bool keywordDone = false;
++    bool active = false;
++    char name[24];
++    size_t nameLen = 0;
++    bool inValue = false;
++    FaceDecl decl = FaceDecl::None;
++    char part[256];
++    size_t partLen = 0;
++    bool partOverflow = false;
++    char quote = 0;
++    int parens = 0;
++    char family[96];
++    size_t familyLen = 0;
++    std::string path;
++    FontCategory category = FontCategory::None;
++  };
++  auto face = makeUniqueNoThrow<FontFaceReader>();  // ~400 B kept off the parse stack
++  const auto resetFace = [&face]() {
++    if (!face) return;
++    face->keywordLen = 0;
++    face->keywordDone = false;
++    face->active = false;
++    face->nameLen = 0;
++    face->inValue = false;
++    face->decl = FaceDecl::None;
++    face->partLen = 0;
++    face->partOverflow = false;
++    face->quote = 0;
++    face->parens = 0;
++    face->familyLen = 0;
++    face->path.clear();
++    face->category = FontCategory::None;
++  };
++  const auto endFacePart = [&]() {
++    if (!face || face->partOverflow) {
++      if (face) face->partLen = 0, face->partOverflow = false;
++      return;
++    }
++    const std::string_view part = trimCssWhitespace(std::string_view(face->part, face->partLen));
++    face->partLen = 0;
++    if (part.empty()) return;
++    if (face->decl == FaceDecl::Family) {
++      const size_t n = std::min(part.size(), sizeof(face->family));
++      memcpy(face->family, part.data(), n);
++      face->familyLen = n;
++    } else if (face->decl == FaceDecl::Src) {
++      const size_t open = part.find('(');
++      const size_t close = part.rfind(')');
++      if (open == std::string_view::npos || close == std::string_view::npos || close < open) return;
++      const std::string_view function = trimCssWhitespace(part.substr(0, open));
++      const std::string_view argument = part.substr(open + 1, close - open - 1);
++      if (iequalsAscii(function, "url") && face->path.empty() && !stylesheetPath.empty()) {
++        face->path = resolveStylesheetUrl(stylesheetPath, argument);
++      } else if (iequalsAscii(function, "local") && face->category == FontCategory::None) {
++        face->category = classifyFontName(argument);
++      }
++    }
++  };
++  const auto faceChar = [&](const char c) {
++    if (!face) return;
++    const auto push = [&](char ch) {
++      if (face->partLen < sizeof(face->part)) {
++        face->part[face->partLen++] = ch;
++      } else {
++        face->partOverflow = true;
++      }
++    };
++    if (!face->inValue) {
++      if (c == ':') {
++        const std::string_view name = trimCssWhitespace(std::string_view(face->name, face->nameLen));
++        face->decl = iequalsAscii(name, "font-family") ? FaceDecl::Family
++                     : iequalsAscii(name, "src")        ? FaceDecl::Src
++                                                        : FaceDecl::Other;
++        face->inValue = true;
++        face->partLen = 0;
++        face->partOverflow = false;
++      } else if (c == ';') {
++        face->nameLen = 0;
++      } else if (face->nameLen < sizeof(face->name)) {
++        face->name[face->nameLen++] = c;
++      }
++      return;
++    }
++    if (face->quote) {
++      if (c == face->quote) face->quote = 0;
++      push(c);
++      return;
++    }
++    if (c == '"' || c == '\'') {
++      face->quote = c;
++      push(c);
++      return;
++    }
++    if (c == '(') ++face->parens;
++    if (c == ')' && face->parens > 0) --face->parens;
++    if (face->parens == 0 && (c == ';' || (c == ',' && face->decl == FaceDecl::Src))) {
++      endFacePart();
++      if (c == ';') {
++        face->inValue = false;
++        face->nameLen = 0;
++        face->decl = FaceDecl::None;
++      }
++      return;
++    }
++    push(c);
++  };
++  const auto finishFace = [&]() {
++    if (!face) return;
++    if (face->inValue) endFacePart();
++    addFontFace(std::string_view(face->family, face->familyLen), face->path, face->category);
++    resetFace();
++  };
+ 
+   int bodyDepth = 0;
+   bool skippingRule = false;
+@@ -771,13 +1336,27 @@
+ 
+   auto handleChar = [&](const char c) {
+     if (inAtRule) {
++      if (face && !face->keywordDone) {
++        if (c != '{' && c != ';' && !isCssWhitespace(c)) {
++          if (face->keywordLen < sizeof(face->keyword)) face->keyword[face->keywordLen++] = c;
++          return;
++        }
++        face->keywordDone = true;
++        face->active = iequalsAscii(std::string_view(face->keyword, face->keywordLen), "font-face");
++        if (isCssWhitespace(c)) return;
++      }
+       if (c == '{') {
+         ++atDepth;
+       } else if (c == '}') {
+         if (atDepth > 0) --atDepth;
+-        if (atDepth == 0) inAtRule = false;
++        if (atDepth == 0) {
++          if (face && face->active) finishFace();
++          inAtRule = false;
++        }
+       } else if (c == ';' && atDepth == 0) {
+         inAtRule = false;
++      } else if (face && face->active && atDepth == 1) {
++        faceChar(c);
+       }
+       return;
+     }
+@@ -789,6 +1368,7 @@
+       if (c == '@' && selector.empty()) {
+         inAtRule = true;
+         atDepth = 0;
++        resetFace();
+         return;
+       }
+       if (c == '{') {
+@@ -814,7 +1394,7 @@
+       --bodyDepth;
+       if (bodyDepth == 0) {
+         if (!skippingRule && !declarationTruncated && !declBuffer.empty()) {
+-          parseDeclarationIntoStyle(declBuffer, currentStyle);
++          parseDeclarationIntoStyle(declBuffer, currentStyle, this);
+         }
+         if (!skippingRule) {
+           processRuleBlockWithStyle(selector, currentStyle);
+@@ -834,7 +1414,7 @@
+     if (!skippingRule) {
+       if (c == ';') {
+         if (!declarationTruncated && !declBuffer.empty()) {
+-          parseDeclarationIntoStyle(declBuffer, currentStyle);
++          parseDeclarationIntoStyle(declBuffer, currentStyle, this);
+         }
+         declBuffer.clear();
+         declarationTruncated = false;
+@@ -902,6 +1482,83 @@
+ 
+ // Style resolution
+ 
++void CssParser::indexDescendantRules() const {
++  descendantIndexDirty_ = false;
++  descendantCount_ = 0;
++  for (uint16_t i = 0; i < entryCount_; ++i) {
++    if (selectorAt(i).find(' ') == std::string_view::npos) continue;
++    if (!descendantRules_) {
++      descendantRules_ = makeUniqueNoThrow<uint16_t[]>(MAX_DESCENDANT_RULES);
++      if (!descendantRules_) return;
++    }
++    if (descendantCount_ >= MAX_DESCENDANT_RULES) return;
++    descendantRules_[descendantCount_++] = i;
++  }
++}
++
++bool CssParser::hasDescendantRules() const {
++  if (descendantIndexDirty_) indexDescendantRules();
++  return descendantCount_ > 0;
++}
++
++namespace {
++bool hasClass(const std::string_view classes, const std::string_view wanted) {
++  bool found = false;
++  forEachDelimitedToken(classes, isCssWhitespace, [&](std::string_view cls) { found = found || cls == wanted; });
++  return found;
++}
++
++bool equalsCaseless(const std::string_view a, const std::string_view b) {
++  return a.size() == b.size() &&
++         std::equal(a.begin(), a.end(), b.begin(), [](char x, char y) { return asciiToLower(x) == asciiToLower(y); });
++}
++
++// One compound: "tag", ".class" or "tag.class" (all classes of a.b.c must be present).
++bool compoundMatches(const std::string_view compound, const std::string_view tag, const std::string_view classes) {
++  const size_t dot = compound.find('.');
++  const std::string_view compoundTag = compound.substr(0, dot);
++  if (!compoundTag.empty() && !equalsCaseless(compoundTag, tag)) return false;
++  if (dot == std::string_view::npos) return true;
++  std::string_view rest = compound.substr(dot + 1);
++  while (true) {
++    const size_t next = rest.find('.');
++    if (!hasClass(classes, rest.substr(0, next))) return false;
++    if (next == std::string_view::npos) return true;
++    rest = rest.substr(next + 1);
++  }
++}
++}  // namespace
++
++CssStyle CssParser::resolveStyle(const std::string_view tagName, const std::string_view classAttr,
++                                 const ElementRef* ancestors, const size_t ancestorCount) const {
++  CssStyle result = resolveStyle(tagName, classAttr);
++  if (!hasDescendantRules()) return result;
++  for (uint16_t r = 0; r < descendantCount_; ++r) {
++    const uint16_t entry = descendantRules_[r];
++    std::string_view selector = selectorAt(entry);
++    // Rightmost compound must be this element; then walk outward through the ancestors.
++    size_t space = selector.rfind(' ');
++    if (!compoundMatches(selector.substr(space + 1), tagName, classAttr)) continue;
++    selector = selector.substr(0, space);
++    size_t next = 0;
++    bool matched = true;
++    while (true) {
++      space = selector.rfind(' ');
++      const std::string_view compound = space == std::string_view::npos ? selector : selector.substr(space + 1);
++      while (next < ancestorCount && !compoundMatches(compound, ancestors[next].tag, ancestors[next].classes)) ++next;
++      if (next >= ancestorCount) {
++        matched = false;
++        break;
++      }
++      ++next;
++      if (space == std::string_view::npos) break;
++      selector = selector.substr(0, space);
++    }
++    if (matched) result.applyOver(stylePool_[entries_[entry].styleIndex]);
++  }
++  return result;
++}
++
+ CssStyle CssParser::resolveStyle(std::string_view tagName, std::string_view classAttr) const {
+   CssStyle result;
+ 
+@@ -934,6 +1591,10 @@
+ // Inline style parsing (static - doesn't need rule database)
+ 
+ CssStyle CssParser::parseInlineStyle(std::string_view styleValue) { return parseDeclarations(styleValue); }
++
++CssStyle CssParser::parseInlineStyleWithFamilies(std::string_view styleValue) const {
++  return parseDeclarations(styleValue, this);
++}
+ 
+ // Cache serialization
+ 
+@@ -1018,6 +1679,26 @@
+     }
+   }
+ 
++  uint16_t familyCount = 0;
++  if (file.read(&familyCount, sizeof(familyCount)) != sizeof(familyCount) || familyCount > MAX_FONT_FAMILIES) {
++    return CacheStatus::Invalid;
++  }
++  for (uint16_t i = 0; i < familyCount; ++i) {
++    uint16_t length = 0;
++    if (file.read(&length, sizeof(length)) != sizeof(length) || !skipBytes(length)) return CacheStatus::Invalid;
++  }
++  uint8_t faceCount = 0;
++  if (file.read(&faceCount, sizeof(faceCount)) != sizeof(faceCount) || faceCount > MAX_FONT_FACES) {
++    return CacheStatus::Invalid;
++  }
++  for (uint8_t i = 0; i < faceCount; ++i) {
++    for (int part = 0; part < 2; ++part) {
++      uint16_t length = 0;
++      if (file.read(&length, sizeof(length)) != sizeof(length) || !skipBytes(length)) return CacheStatus::Invalid;
++    }
++    if (!skipBytes(1)) return CacheStatus::Invalid;
++  }
++
+   if (file.available() != 0) {
+     return CacheStatus::Invalid;
+   }
+@@ -1071,6 +1752,26 @@
+     encodeStyleWire(stylePool_[entries_[i].styleIndex], styleWire);
+     writeBytes(styleWire, sizeof(styleWire));
+     if (!writeOk) break;
++  }
++
++  // font-family candidate lists (rules hold 1-based indices into them), then @font-face.
++  writeBytes(&familyCount_, sizeof(familyCount_));
++  for (uint16_t i = 1; i <= familyCount_ && writeOk; ++i) {
++    const std::string_view family = familyAt(i);
++    const auto length = static_cast<uint16_t>(family.size());
++    writeBytes(&length, sizeof(length));
++    writeBytes(family.data(), length);
++  }
++  writeByte(fontFaceCount_);
++  for (uint8_t i = 0; i < fontFaceCount_ && writeOk; ++i) {
++    const FontFace fontFace = fontFaceAt(i);
++    const auto familyLength = static_cast<uint16_t>(fontFace.family.size());
++    const auto pathLength = static_cast<uint16_t>(fontFace.path.size());
++    writeBytes(&familyLength, sizeof(familyLength));
++    writeBytes(fontFace.family.data(), familyLength);
++    writeBytes(&pathLength, sizeof(pathLength));
++    writeBytes(fontFace.path.data(), pathLength);
++    writeByte(static_cast<uint8_t>(fontFace.category));
+   }
+ 
+   if (!writeOk || !file.close()) {
+@@ -1213,6 +1914,50 @@
+     }
+   }
+ 
++  // Pools after the rules. Interning in order reproduces the saved 1-based indices, which
++  // the rules above refer to; the saved pools hold no duplicates.
++  char text[1024];
++  const auto readText = [&file, &text](std::string_view& out) {
++    uint16_t length = 0;
++    if (file.read(&length, sizeof(length)) != sizeof(length) || length > sizeof(text)) return false;
++    if (length > 0 && file.read(text, length) != length) return false;
++    out = std::string_view(text, length);
++    return true;
++  };
++  uint16_t familyCount = 0;
++  if (file.read(&familyCount, sizeof(familyCount)) != sizeof(familyCount) || familyCount > MAX_FONT_FAMILIES) {
++    clear();
++    return CacheLoadResult::Invalid;
++  }
++  for (uint16_t i = 0; i < familyCount; ++i) {
++    std::string_view family;
++    if (!readText(family) || internFamily(family) != i + 1) {
++      clear();
++      return CacheLoadResult::Invalid;
++    }
++  }
++  uint8_t faceCount = 0;
++  if (file.read(&faceCount, sizeof(faceCount)) != sizeof(faceCount) || faceCount > MAX_FONT_FACES) {
++    clear();
++    return CacheLoadResult::Invalid;
++  }
++  std::string familyCopy;
++  for (uint8_t i = 0; i < faceCount; ++i) {
++    std::string_view family;
++    std::string_view path;
++    uint8_t category = 0;
++    if (!readText(family)) {
++      clear();
++      return CacheLoadResult::Invalid;
++    }
++    familyCopy.assign(family.data(), family.size());  // text[] is reused for the path
++    if (!readText(path) || file.read(&category, 1) != 1 || category > static_cast<uint8_t>(FontCategory::Round)) {
++      clear();
++      return CacheLoadResult::Invalid;
++    }
++    addFontFace(familyCopy, path, static_cast<FontCategory>(category));
++  }
++
+   if (file.available() != 0) {
+     clear();
+     return CacheLoadResult::Invalid;
+--- a/lib/Epub/Epub/css/CssParser.h
++++ b/lib/Epub/Epub/css/CssParser.h
+@@ -26,7 +26,11 @@
+  *   - Descendant/child selectors
+  *   - Pseudo-classes and pseudo-elements
+  *   - Media queries (content is skipped)
+- *   - @import, @font-face, etc.
++ *   - @import, @page, etc.
++ *
++ * @font-face is recorded (family name -> font file inside the book, or a system-font
++ * category from its local() names) for the reader's book-font set; font-family values
++ * are kept as candidate lists in a pool and resolved to a face at layout time.
+  */
+ class CssParser {
+  public:
+@@ -50,7 +54,22 @@
+   };
+ 
+   // Bump when CSS cache format or rules change; section caches are invalidated when this changes
+-  static constexpr uint8_t CSS_CACHE_VERSION = 12;
++  static constexpr uint8_t CSS_CACHE_VERSION = 14;  // 14: background, border, border-radius
++
++  // System-font categories named by local() sources or by family names such as 宋体 / serif.
++  // The reader maps them to its own downloadable faces when installed.
++  enum class FontCategory : uint8_t { None = 0, Serif = 1, Kai = 2, Sans = 3, FangSong = 4, Round = 5 };
++  static FontCategory classifyFontName(std::string_view name);
++
++  // One @font-face rule. path is the font file inside the book, resolved against the
++  // stylesheet that declared it (empty when the rule names only system fonts).
++  struct FontFace {
++    std::string_view family;
++    std::string_view path;
++    FontCategory category = FontCategory::None;
++  };
++  static constexpr uint8_t MAX_FONT_FACES = 32;
++  static constexpr uint16_t MAX_FONT_FAMILIES = 128;
+ 
+   explicit CssParser(std::string cachePath) : cachePath(std::move(cachePath)) {}
+   ~CssParser() = default;
+@@ -65,7 +84,7 @@
+    * @param source Open file handle to read from
+    * @return Complete unless bounded storage stopped rule growth or the source was invalid
+    */
+-  ParseResult loadFromStream(HalFile& source);
++  ParseResult loadFromStream(HalFile& source, std::string_view stylesheetPath = {});
+ 
+   /**
+    * Look up the style for an HTML element, considering tag name and class attributes.
+@@ -77,12 +96,30 @@
+    */
+   [[nodiscard]] CssStyle resolveStyle(std::string_view tagName, std::string_view classAttr) const;
+ 
++  // An element on the path from the document root: its tag and class attribute.
++  struct ElementRef {
++    std::string_view tag;
++    std::string_view classes;
++  };
++  // As above, plus descendant rules ("div.bt p", "h2.mm b"; '>' is treated as a descendant)
++  // matched against the ancestors, nearest first. Descendant rules apply last.
++  [[nodiscard]] CssStyle resolveStyle(std::string_view tagName, std::string_view classAttr,
++                                      const ElementRef* ancestors, size_t ancestorCount) const;
++  [[nodiscard]] bool hasDescendantRules() const;
++
+   /**
+    * Parse an inline style attribute string.
+    * @param styleValue The value of a style="" attribute
+    * @return Parsed style properties
+    */
+   [[nodiscard]] static CssStyle parseInlineStyle(std::string_view styleValue);
++  // Same, keeping font-family: the candidate list joins this parser's family pool.
++  [[nodiscard]] CssStyle parseInlineStyleWithFamilies(std::string_view styleValue) const;
++
++  // font-family candidate list for a CssStyle::fontFamily index (1-based); empty if unknown.
++  [[nodiscard]] std::string_view familyAt(uint16_t index) const;
++  [[nodiscard]] uint8_t fontFaceCount() const { return fontFaceCount_; }
++  [[nodiscard]] FontFace fontFaceAt(uint8_t index) const;
+ 
+   /**
+    * Check if any rules have been loaded
+@@ -98,6 +135,17 @@
+    * Clear all loaded rules
+    */
+   void clear() {
++    descendantRules_.reset();
++    descendantCount_ = 0;
++    descendantIndexDirty_ = true;
++    familyOffsets_.reset();
++    familyChars_.reset();
++    familyCount_ = 0;
++    familyCharsUsed_ = 0;
++    faces_.reset();
++    faceChars_.reset();
++    fontFaceCount_ = 0;
++    faceCharsUsed_ = 0;
+     entries_.reset();
+     selectorPool_.reset();
+     stylePool_.reset();
+@@ -168,6 +216,34 @@
+   bool ruleGrowthStopped_ = false;
+ 
+   std::string cachePath;
++
++  // Store indices of descendant selectors (contain a space), rebuilt after the store changes.
++  static constexpr uint16_t MAX_DESCENDANT_RULES = 192;
++  mutable std::unique_ptr<uint16_t[]> descendantRules_;
++  mutable uint16_t descendantCount_ = 0;
++  mutable bool descendantIndexDirty_ = true;
++  void indexDescendantRules() const;
++
++  // font-family candidate lists, deduplicated. Mutable: inline style="" attributes add
++  // their lists while a chapter is laid out (the indices only live in that session's
++  // pagination, which stores resolved faces, never these indices).
++  static constexpr uint32_t MAX_FAMILY_CHARS = 8 * 1024;
++  mutable std::unique_ptr<uint32_t[]> familyOffsets_;  // MAX_FONT_FAMILIES + 1 ends
++  mutable std::unique_ptr<char[]> familyChars_;
++  mutable uint16_t familyCount_ = 0;
++  mutable uint32_t familyCharsUsed_ = 0;
++  uint16_t internFamily(std::string_view candidates) const;
++
++  struct FaceRecord {
++    uint16_t familyOff, familyLen, pathOff, pathLen;
++    FontCategory category;
++  };
++  static constexpr uint32_t MAX_FACE_CHARS = 4 * 1024;
++  std::unique_ptr<FaceRecord[]> faces_;
++  std::unique_ptr<char[]> faceChars_;
++  uint8_t fontFaceCount_ = 0;
++  uint32_t faceCharsUsed_ = 0;
++  bool addFontFace(std::string_view family, std::string_view path, FontCategory category);
+ 
+   // Internal parsing helpers
+   bool restoreCacheBackupIfNeeded() const;
+@@ -183,8 +259,9 @@
+   PoolResult ensureSelectorPoolCapacity(size_t needed);
+   PoolResult ensureStyleCapacity(size_t needed);
+   PoolResult internStyle(const CssStyle& style, uint16_t& indexOut);
+-  static CssStyle parseDeclarations(std::string_view declBlock);
+-  static void parseDeclarationIntoStyle(std::string_view decl, CssStyle& style);
++  // owner (optional) keeps font-family candidate lists; without it font-family is ignored.
++  static CssStyle parseDeclarations(std::string_view declBlock, const CssParser* owner = nullptr);
++  static void parseDeclarationIntoStyle(std::string_view decl, CssStyle& style, const CssParser* owner = nullptr);
+ 
+   // Individual property value parsers
+   static CssTextAlign interpretAlignment(std::string_view val);
+--- a/lib/Epub/Epub/css/CssStyle.h
++++ b/lib/Epub/Epub/css/CssStyle.h
+@@ -96,6 +96,12 @@
+   uint16_t direction : 1;
+   uint16_t verticalAlign : 1;
+   uint16_t listStyleType : 1;
++  uint16_t fontSize : 1;
++  uint16_t color : 1;
++  uint16_t fontFamily : 1;
++  uint16_t background : 1;
++  uint16_t border : 1;
++  uint16_t borderRadius : 1;
+ 
+   CssPropertyFlags()
+       : textAlign(0),
+@@ -116,12 +122,19 @@
+         display(0),
+         direction(0),
+         verticalAlign(0),
+-        listStyleType(0) {}
++        listStyleType(0),
++        fontSize(0),
++        color(0),
++        fontFamily(0),
++        background(0),
++        border(0),
++        borderRadius(0) {}
+ 
+   [[nodiscard]] bool anySet() const {
+     return textAlign || fontStyle || fontWeight || textDecoration || textIndent || marginTop || marginBottom ||
+            marginLeft || marginRight || paddingTop || paddingBottom || paddingLeft || paddingRight || imageHeight ||
+-           imageWidth || display || direction || verticalAlign || listStyleType;
++           imageWidth || display || direction || verticalAlign || listStyleType || fontSize || color || fontFamily ||
++           background || border || borderRadius;
+   }
+ 
+   void clearAll() {
+@@ -129,13 +142,15 @@
+     marginTop = marginBottom = marginLeft = marginRight = 0;
+     paddingTop = paddingBottom = paddingLeft = paddingRight = 0;
+     imageHeight = imageWidth = display = direction = verticalAlign = listStyleType = 0;
++    fontSize = color = fontFamily = 0;
++    background = border = borderRadius = 0;
+   }
+ };
+ 
+-// Cache serializes defined flags as uint32_t with bit indices 0..18.
++// Cache serializes defined flags as uint32_t with bit indices 0..24.
+ static_assert(sizeof(CssPropertyFlags) <= sizeof(uint32_t),
+               "CssPropertyFlags exceeds 32 bits; update cache read/write in CssParser.cpp");
+-static_assert(sizeof(CssPropertyFlags) * 8 >= 19,
++static_assert(sizeof(CssPropertyFlags) * 8 >= 25,
+               "CssPropertyFlags has fewer bits than properties; update bitfield widths");
+ 
+ // Represents a collection of CSS style properties
+@@ -162,6 +177,20 @@
+   CssDisplay display = CssDisplay::Block;                       // display property (Block or None)
+   CssVerticalAlign verticalAlign = CssVerticalAlign::Baseline;  // vertical-align (super/sub positioning)
+   CssListStyleType listStyleType = CssListStyleType::Disc;      // list-style-type (Disc or None)
++  // Book typography (applied when the reader keeps the book's own styles).
++  // fontSize: em / % scale the parent's size; px / pt are absolute CSS pixels.
++  CssLength fontSize;
++  // Text color as luminance, 0 = black .. 255 = white (the panel shows gray, not hue).
++  uint8_t colorLuma = 0;
++  // 1-based index into the owning CssParser's font-family pool (the declared candidate
++  // list, resolved to a face at layout time); 0 = none.
++  uint16_t fontFamily = 0;
++  // Block decoration: a panel behind the block's lines (background over white paper and a
++  // uniform border, both as luminance), with rounded corners.
++  uint8_t backgroundLuma = 255;
++  uint8_t borderLuma = 0;
++  CssLength borderWidth;
++  CssLength borderRadius;
+ 
+   CssPropertyFlags defined;  // Tracks which properties were explicitly set
+ 
+@@ -243,6 +272,31 @@
+     if (base.hasListStyleType()) {
+       listStyleType = base.listStyleType;
+       defined.listStyleType = 1;
++    }
++    if (base.hasFontSize()) {
++      fontSize = base.fontSize;
++      defined.fontSize = 1;
++    }
++    if (base.hasColor()) {
++      colorLuma = base.colorLuma;
++      defined.color = 1;
++    }
++    if (base.hasFontFamily()) {
++      fontFamily = base.fontFamily;
++      defined.fontFamily = 1;
++    }
++    if (base.hasBackground()) {
++      backgroundLuma = base.backgroundLuma;
++      defined.background = 1;
++    }
++    if (base.hasBorder()) {
++      borderWidth = base.borderWidth;
++      borderLuma = base.borderLuma;
++      defined.border = 1;
++    }
++    if (base.hasBorderRadius()) {
++      borderRadius = base.borderRadius;
++      defined.borderRadius = 1;
+     }
+   }
+ 
+@@ -265,6 +319,12 @@
+   [[nodiscard]] bool hasDirection() const { return defined.direction; }
+   [[nodiscard]] bool hasVerticalAlign() const { return defined.verticalAlign; }
+   [[nodiscard]] bool hasListStyleType() const { return defined.listStyleType; }
++  [[nodiscard]] bool hasFontSize() const { return defined.fontSize; }
++  [[nodiscard]] bool hasColor() const { return defined.color; }
++  [[nodiscard]] bool hasFontFamily() const { return defined.fontFamily; }
++  [[nodiscard]] bool hasBackground() const { return defined.background; }
++  [[nodiscard]] bool hasBorder() const { return defined.border; }
++  [[nodiscard]] bool hasBorderRadius() const { return defined.borderRadius; }
+ 
+   void reset() {
+     textAlign = CssTextAlign::Left;
+@@ -279,6 +339,12 @@
+     display = CssDisplay::Block;
+     verticalAlign = CssVerticalAlign::Baseline;
+     listStyleType = CssListStyleType::Disc;
++    fontSize = CssLength{};
++    colorLuma = 0;
++    fontFamily = 0;
++    backgroundLuma = 255;
++    borderLuma = 0;
++    borderWidth = borderRadius = CssLength{};
+     defined.clearAll();
+   }
+ };
 --- a/lib/Epub/Epub/parsers/ChapterHtmlSlimParser.cpp
 +++ b/lib/Epub/Epub/parsers/ChapterHtmlSlimParser.cpp
-@@ -24,6 +24,9 @@
+@@ -24,6 +24,11 @@
  #include "Epub/converters/ImageDimsProbe.h"
  #include "Epub/converters/ImageToFramebufferDecoder.h"
  #include "Epub/htmlEntities.h"
++#include "Epub/BookFonts.h"
++#include "Epub/WordLook.h"
 +#if FREEINK_DEVICE_METALIO_PLUS
 +#include <PlusReaderImageLayout.h>
 +#endif
  
  // Minimum file size (in bytes) to show indexing popup - smaller chapters don't benefit from it
  constexpr size_t MIN_SIZE_FOR_POPUP = 10 * 1024;  // 10KB
-@@ -320,6 +323,7 @@
+@@ -320,6 +325,7 @@
    }
    currentPage = std::move(page);
    currentPageNextY = 0;
@@ -181433,7 +183407,85 @@
    currentPageVisibleOffsetSet = false;
    return true;
  }
-@@ -465,12 +469,12 @@
+@@ -332,6 +338,67 @@
+   currentPageVisibleOffsetSet = true;
+ }
+ 
++void ChapterHtmlSlimParser::pruneElementPath() {
++  while (elementPathSize > 0 && elementPath[elementPathSize - 1].depth >= depth) --elementPathSize;
++}
++
++CssStyle ChapterHtmlSlimParser::resolveElementStyle(const char* tag, const std::string_view classes) const {
++  if (!cssParser->hasDescendantRules() || elementPathSize == 0) return cssParser->resolveStyle(tag, classes);
++  CssParser::ElementRef ancestors[kMaxElementPath];
++  size_t count = 0;
++  for (size_t i = elementPathSize; i-- > 0;) {
++    ancestors[count++] = {elementPath[i].tag, elementPath[i].classes};
++  }
++  return cssParser->resolveStyle(tag, classes, ancestors, count);
++}
++
++void ChapterHtmlSlimParser::pushElementFrame(const char* tag, const std::string_view classes, const CssStyle& style) {
++  pruneElementPath();
++  if (!elementPath) {
++    elementPath = makeUniqueNoThrow<ElementFrame[]>(kMaxElementPath);
++    if (!elementPath) return;  // styles still apply; only descendant rules / inheritance are lost
++  }
++  if (elementPathSize >= kMaxElementPath) return;
++  ElementFrame& frame = elementPath[elementPathSize++];
++  frame = ElementFrame{};
++  frame.depth = depth;
++  strlcpy(frame.tag, tag, sizeof(frame.tag));
++  const size_t classBytes = std::min(classes.size(), sizeof(frame.classes) - 1);
++  memcpy(frame.classes, classes.data(), classBytes);
++  frame.classes[classBytes] = '\0';
++  if (style.hasFontFamily()) {
++    if (auto* fonts = bookfonts::active()) {
++      frame.hasFace = true;
++      frame.face = fonts->faceForFamily(cssParser->familyAt(style.fontFamily));
++    }
++  }
++  if (style.hasColor()) {
++    frame.hasInk = true;
++    frame.ink = wordlook::inkForLuma(style.colorLuma);
++  }
++}
++
++uint32_t ChapterHtmlSlimParser::currentWordLook() {
++  if (!embeddedStyle || !elementPath) return wordlook::kDefault;
++  pruneElementPath();
++  uint8_t face = 0;
++  uint8_t ink = 0;
++  bool faceFound = false;
++  bool inkFound = false;
++  for (size_t i = elementPathSize; i-- > 0 && !(faceFound && inkFound);) {
++    const ElementFrame& frame = elementPath[i];
++    if (!faceFound && frame.hasFace) {
++      face = frame.face;
++      faceFound = true;
++    }
++    if (!inkFound && frame.hasInk) {
++      ink = frame.ink;
++      inkFound = true;
++    }
++  }
++  return wordlook::make(face, ink);
++}
++
+ // flush the contents of partWordBuffer to currentTextBlock
+ void ChapterHtmlSlimParser::flushPartWordBuffer() {
+   if (hasFailed()) return;
+@@ -375,7 +442,8 @@
+     }
+     linkId = currentFootnoteLinkId;
+   }
+-  currentTextBlock->addWord(partWordBuffer, fontStyle, false, nextWordContinues, partWordVisibleOffset, linkId);
++  currentTextBlock->addWord(partWordBuffer, fontStyle, false, nextWordContinues, partWordVisibleOffset, linkId,
++                            currentWordLook());
+   if (insideTableCell && !tableRowStacked) {
+     tableCellTextBytes += wordBytes;
+     if (currentTextBlock->size() > MAX_GRID_TABLE_CELL_WORDS) {
+@@ -465,12 +533,12 @@
  
    const int16_t lineHeight = static_cast<int16_t>(renderer.getLineHeight(fontId, lineCompression));
    const int16_t defaultVerticalSpacing = static_cast<int16_t>(lineHeight / 2);
@@ -181451,7 +183503,7 @@
    constexpr uint8_t ruleThickness = 2;
    const int16_t availableWidth =
        std::max<int16_t>(1, static_cast<int16_t>(viewportWidth - blockStyle.totalHorizontalInset()));
-@@ -486,6 +490,7 @@
+@@ -486,6 +554,7 @@
      if (!allocatePage()) return;
    }
  
@@ -181459,7 +183511,7 @@
    currentPageNextY += topSpacing;
  
    auto pageRule = makeUniqueNoThrow<PageHorizontalRule>(width, ruleThickness, xPos, currentPageNextY);
-@@ -496,7 +501,8 @@
+@@ -496,7 +565,8 @@
    }
    currentPage->elements.push_back(std::move(pageRule));
    setCurrentPageVisibleOffset(visibleTextOffset);
@@ -181469,7 +183521,30 @@
  
    if (!pendingAnchorId.empty()) {
      if (!txtChapterBoundaries)
-@@ -1182,6 +1188,17 @@
+@@ -808,11 +878,20 @@
+   // before tag-specific branches emit any content or metadata.
+   CssStyle cssStyle;
+   if (self->cssParser) {
+-    cssStyle = self->cssParser->resolveStyle(name, classAttr);
++    cssStyle = self->resolveElementStyle(name, classAttr);
+     if (!styleAttr.empty()) {
+-      CssStyle inlineStyle = CssParser::parseInlineStyle(styleAttr);
++      CssStyle inlineStyle = self->cssParser->parseInlineStyleWithFamilies(styleAttr);
+       cssStyle.applyOver(inlineStyle);
+     }
++    // Text buffered so far belongs to the outer face / tone: hand it over before an element
++    // that changes them opens, and let the next fragment continue the same word.
++    if (self->embeddedStyle && self->partWordBufferIndex > 0 && (cssStyle.hasFontFamily() || cssStyle.hasColor())) {
++      self->flushPartWordBuffer();
++      if (self->hasFailed()) return;
++      self->nextWordContinues = true;
++    }
++    // Every element joins the path, whichever branch below takes it.
++    self->pushElementFrame(name, classAttr, cssStyle);
+   }
+ 
+   // HTML hidden attribute overrides CSS display.
+@@ -1182,6 +1261,17 @@
                    LOG_DBG("EHP", "Display size: %dx%d (scale %.2f)", displayWidth, displayHeight, scale);
                  }
  
@@ -181487,7 +183562,7 @@
                  // Flush any pending text block so it appears before the image
                  if (self->partWordBufferIndex > 0) {
                    self->flushPartWordBuffer();
-@@ -1206,6 +1223,10 @@
+@@ -1206,6 +1296,10 @@
                      imageMarginBottom = self->blockStyleStack.back().bottomInset();
                    }
                  }
@@ -181498,7 +183573,7 @@
  
                  // Create page for image - only break if image won't fit remaining space
                  if (self->currentPage && !self->currentPage->elements.empty() &&
-@@ -1251,7 +1272,8 @@
+@@ -1251,7 +1345,8 @@
                  }
                  self->currentPage->elements.push_back(std::move(pageImage));
                  self->setCurrentPageVisibleOffset(self->visibleTextOffset);
@@ -181508,7 +183583,62 @@
  
                  // The image consumed the empty block's accumulated vertical spacing.
                  // Reset the block so the Vertical merge in startNewTextBlock doesn't
-@@ -2353,6 +2375,9 @@
+@@ -1465,8 +1560,18 @@
+       if (self->hasFailed()) return;
+     } else {
+       self->currentCssStyle = cssStyle;
+-      const auto accumulated = self->blockStyleStack.back().getCombinedBlockStyle(userAlignmentBlockStyle,
+-                                                                                  BlockStyle::CombineAxis::Horizontal);
++      auto accumulated = self->blockStyleStack.back().getCombinedBlockStyle(userAlignmentBlockStyle,
++                                                                            BlockStyle::CombineAxis::Horizontal);
++      if (self->embeddedStyle && userAlignmentBlockStyle.box.decorated()) {
++        // The panel spans this element's border box: everything inside the margins.
++        accumulated.box = userAlignmentBlockStyle.box;
++        if (++self->nextBoxId == 0) self->nextBoxId = 1;
++        accumulated.box.id = self->nextBoxId;
++        const int left = accumulated.leftInset() - userAlignmentBlockStyle.paddingLeft;
++        const int right = accumulated.rightInset() - userAlignmentBlockStyle.paddingRight;
++        accumulated.box.left = static_cast<int16_t>(std::max(0, left));
++        accumulated.box.width = static_cast<int16_t>(std::max(0, static_cast<int>(self->viewportWidth) - left - right));
++      }
+       self->blockStyleStack.push_back(accumulated);
+       self->startNewTextBlock(accumulated.withoutBottom());
+       if (self->hasFailed()) return;
+@@ -1949,7 +2054,13 @@
+   const bool willClearBold = self->boldUntilDepth == self->depth - 1;
+   const bool willClearItalic = self->italicUntilDepth == self->depth - 1;
+ 
+-  const bool styleWillChange = willPopStyleStack || willClearBold || willClearItalic;
++  // An element that set the face or tone closes: its text must leave with that look.
++  self->pruneElementPath();
++  const bool willPopLook = self->elementPathSize > 0 &&
++                           self->elementPath[self->elementPathSize - 1].depth == self->depth - 1 &&
++                           (self->elementPath[self->elementPathSize - 1].hasFace ||
++                            self->elementPath[self->elementPathSize - 1].hasInk);
++  const bool styleWillChange = willPopStyleStack || willClearBold || willClearItalic || willPopLook;
+   const bool headerOrBlockTag = isHeaderOrBlock(name);
+   const bool tableStructuralTag = isTableStructuralTag(name);
+   const bool insideSkippedSubtree = self->depth - 1 >= self->skipUntilDepth;
+@@ -2088,7 +2199,17 @@
+       // Apply closing element's bottom margin to the current text block so
+       // container spacing appears after the element's content (on the last child),
+       // not on the first child via the empty-block merge in startNewTextBlock.
+-      if (self->currentTextBlock) {
++      if (self->currentTextBlock && self->currentTextBlock->isEmpty() && self->currentPage) {
++        // The last child is already laid out; an empty block here would carry the
++        // spacing into the next paragraph and put it after that paragraph instead.
++        // Close the container now: its padding (a panel's lower edge) and its margin,
++        // which still collapses with the next block's top margin.
++        const BlockStyle& closing = self->blockStyleStack.back();
++        if (closing.paddingBottom > 0) {
++          self->currentPageNextY = static_cast<int16_t>(self->currentPageNextY + closing.paddingBottom);
++        }
++        self->pendingMarginBottom = std::max<int16_t>(self->pendingMarginBottom, std::max<int16_t>(closing.marginBottom, 0));
++      } else if (self->currentTextBlock) {
+         const auto style = self->currentTextBlock->getBlockStyle();
+         self->currentTextBlock->setBlockStyle(style.addBottom(self->blockStyleStack.back()));
+       }
+@@ -2353,6 +2474,9 @@
    if (!currentPage) {
      if (!allocatePage()) return false;
    }
@@ -181518,7 +183648,7 @@
  
    if (currentPageNextY + lineHeight > viewportHeight) {
      setCurrentPageVisibleOffset(visibleOffset);
-@@ -2416,9 +2441,7 @@
+@@ -2416,9 +2540,7 @@
  
    // Apply top spacing before the paragraph (stored in pixels)
    const BlockStyle& blockStyle = currentTextBlock->getBlockStyle();
@@ -181529,7 +183659,7 @@
    if (blockStyle.paddingTop > 0) {
      currentPageNextY += blockStyle.paddingTop;
    }
-@@ -2455,10 +2478,8 @@
+@@ -2455,16 +2577,16 @@
      pendingFootnotes.clear();
    }
  
@@ -181542,16 +183672,30 @@
    if (blockStyle.paddingBottom > 0) {
      currentPageNextY += blockStyle.paddingBottom;
    }
+ 
+-  // Extra paragraph spacing: 0=off, else 0.5x/0.75x/1x/1.25x/1.5x line height.
+-  if (extraParagraphSpacing > 0) {
++  // Extra paragraph spacing: 0=off, else 0.5x/0.75x/1x/1.25x/1.5x line height. A book that
++  // sets its own paragraph margins keeps exactly those while its styles are on; adding the
++  // reader's spacing on top roughly doubled the gaps of typeset books.
++  if (extraParagraphSpacing > 0 && !(embeddedStyle && blockStyle.verticalMarginDefined)) {
+     constexpr float EXTRA_PARAGRAPH_SPACING_FACTORS[] = {0.0f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f};
+     const float factor = extraParagraphSpacing < std::size(EXTRA_PARAGRAPH_SPACING_FACTORS)
+                              ? EXTRA_PARAGRAPH_SPACING_FACTORS[extraParagraphSpacing]
 --- a/lib/Epub/Epub/parsers/ChapterHtmlSlimParser.h
 +++ b/lib/Epub/Epub/parsers/ChapterHtmlSlimParser.h
-@@ -1,5 +1,6 @@
+@@ -1,5 +1,9 @@
  #pragma once
- 
+-
++#if __has_include(<BoardConfig.h>)
++#include <BoardConfig.h>
++#endif
++
 +#include <algorithm>
  #include <HalStorage.h>
  #include <expat.h>
  
-@@ -47,6 +48,15 @@
+@@ -47,6 +51,15 @@
    std::string rubyTextBuffer;
    std::unique_ptr<Page> currentPage = nullptr;
    int16_t currentPageNextY = 0;
@@ -181567,21 +183711,50 @@
    int fontId;
    float lineCompression;
    uint8_t extraParagraphSpacing;  // 0=off, 1..5=0.5x/0.75x/1x/1.25x/1.5x line height
-@@ -57,6 +67,9 @@
+@@ -57,6 +70,9 @@
    uint8_t paragraphAlignment;
    uint16_t viewportWidth;
    uint16_t viewportHeight;
-+#if FREEINK_DEVICE_METALIO_PLUS
++#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
 +  uint16_t imageOutset = 0;
 +#endif
    bool hyphenationEnabled;
    bool focusReadingEnabled;
    const CssParser* cssParser;
-@@ -237,6 +250,9 @@
+@@ -83,7 +99,28 @@
+     bool hasSub = false, sub = false;
+   };
+   std::vector<StyleStackEntry> inlineStyleStack;
++
++  // Open elements from the body down: their tag and classes (for descendant selectors such
++  // as "div.bt p") and the book face / text tone they set, which CSS inherits. An entry
++  // whose depth is >= the current depth belongs to a closed element and is pruned lazily,
++  // like inlineStyleStack. Deeper nesting than kMaxElementPath keeps the last frames' looks.
++  struct ElementFrame {
++    int depth = 0;
++    char tag[12] = {};
++    char classes[52] = {};
++    bool hasFace = false, hasInk = false;
++    uint8_t face = 0;
++    uint8_t ink = 0;
++  };
++  static constexpr size_t kMaxElementPath = 32;
++  std::unique_ptr<ElementFrame[]> elementPath;
++  size_t elementPathSize = 0;
++  void pruneElementPath();
++  void pushElementFrame(const char* tag, std::string_view classes, const CssStyle& style);
++  CssStyle resolveElementStyle(const char* tag, std::string_view classes) const;
++  uint32_t currentWordLook();
+   std::vector<BlockStyle> blockStyleStack;  // accumulated block styles from open ancestor elements
++  uint16_t nextBoxId = 0;                   // BlockBox ids for CSS panels in this chapter
+   CssStyle currentCssStyle;
+   bool effectiveBold = false;
+   bool effectiveItalic = false;
+@@ -237,6 +274,9 @@
    }
    void setTxtChapterBoundaries(bool enabled) { txtChapterBoundaries = enabled; }
    void setParagraphIndentSpaces(const uint8_t spaces) { paragraphIndentSpaces = spaces; }
-+#if FREEINK_DEVICE_METALIO_PLUS
++#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
 +  void setImageOutset(const uint16_t pixels) { imageOutset = pixels; }
 +#endif
  
@@ -181685,7 +183858,17 @@
  STR_LIBRARY_REBUILDING: "正在整理书库"
  STR_LIBRARY_REBUILD_DONE: "书库已更新"
  STR_LIBRARY_REBUILD_FAILED: "书库更新失败，请检查 SD 卡"
-@@ -1552,6 +1570,7 @@
+@@ -1469,6 +1487,9 @@
+ STR_RICKY_TAB_POWER_OFF: "关机"
+ STR_RICKY_POWER_OFF_SCREEN: "关机画面"
+ STR_RICKY_POWER_OFF_SAME: "和待机一样"
++STR_RICKY_POWER_OFF_CUSTOM: "自定义壁纸"
++STR_RICKY_SELECT_POWER_OFF_WALLPAPER: "选择关机图片"
++STR_RICKY_SET_POWER_OFF_WALLPAPER: "设为关机壁纸"
+ STR_RICKY_POWERED_OFF: "已关机 · 长按开机"
+ STR_RICKY_PICTURE_FIT: "显示方式"
+ STR_RICKY_PICTURE_FIT_WHOLE: "完整显示"
+@@ -1552,6 +1573,7 @@
  STR_RICKY_GESTURE_READING: "阅读手势"
  STR_RICKY_GESTURE_BACK: "左侧右滑返回"
  STR_RICKY_GESTURE_HOME: "底部上滑回首页"
@@ -181693,7 +183876,7 @@
  STR_RICKY_GESTURE_CONTROL: "顶部下滑打开控制中心"
  STR_RICKY_GESTURE_STATUS: "点状态栏打开控制中心"
  STR_RICKY_GESTURE_TOUCH_TURN: "触屏翻页"
-@@ -1600,3 +1619,111 @@
+@@ -1600,3 +1622,111 @@
  STR_RICKY_HELP_FEEDBACK_3: "通过你现有的 Ricky AI Studio 联系渠道发送反馈。本页面不会自动上传设备信息。官网入口可扫码打开。"
  STR_RICKY_MENU_AUTO_TURN: "自动翻页"
  STR_RICKY_MENU_PROGRESS: "阅读进度"
@@ -181832,7 +184015,17 @@
  STR_LIBRARY_REBUILDING: "Reading your books..."
  STR_LIBRARY_REBUILD_DONE: "Library index rebuilt"
  STR_LIBRARY_REBUILD_FAILED: "Could not rebuild the index"
-@@ -1574,6 +1592,7 @@
+@@ -1491,6 +1509,9 @@
+ STR_RICKY_TAB_POWER_OFF: "Power off"
+ STR_RICKY_POWER_OFF_SCREEN: "Power-off screen"
+ STR_RICKY_POWER_OFF_SAME: "Same as standby"
++STR_RICKY_POWER_OFF_CUSTOM: "Custom wallpaper"
++STR_RICKY_SELECT_POWER_OFF_WALLPAPER: "Choose power-off image"
++STR_RICKY_SET_POWER_OFF_WALLPAPER: "Set power-off wallpaper"
+ STR_RICKY_POWERED_OFF: "Off · hold to turn on"
+ STR_RICKY_PICTURE_FIT: "Picture fit"
+ STR_RICKY_PICTURE_FIT_WHOLE: "Whole picture"
+@@ -1574,6 +1595,7 @@
  STR_RICKY_GESTURE_READING: "Reading"
  STR_RICKY_GESTURE_BACK: "Swipe right from the left: Back"
  STR_RICKY_GESTURE_HOME: "Swipe up from the bottom: Home"
@@ -181840,7 +184033,7 @@
  STR_RICKY_GESTURE_CONTROL: "Swipe down from the top: Control center"
  STR_RICKY_GESTURE_STATUS: "Tap the status bar: Control center"
  STR_RICKY_GESTURE_TOUCH_TURN: "Touch page turns"
-@@ -1622,3 +1641,111 @@
+@@ -1622,3 +1644,111 @@
  STR_RICKY_HELP_FEEDBACK_3: "Send feedback through your existing Ricky AI Studio contact channel. This page does not upload device information. Scan the website QR code to visit the site."
  STR_RICKY_MENU_AUTO_TURN: "Auto page turn"
  STR_RICKY_MENU_PROGRESS: "Reading progress"
@@ -184911,7 +187104,15 @@
  };
  using PageElement=PageLine;
  namespace readingGuideLine {
-@@ -304,8 +319,9 @@
+@@ -126,6 +141,7 @@
+ void draw(GfxRenderer& renderer,int,int,int,uint8_t) {renderer.frame[15]=0x55;}
+ }
+ struct Page {
++  void renderPanels(GfxRenderer&,int,int,int) const {}
+   bool images=false;
+   std::vector<std::unique_ptr<PageLine>> elements;
+   Page() {for(int i=0;i<3;++i) {auto p=std::make_unique<PageLine>(); p->yPos=i; elements.push_back(std::move(p));}}
+@@ -304,8 +320,9 @@
      def test_readpico_input_cancellation_on_hardware_and_simulator(self):
          source = (ROOT / 'src/main.cpp').read_text()
          begin = source.index('  // Cancel before any handler can wait for the framebuffer lock.')
@@ -184922,7 +187123,7 @@
          program = r'''
  #include <cassert>
  #include <cstdint>
-@@ -337,9 +353,15 @@
+@@ -337,9 +354,15 @@
    }
  }
  '''
@@ -185094,6 +187295,14 @@
    rickyCompanion = (doc["rickyCompanion"] | 0) == RICKY_COMPANION_CAT ? RICKY_COMPANION_CAT : RICKY_COMPANION_DOG;
    rickyGestureControl = (doc["rickyGestureControl"] | 1) ? 1 : 0;
    rickyGestureStatus = (doc["rickyGestureStatus"] | 1) ? 1 : 0;
+@@ -876,6 +895,7 @@
+ 
+ uint8_t CrossPointSettings::rickySleepScreenMode() const {
+   if (rickyPowerOffScreen == RICKY_POWER_OFF_BLANK) return BLANK;
++  if (rickyPowerOffScreen == RICKY_POWER_OFF_CUSTOM) return CUSTOM;
+   if (rickyPowerOffScreen == RICKY_POWER_OFF_SAME) {
+     switch (rickyStandbyFace) {
+       case RICKY_STANDBY_PICTURE:
 --- a/src/CrossPointSettings.h
 +++ b/src/CrossPointSettings.h
 @@ -20,6 +20,9 @@
@@ -185127,7 +187336,21 @@
    uint8_t homeButtonTapAction = static_cast<uint8_t>(HomeButtonAction::Home);
    uint8_t homeButtonDoubleTapAction = static_cast<uint8_t>(HomeButtonAction::ToggleFrontlight);
    uint8_t homeButtonLongPressAction = static_cast<uint8_t>(HomeButtonAction::ReaderMenu);
-@@ -503,6 +513,7 @@
+@@ -457,11 +467,12 @@
+   };
+   uint8_t rickyStandbyFace = RICKY_STANDBY_PICTURE;
+   // What stays on the screen once the device is off: what Standby showed, the RickyOS
+-  // rest screen, or nothing. Replaces choosing among the sleepScreen modes directly.
++  // rest screen, nothing, or an independent picture. Saved IDs are append-only.
+   enum RICKY_POWER_OFF_SCREEN : uint8_t {
+     RICKY_POWER_OFF_SAME = 0,
+     RICKY_POWER_OFF_DEFAULT,
+     RICKY_POWER_OFF_BLANK,
++    RICKY_POWER_OFF_CUSTOM,  // independent /poweroff.bmp; append to preserve saved values
+     RICKY_POWER_OFF_SCREEN_COUNT
+   };
+   uint8_t rickyPowerOffScreen = RICKY_POWER_OFF_DEFAULT;
+@@ -503,6 +514,7 @@
    // last lines of a page and on the tab bar, so readers left books by accident.
    uint8_t rickyGestureBack = 1;     // swipe right from the left side: Back
    uint8_t rickyGestureHome = 0;     // swipe up from the bottom: Home
@@ -185135,7 +187358,7 @@
    uint8_t rickyGestureControl = 1;  // swipe down from the top: control center
    uint8_t rickyGestureStatus = 1;   // tap the status bar: control center
    // Body-text stroke weight in the reader: 0 thinnest .. 2 the font as drawn .. 4 boldest.
-@@ -567,6 +578,7 @@
+@@ -567,6 +579,7 @@
    uint8_t showReaderMenu = READER_MENU_TAP;
    // Frontlight quick-panel state. Brightness and warmth remain persisted even
    // when restore-on-wake is disabled.
@@ -188269,6 +190492,138 @@
 +  const char* statusLabel() const;
 +};
 +#endif
+--- a/src/activities/apps/standby/RickyStandbySettingsActivity.cpp
++++ b/src/activities/apps/standby/RickyStandbySettingsActivity.cpp
+@@ -28,6 +28,7 @@
+ namespace fui = freeink::ui;
+ using Settings = CrossPointSettings;
+ constexpr char kPicture[] = "/sleep.bmp";
++constexpr char kPowerOffPicture[] = "/poweroff.bmp";
+ 
+ // Standby styles in the order people pick them; stored values differ (RICKY_STANDBY_FACE).
+ constexpr uint8_t kStyles[] = {Settings::RICKY_STANDBY_PICTURE, Settings::RICKY_STANDBY_COVER,
+@@ -56,14 +57,15 @@
+                                     StrId::STR_RICKY_HOURS_6, StrId::STR_RICKY_HOURS_12, StrId::STR_RICKY_HOURS_24};
+ static_assert(std::size(kAutoOffLabels) == Settings::RICKY_AUTO_OFF_COUNT);
+ constexpr StrId kPowerOffLabels[] = {StrId::STR_RICKY_POWER_OFF_SAME, StrId::STR_RICKY_SLEEP_LIGHT,
+-                                     StrId::STR_RICKY_SLEEP_BLANK};
++                                     StrId::STR_RICKY_SLEEP_BLANK, StrId::STR_RICKY_POWER_OFF_CUSTOM};
+ static_assert(std::size(kPowerOffLabels) == Settings::RICKY_POWER_OFF_SCREEN_COUNT);
+ 
+ constexpr StrId kRowLabels[] = {
+     StrId::STR_RICKY_STANDBY_STYLE, StrId::STR_RICKY_SELECT_WALLPAPER,   StrId::STR_RICKY_WALLPAPER_DOWNLOAD,
+     StrId::STR_RICKY_PICTURE_FIT,   StrId::STR_RICKY_PICTURE_FILTER,     StrId::STR_RICKY_STANDBY_INFO,
+     StrId::STR_RICKY_AUTO_STANDBY,  StrId::STR_RICKY_STANDBY_NOW,        StrId::STR_RICKY_POWER_OFF_SCREEN,
+-    StrId::STR_RICKY_AUTO_OFF,      StrId::STR_RICKY_SELECT_TRANSPARENT, StrId::STR_RICKY_CLEAR_TRANSPARENT};
++    StrId::STR_RICKY_AUTO_OFF,      StrId::STR_RICKY_SELECT_TRANSPARENT, StrId::STR_RICKY_CLEAR_TRANSPARENT,
++    StrId::STR_RICKY_SELECT_POWER_OFF_WALLPAPER};
+ static_assert(std::size(kRowLabels) == RickyStandbySettingsActivity::RowKinds);
+ 
+ int styleIndex() {
+@@ -111,6 +113,7 @@
+   auto add = [this](const Row row) { rows_[rowCount_++] = row; };
+   if (tab_ == PowerOffTab) {
+     add(PowerOffScreen);
++    add(ChoosePowerOffPicture);
+     add(AutoPowerOff);
+     return;
+   }
+@@ -212,10 +215,12 @@
+   renderer.drawRoundedRect(box.x, box.y, box.width, box.height, 2, 10, true);
+   const bool off = tab_ == PowerOffTab;
+   const bool sameAsStandby = !off || SETTINGS.rickyPowerOffScreen == Settings::RICKY_POWER_OFF_SAME;
+-  const bool picture = sameAsStandby && SETTINGS.rickyStandbyFace == Settings::RICKY_STANDBY_PICTURE;
++  const bool customPowerOff = off && SETTINGS.rickyPowerOffScreen == Settings::RICKY_POWER_OFF_CUSTOM;
++  const bool picture = customPowerOff ||
++                       (sameAsStandby && SETTINGS.rickyStandbyFace == Settings::RICKY_STANDBY_PICTURE);
+   if (picture) {
+     HalFile file;
+-    if (Storage.openFileForRead("STANDBY", kPicture, file)) {
++    if (Storage.openFileForRead("STANDBY", customPowerOff ? kPowerOffPicture : kPicture, file)) {
+       Bitmap bitmap(file, true);
+       if (bitmap.parseHeaders() == BmpReaderError::Ok) {
+         const int innerWidth = box.width - 8;
+@@ -233,7 +238,8 @@
+   // Nothing to draw small: name what the screen shows inside the frame.
+   const char* label = picture         ? tr(STR_RICKY_STANDBY_EMPTY)
+                       : sameAsStandby ? I18N.get(kStyleLabels[styleIndex()])
+-                                      : I18N.get(kPowerOffLabels[std::min<int>(SETTINGS.rickyPowerOffScreen, 2)]);
++                                      : I18N.get(kPowerOffLabels[std::min<int>(SETTINGS.rickyPowerOffScreen,
++                                                                             std::size(kPowerOffLabels) - 1)]);
+   const int lineHeight = renderer.getLineHeight(SMALL_FONT_ID);
+   UITheme::drawCenteredText(renderer, box, SMALL_FONT_ID, box.y + (box.height - lineHeight) / 2, label);
+ }
+@@ -290,22 +296,26 @@
+   }
+ }
+ 
+-void RickyStandbySettingsActivity::openPicturePicker(const std::string& folder, const bool sticker) {
++void RickyStandbySettingsActivity::openPicturePicker(const std::string& folder, const bool sticker,
++                                                     const bool powerOff) {
+   // Back from the preview returns to the list it was opened from, not to this page.
+-  const auto previewDone = [this, sticker](const ActivityResult& result) {
++  const auto previewDone = [this, sticker, powerOff](const ActivityResult& result) {
+     const auto* entry = std::get_if<FilePathResult>(&result.data);
+     if (result.isCancelled && entry) {
+-      openPicturePicker(FsHelpers::extractFolderPath(entry->path), sticker);
++      openPicturePicker(FsHelpers::extractFolderPath(entry->path), sticker, powerOff);
+       return;
+     }
+     rebuildRows();
+     requestUpdate();
+   };
+   if (!startActivityForResultWith<FileBrowserActivity>(
+-          [this, previewDone, sticker](const ActivityResult& result) {
++          [this, previewDone, sticker, powerOff](const ActivityResult& result) {
+             const auto* entry = std::get_if<FilePathResult>(&result.data);
+             if (result.isCancelled || !entry ||
+-                !startActivityForResultWith<ImageViewerActivity>(previewDone, entry->path, true, sticker)) {
++                !startActivityForResultWith<ImageViewerActivity>(
++                    previewDone, entry->path, true, sticker,
++                    powerOff ? ImageViewerActivity::WallpaperTarget::PowerOff
++                             : ImageViewerActivity::WallpaperTarget::Standby)) {
+               requestUpdate();
+             }
+           },
+@@ -326,6 +336,9 @@
+     case ChoosePicture:
+       openPicturePicker();
+       return;
++    case ChoosePowerOffPicture:
++      openPicturePicker(RickyStorageLayout::IMAGES, false, true);
++      return;
+     case ChooseSticker:
+       openPicturePicker(RickyStorageLayout::IMAGES, true);
+       return;
+@@ -361,7 +374,7 @@
+       return;
+     case PowerOffScreen:
+       showOption(optionPopup, StrId::STR_RICKY_POWER_OFF_SCREEN, kPowerOffLabels,
+-                 std::min<int>(SETTINGS.rickyPowerOffScreen, 2),
++                 std::min<int>(SETTINGS.rickyPowerOffScreen, std::size(kPowerOffLabels) - 1),
+                  [](const int chosen) { SETTINGS.rickyPowerOffScreen = static_cast<uint8_t>(chosen); });
+       break;
+     case AutoPowerOff:
+--- a/src/activities/apps/standby/RickyStandbySettingsActivity.h
++++ b/src/activities/apps/standby/RickyStandbySettingsActivity.h
+@@ -30,6 +30,7 @@
+     AutoPowerOff,
+     ChooseSticker,
+     ClearSticker,
++    ChoosePowerOffPicture,
+     RowKinds
+   };
+ 
+@@ -54,7 +55,8 @@
+   void rebuildRows();
+   const char* rowValue(Row row) const;
+   void drawPreview(const Rect& box) const;
+-  void openPicturePicker(const std::string& folder = RickyStorageLayout::IMAGES, bool sticker = false);
++  void openPicturePicker(const std::string& folder = RickyStorageLayout::IMAGES, bool sticker = false,
++                         bool powerOff = false);
+ 
+   OptionPopup optionPopup;
+   int tab_ = StandbyTab;
 --- a/src/activities/apps/standby/RickyWallpaperDownloadActivity.cpp
 +++ b/src/activities/apps/standby/RickyWallpaperDownloadActivity.cpp
 @@ -93,8 +93,13 @@
@@ -188608,6 +190963,39 @@
 +  bool grayShown_ = false;   // a full 16-gray frame is on the glass; minute updates can be regional
  };
  
+--- a/src/activities/boot_sleep/SleepActivity.cpp
++++ b/src/activities/boot_sleep/SleepActivity.cpp
+@@ -624,23 +624,25 @@
+ void SleepActivity::renderCustomSleepScreen() const {
+   const bool native = renderer.getGrayscaleLevels() == 16 &&
+                       SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER;
+-  // Look for sleep.bmp on the root of the sd card to determine if we should
+-  // render a custom sleep screen instead of the default.
+-  // This takes priority over the /sleep folder.
++  const bool independent = SETTINGS.rickyPowerOffScreen == CrossPointSettings::RICKY_POWER_OFF_CUSTOM;
++  const char* picturePath = independent ? "/poweroff.bmp" : "/sleep.bmp";
++  // An independent power-off image must never fall back to the standby image.
+   HalFile file;
+-  if (Storage.openFileForRead("SLP", "/sleep.bmp", file)) {
++  if (Storage.openFileForRead("SLP", picturePath, file)) {
+     Bitmap bitmap(file, !native,
+                   renderer.grayscaleCapabilities(sleepGrayscaleMode(renderer)).supported() &&
+                       display.getController() == HalDisplay::Controller::SSD1677 &&
+                       SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER);
+     if (bitmap.parseHeaders() == BmpReaderError::Ok) {
+-      LOG_DBG("SLP", "Loading: /sleep.bmp");
++      LOG_DBG("SLP", "Loading: %s", picturePath);
+       renderBitmapSleepScreen(bitmap, false, native);
+       file.close();
+       return;
+     }
+     file.close();
+   }
++
++  if (independent) return renderDefaultSleepScreen();
+ 
+   std::string selectedPath;
+   if (!selectRandomSleepFile("/.sleep", SleepRecentKind::Standard, selectedPath)) {
 --- a/src/activities/home/FileBrowserActivity.cpp
 +++ b/src/activities/home/FileBrowserActivity.cpp
 @@ -16,6 +16,7 @@
@@ -188862,18 +191250,17 @@
    bool wantsGraySettle() const override { return true; }
 --- a/src/activities/home/RickyStorageActivity.cpp
 +++ b/src/activities/home/RickyStorageActivity.cpp
-@@ -18,6 +18,10 @@
+@@ -18,6 +18,9 @@
  
  #include "CrossPointSettings.h"
  #include "FileBrowserActivity.h"
 +#include "activities/ActivityManager.h"
 +#include "activities/library/LibrarySourcesActivity.h"
-+#include "activities/settings/ClearCacheActivity.h"
 +#include <LibrarySources.h>
  #include "SdCardFontSystem.h"
  #include "activities/RenderLock.h"
  #include "activities/settings/FontLibraryActivity.h"
-@@ -47,48 +51,9 @@
+@@ -47,48 +50,9 @@
      snprintf(out, size, "%u MB", static_cast<unsigned>((bytes + MB / 2) / MB));
  }
  
@@ -188922,7 +191309,7 @@
  }  // namespace
  
  const char* RickyStorageActivity::folderFor(const int index) {
-@@ -110,9 +75,12 @@
+@@ -110,9 +74,12 @@
  namespace {
  struct StorageScan {
    bool measured = false;
@@ -188935,7 +191322,7 @@
  };
  constexpr const char* kStatsPath = "/.crosspoint/storage-stats.json";
  // "1" = counts out of date. Rewritten, never deleted: this page removes nothing on the card.
-@@ -150,9 +118,14 @@
+@@ -150,9 +117,14 @@
    JsonDocument doc;
    doc["total"] = scan.total;
    doc["free"] = scan.free;
@@ -188950,7 +191337,7 @@
    String text;
    serializeJson(doc, text);
    if (!Storage.writeFile(kStatsPath, text)) LOG_ERR("STOR", "Cannot save storage stats");
-@@ -173,7 +146,12 @@
+@@ -173,7 +145,12 @@
      scan.total = doc["total"] | static_cast<uint64_t>(0);
      scan.free = doc["free"] | static_cast<uint64_t>(0);
      scan.measured = scan.total > 0 && scan.free <= scan.total;
@@ -188963,7 +191350,7 @@
    });
  }
  
-@@ -191,26 +169,64 @@
+@@ -191,26 +168,64 @@
    return books;
  }
  
@@ -189045,7 +191432,7 @@
    LOG_INF("STOR", "Counted files in %u ms", static_cast<unsigned>(millis() - started));
    if (staleEpoch.load() == epoch && countsStale.exchange(false)) Storage.writeFile(kStalePath, "0");
  }
-@@ -220,6 +236,7 @@
+@@ -220,6 +235,7 @@
    const bool measured = RickyFreeSpace::measure(total, free);
    publish([&](StorageScan& scan) {
      scan.measured = measured;
@@ -189053,7 +191440,7 @@
      scan.total = total;
      scan.free = free;
    });
-@@ -240,7 +257,7 @@
+@@ -240,7 +256,7 @@
    // Back on the page before a paused pass ended: let it carry on and pick countsWanted up.
    scanCancel.store(false);
    if (scanRunning.exchange(true)) return;
@@ -189062,7 +191449,7 @@
    if (xTaskCreate(&scanStorageTask, "RickyStorageScan", 6144, nullptr, 1, nullptr) != 1) {  // pdPASS
      LOG_ERR("STOR", "Cannot start the storage scan");
      scanRunning.store(false);
-@@ -265,26 +282,24 @@
+@@ -265,26 +281,24 @@
    seenScans = scanGeneration.load();
    counting = scanRunning.load();
    if (!have) return;  // never measured on this card: keep the placeholders
@@ -189099,7 +191486,7 @@
    const int indexed = indexBookCount();
    if (indexed >= 0) publish([&](StorageScan& scan) { scan.counts[0] = indexed; });
    invalidateScan();
-@@ -299,18 +314,24 @@
+@@ -299,18 +313,24 @@
    // the font registry found in both, not the visible folder's entries. In memory, cheap.
    counts[1] = static_cast<int>(sdFontSystem.registry().getFamilies().size());
    loadStats();
@@ -189131,7 +191518,7 @@
  }
  
  void RickyStorageActivity::onExit() {
-@@ -383,91 +404,119 @@
+@@ -383,91 +403,117 @@
      target.text(screen.takeBottom(smallHeight * 2, gap), tr(STR_RICKY_FOLDER_MISSING), warning);
    }
  
@@ -189149,11 +191536,10 @@
 -  // SD card: usage ring, free / total, opens the whole card in the file browser.
 +  char text[64];
 +
-+  // SD card: what the space is made of, from the last Refresh. Opens reading-cache
-+  // cleanup, the one thing on the card this page can safely give back.
++  // SD card: display the last statistics; this summary has no action or focus.
    const auto summary = screen.takeTop(summaryHeight, section);
 -  const bool summarySelected = focus && selected == 4;
-+  const bool summarySelected = focus && selected == 0;
++  constexpr bool summarySelected = false;
    RickyPageUi::card(target, summary, summarySelected);
 -  screen.frame().hit(summary, ACTION_ROW, 4, fui::InputTouch);
 -  const Rect ringBox{summary.x + pad, summary.y + pad, ring, ring};
@@ -189172,7 +191558,6 @@
 -  const int textX = ringBox.x + ring + pad;
 -  const int textWidth = summary.right() - textX - 24 - pad;
 -  const int textTop = summary.y + (summary.height - bodyHeight - smallHeight - gap / 2) / 2;
-+  screen.frame().hit(summary, ACTION_ROW, 0, fui::InputTouch);
 +  const fui::Color ink = summarySelected ? fui::Color::White : fui::Color::Black;
 +  const fui::Color quiet = summarySelected ? fui::Color::White : fui::Color::DarkGray;
 +  const int innerX = summary.x + pad;
@@ -189266,7 +191651,7 @@
 +  const freeink::Icon* icons[] = {&icon_ricky_folder_40, &icon_ricky_books_40, &icon_ricky_transfer_40};
 +  for (int i = 0; i < 3; ++i) {
 +    const auto rect = screen.takeTop(rowHeight, i == 2 ? 0 : gap);
-+    const int row = i + 1;
++    const int row = i;
 +    const bool picked = focus && selected == row;
      RickyPageUi::card(target, rect, picked);
 -    screen.frame().hit(rect, ACTION_ROW, i, fui::InputTouch);
@@ -189320,7 +191705,7 @@
    }
  }
  
-@@ -478,26 +527,25 @@
+@@ -478,26 +524,19 @@
      refresh();
      return;
    }
@@ -189334,18 +191719,13 @@
 -    const char* path = folderFor(index);
 -    if (index < 4 && !Storage.exists(path) && !Storage.ensureDirectoryExists(path)) {
 -      folderMissing = true;
-+  if (index == 0) {
-+    // Reading caches only: books, notes and progress files stay. Count again after.
-+    startActivityForResultWith<ClearCacheActivity>([this](const ActivityResult&) {
-+      invalidateScan();
-       requestUpdate();
+-      requestUpdate();
 -      return;
 -    }
 -    // Scoped: Back in the opened folder returns here instead of climbing to "/".
 -    // A rename, move or delete in there marks the scan stale (FileBrowserActivity::finishEdit);
 -    // count again on the way back only then, not after every look into a folder.
-+    });
-+  } else if (index == 1) {
++  if (index == 0) {
 +    // Back in the opened folder climbs to the card root, then returns here.
      startActivityForResultWith<FileBrowserActivity>(
          [this](const ActivityResult&) {
@@ -189355,12 +191735,12 @@
 -  }
 -}
 +        "/", FileBrowserActivity::Mode::Books, /*scoped=*/true);
-+  } else if (index == 2) {
++  } else if (index == 1) {
 +    startActivityForResultWith<LibrarySourcesActivity>([this](const ActivityResult&) {
 +      countLibraryFolders();
 +      requestUpdate();
 +    });
-+  } else if (index == 3) {
++  } else if (index == 2) {
 +    activityManager.goToFileTransfer();
 +  }
 +}
@@ -189372,9 +191752,9 @@
   protected:
 -  // Four folder cards and the SD summary (0..4), then the header's Refresh.
 -  static constexpr int kCardCount = 5;
-+  // The SD summary (0), then All files, Library folders and Transfer (1..3), then the
-+  // header's Refresh.
-+  static constexpr int kCardCount = 4;
++  // The SD summary is display-only. All files, Library folders and Transfer
++  // (0..2) are followed by the header's Refresh.
++  static constexpr int kCardCount = 3;
    static constexpr int kRefreshAction = kCardCount;
    int listCount() const override { return kCardCount + 1; }
    void onEnter() override;
@@ -191946,15 +194326,16 @@
  
  #include <algorithm>
  #include <cmath>
-@@ -27,7 +32,6 @@
+@@ -27,7 +32,7 @@
  #include <functional>
  #include <iterator>
  #include <limits>
 -#include <VectorFontSupport.h>
++#include <utility>
  #if CROSSPOINT_VECTOR_FONTS
  #include <TtfEpdFont.h>
  #endif
-@@ -64,6 +68,7 @@
+@@ -64,6 +69,7 @@
  #include "activities/settings/TextSettingsActivity.h"
  #include "components/FontPreloadView.h"
  #include "components/RickyBadgeNotice.h"
@@ -191962,7 +194343,7 @@
  #include "components/UITheme.h"
  #include "components/icons/rickyReaderDog.h"
  #include "fontIds.h"
-@@ -75,7 +80,6 @@
+@@ -75,7 +81,6 @@
  #include "util/ReadingGuideLine.h"
  #include "util/ScreenshotUtil.h"
  #include "util/TimeUtils.h"
@@ -191970,7 +194351,7 @@
  
  namespace {
  constexpr uint8_t MAX_PAGE_TURN_RATE = 30;
-@@ -105,6 +109,17 @@
+@@ -105,6 +110,17 @@
        {0, 4, 6, 7, 8, 9, 10, 11, 11, 12, 12, 13, 14, 14, 15, 15},
        {0, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 12, 13, 14, 14, 15},
    };
@@ -191988,7 +194369,7 @@
    return weight < std::size(kCurves) && weight != 2 ? kCurves[weight] : nullptr;
  }
  
-@@ -341,7 +356,7 @@
+@@ -341,7 +357,7 @@
  
    READING_STATS.endSession();
    ACHIEVEMENTS.recordSessionEnded(READING_STATS.getLastSessionSnapshot());
@@ -191997,7 +194378,15 @@
    // Four frames of PSRAM; the reader is the only owner and gives them back here.
    freePageCache();
  #endif
-@@ -361,7 +376,7 @@
+@@ -349,6 +365,7 @@
+ #if RICKYOS_PRODUCT
+   rickyBadgeNotice::announceNew(renderer);
+ #endif
++  bookFonts_.reset();  // unregister book faces before the reader font is released
+   ReaderActivity::onExit();
+ #if FREEINK_DEVICE_READPICO
+   // The last page is 16-level; a fast B/W frame over it leaves its gray text behind,
+@@ -361,7 +378,7 @@
  void EpubReaderActivity::showOpeningPopup() {
    // Even a cached book takes a few seconds on device to its first page (measured
    // 2.7-3.6 s), with the tapped screen unchanged meanwhile. Say so at once.
@@ -192006,10 +194395,29 @@
    // Drawn into the retained 16-level frame: the screen keeps its grays and only the
    // popup's area is driven, instead of a B/W refresh of the whole screen.
    if (renderer.beginRetainedGrayscale16()) {
-@@ -648,6 +663,15 @@
+@@ -449,6 +466,17 @@
+     return false;
+   }
+   epub = std::move(loadedEpub);
++
++  bookFonts_.reset();
++  if (SETTINGS.embeddedStyle) {
++    bookFonts_ = makeUniqueNoThrow<BookFontSet>(renderer);
++    if (bookFonts_) {
++      bookFonts_->open(*epub);
++      bookfonts::setActive(bookFonts_.get());
++    } else {
++      LOG_ERR("BOOKFONT", "Cannot allocate book font set; using reader font");
++    }
++  }
+ 
+   ImageBlock::clearSessionRenderFailures();
+   ImageBlock::setExtractor(epub.get(), [](void* ctx, const char* src, const char* dest, CancelCheck cancellation) {
+@@ -648,6 +676,16 @@
    auto spec = vertical ? SETTINGS.readerRenderSpec(height, width) : SETTINGS.readerRenderSpec(width, height);
    spec.collectTouchLinks = mappedInput.hasTouch() && !vertical;
    if (stylesDisabledForSession_) spec.embeddedStyle = false;
++  spec.bookFontsKey = spec.embeddedStyle && bookFonts_ ? bookFonts_->key() : 0;
 +#if FREEINK_DEVICE_METALIO_PLUS
 +  const auto mode = readingMode::modeFor(SETTINGS.readingMode);
 +  if (mode == readingMode::Mode::Original || mode == readingMode::Mode::Immersive) {
@@ -192022,7 +194430,7 @@
    if (vertical) {
      spec.verticalText = true;
      // Columns keep one pitch so the 界行 stay on their grid; images have no column
-@@ -883,7 +907,7 @@
+@@ -883,7 +921,7 @@
      return;
    }
  
@@ -192031,7 +194439,7 @@
    constexpr unsigned long IDLE_PREWARM_DEBOUNCE_MS = 400;
    auto* fcm = renderer.getFontCacheManager();
    {
-@@ -1680,6 +1704,12 @@
+@@ -1680,6 +1718,12 @@
    bool offerSync = false;
    if (perr == "txt progress migration failed") {
      msg = StrId::STR_TXT_PROGRESS_MIGRATION_FAILED;
@@ -192044,7 +194452,7 @@
    } else if (perr == "access expired") {
      msg = StrId::STR_LOAN_EXPIRED;
    } else if (perr == "loan date unverified") {
-@@ -1891,7 +1921,7 @@
+@@ -1891,7 +1935,7 @@
        return;
      }
  
@@ -192053,7 +194461,7 @@
      ++sectionGeneration_;
  #endif
      const bool cacheLoaded = section->loadSectionFile(renderSpec);
-@@ -2307,14 +2337,19 @@
+@@ -2307,14 +2351,19 @@
    }
  }
  
@@ -192063,7 +194471,7 @@
  bool EpubReaderActivity::nativeGray16Page(const Page& page) const {
 +#if FREEINK_DEVICE_METALIO_PLUS
 +  return !renderer.isInverted() && renderer.getGrayscaleLevels() == 16 &&
-+         (SETTINGS.textAntiAliasing || page.hasImages());
++         (SETTINGS.textAntiAliasing || page.hasImages() || page.hasPanelFill());
 +#else
    return SETTINGS.textAntiAliasing && !renderer.isInverted() && renderer.getGrayscaleLevels() == 16 &&
           page.imagesAreAllJpeg();
@@ -192076,7 +194484,7 @@
  bool EpubReaderActivity::pageCacheEligible() const {
    // No !section->isBuilding() here, deliberately. The page cache renders ONE page --
    // the current one or the next -- and Section::loadPage() is written to serve exactly
-@@ -2328,7 +2363,12 @@
+@@ -2328,7 +2377,12 @@
    // engages at all -- every turn is a full render instead of the cached one.
    return !pageCacheFailed_ && section && renderer.hasFrameBuffer() && !activityManager.isSwitchPending() &&
           overlay == Overlay::None && fontPromptState == FontPromptState::Idle && !renderer.isInverted() &&
@@ -192090,7 +194498,7 @@
  }
  
  ReaderPageCacheKey EpubReaderActivity::pageCacheKey(const int page, const int top, const int right, const int bottom,
-@@ -2369,8 +2409,33 @@
+@@ -2369,8 +2423,34 @@
    }
  }
  
@@ -192099,6 +194507,7 @@
 +// while input stays quiet. A first-seen glyph costs ~4 ms to rasterize from the card, and
 +// page turns are where it was paid. Interrupted warm-up resumes on the next idle pass.
 +void EpubReaderActivity::renderIdleWarmup(const uint32_t generation) {
++  if (bookFonts_ && bookFonts_->anyLoaded()) return;
 +#if RICKYOS_PLUS_READER_TIMING
 +  const auto warmStart = millis();
 +  unsigned batches = 0;
@@ -192124,7 +194533,7 @@
    // Every exit below names the condition it took. Without that, "the cache never hits"
    // is indistinguishable from "the build was cancelled", "the layout moved since the
    // last render" and "the next page has images" -- and each of those needs a different
-@@ -2400,6 +2465,9 @@
+@@ -2400,6 +2480,9 @@
    const auto& layout = renderedPageKey_;
    // A main-loop reflow/jump may have replaced the section since the last render.
    if (layout != pageCacheKey(section->currentPage, layout.top, layout.right, layout.bottom, layout.left)) {
@@ -192134,7 +194543,7 @@
      LOG_DBG("ERS", "Page cache: skip, layout moved since the last render");
      return;
    }
-@@ -2412,26 +2480,38 @@
+@@ -2412,26 +2495,38 @@
    // A build cut short by input stays retryable: the render task re-arms the idle pass
    // once input is quiet, and a Skipped slot would otherwise never be built again.
    const auto build = [&](const int slot, const ReaderPageCacheKey& key) {
@@ -192183,7 +194592,7 @@
  // On a chapter's last page the forward slot is free: build the next chapter and render
  // its first page into it. Comics put one picture in each chapter, so without this every
  // turn decoded a JPEG in the foreground (~3.5 s); now it happens while the page is read.
-@@ -2464,6 +2544,12 @@
+@@ -2464,6 +2559,12 @@
    }
    if (nextSection->pageCount == 0 || activityManager.idleRenderCancelled(generation)) return;
    const bool ready = buildPageCacheSlot(0, key, generation, nextSection.get());
@@ -192196,7 +194605,7 @@
    LOG_DBG("ERS", "Next chapter prefetch: spine %d ready=%d in %lums", next, ready, millis() - started);
  }
  #endif
-@@ -2527,13 +2613,18 @@
+@@ -2527,13 +2628,18 @@
    if (!pageCacheBase_[slot]) {
      constexpr size_t kContiguousReserve = 16 * 1024;
      // Reserve the slots still to allocate; the forward slot is already charged for slot 1.
@@ -192219,7 +194628,7 @@
        freePageCache();
        pageCacheFailed_ = true;
        LOG_ERR("ERS", "Page cache off: PSRAM allocation of %u B failed", static_cast<unsigned>(4 * bytes));
-@@ -2579,12 +2670,26 @@
+@@ -2579,12 +2685,26 @@
    const readingMode::Box textBox = readingMode::textBox(renderer.getScreenWidth(), renderer.getScreenHeight(),
                                                          {key.top, key.right, key.bottom, key.left});
    const int pitch = renderer.getLineHeight(key.spec.fontId, key.spec.lineCompression);
@@ -192246,8 +194655,11 @@
    };
  
    // Load glyphs on demand: a whole-page prewarm cannot be interrupted. Check
-@@ -2599,7 +2704,7 @@
+@@ -2597,9 +2717,10 @@
+     GfxRenderer::SyntheticBoldScope syntheticBold(renderer, key.fakeBold);
+     GfxRenderer::TextWeightScope textWeight(renderer, readerTextWeightCurve(key.textWeight),
                                              readerTextWeightSpread(key.textWeight));
++    if (!vertical) page->renderPanels(renderer, key.spec.fontId, key.left, key.top);
      for (const auto& element : page->elements) {
        if (cancelled()) return false;
 -      renderCachedElement(*element);
@@ -192255,8 +194667,11 @@
      }
      if (vertical) readerChrome::drawColumnRules(renderer, *page, textBox, pitch);
      // Match foreground ordering: all text first, then the guide lines.
-@@ -2638,7 +2743,7 @@
+@@ -2636,9 +2757,10 @@
+       GfxRenderer::SyntheticBoldScope syntheticBold(renderer, key.fakeBold);
+       GfxRenderer::TextWeightScope textWeight(renderer, readerTextWeightCurve(key.textWeight),
                                                readerTextWeightSpread(key.textWeight));
++      if (!vertical) page->renderPanels(renderer, key.spec.fontId, key.left, key.top);
        for (const auto& element : page->elements) {
          if (cancelled()) return false;
 -        renderCachedElement(*element);
@@ -192264,7 +194679,7 @@
        }
        if (vertical) readerChrome::drawColumnRules(renderer, *page, textBox, pitch);
      }
-@@ -2671,6 +2776,10 @@
+@@ -2671,6 +2793,10 @@
    }
    pageCacheMissingCodepoint_[slot] = fcm ? fcm->consumeMissingChineseCodepoint() : 0;
    pageCache_[slot].state = ReaderPageCache::State::Ready;
@@ -192275,7 +194690,7 @@
    LOG_DBG("ERS", "Page cache: slot %d, page %d ready in %lums", slot, key.page, millis() - started);
    return true;
  }
-@@ -2732,7 +2841,7 @@
+@@ -2732,7 +2858,7 @@
        if (manager) manager->clearCache();
      }
    } rawFontCacheGuard;
@@ -192284,7 +194699,7 @@
    const auto key = pageCacheKey(section ? section->currentPage : -1, orientedMarginTop, orientedMarginRight,
                                  orientedMarginBottom, orientedMarginLeft);
    // Either slot may hold this page: slot 0 was built for it as a forward turn, slot 1
-@@ -2779,8 +2888,7 @@
+@@ -2779,8 +2905,7 @@
    // RickyOS: every text face (2-bit downloaded fonts too) and synthetic bold draw straight
    // into the 16-level frame, and JPEG illustrations decode into it, so anti-aliased pages
    // take the single-render path.
@@ -192294,7 +194709,7 @@
    const bool needsAnyGrayscale = grayscaleEnabled && (SETTINGS.textAntiAliasing || pageHasImages);
    const bool absoluteImageGrayscale = grayscaleEnabled && pageHasImages && !gpio.deviceIsX3() &&
                                        display.getController() == HalDisplay::Controller::UC8279 &&
-@@ -2844,7 +2952,7 @@
+@@ -2844,7 +2969,7 @@
    };
  
    unsigned long cacheBaseMs = 0;
@@ -192303,7 +194718,7 @@
    if (use16LevelText) {
      // The 16-level pass below clears the frame and renders (or copies from the cache)
      // the page, writing the B/W proxy as it goes, so a B/W render here is thrown away.
-@@ -2859,7 +2967,7 @@
+@@ -2859,7 +2984,7 @@
    {
      renderPageWithGuideLines();
    }
@@ -192312,7 +194727,7 @@
    const uint32_t missingCodepoint =
        pageCacheHit ? pageCacheMissingCodepoint_[pageCacheLiveSlot_] : fcm->consumeMissingChineseCodepoint();
  #else
-@@ -2869,7 +2977,14 @@
+@@ -2869,7 +2994,14 @@
      uint32_t expected = 0;
      pendingMissingChineseCodepoint_.compare_exchange_strong(expected, missingCodepoint, std::memory_order_relaxed);
    }
@@ -192327,7 +194742,23 @@
    const auto tBwRender = millis();
  
    if (absoluteImageGrayscale) {
-@@ -2912,7 +3027,7 @@
+@@ -2889,6 +3021,7 @@
+     // twice (more flash, more time), and the 16-level waveform is a full-screen one anyway,
+     // so ghosting is still cleared.
+   } else if (combinedGrayscaleBase) {
++    if (std::exchange(lastPageHadPanelFill_, false)) pagesUntilFullRefresh = 1;
+     ReaderUtils::displayBaseWithRefreshCycle(renderer, pagesUntilFullRefresh, manualRefreshPending);
+   } else if (pageHasImages) {
+     // Image pages use one base refresh before the grayscale pass. FAST leaves
+@@ -2903,6 +3036,7 @@
+       pagesUntilFullRefresh = 1;
+     }
+   } else {
++    if (std::exchange(lastPageHadPanelFill_, false)) pagesUntilFullRefresh = 1;
+     ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh, overlapRefresh);
+   }
+   const auto tDisplay = millis();
+@@ -2912,7 +3046,7 @@
      const auto t16Begin = millis();
      if (renderer.beginGrayscale16()) {
        const auto t16Cleared = millis();
@@ -192336,7 +194767,7 @@
        if (pageCacheHit && pageCacheIs16_[pageCacheLiveSlot_] && pageCache16_[pageCacheLiveSlot_]) {
          memcpy(renderer.grayscale16Frame(), pageCache16_[pageCacheLiveSlot_].get(), renderer.grayscale16FrameBytes());
          memcpy(renderer.getFrameBuffer(), pageCacheBase_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
-@@ -2926,22 +3041,33 @@
+@@ -2926,22 +3060,33 @@
        renderStatusBar();
        LOG_DBG("ERS", "16-level timing: before=%lums begin=%lums page=%lums status=%lums", t16Begin - t0,
                t16Cleared - t16Begin, t16Page - t16Cleared, millis() - t16Page);
@@ -192373,7 +194804,17 @@
          ttf = {};
  #endif
        }
-@@ -2961,6 +3087,10 @@
+@@ -2955,12 +3100,19 @@
+       // driven, so no flash); the page the refresh cycle marks as due cleans with GC16.
+       // (The simulator's HAL comes from an external package without this switch.)
+       const auto refresh = ReaderUtils::consumeRefreshMode(pagesUntilFullRefresh);
+-      display.setNextGray16Profile(refresh == HalDisplay::FAST_REFRESH ? 1 : 2);
++      const bool panelFill = !vertical && page->hasPanelFill();
++      const bool panelTurn = panelFill || lastPageHadPanelFill_;
++      lastPageHadPanelFill_ = panelFill;
++      display.setNextGray16Profile(refresh == HalDisplay::FAST_REFRESH && !panelTurn ? 1 : 2);
+ #endif
+       const auto tCommit = millis();
        if (renderer.commitGrayscale16()) {
          const auto tEnd = millis();
          LOG_DBG("ERS", "Page render: 16-level text total=%lums", tEnd - t0);
@@ -192384,7 +194825,7 @@
  #if RICKYOS_PAINT_PROFILE
          LOG_INF("PERF", "reader commit=%lums total=%lums", tEnd - tCommit, tEnd - t0);
  #endif
-@@ -3137,7 +3267,7 @@
+@@ -3137,7 +3289,7 @@
        }
        const auto tBwStore = millis();
  
@@ -192393,7 +194834,7 @@
        if (pageCacheHit) {
          // Both planes were rendered at idle; putting them in place is one copy
          // each instead of a full page render each.
-@@ -3164,7 +3294,7 @@
+@@ -3164,7 +3316,7 @@
          return;
        }
  
@@ -192402,7 +194843,7 @@
        if (pageCacheHit) {
          memcpy(renderer.getFrameBuffer(), pageCacheMsb_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
          renderer.copyGrayscaleMsbBuffers();
-@@ -3212,9 +3342,12 @@
+@@ -3212,9 +3364,12 @@
  }
  
  void EpubReaderActivity::renderStatusBar() const {
@@ -192415,7 +194856,7 @@
      readerChrome::PageInfo info;
      info.bookTitle = epub ? epub->getTitle().c_str() : nullptr;
      // A chapter the table of contents names, not currentChapterTitle()'s "unnamed".
-@@ -3225,11 +3358,18 @@
+@@ -3225,11 +3380,18 @@
      }
      info.chapterTitle = chapter.c_str();
      info.pageInChapter = currentPage;
@@ -192436,7 +194877,7 @@
    const float pageCount = section ? section->estimatedTotalPages() : 1;
    const float sectionChapterProg = (pageCount > 0) ? (static_cast<float>(currentPage) / pageCount) : 0;
    const float bookProgress = epub ? (epub->calculateProgress(currentSpineIndex, sectionChapterProg) * 100) : 0;
-@@ -3266,8 +3406,12 @@
+@@ -3266,8 +3428,12 @@
        auto chapter = renderer.truncatedText(RickyDesignUi::BODY, title.c_str(), column);
        title = book + " · " + chapter;
      }
@@ -192451,7 +194892,31 @@
    GUI.drawStatusBar(renderer, bookProgress, currentPage, pageCount, title, 0, textYOffset, true, currentPageBookmarked,
 --- a/src/activities/reader/EpubReaderActivity.h
 +++ b/src/activities/reader/EpubReaderActivity.h
-@@ -55,7 +55,9 @@
+@@ -15,6 +15,7 @@
+ #include "EpubReaderMenuActivity.h"
+ #include "ProgressMapper.h"
+ #include "ReaderActivity.h"
++#include "BookFontSet.h"
+ #include "ReaderFontPreview.h"
+ #include "ReaderPageCache.h"
+ #include "ReaderToolbarUi.h"
+@@ -22,6 +23,7 @@
+ #include "components/OptionPopup.h"
+ 
+ class EpubReaderActivity final : public ReaderActivity {
++  std::unique_ptr<BookFontSet> bookFonts_;
+   std::shared_ptr<Epub> epub;
+   std::unique_ptr<Section> section = nullptr;
+   int currentSpineIndex = 0;
+@@ -29,6 +31,7 @@
+   std::optional<uint16_t> pendingPageJump;
+   std::string pendingAnchor;
+   int cachedSpineIndex = 0;
++  bool lastPageHadPanelFill_ = false;  // the shown page has a gray CSS panel (clean the turn off it)
+   int cachedChapterTotalPageCount = 0;
+   std::optional<uint32_t> cachedVisibleTextOffset;
+   std::optional<uint32_t> currentPageVisibleOffset;
+@@ -55,7 +58,9 @@
    int idlePrewarmPage = -1;
    unsigned long lastRenderCompleteMs = 0;
  
@@ -192462,7 +194927,7 @@
    // Two slots of four reusable PSRAM frames each (~812 KiB total); too large for
    // the render task's stack. The activity owns them and releases them in onExit().
    //
-@@ -84,13 +86,15 @@
+@@ -84,13 +89,15 @@
    uint32_t pageCacheMissingCodepoint_[kPageCacheSlots] = {};
  
    bool pageCacheEligible() const;
@@ -192555,16 +195020,76 @@
  
    void runSync();
    void launchWifiSelection();
+--- a/src/activities/settings/DictionaryDownloadActivity.cpp
++++ b/src/activities/settings/DictionaryDownloadActivity.cpp
+@@ -21,8 +21,8 @@
+ #include "components/SubpageLayout.h"
+ #include "components/UITheme.h"
+ #include "fontIds.h"
+-#include "network/CrossMuxEndpoints.h"
+ #include "network/HttpDownloader.h"
++#include "network/RickyReaderResources.h"
+ 
+ namespace fui = freeink::ui;
+ 
+@@ -123,16 +123,20 @@
+ bool DictionaryDownloadActivity::fetchAndParseManifest() {
+   items_.clear();
+   downloadingIndex_ = -1;
++  if (!RickyReaderResources::ENABLED) {
++    errorMessage_ = StrId::STR_DOWNLOAD_FAILED;
++    return false;
++  }
+   char manifestUrl[192];
+   const int manifestUrlLength =
+-      snprintf(manifestUrl, sizeof(manifestUrl), CrossMuxEndpoints::DICTIONARY_MANIFEST_FORMAT,
+-               CrossMuxEndpoints::host(), LANGUAGE_CODES[static_cast<uint8_t>(I18N.getLanguage())]);
++      snprintf(manifestUrl, sizeof(manifestUrl), RickyReaderResources::DICTIONARY_MANIFEST_FORMAT,
++               static_cast<unsigned>(DictionaryResource::MANIFEST_VERSION));
+   if (manifestUrlLength < 0 || static_cast<size_t>(manifestUrlLength) >= sizeof(manifestUrl)) {
+     LOG_ERR("DICTDL", "Manifest URL exceeds %zu bytes", sizeof(manifestUrl));
+     return false;
+   }
+   LOG_DBG("DICTDL", "Fetching manifest: %s", manifestUrl);
+-  if (HttpDownloader::downloadToFile(manifestUrl, MANIFEST_TMP, nullptr) != HttpDownloader::OK) {
++  if (HttpDownloader::downloadIndex(manifestUrl, MANIFEST_TMP) != HttpDownloader::OK) {
+     LOG_ERR("DICTDL", "Failed to fetch dictionary manifest");
+     Storage.remove(MANIFEST_TMP);
+     errorMessage_ = StrId::STR_DOWNLOAD_FAILED;
+@@ -161,7 +165,8 @@
+ 
+   baseUrl_ = doc["baseUrl"] | "";
+   JsonArray dictionaries = doc["dictionaries"].as<JsonArray>();
+-  if (baseUrl_.empty() || dictionaries.isNull() || dictionaries.size() > DictionaryResource::MAX_ITEMS) {
++  if (baseUrl_.empty() || baseUrl_.size() > 256 || !RickyReaderResources::isOwnedUrl(baseUrl_.c_str()) ||
++      dictionaries.isNull() || dictionaries.size() > DictionaryResource::MAX_ITEMS) {
+     errorMessage_ = StrId::STR_DICTIONARY_MANIFEST_INVALID;
+     return false;
+   }
+@@ -173,7 +178,8 @@
+   for (JsonObject object : dictionaries) {
+     ManifestItem item;
+     item.id = object["id"] | "";
+-    item.name = object["name"] | "";
++    const char* localizedName = I18N.getLanguage() == Language::ZH_CN ? (object["nameZh"] | "") : "";
++    item.name = localizedName[0] ? localizedName : (object["name"] | "");
+     item.description = object["description"] | "";
+     item.revision = object["revision"] | 0;
+     const char* sourceUrl = object["sourceUrl"] | "";
 --- a/src/activities/settings/FontDownloadActivity.cpp
 +++ b/src/activities/settings/FontDownloadActivity.cpp
-@@ -29,6 +29,7 @@
+@@ -27,9 +27,10 @@
+ #include "components/SubpageLayout.h"
+ #include "components/UITheme.h"
  #include "fontIds.h"
- #include "network/CrossMuxEndpoints.h"
+-#include "network/CrossMuxEndpoints.h"
  #include "network/HttpDownloader.h"
 +#include "network/FontDownloadSource.h"
  #include "network/RickyFontCatalog.h"
++#include "network/RickyReaderResources.h"
  
  namespace fui = freeink::ui;
+ 
 @@ -46,7 +47,7 @@
  constexpr int kFileAttempts = 3;
  constexpr unsigned long kRetryDelayMs = 2000;
@@ -192606,7 +195131,60 @@
  #if defined(CONFIG_IDF_TARGET_ESP32C3)
    if (!readingStatsReleased_) {
      RenderLock lock(*this);
-@@ -763,23 +764,47 @@
+@@ -359,8 +360,13 @@
+     return false;
+   }
+   char manifestUrl[160];
++  if (purpose_ == Purpose::ReaderAutoInstall && !RickyReaderResources::ENABLED) {
++    LOG_ERR("FONT", "Reader resource service is disabled");
++    errorMessage_ = tr(STR_DOWNLOAD_FAILED);
++    return false;
++  }
+   const int manifestUrlLength =
+-      snprintf(manifestUrl, sizeof(manifestUrl), CrossMuxEndpoints::FONT_MANIFEST_FORMAT, CrossMuxEndpoints::host(),
++      snprintf(manifestUrl, sizeof(manifestUrl), RickyReaderResources::FONT_MANIFEST_FORMAT,
+                FONT_MANIFEST_URL_STRINGIFY(FONTS_MANIFEST_VERSION), FONT_MANIFEST_URL_STRINGIFY(CPFONT_VERSION));
+   if (manifestUrlLength < 0 || static_cast<size_t>(manifestUrlLength) >= sizeof(manifestUrl)) {
+     LOG_ERR("FONT", "Manifest URL exceeds %zu bytes", sizeof(manifestUrl));
+@@ -368,7 +374,7 @@
+     return false;
+   }
+   const char* manifestUrls[RickyFontCatalog::MANIFEST_COUNT] = {manifestUrl};
+-  // RickyOS lists its own catalog; the reader's automatic NotoSansSC install stays on CrossMux.
++  // Both paths are owned: ordinary families and ABI-versioned missing-glyph fonts.
+   if (purpose_ != Purpose::ReaderAutoInstall) {
+     for (int attempt = 0; attempt < RickyFontCatalog::MANIFEST_COUNT; ++attempt)
+       manifestUrls[attempt] = RickyFontCatalog::manifestFor(attempt);
+@@ -376,7 +382,7 @@
+   NetworkStartup::logMemory("font manifest request");
+   auto result = HttpDownloader::HTTP_ERROR;
+   for (const char* url : manifestUrls) {
+-    if (url == nullptr) continue;  // a route that is off (COS unconfigured), or past CrossMux's one
++    if (url == nullptr) continue;  // a route that is off or beyond the automatic installer's single route
+     result = HttpDownloader::downloadIndex(url, MANIFEST_TMP);
+     if (result == HttpDownloader::OK) break;
+     LOG_ERR("FONT", "Failed to fetch manifest from %s", url);
+@@ -427,7 +433,8 @@
+ 
+   baseUrl_ = doc["baseUrl"] | "";
+   if (baseUrl_.empty() || baseUrl_.size() > kMaxBaseUrlBytes || baseUrl_.rfind("https://", 0) != 0 ||
+-      baseUrl_.back() != '/') {
++      baseUrl_.back() != '/' ||
++      (purpose_ == Purpose::ReaderAutoInstall && !RickyReaderResources::isOwnedUrl(baseUrl_.c_str()))) {
+     LOG_ERR("FONT", "Manifest has invalid baseUrl");
+     errorMessage_ = "Invalid font manifest";
+     return false;
+@@ -436,7 +443,8 @@
+     const char* url = mirror.as<const char*>();
+     const size_t length = url ? strlen(url) : 0;
+     if (length == 0 || length > kMaxBaseUrlBytes || strncmp(url, "https://", 8) != 0 || url[length - 1] != '/' ||
+-        mirrorUrls_.size() >= kMaxMirrors) {
++        mirrorUrls_.size() >= kMaxMirrors ||
++        (purpose_ == Purpose::ReaderAutoInstall && !RickyReaderResources::isOwnedUrl(url))) {
+       LOG_ERR("FONT", "Ignoring invalid manifest mirror");
+       continue;
+     }
+@@ -763,23 +771,47 @@
  }
  
  void FontDownloadActivity::resetDownloadProgress(const size_t total) {
@@ -192661,7 +195239,7 @@
  }
  
  FontDownloadActivity::DownloadResult FontDownloadActivity::downloadFile(const ManifestFamily& family,
-@@ -806,7 +831,7 @@
+@@ -806,7 +838,7 @@
    }
  
    NetworkStartup::prepare(renderer);
@@ -192670,7 +195248,7 @@
      mappedInput.update();
      if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
        cancelRequested_ = true;
-@@ -817,6 +842,8 @@
+@@ -817,6 +849,8 @@
        goHomeRequested_ = true;
      }
      UiAppHost::routeTouch(mappedInput);
@@ -192679,7 +195257,7 @@
      updateDownloadProgress(fileStartProgress + std::min(downloaded, fileSize));
    };
    // A refused or dropped connection is retried, moving to the next host that carries
-@@ -833,9 +860,17 @@
+@@ -833,9 +867,17 @@
        delay(kRetryDelayMs);
      }
      const unsigned long started = millis();
@@ -192699,7 +195277,7 @@
    }
  
    if (result == HttpDownloader::ABORTED) {
-@@ -1411,6 +1446,11 @@
+@@ -1411,6 +1453,11 @@
            Rect{metrics.contentSidePadding, barY, pageWidth - metrics.contentSidePadding * 2, metrics.progressBarHeight},
            static_cast<int>(progress * 100), 100);
  
@@ -192711,7 +195289,7 @@
        const auto labels = mappedInput.mapLabels(tr(STR_CANCEL), "", "", "");
        GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
      } else if (state_ == COMPLETE) {
-@@ -1482,12 +1522,19 @@
+@@ -1482,12 +1529,19 @@
      const Rect content = SubpageLayout::contentRect(safeArea, metrics);
      const Rect textBounds = SubpageLayout::insetHorizontal(content, metrics.contentSidePadding);
      const int sectionGap = SubpageLayout::sectionGap(metrics);
@@ -193680,7 +196258,45 @@
  
  #include "CrossPointSettings.h"
  #include "activities/apps/standby/KeepPageFace.h"
-@@ -114,7 +115,26 @@
+@@ -22,6 +23,9 @@
+ constexpr const char* SLEEP_IMAGE_PATH = "/sleep.bmp";
+ constexpr const char* SLEEP_IMAGE_PART_PATH = "/sleep.bmp.part";
+ constexpr const char* SLEEP_IMAGE_BACKUP_PATH = "/sleep.bmp.bak";
++constexpr const char* POWER_OFF_IMAGE_PATH = "/poweroff.bmp";
++constexpr const char* POWER_OFF_IMAGE_PART_PATH = "/poweroff.bmp.part";
++constexpr const char* POWER_OFF_IMAGE_BACKUP_PATH = "/poweroff.bmp.bak";
+ // Converted previews are kept: a PNG takes seconds to convert, and the same pictures
+ // are opened again and again while choosing a wallpaper. Bounded by kPreviewCacheMax.
+ constexpr const char* PREVIEW_CACHE_DIR = "/.crosspoint/previews";
+@@ -61,7 +65,10 @@
+   for (const auto& entry : names) Storage.remove((std::string(PREVIEW_CACHE_DIR) + "/" + entry).c_str());
+ }
+ 
+-constexpr StrId sleepCoverLabel(const bool sticker = false) {
++constexpr StrId sleepCoverLabel(
++    const bool sticker = false,
++    const ImageViewerActivity::WallpaperTarget target = ImageViewerActivity::WallpaperTarget::Standby) {
++  if (target == ImageViewerActivity::WallpaperTarget::PowerOff) return StrId::STR_RICKY_SET_POWER_OFF_WALLPAPER;
+   return sticker ? StrId::STR_RICKY_SET_TRANSPARENT : StrId::STR_RICKY_SET_WALLPAPER;
+ }
+ 
+@@ -74,11 +81,13 @@
+ }  // namespace
+ 
+ ImageViewerActivity::ImageViewerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string path,
+-                                         const bool wallpaperPicker, const bool stickerPicker)
++                                         const bool wallpaperPicker, const bool stickerPicker,
++                                         const WallpaperTarget wallpaperTarget)
+     : Activity("ImageViewer", renderer, mappedInput),
+       filePath(std::move(path)),
+       wallpaperPicker(wallpaperPicker),
+-      stickerPicker(stickerPicker) {}
++      stickerPicker(stickerPicker),
++      wallpaperTarget(wallpaperTarget) {}
+ 
+ void ImageViewerActivity::loadSiblingImages() {
+   siblingImages.clear();
+@@ -114,7 +123,26 @@
    }
  }
  
@@ -193708,7 +196324,7 @@
  
  bool ImageViewerActivity::preparePreview() {
    previewPath = previewCachePath(filePath);
-@@ -161,7 +181,8 @@
+@@ -161,7 +189,8 @@
    // commit below clears what was underneath.
    Rect popupRect = GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
    GUI.fillPopupProgress(renderer, popupRect, 20);  // Initial 20% progress
@@ -193718,7 +196334,156 @@
    const unsigned long tPrep = millis();
    const bool prepared = !needsPreview || preparePreview();
    LOG_DBG("IMGV", "timing: preview %lu ms", millis() - tPrep);
-@@ -412,7 +433,7 @@
+@@ -207,7 +236,7 @@
+       bool hasNext = (siblingImages.size() > 1 && currentImageIndex != -1 &&
+                       currentImageIndex < static_cast<int>(siblingImages.size()) - 1);
+ 
+-      const auto labels = mappedInput.mapLabels(tr(STR_BACK), I18N.get(sleepCoverLabel(stickerPicker)),
++      const auto labels = mappedInput.mapLabels(tr(STR_BACK), I18N.get(sleepCoverLabel(stickerPicker, wallpaperTarget)),
+                                                 (hasPrevious ? "<" : ""), (hasNext ? ">" : ""));
+ 
+       GUI.fillPopupProgress(renderer, popupRect, 50);
+@@ -225,7 +254,8 @@
+       // Draw UI hints on the base layer
+       GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+       if (mappedInput.hasTouch()) {
+-        GUI.drawActionButton(renderer, sleepCoverActionRect(renderer), I18N.get(sleepCoverLabel(stickerPicker)));
++        GUI.drawActionButton(renderer, sleepCoverActionRect(renderer),
++                             I18N.get(sleepCoverLabel(stickerPicker, wallpaperTarget)));
+       }
+       // Native 16-gray, as Standby and the sleep screen draw it. The overlay-mask path
+       // also painted the Set button into its gray planes, turning it into a dark bar
+@@ -242,7 +272,7 @@
+ #endif
+         if (shown && mappedInput.hasTouch()) {
+           const Rect action = sleepCoverActionRect(renderer);
+-          GUI.drawActionButton(renderer, action, I18N.get(sleepCoverLabel(stickerPicker)));
++          GUI.drawActionButton(renderer, action, I18N.get(sleepCoverLabel(stickerPicker, wallpaperTarget)));
+           renderer.copyBwToGrayscale16(action.x, action.y, action.width, action.height);
+         }
+         shown = shown && renderer.commitGrayscale16();
+@@ -275,7 +305,8 @@
+           }
+           GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+           if (mappedInput.hasTouch())
+-            GUI.drawActionButton(renderer, sleepCoverActionRect(renderer), I18N.get(sleepCoverLabel(stickerPicker)));
++            GUI.drawActionButton(renderer, sleepCoverActionRect(renderer),
++                                 I18N.get(sleepCoverLabel(stickerPicker, wallpaperTarget)));
+           if (mode == GfxRenderer::GRAYSCALE_LSB) {
+             renderer.copyGrayscaleLsbBuffers();
+           } else {
+@@ -332,21 +363,29 @@
+ 
+ bool ImageViewerActivity::doSetSleepCover(const char* sourcePath, const bool transparent) {
+   if (!imageReady) return false;
++  const bool powerOff = wallpaperTarget == WallpaperTarget::PowerOff;
++  if (powerOff && transparent) return false;
++  const char* destination = powerOff ? POWER_OFF_IMAGE_PATH : SLEEP_IMAGE_PATH;
++  const char* part = powerOff ? POWER_OFF_IMAGE_PART_PATH : SLEEP_IMAGE_PART_PATH;
++  const char* backup = powerOff ? POWER_OFF_IMAGE_BACKUP_PATH : SLEEP_IMAGE_BACKUP_PATH;
+   GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
+ 
+   const char* preparedPath = sourcePath;
+   bool success = true;
+-  if (transparent) {
++  // Recover an interrupted rename before touching the last complete picture.
++  if (Storage.exists(backup)) {
++    success = Storage.exists(destination) ? Storage.remove(backup) : Storage.rename(backup, destination);
++  }
++  if (success && transparent) {
+     GfxRenderer::FrameBufferLoan loan(renderer);
+     success = PngToBmpConverter::pngFileToTransparentBmpFile(sourcePath, TRANSPARENT_PREVIEW_PATH, true);
+     if (success) preparedPath = TRANSPARENT_PREVIEW_PATH;
+   }
+ 
+-  Storage.remove(SLEEP_IMAGE_PART_PATH);
++  success = success && (!Storage.exists(part) || Storage.remove(part));
+   if (success) {
+     HalFile inFile, outFile;
+-    if (Storage.openFileForRead("IMAGE", preparedPath, inFile) &&
+-        Storage.openFileForWrite("IMAGE", SLEEP_IMAGE_PART_PATH, outFile)) {
++    if (Storage.openFileForRead("IMAGE", preparedPath, inFile) && Storage.openFileForWrite("IMAGE", part, outFile)) {
+       const uint64_t expected = inFile.fileSize64();
+       uint64_t copied = 0;
+       // A full-screen 16-gray BMP is ~400 KB: 128-byte chunks took over ten seconds.
+@@ -360,19 +399,17 @@
+         copied += bytesRead;
+       }
+       outFile.flush();
+-      success = success && copied == expected;
++      success = success && bytesRead == 0 && expected > 0 && copied == expected && outFile.fileSize64() == expected;
+     } else {
+       success = false;
+     }
+   }
+ 
+   if (success) {
+-    Storage.remove(SLEEP_IMAGE_BACKUP_PATH);
+-    const bool hadPrevious = Storage.exists(SLEEP_IMAGE_PATH);
+-    if ((hadPrevious && !Storage.rename(SLEEP_IMAGE_PATH, SLEEP_IMAGE_BACKUP_PATH)) ||
+-        !Storage.rename(SLEEP_IMAGE_PART_PATH, SLEEP_IMAGE_PATH)) {
+-      if (hadPrevious && !Storage.exists(SLEEP_IMAGE_PATH)) {
+-        Storage.rename(SLEEP_IMAGE_BACKUP_PATH, SLEEP_IMAGE_PATH);
++    const bool hadPrevious = Storage.exists(destination);
++    if ((hadPrevious && !Storage.rename(destination, backup)) || !Storage.rename(part, destination)) {
++      if (hadPrevious && !Storage.exists(destination)) {
++        Storage.rename(backup, destination);
+       }
+       success = false;
+     }
+@@ -380,25 +417,30 @@
+ 
+   if (success) {
+     const uint8_t previousMode = SETTINGS.sleepScreen;
+-    SETTINGS.sleepScreen = transparent ? CrossPointSettings::SLEEP_SCREEN_MODE::TRANSPARENT
+-                                       : CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM;
+-    // The picture just set is what Standby shows.
+     const uint8_t previousFace = SETTINGS.rickyStandbyFace;
+-    if (!transparent) SETTINGS.rickyStandbyFace = CrossPointSettings::RICKY_STANDBY_PICTURE;
++    const uint8_t previousPowerOff = SETTINGS.rickyPowerOffScreen;
++    if (powerOff) {
++      SETTINGS.rickyPowerOffScreen = CrossPointSettings::RICKY_POWER_OFF_CUSTOM;
++    } else {
++      SETTINGS.sleepScreen = transparent ? CrossPointSettings::SLEEP_SCREEN_MODE::TRANSPARENT
++                                         : CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM;
++      if (!transparent) SETTINGS.rickyStandbyFace = CrossPointSettings::RICKY_STANDBY_PICTURE;
++    }
+     if (!SETTINGS.saveToFile()) {
+       SETTINGS.sleepScreen = previousMode;
+       SETTINGS.rickyStandbyFace = previousFace;
++      SETTINGS.rickyPowerOffScreen = previousPowerOff;
+       (void)SETTINGS.saveToFile();
+-      Storage.remove(SLEEP_IMAGE_PATH);
+-      if (Storage.exists(SLEEP_IMAGE_BACKUP_PATH)) {
+-        Storage.rename(SLEEP_IMAGE_BACKUP_PATH, SLEEP_IMAGE_PATH);
++      Storage.remove(destination);
++      if (Storage.exists(backup)) {
++        Storage.rename(backup, destination);
+       }
+       success = false;
+     }
+   }
+ 
+-  Storage.remove(SLEEP_IMAGE_PART_PATH);
+-  if (success) Storage.remove(SLEEP_IMAGE_BACKUP_PATH);
++  Storage.remove(part);
++  if (success) Storage.remove(backup);
+   GUI.drawPopup(renderer, success ? tr(STR_DONE) : tr(STR_FAILED_LOWER));
+   delay(1000);
+   return success;
+@@ -406,13 +448,19 @@
+ 
+ void ImageViewerActivity::showSleepCoverOptions() {
+   if (!imageReady) return;
++  if (wallpaperTarget == WallpaperTarget::PowerOff) {
++    // Power-off is a complete still image, never the retained-page sticker mode.
++    const char* source = isPng() || isJpeg() ? previewPath.c_str() : filePath.c_str();
++    if (doSetSleepCover(source, false) && wallpaperPicker) finish();
++    return;
++  }
+   if (stickerPicker) {
+     if (doSetSticker()) finish();
+     return;
    }
    if (!isPng()) {
      // Picking a wallpaper ends here: return to the page that asked, which shows the new picture.
@@ -193729,18 +196494,30 @@
      return;
 --- a/src/activities/util/ImageViewerActivity.h
 +++ b/src/activities/util/ImageViewerActivity.h
-@@ -12,6 +12,10 @@
-   ImageViewerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string filePath,
-                       bool wallpaperPicker = false, bool stickerPicker = false);
+@@ -1,5 +1,6 @@
+ #pragma once
  
++#include <cstdint>
+ #include <string>
+ #include <vector>
+ 
+@@ -9,8 +10,14 @@
+ 
+ class ImageViewerActivity final : public Activity {
+  public:
++  enum class WallpaperTarget : uint8_t { Standby, PowerOff };
+   ImageViewerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string filePath,
+-                      bool wallpaperPicker = false, bool stickerPicker = false);
++                      bool wallpaperPicker = false, bool stickerPicker = false,
++                      WallpaperTarget wallpaperTarget = WallpaperTarget::Standby);
++
 +  // What the file holds, read from its first bytes: saved pictures often carry the wrong
 +  // extension (a JPEG named .png), and a decoder chosen by name then rejects them.
 +  enum class ImageKind : uint8_t { Bmp, Png, Jpeg };
-+
+ 
    void onEnter() override;
    void onExit() override;
-   void loop() override;
-@@ -20,6 +24,7 @@
+@@ -20,6 +27,7 @@
   private:
    void loadSiblingImages();
    bool isPng() const;
@@ -193748,14 +196525,17 @@
    bool preparePreview();
    bool doSetSleepCover(const char* sourcePath, bool transparent);
    bool doSetSticker();
-@@ -27,6 +32,7 @@
+@@ -27,8 +35,10 @@
  
    std::string filePath;
    std::string previewPath;  // the converted BMP shown for a PNG/JPEG
 +  ImageKind imageKind = ImageKind::Bmp;
    bool wallpaperPicker = false;
    bool stickerPicker = false;
++  WallpaperTarget wallpaperTarget = WallpaperTarget::Standby;
    bool imageReady = false;
+   std::vector<std::string> siblingImages;
+   int currentImageIndex = -1;
 --- a/src/components/OptionPopup.h
 +++ b/src/components/OptionPopup.h
 @@ -214,7 +214,7 @@
@@ -195151,3 +197931,454 @@
  // Called once after loading recents. An unreadable existing store is never an empty library.
  void prepare(bool recentsLoaded);
  // Called before routing home, after onboarding. At most one installation attempt per boot.
+--- a/test/chapter_html_slim_parser/CMakeLists.txt
++++ b/test/chapter_html_slim_parser/CMakeLists.txt
+@@ -4,6 +4,7 @@
+   ${REPO_ROOT}/lib/Epub/Epub/parsers/ChapterHtmlSlimParser.cpp
+   ${REPO_ROOT}/lib/Epub/Epub/css/CssParser.cpp
+   ${REPO_ROOT}/lib/Epub/Epub/ParsedText.cpp
++  ${REPO_ROOT}/lib/Epub/Epub/BookFonts.cpp
+   ${REPO_ROOT}/lib/Epub/Epub/Section.cpp
+   ${REPO_ROOT}/lib/Epub/Epub/WordStore.cpp
+   ${REPO_ROOT}/lib/Epub/Epub/converters/ImageDimsProbe.cpp
+@@ -15,7 +16,15 @@
+ # production declaration instead of restating it, so bumping SECTION_FILE_VERSION
+ # updates the test automatically rather than leaving a stale magic number.
+ file(READ ${REPO_ROOT}/lib/Epub/Epub/Section.cpp SECTION_CPP_SOURCE)
+-string(REGEX MATCH "constexpr uint8_t SECTION_FILE_VERSION = ([0-9]+);" _section_version_match "${SECTION_CPP_SOURCE}")
++string(REGEX MATCHALL "constexpr uint8_t SECTION_FILE_VERSION = [0-9]+" _section_versions "${SECTION_CPP_SOURCE}")
++if(RICKYOS_TEST_DEVICE STREQUAL "plus")
++  list(GET _section_versions 2 _section_declaration)
++elseif(RICKYOS_TEST_DEVICE STREQUAL "readpico")
++  list(GET _section_versions 1 _section_declaration)
++else()
++  list(GET _section_versions 0 _section_declaration)
++endif()
++string(REGEX MATCH "= ([0-9]+)$" _section_version_match "${_section_declaration}")
+ if(NOT CMAKE_MATCH_1)
+   message(FATAL_ERROR "Could not read SECTION_FILE_VERSION from lib/Epub/Epub/Section.cpp")
+ endif()
+@@ -58,6 +67,7 @@
+   ${REPO_ROOT}/lib/Epub/Epub/parsers/ChapterHtmlSlimParser.cpp
+   ${REPO_ROOT}/lib/Epub/Epub/css/CssParser.cpp
+   ${REPO_ROOT}/lib/Epub/Epub/ParsedText.cpp
++  ${REPO_ROOT}/lib/Epub/Epub/BookFonts.cpp
+   ${REPO_ROOT}/lib/Epub/Epub/WordStore.cpp
+   ${REPO_ROOT}/lib/Epub/Epub/converters/ImageDimsProbe.cpp
+   ${REPO_ROOT}/lib/Utf8/Utf8.cpp
+--- a/test/chapter_html_slim_parser/ChapterHtmlSlimParserTest.cpp
++++ b/test/chapter_html_slim_parser/ChapterHtmlSlimParserTest.cpp
+@@ -2,6 +2,9 @@
+ #include <Epub/Page.h>
+ #include <GfxRenderer.h>
+ #include <gtest/gtest.h>
++
++#include "Epub/BookFonts.h"
++#include "Epub/WordLook.h"
+ #include <unistd.h>
+ 
+ #include <filesystem>
+@@ -324,6 +327,41 @@
+   ASSERT_EQ(parser.currentTextBlock->wordLinkIds.size(), 1u);
+   EXPECT_EQ(parser.currentTextBlock->wordLinkIds.front(), linkId);
+   EXPECT_TRUE(parser.currentTextBlock->linkTargetMatches(linkId, expectedHref));
++}
++
++namespace {
++// Two book faces by family name; widths stay the reader font's.
++class FakeBookFonts final : public bookfonts::Resolver {
++ public:
++  uint8_t faceForFamily(const std::string_view candidates) override {
++    return candidates == "kk" ? 1 : candidates == "mm" ? 2 : 0;
++  }
++  int fontIdFor(uint8_t, const int baseFontId, uint16_t) override { return baseFontId; }
++};
++}  // namespace
++
++TEST_F(ChapterHtmlSlimParserTest, InlineFaceAndToneFollowTheirElements) {
++  FakeBookFonts fonts;
++  bookfonts::setActive(&fonts);
++  // <span 正文><span 小标题>林：</span>联邦</span>, as 间客 nests p.gt > span.yzxs (an inline
++  // outer element keeps this direct drive inside the current paragraph).
++  const XML_Char* paragraph[] = {"style", "font-family: mm; color: #696969", nullptr};
++  const XML_Char* span[] = {"style", "font-family: kk; color: #8B4513", nullptr};
++  ChapterHtmlSlimParser::startElement(&parser, "span", paragraph);
++  ChapterHtmlSlimParser::startElement(&parser, "span", span);
++  ChapterHtmlSlimParser::characterData(&parser, "林：", strlen("林："));
++  ChapterHtmlSlimParser::endElement(&parser, "span");
++  ChapterHtmlSlimParser::characterData(&parser, "联邦", strlen("联邦"));
++  parser.flushPartWordBuffer();
++  bookfonts::setActive(nullptr);
++
++  const auto& looks = parser.currentTextBlock->wordLooks;
++  ASSERT_GE(looks.size(), 2u);
++  // The span's words: face kk, saddle brown is dark enough to stay black.
++  EXPECT_EQ(looks.front(), wordlook::make(1, 0));
++  // After the span closes: the paragraph's face mm and its gray (#696969 -> ink 3).
++  EXPECT_EQ(looks.back(), wordlook::make(2, wordlook::inkForLuma(0x69)));
++  EXPECT_EQ(wordlook::ink(looks.back()), 3);
+ }
+ 
+ INSTANTIATE_TEST_SUITE_P(CssVerticalAlign, ChapterHtmlSlimParserTest,
+@@ -596,13 +634,25 @@
+   ASSERT_EQ(static_cast<uint8_t>(bytes[spacingOffset + 1]), 100);
+   ASSERT_EQ(static_cast<uint8_t>(bytes[spacingOffset + 2]), 0);  // verticalText (v79), horizontal here
+   bytes.erase(spacingOffset, 3);
++#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
++  // Both boards serialize imageOutset before bookFontsKey; zero in this fixture.
++  ASSERT_EQ(static_cast<uint8_t>(bytes[spacingOffset]), 0);
++  ASSERT_EQ(static_cast<uint8_t>(bytes[spacingOffset + 1]), 0);
++  bytes.erase(spacingOffset, 2);
++  constexpr uint32_t erasedHeaderBytes = 10;
++#else
++  constexpr uint32_t erasedHeaderBytes = 8;
++#endif
++  // bookFontsKey (v96+): zero without book fonts; not part of the historical layout either.
++  for (size_t i = 0; i < 4; ++i) ASSERT_EQ(static_cast<uint8_t>(bytes[spacingOffset + i]), 0);
++  bytes.erase(spacingOffset, 4);
+   const auto readOffset = [&bytes](size_t position) {
+     uint32_t value;
+     std::memcpy(&value, bytes.data() + position, sizeof(value));
+     return value;
+   };
+-  const auto adjustOffset = [&bytes, &readOffset](size_t position) {
+-    const uint32_t value = readOffset(position) - 4;
++  const auto adjustOffset = [&bytes, &readOffset, erasedHeaderBytes](size_t position) {
++    const uint32_t value = readOffset(position) - erasedHeaderBytes;
+     std::memcpy(bytes.data() + position, &value, sizeof(value));
+   };
+   // pageCount follows spacing; the next five fields address tables in the file.
+@@ -737,8 +787,34 @@
+     parser.currentTextBlock->addWord("word", EpdFontFamily::REGULAR);
+     parser.makePages();
+     ASSERT_FALSE(parser.hasFailed());
+-    EXPECT_EQ(parser.currentPageNextY, 16 + 10 + gaps[level]);
+-  }
++    // The bottom margin waits to collapse with the next block's top margin (CSS).
++    EXPECT_EQ(parser.currentPageNextY, 16 + 7 + gaps[level]);
++    EXPECT_EQ(parser.pendingMarginBottom, 3);
++  }
++}
++
++TEST_F(ChapterHtmlSlimParserTest, AdjacentParagraphMarginsCollapseToTheLarger) {
++  parser.extraParagraphSpacing = 0;
++  parser.currentPage.reset();
++  parser.currentPageNextY = 0;
++  parser.pendingMarginBottom = 0;
++  BlockStyle first;
++  first.marginTop = 4;
++  first.marginBottom = 12;
++  parser.currentTextBlock = std::make_unique<ParsedText>(0, FirstLineIndent::Auto, false, false, first);
++  parser.currentTextBlock->addWord("one", EpdFontFamily::REGULAR);
++  parser.makePages();
++  ASSERT_FALSE(parser.hasFailed());
++  ASSERT_EQ(parser.currentPageNextY, 4 + 16);
++  BlockStyle second;
++  second.marginTop = 7;
++  second.marginBottom = 0;
++  parser.currentTextBlock = std::make_unique<ParsedText>(0, FirstLineIndent::Auto, false, false, second);
++  parser.currentTextBlock->addWord("two", EpdFontFamily::REGULAR);
++  parser.makePages();
++  ASSERT_FALSE(parser.hasFailed());
++  // max(12, 7) between the two lines, not 12 + 7.
++  EXPECT_EQ(parser.currentPageNextY, 4 + 16 + 12 + 16);
+ }
+ 
+ TEST_F(SectionMemoryTest, ParagraphSpacingLevelsRoundTripWithoutCollapsingToBool) {
+@@ -769,3 +845,57 @@
+ }
+ 
+ }  // namespace
++
++TEST_F(ChapterHtmlSlimParserTest, PanelEndsWithItsElement) {
++  const std::string cssPath = "/tmp/crossmux-panel-test.css";
++  std::ofstream(cssPath) << "div.num3 { margin: 1.5em 5%; padding: 1.2em; background: rgba(153, 255, 204, 0.5); "
++                            "border: 1px solid #33cccc; border-radius: 8px; }\n";
++  HalFile source;
++  ASSERT_TRUE(Storage.openFileForRead("TEST", cssPath, source));
++  ASSERT_EQ(cssParser.loadFromStream(source), CssParser::ParseResult::Complete);
++  struct Line {
++    uint16_t box;
++    int16_t left;
++    int16_t y;
++    uint8_t padBottom;
++  };
++  std::vector<Line> lines;
++  const auto collect = [&lines](const Page& page) {
++    for (const auto& e : page.elements) {
++      if (e->getTag() != TAG_PageLine) continue;
++      const auto& style = static_cast<const PageLine&>(*e).getBlock()->getBlockStyle();
++      lines.push_back({style.box.id, style.leftInset(), e->yPos, style.box.padBottom});
++    }
++  };
++  parser.completePageFn = [&](std::unique_ptr<Page> page, uint16_t, uint16_t, uint32_t) { collect(*page); };
++  parser.blockStyleStack.assign(1, BlockStyle{});
++  const XML_Char* num3[] = {"class", "num3", nullptr};
++  const XML_Char* none[] = {nullptr};
++  const auto para = [&](const char* text) {
++    ChapterHtmlSlimParser::startElement(&parser, "p", none);
++    ChapterHtmlSlimParser::characterData(&parser, text, strlen(text));
++    ChapterHtmlSlimParser::endElement(&parser, "p");
++  };
++  para("before");
++  for (int i = 0; i < 2; ++i) {
++    ChapterHtmlSlimParser::startElement(&parser, "div", num3);
++    para("inside");
++    ChapterHtmlSlimParser::endElement(&parser, "div");
++    para("after");
++  }
++  parser.makePages();
++  if (parser.currentPage) collect(*parser.currentPage);
++  std::filesystem::remove(cssPath);
++
++  ASSERT_EQ(lines.size(), 5u);
++  EXPECT_EQ(lines[0].box, 0u);
++  EXPECT_NE(lines[1].box, 0u);
++  EXPECT_GT(lines[1].left, 0);  // margin + padding + border
++  EXPECT_EQ(lines[2].box, 0u);  // the paragraph after </div> is outside the panel
++  // ... and below the panel's lower padding and margin, not just the next line down.
++  const int lineHeight = renderer.getLineHeight(0);
++  EXPECT_GT(lines[2].y, lines[1].y + lineHeight + lines[1].padBottom);
++  EXPECT_NE(lines[3].box, 0u);
++  EXPECT_NE(lines[3].box, lines[1].box);
++  EXPECT_EQ(lines[4].box, 0u);
++}
+--- a/test/chapter_html_slim_parser/ParserLinkStubs.cpp
++++ b/test/chapter_html_slim_parser/ParserLinkStubs.cpp
+@@ -32,7 +32,7 @@
+ TextBlock::TextBlock(const std::vector<std::string>& words, const std::vector<int16_t>&,
+                      const std::vector<EpdFontFamily::Style>&, const std::vector<uint8_t>&,
+                      const std::vector<uint16_t>&, const BlockStyle& blockStyle, std::vector<std::string> rubyTexts,
+-                     std::vector<LinkSpan> linkSpans)
++                     std::vector<LinkSpan> linkSpans, const std::vector<uint32_t>&)
+     : blockStyle(blockStyle), rubyTexts(std::move(rubyTexts)), linkSpans(std::move(linkSpans)) {
+   numWords = words.size();
+   isValid = !std::exchange(invalidateNextTextBlock, false);
+--- a/test/chapter_html_slim_parser/upstream_stubs/GfxRenderer.h
++++ b/test/chapter_html_slim_parser/upstream_stubs/GfxRenderer.h
+@@ -11,6 +11,8 @@
+ enum class BidiBaseDir : signed char { AUTO = -1, LTR = 0, RTL = 1 };
+ }
+ 
++enum Color : uint8_t { Clear = 0x00, White = 0x01, LightGray = 0x05, DarkGray = 0x0A, Black = 0x10 };
++
+ class GfxRenderer {
+  public:
+   FontCacheManager fontCache;
+@@ -21,12 +23,22 @@
+     return left == 0 || left == ' ' || right == ' ' ? 0 : tracking;
+   }
+   bool isFontCacheScanning() const { return false; }
++  // Text tone for a run (book color); the fixture draws nothing, so it only has to exist.
++  class TextInkScope {
++   public:
++    TextInkScope(const GfxRenderer&, uint8_t) {}
++  };
+   // Vertical text turns runs by switching the orientation around a draw.
+   enum Orientation { Portrait, LandscapeClockwise, PortraitInverted, LandscapeCounterClockwise };
+   Orientation orientation = Portrait;
+   Orientation getOrientation() const { return orientation; }
+   void setOrientation(const Orientation o) { orientation = o; }
+   void drawLine(int, int, int, int, int, bool) const {}
++  // Parser fixtures inspect layout, not raster output. Match the panel drawing
++  // API so the real Page implementation remains linked by this test target.
++  bool isGrayscale16Active() const { return false; }
++  void fillRoundedRect(int, int, int, int, int, Color) const {}
++  void drawRoundedRect(int, int, int, int, int, int, bool) const {}
+   void drawText(int, int, int, const char*, bool, EpdFontFamily::Style,
+                 BidiUtils::BidiBaseDir = BidiUtils::BidiBaseDir::AUTO, int8_t = 0) const {}
+   int getTextWidth(int font, const char* text, EpdFontFamily::Style style,
+--- a/test/css_parser/CssParserTest.cpp
++++ b/test/css_parser/CssParserTest.cpp
+@@ -18,7 +18,7 @@
+ constexpr size_t kMaxUniqueStyles = 256;
+ constexpr size_t kCacheHeaderBytes = sizeof(uint8_t) * 2 + sizeof(uint16_t);
+ constexpr size_t kStyleEnumPrefixBytes = 5;
+-constexpr size_t kStyleLengthFieldCount = 11;
++constexpr size_t kStyleLengthFieldCount = 14;
+ constexpr size_t kStyleLengthBytes = sizeof(decltype(CssLength::value)) + sizeof(uint8_t);
+ 
+ class CssParserTest : public ::testing::Test {
+@@ -59,8 +59,10 @@
+ 
+     HalFile source;
+     EXPECT_TRUE(HalStorage::getInstance().openFileForRead("TST", sourcePath.string(), source));
+-    return parser.loadFromStream(source);
+-  }
++    return parser.loadFromStream(source, stylesheetPath);
++  }
++
++  std::string stylesheetPath;
+ 
+   fs::path directory_;
+ };
+@@ -290,3 +292,169 @@
+ }
+ 
+ }  // namespace
++
++TEST_F(CssParserTest, BookTypographySizeColorAndFamily) {
++  CssParser parser(cachePath());
++  ASSERT_EQ(loadCss(parser,
++                    "p.ss2 { font-size: 0.8em; color: #696969; font-family: \"mm\", \"kt\", serif; }\n"
++                    ".big { font-size: 150%; color: rgb(0, 0, 128); }\n"
++                    ".kw { font-size: x-large; color: Maroon; }\n"
++                    ".bad { font-size: -2em; color: transparent; }\n"),
++            CssParser::ParseResult::Complete);
++  const CssStyle ss2 = parser.resolveStyle("p", "ss2");
++  ASSERT_TRUE(ss2.hasFontSize());
++  EXPECT_FLOAT_EQ(ss2.fontSize.value, 0.8f);
++  EXPECT_EQ(ss2.fontSize.unit, CssUnit::Em);
++  ASSERT_TRUE(ss2.hasColor());
++  EXPECT_EQ(ss2.colorLuma, 105);  // #696969
++  ASSERT_TRUE(ss2.hasFontFamily());
++  EXPECT_EQ(parser.familyAt(ss2.fontFamily), "\"mm\", \"kt\", serif");
++
++  const CssStyle big = parser.resolveStyle("div", "big");
++  EXPECT_EQ(big.fontSize.unit, CssUnit::Percent);
++  EXPECT_FLOAT_EQ(big.fontSize.value, 150.0f);
++  EXPECT_EQ(big.colorLuma, 15);  // navy: dark
++  const CssStyle kw = parser.resolveStyle("span", "kw");
++  EXPECT_FLOAT_EQ(kw.fontSize.value, 1.5f);
++  EXPECT_EQ(kw.fontSize.unit, CssUnit::Em);
++  EXPECT_EQ(kw.colorLuma, 38);  // maroon
++  const CssStyle bad = parser.resolveStyle("span", "bad");
++  EXPECT_FALSE(bad.hasFontSize());
++  EXPECT_FALSE(bad.hasColor());
++
++  // style="" keeps its family only through the parser that owns the pool.
++  EXPECT_FALSE(CssParser::parseInlineStyle("font-family: kk").hasFontFamily());
++  const CssStyle inlineStyle = parser.parseInlineStyleWithFamilies("font-family: kk; color: #000");
++  ASSERT_TRUE(inlineStyle.hasFontFamily());
++  EXPECT_EQ(parser.familyAt(inlineStyle.fontFamily), "kk");
++  EXPECT_EQ(parser.parseInlineStyleWithFamilies("font-family: kk").fontFamily, inlineStyle.fontFamily);
++}
++
++TEST_F(CssParserTest, PanelBackgroundBorderAndRadius) {
++  CssParser parser(cachePath());
++  ASSERT_EQ(loadCss(parser,
++                    "div.num3 { padding: 1.2em; background: rgba(153, 255, 204, 0.5); border: 1px solid #33cccc; "
++                    "border-radius: 8px; }\n"
++                    ".gray { background-color: #ddd; border: none; }\n"
++                    ".thick { border: thick dashed; }\n"
++                    ".rule { border-width: 0 0 1px 0; border-style: solid; }\n"
++                    ".tint { border-color: red; }\n"
++                    ".pic { background: url(bg.png) no-repeat; }\n"),
++            CssParser::ParseResult::Complete);
++  const CssStyle num3 = parser.resolveStyle("div", "num3");
++  ASSERT_TRUE(num3.hasBackground());
++  EXPECT_EQ(num3.backgroundLuma, 237);  // luma 219 at half alpha over white
++  ASSERT_TRUE(num3.hasBorder());
++  EXPECT_FLOAT_EQ(num3.borderWidth.value, 1.0f);
++  EXPECT_EQ(num3.borderWidth.unit, CssUnit::Pixels);
++  EXPECT_EQ(num3.borderLuma, 158);
++  ASSERT_TRUE(num3.hasBorderRadius());
++  EXPECT_FLOAT_EQ(num3.borderRadius.value, 8.0f);
++
++  const CssStyle gray = parser.resolveStyle("p", "gray");
++  EXPECT_EQ(gray.backgroundLuma, 221);
++  EXPECT_LE(gray.borderWidth.value, 0.0f);
++  EXPECT_FLOAT_EQ(parser.resolveStyle("p", "thick").borderWidth.value, 5.0f);
++  EXPECT_LE(parser.resolveStyle("p", "rule").borderWidth.value, 0.0f);  // one side only: not a panel
++  EXPECT_LE(parser.resolveStyle("p", "tint").borderWidth.value, 0.0f);  // no style, no border
++  EXPECT_FALSE(parser.resolveStyle("p", "pic").hasBackground());
++}
++
++TEST_F(CssParserTest, FontFaceRulesResolveAgainstTheirStylesheet) {
++  stylesheetPath = "OEBPS/Styles/fonts.css";
++  std::string longSrc;
++  for (int i = 0; i < 60; ++i) longSrc += "local(\"Song" + std::to_string(i) + "\"),";
++  CssParser parser(cachePath());
++  ASSERT_EQ(loadCss(parser,
++                    "@font-face { font-family: \"cc\"; src: url(\"../Fonts/cc.ttf\"); }\n"
++                    "@font-face { font-family:\"zw\"; src: local(\"宋体\"),local(\"明体\"), " + longSrc +
++                        " url(../Fonts/zw.ttf), url(res:///opt/sony/ebook/FONT/zw.ttf); }\n"
++                    "@font-face { font-family: kt; src: local(\"楷体\"), local(\"Kaiti SC\"); }\n"
++                    "@font-face { font-family: web; src: url(http://example.com/a.ttf); }\n"
++                    "@font-face { font-family: \"cc\"; src: url(../Fonts/other.ttf); }\n"
++                    "p { font-family: \"cc\"; }\n"),
++            CssParser::ParseResult::Complete);
++  ASSERT_EQ(parser.fontFaceCount(), 4);
++  EXPECT_EQ(parser.fontFaceAt(0).family, "cc");
++  EXPECT_EQ(parser.fontFaceAt(0).path, "OEBPS/Fonts/cc.ttf");
++  EXPECT_EQ(parser.fontFaceAt(1).family, "zw");
++  EXPECT_EQ(parser.fontFaceAt(1).path, "OEBPS/Fonts/zw.ttf");
++  EXPECT_EQ(parser.fontFaceAt(1).category, CssParser::FontCategory::Serif);
++  EXPECT_EQ(parser.fontFaceAt(2).family, "kt");
++  EXPECT_EQ(parser.fontFaceAt(2).path, "");
++  EXPECT_EQ(parser.fontFaceAt(2).category, CssParser::FontCategory::Kai);
++  // A repeated family is kept for the reader to fall through to.
++  EXPECT_EQ(parser.fontFaceAt(3).family, "cc");
++  EXPECT_EQ(parser.fontFaceAt(3).path, "OEBPS/Fonts/other.ttf");
++  // The @font-face font-family names a face; only the p rule selects one.
++  EXPECT_EQ(parser.ruleCount(), 1u);
++  EXPECT_EQ(parser.familyAt(parser.resolveStyle("p", "").fontFamily), "\"cc\"");
++}
++
++TEST_F(CssParserTest, FontNameCategories) {
++  using C = CssParser::FontCategory;
++  EXPECT_EQ(CssParser::classifyFontName("宋体"), C::Serif);
++  EXPECT_EQ(CssParser::classifyFontName("DK-XIAOBIAOSONG"), C::Serif);
++  EXPECT_EQ(CssParser::classifyFontName("仿宋_GB2312"), C::FangSong);
++  EXPECT_EQ(CssParser::classifyFontName("STKaiti"), C::Kai);
++  EXPECT_EQ(CssParser::classifyFontName("DK-HEITI"), C::Sans);
++  EXPECT_EQ(CssParser::classifyFontName("sans-serif"), C::Sans);
++  EXPECT_EQ(CssParser::classifyFontName("serif"), C::Serif);
++  EXPECT_EQ(CssParser::classifyFontName("Yuanti SC"), C::Round);
++  EXPECT_EQ(CssParser::classifyFontName("Caecilia"), C::None);
++}
++
++TEST_F(CssParserTest, CacheKeepsFamiliesAndFontFaces) {
++  stylesheetPath = "OEBPS/Styles/main.css";
++  CssParser writer(cachePath());
++  ASSERT_EQ(loadCss(writer,
++                    "@font-face { font-family: mm; src: url(../Fonts/mm.ttf); }\n"
++                    ".a { font-family: \"kk\", serif; font-size: 1.1em; color: #333; }\n"
++                    ".b { font-family: mm; }\n"),
++            CssParser::ParseResult::Complete);
++  ASSERT_TRUE(writer.saveToCache(true));
++  CssParser reader(cachePath());
++  ASSERT_EQ(reader.loadFromCache(), CssParser::CacheLoadResult::Complete);
++  const CssStyle a = reader.resolveStyle("p", "a");
++  EXPECT_EQ(reader.familyAt(a.fontFamily), "\"kk\", serif");
++  EXPECT_FLOAT_EQ(a.fontSize.value, 1.1f);
++  EXPECT_EQ(a.colorLuma, 51);
++  EXPECT_EQ(reader.familyAt(reader.resolveStyle("p", "b").fontFamily), "mm");
++  ASSERT_EQ(reader.fontFaceCount(), 1);
++  EXPECT_EQ(reader.fontFaceAt(0).path, "OEBPS/Fonts/mm.ttf");
++  EXPECT_EQ(writer.inspectCache(), CssParser::CacheStatus::Complete);
++}
++
++TEST_F(CssParserTest, DescendantSelectorsMatchAncestors) {
++  CssParser parser(cachePath());
++  ASSERT_EQ(loadCss(parser,
++                    "p { font-size: 1em; }\n"
++                    "div.bt p { font-family: mm; font-size: 0.85em; }\n"
++                    "h2.mm > b { color: #800000; }\n"
++                    "div.a.b span { color: #666666; }\n"
++                    "a:link { color: #366; }\n"),
++            CssParser::ParseResult::Complete);
++  EXPECT_TRUE(parser.hasDescendantRules());
++  const CssParser::ElementRef inBt[] = {{"div", "bt"}, {"body", ""}};
++  const CssStyle p = parser.resolveStyle("p", "", inBt, 2);
++  EXPECT_EQ(parser.familyAt(p.fontFamily), "mm");
++  EXPECT_FLOAT_EQ(p.fontSize.value, 0.85f);
++  const CssParser::ElementRef plain[] = {{"div", "other"}, {"body", ""}};
++  EXPECT_FALSE(parser.resolveStyle("p", "", plain, 2).hasFontFamily());
++  EXPECT_FLOAT_EQ(parser.resolveStyle("p", "", plain, 2).fontSize.value, 1.0f);
++  // '>' matched as a descendant; tags are case-insensitive.
++  const CssParser::ElementRef deep[] = {{"span", ""}, {"H2", "mm x"}};
++  EXPECT_EQ(parser.resolveStyle("b", "", deep, 2).colorLuma, 38);
++  // Every class of a compound must be present.
++  const CssParser::ElementRef onlyA[] = {{"div", "a"}};
++  const CssParser::ElementRef both[] = {{"p", ""}, {"div", "b a"}};
++  EXPECT_FALSE(parser.resolveStyle("span", "", onlyA, 1).hasColor());
++  EXPECT_EQ(parser.resolveStyle("span", "", both, 2).colorLuma, 102);
++  // Without ancestors, the plain lookup ignores descendant rules.
++  EXPECT_FALSE(parser.resolveStyle("p", "").hasFontFamily());
++
++  ASSERT_TRUE(parser.saveToCache(true));
++  CssParser reader(cachePath());
++  ASSERT_EQ(reader.loadFromCache(), CssParser::CacheLoadResult::Complete);
++  EXPECT_EQ(reader.familyAt(reader.resolveStyle("p", "", inBt, 2).fontFamily), "mm");
++}

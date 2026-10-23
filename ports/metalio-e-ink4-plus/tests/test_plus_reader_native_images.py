@@ -21,7 +21,8 @@ program=r'''
 #include <vector>
 #define LOG_ERR(...) ((void)0)
 struct {bool textAntiAliasing=true;} SETTINGS;
-struct Page {bool image=false;bool hasImages()const{return image;}};
+struct Page {bool image=false,panel=false;bool hasImages()const{return image;}
+bool hasPanelFill()const{return panel;}};
 struct Renderer {bool inverted=false;int levels=16;
 bool isInverted()const{return inverted;}int getGrayscaleLevels()const{return levels;}};
 struct EpubReaderActivity {Renderer renderer;bool nativeGray16Page(const Page&)const;};
@@ -43,14 +44,14 @@ std::unique_ptr<JpegToFramebufferConverter> ImageDecoderFactory::jpegDecoder;
 std::unique_ptr<PngToFramebufferConverter> ImageDecoderFactory::pngDecoder;
 ''' + method(factory,'ImageToFramebufferDecoder* ImageDecoderFactory::getDecoder(') + r'''
 int main(){
-EpubReaderActivity r;Page text,image;image.image=true;
+EpubReaderActivity r;Page text,image,panel;image.image=true;panel.panel=true;
 for(bool aa:{false,true}){
 SETTINGS.textAntiAliasing=aa;
-assert(r.nativeGray16Page(image));assert(r.nativeGray16Page(text)==aa);
+assert(r.nativeGray16Page(image));assert(r.nativeGray16Page(panel));assert(r.nativeGray16Page(text)==aa);
 for(unsigned weight=0;weight<5;++weight){auto* curve=readerTextWeightCurve(weight);
 if(!aa){assert(curve);for(int i=0;i<16;++i)assert(curve[i]==0||curve[i]==15);assert(curve[0]==0&&curve[15]==15);}}
-r.renderer.inverted=true;assert(!r.nativeGray16Page(image)&&!r.nativeGray16Page(text));r.renderer.inverted=false;
-r.renderer.levels=4;assert(!r.nativeGray16Page(image));r.renderer.levels=16;
+r.renderer.inverted=true;assert(!r.nativeGray16Page(image)&&!r.nativeGray16Page(text)&&!r.nativeGray16Page(panel));r.renderer.inverted=false;
+r.renderer.levels=4;assert(!r.nativeGray16Page(image)&&!r.nativeGray16Page(panel));r.renderer.levels=16;
 }
 Storage.bytes={137,80,78,71,13,10,26,10};
 assert(dynamic_cast<PngToFramebufferConverter*>(ImageDecoderFactory::getDecoder("legacy.jpg")));

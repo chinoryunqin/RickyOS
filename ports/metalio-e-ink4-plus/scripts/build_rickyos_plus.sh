@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 TASK_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PLUS_IDF_ROOT="${RICKYOS_IDF_PATH:-$TASK_ROOT/tools/esp-idf-v6.1}"
+# Stop before preparing dependencies or producing a misleading binary.
+python3 "$TASK_ROOT/scripts/verify_plus_release_idf.py" --idf "$PLUS_IDF_ROOT"
 python3 "$TASK_ROOT/scripts/check_rickyos_plus_sources.py"
 python3 "$TASK_ROOT/scripts/prepare_plus_jpeg.py"
 "$TASK_ROOT/.local/espressif/python_env/idf6.1_py3.14_env/bin/python" "$TASK_ROOT/scripts/prepare_plus_usb.py"
@@ -9,7 +12,7 @@ export IDF_COMPONENT_MANAGER=0
 PIO_TOOL_ROOT="${PLATFORMIO_CORE_DIR:-$HOME/.platformio}/packages"
 export PATH="$PIO_TOOL_ROOT/tool-cmake/bin:$PIO_TOOL_ROOT/tool-ninja:/opt/homebrew/bin:$PATH"
 # RICKYOS_IDF_PATH / RICKYOS_BUILD_DIR select another IDF checkout and build directory.
-source "${RICKYOS_IDF_PATH:-$TASK_ROOT/tools/esp-idf-v6.1}/export.sh"
+source "$PLUS_IDF_ROOT/export.sh"
 BUILD_DIR="${RICKYOS_BUILD_DIR:-$TASK_ROOT/.local/build-rickyos-plus-1.2}"
 cd "$TASK_ROOT/firmware/rickyos-plus-1.2"
 # Diagnostic compile definitions come from environment variables in CMake.
@@ -26,13 +29,7 @@ python3 "$TASK_ROOT/scripts/check_plus_web_memory.py" "$BUILD_DIR/config/sdkconf
 # The device bootloader is IDF release/v6.1 9a97f6c5. An app built with another
 # IDF (e.g. the plain v6.1 tag) locks up in early startup, and Plus has no OTA
 # rollback, so such an image must never leave the build.
-python3 - "$BUILD_DIR/project_description.json" <<'PY'
-import json, sys
-revision = json.load(open(sys.argv[1]))['git_revision']
-if not revision.startswith('9a97f6c5'):
-    raise SystemExit(f'Wrong ESP-IDF {revision}: Plus needs 9a97f6c5 (set RICKYOS_IDF_PATH to .local/esp-idf-v6.1-r)')
-print('ESP-IDF 9a97f6c5 verified')
-PY
+python3 "$TASK_ROOT/scripts/verify_plus_release_idf.py" --idf "$PLUS_IDF_ROOT" --project "$BUILD_DIR/project_description.json"
 python3 "$TASK_ROOT/scripts/check_rickyos_plus_sources.py"
 python3 - "$BUILD_DIR/RickyOS-Plus-1.2.elf" <<'PY'
 from pathlib import Path

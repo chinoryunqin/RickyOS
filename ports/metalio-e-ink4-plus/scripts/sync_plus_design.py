@@ -15,7 +15,7 @@ After editing Plus sources in upstream/, record them (adaptations and patch) aga
 current pin with --record.
 
 Usage: python3 scripts/sync_plus_design.py --repo /path/to/RickyOS --to <commit> [--resume]
-       python3 scripts/sync_plus_design.py --repo /path/to/RickyOS --record
+       python3 scripts/sync_plus_design.py --repo /path/to/RickyOS --sdk-repo /path/to/sdk --record
 """
 import argparse
 import difflib
@@ -96,7 +96,7 @@ def stage(repo, old, new, manifest, changes):
     return files, conflicts
 
 
-def finish(repo, new, manifest, changes, files):
+def finish(repo, new, manifest, changes, files, sdk_repo=None):
     if manifest['commit'] != new:
         manifest['previous_commit'] = manifest['commit']
     manifest['commit'] = new
@@ -116,9 +116,11 @@ def finish(repo, new, manifest, changes, files):
             continue
         records.append({'path': name, 'baseline_sha256': base, 'ported_sha256': current})
         if name.startswith(SDK):
-            old = show(Path(repo) / 'freeink-sdk', manifest['sdk_commit'], name[len(SDK):]) if base else None
+            old = show(sdk_repo or Path(repo) / 'freeink-sdk', manifest['sdk_commit'], name[len(SDK):]) if base else None
         else:
             old = show(repo, new, name) if base else None
+        if base and (old is None or sha(old) != base):
+            raise SystemExit(f'Missing/mismatched pinned source for {name}; supply --sdk-repo for SDK sources')
         before = (old or b'').decode('utf-8', 'surrogateescape').splitlines(True)
         after = path.read_text(encoding='utf-8', errors='surrogateescape').splitlines(True)
         patch.extend(difflib.unified_diff(before, after, fromfile=f'a/{name}' if base else '/dev/null',
@@ -134,6 +136,7 @@ def finish(repo, new, manifest, changes, files):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--repo', required=True, type=Path, help='RickyOS repository holding both commits')
+    parser.add_argument('--sdk-repo', type=Path, help='Separate Git repository holding the pinned SDK commit')
     parser.add_argument('--to', help='design commit to pin')
     parser.add_argument('--record', action='store_true', help='record edited Plus sources against the current pin')
     parser.add_argument('--add-source', action='append', default=[],
@@ -152,7 +155,7 @@ def main():
                 changes['changes'].append({'path': name, 'baseline_sha256': None,
                                           'ported_sha256': sha((UPSTREAM / relative).read_bytes())})
                 known.add(name)
-        finish(args.repo, manifest['commit'], manifest, changes, manifest['files'])
+        finish(args.repo, manifest['commit'], manifest, changes, manifest['files'], args.sdk_repo)
         return
     if args.add_source:
         parser.error('--add-source requires --record')
@@ -172,7 +175,7 @@ def main():
         marked = [p for p in state['conflicts'] if b'<<<<<<< plus' in (UPSTREAM / p).read_bytes()]
         if marked:
             raise SystemExit('Still conflicted: ' + ', '.join(marked))
-        finish(args.repo, new, manifest, changes, state['files'])
+        finish(args.repo, new, manifest, changes, state['files'], args.sdk_repo)
         STATE.unlink()
         return
     files, conflicts = stage(args.repo, manifest['commit'], new, manifest, changes)
@@ -180,7 +183,7 @@ def main():
         STATE.write_text(json.dumps({'new': new, 'files': files, 'conflicts': conflicts}, indent=2) + '\n')
         print('Conflicts to resolve in upstream/:', *conflicts, sep='\n  ')
         sys.exit(1)
-    finish(args.repo, new, manifest, changes, files)
+    finish(args.repo, new, manifest, changes, files, args.sdk_repo)
 
 
 if __name__ == '__main__':

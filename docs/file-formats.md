@@ -100,6 +100,33 @@ if (parsedSize != fileSize) {
 
 ## `section.bin`
 
+### Isolated Plus port: version 119 (book typography and panels, 2026-10-22)
+
+This applies to `ports/metalio-e-ink4-plus/firmware/rickyos-plus-1.2`, not to
+the root application's independent format declarations. Complete **119** /
+partial **163** replace the Plus port's previous 83/199. The partial sentinel
+remains derived as `0xFE - (completeVersion - 28)`; unfinished writes remain 0.
+The header retains the Plus `u16 imageOutset` after `verticalText` and now
+appends a `u32 bookFontsKey` after the five LUT offsets, so a different usable
+book-font set cannot reuse incompatible pagination.
+
+TextBlock's old `hasFocus` byte becomes flags: bit 0 is focus data, bit 1 is
+per-word typography, bit 2 is a decorated block. Unknown flags are rejected.
+When bit 1 is present, the arena includes one `u32` look per word (face in bits
+0–7, grayscale ink 8–11, reserved 12–15, relative em*256 size 16–31). When
+bit 2 is present, the serialized BlockStyle ends with a 12-byte BlockBox:
+`u16 id; s16 left; s16 width; u8 padTop, padBottom, border, radius,
+fillLuma, borderLuma`. A zero panel ID with this flag is rejected. Plain
+blocks omit both optional payloads. Vertical margin presence is layout-only,
+not another serialized field. CSS cache version **14** includes font-face
+metadata and background/border/radius styles; older CSS caches rebuild.
+
+Complete and partial caches are rejected on version/key mismatch and rebuilt
+on opening the affected book. Source books, library membership, bookmarks and
+source-coordinate progress are not recursively removed. The retained generic
+and Read Pico test variants of this snapshot use 115/167 and 117/165; those
+numbers do not modify other devices' firmware.
+
 ### Plus-specific version 81 (chapter-art width)
 
 The isolated Plus port uses complete **81** / partial **201** (still derived as
