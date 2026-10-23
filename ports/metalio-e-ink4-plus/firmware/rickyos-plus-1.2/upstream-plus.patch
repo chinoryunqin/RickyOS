@@ -189368,10 +189368,13 @@
    const bool lightOn = !Frontlight.isOn();
    Frontlight.setOn(lightOn);
    SETTINGS.frontlightOn = lightOn ? 1 : 0;
-@@ -402,7 +406,39 @@
+@@ -402,7 +406,42 @@
  }
  
  // Enter deep sleep mode
++#if RICKYOS_PLUS_POWER_LOG && FREEINK_DEVICE_METALIO_PLUS
++#include <PlusBoard.h>
++#endif
 +#if RICKYOS_PLUS_POWER_LOG
 +// Power measurement (diagnostic builds only). One CSV row per event: wall clock (0 until
 +// the clock is valid), uptime, event, current activity, USB / frontlight / Wi-Fi state and
@@ -189408,7 +189411,7 @@
    bleinput::stop();
    HalPowerManager::Lock powerLock;  // Ensure we are at normal CPU frequency for sleep preparation
    APP_STATE.lastSleepFromReader = activityManager.isReaderActivity();
-@@ -449,7 +485,7 @@
+@@ -449,7 +488,7 @@
      WiFi.mode(WIFI_OFF);
    }
  
@@ -189417,7 +189420,7 @@
    gpio.stopHapticFeedback();
  #endif
    halTiltSensor.deepSleep();
-@@ -466,7 +502,7 @@
+@@ -466,7 +505,7 @@
  
  bool setupDisplayAndFonts(bool seamless = false, bool logSdFontLoadHeap = false) {
    display.begin(seamless);
@@ -189426,7 +189429,7 @@
    // Read Pico step 4 of 5 (see the boot-order note in setup()): the panel has
    // stepped through its own rails by now — BoardReadPico::epdPrepare/On/Off are
    // the board's LgfxEpdPowerHooks, so the SY7636A enable (FCA9555 P0.3), VCOM and
-@@ -511,7 +547,7 @@
+@@ -511,7 +550,7 @@
    renderer.setFallbackFont(UI_12_FONT_ID, CJK_UI_12_FONT_ID);
    renderer.setFallbackFont(NOTOSANS_18_FONT_ID, CJK_UI_12_FONT_ID);
    renderer.insertFont(BaseTheme::STATUS_NUMERIC_FONT_ID, smallFontFamily);
@@ -189435,7 +189438,7 @@
    renderer.insertFont(READER_STATUS_FONT_ID, smallFontFamily);
    renderer.insertFont(READER_ESTIMATE_FONT_ID, ui10FontFamily);
    renderer.setFallbackFont(READER_STATUS_FONT_ID, CJK_UI_8_FONT_ID);
-@@ -666,7 +702,9 @@
+@@ -666,7 +705,9 @@
    // enumeration proceed asynchronously so users do not pay this startup cost.
    delay(250);
  #endif
@@ -189445,7 +189448,7 @@
  #if LOG_SERIAL_HAS_TX_TIMEOUT
    logSerial.setTxTimeoutMs(1);  // This is a load-bearing 1. Do not modify.
  #endif
-@@ -766,10 +804,20 @@
+@@ -766,10 +807,20 @@
      return;
    }
  
@@ -189467,7 +189470,7 @@
    if (!settingsLoaded) SETTINGS.readerMenuStyle = CrossPointSettings::READER_MENU_LIST;
  #endif
    const auto onboardingMode =
-@@ -828,7 +876,7 @@
+@@ -828,7 +879,7 @@
        // Most devices return to sleep after a USB-powered cold boot.
        LOG_DBG("MAIN", "Wakeup reason: After USB Power");
  #if FREEINK_DEVICE_X4PRO || FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_PAPERMONO || FREEINK_DEVICE_EEGO_A4 || \
@@ -189476,7 +189479,7 @@
        // X4 Pro must stay awake so USB Serial/JTAG remains available after leaving
        // USB Drive and reconnecting the cable. Paper Mono has no armable GPIO wake
        // (its button is behind the PMIC). EEGO A4's post-flash reset reads as
-@@ -988,12 +1036,44 @@
+@@ -988,12 +1039,56 @@
      gpio.update();
    }
  
@@ -189501,8 +189504,20 @@
 +      powerLog("boot");
 +    } else if (millis() - lastSample >= 60000) {
 +      lastSample = millis();
++#if FREEINK_DEVICE_METALIO_PLUS
++      // A display feed fault (e.g. after a standby wake) rides on the tick row.
++      char tag[24] = "tick";
++      if (const uint32_t fault = plus_board::displayFirstFault())
++        snprintf(tag, sizeof(tag), "tick-f%08lx", static_cast<unsigned long>(fault));
++      powerLog(tag);
++#else
 +      powerLog("tick");
++#endif
 +    }
++#if FREEINK_DEVICE_METALIO_PLUS
++    char report[64];
++    if (plus_board::takeWakeReport(report, sizeof(report))) powerLog(report);
++#endif
 +  }
 +#endif
 +#if RICKYOS_PLUS_RADIO_AUTOSTART
@@ -189521,7 +189536,7 @@
  #ifdef RICKYOS_STANDBY_DIAG
    standby_diag::dumpWhenAwake();
  #endif
-@@ -1033,7 +1113,8 @@
+@@ -1033,7 +1128,8 @@
  
    gpio.setSharedConfirmPowerShortPressEmitsPower(SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP);
    mappedInputManager.update();
@@ -189531,7 +189546,7 @@
    // Cancel before any handler can wait for the framebuffer lock. These are
    // snapshot queries: they do not consume the gesture from its normal owner.
  #if CROSSPOINT_EMULATED
-@@ -1049,7 +1130,9 @@
+@@ -1049,7 +1145,9 @@
      activityManager.cancelIdleRender("touch", true);
    }
  #endif
@@ -189542,7 +189557,7 @@
    gpio.updateHapticFeedback(SETTINGS.hapticFeedbackLevel);
  #endif
    updateBluetoothLifecycle();
-@@ -1064,6 +1147,12 @@
+@@ -1064,6 +1162,12 @@
  
  #if CROSSPOINT_CAP_SOUND_FEEDBACK
    SoundFeedback::update(SETTINGS.soundFeedbackLevel, gpio.physicalPressedMask());
@@ -189555,7 +189570,7 @@
  #endif
  
    if (activityManager.requiresExclusiveStorageLoop()) {
-@@ -1208,6 +1297,10 @@
+@@ -1208,6 +1312,10 @@
      return;
    }
    const unsigned long sleepTimeoutMs = SETTINGS.getSleepTimeoutMs();
@@ -189566,7 +189581,7 @@
    if (sleepTimeoutMs > 0 && !activityManager.preventAutoSleep() && millis() - lastActivityTime >= sleepTimeoutMs) {
      LOG_DBG("SLP", "Auto-standby after %lu ms of inactivity", sleepTimeoutMs);
      STANDBY_DIAG("auto-standby after %lus idle", sleepTimeoutMs / 1000);
-@@ -1310,12 +1403,13 @@
+@@ -1310,12 +1418,13 @@
    // flash, the AA pass re-running, and a frontlight dip under the refresh
    // load); the reader's status bar picks the charging state up on the next
    // page turn instead.

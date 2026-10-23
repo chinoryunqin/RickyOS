@@ -3,6 +3,11 @@
 #include "PlusSleepBreadcrumb.h"
 #if defined(RICKYOS_PLUS_STATIC_STANDBY) && defined(RICKYOS_STANDBY_DIAG)
 #include <esp_attr.h>
+#ifdef RICKYOS_STANDBY_DIAG
+#include <esp_heap_caps.h>
+#include <esp_private/esp_clk.h>
+#include <esp_timer.h>
+#endif
 #include <esp_system.h>
 #endif
 #include <InputManager.h>
@@ -66,6 +71,30 @@ constexpr bool kStandbySleepEnabled = false;
 #endif
 bool boardReady = false;
 bool sleepFault = false;
+#ifdef RICKYOS_STANDBY_DIAG
+// Wake probe: is the first post-wake refresh starved because the clock or PSRAM is
+// slower after light sleep? 512 KiB exceeds the cache, so the sum reads PSRAM.
+// Diagnostic builds only; the buffer is allocated once and kept (PSRAM, not heap).
+struct WakeProbe {
+  uint32_t cpuPark = 0, cpuWake = 0, psramPark = 0, psramWake = 0;
+  bool pending = false;
+} wakeProbe;
+uint32_t* probeBuffer = nullptr;
+constexpr size_t kProbeWords = 512u * 1024u / 4u;
+uint32_t psramReadKBps() {
+  if (!probeBuffer) {
+    probeBuffer = static_cast<uint32_t*>(heap_caps_malloc(kProbeWords * 4u, MALLOC_CAP_SPIRAM));
+    if (!probeBuffer) return 0;
+    for (size_t i = 0; i < kProbeWords; ++i) probeBuffer[i] = uint32_t(i * 2654435761u);
+  }
+  volatile uint32_t sum = 0;
+  const int64_t started = esp_timer_get_time();
+  for (size_t i = 0; i < kProbeWords; i += 8) sum = sum + probeBuffer[i];  // one word per 32-byte line
+  const int64_t us = esp_timer_get_time() - started;
+  (void)sum;
+  return us > 0 ? uint32_t((kProbeWords * 4u) * 1000ull / uint64_t(us)) : 0;  // KB/s
+}
+#endif
 // Static standby: one park lasts up to a day (the caller passes the time left
 // to auto power-off); at most this many shared-IRQ wakes re-sleep in place.
 constexpr uint32_t kStaticSleepMaxSeconds = 24u * 60u * 60u;
@@ -483,6 +512,12 @@ static StandbyWake standbySleepOnce(const uint32_t seconds, StandbyStorage* stor
   // them; EPDiy's image/line queues remain owned by the display backend.
   // Static profile also parks SD/TPS/keys/rails above; no charger writes.
   if (!staticPark) epd_board_metalio_eink4_plus_bus_hold_low();
+#ifdef RICKYOS_STANDBY_DIAG
+  if (staticPark) {
+    wakeProbe.cpuPark = esp_clk_cpu_freq() / 1000000u;
+    wakeProbe.psramPark = psramReadKBps();
+  }
+#endif
   sleepCheckpoint(SleepStage::BusLatch);
   epd_board_metalio_eink4_plus_bus_latch_for_sleep();
   ESP_LOGI("PlusSleep", "enter: seconds=%lu ext1_gpio=2", static_cast<unsigned long>(seconds));
@@ -546,6 +581,15 @@ static StandbyWake standbySleepOnce(const uint32_t seconds, StandbyStorage* stor
   sleepCheckpoint(SleepStage::LcdRestore);
   const bool displayRestored = epd_board_metalio_eink4_plus_bus_restore_checked();
   STANDBY_DIAG("display restore done: ok=%u", displayRestored);
+#ifdef RICKYOS_STANDBY_DIAG
+  if (staticPark) {
+    wakeProbe.cpuWake = esp_clk_cpu_freq() / 1000000u;
+    wakeProbe.psramWake = psramReadKBps();
+    wakeProbe.pending = true;
+    STANDBY_DIAG("wake probe: cpu %lu->%lu MHz psram %lu->%lu KB/s", (unsigned long)wakeProbe.cpuPark,
+                 (unsigned long)wakeProbe.cpuWake, (unsigned long)wakeProbe.psramPark, (unsigned long)wakeProbe.psramWake);
+  }
+#endif
   if (!displayRestored) {
     sleepFault = true;
     ESP_LOGE("PlusSleep", "LCD restore failed; sleep disabled until restart");
@@ -568,6 +612,21 @@ static StandbyWake standbySleepOnce(const uint32_t seconds, StandbyStorage* stor
   const bool deadline = staticPark && uint32_t(millis() - sleepStarted) + 1000u >= sleepBudgetMs;
   return cause == ESP_SLEEP_WAKEUP_TIMER || deadline ? StandbyWake::Timer : StandbyWake::Failed;
 }
+bool takeWakeReport(char* out, const unsigned size) {
+#ifdef RICKYOS_STANDBY_DIAG
+  if (!wakeProbe.pending || !out || size == 0) return false;
+  wakeProbe.pending = false;
+  snprintf(out, size, "wake-cpu%lu-%lu-psram%lu-%lu-fault%08lx", (unsigned long)wakeProbe.cpuPark,
+           (unsigned long)wakeProbe.cpuWake, (unsigned long)wakeProbe.psramPark, (unsigned long)wakeProbe.psramWake,
+           (unsigned long)epd_lcd_get_first_fault());
+  return true;
+#else
+  (void)out;
+  (void)size;
+  return false;
+#endif
+}
+uint32_t displayFirstFault() { return epd_lcd_get_first_fault(); }
 StandbyWake standbyLightSleep(const uint32_t seconds) { return standbySleepOnce(seconds, nullptr); }
 StandbyWake standbyStaticSleep(const uint32_t seconds, StandbyStorage& storage) {
   const auto reason = standbySleepOnce(seconds, &storage);

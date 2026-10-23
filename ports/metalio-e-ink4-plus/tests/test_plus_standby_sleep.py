@@ -146,6 +146,10 @@ inline int esp_light_sleep_start(){
  ++sleeps;now+=1000;wokeAt=now;if(irqLowAfterWake)irqLow=true;return call("sleep");
 }
 inline int esp_sleep_get_wakeup_cause(){return cause;}
+#define MALLOC_CAP_SPIRAM 0x400
+inline void* heap_caps_malloc(size_t n,unsigned){return malloc(n);}
+inline long long esp_timer_get_time(){return (long long)now*1000+1;}
+inline unsigned esp_clk_cpu_freq(){return 360000000u;}
 namespace InputManager {
 constexpr int BTN_POWER=0,BTN_UP=1,BTN_DOWN=2;
 inline void setButtonHook(uint8_t(*)()){}
@@ -261,7 +265,7 @@ int main(){
             (root / 'fake.h').write_text(common)
             for name in ['InputManager.h', 'PowerManager.h', 'plus_i2c_wire.h', 'metalio_i2c1.h',
                          'epd_board_metalio_eink4_plus.h', 'config.h', 'esp_log.h', 'Arduino.h', 'lcd_fault.h',
-                         'driver/gpio.h', 'driver/rtc_io.h', 'driver/usb_serial_jtag.h', 'hal/usb_serial_jtag_ll.h', 'esp_sleep.h', 'metalio_touch.h', 'HalAudioOutput.h', 'StandbyDiag.h']:
+                         'driver/gpio.h', 'driver/rtc_io.h', 'driver/usb_serial_jtag.h', 'hal/usb_serial_jtag_ll.h', 'esp_sleep.h', 'metalio_touch.h', 'HalAudioOutput.h', 'StandbyDiag.h', 'esp_heap_caps.h', 'esp_timer.h', 'esp_private/esp_clk.h']:
                 target = root / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text('#include "fake.h"\n')

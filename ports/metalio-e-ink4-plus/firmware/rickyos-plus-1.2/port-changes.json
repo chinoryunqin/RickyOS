@@ -645,7 +645,7 @@
     {
       "path": "src/main.cpp",
       "baseline_sha256": "a9593200335b30dace971723992905ac8ce0beb05159ecb6d17d837bdb73fdc5",
-      "ported_sha256": "b578992d5ec5eec5ed2e8d2010dbb73925f3f8a0b3cdc0575823c4fe4814f615"
+      "ported_sha256": "d3fac1335ad48df8764b55fe27230f6617909742d8d018934fb62a1f8792da1c"
     },
     {
       "path": "src/network/CrossPointWebServer.cpp",
