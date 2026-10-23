@@ -71,10 +71,13 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
         self.assertLess(render.index('renderNative(renderer, viewport)'), render.index('renderer.clearScreen();'))
         # Leaving a 16-gray picture: the next page must not refresh differentially over it.
         self.assertIn('renderer.requestNextRefresh(HalDisplay::FULL_REFRESH);', body(self.activity, 'void StandbyActivity::onExit()'))
+        # Pictures are chosen from the thumbnail gallery, which opens the full-screen preview.
         page = (ROOT / 'src/activities/apps/standby/RickyStandbySettingsActivity.cpp').read_text()
-        picker = body(page, 'void RickyStandbySettingsActivity::openPicturePicker(')
-        self.assertIn('FileBrowserActivity::Mode::PickWallpaper', picker)
-        self.assertIn('previewDone, entry->path, true, sticker,', picker)
+        self.assertIn('startActivityForResultWith<StandbyGalleryActivity>', body(page, 'void RickyStandbySettingsActivity::openGallery('))
+        gallery = (ROOT / 'src/activities/apps/standby/StandbyGalleryActivity.cpp').read_text()
+        activate = body(gallery, 'void StandbyGalleryActivity::activateIndex(')
+        self.assertIn('startActivityForResultWith<ImageViewerActivity>', activate)
+        self.assertIn('std::move(paths), index, previewTarget', activate)
 
     def test_overlay_setting_is_persisted_and_translated(self):
         header = (ROOT / 'src/CrossPointSettings.h').read_text()
@@ -98,11 +101,12 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
                       '&ActivityManager::goToStandbySettings}', menu)
         page = (ROOT / 'src/activities/apps/standby/RickyStandbySettingsActivity.cpp').read_text()
         activate = body(page, 'void RickyStandbySettingsActivity::activateIndex(')
-        self.assertIn('SETTINGS.rickyStandbyFace = kStyles[chosen];', activate)
-        self.assertIn('SETTINGS.rickyPowerOffScreen = static_cast<uint8_t>(chosen);', activate)
-        self.assertIn('SETTINGS.standbyOverlay = static_cast<uint8_t>(chosen);', activate)
-        self.assertIn('openPicturePicker();', activate)
-        self.assertIn('startActivityForResultWith<RickyWallpaperDownloadActivity>', activate)
+        self.assertIn('saveSetting(SETTINGS.rickyStandbyFace, kStyles[item - Style0]);', activate)
+        self.assertIn('saveSetting(SETTINGS.rickyPowerOffScreen, screen);', activate)
+        self.assertIn('saveSetting(SETTINGS.standbyOverlay, static_cast<uint8_t>(item - Info0));', activate)
+        self.assertIn('openGallery(StandbyPictures::Target::Standby);', activate)
+        gallery = (ROOT / 'src/activities/apps/standby/StandbyGalleryActivity.cpp').read_text()
+        self.assertIn('startActivityForResultWith<RickyWallpaperDownloadActivity>', gallery)
         self.assertIn('startActivityForResultWith<StandbyActivity>', activate)
         self.assertIn('static_assert(std::size(kStyles) == Settings::RICKY_STANDBY_FACE_COUNT);', page)
         # Full-screen Standby returns to whichever page opened it.
@@ -131,7 +135,7 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
         native = enter[enter.index('Native 16-gray, as Standby'):]
         native = native[:native.index('return;')]
         order = [native.index(call) for call in ('beginGrayscale16()', 'drawBitmapGrayscale16(',
-                                                 'GUI.drawActionButton(', 'copyBwToGrayscale16(', 'commitGrayscale16()')]
+                                                 'drawActions();', 'copyBwToGrayscale16(', 'commitGrayscale16()')]
         self.assertEqual(order, sorted(order))
         self.assertIn('imageReady = shown;', native)
 

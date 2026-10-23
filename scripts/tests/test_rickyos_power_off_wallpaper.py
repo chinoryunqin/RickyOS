@@ -76,7 +76,7 @@ struct PngToBmpConverter {
     Storage.data[out] = "alpha"; return true;
   }
 };
-enum class StrId { STR_NORMAL, STR_TRANSPARENT };
+enum class StrId { STR_NORMAL, STR_TRANSPARENT, STR_RICKY_SET_WALLPAPER, STR_RICKY_SET_POWER_OFF_WALLPAPER };
 constexpr int STR_LOADING_POPUP = 0, STR_DONE = 1, STR_FAILED_LOWER = 2;
 const char* tr(int) { return ""; }
 struct { void drawPopup(GfxRenderer&, const char*) {} } GUI;
@@ -101,9 +101,14 @@ struct ImageViewerActivity {
   bool doSetSticker() { ++stickers; return true; }
   void finish() { ++finishes; }
   void requestUpdate() {}
+  bool gallery = false;
+  const char* wallpaperSource() const { return png || jpeg ? previewPath.c_str() : filePath.c_str(); }
+  bool setFromGallery(WallpaperTarget) { return true; }
+  void rememberSource() const {}
   bool doSetSleepCover(const char*, bool);
   void showSleepCoverOptions();
 };
+constexpr StrId sleepCoverLabel(bool, ImageViewerActivity::WallpaperTarget) { return StrId::STR_NORMAL; }
 ''' + methods + r'''
 void reset() {
   Storage = {}; SETTINGS = {};
@@ -180,10 +185,14 @@ int main() {
 
     def test_picker_cancel_keeps_target_and_saved_ids(self):
         page = (ROOT / 'src/activities/apps/standby/RickyStandbySettingsActivity.cpp').read_text()
-        picker = method(page, 'void RickyStandbySettingsActivity::openPicturePicker(')
-        self.assertIn('openPicturePicker(FsHelpers::extractFolderPath(entry->path), sticker, powerOff)', picker)
-        self.assertIn('powerOff ? ImageViewerActivity::WallpaperTarget::PowerOff', picker)
+        # The overlay picker reopens its list on cancel; power-off pictures come from the gallery.
+        picker = method(page, 'void RickyStandbySettingsActivity::openStickerPicker(')
+        self.assertIn('openStickerPicker(FsHelpers::extractFolderPath(entry->path))', picker)
         self.assertIn('result.isCancelled || !entry ||', picker)
+        activate = method(page, 'void RickyStandbySettingsActivity::activateIndex(')
+        self.assertIn('openGallery(StandbyPictures::Target::PowerOff);', activate)
+        gallery = (ROOT / 'src/activities/apps/standby/StandbyGalleryActivity.cpp').read_text()
+        self.assertIn('ImageViewerActivity::WallpaperTarget::PowerOff', gallery)
         settings = (ROOT / 'src/CrossPointSettings.h').read_text()
         enum = settings.split('enum RICKY_POWER_OFF_SCREEN : uint8_t {')[1].split('};')[0]
         positions = [enum.index(key) for key in ('RICKY_POWER_OFF_SAME = 0', 'RICKY_POWER_OFF_DEFAULT',

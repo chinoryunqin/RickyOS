@@ -27,19 +27,17 @@
 #include "NetworkStartup.h"
 #include "ReadingStatsStore.h"
 #include "RickyWallpaperDownloadActivity.h"
+#include "StandbyGalleryActivity.h"
 #include "SloppyClockFace.h"
 #include "StandbyDiag.h"
 #include "StandbyTime.h"
 #include "WallpaperFace.h"
 #include "WifiCredentialStore.h"
 #include "activities/ActivityResult.h"
-#include "activities/home/FileBrowserActivity.h"
 #include "activities/network/WifiSelectionActivity.h"
-#include "activities/util/ImageViewerActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/PaginationDots.h"
-#include "util/RickyStorageLayout.h"
 #include "util/TimeUtils.h"
 
 namespace {
@@ -652,28 +650,15 @@ void StandbyActivity::applyGrayscalePass(const Rect& viewport) {
   renderer.restoreBwBuffer();
 }
 
-// Same flow as Settings → Power & Standby → Choose Standby Image: an image picker
-// in /images, then a preview whose Set action installs /sleep.bmp.
-void StandbyActivity::openPicturePicker(const std::string& folder) {
-  const auto reload = [this](const ActivityResult& result) {
-    // Back from the preview returns to the list it was opened from.
-    const auto* entry = std::get_if<FilePathResult>(&result.data);
-    if (result.isCancelled && entry) {
-      openPicturePicker(FsHelpers::extractFolderPath(entry->path));
-      return;
-    }
-    if (currentFace_) currentFace_->onEnter();
-    lastInputMs_ = millis();
-    requestUpdate();
-  };
-  const bool opened = startActivityForResultWith<FileBrowserActivity>(
-      [this, reload](const ActivityResult& result) {
-        const auto* entry = std::get_if<FilePathResult>(&result.data);
-        if (result.isCancelled || !entry ||
-            !startActivityForResultWith<ImageViewerActivity>(reload, entry->path, true)) {
-          reload(ActivityResult{});
-        }
+// The same gallery as the 屏保 page: thumbnails, then a preview whose Set action
+// installs /sleep.bmp.
+void StandbyActivity::openPicturePicker() {
+  const bool opened = startActivityForResultWith<StandbyGalleryActivity>(
+      [this](const ActivityResult&) {
+        if (currentFace_) currentFace_->onEnter();
+        lastInputMs_ = millis();
+        requestUpdate();
       },
-      folder, FileBrowserActivity::Mode::PickWallpaper);
-  if (!opened) LOG_ERR("STANDBY", "Cannot open the picture picker");
+      StandbyPictures::Target::Standby);
+  if (!opened) LOG_ERR("STANDBY", "Cannot open the picture gallery");
 }

@@ -14,6 +14,10 @@ class ImageViewerActivity final : public Activity {
   ImageViewerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string filePath,
                       bool wallpaperPicker = false, bool stickerPicker = false,
                       WallpaperTarget wallpaperTarget = WallpaperTarget::Standby);
+  // From the standby gallery: flip through `pictures` (full paths) starting at `index`,
+  // and set the one shown as the standby or the power-off picture.
+  ImageViewerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::vector<std::string> pictures,
+                      int index, WallpaperTarget wallpaperTarget);
 
   // What the file holds, read from its first bytes: saved pictures often carry the wrong
   // extension (a JPEG named .png), and a decoder chosen by name then rejects them.
@@ -30,6 +34,14 @@ class ImageViewerActivity final : public Activity {
   bool isJpeg() const;
   bool preparePreview();
   bool doSetSleepCover(const char* sourcePath, bool transparent);
+  // Record the shown picture as the source of the screen just set (the gallery marks it).
+  void rememberSource() const;
+  // The converted picture to copy for this file (the BMP itself when it already is one).
+  const char* wallpaperSource() const;
+  bool setFromGallery(WallpaperTarget target);
+  // The tappable action row: one "set" button, or the gallery's power-off and standby pair.
+  void drawActions() const;
+  bool tapAction();
   bool doSetSticker();
   void showSleepCoverOptions();
 
@@ -40,7 +52,8 @@ class ImageViewerActivity final : public Activity {
   bool stickerPicker = false;
   WallpaperTarget wallpaperTarget = WallpaperTarget::Standby;
   bool imageReady = false;
-  std::vector<std::string> siblingImages;
+  std::vector<std::string> siblingImages;  // names in the file's folder, or full paths in the gallery
+  bool gallery = false;
   int currentImageIndex = -1;
   OptionPopup sleepCoverPopup;
 };

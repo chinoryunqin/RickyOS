@@ -61,13 +61,13 @@ int main() {
         page = read('src/activities/apps/standby/RickyStandbySettingsActivity.cpp')
         rows = method(page, 'void RickyStandbySettingsActivity::rebuildRows()')
         off = rows[:rows.index('return;')]
-        self.assertIn('add(PowerOffScreen);', off)
-        self.assertIn('add(ChoosePowerOffPicture);', off)
+        self.assertIn('add(static_cast<Item>(PowerOff0 + i));', off)
+        self.assertIn('add(ChangePowerOffPicture);', off)
         self.assertIn('add(AutoPowerOff);', off)
-        self.assertNotIn('add(Style);', off)
-        # Picking and downloading only for the picture; fit, filter and corner for picture and cover.
+        self.assertNotIn('Style0', off)
+        # The picture strip only for the picture; corner and filter for picture and cover.
         self.assertIn('if (SETTINGS.rickyStandbyFace == Settings::RICKY_STANDBY_PICTURE) {', rows)
-        self.assertIn('if (showsPicture()) {', rows)
+        self.assertIn('if (showsPicture())', rows)
         self.assertIn('buildTabBar(screen);', page)
         header = read('src/activities/apps/standby/RickyStandbySettingsActivity.h')
         self.assertIn('class RickyStandbySettingsActivity final : public UiTabListActivity', header)

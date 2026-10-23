@@ -83,7 +83,7 @@ int main() {
         # Standby and power-off screens are chosen on their own page (labels in display
         # order, stored values mapped there); Settings only links to it.
         page = (ROOT / "src/activities/apps/standby/RickyStandbySettingsActivity.cpp").read_text()
-        self.assertIn("static_assert(std::size(kStyleLabels) == std::size(kStyles));", page)
+        self.assertIn("static_assert(std::size(kStyleCards) == std::size(kStyles));", page)
         self.assertIn("std::move(*it)", source)
         self.assertIn("swap(librarySettings)", source)
         self.assertIn("swap(connectionSettings)", source)

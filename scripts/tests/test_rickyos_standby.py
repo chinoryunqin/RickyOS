@@ -166,10 +166,13 @@ int main(){
         settings = (ROOT / 'src/activities/settings/SettingsActivity.cpp').read_text()
         self.assertNotIn('RickyStandbySettingsActivity', settings)
         page = (ROOT / 'src/activities/apps/standby/RickyStandbySettingsActivity.cpp').read_text()
-        self.assertIn('FileBrowserActivity::Mode::PickWallpaper', page)
-        self.assertIn('previewDone, entry->path, true, sticker,', page)
-        self.assertIn('ImageViewerActivity::WallpaperTarget::PowerOff', page)
+        # Standby and power-off pictures come from the thumbnail gallery; the overlay's PNG
+        # from the file list.
+        self.assertIn('startActivityForResultWith<StandbyGalleryActivity>', page)
+        self.assertIn('ImageViewerActivity::WallpaperTarget::Standby', page)
         self.assertIn('FileBrowserActivity::Mode::PickPng', page)
+        gallery = (ROOT / 'src/activities/apps/standby/StandbyGalleryActivity.cpp').read_text()
+        self.assertIn('ImageViewerActivity::WallpaperTarget::PowerOff', gallery)
         viewer = (ROOT / 'src/activities/util/ImageViewerActivity.cpp').read_text()
         on_enter = method(viewer, 'void ImageViewerActivity::onEnter(')
         self.assertIn('imageReady = false', on_enter)
@@ -182,7 +185,8 @@ int main(){
         self.assertIn('if (wallpaperPicker)', method(viewer, 'void ImageViewerActivity::loop('))
         options = method(viewer, 'void ImageViewerActivity::showSleepCoverOptions(')
         self.assertLess(options.index('if (!imageReady) return'), options.index('doSetSleepCover('))
-        self.assertIn('FsHelpers::hasJpgExtension(filePath) ? previewPath.c_str()', options)
+        # The detected format picks the converted preview (see wallpaperSource()).
+        self.assertIn('doSetSleepCover(wallpaperSource(), false)', options)
         install = method(viewer, 'bool ImageViewerActivity::doSetSleepCover(')
         self.assertIn('copied == expected', install)
         self.assertIn('if (!SETTINGS.saveToFile())', install)
