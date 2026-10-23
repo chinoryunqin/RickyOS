@@ -7,6 +7,8 @@ clang++ -std=c++20 -Wall -Wextra -Werror tests/test_plus_framebuffer.cpp -o .loc
 .local/test_plus_framebuffer
 python3 tests/test_battery_stability.py
 python3 tests/test_plus_battery_curve.py
+python3 tests/test_plus_battery_awake_sampling.py
+python3 tests/test_plus_idle_power.py
 clang -Ifirmware/rickyos-plus-1.2/upstream/freeink-sdk/libs/font/FreeInkFont/include -c firmware/rickyos-plus-1.2/upstream/freeink-sdk/libs/font/FreeInkFont/src/FontAlloc.c -o .local/plus-font-alloc.o
 clang -c firmware/rickyos-plus-1.2/upstream/lib/uzlib/src/tinflate.c -o .local/plus-font-inflate.o
 clang++ -std=c++20 -Wall -Wextra -Werror -Wno-missing-field-initializers -Wl,-dead_strip \
@@ -34,6 +36,9 @@ clang++ -std=c++17 -Wall -Wextra -Werror tests/test_plus_http_date.cpp -o .local
 python3 tests/test_plus_audio.py
 python3 tests/test_plus_frontlight_panel.py
 python3 tests/test_plus_standby_frontlight.py
+python3 tests/test_plus_standby_sleep.py
+python3 tests/test_plus_static_sleep.py
+python3 tests/test_plus_p14_restore_audit.py
 python3 tests/test_plus_standby_home.py
 python3 tests/test_plus_standby_swipe_unlock.py
 python3 tests/test_plus_button_mapping.py
@@ -51,6 +56,10 @@ python3 tests/test_plus_usb.py
 python3 tests/test_plus_usb_remount.py
 python3 tests/test_plus_download_cancel.py
 
+python3 tests/test_plus_lcd_clock_lifecycle.py
+python3 tests/test_plus_psram_resume.py
+python3 tests/test_plus_lcd_restore_failures.py
+python3 tests/test_plus_lcd_first_frame.py
 python3 tests/test_plus_lcd_tail.py
 python3 tests/test_plus_line_timing.py
 python3 tests/test_plus_phase_lookahead.py
@@ -81,4 +90,5 @@ python3 tests/test_plus_usb_retry.py
 python3 tests/test_plus_ota_manifest.py
 python3 tests/test_plus_kindle_document.py
 python3 tests/test_plus_kindle_import.py
+python3 tests/test_plus_storage_summary.py
 python3 ../../scripts/tests/test_skill_gomoku.py

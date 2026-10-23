@@ -11,6 +11,7 @@
 #include "lcd_driver.h"
 #include "metalio_sd.h"
 #include "pca9555.h"
+#include "metalio_i2c1.h"
 #include "tps65185.h"
 #include "config.h"
 
@@ -61,6 +62,9 @@
 #define CFG_P1_RAIL_MASK   (CFG_PIN_TP_RST | CFG_PIN_BT_PA_PWR)
 #define CFG_P1_OUTPUT_MASK (CFG_P1_RAIL_MASK | CFG_PIN_PWR_PULSE)
 #define CFG_P1_INPUT_MASK  ((uint8_t)(~CFG_P1_OUTPUT_MASK))
+// Inputs left armed in standby light sleep: the power key only, as the OEM does.
+// (park6 also armed the side keys; with P14 off the Plus then powered itself off.)
+#define CFG_P1_SLEEP_WAKE_KEYS ((uint8_t)CFG_IO_BIT(EPD_IO_POWER))
 
 /* 并行数据 / 控制：板级 config.h */
 #define D0 EPD_PIN_D0
@@ -139,6 +143,7 @@ static void epd_board_poweroff(epd_ctrl_state_t* state);
 static bool s_lcd_bus_held = false;       // 入睡已拆 LCD 并置低总线脚
 // Port1 锁存：P12/P14 默认高（上电），关机脉冲默认低
 static uint8_t s_p1_out = (uint8_t)(CFG_PIN_TP_RST | CFG_PIN_BT_PA_PWR);
+static bool s_sleep_keys_restored;
 static uint8_t s_motor_on = 0;             // Port0 马达位锁存，0 或 CFG_PIN_MOTOR
 static uint8_t s_pa_on = 0;                // Port0 PA_EN 锁存，0 或 CFG_PIN_PA_EN
 static uint8_t s_cam_scr_on = CFG_PIN_CAM_SCR; // Port0 P05 摄像/屏电，默认高
@@ -211,7 +216,58 @@ void epd_board_metalio_eink4_plus_ana_sw_set(bool high) {
     gpio_set_level(ANA_SW_GPIO, high ? 1 : 0);
 }
 
+// Standby (lazy BT/PA): P14 feeds the BH1098 Bluetooth/audio module and the
+// NS4150 amp, ~8 mA idle. Standby turns it off and leaves it off on wake;
+// the next audio session turns it back on. Re-enabling it in the wake path
+// reset the board with a power glitch (park1), so it is never done there.
+static bool s_bt_pa_parked = false;
+
+void epd_board_metalio_eink4_plus_sleep_park_bt_pa(void) {
+    if (!s_ioexp_ok) {
+        return;
+    }
+    s_p1_out &= (uint8_t)~CFG_PIN_BT_PA_PWR;
+    p1_write();
+    s_bt_pa_parked = true;
+    ESP_LOGI(TAG, "standby: P14 (BT/PA) off until audio is needed");
+}
+
+bool epd_board_metalio_eink4_plus_bt_pa_resume(void) {
+    if (!s_ioexp_ok || !s_bt_pa_parked) {
+        return false;
+    }
+    s_p1_out |= CFG_PIN_BT_PA_PWR;
+    p1_write();
+    s_bt_pa_parked = false;
+    ESP_LOGI(TAG, "audio: P14 (BT/PA) back on");
+    return true;
+}
+
+// Standby (P5 only): the camera/screen rail is most of the parked current
+// (~8 mA: park1 both rails cut ~2-3 mA, park5 P14 cut ~10 mA, park4 none ~10.5 mA).
+// P14 stays on: with it off the panel did not change after wake (park5-8).
+void epd_board_metalio_eink4_plus_sleep_cut_p5(void) {
+    if (!s_ioexp_ok) {
+        return;
+    }
+    s_cam_scr_on = 0;
+    p0_write();
+    ESP_LOGI(TAG, "standby: P5 (camera/screen) off");
+}
+
+bool epd_board_metalio_eink4_plus_sleep_restore_p5(void) {
+    if (!s_ioexp_ok) {
+        return false;
+    }
+    s_cam_scr_on = CFG_PIN_CAM_SCR;
+    const bool ok = pca9555_set_value(config_reg.port, p0_output_value(), CFG_PORT_CTRL) == ESP_OK;
+    vTaskDelay(pdMS_TO_TICKS(40));  // let the rail settle before the first refresh
+    ESP_LOGI(TAG, "standby: P5 (camera/screen) back on ok=%d", ok);
+    return ok;
+}
+
 void epd_board_metalio_eink4_plus_sleep_cut_rails(void) {
+    s_sleep_keys_restored = false;
     if (!s_ioexp_ok) {
         return;
     }
@@ -223,7 +279,8 @@ void epd_board_metalio_eink4_plus_sleep_cut_rails(void) {
 }
 
 void epd_board_metalio_eink4_plus_sleep_restore_rails(void) {
-    if (!s_ioexp_ok) {
+    if (!s_ioexp_ok || !s_sleep_keys_restored || !epd_board_metalio_eink4_plus_sleep_io_checked(false)) {
+        s_sleep_keys_restored = false;
         return;
     }
     s_p1_out |= CFG_PIN_BT_PA_PWR;
@@ -231,6 +288,50 @@ void epd_board_metalio_eink4_plus_sleep_restore_rails(void) {
     s_cam_scr_on = CFG_PIN_CAM_SCR;
     p0_write();
     ESP_LOGI(TAG, "sleep restore P14 then P5");
+}
+
+bool epd_board_metalio_eink4_plus_sleep_restore_rails_staged(bool keys_restored, void (*trace)(unsigned)) {
+    // A successful function return was not proof of key restoration in static4:
+    // its writes were unchecked. Require the checked result and a fresh state
+    // read before tracing/issuing either rail write. No retry after a failure.
+    if (!s_ioexp_ok || !s_sleep_keys_restored || !keys_restored || !epd_board_metalio_eink4_plus_sleep_io_checked(false)) {
+        s_sleep_keys_restored = false;
+        return false;
+    }
+    // Preserve static4 timing for this focused error-propagation change. The
+    // 40 ms separation FAILED to prevent its reset; it is not a proven remedy.
+    if (trace) trace(0);
+    s_p1_out |= CFG_PIN_BT_PA_PWR;
+    bool ok = pca9555_set_value(config_reg.port, s_p1_out, CFG_PORT_INT) == ESP_OK;
+    if (trace) trace(1);
+    vTaskDelay(pdMS_TO_TICKS(40));
+    if (trace) trace(2);
+    if (trace) trace(3);
+    s_cam_scr_on = CFG_PIN_CAM_SCR;
+    const esp_err_t p0_error = pca9555_set_value(config_reg.port, p0_output_value(), CFG_PORT_CTRL);
+    if (p0_error != ESP_OK) ok = false;
+    if (trace) trace(4);
+    vTaskDelay(pdMS_TO_TICKS(40));
+    if (trace) trace(5);
+    return ok;
+}
+
+bool epd_board_metalio_eink4_plus_sleep_io_checked(bool parked) {
+    uint8_t regs[6] = {0}; // output[2], polarity[2], direction[2]
+    if (!s_ioexp_ok || !metalio_i2c1_lock(20)) return false;
+    // TCA9555 reads toggle only bit 0 of the register pointer (TI datasheet
+    // 9.5.2.1.2), so a six-byte read at 0x02 repeats outputs three times.
+    // Select each pair explicitly while retaining the one shared-bus lock.
+    esp_err_t err = ESP_OK;
+    for (unsigned pair = 0; pair < 3; ++pair) {
+        err = plus_i2c_read(pca9555_get_addr(), (uint8_t)(0x02 + pair * 2), &regs[pair * 2], 2);
+        if (err != ESP_OK) break;
+    }
+    metalio_i2c1_unlock();
+    const uint8_t cfg0 = parked ? 0 : CFG_P0_INPUT_MASK;
+    const uint8_t cfg1 = parked ? CFG_P1_SLEEP_WAKE_KEYS : CFG_P1_INPUT_MASK;
+    return err == ESP_OK && regs[0] == p0_output_value() && regs[1] == s_p1_out &&
+           regs[2] == 0 && regs[3] == 0 && regs[4] == cfg0 && regs[5] == cfg1;
 }
 
 bool epd_board_metalio_eink4_plus_ioexp_get_level(int io) {
@@ -301,7 +402,7 @@ static void epd_ctrl_gpios_out_low(void) {
     gpio_set_level(EPD_BORDER, 0);
 }
 
-static void epd_lcd_reinit(void) {
+static bool epd_lcd_reinit(void) {
     const EpdDisplay_t* display = epd_get_display();
     LcdEpdConfig_t config = {
         .pixel_clock = display->bus_speed * 1000 * 1000,
@@ -313,7 +414,7 @@ static void epd_lcd_reinit(void) {
         .dummy_clocks_after_data = 10, // E0470A14-AF section 6.3.1.
         .white_border_pixels = DISPLAY_WHITE_BORDER_PIXELS,
     };
-    epd_lcd_init(&config, display->width, display->height);
+    return epd_lcd_init_checked(&config, display->width, display->height);
 }
 
 void epd_board_metalio_eink4_plus_bus_hold_low(void) {
@@ -344,17 +445,24 @@ void epd_board_metalio_eink4_plus_bus_latch_for_sleep(void) {
     ESP_LOGI(TAG, "EPD bus pins latched for sleep");
 }
 
-void epd_board_metalio_eink4_plus_bus_restore(void) {
-    if (!s_lcd_bus_held) {
-        return;
-    }
+bool epd_board_metalio_eink4_plus_bus_restore_checked(void) {
+    if (!s_lcd_bus_held) return true;
     for (size_t i = 0; i < sizeof(k_epd_bus_pins) / sizeof(k_epd_bus_pins[0]); ++i) {
         gpio_hold_dis(k_epd_bus_pins[i]);
     }
     epd_ctrl_gpios_out_low();
-    epd_lcd_reinit();
+    if (!epd_lcd_reinit()) {
+        s_tps_ok = false;
+        ESP_LOGE(TAG, "EPD bus restore failed; keep display unavailable for retry");
+        return false;
+    }
     s_lcd_bus_held = false;
     ESP_LOGI(TAG, "EPD bus restored after sleep");
+    return true;
+}
+
+void epd_board_metalio_eink4_plus_bus_restore(void) {
+    (void)epd_board_metalio_eink4_plus_bus_restore_checked();
 }
 
 void epd_board_metalio_eink4_plus_boot_release_holds(void) {
@@ -372,6 +480,7 @@ void epd_board_metalio_eink4_plus_boot_release_holds(void) {
 }
 
 void epd_board_metalio_eink4_plus_ioexp_mask_for_sleep(void) {
+    s_sleep_keys_restored = false;
     if (!s_ioexp_ok) {
         return;
     }
@@ -404,30 +513,42 @@ bool epd_board_metalio_eink4_plus_ioexp_enable_power_wake_pin(void) {
         return false;
     }
     // P17 锁存已是高；改输入时同电平，尽量无假边沿
-    if (pca9555_set_config(config_reg.port, CFG_IO_BIT(EPD_IO_POWER), CFG_PORT_INT) != ESP_OK) {
+    if (pca9555_set_config(config_reg.port, CFG_P1_SLEEP_WAKE_KEYS, CFG_PORT_INT) != ESP_OK) {
         ESP_LOGW(TAG, "enable P17 input fail");
         return false;
     }
     return true;
 }
 
-void epd_board_metalio_eink4_plus_ioexp_restore_keys(void) {
+bool epd_board_metalio_eink4_plus_ioexp_restore_keys_checked(void) {
+    s_sleep_keys_restored = false;
     if (!s_ioexp_ok) {
-        return;
+        return false;
     }
-    pca9555_set_value(config_reg.port, p0_output_value(), CFG_PORT_CTRL);
-    pca9555_set_config(config_reg.port, CFG_P0_INPUT_MASK, CFG_PORT_CTRL);
+    // Attempt the OEM restore order once, retaining any error even if a later
+    // register read happens to match. Callers must not add rail loads on failure.
+    bool ok = true;
+    if (pca9555_set_value(config_reg.port, p0_output_value(), CFG_PORT_CTRL) != ESP_OK) ok = false;
+    if (pca9555_set_config(config_reg.port, CFG_P0_INPUT_MASK, CFG_PORT_CTRL) != ESP_OK) ok = false;
 
     // 保留 P12/P14 锁存；清关机脉冲；按键脚改回输入（P16 仍为 RTC_INT 输入）
     s_p1_out = (uint8_t)((s_p1_out & CFG_P1_RAIL_MASK) & (uint8_t)~CFG_PIN_PWR_PULSE);
-    pca9555_set_value(config_reg.port, s_p1_out, CFG_PORT_INT);
-    pca9555_set_config(config_reg.port, CFG_P1_INPUT_MASK, CFG_PORT_INT);
+    if (pca9555_set_value(config_reg.port, s_p1_out, CFG_PORT_INT) != ESP_OK) ok = false;
+    if (pca9555_set_config(config_reg.port, CFG_P1_INPUT_MASK, CFG_PORT_INT) != ESP_OK) ok = false;
 
     uint8_t p0 = 0;
     uint8_t p1 = 0;
-    pca9555_read_input_ex(config_reg.port, CFG_PORT_CTRL, &p0);
-    pca9555_read_input_ex(config_reg.port, CFG_PORT_INT, &p1);
-    ESP_LOGI(TAG, "keys restore P0=0x%02X P1=0x%02X INT_GPIO=%d", p0, p1, gpio_get_level(CFG_INTR));
+    if (pca9555_read_input_ex(config_reg.port, CFG_PORT_CTRL, &p0) != ESP_OK) ok = false;
+    if (pca9555_read_input_ex(config_reg.port, CFG_PORT_INT, &p1) != ESP_OK) ok = false;
+    const bool state_ok = epd_board_metalio_eink4_plus_sleep_io_checked(false);
+    ESP_LOGI(TAG, "keys restore P0=0x%02X P1=0x%02X INT_GPIO=%d ok=%d state=%d", p0, p1,
+             gpio_get_level(CFG_INTR), ok, state_ok);
+    s_sleep_keys_restored = ok && state_ok;
+    return s_sleep_keys_restored;
+}
+
+void epd_board_metalio_eink4_plus_ioexp_restore_keys(void) {
+    (void)epd_board_metalio_eink4_plus_ioexp_restore_keys_checked();
 }
 
 static void p1_pwr_pulse_set(bool high) {
@@ -691,7 +812,10 @@ static void epd_board_poweron(epd_ctrl_state_t* state) {
         ESP_LOGE(TAG, "poweron skipped: no IO expander");
         return;
     }
-    epd_board_metalio_eink4_plus_bus_restore();
+    if (!epd_board_metalio_eink4_plus_bus_restore_checked()) {
+        s_tps_ok = false;
+        return; // Never run a waveform against a partially rebuilt LCD path.
+    }
     // Restore the schematic's original VBORDER bias. GPIO37 HIGH in 2.0.67
     // did not resolve the reported flashing of addressable edge pixels.
     gpio_set_level(EPD_BORDER,0);

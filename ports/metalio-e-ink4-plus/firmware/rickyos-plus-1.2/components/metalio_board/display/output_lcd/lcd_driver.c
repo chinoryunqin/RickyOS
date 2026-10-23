@@ -213,6 +213,8 @@ typedef struct {
 
 static s3_lcd_t lcd = { 0 };
 static bool border_whitening=false;
+static bool lcd_initialized=false;
+static bool dma_connected=false;
 void epd_lcd_prime_white_border(bool enable) { border_whitening=enable; }
 int epd_lcd_white_border_pixels(void) { return lcd.config.white_border_pixels; }
 
@@ -463,6 +465,9 @@ static void deinit_ckv_rmt() {
         rmt_ll_reset_register(0);
         rmt_ll_enable_bus_clock(0, false);
     }
+    // Pair init_ckv_rmt's source reference. A sleep/rebuild cycle must not
+    // retain another PLL parent reference on every iteration.
+    esp_clk_tree_enable_src((soc_module_clk_t)RMT_CLK_SRC_DEFAULT, false);
 #else
     periph_module_reset(PERIPH_RMT_MODULE);
     periph_module_disable(PERIPH_RMT_MODULE);
@@ -605,11 +610,12 @@ static esp_err_t init_dma_trans_link() {
 #endif
     gdma_trigger_t trigger = GDMA_MAKE_TRIGGER(GDMA_TRIG_PERIPH_LCD, 0);
     ESP_RETURN_ON_ERROR(gdma_connect(lcd.dma_chan, trigger), TAG, "dma connect error");
+    dma_connected = true;
 
     gdma_strategy_config_t dma_strategy = {
         .eof_till_data_popped = false,
     };
-    gdma_apply_strategy(lcd.dma_chan, &dma_strategy);
+    ESP_RETURN_ON_ERROR(gdma_apply_strategy(lcd.dma_chan, &dma_strategy), TAG, "dma strategy error");
 
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(6, 0, 0)
     /* bounce 在内部 SRAM，勿开 ext_mem，避免 AXI 误触 PSRAM 对齐检查 */
@@ -637,9 +643,13 @@ static esp_err_t init_dma_trans_link() {
 }
 
 void deinit_dma_trans_link() {
+    if (!lcd.dma_chan) return;
+    gdma_stop(lcd.dma_chan);
     gdma_reset(lcd.dma_chan);
-    gdma_disconnect(lcd.dma_chan);
+    if (dma_connected) gdma_disconnect(lcd.dma_chan);
     gdma_del_channel(lcd.dma_chan);
+    lcd.dma_chan = NULL;
+    dma_connected = false;
 }
 
 /**
@@ -858,6 +868,8 @@ static void free_lcd_buffers() {
  */
 static esp_err_t init_lcd_peripheral() {
     esp_err_t ret = ESP_OK;
+    lcd.vsync_intr = 0;
+    lcd.done_intr = 0;
 
 #if defined(CONFIG_IDF_TARGET_ESP32S31)
     // 与 esp_lcd RGB 一致：RCC 引用计数开总线时钟，并打开 RGB 传输缓冲
@@ -978,10 +990,16 @@ static esp_err_t init_lcd_peripheral() {
 
 static void deinit_lcd_peripheral() {
     // disable and free interrupts
-    esp_intr_disable(lcd.vsync_intr);
-    esp_intr_disable(lcd.done_intr);
-    esp_intr_free(lcd.vsync_intr);
-    esp_intr_free(lcd.done_intr);
+    if (lcd.vsync_intr) {
+        esp_intr_disable(lcd.vsync_intr);
+        esp_intr_free(lcd.vsync_intr);
+        lcd.vsync_intr = 0;
+    }
+    if (lcd.done_intr) {
+        esp_intr_disable(lcd.done_intr);
+        esp_intr_free(lcd.done_intr);
+        lcd.done_intr = 0;
+    }
 
     lcd_ll_fifo_reset(lcd.hal.dev);
     lcd_ll_reset(lcd.hal.dev);
@@ -998,6 +1016,12 @@ static void deinit_lcd_peripheral() {
             lcd_ll_enable_bus_clock(0, false);
         }
     }
+    // Each LCD instance acquired these separately, even when the shared
+    // peripheral bus clock already had another owner. Release only our refs.
+    esp_clk_tree_enable_src((soc_module_clk_t)LCD_CLK_SRC_DEFAULT, false);
+#ifdef lcd_ll_select_core_clk_src
+    esp_clk_tree_enable_src((soc_module_clk_t)LCD_CORE_CLK_SRC_DEFAULT, false);
+#endif
 #else
     periph_module_reset(PERIPH_LCD_CAM_MODULE);
     periph_module_disable(PERIPH_LCD_CAM_MODULE);
@@ -1007,49 +1031,66 @@ static void deinit_lcd_peripheral() {
 /**
  * Configure the LCD driver for epdiy.
  */
-void epd_lcd_init(const LcdEpdConfig_t* config, int display_width, int display_height) {
+bool epd_lcd_init_checked(const LcdEpdConfig_t* config, int display_width, int display_height) {
+    if (lcd_initialized) return false; // Do not leak a second set of resources.
     esp_err_t ret = ESP_OK;
+    bool peripheral_started = false;
+    bool gpio_started = false;
     assign_lcd_parameters_from_config(config, display_width, display_height);
-
     check_cache_configuration();
 
     ret = allocate_lcd_buffers();
     ESP_GOTO_ON_ERROR(ret, err, TAG, "lcd buffer allocation failed");
 
+    // The peripheral source refs exist before interrupt allocation can fail.
+    // Its deinit tolerates either/both interrupt handles still being null.
+    peripheral_started = true;
     ret = init_lcd_peripheral();
     ESP_GOTO_ON_ERROR(ret, err, TAG, "lcd peripheral init failed");
 
     ret = init_dma_trans_link();
     ESP_GOTO_ON_ERROR(ret, err, TAG, "install DMA failed");
 
+    gpio_started = true;
     ret = init_bus_gpio();
     ESP_GOTO_ON_ERROR(ret, err, TAG, "configure GPIO failed");
-
     init_ckv_rmt();
-
-    // setup driver state
     epd_lcd_set_pixel_clock_MHz(lcd.config.pixel_clock / 1000 / 1000);
     epd_lcd_line_source_cb(NULL, NULL);
-
+    epd_lcd_frame_done_cb(NULL, NULL);
+    lcd_initialized = true;
     ESP_LOGI(TAG, "LCD init done.");
-    return;
+    return true;
 err:
-    ESP_LOGE(TAG, "LCD initialization failed!");
-    abort();
+    // Rebuilding after sleep must not abort the whole device (and its USB
+    // console) on memory/interrupt/DMA allocation failure. Roll back only owned
+    // resources, including partial allocations, so a later redraw may retry.
+    epd_lcd_line_source_cb(NULL, NULL);
+    epd_lcd_frame_done_cb(NULL, NULL);
+    deinit_dma_trans_link();
+    if (peripheral_started) deinit_lcd_peripheral();
+    if (gpio_started) deinit_bus_gpio();
+    free_lcd_buffers();
+    ESP_LOGE(TAG, "LCD initialization failed: %s; resources released", esp_err_to_name(ret));
+    return false;
 }
 
-/**
- * Deinitializue the LCD driver, i.e., free resources and peripherals.
- */
-void epd_lcd_deinit() {
-    epd_lcd_line_source_cb(NULL, NULL);
+void epd_lcd_init(const LcdEpdConfig_t* config, int display_width, int display_height) {
+    // Keep the cold-boot contract. Sleep restoration uses the checked API.
+    if (!epd_lcd_init_checked(config, display_width, display_height)) abort();
+}
 
+/** Deinitialize once, including DMA callbacks before freeing their buffers. */
+void epd_lcd_deinit() {
+    if (!lcd_initialized) return;
+    epd_lcd_line_source_cb(NULL, NULL);
+    epd_lcd_frame_done_cb(NULL, NULL);
+    deinit_dma_trans_link();
     deinit_bus_gpio();
     deinit_lcd_peripheral();
-    deinit_dma_trans_link();
     free_lcd_buffers();
     deinit_ckv_rmt();
-
+    lcd_initialized = false;
     ESP_LOGI(TAG, "LCD deinitialized.");
 }
 

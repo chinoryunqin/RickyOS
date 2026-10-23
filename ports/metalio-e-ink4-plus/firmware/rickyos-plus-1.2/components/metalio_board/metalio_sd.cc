@@ -97,3 +97,33 @@ void MetalioSd_LatchForSleep(void) {
         }
     }
 }
+
+bool MetalioSd_ResumeBusChecked(void) {
+    bool ok = true;
+    for (gpio_num_t pin : kSdPins) {
+        if (gpio_hold_dis(pin) != ESP_OK) ok = false;
+    }
+    return ok;
+}
+
+bool MetalioSd_ParkBusChecked(void) {
+    bool ok = MetalioSd_ResumeBusChecked();
+#if CONFIG_IDF_TARGET_ESP32S31
+    sdio_cnnt_release_to_gpio();
+#endif
+    for (gpio_num_t pin : kSdPins) {
+        esp_gpio_revoke(1ULL << static_cast<unsigned>(pin));
+        esp_rom_gpio_connect_out_signal(pin, SIG_GPIO_OUT_IDX, false, false);
+        if (gpio_set_level(pin, 0) != ESP_OK) ok = false;
+        gpio_config_t conf = {};
+        conf.pin_bit_mask = 1ULL << static_cast<unsigned>(pin);
+        conf.mode = GPIO_MODE_INPUT_OUTPUT;
+        conf.pull_up_en = GPIO_PULLUP_DISABLE;
+        conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
+        conf.intr_type = GPIO_INTR_DISABLE;
+        if (gpio_config(&conf) != ESP_OK) ok = false;
+        if (gpio_set_drive_capability(pin, GPIO_DRIVE_CAP_3) != ESP_OK) ok = false;
+        if (gpio_hold_en(pin) != ESP_OK) ok = false;
+    }
+    return ok;
+}

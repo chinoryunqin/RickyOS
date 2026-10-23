@@ -32,6 +32,11 @@ void MetalioSd_LatchForSleep(void);
  */
 void MetalioSd_ReleaseHold(void);
 
+// Static standby only: caller has already closed files and stopped the SDK
+// SDMMC host. These functions own pads only, never mount a second filesystem.
+bool MetalioSd_ParkBusChecked(void);
+bool MetalioSd_ResumeBusChecked(void);
+
 #ifdef __cplusplus
 }
 #endif

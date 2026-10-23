@@ -46,9 +46,9 @@
 +    // average current (mA, negative = discharge), raw coulomb counter (mAh, rises on
 +    // discharge) and temperature (0.1 C). Each flag says whether its register read.
 +    struct PowerSnapshot {
-+        uint16_t mv = 0, counter = 0;
++        uint16_t mv = 0, counter = 0, soc = 0;
 +        int16_t current = 0, average = 0, deciCelsius = 0;
-+        bool mvOk = false, currentOk = false, averageOk = false, counterOk = false, temperatureOk = false;
++        bool mvOk = false, currentOk = false, averageOk = false, counterOk = false, temperatureOk = false, socOk = false;
 +    };
 +    PowerSnapshot readPowerSnapshot() const;
 +#endif
@@ -57,13 +57,16 @@
      uint16_t readMillivolts() const;
 --- a/freeink-sdk/libs/hardware/BatteryMonitor/src/BatteryMonitor.cpp
 +++ b/freeink-sdk/libs/hardware/BatteryMonitor/src/BatteryMonitor.cpp
-@@ -4,6 +4,13 @@
+@@ -4,6 +4,16 @@
  #include <BoardConfig.h>
  #include <M5Pm1.h>
  #include <esp_idf_version.h>
 +#if FREEINK_DEVICE_METALIO_PLUS
 +#include <PlusBattery.h>
 +#include <PlusBatteryEstimator.h>
++#if defined(RICKYOS_PLUS_GAUGE_CONFIG)
++#include <PlusGaugeConfig.h>
++#endif
 +#include <plus_i2c_wire.h>
 +#include <metalio_i2c1.h>
 +#include <esp_log.h>
@@ -71,7 +74,7 @@
  #if ESP_IDF_VERSION_MAJOR < 5
  #include <esp_adc_cal.h>
  #endif
-@@ -55,6 +62,15 @@
+@@ -55,6 +65,15 @@
  
  bool readReg16(uint8_t addr, uint8_t reg, uint16_t& out) {
    if (addr == 0) return false;
@@ -87,7 +90,7 @@
    ensureWire();
    TwoWire& w = gaugeWire();
    w.beginTransmission(addr);
-@@ -65,6 +81,7 @@
+@@ -65,6 +84,7 @@
    const uint8_t hi = w.read();
    out = static_cast<uint16_t>(lo) | (static_cast<uint16_t>(hi) << 8);
    return true;
@@ -95,7 +98,7 @@
  }
  
  bool readReg8(uint8_t addr, uint8_t reg, uint8_t& out) {
-@@ -231,6 +248,16 @@
+@@ -231,6 +251,16 @@
  // SoC (0..100) from the active gauge, dispatched by type. false on I2C failure.
  bool readGaugeSoc(uint16_t& out) {
    const auto& g = BoardConfig::ACTIVE.batteryGauge;
@@ -112,7 +115,7 @@
    if (g.gaugeType == BoardConfig::GaugeType::Cw32L010Pmu) {
      uint16_t mv = 0;
      uint16_t permille = 0;
-@@ -467,6 +494,10 @@
+@@ -467,6 +497,10 @@
  }
  
  uint16_t BatteryMonitor::readPercentage() const {
@@ -123,7 +126,7 @@
  #if FREEINK_BATTERY_I2C_GAUGE
    // Runtime, per active profile: gauge boards (X3, LilyGo, X4 Pro) read SoC over I2C;
    // ADC boards (X4) in the same binary fall through to the divider path below.
-@@ -486,6 +517,12 @@
+@@ -486,6 +520,12 @@
  }
  
  bool BatteryMonitor::readPercentageChecked(uint16_t& out) const {
@@ -136,7 +139,7 @@
  #if FREEINK_BATTERY_I2C_GAUGE
    if (BoardConfig::ACTIVE.batteryGauge.gaugeAddr != 0) {
      uint16_t soc = 0;
-@@ -511,6 +548,59 @@
+@@ -511,6 +551,69 @@
  #if FREEINK_BATTERY_I2C_GAUGE
    if (BoardConfig::ACTIVE.batteryGauge.gaugeAddr != 0) {
      status.supported = true;
@@ -171,6 +174,16 @@
 +    status.percentage = estimate.percent;
 +    status.percentageSource = estimate.source == plus_board::BatteryEstimateSource::UncalibratedVoltage
 +                                  ? Status::PercentageSource::VoltageEstimate : Status::PercentageSource::CapacityEstimate;
++#if defined(RICKYOS_PLUS_GAUGE_CONFIG)
++    // Once the gauge holds the real pack (1871 mAh, empty at 3.3 V), its own
++    // StateOfCharge drives the display; the host estimate keeps running for logs.
++    uint16_t gaugeSoc = 0;
++    if (plus_board::gaugeConfigured() && readReg16(addr, BQ27220_STATE_OF_CHARGE, gaugeSoc) && gaugeSoc <= 100) {
++      status.percentageKnown = true;
++      status.percentage = gaugeSoc;
++      status.percentageSource = Status::PercentageSource::CapacityEstimate;
++    }
++#endif
 +    // A nearly idle/full pack is not evidence of a charging direction.
 +    status.chargingKnown = currentKnown && (signedCurrent > 5 || signedCurrent < -5);
 +    status.charging = currentKnown && signedCurrent > 5;
@@ -196,9 +209,9 @@
      uint16_t soc = 0;
      if (readGaugeSoc(soc)) {
        status.percentageKnown = true;
-@@ -557,6 +647,20 @@
-   }
-   return status;
+@@ -752,3 +855,18 @@
+   const int32_t biased = std::clamp<int32_t>(static_cast<int32_t>(millivolts) + bias, 0, UINT16_MAX);
+   return percentageFromMillivolts(static_cast<uint16_t>(biased)) == notch ? notch : previousNotch;
  }
 +
 +#if FREEINK_DEVICE_METALIO_PLUS
@@ -210,13 +223,11 @@
 +  if ((s.currentOk = readReg16(addr, BQ27220_CURRENT, value))) s.current = static_cast<int16_t>(value);
 +  if ((s.averageOk = readReg16(addr, 0x14, value))) s.average = static_cast<int16_t>(value);
 +  s.counterOk = readReg16(addr, 0x22, s.counter);
++  s.socOk = readReg16(addr, BQ27220_STATE_OF_CHARGE, s.soc);
 +  if ((s.temperatureOk = readReg16(addr, 0x06, value))) s.deciCelsius = static_cast<int16_t>(value - 2732);  // 0.1 K
 +  return s;
 +}
 +#endif
- 
- uint16_t BatteryMonitor::readMillivolts() const {
- #if FREEINK_BATTERY_I2C_GAUGE
 --- a/freeink-sdk/libs/hardware/InputManager/include/InputManager.h
 +++ b/freeink-sdk/libs/hardware/InputManager/include/InputManager.h
 @@ -365,6 +365,11 @@
@@ -183964,8 +183975,141 @@
    bool wasReleased(uint8_t buttonIndex) const;
 --- a/lib/hal/HalPowerManager.cpp
 +++ b/lib/hal/HalPowerManager.cpp
-@@ -440,6 +440,34 @@
+@@ -1,6 +1,12 @@
+ #include "HalPowerManager.h"
  
+ #include <BoardConfig.h>
++#if FREEINK_DEVICE_METALIO_PLUS
++#include <PlusBoard.h>
++#if defined(RICKYOS_PLUS_STATIC_STANDBY)
++#include "HalStorage.h"
++#endif
++#endif
+ #if FREEINK_DEVICE_READPICO
+ #include <BoardReadPico.h>
+ #endif
+@@ -31,6 +37,9 @@
+ static constexpr gpio_num_t XTEINK_C3_GPIO13 = GPIO_NUM_13;
+ 
+ namespace {
++#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
++std::atomic<bool> g_sideKeyBusy{false};
++#endif
+ #if !FREEINK_DEVICE_READPICO
+ struct StandbyRetention {
+   int8_t pin;
+@@ -93,7 +102,6 @@
+ // next sleep starts are presses nobody saw: the clock redraw holds the main loop for
+ // about 3 s each minute, and a tap in that window used to be dropped by the drain.
+ uint16_t g_standbyKeyBoundary = 0;
+-std::atomic<bool> g_sideKeyBusy{false};
+ 
+ HalPowerManager::LightSleepWakeReason lightSleepReadPico(const uint32_t seconds) {
+   using LightSleepWakeReason = HalPowerManager::LightSleepWakeReason;
+@@ -235,6 +243,9 @@
+   // Protect the entire host lifetime, including scans and reconnect attempts.
+   if (BleHid.isRunning()) enabled = false;
+ #endif
++#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_IDLE_FREQ_MHZ) && RICKYOS_PLUS_IDLE_FREQ_MHZ == 40
++  if (!plus_board::idleCpuFrequencyAllowed()) enabled = false;
++#endif
+ 
+   // Serialize the entire clock transition: Arduino's APB callbacks retain SPI
+   // locks between BEFORE/AFTER, so concurrent frequency changes can deadlock.
+@@ -245,8 +256,18 @@
+     if (setCpuFrequencyMhz(targetFrequency)) {
+       isLowPower = targetLowPower;
+       LOG_DBG("PWR", "CPU frequency now %u MHz", getCpuFrequencyMhz());
++#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_IDLE_FREQ_MHZ)
++      // Only log real transitions in the explicit comparison build. A setting
++      // alone is not proof that the CPU actually reached the requested rate.
++      LOG_INF("PWR", "idle comparison: target=%d actual=%u MHz idle=%u", targetFrequency,
++              getCpuFrequencyMhz(), targetLowPower);
++#endif
+     } else {
+       LOG_DBG("PWR", "Failed to set CPU frequency = %d MHz", targetFrequency);
++#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_IDLE_FREQ_MHZ)
++      LOG_ERR("PWR", "idle comparison rejected: target=%d actual=%u MHz", targetFrequency,
++              getCpuFrequencyMhz());
++#endif
+     }
+   }
+ 
+@@ -324,7 +345,7 @@
+ }
+ 
+ void HalPowerManager::setSideKeyBusy(const bool busy) {
+-#if FREEINK_DEVICE_READPICO
++#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+   g_sideKeyBusy.store(busy, std::memory_order_relaxed);
+ #else
+   (void)busy;
+@@ -332,7 +353,7 @@
+ }
+ 
+ bool HalPowerManager::sideKeyBusy() {
+-#if FREEINK_DEVICE_READPICO
++#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+   return g_sideKeyBusy.load(std::memory_order_relaxed);
+ #else
+   return false;
+@@ -340,7 +361,10 @@
+ }
+ 
+ bool HalPowerManager::canStandbyLightSleep(const HalGPIO& gpio) const {
+-#if FREEINK_DEVICE_READPICO
++#if FREEINK_DEVICE_METALIO_PLUS
++  (void)gpio;
++  return plus_board::standbySleepReady() && !sideKeyBusy();
++#elif FREEINK_DEVICE_READPICO
+   // The power key is PMU-owned and has no GPIO, so the generic
+   // powerPin/retention test below can never pass here. What this board has is a
+   // LEVEL wake on the FCA9555 INT# (GPIO41) plus the sleep timer, and the
+@@ -356,7 +380,24 @@
+ }
+ 
+ HalPowerManager::LightSleepWakeReason HalPowerManager::lightSleepFor(const uint32_t seconds) const {
+-#if FREEINK_DEVICE_READPICO
++#if FREEINK_DEVICE_METALIO_PLUS
++  if (sideKeyBusy()) return LightSleepWakeReason::Failed;
++#if defined(RICKYOS_PLUS_STATIC_STANDBY)
++  HalStorage::StandbySession session;
++  plus_board::StandbyStorage storage{
++      [](void* context) { return static_cast<HalStorage::StandbySession*>(context)->suspend(); },
++      [](void* context) { return static_cast<HalStorage::StandbySession*>(context)->resume(); }, &session};
++  const auto reason = plus_board::standbyStaticSleep(seconds, storage);
++#else
++  const auto reason = plus_board::standbyLightSleep(seconds);
++#endif
++  switch (reason) {
++    case plus_board::StandbyWake::Timer: return LightSleepWakeReason::Timer;
++    case plus_board::StandbyWake::PowerButton: return LightSleepWakeReason::PowerButton;
++    case plus_board::StandbyWake::PowerButtonHeld: return LightSleepWakeReason::PowerButtonHeld;
++    default: return LightSleepWakeReason::Failed;
++  }
++#elif FREEINK_DEVICE_READPICO
+   // Read Pico: no GPIO power key, no standby retention rail. The wake set is the
+   // FCA9555 INT# (GPIO41) on the LOW level plus the timer, wired through the new
+   // freeink::PowerManager light-sleep primitives. GPIO41 is NOT RTC-capable on
+@@ -438,8 +479,51 @@
+ #endif  // FREEINK_DEVICE_READPICO
+ }
+ 
++#if FREEINK_DEVICE_METALIO_PLUS
++void HalPowerManager::pollBatteryWhileAwake() {
++  const uint32_t now = millis();
++  if (batteryAwakePolled && uint32_t(now - batteryAwakePollAt) < 30000) return;
++  batteryAwakePolled = true;
++  batteryAwakePollAt = now;
++  // Reuse the UI's single sampler/cache, including its I2C failure handling.
++  // Long blocked/sleeping intervals earn no synthetic observations or catch-up.
++  getBatteryPercentage();
++#if defined(RICKYOS_PLUS_IDLE_FREQ_MHZ)
++  plus_board::traceIdlePower();
++#endif
++}
++#endif
++
  uint16_t HalPowerManager::getBatteryPercentage() const {
    static const BatteryMonitor battery;
 +#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
@@ -184011,7 +184155,7 @@
  #include "HalGPIO.h"
  
  class HalPowerManager;
-@@ -19,6 +21,13 @@
+@@ -19,6 +21,17 @@
  
    mutable int _batteryCachedPercent = 0;         // Last read battery percentage (0-100)
    mutable unsigned long _batteryLastPollMs = 0;  // Timestamp of last battery read in milliseconds
@@ -184022,18 +184166,63 @@
 +  mutable uint32_t batteryDiagnosticAt = 0;
 +  mutable bool batteryDiagnosticLogged = false;
 +#endif
++#if FREEINK_DEVICE_METALIO_PLUS
++  uint32_t batteryAwakePollAt = 0;
++  bool batteryAwakePolled = false;
++#endif
  
    enum LockMode { None, NormalSpeed };
    LockMode currentLockMode = None;
-@@ -63,7 +72,7 @@
+@@ -29,7 +42,16 @@
+   // handling sees the rest of that press (Read Pico RickyOS).
+   enum class LightSleepWakeReason : uint8_t { Timer, PowerButton, PowerButtonHeld, Failed };
+ 
+-#if BOARD_HAS_PSRAM
++#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_IDLE_FREQ_MHZ)
++  // Isolated awake-idle experiment. The S31/40 MHz XTAL path avoids changing
++  // sleep/PSRAM retention; ordinary Plus builds retain the existing 80 MHz.
++  static_assert(RICKYOS_PLUS_IDLE_FREQ_MHZ == 40 || RICKYOS_PLUS_IDLE_FREQ_MHZ == 80,
++                "Plus idle frequency must be 40 or 80 MHz");
++#if RICKYOS_PLUS_IDLE_FREQ_MHZ == 40 && !CONFIG_IDF_TARGET_ESP32S31
++#error "The 40 MHz Plus idle candidate requires ESP32-S31"
++#endif
++  static constexpr int LOW_POWER_FREQ = RICKYOS_PLUS_IDLE_FREQ_MHZ;
++#elif BOARD_HAS_PSRAM
+   static constexpr int LOW_POWER_FREQ = 80;  // MHz
+ #else
+   static constexpr int LOW_POWER_FREQ = 10;  // MHz
+@@ -48,7 +70,7 @@
+ 
+   // True when this board can run a light-sleep cycle at all. Only the
+   // runtime-selected X3 profiles and Read Pico have validated standby wake
+-  // wiring; every other target reports false. Read Pico's is valid whenever the
++  // wiring. Plus has an experimental board-owned side-key/timer path. Read Pico's is valid whenever the
+   // FCA9555 came up, and its wake set is armed in HalPowerManager.cpp (IOE INT#
+   // GPIO41, low level) rather than from a GPIO power pin.
+   bool canStandbyLightSleep(const HalGPIO& gpio) const;
+@@ -56,15 +78,20 @@
+   // Enter one light-sleep cycle. GPIO and timer wake sources are removed before returning.
+   LightSleepWakeReason lightSleepFor(uint32_t seconds) const;
+ 
+-  // Standby's side-key bookkeeping (Read Pico). A Standby that is just opening forgets
++  // Standby's side-key bookkeeping (Read Pico / Plus). A Standby that is just opening forgets
+   // the key events seen so far; main.cpp reports while it is judging a press, and
+   // Standby does not light-sleep in the middle of one.
+   static void beginStandbyKeyWatch();
    static void setSideKeyBusy(bool busy);
    static bool sideKeyBusy();
  
 -  // Get battery percentage (range 0-100)
 +  // Get battery percentage (0-100); Pico/Plus return 101 before any valid read.
    uint16_t getBatteryPercentage() const;
++
++#if FREEINK_DEVICE_METALIO_PLUS
++  // Main-loop only: observe charge qualification without a paint or a wake timer.
++  void pollBatteryWhileAwake();
++#endif
  
    // RAII helper class to manage power saving locks
+   // Usage: create an instance of Lock in a scope to disable power saving, for example when running a task that needs
 --- /dev/null
 +++ b/lib/hal/HalRecorder.cpp
 @@ -0,0 +1,191 @@
@@ -184287,6 +184476,306 @@
        LOG_ERR("USB", "Unable to remount SD card after USB Drive startup failure");
      }
      return false;
+@@ -371,14 +382,30 @@
+ }
+ 
+ bool HalStorage::writeFile(const char* path, const String& content) {
+-  HAL_STORAGE_WRAPPED_CALL(writeFile, path, content);
++  StorageLock lock;
++#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
++  invalidateStandbyPath(path);
++#endif
++  return SDCard.writeFile(path, content);
+ }
+ 
+ bool HalStorage::ensureDirectoryExists(const char* path) { HAL_STORAGE_WRAPPED_CALL(ensureDirectoryExists, path); }
+ 
+ class HalFile::Impl {
+  public:
+-  Impl(FsFile&& fsFile) : file(std::move(fsFile)) {}
++  Impl(FsFile&& fsFile, const char* path = nullptr, oflag_t flags = O_RDONLY) : file(std::move(fsFile)) {
++#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
++    // No extra allocation: metadata lives in the existing Impl allocation, only
++    // in this Plus experiment. C3 and ordinary Plus handle sizes are unchanged.
++    if (path && path[0] == '/' && flags == O_RDONLY && strlen(path) < sizeof(resumePath))
++      memcpy(resumePath, path, strlen(path) + 1);
++    next = head;
++    head = this;
++#else
++    (void)path;
++    (void)flags;
++#endif
++  }
+   // SdFat is not thread-safe; FsFile::close() touches SD/SPI and must run
+   // under StorageLock or it races SdSpiCard::m_spiActive across tasks and
+   // trips FreeRTOS's xTaskPriorityDisinherit assert. The FsFile member
+@@ -388,9 +415,98 @@
+   ~Impl() {
+     HalStorage::StorageLock lock;
+     file.close();
++#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
++    for (Impl** link = &head; *link; link = &(*link)->next) {
++      if (*link == this) { *link = next; break; }
++    }
++#endif
+   }
+   FsFile file;
++#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
++  inline static Impl* head = nullptr;
++  Impl* next = nullptr;
++  char resumePath[320]{};
++  uint64_t resumePosition = 0;
++  uint64_t resumeSize = 0;
++  bool parked = false;
++
++  static bool resumeAll() {
++    bool ok = true;
++    for (auto* entry = head; entry; entry = entry->next) {
++      if (!entry->parked) continue;
++      entry->file = SDCard.open(entry->resumePath, O_RDONLY);
++      const bool restored = entry->file && !entry->file.isDirectory() &&
++          entry->file.fileSize() == entry->resumeSize && entry->file.seekSet(entry->resumePosition);
++      if (!restored) {
++        entry->file.close();
++        LOG_ERR("STORAGE", "Standby file restore failed: %s", entry->resumePath);
++        ok = false;
++      }
++      entry->parked = false;
++    }
++    return ok;
++  }
++  static bool suspendAll() {
++    // Validate the entire set before closing anything. Writers, directory
++    // iterators, anonymous openNextFile handles and renamed paths are unsafe.
++    for (auto* entry = head; entry; entry = entry->next) {
++      if (!entry->file.isOpen()) continue;
++      if (!entry->resumePath[0] || entry->file.isDirectory() || !SDCard.exists(entry->resumePath)) {
++        LOG_ERR("STORAGE", "Standby blocked by unsupported live file handle");
++        return false;
++      }
++      entry->resumePosition = entry->file.position();
++      entry->resumeSize = entry->file.fileSize();
++    }
++    for (auto* entry = head; entry; entry = entry->next) {
++      if (!entry->file.isOpen()) continue;
++      entry->parked = true;
++      if (!entry->file.close()) {
++        resumeAll();
++        return false;
++      }
++    }
++    return true;
++  }
++#endif
+ };
++
++#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
++void HalStorage::invalidateStandbyPath(const char* path) {
++  const size_t length = strlen(path);
++  for (auto* entry = HalFile::Impl::head; entry; entry = entry->next) {
++    if (strncmp(entry->resumePath, path, length) == 0 &&
++        (entry->resumePath[length] == '\0' || entry->resumePath[length] == '/')) entry->resumePath[0] = '\0';
++  }
++}
++
++bool HalStorage::StandbySession::suspend() {
++  if (suspended_ || !SDCard.ready() || !HalFile::Impl::suspendAll()) return false;
++  auto* device = SDCard.rawBlockDevice();
++  if (!device || !device->syncDevice()) {
++    HalFile::Impl::resumeAll();
++    return false;
++  }
++  SDCard.shutdown();
++  suspended_ = true;
++  return true;
++}
++bool HalStorage::StandbySession::resume() {
++  if (!suspended_) return true;
++  suspended_ = false;
++  if (!SDCard.begin()) {
++    LOG_ERR("STORAGE", "Standby SD remount failed");
++    // Clear parked flags with closed handles; never let a destructor reopen
++    // against an unmounted volume or retry after the caller releases its lock.
++    for (auto* entry = HalFile::Impl::head; entry; entry = entry->next) entry->parked = false;
++    return false;
++  }
++  return HalFile::Impl::resumeAll();
++}
++HalStorage::StandbySession::~StandbySession() {
++  if (suspended_) resume();
++}
++#endif
+ 
+ HalFile::HalFile() = default;
+ HalFile::HalFile(std::unique_ptr<Impl> impl) : impl(std::move(impl)) {}
+@@ -400,10 +516,13 @@
+ 
+ HalFile HalStorage::open(const char* path, const oflag_t oflag) {
+   StorageLock lock;  // ensure thread safety for the duration of this function
++#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
++  if (oflag != O_RDONLY) invalidateStandbyPath(path);
++#endif
+   FsFile fsFile = SDCard.open(path, oflag);
+   if (!fsFile) return {};
+ 
+-  auto impl = makeUniqueNoThrow<HalFile::Impl>(std::move(fsFile));
++  auto impl = makeUniqueNoThrow<HalFile::Impl>(std::move(fsFile), path, oflag);
+   if (!impl) {
+     LOG_ERR("HAL", "OOM: HalFile::Impl (%u bytes)", static_cast<unsigned>(sizeof(HalFile::Impl)));
+     return {};
+@@ -415,16 +534,42 @@
+ 
+ bool HalStorage::exists(const char* path) { HAL_STORAGE_WRAPPED_CALL(exists, path); }
+ 
+-bool HalStorage::remove(const char* path) { HAL_STORAGE_WRAPPED_CALL(remove, path); }
++bool HalStorage::remove(const char* path) {
++  StorageLock lock;
++  const bool ok = SDCard.remove(path);
++#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
++  if (ok) invalidateStandbyPath(path);
++#endif
++  return ok;
++}
+ bool HalStorage::rename(const char* oldPath, const char* newPath) {
+-  HAL_STORAGE_WRAPPED_CALL(rename, oldPath, newPath);
++  StorageLock lock;
++  const bool ok = SDCard.rename(oldPath, newPath);
++#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
++  if (ok) invalidateStandbyPath(oldPath);
++  if (ok) invalidateStandbyPath(newPath);
++#endif
++  return ok;
+ }
+ 
+ bool HalStorage::replaceFile(const char* tmpPath, const char* path) {
+-  HAL_STORAGE_WRAPPED_CALL(replaceFile, tmpPath, path);
+-}
+-
+-bool HalStorage::rmdir(const char* path) { HAL_STORAGE_WRAPPED_CALL(rmdir, path); }
++  StorageLock lock;
++  const bool ok = SDCard.replaceFile(tmpPath, path);
++#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
++  if (ok) invalidateStandbyPath(tmpPath);
++  if (ok) invalidateStandbyPath(path);
++#endif
++  return ok;
++}
++
++bool HalStorage::rmdir(const char* path) {
++  StorageLock lock;
++  const bool ok = SDCard.rmdir(path);
++#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
++  if (ok) invalidateStandbyPath(path);
++#endif
++  return ok;
++}
+ 
+ bool HalStorage::openFileForRead(const char* moduleName, const char* path, HalFile& file) {
+   StorageLock lock;  // ensure thread safety for the duration of this function
+@@ -433,7 +578,7 @@
+     file = HalFile();
+     return false;
+   }
+-  auto impl = makeUniqueNoThrow<HalFile::Impl>(std::move(fsFile));
++  auto impl = makeUniqueNoThrow<HalFile::Impl>(std::move(fsFile), path, O_RDONLY);
+   if (!impl) {
+     LOG_ERR(moduleName, "OOM: HalFile::Impl (%u bytes)", static_cast<unsigned>(sizeof(HalFile::Impl)));
+     file = HalFile();
+@@ -454,11 +599,14 @@
+ bool HalStorage::openFileForWrite(const char* moduleName, const char* path, HalFile& file) {
+   StorageLock lock;  // ensure thread safety for the duration of this function
+   FsFile fsFile;
++#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
++  invalidateStandbyPath(path);
++#endif
+   if (!SDCard.openFileForWrite(moduleName, path, fsFile)) {
+     file = HalFile();
+     return false;
+   }
+-  auto impl = makeUniqueNoThrow<HalFile::Impl>(std::move(fsFile));
++  auto impl = makeUniqueNoThrow<HalFile::Impl>(std::move(fsFile), path, O_RDWR | O_CREAT | O_TRUNC);
+   if (!impl) {
+     LOG_ERR(moduleName, "OOM: HalFile::Impl (%u bytes)", static_cast<unsigned>(sizeof(HalFile::Impl)));
+     file = HalFile();
+@@ -487,7 +635,14 @@
+   assert(impl != nullptr);                 \
+   return impl->file.method(__VA_ARGS__);
+ 
++#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
++#define HAL_FILE_METADATA_LOCK HalStorage::StorageLock lock;
++#else
++#define HAL_FILE_METADATA_LOCK
++#endif
++
+ #define HAL_FILE_FORWARD_CALL(method, ...) \
++  HAL_FILE_METADATA_LOCK                  \
+   assert(impl != nullptr);                 \
+   return impl->file.method(__VA_ARGS__);
+ 
+@@ -515,7 +670,23 @@
+ size_t HalFile::write(const uint8_t* buf, size_t count) { HAL_FILE_WRAPPED_CALL(write, buf, count); }
+ size_t HalFile::write(const void* buf, size_t count) { HAL_FILE_WRAPPED_CALL(write, buf, count); }
+ size_t HalFile::write(uint8_t b) { HAL_FILE_WRAPPED_CALL(write, b); }
+-bool HalFile::rename(const char* newPath) { HAL_FILE_WRAPPED_CALL(rename, newPath); }
++bool HalFile::rename(const char* newPath) {
++  HalStorage::StorageLock lock;
++  assert(impl != nullptr);
++  const bool ok = impl->file.rename(newPath);
++#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
++  if (ok) {
++    // The path may name other open readers too. Copy before invalidating the
++    // registry so clearing this entry cannot alter the match for later entries.
++    char oldPath[sizeof(impl->resumePath)];
++    memcpy(oldPath, impl->resumePath, sizeof(oldPath));
++    if (oldPath[0]) HalStorage::invalidateStandbyPath(oldPath);
++    HalStorage::invalidateStandbyPath(newPath);
++    impl->resumePath[0] = '\0';
++  }
++#endif
++  return ok;
++}
+ bool HalFile::isDirectory() const { HAL_FILE_FORWARD_CALL(isDirectory, ); }  // already thread-safe, no need to wrap
+ void HalFile::rewindDirectory() { HAL_FILE_WRAPPED_CALL(rewindDirectory, ); }
+ // Closing an unopened handle is a no-op, not misuse. openFileForRead()/openFileForWrite()
+@@ -544,5 +715,5 @@
+   }
+   return HalFile(std::move(nextImpl));
+ }
+-bool HalFile::isOpen() const { return impl != nullptr && impl->file.isOpen(); }  // already thread-safe, no need to wrap
++bool HalFile::isOpen() const { HAL_FILE_METADATA_LOCK return impl != nullptr && impl->file.isOpen(); }  // already thread-safe, no need to wrap
+ HalFile::operator bool() const { return isOpen(); }
+--- a/lib/hal/HalStorage.h
++++ b/lib/hal/HalStorage.h
+@@ -112,8 +112,29 @@
+     StorageLock& operator=(const StorageLock&) = delete;
+   };
+ 
++#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
++  // Stack-owned lease: serialize every SD user until rails/remount/file positions
++  // are restored. Unsupported live handles block sleep instead of being invalidated.
++  class StandbySession {
++   public:
++    bool suspend();
++    bool resume();
++    ~StandbySession();
++    StandbySession() = default;
++    StandbySession(const StandbySession&) = delete;
++    StandbySession& operator=(const StandbySession&) = delete;
++   private:
++    StorageLock lock_;
++    bool suspended_ = false;
++  };
++#endif
++
+  private:
++  friend class HalFile;
+   static HalStorage instance;
++#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
++  static void invalidateStandbyPath(const char* path);
++#endif
+ 
+   bool initialized = false;
+   // Recursive because HalFile operations can re-enter storage wrappers while
 --- a/lib/hal/HalSystem.cpp
 +++ b/lib/hal/HalSystem.cpp
 @@ -15,6 +15,7 @@
@@ -187852,9 +188341,10 @@
  
 --- a/src/activities/apps/standby/StandbyActivity.cpp
 +++ b/src/activities/apps/standby/StandbyActivity.cpp
-@@ -1,8 +1,13 @@
+@@ -1,8 +1,14 @@
 +#include <HalAudioOutput.h>
 +#if FREEINK_DEVICE_METALIO_PLUS
++#include <BleInput.h>
 +#include <HalRecorder.h>
 +#endif
  #include "StandbyActivity.h"
@@ -187866,7 +188356,16 @@
  #include <I18n.h>
  #include <Logging.h>
  #include <Memory.h>
-@@ -129,6 +134,14 @@
+@@ -47,7 +53,7 @@
+ constexpr uint32_t kNtpTimeoutMs = 12000u;
+ constexpr uint32_t kSyncDelayMs = 1500u;
+ #if CROSSPOINT_EMULATED == 0
+-constexpr uint32_t kMaxLightSleepSeconds = 60u;
++[[maybe_unused]] constexpr uint32_t kMaxLightSleepSeconds = 60u;
+ #endif
+ 
+ // Face factory table. Add new faces by appending a row here and including the
+@@ -129,6 +135,14 @@
  
  void StandbyActivity::onEnter() {
    Activity::onEnter();
@@ -187881,7 +188380,7 @@
  #if CROSSPOINT_EMULATED == 0
    HalPowerManager::beginStandbyKeyWatch();
  #endif
-@@ -191,6 +204,9 @@
+@@ -191,6 +205,9 @@
    renderer.setOrientation(savedOrientation_);
    // Time in Standby is not reading time: the book under it starts its gap afresh.
    READING_STATS.resumeSession();
@@ -187891,7 +188390,7 @@
    LOG_DBG("STANDBY", "onExit free heap=%u", static_cast<unsigned>(ESP.getFreeHeap()));
    Activity::onExit();
  }
-@@ -216,6 +232,7 @@
+@@ -216,6 +233,7 @@
      return;
    }
    currentFace_->onEnter();
@@ -187899,7 +188398,98 @@
    requestUpdate();
  }
  
-@@ -484,7 +501,14 @@
+@@ -430,9 +448,30 @@
+ 
+ bool StandbyActivity::tryLightSleep(const uint32_t idleMs) {
+ #if CROSSPOINT_EMULATED == 0
++#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_STANDBY_DIAG)
++  static uint32_t lastGateNote = 0;
++  if (uint32_t(millis() - lastGateNote) >= 30000) {
++    lastGateNote = millis();
++    STANDBY_DIAG("gate idle=%lu pic=%u swipe=%u ble=%u rec=%u light=%u sync=%u wifi=%d ready=%u key=%u",
++                 static_cast<unsigned long>(idleMs), currentFace_ && currentFace_->needsPicture(),
++                 SETTINGS.standbySwipeUnlock, bleinput::isRunning(), HalRecorder::active(), Frontlight.isOn(),
++                 syncState_ != SyncState::Idle, static_cast<int>(WiFi.getMode()),
++                 powerManager.canStandbyLightSleep(gpio), HalPowerManager::sideKeyBusy());
++  }
++#endif
+   if (mode_ != DisplayMode::Immersive || !currentFace_) return false;
+   // Touch does not wake light sleep: stay awake while waiting for a picture to be picked.
+   if (currentFace_->needsPicture()) return false;
++#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
++  // A static image must have completed its first paint before any bus/rail park.
++  // Clock faces stay awake: post-timer rendering is a separate unresolved path.
++  if (currentFace_->wantsClock() || !drewFrame_) return false;
++#endif
++#if FREEINK_DEVICE_METALIO_PLUS
++  // Side-key/timer candidate only. Preserve first-swipe semantics until touch
++  // wake and gesture replay have been independently validated on Plus.
++  if (SETTINGS.standbySwipeUnlock || bleinput::isRunning() || HalRecorder::active() || Frontlight.isOn()) return false;
++#endif
+ 
+   const bool syncActive = syncState_ != SyncState::Idle;
+   const bool wifiActive = WiFi.getMode() != WIFI_MODE_NULL;
+@@ -446,16 +485,37 @@
+     return false;
+   }
+ 
++#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
++  // A static face sleeps until the power key or auto power-off: the board keeps
++  // its peripherals parked across timer and shared-IRQ wakes (one restore per
++  // standby). millis() keeps counting through light sleep, so the power-off
++  // check in loop() fires on the wake at the deadline.
++  const unsigned long powerOffMs = SETTINGS.getStandbyPowerOffMs();
++  const unsigned long elapsedMs = millis() - enteredMs_;
++  const uint32_t seconds =
++      powerOffMs == 0 ? 24u * 60u * 60u
++                      : static_cast<uint32_t>(std::clamp<unsigned long>(
++                            (powerOffMs > elapsedMs ? powerOffMs - elapsedMs : 0) / 1000UL + 1, 1, 24UL * 60UL * 60UL));
++#else
+   const uint32_t seconds = std::clamp<uint32_t>(currentFace_->secondsUntilNextWake(), 1, kMaxLightSleepSeconds);
++#endif
+   HalPowerManager::LightSleepWakeReason wakeReason;
+   {
+     RenderLock lock;
++#if FREEINK_DEVICE_METALIO_PLUS
++    renderer.waitRefreshComplete();
++#endif
+     wakeReason = powerManager.lightSleepFor(seconds);
+   }
+   switch (wakeReason) {
+     case HalPowerManager::LightSleepWakeReason::Timer:
+       STANDBY_DIAG("wake: timer");
++#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
++      // OEM Park: a timer slice performs no face tick and submits no refresh.
++      STANDBY_DIAG("static timer: no redraw");
++#else
+       processFaceTick(true);
++#endif
+       return true;
+     case HalPowerManager::LightSleepWakeReason::PowerButton:
+       // A short press, already over before main.cpp's key poll could see it: leave
+@@ -468,13 +528,21 @@
+       // Still down: main.cpp finishes it (release = leave Standby, hold = power off).
+       STANDBY_DIAG("wake: key still down");
+       lastInputMs_ = millis();
++#if !(FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY))
+       requestUpdate();
++#endif
+       return true;
+     case HalPowerManager::LightSleepWakeReason::Failed:
++#if FREEINK_DEVICE_METALIO_PLUS
++      // A shared IRQ, USB, or failed read is not a key. Bound failed attempts
++      // without adding a wake timer or spinning on a persistently asserted IRQ.
++      lastInputMs_ = millis() - (standby_time::kLightSleepIdleMs - 5000u);
++#else
+       // Not the key: the PMU's 30 s battery sample or another expander input. Sleep
+       // again after a short pause instead of treating it as input (StandbyTime.h).
+       STANDBY_DIAG("wake: other, sleep again in %ums", standby_time::kResleepAfterOtherWakeMs);
+       lastInputMs_ = millis() - (standby_time::kLightSleepIdleMs - standby_time::kResleepAfterOtherWakeMs);
++#endif
+       return true;
+   }
+ #else
+@@ -484,7 +552,14 @@
  }
  
  void StandbyActivity::loop() {
@@ -187915,7 +188505,7 @@
      // One shortcut switch owns both entry and exit; the side power key stays independent.
      if (SETTINGS.standbyShortcutEnabled) {
        STANDBY_DIAG("close: Back released");
-@@ -507,6 +531,7 @@
+@@ -507,6 +582,7 @@
        if (action == StandbyFace::PictureAction::Download &&
            !startActivityForResultWith<RickyWallpaperDownloadActivity>([this](const ActivityResult&) {
              if (currentFace_) currentFace_->onEnter();
@@ -187923,7 +188513,7 @@
              requestUpdate();
            })) {
          LOG_ERR("STANDBY", "Cannot open the picture downloader");
-@@ -531,11 +556,17 @@
+@@ -531,11 +607,17 @@
  
  void StandbyActivity::render(RenderLock&&) {
    if (!currentFace_) return;
@@ -187942,7 +188532,7 @@
      renderer.clearScreen();
      {
        const GfxRenderer::ClipScope clip(renderer, viewport.x, viewport.y, viewport.width, viewport.height);
-@@ -649,6 +680,7 @@
+@@ -649,6 +731,7 @@
        return;
      }
      if (currentFace_) currentFace_->onEnter();
@@ -188272,18 +188862,17 @@
    bool wantsGraySettle() const override { return true; }
 --- a/src/activities/home/RickyStorageActivity.cpp
 +++ b/src/activities/home/RickyStorageActivity.cpp
-@@ -18,6 +18,10 @@
+@@ -18,6 +18,9 @@
  
  #include "CrossPointSettings.h"
  #include "FileBrowserActivity.h"
 +#include "activities/ActivityManager.h"
 +#include "activities/library/LibrarySourcesActivity.h"
-+#include "activities/settings/ClearCacheActivity.h"
 +#include <LibrarySources.h>
  #include "SdCardFontSystem.h"
  #include "activities/RenderLock.h"
  #include "activities/settings/FontLibraryActivity.h"
-@@ -47,48 +51,9 @@
+@@ -47,48 +50,9 @@
      snprintf(out, size, "%u MB", static_cast<unsigned>((bytes + MB / 2) / MB));
  }
  
@@ -188332,7 +188921,7 @@
  }  // namespace
  
  const char* RickyStorageActivity::folderFor(const int index) {
-@@ -110,9 +75,12 @@
+@@ -110,9 +74,12 @@
  namespace {
  struct StorageScan {
    bool measured = false;
@@ -188345,7 +188934,7 @@
  };
  constexpr const char* kStatsPath = "/.crosspoint/storage-stats.json";
  // "1" = counts out of date. Rewritten, never deleted: this page removes nothing on the card.
-@@ -150,9 +118,14 @@
+@@ -150,9 +117,14 @@
    JsonDocument doc;
    doc["total"] = scan.total;
    doc["free"] = scan.free;
@@ -188360,7 +188949,7 @@
    String text;
    serializeJson(doc, text);
    if (!Storage.writeFile(kStatsPath, text)) LOG_ERR("STOR", "Cannot save storage stats");
-@@ -173,7 +146,12 @@
+@@ -173,7 +145,12 @@
      scan.total = doc["total"] | static_cast<uint64_t>(0);
      scan.free = doc["free"] | static_cast<uint64_t>(0);
      scan.measured = scan.total > 0 && scan.free <= scan.total;
@@ -188373,7 +188962,7 @@
    });
  }
  
-@@ -191,26 +169,64 @@
+@@ -191,26 +168,64 @@
    return books;
  }
  
@@ -188455,7 +189044,7 @@
    LOG_INF("STOR", "Counted files in %u ms", static_cast<unsigned>(millis() - started));
    if (staleEpoch.load() == epoch && countsStale.exchange(false)) Storage.writeFile(kStalePath, "0");
  }
-@@ -220,6 +236,7 @@
+@@ -220,6 +235,7 @@
    const bool measured = RickyFreeSpace::measure(total, free);
    publish([&](StorageScan& scan) {
      scan.measured = measured;
@@ -188463,7 +189052,7 @@
      scan.total = total;
      scan.free = free;
    });
-@@ -240,7 +257,7 @@
+@@ -240,7 +256,7 @@
    // Back on the page before a paused pass ended: let it carry on and pick countsWanted up.
    scanCancel.store(false);
    if (scanRunning.exchange(true)) return;
@@ -188472,7 +189061,7 @@
    if (xTaskCreate(&scanStorageTask, "RickyStorageScan", 6144, nullptr, 1, nullptr) != 1) {  // pdPASS
      LOG_ERR("STOR", "Cannot start the storage scan");
      scanRunning.store(false);
-@@ -265,26 +282,24 @@
+@@ -265,26 +281,24 @@
    seenScans = scanGeneration.load();
    counting = scanRunning.load();
    if (!have) return;  // never measured on this card: keep the placeholders
@@ -188509,7 +189098,7 @@
    const int indexed = indexBookCount();
    if (indexed >= 0) publish([&](StorageScan& scan) { scan.counts[0] = indexed; });
    invalidateScan();
-@@ -299,18 +314,24 @@
+@@ -299,18 +313,24 @@
    // the font registry found in both, not the visible folder's entries. In memory, cheap.
    counts[1] = static_cast<int>(sdFontSystem.registry().getFamilies().size());
    loadStats();
@@ -188541,7 +189130,7 @@
  }
  
  void RickyStorageActivity::onExit() {
-@@ -383,91 +404,119 @@
+@@ -383,91 +403,117 @@
      target.text(screen.takeBottom(smallHeight * 2, gap), tr(STR_RICKY_FOLDER_MISSING), warning);
    }
  
@@ -188559,11 +189148,10 @@
 -  // SD card: usage ring, free / total, opens the whole card in the file browser.
 +  char text[64];
 +
-+  // SD card: what the space is made of, from the last Refresh. Opens reading-cache
-+  // cleanup, the one thing on the card this page can safely give back.
++  // SD card: display the last statistics; this summary has no action or focus.
    const auto summary = screen.takeTop(summaryHeight, section);
 -  const bool summarySelected = focus && selected == 4;
-+  const bool summarySelected = focus && selected == 0;
++  constexpr bool summarySelected = false;
    RickyPageUi::card(target, summary, summarySelected);
 -  screen.frame().hit(summary, ACTION_ROW, 4, fui::InputTouch);
 -  const Rect ringBox{summary.x + pad, summary.y + pad, ring, ring};
@@ -188582,7 +189170,6 @@
 -  const int textX = ringBox.x + ring + pad;
 -  const int textWidth = summary.right() - textX - 24 - pad;
 -  const int textTop = summary.y + (summary.height - bodyHeight - smallHeight - gap / 2) / 2;
-+  screen.frame().hit(summary, ACTION_ROW, 0, fui::InputTouch);
 +  const fui::Color ink = summarySelected ? fui::Color::White : fui::Color::Black;
 +  const fui::Color quiet = summarySelected ? fui::Color::White : fui::Color::DarkGray;
 +  const int innerX = summary.x + pad;
@@ -188676,7 +189263,7 @@
 +  const freeink::Icon* icons[] = {&icon_ricky_folder_40, &icon_ricky_books_40, &icon_ricky_transfer_40};
 +  for (int i = 0; i < 3; ++i) {
 +    const auto rect = screen.takeTop(rowHeight, i == 2 ? 0 : gap);
-+    const int row = i + 1;
++    const int row = i;
 +    const bool picked = focus && selected == row;
      RickyPageUi::card(target, rect, picked);
 -    screen.frame().hit(rect, ACTION_ROW, i, fui::InputTouch);
@@ -188730,7 +189317,7 @@
    }
  }
  
-@@ -478,26 +527,25 @@
+@@ -478,26 +524,19 @@
      refresh();
      return;
    }
@@ -188744,18 +189331,13 @@
 -    const char* path = folderFor(index);
 -    if (index < 4 && !Storage.exists(path) && !Storage.ensureDirectoryExists(path)) {
 -      folderMissing = true;
-+  if (index == 0) {
-+    // Reading caches only: books, notes and progress files stay. Count again after.
-+    startActivityForResultWith<ClearCacheActivity>([this](const ActivityResult&) {
-+      invalidateScan();
-       requestUpdate();
+-      requestUpdate();
 -      return;
 -    }
 -    // Scoped: Back in the opened folder returns here instead of climbing to "/".
 -    // A rename, move or delete in there marks the scan stale (FileBrowserActivity::finishEdit);
 -    // count again on the way back only then, not after every look into a folder.
-+    });
-+  } else if (index == 1) {
++  if (index == 0) {
 +    // Back in the opened folder climbs to the card root, then returns here.
      startActivityForResultWith<FileBrowserActivity>(
          [this](const ActivityResult&) {
@@ -188765,12 +189347,12 @@
 -  }
 -}
 +        "/", FileBrowserActivity::Mode::Books, /*scoped=*/true);
-+  } else if (index == 2) {
++  } else if (index == 1) {
 +    startActivityForResultWith<LibrarySourcesActivity>([this](const ActivityResult&) {
 +      countLibraryFolders();
 +      requestUpdate();
 +    });
-+  } else if (index == 3) {
++  } else if (index == 2) {
 +    activityManager.goToFileTransfer();
 +  }
 +}
@@ -188782,9 +189364,9 @@
   protected:
 -  // Four folder cards and the SD summary (0..4), then the header's Refresh.
 -  static constexpr int kCardCount = 5;
-+  // The SD summary (0), then All files, Library folders and Transfer (1..3), then the
-+  // header's Refresh.
-+  static constexpr int kCardCount = 4;
++  // The SD summary is display-only. All files, Library folders and Transfer
++  // (0..2) are followed by the header's Refresh.
++  static constexpr int kCardCount = 3;
    static constexpr int kRefreshAction = kCardCount;
    int listCount() const override { return kCardCount + 1; }
    void onEnter() override;
@@ -193535,7 +194117,14 @@
  };
 --- a/src/main.cpp
 +++ b/src/main.cpp
-@@ -12,6 +12,7 @@
+@@ -6,12 +6,14 @@
+ #include <GfxRenderer.h>
+ #include <HalClock.h>
+ #include <HalDisplay.h>
++#include <BatteryMonitor.h>
+ #include <HalFrontlight.h>
+ #include <HalGPIO.h>
+ #include <HalMemory.h>
  #include <HalOtaSlot.h>
  #include <HalPowerManager.h>
  #include <HalStorage.h>
@@ -193543,15 +194132,17 @@
  #include <HalSystem.h>
  #include <HalTiltSensor.h>
  #include <I18n.h>
-@@ -40,6 +41,7 @@
+@@ -39,7 +41,9 @@
+ #include "RecentBooksStore.h"
  #include "SdCardFontSystem.h"
  #include "WifiCredentialStore.h"
++#include "util/TimeUtils.h"
  #include "activities/Activity.h"
 +#include "util/TimeUtils.h"
  #include "activities/ActivityManager.h"
  #include "activities/settings/FontDownloadActivity.h"
  #include "activities/settings/LanguageSelectActivity.h"
-@@ -138,16 +140,16 @@
+@@ -138,16 +142,16 @@
  // families, other sizes, and style variants come from SD .cpfont files.
  #include <StandbyDiag.h>
  #include <builtinFonts/notosans_12_regular.h>
@@ -193573,7 +194164,7 @@
  static const EpdFontData& cjk12Data = notosans_cjk_12_rickyos;
  EpdFont offlineReaderFont(&cjk12Data);
  EpdFontFamily offlineReaderFontFamily(&offlineReaderFont);
-@@ -342,7 +344,9 @@
+@@ -342,7 +346,9 @@
  }
  
  void toggleFrontlight() {
@@ -193584,7 +194175,7 @@
    const bool lightOn = !Frontlight.isOn();
    Frontlight.setOn(lightOn);
    SETTINGS.frontlightOn = lightOn ? 1 : 0;
-@@ -402,7 +406,39 @@
+@@ -402,7 +408,46 @@
  }
  
  // Enter deep sleep mode
@@ -193597,6 +194188,13 @@
 +void powerLog(const char* event) {
 +  static const BatteryMonitor gauge;
 +  const auto s = gauge.readPowerSnapshot();
++  // Ticks also carry the gauge's own StateOfCharge and the percentage on screen.
++  char tagged[64];
++  if (strncmp(event, "tick", 4) == 0) {
++    snprintf(tagged, sizeof(tagged), "%s-soc%u-ui%u", event, s.socOk ? s.soc : 999u,
++             static_cast<unsigned>(powerManager.getBatteryPercentage()));
++    event = tagged;
++  }
 +  char line[192];
 +  const int n = snprintf(line, sizeof(line), "%lu,%lu,%s,%s,%d,%d,%d,%u,%d,%d,%u,%d,%d%d%d%d%d\n",
 +                         static_cast<unsigned long>(TimeUtils::getCurrentValidTimestamp()),
@@ -193624,7 +194222,7 @@
    bleinput::stop();
    HalPowerManager::Lock powerLock;  // Ensure we are at normal CPU frequency for sleep preparation
    APP_STATE.lastSleepFromReader = activityManager.isReaderActivity();
-@@ -449,7 +485,7 @@
+@@ -449,7 +494,7 @@
      WiFi.mode(WIFI_OFF);
    }
  
@@ -193633,7 +194231,7 @@
    gpio.stopHapticFeedback();
  #endif
    halTiltSensor.deepSleep();
-@@ -466,7 +502,7 @@
+@@ -466,7 +511,7 @@
  
  bool setupDisplayAndFonts(bool seamless = false, bool logSdFontLoadHeap = false) {
    display.begin(seamless);
@@ -193642,7 +194240,7 @@
    // Read Pico step 4 of 5 (see the boot-order note in setup()): the panel has
    // stepped through its own rails by now — BoardReadPico::epdPrepare/On/Off are
    // the board's LgfxEpdPowerHooks, so the SY7636A enable (FCA9555 P0.3), VCOM and
-@@ -511,7 +547,7 @@
+@@ -511,7 +556,7 @@
    renderer.setFallbackFont(UI_12_FONT_ID, CJK_UI_12_FONT_ID);
    renderer.setFallbackFont(NOTOSANS_18_FONT_ID, CJK_UI_12_FONT_ID);
    renderer.insertFont(BaseTheme::STATUS_NUMERIC_FONT_ID, smallFontFamily);
@@ -193651,7 +194249,7 @@
    renderer.insertFont(READER_STATUS_FONT_ID, smallFontFamily);
    renderer.insertFont(READER_ESTIMATE_FONT_ID, ui10FontFamily);
    renderer.setFallbackFont(READER_STATUS_FONT_ID, CJK_UI_8_FONT_ID);
-@@ -666,7 +702,9 @@
+@@ -666,7 +711,9 @@
    // enumeration proceed asynchronously so users do not pay this startup cost.
    delay(250);
  #endif
@@ -193661,7 +194259,7 @@
  #if LOG_SERIAL_HAS_TX_TIMEOUT
    logSerial.setTxTimeoutMs(1);  // This is a load-bearing 1. Do not modify.
  #endif
-@@ -766,10 +804,20 @@
+@@ -766,10 +813,20 @@
      return;
    }
  
@@ -193683,7 +194281,7 @@
    if (!settingsLoaded) SETTINGS.readerMenuStyle = CrossPointSettings::READER_MENU_LIST;
  #endif
    const auto onboardingMode =
-@@ -828,7 +876,7 @@
+@@ -828,7 +885,7 @@
        // Most devices return to sleep after a USB-powered cold boot.
        LOG_DBG("MAIN", "Wakeup reason: After USB Power");
  #if FREEINK_DEVICE_X4PRO || FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_PAPERMONO || FREEINK_DEVICE_EEGO_A4 || \
@@ -193692,7 +194290,7 @@
        // X4 Pro must stay awake so USB Serial/JTAG remains available after leaving
        // USB Drive and reconnecting the cable. Paper Mono has no armable GPIO wake
        // (its button is behind the PMIC). EEGO A4's post-flash reset reads as
-@@ -988,12 +1036,44 @@
+@@ -988,12 +1045,44 @@
      gpio.update();
    }
  
@@ -193737,7 +194335,7 @@
  #ifdef RICKYOS_STANDBY_DIAG
    standby_diag::dumpWhenAwake();
  #endif
-@@ -1033,7 +1113,8 @@
+@@ -1033,7 +1122,8 @@
  
    gpio.setSharedConfirmPowerShortPressEmitsPower(SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP);
    mappedInputManager.update();
@@ -193747,7 +194345,7 @@
    // Cancel before any handler can wait for the framebuffer lock. These are
    // snapshot queries: they do not consume the gesture from its normal owner.
  #if CROSSPOINT_EMULATED
-@@ -1049,7 +1130,9 @@
+@@ -1049,7 +1139,9 @@
      activityManager.cancelIdleRender("touch", true);
    }
  #endif
@@ -193758,7 +194356,20 @@
    gpio.updateHapticFeedback(SETTINGS.hapticFeedbackLevel);
  #endif
    updateBluetoothLifecycle();
-@@ -1208,6 +1291,10 @@
+@@ -1064,6 +1156,12 @@
+ 
+ #if CROSSPOINT_CAP_SOUND_FEEDBACK
+   SoundFeedback::update(SETTINGS.soundFeedbackLevel, gpio.physicalPressedMask());
++#endif
++
++#if FREEINK_DEVICE_METALIO_PLUS
++  // Charge qualification must progress even when no page is repainted. This
++  // bounded poll uses NVS/I2C, not SD, and only runs while this loop is awake.
++  powerManager.pollBatteryWhileAwake();
+ #endif
+ 
+   if (activityManager.requiresExclusiveStorageLoop()) {
+@@ -1208,6 +1306,10 @@
      return;
    }
    const unsigned long sleepTimeoutMs = SETTINGS.getSleepTimeoutMs();
@@ -193769,7 +194380,7 @@
    if (sleepTimeoutMs > 0 && !activityManager.preventAutoSleep() && millis() - lastActivityTime >= sleepTimeoutMs) {
      LOG_DBG("SLP", "Auto-standby after %lu ms of inactivity", sleepTimeoutMs);
      STANDBY_DIAG("auto-standby after %lus idle", sleepTimeoutMs / 1000);
-@@ -1310,12 +1397,13 @@
+@@ -1310,12 +1412,13 @@
    // flash, the AA pass re-running, and a frontlight dip under the refresh
    // load); the reader's status bar picks the charging state up on the next
    // page turn instead.

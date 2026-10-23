@@ -42,6 +42,9 @@ typedef bool (*line_cb_func_t)(void*, uint8_t*);
 typedef void (*frame_done_func_t)(void*);
 
 void epd_lcd_init(const LcdEpdConfig_t* config, int display_width, int display_height);
+// Task-only, with no active renderer. Failed setup releases partial resources
+// and returns false, allowing USB/logging to survive a sleep restore failure.
+bool epd_lcd_init_checked(const LcdEpdConfig_t* config, int display_width, int display_height);
 void epd_lcd_deinit();
 void epd_lcd_frame_done_cb(frame_done_func_t, void* payload);
 void epd_lcd_line_source_cb(line_cb_func_t, void* payload);

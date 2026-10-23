@@ -30,3 +30,9 @@ target_compile_definitions(${COMPONENT_LIB} PUBLIC
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-missing-field-initializers)
 # Cross-unit elimination for the block-device adapter; preserve all public behavior.
 target_compile_options(${COMPONENT_LIB} PRIVATE -flto=auto -Oz)
+
+# Keep the storage lease implementation and its public HAL declaration in the
+# same profile as the application sleep backend (on unless set to 0).
+if(NOT "$ENV{RICKYOS_PLUS_STATIC_STANDBY}" STREQUAL "0")
+  target_compile_definitions(${COMPONENT_LIB} PUBLIC RICKYOS_PLUS_STATIC_STANDBY=1)
+endif()

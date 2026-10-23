@@ -49,6 +49,8 @@ void captureWorker(void*) {
   i2s_chan_handle_t rx = nullptr;
   bool enabled = false;
   epd_board_metalio_eink4_plus_pa_set(false);
+  // Standby may have left P14 (BT module + amp) off: power it and let the module boot.
+  if (epd_board_metalio_eink4_plus_bt_pa_resume()) settle(300);
   uart.begin(115200, SERIAL_8N1, BT_AUDIO_RX_PIN, BT_AUDIO_TX_PIN);
   bool ok = uart.print("AT+RX=2\r\n") == 9;
   uart.flush();
@@ -131,6 +133,8 @@ void worker(void*) {
   bool enabled = false;
   size_t total = 0;
   epd_board_metalio_eink4_plus_pa_set(false);
+  // Standby may have left P14 (BT module + amp) off: power it and let the module boot.
+  if (epd_board_metalio_eink4_plus_bt_pa_resume()) settle(300);
   uart.begin(115200, SERIAL_8N1, BT_AUDIO_RX_PIN, BT_AUDIO_TX_PIN);
   bool uartOk = uart.print("AT+RX=2\r\n") == 9;
   uart.flush();

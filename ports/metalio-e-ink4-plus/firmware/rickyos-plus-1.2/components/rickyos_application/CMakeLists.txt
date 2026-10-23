@@ -181,6 +181,7 @@ idf_component_register(
   "port/PlusOtaSelfTest.cpp"
   "port/PlusBoard.cpp"
   "port/PlusAudio.cpp"
+  "port/PlusGaugeConfig.cpp"
   "${APP_ROOT}/lib/hal/HalRecorder.cpp"
   "${APP_ROOT}/src/activities/apps/recorder/RecorderActivity.cpp"
   "port/PlusHaptic.cpp"
@@ -621,7 +622,7 @@ idf_component_register(
   "${APP_ROOT}/freeink-sdk/libs/font/FreeInkFont/third_party/freetype/include"
   "${APP_ROOT}/freeink-sdk/libs/font/FreeInkFont/third_party/stb"
  REQUIRES rickyos_storage rickyos_display rickyos_platform arduino-esp32-4.0.0-RC1
-    metalio_board mdns esp_timer esp_pm esp_app_format app_update esp_http_server nvs_flash esp-tls
+    metalio_board mdns esp_driver_usb_serial_jtag esp_timer esp_pm esp_app_format app_update esp_http_server nvs_flash esp-tls
 )
 target_compile_features(${COMPONENT_LIB} PUBLIC cxx_std_20)
 # Enable the validated Plus network-owner power cap in ordinary firmware.
@@ -664,6 +665,45 @@ endif()
 if("$ENV{RICKYOS_PLUS_READER_TIMING}" STREQUAL "1")
   target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_READER_TIMING=1)
 endif()
+# Standby power and battery percentage (1.2.6 defaults, accepted on device
+# 2026-10-23: ~6 mA static standby, gauge SoC 18.8 mAh per 1% vs 18.7 expected).
+# Static standby parks once and light-sleeps until the power key or auto-off,
+# keeps P14 (BT module/amp, also needed by the panel) on and cuts P5 (camera/
+# screen rail). The BQ27220 gets the real pack (1871 mAh, empty at 3.3 V) at
+# boot and its own StateOfCharge drives the display. Set any of these to 0 to
+# build without it.
+set(RICKYOS_PLUS_DEFAULT_ON
+    STANDBY_SLEEP STATIC_STANDBY STANDBY_KEEP_RAILS STANDBY_CUT_P5 GAUGE_CONFIG)
+foreach(option IN LISTS RICKYOS_PLUS_DEFAULT_ON)
+  if(NOT "$ENV{RICKYOS_PLUS_${option}}" STREQUAL "0")
+    set(RICKYOS_PLUS_${option} 1)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_${option}=1)
+  endif()
+endforeach()
+if(RICKYOS_PLUS_STATIC_STANDBY AND NOT RICKYOS_PLUS_STANDBY_SLEEP)
+  message(FATAL_ERROR "Static standby requires Plus standby sleep")
+endif()
+# Isolate awake-idle CPU power from the sleep path: comparison builds must turn
+# standby sleep off (RICKYOS_PLUS_STANDBY_SLEEP=0 RICKYOS_PLUS_STATIC_STANDBY=0).
+if(NOT "$ENV{RICKYOS_PLUS_IDLE_FREQ_MHZ}" STREQUAL "")
+  if(NOT "$ENV{RICKYOS_PLUS_IDLE_FREQ_MHZ}" MATCHES "^(40|80)$")
+    message(FATAL_ERROR "RICKYOS_PLUS_IDLE_FREQ_MHZ must be 40 or 80")
+  endif()
+  if(RICKYOS_PLUS_STANDBY_SLEEP)
+    message(FATAL_ERROR "Idle-frequency comparison requires Plus standby sleep disabled")
+  endif()
+  target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_IDLE_FREQ_MHZ=$ENV{RICKYOS_PLUS_IDLE_FREQ_MHZ})
+endif()
+# Experiment, off by default: P14 off in standby, back on at the next audio
+# session. The panel did not refresh after wake with P14 off.
+if("$ENV{RICKYOS_PLUS_STANDBY_LAZY_BT}" STREQUAL "1")
+  target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_STANDBY_LAZY_BT=1)
+endif()
+# Standby trace logging (diagnostic builds only; never enables sleep by itself).
+if("$ENV{RICKYOS_PLUS_STANDBY_DIAG}" STREQUAL "1")
+  target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_STANDBY_DIAG=1)
+endif()
+
 # The release version; a diagnostic build may set RICKYOS_PLUS_VERSION (e.g. an older
 # number to exercise an over-the-air update).
 set(RICKYOS_PLUS_APP_VERSION "1.2.5")

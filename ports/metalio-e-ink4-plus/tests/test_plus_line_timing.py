@@ -101,6 +101,7 @@ run(driver)
 render = r'''
 #include <cassert>
 #include <cstdint>
+#include <cstdlib>
 #include <vector>
 #include <utility>
 #define ESP_LOGI(...) ((void)0)
@@ -114,6 +115,9 @@ render = r'''
 #define EPD_DRAW_EMPTY_LINE_QUEUE 0x400
 #define EPD_DRAW_NO_PHASES_AVAILABLE 0x100
 #define MODE_GL4 10
+#include "lcd_fault.h"
+static uint32_t s_first_fault;
+uint32_t epd_lcd_get_first_fault(){return s_first_fault;}
 using frame_done_func_t=void(*)(void*);
 struct RenderContext_t {
  int cycle_frames=2,lines_total=688,mode=6,current_frame=0,error=0,frame_time=0;
