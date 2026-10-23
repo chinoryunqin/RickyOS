@@ -66,6 +66,10 @@ constexpr bool kStandbySleepEnabled = false;
 #endif
 bool boardReady = false;
 bool sleepFault = false;
+// Static standby: one park lasts up to a day (the caller passes the time left
+// to auto power-off); at most this many shared-IRQ wakes re-sleep in place.
+constexpr uint32_t kStaticSleepMaxSeconds = 24u * 60u * 60u;
+constexpr unsigned kStaticMaxOtherWakes = 2000;
 constexpr uint8_t kPowerKeyMask = 0x80;
 constexpr uint8_t kAllKeyMask = 0x83;
 
@@ -300,7 +304,9 @@ static StandbyWake standbySleepOnce(const uint32_t seconds, StandbyStorage* stor
     return StandbyWake::Failed;
   };
   if (!standbySleepReady()) return skip("not ready/audio/touch pending");
-  if (seconds == 0 || seconds > 60) return skip("timer range");
+  // Static standby parks once and sleeps until the power key or the auto-off
+  // deadline (up to a day); the clock-style path keeps its one-minute slices.
+  if (seconds == 0 || seconds > (staticPark ? kStaticSleepMaxSeconds : 60u)) return skip("timer range");
   if (!standbyPowerIdle()) return skip("USB/charger active or read failed");
   uint8_t p0 = 0, p1 = 0;
   if (!readInputs(p0, p1)) return skip("expander read failed");
@@ -477,17 +483,46 @@ static StandbyWake standbySleepOnce(const uint32_t seconds, StandbyStorage* stor
   ESP_LOGI("PlusSleep", "enter: seconds=%lu ext1_gpio=2", static_cast<unsigned long>(seconds));
   STANDBY_DIAG("board sleep enter: seconds=%lu display_fault=0x%08lx", static_cast<unsigned long>(seconds),
                static_cast<unsigned long>(epd_lcd_get_first_fault()));
-  sleepCheckpoint(SleepStage::SleepEnter);
-  error = esp_light_sleep_start();
-  const auto cause = esp_sleep_get_wakeup_cause();
-  recordSleepWake(static_cast<unsigned>(cause), error);
-  // As in the OEM wake sequence, latch P17 before restoring peripherals or
-  // re-enabling the shared GPIO ISR: LCD reinitialization may outlast a tap.
-  // Always restore the bus after a failed read; never turn that read into a key.
-  sleepCheckpoint(SleepStage::WakeLatch);
-  const bool wakeInputsValid = error == ESP_OK && readInputs(p0, p1);
+  // Park once, sleep many: a static face needs nothing while asleep, so timer
+  // slices and shared-IRQ wakes go straight back to sleep with SD, TPS, keys
+  // and the P14/P5 rails still parked. Only the power key or the auto-off
+  // deadline restores peripherals, once. (Restoring the rails on every slice
+  // reset the board with a power glitch on the second cycle: static3/static4.)
+  const uint32_t sleepStarted = millis();
+  const uint32_t sleepBudgetMs = seconds * 1000u;
+  decltype(esp_sleep_get_wakeup_cause()) cause{};
+  bool wakeInputsValid = false;
+  unsigned otherWakes = 0;
+  for (;;) {
+    sleepCheckpoint(SleepStage::SleepEnter);
+    error = esp_light_sleep_start();
+    cause = esp_sleep_get_wakeup_cause();
+    recordSleepWake(static_cast<unsigned>(cause), error);
+    // As in the OEM wake sequence, latch P17 before restoring peripherals or
+    // re-enabling the shared GPIO ISR: LCD reinitialization may outlast a tap.
+    // Always restore the bus after a failed read; never turn that read into a key.
+    sleepCheckpoint(SleepStage::WakeLatch);
+    wakeInputsValid = error == ESP_OK && readInputs(p0, p1);
+    STANDBY_DIAG("wake latch: valid=%u p1=%02x cause=%d other=%u", wakeInputsValid, p1, static_cast<int>(cause),
+                 otherWakes);
+    if (!staticPark || !wakeInputsValid || (p1 & kPowerKeyMask) == 0) break;
+    const uint32_t slept = millis() - sleepStarted;
+    if (cause == ESP_SLEEP_WAKEUP_TIMER || slept + 1000u >= sleepBudgetMs) break;
+    // A shared-IRQ pulse (IMU, TPS, charger): the read above cleared the
+    // expander's INT. Sleep again once GPIO2 is back high; a line that stays
+    // low, or a storm of such wakes, ends the session awake instead of spinning.
+    if (++otherWakes > kStaticMaxOtherWakes) break;
+    bool released = false;
+    for (unsigned i = 0; i < 10 && !released; ++i) {
+      released = rtc_gpio_get_level(IO_EXPANDER_INT_GPIO) != 0;
+      if (!released) delay(5);
+    }
+    if (!released) break;
+    if (esp_sleep_enable_timer_wakeup(uint64_t(sleepBudgetMs - slept) * 1000ULL) != ESP_OK) break;
+  }
   const uint8_t wakeP1 = p1;
-  STANDBY_DIAG("wake latch: valid=%u p1=%02x cause=%d", wakeInputsValid, wakeP1, static_cast<int>(cause));
+  STANDBY_DIAG("wake final: valid=%u p1=%02x cause=%d other=%u slept_ms=%lu", wakeInputsValid, wakeP1,
+               static_cast<int>(cause), otherWakes, static_cast<unsigned long>(millis() - sleepStarted));
   sleepCheckpoint(SleepStage::WakeCleanup);
   const bool restored = cleanup();
 #if defined(RICKYOS_PLUS_STATIC_STANDBY)
@@ -525,7 +560,8 @@ static StandbyWake standbySleepOnce(const uint32_t seconds, StandbyStorage* stor
   }
   // GPIO2 also carries RTC/IMU/TPS events. A pulse already released before the
   // first successful read cannot be attributed to P17; never invent a key press.
-  return cause == ESP_SLEEP_WAKEUP_TIMER ? StandbyWake::Timer : StandbyWake::Failed;
+  const bool deadline = staticPark && uint32_t(millis() - sleepStarted) + 1000u >= sleepBudgetMs;
+  return cause == ESP_SLEEP_WAKEUP_TIMER || deadline ? StandbyWake::Timer : StandbyWake::Failed;
 }
 StandbyWake standbyLightSleep(const uint32_t seconds) { return standbySleepOnce(seconds, nullptr); }
 StandbyWake standbyStaticSleep(const uint32_t seconds, StandbyStorage& storage) {

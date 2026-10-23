@@ -44,7 +44,7 @@ inline bool displayRestoreFails=false,usbClock=false,usbPad=true;
 inline int usbRevives=0;
 inline uint32_t usbDisconnectedAt=0;
 
-inline bool plugOnArm=false,keyOnArm=false,irqOnArm=false,hold=false,keyAfterWake=false;
+inline bool plugOnArm=false,keyOnArm=false,irqOnArm=false,hold=false,keyAfterWake=false,irqLowAfterWake=false;
 inline bool ioOutput=false,sleepSel=false;
 inline int intrType=GPIO_INTR_NEGEDGE,cause=ESP_SLEEP_WAKEUP_TIMER,readAt=0,failRead=0;
 inline int vbus=0,sleeps=0,usbReads=0,failUsb=0,touchCount=0,touchReads=0,failTouch=0;
@@ -143,7 +143,7 @@ inline int esp_light_sleep_start(){
  assert(rtcPu==digitalPu && rtcPd==digitalPd);
  assert(timerUs>=1000000 && timerUs<=60000000);
  rtcHeld=true; // Actual IDF EXT1 prepare may hold the RTC pad, even on rejected sleep.
- ++sleeps;now+=1000;wokeAt=now;return call("sleep");
+ ++sleeps;now+=1000;wokeAt=now;if(irqLowAfterWake)irqLow=true;return call("sleep");
 }
 inline int esp_sleep_get_wakeup_cause(){return cause;}
 namespace InputManager {
@@ -159,7 +159,7 @@ namespace plus_audio {inline bool busy(){return ::busy;}inline void shutdown(){a
 #include "PRODUCTION"
 using plus_board::StandbyWake;
 void reset(){
- now=0;wokeAt=0;locked=false;busy=false;pending=false;irqLow=false;touchLow=false;bootLow=false;lockFails=false;
+ now=0;wokeAt=0;irqLowAfterWake=false;locked=false;busy=false;pending=false;irqLow=false;touchLow=false;bootLow=false;lockFails=false;
  rtcMux=false;rtcClock=false;rtcInput=false;rtcHeld=false;rtcPu=false;rtcPd=false;validWake=true;digitalPu=false;digitalPd=false;otherExt1=1ULL<<6;
  sourceWake=false;timerWake=false;isrEnabled=true;lcdParked=false;lcdLatched=false;lcdParks=0;lcdRestores=0;lcdRestoreMs=0;displayRestoreFails=false;usbClock=false;usbPad=true;usbRevives=0;usbDisconnectedAt=0;
  plugOnArm=false;keyOnArm=false;irqOnArm=false;hold=false;keyAfterWake=false;ioOutput=false;sleepSel=false;

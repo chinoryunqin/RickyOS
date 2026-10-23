@@ -10,12 +10,12 @@
     {
       "path": "freeink-sdk/libs/hardware/BatteryMonitor/include/BatteryMonitor.h",
       "baseline_sha256": "e9cb6848a141ab3adf8e43587ac2fd63bae74cd25faa3da2310df8495e79b0d4",
-      "ported_sha256": "f4fe21d26f2f6ac752b8824e713cd871ab95c5518cf294d76d871a0a9d2301aa"
+      "ported_sha256": "bf456615fcc765b3a26cb29006791180e517e8b3edd1f9f62462a25b2d55ee13"
     },
     {
       "path": "freeink-sdk/libs/hardware/BatteryMonitor/src/BatteryMonitor.cpp",
       "baseline_sha256": "f6a217520fd415968d75ac1b1e226283d397b28469ab3e44570c085d36d30eec",
-      "ported_sha256": "a9019af015d4a590975b29d13b5273c8819b6c09f66bb0a5271cf16f5e175de9"
+      "ported_sha256": "e3375fe4940df39e76b99607aa904ea18fde28bd9561ad217301c08650a0daab"
     },
     {
       "path": "freeink-sdk/libs/hardware/InputManager/include/InputManager.h",
@@ -298,6 +298,11 @@
       "ported_sha256": "5af6f1034044f1df66ad8cd2afeefc6d7a37ac242e3b96d52caba93ca3231288"
     },
     {
+      "path": "lib/hal/HalStorage.h",
+      "baseline_sha256": "77fef824405ef1faf3f96612d9590073fd37c7eafaa425172b8dd009e45d2c9e",
+      "ported_sha256": "53484b3ffd0cae792344524a34c8568fa3e53a0d6621510b8efe8a766ce79767"
+    },
+    {
       "path": "lib/hal/HalSystem.cpp",
       "baseline_sha256": "2ab858519a3fe553b960aa1ce6ecdd86854d2130bc96d04343918d2750b3ab53",
       "ported_sha256": "55f209caa1f621839adf351877816932bc9b9e3e2e436f4a5a25ed1ed0fc5a72"
@@ -361,6 +366,11 @@
       "path": "src/SdCardFontSystem.h",
       "baseline_sha256": "af8139402245ebebd239697cd753b680fcbb46461019f2085d3590acf9b14f6a",
       "ported_sha256": "fa8d9bbd9c946d36494483d6dee4fb55e3a1ea0e10793cf8adc78b08abbb73c0"
+    },
+    {
+      "path": "src/activities/Activity.cpp",
+      "baseline_sha256": "e7981a965a7468c6848d27c272501d1608fd23702a3eb00dfbab74c701062a73",
+      "ported_sha256": "7c6343d94b569da668167bd6023cd688f95a7988c32dcc1ccc221322c5ef82e9"
     },
     {
       "path": "src/activities/Activity.h",
@@ -470,7 +480,7 @@
     {
       "path": "src/activities/apps/standby/StandbyActivity.cpp",
       "baseline_sha256": "29dde67945a5e69415ed2f40ca0d287d364f1ff7bf74cc241dd3ead386105696",
-      "ported_sha256": "e1c9012e31d45f781b5ce84b84fcba2b130d80432a23a24c2b178a2971f4535f"
+      "ported_sha256": "9a82220d911dc53ada4d83bc5de49840378cc0d563ba6bd7147fdd10fa91f30f"
     },
     {
       "path": "src/activities/apps/standby/StandbyActivity.h",
@@ -635,7 +645,7 @@
     {
       "path": "src/main.cpp",
       "baseline_sha256": "a9593200335b30dace971723992905ac8ce0beb05159ecb6d17d837bdb73fdc5",
-      "ported_sha256": "d12a5ecac44ac5a9c08050c7152df927b7d2fc086ff79e6ad54e74f64c6f1760"
+      "ported_sha256": "b578992d5ec5eec5ed2e8d2010dbb73925f3f8a0b3cdc0575823c4fe4814f615"
     },
     {
       "path": "src/network/CrossPointWebServer.cpp",
@@ -706,11 +716,6 @@
       "path": "src/util/UserGuide.h",
       "baseline_sha256": "a5b2cbbfcab52fda78526019ae3f3a16e7523e3b81bf8bbaa016b82b620e7596",
       "ported_sha256": "f077c58e6ff59f7ef36f6e92fdf732d0063f0a9c1b5102644795797eae462ef3"
-    },
-    {
-      "path": "lib/hal/HalStorage.h",
-      "baseline_sha256": "77fef824405ef1faf3f96612d9590073fd37c7eafaa425172b8dd009e45d2c9e",
-      "ported_sha256": "53484b3ffd0cae792344524a34c8568fa3e53a0d6621510b8efe8a766ce79767"
     }
   ],
   "feature_sources": {

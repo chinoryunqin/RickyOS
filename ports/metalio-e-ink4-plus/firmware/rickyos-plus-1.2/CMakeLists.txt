@@ -63,6 +63,12 @@ if("$ENV{RICKYOS_PLUS_TCP_TRACE}" STREQUAL "1")
         "-Wl,-u,__wrap_ip4_output_if,-u,__wrap_ethernet_output,-u,__wrap_ethernet_input")
 endif()
 
+if("$ENV{RICKYOS_PLUS_POWER_LOG}" STREQUAL "1")
+    # Diagnostic only: append battery-gauge samples to /rickyos-power.csv on the SD card.
+    idf_component_get_property(PLUS_POWER_APP_LIB rickyos_application COMPONENT_LIB)
+    target_compile_definitions(${PLUS_POWER_APP_LIB} PRIVATE RICKYOS_PLUS_POWER_LOG=1)
+endif()
+
 if("$ENV{RICKYOS_PLUS_RADIO_COMPARE}" STREQUAL "1")
     if(NOT "$ENV{RICKYOS_PLUS_TCP_TRACE}" STREQUAL "1")
         message(FATAL_ERROR "Radio comparison requires RICKYOS_PLUS_TCP_TRACE=1")

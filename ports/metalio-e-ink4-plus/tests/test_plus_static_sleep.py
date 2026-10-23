@@ -183,7 +183,7 @@ void clean(){assert(!storageOff && !sdHeld && !keysMasked && (!railsOff || keysR
 void reset(){
  clean();calls.clear();fault.clear();sleeps=lcdParks=lcdRestores=usbRevives=readAt=0;now=0;
  sdFail=suspendFail=remountFail=parkCheckFail=restoreCheckFail=imuFail=keysRestoreFail=false;railsOff=false;
- initialP1=0xff;keyAfterWake=false;hold=false;cause=ESP_SLEEP_WAKEUP_TIMER;
+ initialP1=0xff;keyAfterWake=false;hold=false;cause=ESP_SLEEP_WAKEUP_TIMER;irqLowAfterWake=false;irqLow=false;
  plus_board::sleepFault=false;imuRegs[0x20]=0x57;imuRegs[0x22]=0x40;imuRegs[0x24]=8;imuRegs[0x25]=2;imuRegs[0x30]=0x11;
 }
 int main(){
@@ -200,7 +200,14 @@ int main(){
  reset();cause=ESP_SLEEP_WAKEUP_EXT1;keyAfterWake=true;lcdRestoreMs=1000;
  assert(plus_board::standbyStaticSleep(60,lease)==StandbyWake::PowerButton);clean();lcdRestoreMs=0;
  reset();cause=ESP_SLEEP_WAKEUP_EXT1;
- assert(plus_board::standbyStaticSleep(60,lease)==StandbyWake::Failed);clean(); // shared released pulse is not invented as a key
+ // A released shared-IRQ pulse is not a key. Static standby sleeps again in place,
+ // peripherals still parked, until the deadline: one park and one restore per session.
+ assert(plus_board::standbyStaticSleep(60,lease)==StandbyWake::Timer);
+ assert(sleeps>1 && lcdRestores==1 && usbRevives==1 && std::count(calls.begin(),calls.end(),std::string("rails_restore"))==1);
+ assert(std::count(calls.begin(),calls.end(),std::string("rails_cut"))==1);clean();
+ // A line that stays low after the wake ends the session awake instead of spinning.
+ reset();cause=ESP_SLEEP_WAKEUP_EXT1;irqLowAfterWake=true;
+ assert(plus_board::standbyStaticSleep(60,lease)==StandbyWake::Failed && sleeps==1);irqLow=false;clean();
  for(int failure=0;failure<8;++failure){
   reset();switch(failure){case 0:suspendFail=true;break;case 1:sdFail=true;break;case 2:imuFail=true;break;
    case 3:parkCheckFail=true;break;case 4:remountFail=true;break;case 5:restoreCheckFail=true;break;case 6:fault="sleep";break;default:keysRestoreFail=true;}
@@ -239,7 +246,7 @@ int main(){
 #define CROSSPOINT_EMULATED 0
 #define STANDBY_DIAG(...) ((void)0)
 uint32_t millis(){return 40000;}
-struct {bool standbySwipeUnlock=false;} SETTINGS;
+struct {bool standbySwipeUnlock=false;unsigned long powerOffMs=6UL*3600UL*1000UL;unsigned long getStandbyPowerOffMs(){return powerOffMs;}} SETTINGS;
 namespace bleinput{bool isRunning(){return false;}}
 namespace HalRecorder{bool active(){return false;}}
 struct {bool isOn(){return false;}} Frontlight;
@@ -252,15 +259,17 @@ struct HalPowerManager {
  enum class LightSleepWakeReason {Timer,PowerButton,PowerButtonHeld,Failed};
  LightSleepWakeReason reason=LightSleepWakeReason::Timer;int sleeps=0;
  bool canStandbyLightSleep(decltype(gpio)&){return true;}
- LightSleepWakeReason lightSleepFor(uint32_t seconds){assert(seconds==60);++sleeps;return reason;}
+ // Static faces sleep until auto power-off (6 h, entered at 0, now 40 s): one park per standby.
+ uint32_t expect=21561;
+ LightSleepWakeReason lightSleepFor(uint32_t seconds){assert(seconds==expect);++sleeps;return reason;}
 } powerManager;
 struct {int closes=0;void closeStandby(){++closes;}} activityManager;
-constexpr uint32_t kMaxLightSleepSeconds=60;
+[[maybe_unused]] constexpr uint32_t kMaxLightSleepSeconds=60;
 struct Face {bool clock=false;bool needsPicture(){return false;}bool wantsClock(){return clock;}uint32_t secondsUntilNextWake(){return 3600;}} face;
 struct StandbyActivity {
  enum class DisplayMode{Immersive};enum class SyncState{Idle};
  DisplayMode mode_=DisplayMode::Immersive;SyncState syncState_=SyncState::Idle;
- Face* currentFace_=&face;bool drewFrame_=true;uint32_t lastInputMs_=0;
+ Face* currentFace_=&face;bool drewFrame_=true;uint32_t lastInputMs_=0;unsigned long enteredMs_=0;
  struct {void waitRefreshComplete(){}} renderer;
  bool tryLightSleep(uint32_t);void requestUpdate(){assert(false);}void processFaceTick(bool){assert(false);}
 };
@@ -273,6 +282,9 @@ int main(){
  for(int i=0;i<100;++i)assert(activity.tryLightSleep(35000));assert(powerManager.sleeps==100);
  powerManager.reason=HalPowerManager::LightSleepWakeReason::PowerButton;assert(activity.tryLightSleep(35000) && activityManager.closes==1);
  powerManager.reason=HalPowerManager::LightSleepWakeReason::PowerButtonHeld;assert(activity.tryLightSleep(35000));
+ // Auto power-off disabled: one day per park; already past the deadline: one second.
+ SETTINGS.powerOffMs=0;powerManager.expect=86400;assert(activity.tryLightSleep(35000));
+ SETTINGS.powerOffMs=30000;powerManager.expect=1;assert(activity.tryLightSleep(35000));
 }
 ''')
 
