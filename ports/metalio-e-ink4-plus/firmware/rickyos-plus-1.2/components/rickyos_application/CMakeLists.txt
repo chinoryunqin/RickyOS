@@ -182,6 +182,7 @@ idf_component_register(
   "port/PlusBoard.cpp"
   "port/PlusAudio.cpp"
   "port/PlusGaugeDump.cpp"
+  "port/PlusGaugeConfig.cpp"
   "${APP_ROOT}/lib/hal/HalRecorder.cpp"
   "${APP_ROOT}/src/activities/apps/recorder/RecorderActivity.cpp"
   "port/PlusHaptic.cpp"
@@ -691,6 +692,9 @@ if("$ENV{RICKYOS_PLUS_STANDBY_CUT_P5}" STREQUAL "1")
 endif()
 if("$ENV{RICKYOS_PLUS_STANDBY_LAZY_BT}" STREQUAL "1")
   target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_STANDBY_LAZY_BT=1)
+endif()
+if("$ENV{RICKYOS_PLUS_GAUGE_CONFIG}" STREQUAL "1")
+  target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_GAUGE_CONFIG=1)
 endif()
 if("$ENV{RICKYOS_PLUS_GAUGE_DUMP}" STREQUAL "1")
   target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_GAUGE_DUMP=1)

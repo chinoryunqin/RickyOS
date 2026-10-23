@@ -10,12 +10,12 @@
     {
       "path": "freeink-sdk/libs/hardware/BatteryMonitor/include/BatteryMonitor.h",
       "baseline_sha256": "e9cb6848a141ab3adf8e43587ac2fd63bae74cd25faa3da2310df8495e79b0d4",
-      "ported_sha256": "bf456615fcc765b3a26cb29006791180e517e8b3edd1f9f62462a25b2d55ee13"
+      "ported_sha256": "f18b240909e17bb18f70260ad9f3cab0d20876deb87e01880735c78ff71642aa"
     },
     {
       "path": "freeink-sdk/libs/hardware/BatteryMonitor/src/BatteryMonitor.cpp",
       "baseline_sha256": "f6a217520fd415968d75ac1b1e226283d397b28469ab3e44570c085d36d30eec",
-      "ported_sha256": "e3375fe4940df39e76b99607aa904ea18fde28bd9561ad217301c08650a0daab"
+      "ported_sha256": "bbf2ce8435a86784c03b8436d43ea5cf83beb0af1eb0279214951cdb5d1f1439"
     },
     {
       "path": "freeink-sdk/libs/hardware/InputManager/include/InputManager.h",
@@ -645,7 +645,7 @@
     {
       "path": "src/main.cpp",
       "baseline_sha256": "a9593200335b30dace971723992905ac8ce0beb05159ecb6d17d837bdb73fdc5",
-      "ported_sha256": "d3fac1335ad48df8764b55fe27230f6617909742d8d018934fb62a1f8792da1c"
+      "ported_sha256": "12315b06ff3d37aca2dd8be2900ac83653f243ed33ce046a828e6be0b88af15e"
     },
     {
       "path": "src/network/CrossPointWebServer.cpp",

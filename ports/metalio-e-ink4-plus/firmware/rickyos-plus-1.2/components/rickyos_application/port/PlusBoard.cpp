@@ -1,6 +1,7 @@
 #include "PlusBoard.h"
 #include "PlusAudio.h"
 #include "PlusGaugeDump.h"
+#include "PlusGaugeConfig.h"
 #include "PlusSleepBreadcrumb.h"
 #if defined(RICKYOS_PLUS_STATIC_STANDBY) && defined(RICKYOS_STANDBY_DIAG)
 #include <esp_attr.h>
@@ -275,6 +276,9 @@ bool begin() {
   InputManager::setButtonHook(buttons);
   freeink::PowerManager::setHostShutdownHook(shutdown);
   dumpGaugeConfig();  // diagnostic builds only; read-only
+#if defined(RICKYOS_PLUS_GAUGE_CONFIG)
+  configureGauge();  // pack values into the gauge's RAM config; once per pack connection
+#endif
   boardReady = true;
   return true;
 }
