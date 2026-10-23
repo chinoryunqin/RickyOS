@@ -183817,6 +183817,42 @@
    // Vector (TTF) fonts: the glyph bitmap lives in the font's own cache, keyed by
    // the EpdGlyph the miss handler returned. Checked first so it never reaches the
    // SdCardFont overflow cast below. nullptr = zero-width glyph (e.g. space).
+@@ -1956,10 +1973,15 @@
+     target.setNextGray16UiRefresh(x, y, w, h, contentEvery, smallEvery);
+   }
+ }
++template <typename Display>
++void configureGrayReader(Display& target, int x, int y, int w, int h) {
++  if constexpr (requires { target.setNextGray16ReaderRefresh(x, y, w, h); }) {
++    target.setNextGray16ReaderRefresh(x, y, w, h);
++  }
++}
+ }  // namespace
+ 
+-void GfxRenderer::setNextGray16UiRefresh(int x, int y, int width, int height, const uint8_t contentEvery,
+-                                         const uint8_t smallEvery) const {
++void GfxRenderer::mapGrayRefreshArea(int& x, int& y, int& width, int& height) const {
+   const int x0 = std::clamp(x, 0, getScreenWidth());
+   const int y0 = std::clamp(y, 0, getScreenHeight());
+   const int x1 = std::clamp(x + std::max(0, width), 0, getScreenWidth());
+@@ -1986,7 +2008,17 @@
+     case LandscapeCounterClockwise:
+       break;
+   }
++}
++
++void GfxRenderer::setNextGray16UiRefresh(int x, int y, int width, int height, const uint8_t contentEvery,
++                                       const uint8_t smallEvery) const {
++  mapGrayRefreshArea(x, y, width, height);
+   configureGrayUi(display, x, y, width, height, contentEvery, smallEvery);
++}
++
++void GfxRenderer::setNextGray16ReaderRefresh(int x, int y, int width, int height) const {
++  mapGrayRefreshArea(x, y, width, height);
++  configureGrayReader(display, x, y, width, height);
+ }
+ 
+ bool GfxRenderer::beginGrayscale16() {
 --- a/lib/GfxRenderer/GfxRenderer.h
 +++ b/lib/GfxRenderer/GfxRenderer.h
 @@ -41,7 +41,8 @@
@@ -183829,6 +183865,23 @@
    struct PaintProfile {
      uint32_t us[static_cast<int>(PaintKind::Count)] = {};
      uint32_t calls[static_cast<int>(PaintKind::Count)] = {};
+@@ -97,6 +98,7 @@
+   };
+ 
+  private:
++  void mapGrayRefreshArea(int& x, int& y, int& width, int& height) const;
+   static constexpr size_t BW_BUFFER_CHUNK_SIZE = 8000;  // 8KB chunks to allow for non-contiguous memory
+   static constexpr uint8_t MAX_SYNTHETIC_BOLD_PIXELS = 3;
+ 
+@@ -618,6 +620,8 @@
+   // Logical navigation geometry from the published page layout, rotated once
+   // at the renderer/HAL boundary. Empty bar means a subpage without main tabs.
+   void setNextGray16UiRefresh(int x, int y, int width, int height, uint8_t contentEvery, uint8_t smallEvery) const;
++  // Current logical text box; unchanged chrome outside it holds during a turn.
++  void setNextGray16ReaderRefresh(int x, int y, int width, int height) const;
+   bool commitGrayscale16() const;
+   void cancelGrayscale16() const;
+   bool isGrayscale16Active() const { return grayscale16Buffer != nullptr; }
 --- a/lib/I18n/translations/chinese.yaml
 +++ b/lib/I18n/translations/chinese.yaml
 @@ -465,7 +465,25 @@
@@ -186048,7 +186101,7 @@
    uint8_t* frame = einkDisplay.beginGrayscale16();
    if (!frame) return nullptr;
    if (freeink::epdiyLcdRestoreGray16Baseline(einkDisplay.getFrameBuffer())) {
-@@ -236,14 +247,18 @@
+@@ -236,14 +247,28 @@
  bool HalDisplay::commitGrayscale16() { return einkDisplay.commitGrayscale16(); }
  
  void HalDisplay::setNextGray16Profile(const uint8_t profile) {
@@ -186061,6 +186114,16 @@
    (void)profile;
  #endif
  }
++void HalDisplay::setNextGray16ReaderRefresh(int x, int y, int width, int height) {
++#if FREEINK_DEVICE_METALIO_PLUS
++  freeink::metalioPlusSetGray16ReaderRefresh(x, y, width, height);
++#else
++  (void)x;
++  (void)y;
++  (void)width;
++  (void)height;
++#endif
++}
  void HalDisplay::setNextGray16UiRefresh(int x, int y, int width, int height, uint8_t contentEvery, uint8_t smallEvery) {
 -#if FREEINK_DEVICE_READPICO
 +#if FREEINK_DEVICE_METALIO_PLUS
@@ -186083,6 +186146,14 @@
    static constexpr uint16_t DISPLAY_WIDTH = BoardConfig::READ_PICO.displayWidth;
    static constexpr uint16_t DISPLAY_HEIGHT = BoardConfig::READ_PICO.displayHeight;
  #else
+@@ -162,6 +165,7 @@
+   // Read Pico: refresh profile for the next 16-level commit (0 = Half, 1 = text turn,
+   // 2 = Full cleanup). One-shot; a no-op on other panels.
+   void setNextGray16Profile(uint8_t profile);
++  void setNextGray16ReaderRefresh(int x, int y, int width, int height);
+   // Direct-gray UI: physical navigation strip, separate content/control cleanup
+   // ledgers. No-op on other panels. Manual Full profile still overrides this.
+   void setNextGray16UiRefresh(int x, int y, int width, int height, uint8_t contentEvery, uint8_t smallEvery);
 --- a/lib/hal/HalGPIO.cpp
 +++ b/lib/hal/HalGPIO.cpp
 @@ -1,4 +1,8 @@
@@ -194804,8 +194875,15 @@
          ttf = {};
  #endif
        }
-@@ -2955,12 +3100,19 @@
-       // driven, so no flash); the page the refresh cycle marks as due cleans with GC16.
+@@ -2951,16 +3096,31 @@
+         return;
+       }
+ #if !defined(SIMULATOR)
+-      // Ordinary turns use the held-diagonal text-turn table (unchanged pixels are not
+-      // driven, so no flash); the page the refresh cycle marks as due cleans with GC16.
++      // Ordinary turns use the reader table; Plus retains its black-body re-drive,
++      // but holds unchanged chrome using the logical text-box hint below. The
++      // page the refresh cycle marks as due still cleans the full frame with GC16.
        // (The simulator's HAL comes from an external package without this switch.)
        const auto refresh = ReaderUtils::consumeRefreshMode(pagesUntilFullRefresh);
 -      display.setNextGray16Profile(refresh == HalDisplay::FAST_REFRESH ? 1 : 2);
@@ -194813,6 +194891,13 @@
 +      const bool panelTurn = panelFill || lastPageHadPanelFill_;
 +      lastPageHadPanelFill_ = panelFill;
 +      display.setNextGray16Profile(refresh == HalDisplay::FAST_REFRESH && !panelTurn ? 1 : 2);
++#if FREEINK_DEVICE_METALIO_PLUS
++      if (refresh == HalDisplay::FAST_REFRESH && !panelTurn) {
++        renderer.setNextGray16ReaderRefresh(orientedMarginLeft, orientedMarginTop,
++            renderer.getScreenWidth() - orientedMarginLeft - orientedMarginRight,
++            renderer.getScreenHeight() - orientedMarginTop - orientedMarginBottom);
++      }
++#endif
  #endif
        const auto tCommit = millis();
        if (renderer.commitGrayscale16()) {
@@ -194825,7 +194910,7 @@
  #if RICKYOS_PAINT_PROFILE
          LOG_INF("PERF", "reader commit=%lums total=%lums", tEnd - tCommit, tEnd - t0);
  #endif
-@@ -3137,7 +3289,7 @@
+@@ -3137,7 +3297,7 @@
        }
        const auto tBwStore = millis();
  
@@ -194834,7 +194919,7 @@
        if (pageCacheHit) {
          // Both planes were rendered at idle; putting them in place is one copy
          // each instead of a full page render each.
-@@ -3164,7 +3316,7 @@
+@@ -3164,7 +3324,7 @@
          return;
        }
  
@@ -194843,7 +194928,7 @@
        if (pageCacheHit) {
          memcpy(renderer.getFrameBuffer(), pageCacheMsb_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
          renderer.copyGrayscaleMsbBuffers();
-@@ -3212,9 +3364,12 @@
+@@ -3212,9 +3372,12 @@
  }
  
  void EpubReaderActivity::renderStatusBar() const {
@@ -194856,7 +194941,7 @@
      readerChrome::PageInfo info;
      info.bookTitle = epub ? epub->getTitle().c_str() : nullptr;
      // A chapter the table of contents names, not currentChapterTitle()'s "unnamed".
-@@ -3225,11 +3380,18 @@
+@@ -3225,11 +3388,18 @@
      }
      info.chapterTitle = chapter.c_str();
      info.pageInChapter = currentPage;
@@ -194877,7 +194962,7 @@
    const float pageCount = section ? section->estimatedTotalPages() : 1;
    const float sectionChapterProg = (pageCount > 0) ? (static_cast<float>(currentPage) / pageCount) : 0;
    const float bookProgress = epub ? (epub->calculateProgress(currentSpineIndex, sectionChapterProg) * 100) : 0;
-@@ -3266,8 +3428,12 @@
+@@ -3266,8 +3436,12 @@
        auto chapter = renderer.truncatedText(RickyDesignUi::BODY, title.c_str(), column);
        title = book + " · " + chapter;
      }

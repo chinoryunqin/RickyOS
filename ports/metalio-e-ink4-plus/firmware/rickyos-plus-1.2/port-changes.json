@@ -220,12 +220,12 @@
     {
       "path": "lib/GfxRenderer/GfxRenderer.cpp",
       "baseline_sha256": "d9bb2737f8a0da787c6e8b956410d1aeee92e58d6cb87f80eb776f4bba3c4075",
-      "ported_sha256": "330cbd68f394ef777d6c415c523a767850d40d165ee6d9e8688c0e1fb7bc5ce7"
+      "ported_sha256": "39ea205f616280cad893556d7973a3ef1707fddc41e654d816aa857ee2e23dc4"
     },
     {
       "path": "lib/GfxRenderer/GfxRenderer.h",
       "baseline_sha256": "d0b47eb0d21f8256d9d509e910dbd8c94795c27621d7b85e8638aa0370097f13",
-      "ported_sha256": "51ac3b68d74667bd3a4c96246372e00567a7666413210ee4b872e9f97c81544a"
+      "ported_sha256": "0498b45db49b015e29410a63a9e9e82ed0f38c0ee599ab8768cd2e1573ff9ce3"
     },
     {
       "path": "lib/I18n/translations/chinese.yaml",
@@ -365,12 +365,12 @@
     {
       "path": "lib/hal/HalDisplay.cpp",
       "baseline_sha256": "0b168b7f240f557d75a138ee6f9fc7073e2ecd2431b794bd0e8502977a831fcb",
-      "ported_sha256": "c608c43a269f2a3406c5a2b872f3431447c835f4ea6362d600d1fb67b404623e"
+      "ported_sha256": "e3cc9c64e8c9117d9b16671d38745143d2aed9718648fbe921ee61964fae39ed"
     },
     {
       "path": "lib/hal/HalDisplay.h",
       "baseline_sha256": "a2eed517fa85335c0857981ae01bf05799d3bdeae36fcb2d767b6901d51fe58c",
-      "ported_sha256": "27c26ca6fa7a4c427ba3909980353f9eb2aacc46625af347693bf20151b60d24"
+      "ported_sha256": "86e97c51112921d58149e1346df64eab0b36c3a80c731f6111eb64b5e15c7761"
     },
     {
       "path": "lib/hal/HalGPIO.cpp",
@@ -715,7 +715,7 @@
     {
       "path": "src/activities/reader/EpubReaderActivity.cpp",
       "baseline_sha256": "330723cad52ac629fa1451c9ca90cffff0a04b06e0266861e092ff93e8ffa1c9",
-      "ported_sha256": "433c8ac8d8f28422ef6e8c059ed7c89e36949a8f4585a88a221d76fd62791ca2"
+      "ported_sha256": "8df31c07aa006d38d48f4511788423df03771bee5a32a7b736304cff17fb8f52"
     },
     {
       "path": "src/activities/reader/EpubReaderActivity.h",

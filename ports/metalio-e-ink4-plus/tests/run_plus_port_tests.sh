@@ -49,6 +49,8 @@ python3 tests/test_plus_haptic_input.py
 python3 tests/test_plus_recorder.py
 python3 tests/test_plus_recorder_ui.py
 python3 tests/test_plus_regional_gray.py
+python3 tests/test_plus_reader_chrome.py
+python3 tests/test_plus_reader_refresh_geometry.py
 python3 tests/test_plus_image_page_polarity.py
 python3 tests/test_plus_regional_raster.py
 python3 tests/test_plus_transparent_wallpaper.py

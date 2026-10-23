@@ -61,6 +61,11 @@ bool epd_board_metalio_eink4_plus_tps_ok(){return true;}
 EpdDrawError epd_clear_checked(){++cleared;return EPD_DRAW_SUCCESS;}
 EpdDrawError epd_hl_update_screen_from_white(EpdiyHighlevelState*,EpdDrawMode m,int){selectedModes.push_back(m);++full;memcpy(back,front,N);return EPD_DRAW_SUCCESS;}
 EpdDrawError epd_hl_update_screen_full(EpdiyHighlevelState*,EpdDrawMode m,int){selectedModes.push_back(m);++full;memcpy(back,front,N);return EPD_DRAW_SUCCESS;}
+EpdRect readerBody{};
+int readerSubmissions=0;
+EpdDrawError epd_hl_update_screen_reader(EpdiyHighlevelState*,int,EpdRect body){
+ readerBody=body;++readerSubmissions;selectedModes.push_back(MODE_GC16_FAST);memcpy(back,front,N);return EPD_DRAW_SUCCESS;
+}
 EpdDrawError epd_hl_update_screen(EpdiyHighlevelState* s,EpdDrawMode m,int t){selectedModes.push_back(m);return epd_hl_update_area(s,m,t,epd_full_screen());}
 namespace freeink {
 struct EpdBus{};
@@ -110,6 +115,18 @@ int main(){
  metalioPlusSetGray16Profile(1);assert(d.commitGrayscale16(proxy));
  // An ordinary reader turn drives every row and column with the vendor GL16 (faint-ink fix).
  assert(selectedModes.size()==submissions+1 && selectedModes.back()==MODE_GC16_FAST && full==fullBefore+1);
+ // An explicit reader body is one-shot and never changes the cleanup policy.
+ d.beginGrayscale16();memcpy(front,back,N);front[1]=0x89;
+ metalioPlusSetGray16ReaderRefresh(96,32,W-192,H-64);
+ assert(d.commitGrayscale16(proxy));assert(readerSubmissions==1 && readerBody.x==96);
+ assert(readerBody.width==W-192 && readerBody.height==H-64);
+ d.beginGrayscale16();memcpy(front,back,N);front[1]=0x88;
+ metalioPlusSetGray16Profile(1);assert(d.commitGrayscale16(proxy));assert(readerSubmissions==1);
+ metalioPlusSetGray16ReaderRefresh(96,32,W-192,H-64);
+ metalioPlusSetGray16Profile(2);assert(d.commitGrayscale16(proxy));assert(readerSubmissions==1);
+ assert(selectedModes.back()==MODE_GC16);
+ metalioPlusSetGray16ReaderRefresh(96,32,W-192,H-64);d.cancelGrayscale16();
+ assert(d.commitGrayscale16(proxy));assert(readerSubmissions==1);
  d.beginGrayscale16();memcpy(front,back,N);front[1]=0x99;
  metalioPlusSetGray16Profile(2);assert(d.commitGrayscale16(proxy));
  assert(selectedModes.back()==MODE_GC16); // Cycle/manual cleanup is never suppressed.

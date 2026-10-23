@@ -53,6 +53,7 @@ void dumpFrame(const uint8_t* fb, const char* kind) {
 #endif
 uint8_t nextGrayProfile = 0;
 ricky::gray::Area nextNavigation;
+ricky::gray::Area nextReaderBody;
 uint8_t contentEvery = 8, smallEvery = 32;
 // No additional framebuffer allocation: EPDiy owns its front/back buffers in
 // PSRAM; FreeInk's original native 1-bit buffer remains the application surface.
@@ -80,6 +81,7 @@ class MetalioPlusDriver final : public PanelDriver {
 #endif
     overlayStage_ = 0;
     nextGrayProfile = 0;
+    nextReaderBody = {};
     ledger_ = {};
     if (!ready_ || !fb) return;
     auto* hl = MetalioEpd_Hl();
@@ -112,7 +114,9 @@ class MetalioPlusDriver final : public PanelDriver {
   }
   bool commitGrayscale16(const uint8_t* proxy) override {
     const uint8_t profile = nextGrayProfile;
+    const auto readerBody = nextReaderBody;
     nextGrayProfile = 0;
+    nextReaderBody = {};
     if (!ready_) return false;
 #if RICKYOS_PLUS_GRAY_CALIBRATION
     // Generic retained redraws (profile 0), reading and cycle redraws must not
@@ -136,9 +140,10 @@ class MetalioPlusDriver final : public PanelDriver {
       // firmware does. The held-diagonal table and the changed-rows mask left a stroke that
       // stays black across turns undriven until the next cleanup, so text faded between
       // cleanups (users saw faint ink; refreshing it only every 4th turn still read faint).
-      // Its black-to-black cell erases and rewrites: retained strokes blink, ink stays full.
+      // Its black-to-black cell erases and rewrites: body ink stays full. A reader
+      // layout hint holds only unchanged chrome outside the text box in this same scan.
       if (!full && state_ != OpticalState::Unknown) {
-        success = refreshTurn(MetalioEpd_Hl()) == EPD_DRAW_SUCCESS;
+        success = refreshTurn(MetalioEpd_Hl(), readerBody) == EPD_DRAW_SUCCESS;
       } else {
         success = refresh(MetalioEpd_Hl(), full ? MODE_GC16 : MODE_GL16_FAST, full) == EPD_DRAW_SUCCESS;
       }
@@ -154,6 +159,7 @@ class MetalioPlusDriver final : public PanelDriver {
   void cancelGrayscale16() override {
     overlayStage_ = 0;
     nextGrayProfile = 0;
+    nextReaderBody = {};
     if (lastProxy_ && state_ != OpticalState::Unknown) restoreBaseline(lastProxy_);
   }
   void requestResync(uint8_t) override {
@@ -161,6 +167,7 @@ class MetalioPlusDriver final : public PanelDriver {
     state_ = OpticalState::Unknown;
     ledger_ = {};
     nextGrayProfile = 0;
+    nextReaderBody = {};
   }
   GrayscaleCapabilities grayscaleCapabilities(GrayscaleMode mode = GrayscaleMode::Overlay) const override {
     if (mode != GrayscaleMode::Overlay) return {};
@@ -191,6 +198,7 @@ class MetalioPlusDriver final : public PanelDriver {
     }
     overlayStage_ = 0;
     nextGrayProfile = 0;
+    nextReaderBody = {};
     ledger_ = {};
     const auto result = refresh(MetalioEpd_Hl(), factoryMode ? MODE_GC16 : MODE_GL16, factoryMode);
     state_ = result == EPD_DRAW_SUCCESS ? OpticalState::Gray : OpticalState::Unknown;
@@ -286,17 +294,24 @@ class MetalioPlusDriver final : public PanelDriver {
     ledger_ = candidate;
     return true;
   }
-  // Every row and column driven with the vendor GL16 table (black stays black by being
-  // erased and rewritten), as the vendor firmware turns a page.
-  EpdDrawError refreshTurn(EpdiyHighlevelState* hl) {
+  // Retained black in the body is erased and rewritten. With a layout hint,
+  // equal chrome pixels are masked to no-drive without adding a second scan.
+  EpdDrawError refreshTurn(EpdiyHighlevelState* hl, const ricky::gray::Area& body) {
     const int64_t startedUs = esp_timer_get_time();
     epd_poweron();
     auto result = EPD_DRAW_EMPTY_LINE_QUEUE;
     // The reader-turn table (MODE_GC16_FAST slot, my_waveform.c): the page lands at once
     // and black strokes that stay are briefly re-driven to keep their ink.
-    if (epd_board_metalio_eink4_plus_tps_ok()) result = epd_hl_update_screen_full(hl, MODE_GC16_FAST, 25);
+    if (epd_board_metalio_eink4_plus_tps_ok()) {
+      if (body.width > 0 && body.height > 0) {
+        result = epd_hl_update_screen_reader(hl, 25, {body.x, body.y, body.width, body.height});
+      } else {
+        result = epd_hl_update_screen_full(hl, MODE_GC16_FAST, 25);
+      }
+    }
     epd_poweroff();
-    ESP_LOGI("PlusDisplay", "turn GL16 full result=0x%x ms=%lld", result, (esp_timer_get_time() - startedUs) / 1000);
+    ESP_LOGI("PlusDisplay", "turn GL16 body=%d/%d/%d/%d result=0x%x ms=%lld", body.x, body.y,
+             body.width, body.height, result, (esp_timer_get_time() - startedUs) / 1000);
     return result;
   }
   EpdDrawError refresh(EpdiyHighlevelState* hl, EpdDrawMode waveform, bool full) {
@@ -337,8 +352,16 @@ PanelDriver& metalioPlusDriver() {
   static MetalioPlusDriver driver;
   return driver;
 }
-void metalioPlusSetGray16Profile(uint8_t profile) { nextGrayProfile = profile; }
+void metalioPlusSetGray16Profile(uint8_t profile) {
+  nextGrayProfile = profile;
+  nextReaderBody = {};
+}
+void metalioPlusSetGray16ReaderRefresh(int x, int y, int width, int height) {
+  nextReaderBody = {x, y, width, height};
+  nextGrayProfile = 1;
+}
 void metalioPlusSetGray16UiRefresh(int x, int y, int width, int height, uint8_t content, uint8_t small) {
+  nextReaderBody = {};
   nextNavigation = {x, y, width, height};
   contentEvery = content ? content : 8;
   smallEvery = small ? small : 32;

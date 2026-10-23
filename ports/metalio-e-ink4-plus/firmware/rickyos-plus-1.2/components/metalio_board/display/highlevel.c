@@ -82,8 +82,14 @@ enum EpdDrawError epd_hl_update_screen(EpdiyHighlevelState* state, enum EpdDrawM
     return epd_hl_update_area(state, mode, temperature, epd_full_screen());
 }
 
-enum EpdDrawError epd_hl_update_screen_full(
-    EpdiyHighlevelState* state, enum EpdDrawMode mode, int temperature
+static void hold_equal_reader_pixels(uint8_t* row, int begin, int end) {
+    for (int x = begin; x < end; ++x) {
+        if ((row[x] & 15) == (row[x] >> 4)) row[x] = 0xff;
+    }
+}
+
+static enum EpdDrawError update_screen_full(
+    EpdiyHighlevelState* state, enum EpdDrawMode mode, int temperature, const EpdRect* reader_body
 ) {
     assert(state != NULL);
 
@@ -98,6 +104,21 @@ enum EpdDrawError epd_hl_update_screen_full(
         state->dirty_lines,
         state->dirty_columns
     );
+
+    if (reader_body != NULL) {
+        // The reader table re-drives retained black to prevent faint text. Hold
+        // unchanged chrome instead, in the SAME scan: encode its equal old/new
+        // levels as white->white, whose reader waveform is entirely no-drive.
+        // Changed page numbers/time/battery keep their real transitions. Never
+        // alter front/back pixels or use this mask with a cleanup waveform.
+        for (int y = 0; y < epd_height(); ++y) {
+            uint8_t* row = state->difference_fb + (size_t)y * epd_width();
+            const bool body_row = y >= reader_body->y && y < reader_body->y + reader_body->height;
+            // Do not walk the body pixels a second time (usually most of the panel).
+            hold_equal_reader_pixels(row, 0, body_row ? reader_body->x : epd_width());
+            hold_equal_reader_pixels(row, body_row ? reader_body->x + reader_body->width : epd_width(), epd_width());
+        }
+    }
 
     int fb_height = epd_height();
     int col_bytes = epd_width() / 2;
@@ -144,6 +165,23 @@ enum EpdDrawError epd_hl_update_screen_full(
         t3 - ts
     );
     return err;
+}
+
+enum EpdDrawError epd_hl_update_screen_full(
+    EpdiyHighlevelState* state, enum EpdDrawMode mode, int temperature
+) {
+    return update_screen_full(state, mode, temperature, NULL);
+}
+
+enum EpdDrawError epd_hl_update_screen_reader(
+    EpdiyHighlevelState* state, int temperature, EpdRect body
+) {
+    // Physical coordinates, deliberately not EPDiy rotation: GfxRenderer has
+    // already mapped the current reading layout. Bad/empty hints fail safe.
+    const bool valid = body.x >= 0 && body.y >= 0 && body.width > 0 && body.height > 0 &&
+        body.x <= epd_width() && body.y <= epd_height() &&
+        body.width <= epd_width() - body.x && body.height <= epd_height() - body.y;
+    return update_screen_full(state, MODE_GC16_FAST, temperature, valid ? &body : NULL);
 }
 
 enum EpdDrawError epd_hl_update_screen_from_white(

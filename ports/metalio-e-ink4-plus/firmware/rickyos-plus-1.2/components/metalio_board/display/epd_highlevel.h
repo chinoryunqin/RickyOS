@@ -171,6 +171,9 @@ void epd_hl_waveform(EpdiyHighlevelState* state, const EpdWaveform* waveform);
 extern "C" {
 #endif
 enum EpdDrawError epd_hl_update_area_full(EpdiyHighlevelState* state, enum EpdDrawMode mode, int temperature, EpdRect area);
+// One reader scan: retained body ink is refreshed, equal chrome pixels held.
+// body is in physical coordinates; cleanup must use the normal full API.
+enum EpdDrawError epd_hl_update_screen_reader(EpdiyHighlevelState* state, int temperature, EpdRect body);
 #ifdef __cplusplus
 }
 #endif
