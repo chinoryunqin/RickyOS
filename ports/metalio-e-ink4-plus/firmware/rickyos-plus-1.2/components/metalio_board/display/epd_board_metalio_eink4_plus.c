@@ -62,9 +62,9 @@
 #define CFG_P1_RAIL_MASK   (CFG_PIN_TP_RST | CFG_PIN_BT_PA_PWR)
 #define CFG_P1_OUTPUT_MASK (CFG_P1_RAIL_MASK | CFG_PIN_PWR_PULSE)
 #define CFG_P1_INPUT_MASK  ((uint8_t)(~CFG_P1_OUTPUT_MASK))
-// Inputs left armed in standby light sleep: power key and the two side keys.
-#define CFG_P1_SLEEP_WAKE_KEYS \
-    ((uint8_t)(CFG_IO_BIT(EPD_IO_POWER) | CFG_IO_BIT(EPD_IO_VOL_UP) | CFG_IO_BIT(EPD_IO_VOL_DOWN)))
+// Inputs left armed in standby light sleep: the power key only, as the OEM does.
+// (park6 also armed the side keys; with P14 off the Plus then powered itself off.)
+#define CFG_P1_SLEEP_WAKE_KEYS ((uint8_t)CFG_IO_BIT(EPD_IO_POWER))
 
 /* 并行数据 / 控制：板级 config.h */
 #define D0 EPD_PIN_D0
@@ -489,8 +489,7 @@ bool epd_board_metalio_eink4_plus_ioexp_enable_power_wake_pin(void) {
     if (!s_ioexp_ok) {
         return false;
     }
-    // P17 锁存已是高；改输入时同电平，尽量无假边沿。The side (volume) keys
-    // P10/P11 are latched high too and also wake standby (users expect it).
+    // P17 锁存已是高；改输入时同电平，尽量无假边沿
     if (pca9555_set_config(config_reg.port, CFG_P1_SLEEP_WAKE_KEYS, CFG_PORT_INT) != ESP_OK) {
         ESP_LOGW(TAG, "enable P17 input fail");
         return false;

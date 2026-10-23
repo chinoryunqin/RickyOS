@@ -36,8 +36,7 @@ class P14RestoreAudit(unittest.TestCase):
                          method(local, 'bool epd_board_metalio_eink4_plus_sleep_restore_rails_staged('))
         # Both board sequences use the CURRENT production transport below. This
         # comparison isolates board bit transitions, not OEM legacy-IDF timing.
-        # Standby wake inputs: the OEM arms P17 only; RickyOS also arms both side keys.
-        code = ('#define WAKE_DIR 0x80\n' if oem else '#define WAKE_DIR 0x83\n') + r'''
+        code = '#define WAKE_DIR 0x80\n' + r'''
 #include <cassert>
 #include <cstdint>
 #include <cstddef>
