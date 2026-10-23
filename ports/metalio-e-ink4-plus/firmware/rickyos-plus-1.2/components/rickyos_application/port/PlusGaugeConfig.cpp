@@ -104,7 +104,7 @@ uint16_t opStatus() {
 // TI SLUUBD4A data-memory write: select the 32-byte block, read it, change the
 // field, write all 32 bytes back to MACData, then MACDataSum over address + 32
 // bytes and MACDataLen 36. Used when the short write above does not take.
-bool writeFieldBlock(const Field& field) {
+[[maybe_unused]] bool writeFieldBlock(const Field& field) {
   const uint16_t base = field.address & ~uint16_t(31);
   const unsigned offset = field.address - base;
   if (offset > 30 || !write16(0x3e, base)) return false;
@@ -136,69 +136,79 @@ bool fieldsMatch() {
 }
 }  // namespace
 
+// SEC field of OperationStatus: 3 sealed, 2 unsealed, 1 full access.
+unsigned security(uint16_t status) { return (status >> 1) & 3u; }
+
+// Keys are ignored right after a SEALED command (gauge3: unseal straight after the
+// dump's seal left SEC=3), so pause first, then check SEC after each attempt.
+bool raiseAccess(unsigned target) {
+  for (unsigned attempt = 0; attempt < 3 && security(opStatus()) > 2; ++attempt) {
+    delay(attempt == 0 ? 100 : 1000);
+    control(kUnsealKey1);
+    control(kUnsealKey2);
+    delay(50);
+    ESP_LOGI(TAG, "config: unseal attempt %u op=0x%04x", attempt + 1, opStatus());
+  }
+  if (target < 2) {
+    for (unsigned attempt = 0; attempt < 3 && security(opStatus()) == 2; ++attempt) {
+      delay(attempt == 0 ? 20 : 1000);
+      control(kFullAccessKey);
+      control(kFullAccessKey);
+      delay(50);
+      ESP_LOGI(TAG, "config: full-access attempt %u op=0x%04x", attempt + 1, opStatus());
+    }
+  }
+  return security(opStatus()) <= target;
+}
+
 bool configureGauge() {
   if (!metalio_i2c1_lock(500)) {
     ESP_LOGW(TAG, "config: I2C busy, skipped");
     return false;
   }
-  uint16_t design = 0, status = 0;
-  const bool designOk = read16(0x3c, design);
-  read16(0x3a, status);
-  bool ok = false;
-  if (designOk && design == kPackMah) {
-    // Already ours (survives resets while the pack stays connected). The EDVs are
-    // checked once per boot too; DM reads need UNSEALED.
-    control(kUnsealKey1);
-    control(kUnsealKey2);
-    ok = fieldsMatch();
-    control(kSealed);
-    ESP_LOGI(TAG, "config: pack values present (design=%u op=0x%04x) verified=%d", design, status, ok);
-    if (ok) {
-      configured.store(true);
-      metalio_i2c1_unlock();
-      return true;
-    }
+  uint16_t design = 0;
+  if (read16(0x3c, design) && design == kPackMah) {
+    // Already ours: the gauge keeps its RAM config while the pack stays connected.
+    ESP_LOGI(TAG, "config: pack values present (design=%u op=0x%04x)", design, opStatus());
+    configured.store(true);
+    metalio_i2c1_unlock();
+    return true;
   }
-  ESP_LOGI(TAG, "config: writing pack values (design was %u, op=0x%04x)", design, status);
-  control(kUnsealKey1);
-  control(kUnsealKey2);
-  ESP_LOGI(TAG, "config: after unseal op=0x%04x", opStatus());
-  control(kFullAccessKey);
-  control(kFullAccessKey);
-  ESP_LOGI(TAG, "config: after full-access keys op=0x%04x (SEC 1 = full access)", opStatus());
-  bool step = write16(0x3e, kEnterCfgUpdate) && waitStatus(kCfgUpdateBit, true, 2000);
+  ESP_LOGI(TAG, "config: writing pack values (design was %u, op=0x%04x)", design, opStatus());
+  if (!raiseAccess(1)) {
+    // Not full access: never enter CONFIG UPDATE half-privileged.
+    ESP_LOGE(TAG, "config: no full access (op=0x%04x); gauge left unchanged", opStatus());
+    metalio_i2c1_unlock();
+    return false;
+  }
+  write16(0x3e, kEnterCfgUpdate);
+  delay(100);
+  bool step = waitStatus(kCfgUpdateBit, true, 2000) && (opStatus() & kCfgUpdateBit);
   ESP_LOGI(TAG, "config: enter CONFIG UPDATE ok=%d op=0x%04x", step, opStatus());
-  if (!step) {
-    // Some firmware takes the subcommand through Control() (0x00) instead of 0x3E.
-    step = control(kEnterCfgUpdate) && waitStatus(kCfgUpdateBit, true, 2000);
-    ESP_LOGI(TAG, "config: enter via Control() ok=%d op=0x%04x", step, opStatus());
-  }
   for (const auto& field : kFields) {
     if (!step) break;
     step = writeField(field);
-    uint16_t back = 0;
-    bool read = readField(field.address, back);
-    ESP_LOGI(TAG, "config: %s(0x%04x)=%u short write=%d readback=%u/%d", field.name, field.address, field.value,
-             step, back, read);
-    if (step && (!read || back != field.value)) {
-      step = writeFieldBlock(field);
-      read = readField(field.address, back);
-      ESP_LOGI(TAG, "config: %s block write=%d readback=%u/%d", field.name, step, back, read);
-    }
-    if (step && (!read || back != field.value)) step = false;
+    ESP_LOGI(TAG, "config: %s(0x%04x)=%u written=%d", field.name, field.address, field.value, step);
   }
-  // Always leave CONFIG UPDATE, even after a failed write; REINIT applies the values.
-  write16(0x3e, kExitCfgUpdateReinit);
-  delay(2000);
+  // Leave CONFIG UPDATE in every case; REINIT applies what was written.
+  if (opStatus() & kCfgUpdateBit) {
+    write16(0x3e, kExitCfgUpdateReinit);
+    delay(2000);
+  }
   const bool exited = waitStatus(kCfgUpdateBit, false, 3000) && waitStatus(kInitCompBit, true, 3000);
-  ok = step && exited && fieldsMatch();
-  control(kSealed);
   read16(0x3c, design);
-  read16(0x3a, status);
-  ESP_LOGI(TAG, "config: done ok=%d exited=%d design=%u op=0x%04x", ok, exited, design, status);
-  configured.store(ok && design == kPackMah);
+  // DesignCapacity() reports the applied data memory value: the only proof we trust.
+  const bool ok = step && exited && design == kPackMah;
+  if (ok) {
+    raiseAccess(2);  // stays unsealed/full access: EDV check below needs DM reads
+    const bool edvs = fieldsMatch();
+    ESP_LOGI(TAG, "config: data memory fields match=%d", edvs);
+  }
+  control(kSealed);
+  ESP_LOGI(TAG, "config: done ok=%d exited=%d design=%u op=0x%04x", ok, exited, design, opStatus());
+  configured.store(ok);
   metalio_i2c1_unlock();
-  return configured.load();
+  return ok;
 }
 
 bool gaugeConfigured() { return configured.load(); }
