@@ -213,6 +213,33 @@ void epd_board_metalio_eink4_plus_ana_sw_set(bool high) {
     gpio_set_level(ANA_SW_GPIO, high ? 1 : 0);
 }
 
+// Standby (lazy BT/PA): P14 feeds the BH1098 Bluetooth/audio module and the
+// NS4150 amp, ~8 mA idle. Standby turns it off and leaves it off on wake;
+// the next audio session turns it back on. Re-enabling it in the wake path
+// reset the board with a power glitch (park1), so it is never done there.
+static bool s_bt_pa_parked = false;
+
+void epd_board_metalio_eink4_plus_sleep_park_bt_pa(void) {
+    if (!s_ioexp_ok) {
+        return;
+    }
+    s_p1_out &= (uint8_t)~CFG_PIN_BT_PA_PWR;
+    p1_write();
+    s_bt_pa_parked = true;
+    ESP_LOGI(TAG, "standby: P14 (BT/PA) off until audio is needed");
+}
+
+bool epd_board_metalio_eink4_plus_bt_pa_resume(void) {
+    if (!s_ioexp_ok || !s_bt_pa_parked) {
+        return false;
+    }
+    s_p1_out |= CFG_PIN_BT_PA_PWR;
+    p1_write();
+    s_bt_pa_parked = false;
+    ESP_LOGI(TAG, "audio: P14 (BT/PA) back on");
+    return true;
+}
+
 void epd_board_metalio_eink4_plus_sleep_cut_rails(void) {
     s_sleep_keys_restored = false;
     if (!s_ioexp_ok) {

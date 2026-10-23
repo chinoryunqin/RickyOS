@@ -49,6 +49,10 @@ void epd_board_metalio_eink4_plus_ana_sw_set(bool high);
 /**
  * @brief 入睡关轨：P5 摄像屏电 → P14 VOUT（最后关）
  */
+/** Standby: P14 (BT module + amp) off, kept off after wake until audio needs it. */
+void epd_board_metalio_eink4_plus_sleep_park_bt_pa(void);
+/** Audio start: P14 back on if standby left it off; true when it was just powered (let the module boot). */
+bool epd_board_metalio_eink4_plus_bt_pa_resume(void);
 void epd_board_metalio_eink4_plus_sleep_cut_rails(void);
 
 /**

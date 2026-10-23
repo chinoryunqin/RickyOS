@@ -482,6 +482,10 @@ static StandbyWake standbySleepOnce(const uint32_t seconds, StandbyStorage* stor
       railsTouched = true;
       sleepCheckpoint(SleepStage::RailsOff);
       epd_board_metalio_eink4_plus_sleep_cut_rails();
+#elif defined(RICKYOS_PLUS_STANDBY_LAZY_BT)
+      // P5 stays on; P14 goes off and stays off after wake (audio restores it).
+      sleepCheckpoint(SleepStage::RailsOff);
+      epd_board_metalio_eink4_plus_sleep_park_bt_pa();
 #endif
       // KEEP_RAILS: P14/P5 stay on through sleep. Re-enabling P14 after a long
       // park reset the board with a power glitch even on the first restore

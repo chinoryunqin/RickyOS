@@ -24,7 +24,7 @@ with tempfile.TemporaryDirectory() as directory:
     (d/'config.h').write_text('#define BT_AUDIO_RX_PIN 38\n#define BT_AUDIO_TX_PIN 39\n#define AUDIO_I2S_BCLK 42\n#define AUDIO_I2S_WS 43\n#define AUDIO_I2S_DOUT 44\n#define AUDIO_I2S_DIN 45\n')
     (d/'esp_attr.h').write_text('#define IRAM_ATTR\n')
     (d/'esp_log.h').write_text('#define ESP_LOGI(...) ((void)0)\n#define ESP_LOGE(...) ((void)0)\ninline const char* esp_err_to_name(int) { return "fake"; }\n')
-    (d/'epd_board_metalio_eink4_plus.h').write_text('#pragma once\ninline bool amp=false;\ninline void epd_board_metalio_eink4_plus_pa_set(bool on) { amp=on; }\n')
+    (d/'epd_board_metalio_eink4_plus.h').write_text('#pragma once\ninline bool amp=false;\ninline void epd_board_metalio_eink4_plus_pa_set(bool on) { amp=on; }\ninline bool epd_board_metalio_eink4_plus_bt_pa_resume() { return false; }\n')
     (d/'freertos/FreeRTOS.h').write_text('#pragma once\n#define pdMS_TO_TICKS(v) (v)\n#define pdPASS 1\n')
     (d/'freertos/task.h').write_text('''#pragma once
 inline void (*pending)(void*)=nullptr;
