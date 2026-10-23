@@ -227,7 +227,7 @@ int main(){
             for name in ['InputManager.h','PowerManager.h','plus_i2c_wire.h','metalio_i2c1.h',
                          'epd_board_metalio_eink4_plus.h','config.h','esp_log.h','Arduino.h','lcd_fault.h',
                          'driver/gpio.h','driver/rtc_io.h','driver/usb_serial_jtag.h','hal/usb_serial_jtag_ll.h',
-                         'esp_sleep.h','metalio_touch.h','HalAudioOutput.h','StandbyDiag.h','metalio_sd.h']:
+                         'esp_sleep.h','metalio_touch.h','HalAudioOutput.h','StandbyDiag.h','metalio_sd.h','esp_private/mspi_timing_tuning.h']:
                 f=root/name;f.parent.mkdir(parents=True,exist_ok=True);f.write_text('#include "fake.h"\n')
             (root/'test.cpp').write_text(code)
             subprocess.run(['clang++','-std=c++17','-Wall','-Wextra','-Werror','-fsanitize=address,undefined',

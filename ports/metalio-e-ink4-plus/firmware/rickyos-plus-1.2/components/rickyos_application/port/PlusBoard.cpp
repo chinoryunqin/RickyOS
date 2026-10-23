@@ -23,6 +23,7 @@
 #include <driver/usb_serial_jtag.h>
 #include <hal/usb_serial_jtag_ll.h>
 #include <esp_sleep.h>
+#include <esp_private/mspi_timing_tuning.h>
 #include <metalio_touch.h>
 #include <StandbyDiag.h>
 #include <lcd_fault.h>
@@ -536,6 +537,13 @@ static StandbyWake standbySleepOnce(const uint32_t seconds, StandbyStorage* stor
   for (;;) {
     sleepCheckpoint(SleepStage::SleepEnter);
     error = esp_light_sleep_start();
+    // IDF drops MSPI (PSRAM) to its low-speed timing before sleep and restores
+    // it on wake only when the CPU clock is >= 150 MHz on S31 (clk_utils.c,
+    // BELOW_FREQ_THRESHOLD). Standby runs at 80 MHz, so PSRAM came back at a
+    // quarter of its read rate (96 -> 22 MB/s, park3) and the first refresh's
+    // row feed underran: a white screen. Return MSPI to the high-speed timing it
+    // had before sleep, at this same CPU clock.
+    mspi_timing_change_speed_mode_cache_safe(false);
     cause = esp_sleep_get_wakeup_cause();
     recordSleepWake(static_cast<unsigned>(cause), error);
     // As in the OEM wake sequence, latch P17 before restoring peripherals or
