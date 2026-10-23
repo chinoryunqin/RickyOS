@@ -92,10 +92,12 @@ struct ImageViewerActivity {
   enum class WallpaperTarget : uint8_t { Standby, PowerOff };
   WallpaperTarget wallpaperTarget = WallpaperTarget::Standby;
   bool imageReady = true, wallpaperPicker = true, stickerPicker = false;
+  bool png = false, jpeg = false;
   std::string filePath = "/original.bmp", previewPath = "/converted.bmp";
   int finishes = 0, stickers = 0;
   GfxRenderer renderer; Popup sleepCoverPopup;
-  bool isPng() const { return filePath.ends_with(".png"); }
+  bool isPng() const { return png; }
+  bool isJpeg() const { return jpeg; }
   bool doSetSticker() { ++stickers; return true; }
   void finish() { ++finishes; }
   void requestUpdate() {}
@@ -128,12 +130,25 @@ int main() {
   // BMP uses the original; JPEG/PNG use only the successfully prepared BMP.
   for (const char* ext : {"bmp", "png", "jpg", "jpeg"}) {
     reset(); off.filePath = std::string("/image.") + ext;
+    off.png = std::string(ext) == "png";
+    off.jpeg = std::string(ext) == "jpg" || std::string(ext) == "jpeg";
     Storage.data[off.filePath] = "original"; off.finishes = off.stickers = 0;
     off.showSleepCoverOptions();
     assert(off.finishes == 1 && off.stickers == 0);
     assert(Storage.data.at("/poweroff.bmp") == (std::string(ext) == "bmp" ? "original" : "converted"));
     assert(Storage.data.at(off.filePath) == "original"); preserved();
   }
+  // The detected format, not the name, must choose the decoded BMP for power-off.
+  reset(); off.filePath = "/jpeg-saved-as.png"; off.png = false; off.jpeg = true;
+  Storage.data[off.filePath] = "jpeg-source";
+  off.showSleepCoverOptions();
+  assert(Storage.data.at("/poweroff.bmp") == "converted");
+  assert(Storage.data.at(off.filePath) == "jpeg-source"); preserved();
+  reset(); off.filePath = "/png-saved-as.jpg"; off.png = true; off.jpeg = false;
+  Storage.data[off.filePath] = "png-source";
+  off.showSleepCoverOptions();
+  assert(Storage.data.at("/poweroff.bmp") == "converted");
+  assert(Storage.data.at(off.filePath) == "png-source"); preserved();
   reset(); off.imageReady = false; off.finishes = 0; off.showSleepCoverOptions();
   assert(off.finishes == 0 && Storage.data.at("/poweroff.bmp") == "old-off");
   off.imageReady = true;

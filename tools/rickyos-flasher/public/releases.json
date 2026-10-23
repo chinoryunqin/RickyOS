@@ -3,16 +3,16 @@
   "product": "RickyOS",
   "releases": [
     {
-      "version": "1.2.5",
+      "version": "1.2.6",
       "approved": true,
       "hardwareAccepted": true,
       "mode": "auto-install",
       "board": "readpico",
       "chipId": 9,
       "flashBytes": 16777216,
-      "file": "firmware/RickyOS-1.2.5.bin",
-      "bytes": 5933952,
-      "sha256": "583c3b41a32adb7965ef5c5c44f16987c7e532f74b58cd8d4ed2a38d5c660b29",
+      "file": "firmware/RickyOS-1.2.6.bin",
+      "bytes": 5935904,
+      "sha256": "e87651589d43a466efbd46fe6f2d60fe36eb6740c8c7512ec2143e5ffa5fe1c4",
       "fullInstall": {
         "approved": true,
         "hardwareAccepted": true,
@@ -45,14 +45,10 @@
         ]
       },
       "notes": [
-        "书库支持指定文件夹、单本收录和自建分类",
-        "新增列表视图、拼音首字母搜索和页码跳转",
-        "优化大书库使用，存储统计区不再打开清缓存",
-        "优化电量估算与显示，不改变充电参数",
-        "优化 EPUB 精排样式、底色和段落显示",
-        "关机壁纸支持单独选图，不影响待机壁纸",
-        "词典和缺字字库改用自有资源服务",
-        "更新后请在书库添加原有书籍目录，SD 卡书籍不删除"
+        "修复部分未加密 MOBI/AZW3 固定版式书籍导入",
+        "优化已转换 MOBI/AZW3 书籍再次打开速度",
+        "修复部分图片格式与扩展名不符时无法显示",
+        "修复提示弹窗正文不显示的问题"
       ]
     },
     {

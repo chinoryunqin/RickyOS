@@ -24,7 +24,9 @@ class FileBrowserImagesTest(unittest.TestCase):
             method(manager, 'void ActivityManager::goToReader('),
             method(theme, 'UIIcon UITheme::getFileIcon('),
             *(method(viewer, name) for name in (
-                'void ImageViewerActivity::loadSiblingImages()', 'bool ImageViewerActivity::isPng()'))))
+                'void ImageViewerActivity::loadSiblingImages()',
+                'ImageViewerActivity::ImageKind sniffImageKind(',
+                'bool ImageViewerActivity::isPng()', 'bool ImageViewerActivity::isJpeg()'))))
         run_cpp(r'''
 #include <algorithm>
 #include <cassert>
@@ -69,6 +71,7 @@ struct HalFile {
    std::memcpy(out, bytes->data() + position, size); position += size; return size;
  }
  int write(const char* in, size_t size) { bytes->append(in, size); return size; }
+ int read(uint8_t* out, size_t size) { return read(reinterpret_cast<char*>(out), size); }
 };
 struct StorageMock {
  std::map<std::string, std::string> data;
@@ -131,12 +134,14 @@ struct Popup {
 };
 constexpr StrId sleepCoverLabel() { return StrId::STR_SET_SLEEP_COVER; }
 struct ImageViewerActivity {
+ enum class ImageKind : uint8_t { Bmp, Png, Jpeg };
+ ImageKind imageKind = ImageKind::Bmp;
  std::string filePath; std::string previewPath; GfxRenderer renderer;
  std::vector<std::string> siblingImages; int currentImageIndex = -1;
  bool imageReady = false, wallpaperPicker = false; Popup sleepCoverPopup;
  void finish() {}
  void requestUpdate() {}
- void loadSiblingImages(); bool isPng() const; bool preparePreview();
+ void loadSiblingImages(); bool isPng() const; bool isJpeg() const; bool preparePreview();
  void showSleepCoverOptions(); bool doSetSleepCover(const char*, bool);
 };
 std::string joinPath(const std::string& parent, const std::string& name) { return parent + "/" + name; }
@@ -162,6 +167,20 @@ enum UIIcon { Folder, Book, Text, Image, File };
 struct UITheme { static UIIcon getFileIcon(const std::string&); };
 ''' + methods + r'''
 int main() {
+ Storage.data["/jpeg-saved-as.png"] = std::string("\xff\xd8\xff\xe0\0\0\0\0", 8);
+ Storage.data["/png-saved-as.jpg"] = std::string("\x89PNG\r\n\x1a\n", 8);
+ Storage.data["/bmp-saved-as.png"] = "BM123456";
+ using Kind = ImageViewerActivity::ImageKind;
+ assert(sniffImageKind("/jpeg-saved-as.png") == Kind::Jpeg);
+ assert(sniffImageKind("/png-saved-as.jpg") == Kind::Png);
+ assert(sniffImageKind("/bmp-saved-as.png") == Kind::Bmp);
+ ImageViewerActivity detected;
+ detected.imageKind = sniffImageKind("/jpeg-saved-as.png");
+ assert(detected.isJpeg() && !detected.isPng());
+ detected.imageKind = sniffImageKind("/png-saved-as.jpg");
+ assert(detected.isPng() && !detected.isJpeg());
+ Storage.data["/short.JPEG"] = "xx";
+ assert(sniffImageKind("/short.JPEG") == Kind::Jpeg);
  for (const char* extension : {"bmp", "BMP", "jpg", "JPG", "jpeg", "JpEg", "png", "PnG"}) {
    std::string path = std::string("/AirPage/picture.") + extension;
    assert(FsHelpers::hasImageExtension(path));
