@@ -448,9 +448,14 @@ static StandbyWake standbySleepOnce(const uint32_t seconds, StandbyStorage* stor
                   (check1 & kPowerKeyMask) != 0 && irqLevel != 0;
     int ioChecked = -1;
     if (parked) {
+#if !defined(RICKYOS_PLUS_STANDBY_KEEP_RAILS)
       railsTouched = true;
       sleepCheckpoint(SleepStage::RailsOff);
       epd_board_metalio_eink4_plus_sleep_cut_rails();
+#endif
+      // KEEP_RAILS: P14/P5 stay on through sleep. Re-enabling P14 after a long
+      // park reset the board with a power glitch even on the first restore
+      // (park1, after ~30 min), so this variant never cuts or restores them.
       sleepCheckpoint(SleepStage::IoCheck);
       parked = epd_board_metalio_eink4_plus_sleep_io_checked(true);
       ioChecked = parked;
