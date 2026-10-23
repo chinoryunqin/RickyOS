@@ -580,12 +580,12 @@
     {
       "path": "src/activities/home/RickyStorageActivity.cpp",
       "baseline_sha256": "f0158ad4db46ac8302a207e4c0c8d3ce51b2981e10a25d9d13efda76d33afb76",
-      "ported_sha256": "798da7a98ab60b9f807927a0657bb669eb41922cd914f24d47b5a521940b1ee4"
+      "ported_sha256": "9f0d236cf740f71587b30a8bd7f3cb80d5d2f977095bb80a59427394dec2710c"
     },
     {
       "path": "src/activities/home/RickyStorageActivity.h",
       "baseline_sha256": "efca55d6298f4165bf0b14d92f98d804964974f20483ee1e2f4371c301d4acab",
-      "ported_sha256": "fcb22a8f36a95c56a7c12749a0cb1e26cd60e40e9c8f4fa7cb72526e01851665"
+      "ported_sha256": "221ac9048513e471bdb7229c965d3075e61955817544e8970907baf0a0a343ad"
     },
     {
       "path": "src/activities/library/LibraryCategoriesActivity.cpp",

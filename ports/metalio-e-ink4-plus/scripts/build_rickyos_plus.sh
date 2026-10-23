@@ -23,6 +23,16 @@ if [[ -n "${RICKYOS_SDKCONFIG_DEFAULTS:-}" ]]; then
 fi
 IDF_TARGET=esp32s31 "${PLUS_IDF_COMMAND[@]}" reconfigure build
 python3 "$TASK_ROOT/scripts/check_plus_web_memory.py" "$BUILD_DIR/config/sdkconfig.h"
+# The device bootloader is IDF release/v6.1 9a97f6c5. An app built with another
+# IDF (e.g. the plain v6.1 tag) locks up in early startup, and Plus has no OTA
+# rollback, so such an image must never leave the build.
+python3 - "$BUILD_DIR/project_description.json" <<'PY'
+import json, sys
+revision = json.load(open(sys.argv[1]))['git_revision']
+if not revision.startswith('9a97f6c5'):
+    raise SystemExit(f'Wrong ESP-IDF {revision}: Plus needs 9a97f6c5 (set RICKYOS_IDF_PATH to .local/esp-idf-v6.1-r)')
+print('ESP-IDF 9a97f6c5 verified')
+PY
 python3 "$TASK_ROOT/scripts/check_rickyos_plus_sources.py"
 python3 - "$BUILD_DIR/RickyOS-Plus-1.2.elf" <<'PY'
 from pathlib import Path
