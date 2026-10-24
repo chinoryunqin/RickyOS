@@ -357279,22 +357279,24 @@
 +#endif
 --- a/src/activities/apps/standby/RickyStandbySettingsActivity.cpp
 +++ b/src/activities/apps/standby/RickyStandbySettingsActivity.cpp
-@@ -3,6 +3,7 @@
+@@ -1,8 +1,8 @@
+ #include "RickyStandbySettingsActivity.h"
+ 
  #include <Bitmap.h>
- #include <FsHelpers.h>
+-#include <FsHelpers.h>
  #include <GfxRenderer.h>
 +#include <HalClock.h>
  #include <HalStorage.h>
  #include <I18n.h>
  #include <Logging.h>
-@@ -15,37 +16,44 @@
+@@ -15,37 +15,42 @@
  
  #include "CrossPointSettings.h"
  #include "KeepPageFace.h"
 -#include "RickyWallpaperDownloadActivity.h"
  #include "StandbyActivity.h"
+-#include "activities/home/FileBrowserActivity.h"
 +#include "StandbyGalleryActivity.h"
- #include "activities/home/FileBrowserActivity.h"
  #include "activities/util/ImageViewerActivity.h"
 +#include "components/RickyDesignUi.h"
 +#include "components/RickyGrayStroke.h"
@@ -357302,7 +357304,6 @@
  #include "components/UITheme.h"
  #include "fontIds.h"
 -#include "util/RickyStorageLayout.h"
-+#include "network/RickyWallpaperCatalog.h"
 +#include "util/PanelTileCache.h"
 +#include "util/ReadingBackground.h"
  
@@ -357346,7 +357347,7 @@
  // Minutes before Standby; SLEEP_TIMEOUT_NEVER_MINUTES means never.
  constexpr uint8_t kStandbyMinutes[] = {1, 3, 5, 10, 15, 30, Settings::SLEEP_TIMEOUT_NEVER_MINUTES};
  constexpr StrId kStandbyMinuteLabels[] = {
-@@ -56,15 +64,19 @@
+@@ -56,15 +61,19 @@
                                      StrId::STR_RICKY_HOURS_6, StrId::STR_RICKY_HOURS_12, StrId::STR_RICKY_HOURS_24};
  static_assert(std::size(kAutoOffLabels) == Settings::RICKY_AUTO_OFF_COUNT);
  constexpr StrId kPowerOffLabels[] = {StrId::STR_RICKY_POWER_OFF_SAME, StrId::STR_RICKY_SLEEP_LIGHT,
@@ -357374,7 +357375,7 @@
  
  int styleIndex() {
    for (size_t i = 0; i < std::size(kStyles); ++i)
-@@ -92,45 +104,201 @@
+@@ -92,45 +101,201 @@
      SETTINGS.saveToFile();
    });
  }
@@ -357591,7 +357592,7 @@
  }
  
  void RickyStandbySettingsActivity::onTabAction(const int index) {
-@@ -152,7 +320,7 @@
+@@ -152,7 +317,7 @@
  
  bool RickyStandbySettingsActivity::handleCustomInput() {
    return optionPopup.handleInput(mappedInput, [this] {
@@ -357600,7 +357601,7 @@
      requestUpdate();
    });
  }
-@@ -179,63 +347,137 @@
+@@ -179,63 +344,137 @@
    UiTabListActivity::render(std::move(lock));
  }
  
@@ -357792,7 +357793,7 @@
  }
  
  void RickyStandbySettingsActivity::buildScreen(UiScreen& screen) {
-@@ -247,129 +489,420 @@
+@@ -247,129 +486,394 @@
    const auto& theme = screen.theme();
    auto& target = screen.target();
    screen.insetContent(fui::Insets{static_cast<int16_t>(theme.spaceLg), theme.spaceLg, theme.spaceSm, theme.spaceLg});
@@ -357846,11 +357847,31 @@
 -}
 -
 -void RickyStandbySettingsActivity::openPicturePicker(const std::string& folder, const bool sticker) {
+-  // Back from the preview returns to the list it was opened from, not to this page.
+-  const auto previewDone = [this, sticker](const ActivityResult& result) {
+-    const auto* entry = std::get_if<FilePathResult>(&result.data);
+-    if (result.isCancelled && entry) {
+-      openPicturePicker(FsHelpers::extractFolderPath(entry->path), sticker);
+-      return;
+-    }
+-    rebuildRows();
+-    requestUpdate();
 +  auto indexOf = [this](const Item item) {
 +    for (int i = 0; i < itemCount_; ++i)
 +      if (items_[i] == item) return i;
 +    return -1;
-+  };
+   };
+-  if (!startActivityForResultWith<FileBrowserActivity>(
+-          [this, previewDone, sticker](const ActivityResult& result) {
+-            const auto* entry = std::get_if<FilePathResult>(&result.data);
+-            if (result.isCancelled || !entry ||
+-                !startActivityForResultWith<ImageViewerActivity>(previewDone, entry->path, true, sticker)) {
+-              requestUpdate();
+-            }
+-          },
+-          folder, sticker ? FileBrowserActivity::Mode::PickPng : FileBrowserActivity::Mode::PickWallpaper)) {
+-    LOG_ERR("STANDBY", "Cannot open the picture picker");
+-  }
 +  auto hit = [&](const fui::Rect& r, const Item item) {
 +    const int index = indexOf(item);
 +    if (index >= 0) screen.frame().hit(r, ACTION_ROW, index, fui::InputTouch);
@@ -358124,36 +358145,6 @@
 +        requestUpdate();
 +      },
 +      target);
-+}
-+
-+void RickyStandbySettingsActivity::openStickerPicker(const std::string& folder) {
-   // Back from the preview returns to the list it was opened from, not to this page.
--  const auto previewDone = [this, sticker](const ActivityResult& result) {
-+  const auto previewDone = [this](const ActivityResult& result) {
-     const auto* entry = std::get_if<FilePathResult>(&result.data);
-     if (result.isCancelled && entry) {
--      openPicturePicker(FsHelpers::extractFolderPath(entry->path), sticker);
-+      openStickerPicker(FsHelpers::extractFolderPath(entry->path));
-       return;
-     }
-     rebuildRows();
-     requestUpdate();
-   };
-   if (!startActivityForResultWith<FileBrowserActivity>(
--          [this, previewDone, sticker](const ActivityResult& result) {
-+          [this, previewDone](const ActivityResult& result) {
-             const auto* entry = std::get_if<FilePathResult>(&result.data);
-             if (result.isCancelled || !entry ||
--                !startActivityForResultWith<ImageViewerActivity>(previewDone, entry->path, true, sticker)) {
-+                !startActivityForResultWith<ImageViewerActivity>(previewDone, entry->path, true, true)) {
-               requestUpdate();
-             }
-           },
--          folder, sticker ? FileBrowserActivity::Mode::PickPng : FileBrowserActivity::Mode::PickWallpaper)) {
--    LOG_ERR("STANDBY", "Cannot open the picture picker");
-+          folder, FileBrowserActivity::Mode::PickPng)) {
-+    LOG_ERR("STANDBY", "Cannot open the sticker picker");
-   }
  }
  
  void RickyStandbySettingsActivity::activateIndex(const int index) {
@@ -358283,9 +358274,7 @@
 +        openGallery(StandbyPictures::Target::Reading);
 +        return;
 +      case ChooseSticker:
-+        // Straight into the downloaded transparent wallpapers when there are any.
-+        openStickerPicker(Storage.exists(RickyWallpaperCatalog::STICKER_FOLDER) ? RickyWallpaperCatalog::STICKER_FOLDER
-+                                                                                 : RickyStorageLayout::IMAGES);
++        openGallery(StandbyPictures::Target::Sticker);
 +        return;
 +      case ClearSticker:
 +        // Remove a stale backup first, so a later entry cannot resurrect an old sticker.
@@ -358314,7 +358303,7 @@
  }
 --- a/src/activities/apps/standby/RickyStandbySettingsActivity.h
 +++ b/src/activities/apps/standby/RickyStandbySettingsActivity.h
-@@ -1,41 +1,75 @@
+@@ -1,41 +1,74 @@
  #pragma once
  
  #include <string>
@@ -358323,7 +358312,7 @@
 +#include "StandbyPictures.h"
  #include "activities/UiTabListActivity.h"
  #include "components/OptionPopup.h"
- #include "util/RickyStorageLayout.h"
+-#include "util/RickyStorageLayout.h"
  
 -// The Standby & power-off page. Standby tab: what the screen shows while the device
 -// waits (the picture, the book's cover, the calendar clock, or the page as it was),
@@ -358408,7 +358397,7 @@
    const char* headerTitle() const override;
    void buildScreen(UiScreen& screen) override;
    void activateIndex(int index) override;
-@@ -50,15 +84,28 @@
+@@ -50,15 +83,27 @@
    void stepTab(int direction) override;
  
   private:
@@ -358421,7 +358410,6 @@
 -  void openPicturePicker(const std::string& folder = RickyStorageLayout::IMAGES, bool sticker = false);
 +  void drawReadingPreview(const freeink::ui::Rect& box) const;
 +  void openGallery(StandbyPictures::Target target);
-+  void openStickerPicker(const std::string& folder = RickyStorageLayout::IMAGES);
 +  void makePendingThumbnail();
  
    OptionPopup optionPopup;
@@ -358825,7 +358813,7 @@
    unsigned long enteredMs_ = 0;                                                     // for the auto power-off
 --- /dev/null
 +++ b/src/activities/apps/standby/StandbyGalleryActivity.cpp
-@@ -0,0 +1,408 @@
+@@ -0,0 +1,412 @@
 +#include "StandbyGalleryActivity.h"
 +
 +#include <Bitmap.h>
@@ -358899,6 +358887,7 @@
 +const char* StandbyGalleryActivity::headerTitle() const {
 +  if (mode == Mode::Browse) return tr(STR_GALLERY_TITLE);
 +  if (target == StandbyPictures::Target::Reading) return tr(STR_RICKY_SELECT_READING_BACKGROUND);
++  if (target == StandbyPictures::Target::Sticker) return tr(STR_RICKY_SELECT_TRANSPARENT);
 +  return target == StandbyPictures::Target::PowerOff ? tr(STR_RICKY_SELECT_POWER_OFF_WALLPAPER)
 +                                                     : tr(STR_RICKY_SELECT_WALLPAPER);
 +}
@@ -358924,7 +358913,8 @@
 +
 +void StandbyGalleryActivity::reload() {
 +  RenderLock lock(*this);
-+  listFailed = !StandbyPictures::list(filter, pictures);
++  listFailed = target == StandbyPictures::Target::Sticker ? !StandbyPictures::listStickers(filter, pictures)
++                                                          : !StandbyPictures::list(filter, pictures);
 +  inUse = StandbyPictures::sourceInUse(target);
 +  thumbPageStart = -1;
 +  thumbPending = 0;
@@ -359001,6 +358991,8 @@
 +  const auto previewTarget = target == StandbyPictures::Target::PowerOff ? ImageViewerActivity::WallpaperTarget::PowerOff
 +                             : target == StandbyPictures::Target::Reading
 +                                 ? ImageViewerActivity::WallpaperTarget::Reading
++                             : target == StandbyPictures::Target::Sticker
++                                 ? ImageViewerActivity::WallpaperTarget::Sticker
 +                                 : ImageViewerActivity::WallpaperTarget::Standby;
 +  const bool opened = startActivityForResultWith<ImageViewerActivity>(
 +      [this](const ActivityResult& result) {
@@ -359245,8 +359237,8 @@
 +#include "StandbyPictures.h"
 +#include "activities/UiListActivity.h"
 +
-+// Choose a standby or power-off picture from thumbnails laid out in a grid, a page
-+// at a time; as the 图库 app, the same grid just for looking. A tile opens the
++// Choose a standby, power-off, reading-background or transparent picture from
++// thumbnails laid out in a grid, a page at a time; as the 图库 app, the same grid just for looking. A tile opens the
 +// picture full screen, where it can be set as either screen and the neighbours
 +// flipped through. Thumbnails are made in the background, one per loop pass, each
 +// shown as it lands; once the page is complete and left alone, the next page's are
@@ -359303,7 +359295,7 @@
 +};
 --- /dev/null
 +++ b/src/activities/apps/standby/StandbyPictures.cpp
-@@ -0,0 +1,320 @@
+@@ -0,0 +1,346 @@
 +#include "StandbyPictures.h"
 +
 +#include <Bitmap.h>
@@ -359330,6 +359322,7 @@
 +constexpr char kStandbySource[] = "/.crosspoint/standby-source.txt";
 +constexpr char kPowerOffSource[] = "/.crosspoint/poweroff-source.txt";
 +constexpr char kReadingSource[] = "/.crosspoint/reading-background-source.txt";
++constexpr char kStickerSource[] = "/.crosspoint/sticker-source.txt";
 +
 +enum class Kind : uint8_t { Bmp, Jpeg, Png };
 +
@@ -359349,7 +359342,8 @@
 +}
 +
 +// Files of one folder, names sorted, appended to `out` until it holds kMaxPictures.
-+void addFolder(const std::string& folder, std::vector<Entry>& out) {
++// `pngOnly` keeps PNGs, the only pictures a transparent wallpaper can be.
++void addFolder(const std::string& folder, std::vector<Entry>& out, const bool pngOnly = false) {
 +  HalFile dir = Storage.open(folder.c_str());
 +  if (!dir || !dir.isDirectory()) return;
 +  std::vector<std::string> names;
@@ -359360,6 +359354,7 @@
 +    name[0] = '\0';
 +    file.getName(name, sizeof(name));
 +    if (name[0] == '\0' || name[0] == '.' || !FsHelpers::hasImageExtension(name)) continue;
++    if (pngOnly && !FsHelpers::hasPngExtension(std::string_view(name))) continue;
 +    names.emplace_back(name);
 +    sizes.push_back(static_cast<uint32_t>(file.fileSize()));
 +  }
@@ -359511,12 +359506,11 @@
 +}
 +}  // namespace
 +
-+bool list(const Filter filter, std::vector<Entry>& out) {
-+  out.clear();
++// The reader's own folders under /images, sorted; false when /images cannot be read.
++static bool userFolders(std::vector<std::string>& folders) {
 +  const std::string root = RickyStorageLayout::IMAGES;
 +  HalFile dir = Storage.open(root.c_str());
-+  if (!dir || !dir.isDirectory()) return Storage.exists(root.c_str()) ? false : true;
-+  std::vector<std::string> folders;
++  if (!dir || !dir.isDirectory()) return !Storage.exists(root.c_str());
 +  char name[256];
 +  for (HalFile entry = dir.openNextFile(); entry; entry = dir.openNextFile()) {
 +    if (!entry.isDirectory()) continue;
@@ -359529,11 +359523,30 @@
 +  }
 +  dir.close();
 +  FsHelpers::sortFileList(folders);
++  return true;
++}
++
++bool list(const Filter filter, std::vector<Entry>& out) {
++  out.clear();
++  std::vector<std::string> folders;
++  if (!userFolders(folders)) return false;
 +  if (filter != Filter::Defaults) {
-+    addFolder(root, out);
++    addFolder(RickyStorageLayout::IMAGES, out);
 +    for (const auto& folder : folders) addFolder(folder, out);
 +  }
 +  if (filter != Filter::Mine) addFolder(RickyWallpaperCatalog::FOLDER, out);
++  return true;
++}
++
++bool listStickers(const Filter filter, std::vector<Entry>& out) {
++  out.clear();
++  std::vector<std::string> folders;
++  if (!userFolders(folders)) return false;
++  if (filter != Filter::Defaults) {
++    addFolder(RickyStorageLayout::IMAGES, out, true);
++    for (const auto& folder : folders) addFolder(folder, out, true);
++  }
++  if (filter != Filter::Mine) addFolder(RickyWallpaperCatalog::STICKER_FOLDER, out, true);
 +  return true;
 +}
 +
@@ -359587,6 +359600,8 @@
 +      return kPowerOffSource;
 +    case Target::Reading:
 +      return kReadingSource;
++    case Target::Sticker:
++      return kStickerSource;
 +    default:
 +      return kStandbySource;
 +  }
@@ -359605,6 +359620,9 @@
 +    case Target::Reading:
 +      shown = SETTINGS.readingBackground != CrossPointSettings::READING_BACKGROUND_OFF &&
 +              SETTINGS.readingPaper == CrossPointSettings::READING_PAPER_PICTURE;
++      break;
++    case Target::Sticker:
++      shown = SETTINGS.rickyStandbyFace == CrossPointSettings::RICKY_STANDBY_TRANSPARENT;
 +      break;
 +    default:
 +      shown = SETTINGS.rickyStandbyFace == CrossPointSettings::RICKY_STANDBY_PICTURE;
@@ -359626,7 +359644,7 @@
 +}  // namespace StandbyPictures
 --- /dev/null
 +++ b/src/activities/apps/standby/StandbyPictures.h
-@@ -0,0 +1,42 @@
+@@ -0,0 +1,46 @@
 +#pragma once
 +
 +#include <cstdint>
@@ -359638,7 +359656,7 @@
 +// copies; the gallery marks the source they came from.
 +namespace StandbyPictures {
 +
-+enum class Target : uint8_t { Standby, PowerOff, Reading };
++enum class Target : uint8_t { Standby, PowerOff, Reading, Sticker };
 +enum class Filter : uint8_t { All, Defaults, Mine };
 +
 +struct Entry {
@@ -359660,11 +359678,15 @@
 +// cannot be decoded.
 +bool ensureThumbnail(const Entry& entry, int width, int height);
 +
++// Transparent wallpapers (PNG): Defaults is the downloaded 透明壁纸 folder, Mine the PNGs
++// in /images and its other folders, All both. False when /images cannot be read.
++bool listStickers(Filter filter, std::vector<Entry>& out);
++
 +// The picture a target was last set from, empty when unknown (set before this record).
 +std::string currentSource(Target target);
 +// That picture only while the target actually shows it (the standby style is the
 +// picture, the power-off screen is its own picture, the reading paper is the picture
-+// and on); empty otherwise. What the gallery marks "in use".
++// and on, the standby style is the transparent wallpaper); empty otherwise. What the gallery marks "in use".
 +std::string sourceInUse(Target target);
 +void rememberSource(Target target, const std::string& path);
 +
@@ -365732,7 +365754,7 @@
    return sticker ? StrId::STR_RICKY_SET_TRANSPARENT : StrId::STR_RICKY_SET_WALLPAPER;
  }
  
-@@ -71,14 +84,140 @@
+@@ -71,14 +84,164 @@
                renderer.getScreenHeight() - metrics.contentSidePadding - metrics.menuRowHeight,
                renderer.getScreenWidth() - metrics.contentSidePadding * 2, metrics.menuRowHeight);
  }
@@ -365773,6 +365795,8 @@
 +      return StandbyPictures::Target::PowerOff;
 +    case ImageViewerActivity::WallpaperTarget::Reading:
 +      return StandbyPictures::Target::Reading;
++    case ImageViewerActivity::WallpaperTarget::Sticker:
++      return StandbyPictures::Target::Sticker;
 +    default:
 +      return StandbyPictures::Target::Standby;
 +  }
@@ -365795,6 +365819,7 @@
 +                                         const WallpaperTarget wallpaperTarget)
 +    : Activity("ImageViewer", renderer, mappedInput),
 +      wallpaperPicker(true),
++      stickerPicker(wallpaperTarget == WallpaperTarget::Sticker),
 +      wallpaperTarget(wallpaperTarget),
 +      siblingImages(std::move(pictures)),
 +      gallery(true) {
@@ -365820,6 +365845,11 @@
 +  name += position;
 +  const int padding = UITheme::getInstance().getMetrics().contentSidePadding / 2;
 +  renderer.drawCenteredText(UI_10_FONT_ID, band.y + padding * 2, name.c_str());
++  if (stickerPicker) {
++    // A transparent wallpaper is only ever the standby overlay: one button.
++    galleryButton(renderer, sleepCoverActionRect(renderer), tr(STR_RICKY_SET_TRANSPARENT), true);
++    return;
++  }
 +  Rect powerOff, reading, standby;
 +  galleryActionRects(renderer, powerOff, reading, standby);
 +  // The gallery's own screen is the primary button.
@@ -365834,6 +365864,12 @@
 +    const Rect action = sleepCoverActionRect(renderer);
 +    if (!mappedInput.wasTapInRect(action.x, action.y, action.width, action.height)) return false;
 +    showSleepCoverOptions();
++    return true;
++  }
++  if (stickerPicker) {
++    const Rect action = sleepCoverActionRect(renderer);
++    if (!mappedInput.wasTapInRect(action.x, action.y, action.width, action.height)) return false;
++    setStickerFromGallery();
 +    return true;
 +  }
 +  Rect powerOff, reading, standby;
@@ -365872,10 +365908,20 @@
 +  finish();
 +  return true;
 +}
++
++bool ImageViewerActivity::setStickerFromGallery() {
++  if (!doSetSticker()) return false;
++  rememberSource();
++  ActivityResult result;
++  result.data = FilePathResult{filePath};
++  setResult(std::move(result));
++  finish();
++  return true;
++}
  
  void ImageViewerActivity::loadSiblingImages() {
    siblingImages.clear();
-@@ -114,7 +253,26 @@
+@@ -114,7 +277,26 @@
    }
  }
  
@@ -365903,7 +365949,7 @@
  
  bool ImageViewerActivity::preparePreview() {
    previewPath = previewCachePath(filePath);
-@@ -161,7 +319,8 @@
+@@ -161,7 +343,8 @@
    // commit below clears what was underneath.
    Rect popupRect = GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
    GUI.fillPopupProgress(renderer, popupRect, 20);  // Initial 20% progress
@@ -365913,7 +365959,7 @@
    const unsigned long tPrep = millis();
    const bool prepared = !needsPreview || preparePreview();
    LOG_DBG("IMGV", "timing: preview %lu ms", millis() - tPrep);
-@@ -207,7 +366,7 @@
+@@ -207,7 +390,7 @@
        bool hasNext = (siblingImages.size() > 1 && currentImageIndex != -1 &&
                        currentImageIndex < static_cast<int>(siblingImages.size()) - 1);
  
@@ -365922,7 +365968,7 @@
                                                  (hasPrevious ? "<" : ""), (hasNext ? ">" : ""));
  
        GUI.fillPopupProgress(renderer, popupRect, 50);
-@@ -224,9 +383,7 @@
+@@ -224,9 +407,7 @@
  
        // Draw UI hints on the base layer
        GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
@@ -365933,7 +365979,7 @@
        // Native 16-gray, as Standby and the sleep screen draw it. The overlay-mask path
        // also painted the Set button into its gray planes, turning it into a dark bar
        // with no readable label. Here the button is drawn in B/W and copied in.
-@@ -241,8 +398,8 @@
+@@ -241,8 +422,8 @@
          if (shown) display.setNextGray16Profile(3);
  #endif
          if (shown && mappedInput.hasTouch()) {
@@ -365944,7 +365990,7 @@
            renderer.copyBwToGrayscale16(action.x, action.y, action.width, action.height);
          }
          shown = shown && renderer.commitGrayscale16();
-@@ -274,8 +431,7 @@
+@@ -274,8 +455,7 @@
              break;
            }
            GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
@@ -365954,7 +366000,7 @@
            if (mode == GfxRenderer::GRAYSCALE_LSB) {
              renderer.copyGrayscaleLsbBuffers();
            } else {
-@@ -332,21 +488,31 @@
+@@ -332,21 +512,31 @@
  
  bool ImageViewerActivity::doSetSleepCover(const char* sourcePath, const bool transparent) {
    if (!imageReady) return false;
@@ -365990,7 +366036,7 @@
        const uint64_t expected = inFile.fileSize64();
        uint64_t copied = 0;
        // A full-screen 16-gray BMP is ~400 KB: 128-byte chunks took over ten seconds.
-@@ -360,19 +526,17 @@
+@@ -360,19 +550,17 @@
          copied += bytesRead;
        }
        outFile.flush();
@@ -366015,7 +366061,7 @@
        }
        success = false;
      }
-@@ -380,25 +544,42 @@
+@@ -380,25 +568,42 @@
  
    if (success) {
      const uint8_t previousMode = SETTINGS.sleepScreen;
@@ -366067,10 +366113,14 @@
    GUI.drawPopup(renderer, success ? tr(STR_DONE) : tr(STR_FAILED_LOWER));
    delay(1000);
    return success;
-@@ -406,15 +587,31 @@
+@@ -406,15 +611,35 @@
  
  void ImageViewerActivity::showSleepCoverOptions() {
    if (!imageReady) return;
++  if (gallery && stickerPicker) {
++    setStickerFromGallery();
++    return;
++  }
 +  if (gallery) {
 +    // Keys only: the touch screen shows both buttons. Its own screen is listed first.
 +    static constexpr StrId standbyFirst[] = {StrId::STR_RICKY_SET_WALLPAPER, StrId::STR_RICKY_SET_POWER_OFF_WALLPAPER};
@@ -366102,7 +366152,7 @@
      return;
    }
  
-@@ -507,9 +704,13 @@
+@@ -507,9 +732,13 @@
        return false;
      }
      currentImageIndex = nextIndex;
@@ -366119,7 +366169,7 @@
      onEnter();
      return true;
    };
-@@ -537,14 +738,7 @@
+@@ -537,14 +766,7 @@
      return;
    }
  
@@ -366144,17 +366194,18 @@
  #include <string>
  #include <vector>
  
-@@ -9,8 +10,18 @@
+@@ -9,8 +10,19 @@
  
  class ImageViewerActivity final : public Activity {
   public:
-+  enum class WallpaperTarget : uint8_t { Standby, PowerOff, Reading };
++  enum class WallpaperTarget : uint8_t { Standby, PowerOff, Reading, Sticker };
    ImageViewerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string filePath,
 -                      bool wallpaperPicker = false, bool stickerPicker = false);
 +                      bool wallpaperPicker = false, bool stickerPicker = false,
 +                      WallpaperTarget wallpaperTarget = WallpaperTarget::Standby);
 +  // From the gallery: flip through `pictures` (full paths) starting at `index`, and set
-+  // the one shown as the standby, the power-off or the reading background picture.
++  // the one shown as the standby, the power-off or the reading background picture, or
++  // (target Sticker) as the transparent wallpaper.
 +  ImageViewerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::vector<std::string> pictures,
 +                      int index, WallpaperTarget wallpaperTarget);
 +
@@ -366164,7 +366215,7 @@
  
    void onEnter() override;
    void onExit() override;
-@@ -20,17 +31,30 @@
+@@ -20,17 +32,31 @@
   private:
    void loadSiblingImages();
    bool isPng() const;
@@ -366176,6 +366227,7 @@
 +  // The converted picture to copy for this file (the BMP itself when it already is one).
 +  const char* wallpaperSource() const;
 +  bool setFromGallery(WallpaperTarget target);
++  bool setStickerFromGallery();
 +  // The tappable action row: one "set" button, or the gallery's power-off, standby and
 +  // reading-background trio.
 +  void drawActions() const;

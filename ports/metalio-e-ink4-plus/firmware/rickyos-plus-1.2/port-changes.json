@@ -660,12 +660,12 @@
     {
       "path": "src/activities/apps/standby/RickyStandbySettingsActivity.cpp",
       "baseline_sha256": "670da33bf0a95ebf85ba5f4df0950d84ba425f1b1f02fd6ddd4b6f8bf313bae4",
-      "ported_sha256": "e6c3705cd6c2c527c30922ffbbff65ec87dab9615c83bfcd1a95d0ac6ed0bc88"
+      "ported_sha256": "82b101a2c6ff3e8a606dcaa430f7ca04e37705d3b853faed45605815d43c5c5a"
     },
     {
       "path": "src/activities/apps/standby/RickyStandbySettingsActivity.h",
       "baseline_sha256": "90b97c88aa8b99bb478095c869285c40a8150e463904503281d5eae76ccf1623",
-      "ported_sha256": "995fea25d736fa2d7df1602e61e023aff0d9b05508cfdcf925ee54bbe486bfaa"
+      "ported_sha256": "200c7b7e63cede5205ab067949ea2e6c4e3eb24d2b139fb650453c7c23bbc395"
     },
     {
       "path": "src/activities/apps/standby/RickyWallpaperDownloadActivity.cpp",
@@ -690,22 +690,22 @@
     {
       "path": "src/activities/apps/standby/StandbyGalleryActivity.cpp",
       "baseline_sha256": null,
-      "ported_sha256": "c33fbb063cff7e4888e8791d3584a7462c9d4548c149935bd0346ee001f350f4"
+      "ported_sha256": "4c76134a44ea28fb7b2ae587df319425e08ed2d733e570b372977f7bd49727e4"
     },
     {
       "path": "src/activities/apps/standby/StandbyGalleryActivity.h",
       "baseline_sha256": null,
-      "ported_sha256": "a3caa64eda42a1e4de8d94dc62a1c05255c0a3826eff54d71163519e4fd4937d"
+      "ported_sha256": "44d3a85a91b48b214f70233c125c5bb2efdd1e1d0fa30f13a5f6fa530c8a8e1e"
     },
     {
       "path": "src/activities/apps/standby/StandbyPictures.cpp",
       "baseline_sha256": null,
-      "ported_sha256": "4c0478714ce8d44af00371986aaf66ac8f992546483fdfb5f93629048e5973e4"
+      "ported_sha256": "324652cc0c788cef049d23f921fad3e9373675f81698294d1aaaa7b4cf68b4f3"
     },
     {
       "path": "src/activities/apps/standby/StandbyPictures.h",
       "baseline_sha256": null,
-      "ported_sha256": "5d227e1c84e12ede255501b5904c6add56e74729c4eb0974b3647db11039205e"
+      "ported_sha256": "c5d37d21d11c7dc2395e63a9d2206f82e9032463c758a1d296d74a92b5bc7d1e"
     },
     {
       "path": "src/activities/apps/standby/WallpaperFace.cpp",
@@ -900,12 +900,12 @@
     {
       "path": "src/activities/util/ImageViewerActivity.cpp",
       "baseline_sha256": "2ce0b62995eaea1b70f33432e01d9f22253163cbae59aca5b56944d8c8b66070",
-      "ported_sha256": "340c25a5a49e36f1818ca206bd99bcdd3496d48b1f0bfc7f15d8cb583d41866a"
+      "ported_sha256": "63d4ec54106b2a79395dc62a8794a8ce80477e1bb0abcb8507395a997bf0d783"
     },
     {
       "path": "src/activities/util/ImageViewerActivity.h",
       "baseline_sha256": "d68b0fd94aa4344dd1c07b98144a35e6b3c0b7dded3c1b723a7874e88f0b18ec",
-      "ported_sha256": "36109e82b94398521001ddc5e6bc50b0cb13d1aa18874a04d698b1991b2763e5"
+      "ported_sha256": "849a1764b36e83bfc03d035e94ce78e8bf4d8dc2cf04b3456fded804df9ecad6"
     },
     {
       "path": "src/components/OptionPopup.h",

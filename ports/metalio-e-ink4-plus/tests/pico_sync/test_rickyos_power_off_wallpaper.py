@@ -96,7 +96,7 @@ int invalidations = 0;
 void invalidate() { ++invalidations; }
 }
 struct ImageViewerActivity {
-  enum class WallpaperTarget : uint8_t { Standby, PowerOff, Reading };
+  enum class WallpaperTarget : uint8_t { Standby, PowerOff, Reading, Sticker };
   WallpaperTarget wallpaperTarget = WallpaperTarget::Standby;
   bool imageReady = true, wallpaperPicker = true, stickerPicker = false;
   bool png = false, jpeg = false;
@@ -111,6 +111,7 @@ struct ImageViewerActivity {
   bool gallery = false;
   const char* wallpaperSource() const { return png || jpeg ? previewPath.c_str() : filePath.c_str(); }
   bool setFromGallery(WallpaperTarget) { return true; }
+  bool setStickerFromGallery() { ++stickers; return true; }
   void rememberSource() const {}
   bool doSetSleepCover(const char*, bool);
   void showSleepCoverOptions();
@@ -208,12 +209,11 @@ int main() {
 
     def test_picker_cancel_keeps_target_and_saved_ids(self):
         page = (ROOT / 'src/activities/apps/standby/RickyStandbySettingsActivity.cpp').read_text()
-        # The overlay picker reopens its list on cancel; power-off pictures come from the gallery.
-        picker = method(page, 'void RickyStandbySettingsActivity::openStickerPicker(')
-        self.assertIn('openStickerPicker(FsHelpers::extractFolderPath(entry->path))', picker)
-        self.assertIn('result.isCancelled || !entry ||', picker)
+        # Power-off pictures and transparent wallpapers both come from the gallery grid.
+        self.assertNotIn('openStickerPicker', page)
         activate = method(page, 'void RickyStandbySettingsActivity::activateIndex(')
         self.assertIn('openGallery(StandbyPictures::Target::PowerOff);', activate)
+        self.assertIn('openGallery(StandbyPictures::Target::Sticker);', activate)
         gallery = (ROOT / 'src/activities/apps/standby/StandbyGalleryActivity.cpp').read_text()
         self.assertIn('ImageViewerActivity::WallpaperTarget::PowerOff', gallery)
         settings = (ROOT / 'src/CrossPointSettings.h').read_text()
