@@ -763,6 +763,11 @@
       "ported_sha256": "b0e67ad3196aa07c14e82abbb7956a9d2d22b0785b0ba25794af379f42a2c120"
     },
     {
+      "path": "src/activities/reader/ReaderRefresh.h",
+      "baseline_sha256": "4c9018d2057078d2620ee6412403da868a2e4a9a52c31ef0c20bf4c06a3f1697",
+      "ported_sha256": "c3f827b7bcb68cc0860ab5a8513d82f2534f29cbbe521f28b724c0326b533e51"
+    },
+    {
       "path": "src/activities/settings/ClockSyncActivity.cpp",
       "baseline_sha256": "5feb59d42fbd7c2da1872cb399895594b3fa4c060785c41395732ee8f00c67a9",
       "ported_sha256": "3fc36366627bb199f410c543d17913ca34553d129ef524904ba4f6149ef9989c"
