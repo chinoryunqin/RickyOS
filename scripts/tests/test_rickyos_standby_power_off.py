@@ -60,7 +60,13 @@ int main() {
     def test_page_has_two_tabs_and_style_dependent_rows(self):
         page = read('src/activities/apps/standby/RickyStandbySettingsActivity.cpp')
         rows = method(page, 'void RickyStandbySettingsActivity::rebuildRows()')
-        off = rows[:rows.index('return;')]
+        # The reading tab comes first; the power-off tab's rows are the second branch.
+        start = rows.index('if (tab_ == PowerOffTab) {')
+        off = rows[start:rows.index('return;', start)]
+        reading = rows[:rows.index('return;')]
+        self.assertIn('ReadingPaper0', reading)
+        self.assertIn('ReadingShade0', reading)
+        self.assertIn('add(ChangeReadingPicture);', reading)
         self.assertIn('add(static_cast<Item>(PowerOff0 + i));', off)
         self.assertIn('add(ChangePowerOffPicture);', off)
         self.assertIn('add(AutoPowerOff);', off)

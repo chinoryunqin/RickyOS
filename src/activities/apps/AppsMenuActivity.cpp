@@ -38,8 +38,9 @@ constexpr AppEntry kAppEntries[] = {
     {AppId::ReadingStats, StrId::STR_READING_STATS, UIIcon::ReadingStats, &ActivityManager::goToRickyReadingStats},
     {AppId::Gomoku, StrId::STR_GOMOKU_TITLE, UIIcon::Gomoku, &ActivityManager::goToGomoku},
     {AppId::Calculator, StrId::STR_CALCULATOR_TITLE, UIIcon::Calculator, &ActivityManager::goToCalculator},
+    {AppId::Gallery, StrId::STR_GALLERY_TITLE, UIIcon::Gallery, &ActivityManager::goToGallery},
     // The one entry for Standby & power off (not repeated in Settings).
-    {AppId::Standby, StrId::STR_RICKY_POWER_PAGE_TITLE, UIIcon::Standby, &ActivityManager::goToStandbySettings},
+    {AppId::Standby, StrId::STR_RICKY_POWER_PAGE_TITLE, UIIcon::Wallpaper, &ActivityManager::goToStandbySettings},
 };
 
 constexpr int kAppCount = static_cast<int>(sizeof(kAppEntries) / sizeof(kAppEntries[0]));
@@ -99,8 +100,10 @@ const uint8_t* rickyAppIcon(const UIIcon icon) {
       return ricky_app_gomoku_40;
     case UIIcon::Calculator:
       return ricky_app_calculator_40;
-    case UIIcon::Standby:
-      return ricky_app_standby_40;
+    case UIIcon::Gallery:
+      return ricky_app_gallery_40;
+    case UIIcon::Wallpaper:
+      return ricky_app_wallpaper_40;
     default:
       return nullptr;
   }

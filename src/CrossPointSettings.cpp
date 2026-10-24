@@ -286,6 +286,8 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   doc["rickyStandbyFace"] = rickyStandbyFace;
   doc["rickyAutoOffIndex"] = rickyAutoOffIndex;
   doc["rickyPowerOffScreen"] = rickyPowerOffScreen;
+  doc["readingBackground"] = readingBackground;
+  doc["readingPaper"] = readingPaper;
   doc["rickyTapTurn"] = 1;       // the swipe-only default migration has run
   doc["rickyStandbyKeyOn"] = 1;  // the Back-key Standby shortcut was turned on once
   // Dictionary folder name — uses dynamic getter/setter in SettingsList, save manually
@@ -555,6 +557,10 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     rickyPowerOffScreen = doc["rickyPowerOffScreen"] | static_cast<uint8_t>(RICKY_POWER_OFF_DEFAULT);
     if (rickyPowerOffScreen >= RICKY_POWER_OFF_SCREEN_COUNT) rickyPowerOffScreen = RICKY_POWER_OFF_DEFAULT;
   }
+  readingBackground = doc["readingBackground"] | static_cast<uint8_t>(READING_BACKGROUND_OFF);
+  if (readingBackground >= READING_BACKGROUND_COUNT) readingBackground = READING_BACKGROUND_OFF;
+  readingPaper = doc["readingPaper"] | static_cast<uint8_t>(READING_PAPER_PICTURE);
+  if (readingPaper >= READING_PAPER_COUNT) readingPaper = READING_PAPER_PICTURE;
   // Old backups/direct JSON edits must not select a different product layout.
   struct FixedLayout {
     const char* key;

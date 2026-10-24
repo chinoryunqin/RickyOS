@@ -97,8 +97,14 @@ class RickyStandbyWallpaperTest(unittest.TestCase):
 
     def test_apps_entry_opens_the_settings_page_not_standby(self):
         menu = (ROOT / 'src/activities/apps/AppsMenuActivity.cpp').read_text()
-        self.assertIn('{AppId::Standby, StrId::STR_RICKY_POWER_PAGE_TITLE, UIIcon::Standby, '
+        self.assertIn('{AppId::Standby, StrId::STR_RICKY_POWER_PAGE_TITLE, UIIcon::Wallpaper, '
                       '&ActivityManager::goToStandbySettings}', menu)
+        # 图库: the same grid, just for looking.
+        self.assertIn('{AppId::Gallery, StrId::STR_GALLERY_TITLE, UIIcon::Gallery, &ActivityManager::goToGallery}',
+                      menu)
+        manager = (ROOT / 'src/activities/ActivityManager.cpp').read_text()
+        self.assertIn('replaceActivityWith<StandbyGalleryActivity>(StandbyPictures::Target::Standby, '
+                      'StandbyGalleryActivity::Mode::Browse);', manager)
         page = (ROOT / 'src/activities/apps/standby/RickyStandbySettingsActivity.cpp').read_text()
         activate = body(page, 'void RickyStandbySettingsActivity::activateIndex(')
         self.assertIn('saveSetting(SETTINGS.rickyStandbyFace, kStyles[item - Style0]);', activate)

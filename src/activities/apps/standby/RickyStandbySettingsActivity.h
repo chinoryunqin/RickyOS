@@ -8,18 +8,20 @@
 #include "components/OptionPopup.h"
 #include "util/RickyStorageLayout.h"
 
-// 屏保: what the screen shows in Standby and once powered off, as one page with a
-// live preview. Standby tab: the preview with the corner, fit and filter choices
-// beside it, the five styles as cards, the picture strip (or the transparent
-// overlay's controls), and when Standby starts. Power-off tab: the preview, the four
-// power-off screens as cards, and when Standby powers off by itself. Every control is
-// one stop on the tab ring, in reading order.
+// 壁纸: what the screen shows in Standby, once powered off and under the reading page,
+// as one page with a live preview. Standby tab: the preview with the corner, fit and
+// filter choices beside it, the five styles as cards, the picture strip (or the
+// transparent overlay's controls), and when Standby starts. Power-off tab: the
+// preview, the four power-off screens as cards, and when Standby powers off by
+// itself. Reading tab: a sample page on the background, the paper (a picture or ruled
+// lines, grid or dots), its shade, and the picture.
+// Every control is one stop on the tab ring, in reading order.
 class RickyStandbySettingsActivity final : public UiTabListActivity {
  public:
   RickyStandbySettingsActivity(GfxRenderer& renderer, MappedInputManager& input)
       : UiTabListActivity("RickyStandbySettings", renderer, input) {}
 
-  enum Tab : int { StandbyTab, PowerOffTab, TabCount };
+  enum Tab : int { StandbyTab, PowerOffTab, ReadingTab, TabCount };
   // One focusable control; the active tab lists the ones it shows, in ring order.
   enum Item : uint8_t {
     Info0,
@@ -50,6 +52,15 @@ class RickyStandbySettingsActivity final : public UiTabListActivity {
     PowerOff3,
     ChangePowerOffPicture,
     AutoPowerOff,
+    ReadingPaper0,
+    ReadingPaper1,
+    ReadingPaper2,
+    ReadingPaper3,
+    ReadingShade0,
+    ReadingShade1,
+    ReadingShade2,
+    ReadingShade3,
+    ChangeReadingPicture,
     ItemKinds
   };
   static constexpr int kStripTiles = 4;
@@ -77,6 +88,7 @@ class RickyStandbySettingsActivity final : public UiTabListActivity {
   void rebuildRows();
   void reloadPictures();
   void drawPreview(const Rect& box) const;
+  void drawReadingPreview(const freeink::ui::Rect& box) const;
   void openGallery(StandbyPictures::Target target);
   void openStickerPicker(const std::string& folder = RickyStorageLayout::IMAGES);
   void makePendingThumbnail();

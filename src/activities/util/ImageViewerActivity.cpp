@@ -1,5 +1,7 @@
 #include "ImageViewerActivity.h"
 
+#include "util/ReadingBackground.h"
+
 #include <Bitmap.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
@@ -27,6 +29,8 @@ constexpr const char* SLEEP_IMAGE_BACKUP_PATH = "/sleep.bmp.bak";
 constexpr const char* POWER_OFF_IMAGE_PATH = "/poweroff.bmp";
 constexpr const char* POWER_OFF_IMAGE_PART_PATH = "/poweroff.bmp.part";
 constexpr const char* POWER_OFF_IMAGE_BACKUP_PATH = "/poweroff.bmp.bak";
+constexpr const char* READING_IMAGE_PART_PATH = "/readingbg.bmp.part";
+constexpr const char* READING_IMAGE_BACKUP_PATH = "/readingbg.bmp.bak";
 // Converted previews are kept: a PNG takes seconds to convert, and the same pictures
 // are opened again and again while choosing a wallpaper. Bounded by kPreviewCacheMax.
 constexpr const char* PREVIEW_CACHE_DIR = "/.crosspoint/previews";
@@ -70,6 +74,7 @@ constexpr StrId sleepCoverLabel(
     const bool sticker = false,
     const ImageViewerActivity::WallpaperTarget target = ImageViewerActivity::WallpaperTarget::Standby) {
   if (target == ImageViewerActivity::WallpaperTarget::PowerOff) return StrId::STR_RICKY_SET_POWER_OFF_WALLPAPER;
+  if (target == ImageViewerActivity::WallpaperTarget::Reading) return StrId::STR_RICKY_SET_READING_BACKGROUND;
   return sticker ? StrId::STR_RICKY_SET_TRANSPARENT : StrId::STR_RICKY_SET_WALLPAPER;
 }
 
@@ -80,13 +85,14 @@ Rect sleepCoverActionRect(const GfxRenderer& renderer) {
               renderer.getScreenWidth() - metrics.contentSidePadding * 2, metrics.menuRowHeight);
 }
 
-// The gallery's two buttons share the action row: power-off on the left, standby on
-// the right where the single "set" button's thumb lands.
-void galleryActionRects(const GfxRenderer& renderer, Rect& powerOff, Rect& standby) {
+// The gallery's three buttons share the action row: power-off, reading background,
+// then standby on the right where the single "set" button's thumb lands.
+void galleryActionRects(const GfxRenderer& renderer, Rect& powerOff, Rect& reading, Rect& standby) {
   const Rect row = sleepCoverActionRect(renderer);
   const int gap = UITheme::getInstance().getMetrics().contentSidePadding / 2;
-  const int width = (row.width - gap) / 2;
+  const int width = (row.width - 2 * gap) / 3;
   powerOff = Rect(row.x, row.y, width, row.height);
+  reading = Rect(row.x + width + gap, row.y, width, row.height);
   standby = Rect(row.x + row.width - width, row.y, width, row.height);
 }
 
@@ -110,8 +116,14 @@ void galleryButton(const GfxRenderer& renderer, const Rect& r, const char* label
 }
 
 StandbyPictures::Target pictureTarget(const ImageViewerActivity::WallpaperTarget target) {
-  return target == ImageViewerActivity::WallpaperTarget::PowerOff ? StandbyPictures::Target::PowerOff
-                                                                  : StandbyPictures::Target::Standby;
+  switch (target) {
+    case ImageViewerActivity::WallpaperTarget::PowerOff:
+      return StandbyPictures::Target::PowerOff;
+    case ImageViewerActivity::WallpaperTarget::Reading:
+      return StandbyPictures::Target::Reading;
+    default:
+      return StandbyPictures::Target::Standby;
+  }
 }
 }  // namespace
 
@@ -154,12 +166,12 @@ void ImageViewerActivity::drawActions() const {
   name += position;
   const int padding = UITheme::getInstance().getMetrics().contentSidePadding / 2;
   renderer.drawCenteredText(UI_10_FONT_ID, band.y + padding * 2, name.c_str());
-  Rect powerOff, standby;
-  galleryActionRects(renderer, powerOff, standby);
+  Rect powerOff, reading, standby;
+  galleryActionRects(renderer, powerOff, reading, standby);
   // The gallery's own screen is the primary button.
-  galleryButton(renderer, powerOff, tr(STR_RICKY_SET_POWER_OFF_WALLPAPER),
-                wallpaperTarget == WallpaperTarget::PowerOff);
-  galleryButton(renderer, standby, tr(STR_RICKY_SET_WALLPAPER), wallpaperTarget == WallpaperTarget::Standby);
+  galleryButton(renderer, powerOff, tr(STR_RICKY_SET_POWER_OFF_SHORT), wallpaperTarget == WallpaperTarget::PowerOff);
+  galleryButton(renderer, reading, tr(STR_RICKY_SET_READING_SHORT), wallpaperTarget == WallpaperTarget::Reading);
+  galleryButton(renderer, standby, tr(STR_RICKY_SET_STANDBY_SHORT), wallpaperTarget == WallpaperTarget::Standby);
 }
 
 bool ImageViewerActivity::tapAction() {
@@ -170,10 +182,14 @@ bool ImageViewerActivity::tapAction() {
     showSleepCoverOptions();
     return true;
   }
-  Rect powerOff, standby;
-  galleryActionRects(renderer, powerOff, standby);
+  Rect powerOff, reading, standby;
+  galleryActionRects(renderer, powerOff, reading, standby);
   if (mappedInput.wasTapInRect(powerOff.x, powerOff.y, powerOff.width, powerOff.height)) {
     setFromGallery(WallpaperTarget::PowerOff);
+    return true;
+  }
+  if (mappedInput.wasTapInRect(reading.x, reading.y, reading.width, reading.height)) {
+    setFromGallery(WallpaperTarget::Reading);
     return true;
   }
   if (mappedInput.wasTapInRect(standby.x, standby.y, standby.width, standby.height)) {
@@ -481,10 +497,12 @@ void ImageViewerActivity::onExit() {
 bool ImageViewerActivity::doSetSleepCover(const char* sourcePath, const bool transparent) {
   if (!imageReady) return false;
   const bool powerOff = wallpaperTarget == WallpaperTarget::PowerOff;
-  if (powerOff && transparent) return false;
-  const char* destination = powerOff ? POWER_OFF_IMAGE_PATH : SLEEP_IMAGE_PATH;
-  const char* part = powerOff ? POWER_OFF_IMAGE_PART_PATH : SLEEP_IMAGE_PART_PATH;
-  const char* backup = powerOff ? POWER_OFF_IMAGE_BACKUP_PATH : SLEEP_IMAGE_BACKUP_PATH;
+  const bool reading = wallpaperTarget == WallpaperTarget::Reading;
+  if ((powerOff || reading) && transparent) return false;
+  const char* destination = reading ? ReadingBackground::kPath : powerOff ? POWER_OFF_IMAGE_PATH : SLEEP_IMAGE_PATH;
+  const char* part = reading ? READING_IMAGE_PART_PATH : powerOff ? POWER_OFF_IMAGE_PART_PATH : SLEEP_IMAGE_PART_PATH;
+  const char* backup =
+      reading ? READING_IMAGE_BACKUP_PATH : powerOff ? POWER_OFF_IMAGE_BACKUP_PATH : SLEEP_IMAGE_BACKUP_PATH;
   GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
 
   const char* preparedPath = sourcePath;
@@ -536,7 +554,14 @@ bool ImageViewerActivity::doSetSleepCover(const char* sourcePath, const bool tra
     const uint8_t previousMode = SETTINGS.sleepScreen;
     const uint8_t previousFace = SETTINGS.rickyStandbyFace;
     const uint8_t previousPowerOff = SETTINGS.rickyPowerOffScreen;
-    if (powerOff) {
+    const uint8_t previousReading = SETTINGS.readingBackground;
+    const uint8_t previousPaper = SETTINGS.readingPaper;
+    if (reading) {
+      // Choosing a picture shows it under the page, at medium unless a shade is set.
+      SETTINGS.readingPaper = CrossPointSettings::READING_PAPER_PICTURE;
+      if (SETTINGS.readingBackground == CrossPointSettings::READING_BACKGROUND_OFF)
+        SETTINGS.readingBackground = CrossPointSettings::READING_BACKGROUND_MEDIUM;
+    } else if (powerOff) {
       SETTINGS.rickyPowerOffScreen = CrossPointSettings::RICKY_POWER_OFF_CUSTOM;
     } else {
       SETTINGS.sleepScreen = transparent ? CrossPointSettings::SLEEP_SCREEN_MODE::TRANSPARENT
@@ -547,6 +572,8 @@ bool ImageViewerActivity::doSetSleepCover(const char* sourcePath, const bool tra
       SETTINGS.sleepScreen = previousMode;
       SETTINGS.rickyStandbyFace = previousFace;
       SETTINGS.rickyPowerOffScreen = previousPowerOff;
+      SETTINGS.readingBackground = previousReading;
+      SETTINGS.readingPaper = previousPaper;
       (void)SETTINGS.saveToFile();
       Storage.remove(destination);
       if (Storage.exists(backup)) {
@@ -558,6 +585,7 @@ bool ImageViewerActivity::doSetSleepCover(const char* sourcePath, const bool tra
 
   Storage.remove(part);
   if (success) Storage.remove(backup);
+  if (success && reading) ReadingBackground::invalidate();
   // The gallery marks the picture each screen was set from.
   if (success && !transparent) rememberSource();
   GUI.drawPopup(renderer, success ? tr(STR_DONE) : tr(STR_FAILED_LOWER));

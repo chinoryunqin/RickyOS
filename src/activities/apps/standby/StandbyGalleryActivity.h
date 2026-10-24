@@ -7,13 +7,17 @@
 #include "activities/UiListActivity.h"
 
 // Choose a standby or power-off picture from thumbnails laid out in a grid, a page
-// at a time. A tile opens the picture full screen, where it can be set as either
-// screen and the neighbours flipped through. Thumbnails are made in the background,
-// one per loop pass, while placeholders hold their places.
+// at a time; as the 图库 app, the same grid just for looking. A tile opens the
+// picture full screen, where it can be set as either screen and the neighbours
+// flipped through. Thumbnails are made in the background, one per loop pass, each
+// shown as it lands; once the page is complete and left alone, the next page's are
+// made ahead.
 class StandbyGalleryActivity final : public UiListActivity {
  public:
-  StandbyGalleryActivity(GfxRenderer& renderer, MappedInputManager& input, StandbyPictures::Target target)
-      : UiListActivity("StandbyGallery", renderer, input), target(target) {}
+  enum class Mode : uint8_t { Pick, Browse };
+  StandbyGalleryActivity(GfxRenderer& renderer, MappedInputManager& input, StandbyPictures::Target target,
+                         Mode mode = Mode::Pick)
+      : UiListActivity("StandbyGallery", renderer, input), target(target), mode(mode) {}
 
   void onEnter() override;
   void onExit() override;
@@ -33,10 +37,13 @@ class StandbyGalleryActivity final : public UiListActivity {
   void reload();
   void runTool(int tool);
   void turnPage(int direction);
-  // One missing thumbnail of the shown page, then a repaint after the last.
+  // One missing thumbnail of the shown page, then a repaint.
   void makePendingThumbnail();
+  // One thumbnail of the next page, while the shown one is complete and idle.
+  void prefetchThumbnail();
 
   StandbyPictures::Target target;
+  Mode mode;
   StandbyPictures::Filter filter = StandbyPictures::Filter::All;
   std::vector<StandbyPictures::Entry> pictures;
   std::string inUse;
@@ -49,6 +56,9 @@ class StandbyGalleryActivity final : public UiListActivity {
   int thumbPageStart = -1;
   uint32_t thumbPending = 0;
   uint32_t thumbAttempted = 0;
+  // Next-page prefetch: starts once the shown page has had nothing to make for a while.
+  unsigned long pageSettledMs = 0;
+  int prefetchIndex = -1;
 
   char pageText[24] = {};
 };

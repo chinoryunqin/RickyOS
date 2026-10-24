@@ -180,7 +180,9 @@ enum UIIcon {
   Calculator,
   Woodfish,
   Usb,
-  Blocks
+  Blocks,
+  Gallery,
+  Wallpaper
 };
 
 // Default theme implementation (Classic Theme)

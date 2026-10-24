@@ -13,6 +13,7 @@
 #include "activities/ActivityManager.h"
 #include "activities/util/ImageViewerActivity.h"
 #include "components/RickyDesignUi.h"
+#include "components/RickyGrayStroke.h"
 #include "components/UITheme.h"
 #include "util/PanelTileCache.h"
 
@@ -40,10 +41,11 @@ fui::Rect inset(const fui::Rect& r, const int by) {
           static_cast<int16_t>(r.height - 2 * by)};
 }
 
-// A pill or a button: ink when chosen, else paper with a hairline ink edge.
+// A pill or a button: ink when chosen, else paper with the light-gray hairline edge the
+// Home and Library controls rest with.
 void control(const GfxRenderer& renderer, const fui::Rect& r, const bool chosen, const int radius) {
   RickyDesignUi::fill(renderer, r, chosen ? ds::gray::kInk : ds::gray::kPaper, radius);
-  if (!chosen) renderer.drawRoundedRect(r.x, r.y, r.width, r.height, ds::stroke::kHairline, radius, true);
+  if (!chosen) RickyGrayStroke::ring(renderer, r.x, r.y, r.width, r.height, ds::stroke::kHairline, radius, ds::gray::kLine);
 }
 
 // One line centred in a control: RickyDesignUi::text starts at the top of its box.
@@ -67,6 +69,8 @@ void pageArrow(fui::DrawTarget& target, const fui::Rect& r, const bool left, con
 }  // namespace
 
 const char* StandbyGalleryActivity::headerTitle() const {
+  if (mode == Mode::Browse) return tr(STR_GALLERY_TITLE);
+  if (target == StandbyPictures::Target::Reading) return tr(STR_RICKY_SELECT_READING_BACKGROUND);
   return target == StandbyPictures::Target::PowerOff ? tr(STR_RICKY_SELECT_POWER_OFF_WALLPAPER)
                                                      : tr(STR_RICKY_SELECT_WALLPAPER);
 }
@@ -93,7 +97,7 @@ void StandbyGalleryActivity::onExit() {
 void StandbyGalleryActivity::reload() {
   RenderLock lock(*this);
   listFailed = !StandbyPictures::list(filter, pictures);
-  inUse = StandbyPictures::currentSource(target);
+  inUse = StandbyPictures::sourceInUse(target);
   thumbPageStart = -1;
   thumbPending = 0;
   thumbAttempted = 0;
@@ -166,8 +170,9 @@ void StandbyGalleryActivity::activateIndex(const int index) {
   std::vector<std::string> paths;
   paths.reserve(pictures.size());
   for (const auto& entry : pictures) paths.push_back(entry.path);
-  const auto previewTarget = target == StandbyPictures::Target::PowerOff
-                                 ? ImageViewerActivity::WallpaperTarget::PowerOff
+  const auto previewTarget = target == StandbyPictures::Target::PowerOff ? ImageViewerActivity::WallpaperTarget::PowerOff
+                             : target == StandbyPictures::Target::Reading
+                                 ? ImageViewerActivity::WallpaperTarget::Reading
                                  : ImageViewerActivity::WallpaperTarget::Standby;
   const bool opened = startActivityForResultWith<ImageViewerActivity>(
       [this](const ActivityResult& result) {
@@ -176,7 +181,7 @@ void StandbyGalleryActivity::activateIndex(const int index) {
           for (size_t i = 0; i < pictures.size(); ++i)
             if (pictures[i].path == entry->path) nav.selected = static_cast<int>(i);
         }
-        inUse = StandbyPictures::currentSource(target);
+        inUse = StandbyPictures::sourceInUse(target);
         requestUpdate();
       },
       std::move(paths), index, previewTarget);
@@ -185,14 +190,51 @@ void StandbyGalleryActivity::activateIndex(const int index) {
 
 void StandbyGalleryActivity::loop() {
   UiListActivity::loop();
-  if (thumbPending) makePendingThumbnail();
+  if (thumbPending) {
+    makePendingThumbnail();
+  } else {
+    prefetchThumbnail();
+  }
+}
+
+void StandbyGalleryActivity::prefetchThumbnail() {
+  // Quiet for a moment after the page completed, so a reader still tapping is not
+  // held up by a decode they did not ask for.
+  constexpr unsigned long kSettleMs = 1500;
+  StandbyPictures::Entry entry;
+  int width = 0;
+  int height = 0;
+  {
+    RenderLock lock(*this);
+    if (pageSettledMs == 0 || millis() - pageSettledMs < kSettleMs || thumbWidth <= 0) return;
+    const int nextStart = thumbPageStart + std::max(1, pageCapacity);
+    const int nextEnd = std::min(listCount(), nextStart + std::max(1, pageCapacity));
+    if (prefetchIndex < nextStart) prefetchIndex = nextStart;
+    if (prefetchIndex >= nextEnd) return;
+    entry = pictures[static_cast<size_t>(prefetchIndex++)];
+    width = thumbWidth;
+    height = thumbHeight;
+  }
+  if (Storage.exists(StandbyPictures::thumbnailPath(entry, width, height).c_str())) return;
+  const unsigned long started = millis();
+  bool made = false;
+  {
+    RenderLock lock(*this);
+    GfxRenderer::FrameBufferLoan loan(renderer);
+    made = StandbyPictures::ensureThumbnail(entry, width, height);
+  }
+  LOG_INF("STANDBY", "prefetched thumbnail %s in %lu ms: %s", made ? "ready" : "failed", millis() - started,
+          entry.path.c_str());
+  // The decode borrowed the framebuffer: rebuild it. The page itself is unchanged, so
+  // the panel is not driven.
+  RenderLock lock(*this);
+  requestUpdate();
 }
 
 void StandbyGalleryActivity::makePendingThumbnail() {
   StandbyPictures::Entry entry;
   int width = 0;
   int height = 0;
-  bool last = false;
   {
     RenderLock lock(*this);
     if (!thumbPending) return;
@@ -204,10 +246,10 @@ void StandbyGalleryActivity::makePendingThumbnail() {
     entry = pictures[static_cast<size_t>(index)];
     width = thumbWidth;
     height = thumbHeight;
-    last = thumbPending == 0;
   }
   // One picture per loop pass: input queued meanwhile is handled before the next. The
-  // decode borrows the framebuffer, which the repaint after the last one redraws.
+  // decode borrows the framebuffer, which the repaint after each one redraws, so the
+  // page fills in picture by picture instead of all at once at the end.
   const unsigned long started = millis();
   bool made = false;
   {
@@ -216,10 +258,8 @@ void StandbyGalleryActivity::makePendingThumbnail() {
     made = StandbyPictures::ensureThumbnail(entry, width, height);
   }
   LOG_INF("STANDBY", "thumbnail %s in %lu ms: %s", made ? "ready" : "failed", millis() - started, entry.path.c_str());
-  if (last) {
-    RenderLock lock(*this);
-    requestUpdate();
-  }
+  RenderLock lock(*this);
+  requestUpdate();
 }
 
 void StandbyGalleryActivity::buildScreen(UiScreen& screen) {
@@ -277,6 +317,7 @@ void StandbyGalleryActivity::buildScreen(UiScreen& screen) {
   if (start != thumbPageStart || innerWidth != thumbWidth || innerHeight != thumbHeight) {
     thumbPageStart = start;
     thumbAttempted = 0;
+    prefetchIndex = -1;
   }
   thumbWidth = innerWidth;
   thumbHeight = innerHeight;
@@ -314,7 +355,8 @@ void StandbyGalleryActivity::buildScreen(UiScreen& screen) {
       RickyDesignUi::fill(renderer, art, ds::gray::kTint);
       if (!(thumbAttempted & (1u << slot))) thumbPending |= 1u << slot;
     }
-    renderer.drawRoundedRect(art.x, art.y, art.width, art.height, ds::stroke::kHairline, 0, !picked);
+    // A picture at rest gets the light-gray cover edge, as a book on the shelf does.
+    if (!picked) RickyGrayStroke::ring(renderer, art.x, art.y, art.width, art.height, ds::stroke::kHairline, 0, ds::gray::kLine);
     if (entry.path == inUse) {
       // "In use" sits on the picture's lower left, paper on whatever the picture is.
       const char* text = tr(STR_RICKY_IN_USE);
@@ -331,6 +373,11 @@ void StandbyGalleryActivity::buildScreen(UiScreen& screen) {
   }
   nav.drawnCount = count;
   nav.onListRendered(start, visible, true);
+  if (thumbPending) {
+    pageSettledMs = 0;
+  } else if (pageSettledMs == 0) {
+    pageSettledMs = millis();
+  }
 
   // Page readout between the two page buttons.
   const int pages = std::max(1, (count + capacity - 1) / capacity);

@@ -10,12 +10,12 @@
 
 class ImageViewerActivity final : public Activity {
  public:
-  enum class WallpaperTarget : uint8_t { Standby, PowerOff };
+  enum class WallpaperTarget : uint8_t { Standby, PowerOff, Reading };
   ImageViewerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string filePath,
                       bool wallpaperPicker = false, bool stickerPicker = false,
                       WallpaperTarget wallpaperTarget = WallpaperTarget::Standby);
-  // From the standby gallery: flip through `pictures` (full paths) starting at `index`,
-  // and set the one shown as the standby or the power-off picture.
+  // From the gallery: flip through `pictures` (full paths) starting at `index`, and set
+  // the one shown as the standby, the power-off or the reading background picture.
   ImageViewerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::vector<std::string> pictures,
                       int index, WallpaperTarget wallpaperTarget);
 
@@ -39,7 +39,8 @@ class ImageViewerActivity final : public Activity {
   // The converted picture to copy for this file (the BMP itself when it already is one).
   const char* wallpaperSource() const;
   bool setFromGallery(WallpaperTarget target);
-  // The tappable action row: one "set" button, or the gallery's power-off and standby pair.
+  // The tappable action row: one "set" button, or the gallery's power-off, standby and
+  // reading-background trio.
   void drawActions() const;
   bool tapAction();
   bool doSetSticker();

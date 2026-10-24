@@ -9,7 +9,7 @@
 // copies; the gallery marks the source they came from.
 namespace StandbyPictures {
 
-enum class Target : uint8_t { Standby, PowerOff };
+enum class Target : uint8_t { Standby, PowerOff, Reading };
 enum class Filter : uint8_t { All, Defaults, Mine };
 
 struct Entry {
@@ -33,6 +33,10 @@ bool ensureThumbnail(const Entry& entry, int width, int height);
 
 // The picture a target was last set from, empty when unknown (set before this record).
 std::string currentSource(Target target);
+// That picture only while the target actually shows it (the standby style is the
+// picture, the power-off screen is its own picture, the reading paper is the picture
+// and on); empty otherwise. What the gallery marks "in use".
+std::string sourceInUse(Target target);
 void rememberSource(Target target, const std::string& path);
 
 }  // namespace StandbyPictures

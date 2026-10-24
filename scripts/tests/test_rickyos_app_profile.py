@@ -36,7 +36,7 @@ int main() {
                              AppId::OpdsBrowser};  // OPDS left in 1.2
   constexpr AppId tools[] = {AppId::Gomoku, AppId::Calculator,
                              AppId::FileTransfer, AppId::ReadingStats,
-                             AppId::Standby};
+                             AppId::Gallery, AppId::Standby};
   for (auto id : tools) {
     bool found=false;
     for (auto entry : kAppEntries) found |= entry.id == id;
@@ -57,15 +57,15 @@ int main() {
   }
 #ifdef RICKYOS_PRODUCT
 #ifdef ENABLE_CHINESE_VERSION
-  static_assert(kAppCount == 6);  // transfer, WeRead, stats, Gomoku, calculator, Screensaver
+  static_assert(kAppCount == 7);  // transfer, WeRead, stats, Gomoku, calculator, gallery, wallpaper
 #else
-  static_assert(kAppCount == 6);
+  static_assert(kAppCount == 7);
 #endif
 #else
 #ifdef ENABLE_CHINESE_VERSION
-  static_assert(kAppCount == 17);
+  static_assert(kAppCount == 18);
 #else
-  static_assert(kAppCount == 15);
+  static_assert(kAppCount == 16);
 #endif
 #endif
   constexpr AppId expected[] = {AppId::FileTransfer,
@@ -91,11 +91,12 @@ int main() {
 #ifndef RICKYOS_PRODUCT
     AppId::Woodfish,
 #endif
+    AppId::Gallery,
     AppId::Standby};
   static_assert(sizeof(expected) / sizeof(expected[0]) == kAppCount);
   for (int i=0; i<kAppCount; ++i) assert(kAppEntries[i].id == expected[i]);
   // Every persisted visibility combination still maps to the correct sparse IDs.
-  for (uint32_t mask=0; mask<(1u<<17); ++mask) {
+  for (uint32_t mask=0; mask<(1u<<19); ++mask) {
     int visible=0;
     for (int i=0;i<kAppCount;++i) {
       if (mask & appBit(kAppEntries[i].id)) continue;
@@ -106,7 +107,8 @@ int main() {
   }
   static_assert(static_cast<uint8_t>(AppId::Gomoku)==3);
   static_assert(static_cast<uint8_t>(AppId::Sokoban)==11);
-  static_assert(static_cast<uint8_t>(AppId::Count)==17);
+  static_assert(static_cast<uint8_t>(AppId::Count)==19);
+  static_assert(static_cast<uint8_t>(AppId::Gallery)==18);
 }
 '''
         program = program.replace('TITLES', ','.join(titles)).replace('ICONS', ','.join(icons))

@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "CrossPointSettings.h"
 #include "network/RickyWallpaperCatalog.h"
 #include "util/RickyStorageLayout.h"
 
@@ -22,6 +23,7 @@ constexpr char kThumbDir[] = "/.crosspoint/standby-thumbs";
 constexpr int kThumbCacheMax = 240;
 constexpr char kStandbySource[] = "/.crosspoint/standby-source.txt";
 constexpr char kPowerOffSource[] = "/.crosspoint/poweroff-source.txt";
+constexpr char kReadingSource[] = "/.crosspoint/reading-background-source.txt";
 
 enum class Kind : uint8_t { Bmp, Jpeg, Png };
 
@@ -69,6 +71,10 @@ void addFolder(const std::string& folder, std::vector<Entry>& out) {
 }
 
 void pruneThumbs() {
+  // Once a boot: listing the folder for every thumbnail made each one slower.
+  static bool pruned = false;
+  if (pruned) return;
+  pruned = true;
   HalFile dir = Storage.open(kThumbDir);
   if (!dir || !dir.isDirectory()) return;
   std::vector<std::string> names;
@@ -80,7 +86,9 @@ void pruneThumbs() {
   }
   dir.close();
   if (static_cast<int>(names.size()) < kThumbCacheMax) return;
-  for (const auto& entry : names) Storage.remove((std::string(kThumbDir) + "/" + entry).c_str());
+  // Keep the newer half (the folder lists in creation order) instead of starting over.
+  const size_t drop = names.size() - kThumbCacheMax / 2;
+  for (size_t i = 0; i < drop; ++i) Storage.remove((std::string(kThumbDir) + "/" + names[i]).c_str());
 }
 
 void write16(HalFile& out, const uint16_t value) {
@@ -267,12 +275,40 @@ bool ensureThumbnail(const Entry& entry, const int width, const int height) {
   return made;
 }
 
+static const char* sourceFile(const Target target) {
+  switch (target) {
+    case Target::PowerOff:
+      return kPowerOffSource;
+    case Target::Reading:
+      return kReadingSource;
+    default:
+      return kStandbySource;
+  }
+}
+
 std::string currentSource(const Target target) {
-  return readLine(target == Target::PowerOff ? kPowerOffSource : kStandbySource);
+  return readLine(sourceFile(target));
+}
+
+std::string sourceInUse(const Target target) {
+  bool shown = false;
+  switch (target) {
+    case Target::PowerOff:
+      shown = SETTINGS.rickyPowerOffScreen == CrossPointSettings::RICKY_POWER_OFF_CUSTOM;
+      break;
+    case Target::Reading:
+      shown = SETTINGS.readingBackground != CrossPointSettings::READING_BACKGROUND_OFF &&
+              SETTINGS.readingPaper == CrossPointSettings::READING_PAPER_PICTURE;
+      break;
+    default:
+      shown = SETTINGS.rickyStandbyFace == CrossPointSettings::RICKY_STANDBY_PICTURE;
+      break;
+  }
+  return shown ? currentSource(target) : std::string();
 }
 
 void rememberSource(const Target target, const std::string& path) {
-  const char* file = target == Target::PowerOff ? kPowerOffSource : kStandbySource;
+  const char* file = sourceFile(target);
   HalFile out;
   if (!Storage.openFileForWrite("STANDBY", file, out)) {
     LOG_ERR("STANDBY", "Cannot record the picture source");

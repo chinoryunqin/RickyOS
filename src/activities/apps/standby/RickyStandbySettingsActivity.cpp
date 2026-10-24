@@ -21,10 +21,12 @@
 #include "activities/home/FileBrowserActivity.h"
 #include "activities/util/ImageViewerActivity.h"
 #include "components/RickyDesignUi.h"
+#include "components/RickyGrayStroke.h"
 #include "components/RickyPageUi.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/PanelTileCache.h"
+#include "util/ReadingBackground.h"
 
 namespace {
 namespace fui = freeink::ui;
@@ -66,6 +68,12 @@ constexpr StrId kPowerOffCards[] = {StrId::STR_RICKY_CARD_SAME, StrId::STR_RICKY
                                     StrId::STR_RICKY_CARD_BLANK, StrId::STR_RICKY_CARD_PICTURE};
 static_assert(std::size(kPowerOffLabels) == Settings::RICKY_POWER_OFF_SCREEN_COUNT);
 static_assert(std::size(kPowerOffCards) == std::size(kPowerOffLabels));
+constexpr StrId kReadingShades[] = {StrId::STR_RICKY_READING_BG_OFF, StrId::STR_RICKY_READING_BG_LIGHT,
+                                    StrId::STR_RICKY_READING_BG_MEDIUM, StrId::STR_RICKY_READING_BG_DEEP};
+static_assert(std::size(kReadingShades) == Settings::READING_BACKGROUND_COUNT);
+constexpr StrId kReadingPapers[] = {StrId::STR_RICKY_PAPER_PICTURE, StrId::STR_RICKY_PAPER_LINES,
+                                    StrId::STR_RICKY_PAPER_GRID, StrId::STR_RICKY_PAPER_DOTS};
+static_assert(std::size(kReadingPapers) == Settings::READING_PAPER_COUNT);
 // The plate around a card or a tile: the inverted selection shows as this ink margin.
 constexpr int kPlate = 8;
 
@@ -109,10 +117,16 @@ fui::Rect rect(const int x, const int y, const int width, const int height) {
 
 fui::Rect inset(const fui::Rect& r, const int by) { return rect(r.x + by, r.y + by, r.width - 2 * by, r.height - 2 * by); }
 
-// A chip or a button: ink when chosen, else paper with a hairline ink edge.
+// A chip or a button: ink when chosen, else paper with the light-gray hairline edge the
+// Home and Library controls rest with.
 void control(const GfxRenderer& renderer, const fui::Rect& r, const bool chosen, const int radius) {
   RickyDesignUi::fill(renderer, r, chosen ? ds::gray::kInk : ds::gray::kPaper, radius);
-  if (!chosen) renderer.drawRoundedRect(r.x, r.y, r.width, r.height, ds::stroke::kHairline, radius, true);
+  if (!chosen) RickyGrayStroke::ring(renderer, r.x, r.y, r.width, r.height, ds::stroke::kHairline, radius, ds::gray::kLine);
+}
+
+// A screen-shaped preview's frame: the light-gray edge Home and Library covers rest with.
+void previewFrame(const GfxRenderer& renderer, const fui::Rect& r) {
+  RickyGrayStroke::ring(renderer, r.x, r.y, r.width, r.height, ds::stroke::kHairline, 0, ds::gray::kLine);
 }
 
 // Key focus on a control that already shows its choice by inversion: an emphasis ring
@@ -159,7 +173,7 @@ void styleArt(const GfxRenderer& renderer, const fui::Rect& art, const uint8_t f
       const fui::Rect book =
           rect(art.x + art.width / 5, art.y + art.height / 10, art.width * 3 / 5, art.height * 4 / 5);
       RickyDesignUi::fill(renderer, book, ds::gray::kTint);
-      renderer.drawRect(book.x, book.y, book.width, book.height, true);
+      RickyGrayStroke::ring(renderer, book.x, book.y, book.width, book.height, ds::stroke::kHairline, 0, ds::gray::kLine);
       RickyDesignUi::fill(renderer, rect(book.x + 8, book.y + book.height / 5, book.width - 16, 4), ds::gray::kInk2);
       RickyDesignUi::fill(renderer, rect(book.x + 8, book.y + book.height / 5 + 10, book.width / 2, 4),
                           ds::gray::kInk2);
@@ -227,7 +241,7 @@ void RickyStandbySettingsActivity::reloadPictures() {
   StandbyPictures::list(StandbyPictures::Filter::All, all);
   pictureCount_ = static_cast<int>(all.size());
   strip_.assign(all.begin(), all.begin() + std::min<int>(kStripTiles, pictureCount_));
-  standbySource_ = StandbyPictures::currentSource(StandbyPictures::Target::Standby);
+  standbySource_ = StandbyPictures::sourceInUse(StandbyPictures::Target::Standby);
   // Keep the picture in use in view: it takes the first tile when it is further in.
   const auto inUse = std::find_if(all.begin(), all.end(),
                                   [this](const StandbyPictures::Entry& entry) { return entry.path == standbySource_; });
@@ -238,17 +252,25 @@ void RickyStandbySettingsActivity::reloadPictures() {
   // The converted screens may have changed behind this page.
   PanelTileCache::forget(kPicture);
   PanelTileCache::forget(kPowerOffPicture);
+  PanelTileCache::forget(ReadingBackground::kPath);
 }
 
 const char* RickyStandbySettingsActivity::headerTitle() const { return tr(STR_RICKY_POWER_PAGE_TITLE); }
 
 const char* RickyStandbySettingsActivity::tabLabel(const int index) const {
+  if (index == ReadingTab) return tr(STR_RICKY_TAB_READING);
   return index == PowerOffTab ? tr(STR_RICKY_TAB_POWER_OFF) : tr(STR_RICKY_TAB_STANDBY);
 }
 
 void RickyStandbySettingsActivity::rebuildRows() {
   itemCount_ = 0;
   auto add = [this](const Item item) { items_[itemCount_++] = item; };
+  if (tab_ == ReadingTab) {
+    for (int i = 0; i < Settings::READING_PAPER_COUNT; ++i) add(static_cast<Item>(ReadingPaper0 + i));
+    for (int i = 0; i < Settings::READING_BACKGROUND_COUNT; ++i) add(static_cast<Item>(ReadingShade0 + i));
+    if (SETTINGS.readingPaper == Settings::READING_PAPER_PICTURE) add(ChangeReadingPicture);
+    return;
+  }
   if (tab_ == PowerOffTab) {
     for (int i = 0; i < 4; ++i) add(static_cast<Item>(PowerOff0 + i));
     if (SETTINGS.rickyPowerOffScreen == Settings::RICKY_POWER_OFF_CUSTOM) add(ChangePowerOffPicture);
@@ -419,8 +441,42 @@ void RickyStandbySettingsActivity::drawPreview(const Rect& box) const {
                         rect(band.x + 8, band.y + 8 + (time ? timeHeight : 0), band.width - 16, dateHeight * dateLines),
                         date, RickyDesignUi::CAPTION, false, fui::TextAlign::Center, dateLines);
   }
-  renderer.drawRect(frame.x, frame.y, frame.width, frame.height, true);
-  renderer.drawRect(frame.x + 1, frame.y + 1, frame.width - 2, frame.height - 2, true);
+  previewFrame(renderer, frame);
+}
+
+void RickyStandbySettingsActivity::drawReadingPreview(const fui::Rect& frame) const {
+  const fui::Rect inner = inset(frame, ds::stroke::kHairline);
+  const uint8_t shade = SETTINGS.readingBackground;
+  const bool picture = SETTINGS.readingPaper == Settings::READING_PAPER_PICTURE;
+  bool painted = false;
+  if (!picture && shade != Settings::READING_BACKGROUND_OFF) {
+    // Ruled paper to the sample text's rows, as the reader rules the real ones.
+    RickyDesignUi::fill(renderer, inner, ds::gray::kPaper);
+    const int pad = inner.width / 8;
+    const int step = std::max(8, inner.height / 12);
+    ReadingBackground::TextBox box{inner.x + pad, inner.y + pad, inner.right() - pad, inner.bottom() - pad, step,
+                                   3 + std::max(2, step / 4)};
+    ReadingBackground::drawPaper(renderer, SETTINGS.readingPaper, shade, box);
+    painted = true;
+  } else if (shade != Settings::READING_BACKGROUND_OFF && Storage.exists(ReadingBackground::kPath)) {
+    char key[64];
+    snprintf(key, sizeof(key), "%s|pv|%d,%d,%d,%d|%u", ReadingBackground::kPath, inner.x, inner.y, inner.width,
+             inner.height, static_cast<unsigned>(shade));
+    painted = PanelTileCache::draw(renderer, key, ReadingBackground::kPath, inner.x, inner.y, inner.width,
+                                   inner.height, [&] {
+                                     if (!drawPicture(renderer, ReadingBackground::kPath, inner, true)) return false;
+                                     if (!renderer.isGrayscale16Active()) return true;
+                                     // As the reader draws it: lightened under the text.
+                                     for (int y = inner.y; y < inner.bottom(); ++y)
+                                       for (int x = inner.x; x < inner.right(); ++x)
+                                         renderer.drawGrayscale16Pixel(
+                                             x, y, ReadingBackground::lighten(renderer.grayscale16Level(x, y), shade) * 17);
+                                     return true;
+                                   });
+  }
+  if (!painted) RickyDesignUi::fill(renderer, inner, ds::gray::kPaper);
+  textLines(renderer, inner, ds::gray::kInk);
+  previewFrame(renderer, frame);
 }
 
 void RickyStandbySettingsActivity::buildScreen(UiScreen& screen) {
@@ -449,6 +505,48 @@ void RickyStandbySettingsActivity::buildScreen(UiScreen& screen) {
     if (index >= 0) screen.frame().hit(r, ACTION_ROW, index, fui::InputTouch);
     return index >= 0 && focus && selected == index;
   };
+
+  if (tab_ == ReadingTab) {
+    // The picture's button at the bottom, the shade and the paper above it, a sample page
+    // on the background filling the rest.
+    if (indexOf(ChangeReadingPicture) >= 0) {
+      const auto button =
+          screen.takeBottom(static_cast<int16_t>(ds::layout::kButtonHeight), static_cast<int16_t>(gap));
+      const bool buttonPicked = hit(button, ChangeReadingPicture);
+      control(renderer, button, buttonPicked, ds::radius::kControl);
+      centered(renderer, button,
+               Storage.exists(ReadingBackground::kPath) ? tr(STR_RICKY_CHANGE_PICTURE)
+                                                        : tr(STR_RICKY_SELECT_READING_BACKGROUND),
+               RickyDesignUi::BODY, buttonPicked);
+    }
+    const auto chipRow = [&](const StrId title, const StrId* labels, const int count, const Item first,
+                             const int chosenIndex) {
+      const auto row =
+          screen.takeBottom(static_cast<int16_t>(captionHeight + 4 + chipHeight), static_cast<int16_t>(gap));
+      RickyDesignUi::text(renderer, rect(row.x, row.y, row.width, captionHeight), I18N.get(title),
+                          RickyDesignUi::CAPTION, false, fui::TextAlign::Left, 1, ds::gray::kInk2);
+      const int chipWidth = (row.width - 12 * (count - 1)) / count;
+      for (int i = 0; i < count; ++i) {
+        const fui::Rect chip = rect(row.x + i * (chipWidth + 12), row.y + captionHeight + 4, chipWidth, chipHeight);
+        const bool picked = hit(chip, static_cast<Item>(first + i));
+        control(renderer, chip, chosenIndex == i, chipHeight / 2);
+        centered(renderer, chip, I18N.get(labels[i]), RickyDesignUi::CAPTION, chosenIndex == i);
+        if (picked) focusRing(renderer, chip, chipHeight / 2);
+      }
+    };
+    // Taken from the bottom up: the shade sits under the paper.
+    chipRow(StrId::STR_RICKY_READING_BG_SHADE, kReadingShades, Settings::READING_BACKGROUND_COUNT, ReadingShade0,
+            SETTINGS.readingBackground);
+    chipRow(StrId::STR_RICKY_READING_PAPER, kReadingPapers, Settings::READING_PAPER_COUNT, ReadingPaper0,
+            SETTINGS.readingPaper);
+    const auto top = screen.body();
+    const int available = std::max(120, static_cast<int>(top.height) - gap);
+    const int previewHeight = available;
+    const int previewWidth = std::min<int>(top.width, previewHeight * renderer.getScreenWidth() /
+                                                          std::max(1, renderer.getScreenHeight()));
+    drawReadingPreview(rect(top.x + (top.width - previewWidth) / 2, top.y, previewWidth, previewHeight));
+    return;
+  }
 
   // The bottom row: when Standby starts, or when it powers off.
   const auto bottom = screen.takeBottom(static_cast<int16_t>(ds::layout::kRowHeight), static_cast<int16_t>(gap / 2));
@@ -548,7 +646,7 @@ void RickyStandbySettingsActivity::buildScreen(UiScreen& screen) {
           RickyDesignUi::fill(renderer, art, ds::gray::kTint);
           if (!(thumbAttempted_ & (1u << i))) thumbPending_ |= 1u << i;
         }
-        renderer.drawRoundedRect(art.x, art.y, art.width, art.height, ds::stroke::kHairline, 0, !picked);
+        if (!picked) RickyGrayStroke::ring(renderer, art.x, art.y, art.width, art.height, ds::stroke::kHairline, 0, ds::gray::kLine);
         if (inUse) {
           // The picture in use: a check on the lower right, ink on whatever the picture is.
           const int size = std::max(28, art.width / 4);
@@ -613,7 +711,7 @@ void RickyStandbySettingsActivity::buildScreen(UiScreen& screen) {
     } else {
       styleArt(renderer, art, kStyles[i]);
     }
-    renderer.drawRect(art.x, art.y, art.width, art.height, !chosen);
+    if (!chosen) RickyGrayStroke::ring(renderer, art.x, art.y, art.width, art.height, ds::stroke::kHairline, 0, ds::gray::kLine);
     centered(renderer, rect(cell.x, art.bottom() + 8, cell.width, captionHeight),
              I18N.get(tab_ == PowerOffTab ? kPowerOffCards[i] : kStyleCards[i]), RickyDesignUi::CAPTION, chosen);
     if (picked) focusRing(renderer, cell, ds::radius::kControl);
@@ -734,6 +832,29 @@ void RickyStandbySettingsActivity::activateIndex(const int index) {
         },
         std::move(paths), start, ImageViewerActivity::WallpaperTarget::Standby);
     return;
+  } else if (item >= ReadingPaper0 && item <= ReadingPaper3) {
+    const auto paper = static_cast<uint8_t>(item - ReadingPaper0);
+    // The picture paper needs a picture: choose it now when there is none yet.
+    if (paper == Settings::READING_PAPER_PICTURE && !Storage.exists(ReadingBackground::kPath)) {
+      openGallery(StandbyPictures::Target::Reading);
+      return;
+    }
+    saveSetting(SETTINGS.readingPaper, paper);
+    // Choosing a paper shows it: at medium when the background was off.
+    if (SETTINGS.readingBackground == Settings::READING_BACKGROUND_OFF)
+      saveSetting(SETTINGS.readingBackground, Settings::READING_BACKGROUND_MEDIUM);
+    ReadingBackground::invalidate();
+    rebuildRows();
+  } else if (item >= ReadingShade0 && item <= ReadingShade3) {
+    const auto shade = static_cast<uint8_t>(item - ReadingShade0);
+    // A picture shade needs a picture: choose it now when there is none yet.
+    if (shade != Settings::READING_BACKGROUND_OFF && SETTINGS.readingPaper == Settings::READING_PAPER_PICTURE &&
+        !Storage.exists(ReadingBackground::kPath)) {
+      openGallery(StandbyPictures::Target::Reading);
+      return;
+    }
+    saveSetting(SETTINGS.readingBackground, shade);
+    ReadingBackground::invalidate();
   } else if (item >= PowerOff0 && item <= PowerOff3) {
     const auto screen = static_cast<uint8_t>(item - PowerOff0);
     // A picture of its own needs one: choose it now when there is none yet.
@@ -750,6 +871,9 @@ void RickyStandbySettingsActivity::activateIndex(const int index) {
         return;
       case ChangePowerOffPicture:
         openGallery(StandbyPictures::Target::PowerOff);
+        return;
+      case ChangeReadingPicture:
+        openGallery(StandbyPictures::Target::Reading);
         return;
       case ChooseSticker:
         openStickerPicker();

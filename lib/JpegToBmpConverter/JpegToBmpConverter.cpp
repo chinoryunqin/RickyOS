@@ -606,10 +606,11 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(HalFile& jpegFile, Print& b
 
   constexpr int MAX_IMAGE_WIDTH = 2048;
   constexpr int MAX_IMAGE_HEIGHT = 3072;
-
-  if (srcWidth <= 0 || srcHeight <= 0 || srcWidth > MAX_IMAGE_WIDTH || srcHeight > MAX_IMAGE_HEIGHT) {
-    LOG_DBG("JPG", "Image too large or invalid (%dx%d), max supported: %dx%d", srcWidth, srcHeight, MAX_IMAGE_WIDTH,
-            MAX_IMAGE_HEIGHT);
+  // The limit applies to what the decoder produces, not to the file: a phone
+  // photo (4032x3024) decoded at 1/2 or 1/4 fits it. Larger than 8x the limit
+  // cannot be brought down by the decoder's own scaling.
+  if (srcWidth <= 0 || srcHeight <= 0 || srcWidth > MAX_IMAGE_WIDTH * 8 || srcHeight > MAX_IMAGE_HEIGHT * 8) {
+    LOG_DBG("JPG", "Image too large or invalid (%dx%d)", srcWidth, srcHeight);
     return false;
   }
 
@@ -656,6 +657,11 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(HalFile& jpegFile, Print& b
   const int scaleSrcHeight = (srcHeight + scaleDenominator - 1) / scaleDenominator;
   LOG_DBG("JPG", "JPEG decoder scale: 1/%d (%dx%d -> %dx%d), output=%dx%d", scaleDenominator, srcWidth, srcHeight,
           scaleSrcWidth, scaleSrcHeight, outWidth, outHeight);
+  if (scaleSrcWidth > MAX_IMAGE_WIDTH || scaleSrcHeight > MAX_IMAGE_HEIGHT) {
+    LOG_DBG("JPG", "Image too large (%dx%d decodes to %dx%d), max supported: %dx%d", srcWidth, srcHeight,
+            scaleSrcWidth, scaleSrcHeight, MAX_IMAGE_WIDTH, MAX_IMAGE_HEIGHT);
+    return false;
+  }
 
   if (scaleSrcWidth != outWidth || scaleSrcHeight != outHeight) {
     scaleX_fp = (static_cast<uint32_t>(scaleSrcWidth) << 16) / outWidth;

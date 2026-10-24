@@ -188,6 +188,7 @@ class ActivityManager {
   }
   // Apps → Standby: choose what the sleeping screen shows; full-screen Standby is a row there.
   void goToStandbySettings();
+  void goToGallery();
   void goToWeRead();
   void goHome(HomeMenuItem initialMenuItem = HomeMenuItem::NONE);
   MainTabFocus getMainTabFocus() const { return mainTabFocus; }

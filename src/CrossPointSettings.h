@@ -476,6 +476,24 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     RICKY_POWER_OFF_SCREEN_COUNT
   };
   uint8_t rickyPowerOffScreen = RICKY_POWER_OFF_DEFAULT;
+  // 阅读背景: /readingbg.bmp under the page, lightened by this much (off by default).
+  enum READING_BACKGROUND : uint8_t {
+    READING_BACKGROUND_OFF = 0,
+    READING_BACKGROUND_LIGHT,
+    READING_BACKGROUND_MEDIUM,
+    READING_BACKGROUND_DEEP,
+    READING_BACKGROUND_COUNT
+  };
+  uint8_t readingBackground = READING_BACKGROUND_OFF;
+  // What lies under the page: the chosen picture, or ruled paper drawn to the text's rows.
+  enum READING_PAPER : uint8_t {
+    READING_PAPER_PICTURE = 0,
+    READING_PAPER_LINES,
+    READING_PAPER_GRID,
+    READING_PAPER_DOTS,
+    READING_PAPER_COUNT
+  };
+  uint8_t readingPaper = READING_PAPER_PICTURE;
   // The sleepScreen mode the power-off screen draws with (SleepActivity).
   uint8_t rickySleepScreenMode() const;
   // Standby that has run this long powers off (index into RICKY_AUTO_OFF_HOURS; 0 = never).

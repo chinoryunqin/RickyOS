@@ -18,6 +18,7 @@
 #include "apps/gomoku/GomokuModeActivity.h"
 #include "apps/reading-stats/RickyReadingStatsActivity.h"
 #include "apps/standby/RickyStandbySettingsActivity.h"
+#include "apps/standby/StandbyGalleryActivity.h"
 #include "apps/standby/StandbyActivity.h"
 #include "apps/weread/WeReadActivity.h"
 #include "boot_sleep/BootActivity.h"
@@ -917,6 +918,9 @@ void ActivityManager::closeStandby() {
   popActivity();  // back to the page under it; Home when Standby was the only one
 }
 void ActivityManager::goToStandbySettings() { replaceActivityWith<RickyStandbySettingsActivity>(); }
+void ActivityManager::goToGallery() {
+  replaceActivityWith<StandbyGalleryActivity>(StandbyPictures::Target::Standby, StandbyGalleryActivity::Mode::Browse);
+}
 
 void ActivityManager::goToWeRead() { replaceActivityWith<WeReadActivity>(); }
 

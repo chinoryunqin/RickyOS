@@ -1,5 +1,7 @@
 #include "EpubReaderActivity.h"
 
+#include "util/ReadingBackground.h"
+
 #include <RickyPerf.h>
 #include <Epub/Page.h>
 #include <Epub/blocks/TextBlock.h>
@@ -2360,8 +2362,9 @@ bool EpubReaderActivity::nativeGray16Page(const Page& page) const {
 #if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
   // Gray content (illustrations, a CSS panel's fill) needs the gray frame whatever the
   // text setting; with anti-aliasing off the text in it is quantized to black and white.
+  // 阅读背景 lives in the 16-level frame, so a page under it is 16-level too.
   return !renderer.isInverted() && renderer.getGrayscaleLevels() == 16 &&
-         (SETTINGS.textAntiAliasing || page.hasImages() || page.hasPanelFill());
+         (SETTINGS.textAntiAliasing || page.hasImages() || page.hasPanelFill() || ReadingBackground::active());
 #else
   return SETTINGS.textAntiAliasing && !renderer.isInverted() && renderer.getGrayscaleLevels() == 16 &&
          page.imagesAreAllJpeg();
@@ -2760,6 +2763,19 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
       GfxRenderer& renderer;
       ~EndOffscreen() { renderer.endGrayscale16Offscreen(); }
     } endOffscreen{renderer};
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
+    {
+      // Ruled paper follows this page's text box and rows.
+      ReadingBackground::TextBox box{key.left, key.top, renderer.getScreenWidth() - key.right,
+                                     renderer.getScreenHeight() - key.bottom};
+      if (!vertical) {
+        box.pitch = renderer.getLineHeight(key.spec.fontId, key.spec.lineCompression);
+        box.rule = readingGuideLine::rowOffset(box.pitch, renderer.getFontAscenderSize(key.spec.fontId),
+                                               readingGuideLine::emFor(renderer, key.spec.fontId));
+      }
+      ReadingBackground::paint(renderer, box);
+    }
+#endif
     {
       GfxRenderer::SyntheticBoldScope syntheticBold(renderer, key.fakeBold);
       GfxRenderer::TextWeightScope textWeight(renderer, readerTextWeightCurve(key.textWeight),
@@ -3080,6 +3096,20 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       } else
 #endif
       {
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
+        {
+          // Ruled paper follows this page's text box and rows.
+          ReadingBackground::TextBox box{orientedMarginLeft, orientedMarginTop,
+                                         renderer.getScreenWidth() - orientedMarginRight,
+                                         renderer.getScreenHeight() - orientedMarginBottom};
+          if (!vertical) {
+            box.pitch = renderer.getLineHeight(fontId, SETTINGS.getReaderLineCompression());
+            box.rule = readingGuideLine::rowOffset(box.pitch, renderer.getFontAscenderSize(fontId),
+                                                   readingGuideLine::emFor(renderer, fontId));
+          }
+          ReadingBackground::paint(renderer, box);
+        }
+#endif
         renderPageWithGuideLines();
       }
       const auto t16Page = millis();
@@ -3132,6 +3162,9 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       const bool panelFill = !vertical && page->hasPanelFill();
       const bool panelTurn = panelFill || lastPageHadPanelFill_;
       lastPageHadPanelFill_ = panelFill;
+      // A panel page (and the page leaving one) is itself a full GC16 clean, so the
+      // interval counts again from here; otherwise the due clean followed it early.
+      if (panelTurn && refresh == HalDisplay::FAST_REFRESH) pagesUntilFullRefresh = SETTINGS.getRefreshFrequency();
       display.setNextGray16Profile(refresh == HalDisplay::FAST_REFRESH && !panelTurn ? 1 : 2);
 #endif
       const auto tCommit = millis();

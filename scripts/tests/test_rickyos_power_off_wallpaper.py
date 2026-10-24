@@ -66,7 +66,9 @@ int HalFile::write(const char* in, size_t size) {
 struct CrossPointSettings {
   enum SLEEP_SCREEN_MODE { CUSTOM = 2, TRANSPARENT = 7 };
   enum { RICKY_STANDBY_PICTURE = 0, RICKY_POWER_OFF_CUSTOM = 3 };
+  enum { READING_BACKGROUND_OFF = 0, READING_BACKGROUND_MEDIUM = 2, READING_PAPER_PICTURE = 0 };
   uint8_t sleepScreen = 6, rickyStandbyFace = 4, rickyPowerOffScreen = 1;
+  uint8_t readingBackground = 0, readingPaper = 2;
   int failedSaves = 0;
   bool saveToFile() { if (failedSaves) { --failedSaves; return false; } return true; }
 } SETTINGS;
@@ -88,8 +90,13 @@ bool hasJpgExtension(const std::string& p) { return p.ends_with(".jpg") || p.end
 struct Popup {
   template<class F> void show(StrId, const StrId*, int, int, F cb) { cb(0); }
 };
+namespace ReadingBackground {
+constexpr char kPath[] = "/readingbg.bmp";
+int invalidations = 0;
+void invalidate() { ++invalidations; }
+}
 struct ImageViewerActivity {
-  enum class WallpaperTarget : uint8_t { Standby, PowerOff };
+  enum class WallpaperTarget : uint8_t { Standby, PowerOff, Reading };
   WallpaperTarget wallpaperTarget = WallpaperTarget::Standby;
   bool imageReady = true, wallpaperPicker = true, stickerPicker = false;
   bool png = false, jpeg = false;
@@ -180,6 +187,22 @@ int main() {
   reset(); Storage.rename(POWER_OFF_IMAGE_PATH, POWER_OFF_IMAGE_BACKUP_PATH); Storage.readFails = true;
   assert(!off.doSetSleepCover("/original.bmp", false));
   assert(Storage.data.at("/poweroff.bmp") == "old-off"); preserved();
+  // 阅读背景: its own file; the picture paper is chosen and shown (medium when it was off).
+  ImageViewerActivity reading; reading.wallpaperTarget = Target::Reading;
+  reset(); ReadingBackground::invalidations = 0;
+  assert(reading.doSetSleepCover("/original.bmp", false)); preserved();
+  assert(Storage.data.at("/readingbg.bmp") == Storage.data.at("/original.bmp"));
+  assert(Storage.data.at("/poweroff.bmp") == "old-off" && SETTINGS.rickyPowerOffScreen == 1);
+  assert(SETTINGS.readingPaper == 0 && SETTINGS.readingBackground == 2 && ReadingBackground::invalidations == 1);
+  assert(!Storage.exists("/readingbg.bmp.part") && !Storage.exists("/readingbg.bmp.bak"));
+  reset(); SETTINGS.readingBackground = 3;
+  assert(reading.doSetSleepCover("/original.bmp", false) && SETTINGS.readingBackground == 3);  // a set shade stays
+  assert(!reading.doSetSleepCover("/original.bmp", true));  // no transparent path for the reading background
+  // A failed save restores the paper and the shade, and leaves no unselected picture.
+  reset(); ReadingBackground::invalidations = 0; SETTINGS.failedSaves = 1;
+  assert(!reading.doSetSleepCover("/original.bmp", false)); preserved();
+  assert(!Storage.exists("/readingbg.bmp") && SETTINGS.readingPaper == 2 && SETTINGS.readingBackground == 0);
+  assert(ReadingBackground::invalidations == 0);
 }
 ''', defines=('RICKYOS_PRODUCT',))
 

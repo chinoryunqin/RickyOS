@@ -14,7 +14,7 @@ const root = path.resolve(__dirname, '..');
 const sourceDir = path.join(root, 'src/components/icons/sources/rickyos/apps');
 const SIZE = 40;
 const THRESHOLD = 110;
-const names = ['transfer', 'opds', 'weread', 'stats', 'gomoku', 'calculator', 'standby'];
+const names = ['transfer', 'opds', 'weread', 'stats', 'gomoku', 'calculator', 'standby', 'gallery', 'wallpaper'];
 
 let output = path.join(root, 'src/components/icons/rickyAppIcons.h');
 const args = process.argv.slice(2);
