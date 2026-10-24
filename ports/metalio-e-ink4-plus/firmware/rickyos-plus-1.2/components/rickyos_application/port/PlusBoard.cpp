@@ -435,15 +435,31 @@ static StandbyWake standbySleepOnce(const uint32_t seconds, StandbyStorage* stor
 #endif
     const bool ioRestored = keysRestored && (!keysTouched || epd_board_metalio_eink4_plus_sleep_io_checked(false));
     sleepCheckpoint(SleepStage::SdRelease);
+#if defined(RICKYOS_PLUS_SD_FAULT_TEST)
+    // Test build only: the first wake leaves the SD pads held low, so the
+    // remount fails as on the reported card; the pads are released right after.
+    static bool sdFaultInjected = false;
+    const bool injectSdFault = sdPadsTouched && !sdFaultInjected;
+    sdFaultInjected = sdFaultInjected || injectSdFault;
+    const bool padsRestored = !sdPadsTouched || injectSdFault || MetalioSd_ResumeBusChecked();
+#else
     const bool padsRestored = !sdPadsTouched || MetalioSd_ResumeBusChecked();
+#endif
     if (!railsRestored || !ioRestored || !padsRestored) ok = false;
     // Remount through the SAME SDK manager, then restore every readonly position
     // before USJ revives. The legacy VFS MetalioSd_Init is deliberately not used.
     sleepCheckpoint(SleepStage::SdMount);
+    // A card that does not mount here is not a board fault: HalStorage keeps
+    // its files parked, mounts it again on the next storage use, and stops
+    // parking it in later Standbys. Leaving it out of `ok` keeps the wake key
+    // and later sleeps working instead of disabling sleep until restart.
     const bool sdRestored = !storageStopped || storage->resume(storage->context);
+#if defined(RICKYOS_PLUS_SD_FAULT_TEST)
+    if (injectSdFault) MetalioSd_ResumeBusChecked();
+#endif
     sleepCheckpoint(SleepStage::ImuRestore);
     const bool imuRestored = imu.restore();
-    if (!sdRestored || !imuRestored) ok = false;
+    if (!imuRestored) ok = false;
     if (!ok) sleepFault = true;
     STANDBY_DIAG("static restore: keys=%u rails=%u io=%u pads=%u sd=%u imu=%u ok=%u", keysRestored, railsRestored, ioRestored, padsRestored,
                  sdRestored, imuRestored, ok);

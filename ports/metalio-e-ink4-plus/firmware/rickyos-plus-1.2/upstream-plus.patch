@@ -180976,6 +180976,52 @@
    bool clearCache() const;
    void setupCacheDir() const;
    const std::string& getCachePath() const;
+--- /dev/null
++++ b/lib/Epub/Epub/BookFonts.cpp
+@@ -0,0 +1,11 @@
++#include "BookFonts.h"
++
++namespace bookfonts {
++namespace {
++Resolver* activeResolver = nullptr;
++}
++
++void setActive(Resolver* resolver) { activeResolver = resolver; }
++Resolver* active() { return activeResolver; }
++
++}  // namespace bookfonts
+--- /dev/null
++++ b/lib/Epub/Epub/BookFonts.h
+@@ -0,0 +1,29 @@
++#pragma once
++
++#include <cstdint>
++#include <string_view>
++
++// The open book's own fonts, as seen by layout (ChapterHtmlSlimParser, ParsedText) and by
++// TextBlock::render(). The reader installs a resolver while a book is open; with none
++// installed every word keeps the reader font.
++namespace bookfonts {
++
++class Resolver {
++ public:
++  virtual ~Resolver() = default;
++  // Face slot for a CSS font-family candidate list; 0 = the reader font.
++  virtual uint8_t faceForFamily(std::string_view candidates) = 0;
++  // Renderer font id for `face` at the reader font `baseFontId` (and an optional em * 256
++  // size, 0 = same size); baseFontId when the face cannot be used.
++  virtual int fontIdFor(uint8_t face, int baseFontId, uint16_t size) = 0;
++};
++
++void setActive(Resolver* resolver);
++Resolver* active();
++
++inline int fontIdFor(const uint8_t face, const int baseFontId, const uint16_t size = 0) {
++  Resolver* resolver = active();
++  return (resolver && (face != 0 || size != 0)) ? resolver->fontIdFor(face, baseFontId, size) : baseFontId;
++}
++
++}  // namespace bookfonts
 --- a/lib/Epub/Epub/Page.cpp
 +++ b/lib/Epub/Epub/Page.cpp
 @@ -1,6 +1,8 @@
@@ -181428,6 +181474,46 @@
    Hyphenator::setPreferredLanguage(epub->getLanguage());
  
    if (!build_->parser->beginParse()) {
+--- /dev/null
++++ b/lib/Epub/Epub/WordLook.h
+@@ -0,0 +1,37 @@
++#pragma once
++
++#include <cstdint>
++
++// How a word looks in a typeset book, beyond bold/italic/decoration (EpdFontFamily::Style):
++// the book's own face, its text tone and (later) its size. Carried per word through layout
++// and the section cache; 0 means "as the reader is set", so books without styles cost nothing.
++//
++//   bits  0- 7  face  : 0 = the reader font, n = slot n of the open book's BookFontSet
++//   bits  8-11  ink   : text tone, 0 = black .. 15 = white (GfxRenderer::TextInkScope levels)
++//   bits 12-15  reserved
++//   bits 16-31  size  : 0 = the reader size, otherwise em * 256 relative to it
++namespace wordlook {
++
++inline constexpr uint32_t kDefault = 0;
++
++constexpr uint8_t face(const uint32_t look) { return static_cast<uint8_t>(look & 0xFF); }
++constexpr uint8_t ink(const uint32_t look) { return static_cast<uint8_t>((look >> 8) & 0x0F); }
++constexpr uint16_t size(const uint32_t look) { return static_cast<uint16_t>(look >> 16); }
++
++constexpr uint32_t make(const uint8_t face, const uint8_t ink, const uint16_t size = 0) {
++  return static_cast<uint32_t>(face) | (static_cast<uint32_t>(ink & 0x0F) << 8) | (static_cast<uint32_t>(size) << 16);
++}
++
++// CSS luminance (0 = black .. 255 = white) to an ink level.
++//   - Dark colors (#222, #333, navy, maroon: luma < 96) are body text meant as black; on a
++//     reflective panel any lift reads as faded type, so they stay pure black.
++//   - Clear grays (#666 .. #aaa) keep a visible tone, compressed to ink 3..8 so they remain
++//     readable at small sizes.
++//   - Near-white text is drawn black: it only reads on a colored background, and
++//     backgrounds are not painted.
++constexpr uint8_t inkForLuma(const uint8_t luma) {
++  if (luma < 96 || luma >= 200) return 0;
++  return static_cast<uint8_t>(3 + (luma - 96) * 5 / (200 - 96));
++}
++
++}  // namespace wordlook
 --- a/lib/Epub/Epub/blocks/BlockStyle.h
 +++ b/lib/Epub/Epub/blocks/BlockStyle.h
 @@ -4,6 +4,23 @@
@@ -186707,7 +186793,14 @@
 +}  // namespace HalRecorder
 --- a/lib/hal/HalStorage.cpp
 +++ b/lib/hal/HalStorage.cpp
-@@ -147,6 +147,10 @@
+@@ -1,5 +1,6 @@
+ #include "HalStorage.h"
+ 
++#include <Arduino.h>
+ #include <FS.h>  // need to be included before SdFat.h for compatibility with FS.h's File class
+ #include <Logging.h>
+ #include <Memory.h>
+@@ -147,6 +148,10 @@
  // both of which macOS sends, are answered here.
  int32_t __wrap_tud_msc_scsi_cb(uint8_t lun, uint8_t const scsi_cmd[16], void* buffer, uint16_t bufsize) {
    noteHostCommand();
@@ -186718,7 +186811,7 @@
    switch (scsi_cmd[0]) {
      case 0x35:  // SYNCHRONIZE CACHE(10): every write reaches the card before it completes
      case 0x91:  // SYNCHRONIZE CACHE(16)
-@@ -166,6 +170,7 @@
+@@ -166,6 +171,7 @@
      return -1;
    }
    return 0;
@@ -186726,7 +186819,35 @@
  }
  }
  #endif
-@@ -256,7 +261,13 @@
+@@ -199,7 +205,16 @@
+   return mounted;
+ }
+ 
+-bool HalStorage::ready() const { return SDCard.ready(); }
++bool HalStorage::ready() const {
++#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
++  // Never wait here: a caller may hold the render lock the standby task wants.
++  if (standbyRemountPending && xSemaphoreTakeRecursive(storageMutex, 0) == pdTRUE) {
++    recoverAfterStandby();
++    xSemaphoreGiveRecursive(storageMutex);
++  }
++#endif
++  return SDCard.ready();
++}
+ 
+ bool HalStorage::cardDetectAsserted() const {
+ #if FREEINK_DEVICE_READPICO
+@@ -214,6 +229,9 @@
+ 
+ HalStorage::StorageLock::StorageLock() {
+   xSemaphoreTakeRecursive(HalStorage::getInstance().storageMutex, portMAX_DELAY);
++#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
++  if (standbyRemountPending) recoverAfterStandby();
++#endif
+ }
+ 
+ HalStorage::StorageLock::~StorageLock() { xSemaphoreGiveRecursive(HalStorage::getInstance().storageMutex); }
+@@ -256,7 +274,13 @@
    hostStartStops.store(0);
    if (!usbMassStorage.begin(&usbBlockDevice)) {
      LOG_ERR("USB", "USB Drive MSC initialization failed");
@@ -186740,7 +186861,7 @@
        LOG_ERR("USB", "Unable to remount SD card after USB Drive startup failure");
      }
      return false;
-@@ -371,14 +382,30 @@
+@@ -371,14 +395,30 @@
  }
  
  bool HalStorage::writeFile(const char* path, const String& content) {
@@ -186773,7 +186894,7 @@
    // SdFat is not thread-safe; FsFile::close() touches SD/SPI and must run
    // under StorageLock or it races SdSpiCard::m_spiActive across tasks and
    // trips FreeRTOS's xTaskPriorityDisinherit assert. The FsFile member
-@@ -388,9 +415,98 @@
+@@ -388,9 +428,140 @@
    ~Impl() {
      HalStorage::StorageLock lock;
      file.close();
@@ -186842,7 +186963,41 @@
 +  }
 +}
 +
++// Mount the card again after a standby park. Some cards answer late after their
++// bus was held low through sleep, so a failed mount is retried after a pause.
++// Returns the number of mounts it took, 0 when the card did not come back.
++uint32_t HalStorage::remountForStandby() {
++  static constexpr uint32_t kPauseMs[] = {0, 150, 500};
++  for (uint32_t attempt = 0; attempt < sizeof(kPauseMs) / sizeof(kPauseMs[0]); ++attempt) {
++    if (kPauseMs[attempt] != 0) delay(kPauseMs[attempt]);
++    if (SDCard.begin()) return attempt + 1;
++  }
++  return 0;
++}
++
++void HalStorage::recoverAfterStandby() {
++  static bool recovering = false;
++  if (recovering) return;
++  if (SDCard.ready()) {
++    standbyRemountPending = false;
++    return;
++  }
++  const uint32_t now = millis();
++  if (standbyRemountTriedMs != 0 && uint32_t(now - standbyRemountTriedMs) < 2000) return;
++  recovering = true;
++  standbyRemountTriedMs = now;
++  const uint32_t mounts = remountForStandby();
++  standbyRemountTriedMs = millis();
++  if (mounts != 0) {
++    standbyRemountPending = false;
++    HalFile::Impl::resumeAll();
++    LOG_INF("STORAGE", "SD back after standby (late remount, %u tries)", static_cast<unsigned>(mounts));
++  }
++  recovering = false;
++}
++
 +bool HalStorage::StandbySession::suspend() {
++  if (standbyParkDisabled) return false;
 +  if (suspended_ || !SDCard.ready() || !HalFile::Impl::suspendAll()) return false;
 +  auto* device = SDCard.rawBlockDevice();
 +  if (!device || !device->syncDevice()) {
@@ -186856,11 +187011,19 @@
 +bool HalStorage::StandbySession::resume() {
 +  if (!suspended_) return true;
 +  suspended_ = false;
-+  if (!SDCard.begin()) {
-+    LOG_ERR("STORAGE", "Standby SD remount failed");
-+    // Clear parked flags with closed handles; never let a destructor reopen
-+    // against an unmounted volume or retry after the caller releases its lock.
-+    for (auto* entry = HalFile::Impl::head; entry; entry = entry->next) entry->parked = false;
++  const uint32_t mounts = remountForStandby();
++  if (mounts != 1) {
++    // This card is slow or unreliable after a park: keep it mounted through
++    // every later Standby of this boot.
++    standbyParkDisabled = true;
++    LOG_ERR("STORAGE", "Standby SD remount %s after %u tries; SD stays on in Standby until restart",
++            mounts ? "succeeded" : "failed", static_cast<unsigned>(mounts ? mounts : 3));
++  }
++  if (mounts == 0) {
++    // Parked handles stay parked: the next storage use mounts the card again
++    // and reopens them at their positions.
++    standbyRemountPending = true;
++    standbyRemountTriedMs = millis();
 +    return false;
 +  }
 +  return HalFile::Impl::resumeAll();
@@ -186872,7 +187035,7 @@
  
  HalFile::HalFile() = default;
  HalFile::HalFile(std::unique_ptr<Impl> impl) : impl(std::move(impl)) {}
-@@ -400,10 +516,13 @@
+@@ -400,10 +571,13 @@
  
  HalFile HalStorage::open(const char* path, const oflag_t oflag) {
    StorageLock lock;  // ensure thread safety for the duration of this function
@@ -186887,7 +187050,7 @@
    if (!impl) {
      LOG_ERR("HAL", "OOM: HalFile::Impl (%u bytes)", static_cast<unsigned>(sizeof(HalFile::Impl)));
      return {};
-@@ -415,16 +534,42 @@
+@@ -415,16 +589,42 @@
  
  bool HalStorage::exists(const char* path) { HAL_STORAGE_WRAPPED_CALL(exists, path); }
  
@@ -186936,7 +187099,7 @@
  
  bool HalStorage::openFileForRead(const char* moduleName, const char* path, HalFile& file) {
    StorageLock lock;  // ensure thread safety for the duration of this function
-@@ -433,7 +578,7 @@
+@@ -433,7 +633,7 @@
      file = HalFile();
      return false;
    }
@@ -186945,7 +187108,7 @@
    if (!impl) {
      LOG_ERR(moduleName, "OOM: HalFile::Impl (%u bytes)", static_cast<unsigned>(sizeof(HalFile::Impl)));
      file = HalFile();
-@@ -454,11 +599,14 @@
+@@ -454,11 +654,14 @@
  bool HalStorage::openFileForWrite(const char* moduleName, const char* path, HalFile& file) {
    StorageLock lock;  // ensure thread safety for the duration of this function
    FsFile fsFile;
@@ -186961,7 +187124,7 @@
    if (!impl) {
      LOG_ERR(moduleName, "OOM: HalFile::Impl (%u bytes)", static_cast<unsigned>(sizeof(HalFile::Impl)));
      file = HalFile();
-@@ -487,7 +635,14 @@
+@@ -487,7 +690,14 @@
    assert(impl != nullptr);                 \
    return impl->file.method(__VA_ARGS__);
  
@@ -186976,7 +187139,7 @@
    assert(impl != nullptr);                 \
    return impl->file.method(__VA_ARGS__);
  
-@@ -515,7 +670,23 @@
+@@ -515,7 +725,23 @@
  size_t HalFile::write(const uint8_t* buf, size_t count) { HAL_FILE_WRAPPED_CALL(write, buf, count); }
  size_t HalFile::write(const void* buf, size_t count) { HAL_FILE_WRAPPED_CALL(write, buf, count); }
  size_t HalFile::write(uint8_t b) { HAL_FILE_WRAPPED_CALL(write, b); }
@@ -187001,7 +187164,7 @@
  bool HalFile::isDirectory() const { HAL_FILE_FORWARD_CALL(isDirectory, ); }  // already thread-safe, no need to wrap
  void HalFile::rewindDirectory() { HAL_FILE_WRAPPED_CALL(rewindDirectory, ); }
  // Closing an unopened handle is a no-op, not misuse. openFileForRead()/openFileForWrite()
-@@ -544,5 +715,5 @@
+@@ -544,5 +770,5 @@
    }
    return HalFile(std::move(nextImpl));
  }
@@ -187010,7 +187173,7 @@
  HalFile::operator bool() const { return isOpen(); }
 --- a/lib/hal/HalStorage.h
 +++ b/lib/hal/HalStorage.h
-@@ -112,8 +112,29 @@
+@@ -112,8 +112,38 @@
      StorageLock& operator=(const StorageLock&) = delete;
    };
  
@@ -187036,6 +187199,15 @@
    static HalStorage instance;
 +#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
 +  static void invalidateStandbyPath(const char* path);
++  // A card that did not come back after a standby park is mounted again on the
++  // next storage use instead of staying lost until restart. Call with the lock held.
++  static void recoverAfterStandby();
++  static uint32_t remountForStandby();
++  inline static bool standbyRemountPending = false;
++  // Set for the rest of this boot once a card needed more than one mount to come
++  // back: Standby then keeps that card powered and mounted, as before 1.2.6.
++  inline static bool standbyParkDisabled = false;
++  inline static uint32_t standbyRemountTriedMs = 0;
 +#endif
  
    bool initialized = false;
@@ -194374,6 +194546,351 @@
    unsigned long connectionStartTime = 0;
  
    // The UiAppHost app hosts the network list and the save/forget prompts
+--- /dev/null
++++ b/src/activities/reader/BookFontSet.cpp
+@@ -0,0 +1,248 @@
++#include "BookFontSet.h"
++
++#include <Arduino.h>
++#include <Epub.h>
++#include <Epub/css/CssParser.h>
++#include <GfxRenderer.h>
++#include <HalMemory.h>
++#include <Logging.h>
++#include <Memory.h>
++#include <VectorFontSupport.h>
++
++#include <cstdlib>
++#include <cstring>
++
++#include "CrossPointSettings.h"
++
++#if CROSSPOINT_VECTOR_FONTS
++#include <TtfEpdFont.h>
++#endif
++
++namespace {
++
++bool equalsCaseless(const std::string_view a, const std::string_view b) {
++  if (a.size() != b.size()) return false;
++  for (size_t i = 0; i < a.size(); ++i) {
++    const char x = (a[i] >= 'A' && a[i] <= 'Z') ? static_cast<char>(a[i] + 32) : a[i];
++    const char y = (b[i] >= 'A' && b[i] <= 'Z') ? static_cast<char>(b[i] + 32) : b[i];
++    if (x != y) return false;
++  }
++  return true;
++}
++
++std::string_view trimmed(std::string_view s) {
++  while (!s.empty() && (s.front() == ' ' || s.front() == '\t' || s.front() == '\n' || s.front() == '\r')) {
++    s.remove_prefix(1);
++  }
++  while (!s.empty() && (s.back() == ' ' || s.back() == '\t' || s.back() == '\n' || s.back() == '\r')) {
++    s.remove_suffix(1);
++  }
++  if (s.size() >= 2 && (s.front() == '"' || s.front() == '\'') && s.back() == s.front()) {
++    s = s.substr(1, s.size() - 2);
++  }
++  return s;
++}
++
++// Same scheme as the reader TTF ids (FNV-1a), salted apart from them.
++int bookFontId(const std::string& path, const uint8_t pointSize) {
++  uint32_t hash = 2166136261u;
++  for (const char c : path) {
++    hash ^= static_cast<uint8_t>(c);
++    hash *= 16777619u;
++  }
++  hash ^= pointSize;
++  hash *= 16777619u;
++  hash ^= 0x424F4F4Bu;  // "BOOK"
++  const int id = static_cast<int>(hash);
++  return id != 0 ? id : 1;
++}
++
++}  // namespace
++
++BookFontSet::Face::Face() = default;
++BookFontSet::Face::~Face() = default;  // the owner frees bytes in unload()
++BookFontSet::Face::Face(Face&&) noexcept = default;
++BookFontSet::Face& BookFontSet::Face::operator=(Face&&) noexcept = default;
++
++BookFontSet::~BookFontSet() {
++  if (bookfonts::active() == this) bookfonts::setActive(nullptr);
++  for (auto& face : faces_) unload(face);
++}
++
++void BookFontSet::open(const Epub& epub) {
++  epub_ = &epub;
++  // Epub releases its CSS rules after load and reloads them only while a chapter is laid
++  // out. Read the faces now, from the cache, so the fingerprint is known before the first
++  // section is validated; the rules are released again right after.
++  CssParser* css = epub.getCssParser();
++  if (!css) {
++    LOG_INF("BOOKFONT", "No stylesheet parser for this book");
++    return;
++  }
++  const bool wasEmpty = css->empty();
++  const bool hasCache = css->hasCache();
++  const auto status = css->inspectCache();
++  const auto load = wasEmpty && hasCache ? css->loadFromCache() : CssParser::CacheLoadResult::Invalid;
++  LOG_INF("BOOKFONT", "CSS rules %s, cache %s (status %d), load %d, %zu rules, %u faces",
++          wasEmpty ? "released" : "resident", hasCache ? "present" : "missing", static_cast<int>(status),
++          static_cast<int>(load), css->ruleCount(), static_cast<unsigned>(css->fontFaceCount()));
++  collectFaces();
++  if (wasEmpty && load == CssParser::CacheLoadResult::Complete) css->clear();
++}
++
++void BookFontSet::collectFaces() {
++  if (collected_ || !epub_) return;
++  const CssParser* css = epub_->getCssParser();
++  if (!css || css->empty()) return;
++  collected_ = true;
++  // Revision of how looks are derived (ink mapping etc.): a change re-lays chapters out.
++  constexpr uint32_t kLookRevision = 4;  // 4: book paragraph margins replace the reader spacing
++  uint32_t hash = (2166136261u ^ kLookRevision) * 16777619u;
++  const auto mix = [&hash](const std::string_view text) {
++    for (const char c : text) {
++      hash ^= static_cast<uint8_t>(c);
++      hash *= 16777619u;
++    }
++    hash ^= 0xFF;
++    hash *= 16777619u;
++  };
++  for (uint8_t i = 0; i < css->fontFaceCount() && faces_.size() < kMaxFaces; ++i) {
++    const CssParser::FontFace declared = css->fontFaceAt(i);
++    if (declared.path.empty()) continue;  // a system-font name only (宋体 / 楷体 …)
++    bool known = false;
++    for (const auto& face : faces_) known = known || equalsCaseless(face.family, declared.family);
++    if (known) continue;  // an earlier declaration of this family already has a file
++    Face face;
++    face.path.assign(declared.path.data(), declared.path.size());
++    size_t length = 0;
++    if (!epub_->getItemSize(face.path, &length) || length < 64 || length > kMaxFaceBytes) continue;
++    face.family.assign(declared.family.data(), declared.family.size());
++    mix(face.family);
++    mix(face.path);
++    faces_.push_back(std::move(face));
++  }
++  key_ = hash != 0 ? hash : 1;  // also covers books with colors but no faces
++  LOG_INF("BOOKFONT", "%u of %u declared faces usable, key %08lx", static_cast<unsigned>(faces_.size()),
++          static_cast<unsigned>(css->fontFaceCount()), static_cast<unsigned long>(key_));
++}
++
++bool BookFontSet::anyLoaded() const {
++  for (const auto& face : faces_) {
++    if (face.fontId != 0) return true;
++  }
++  return false;
++}
++
++uint8_t BookFontSet::faceForFamily(const std::string_view candidates) {
++  collectFaces();
++  size_t start = 0;
++  while (start <= candidates.size()) {
++    size_t end = candidates.find(',', start);
++    if (end == std::string_view::npos) end = candidates.size();
++    const std::string_view name = trimmed(candidates.substr(start, end - start));
++    if (!name.empty()) {
++      for (size_t i = 0; i < faces_.size(); ++i) {
++        if (equalsCaseless(faces_[i].family, name)) return faces_[i].failed ? 0 : static_cast<uint8_t>(i + 1);
++      }
++    }
++    start = end + 1;
++  }
++  return 0;
++}
++
++int BookFontSet::fontIdFor(const uint8_t face, const int baseFontId, uint16_t /*size*/) {
++#if CROSSPOINT_VECTOR_FONTS
++  if (face == 0 || face > faces_.size()) return baseFontId;
++  Face& entry = faces_[face - 1];
++  if (entry.failed) return baseFontId;
++  if (entry.refusedAt != 0) {
++    if (millis() - entry.refusedAt < kRetryAfterMs) return baseFontId;
++    entry.refusedAt = 0;
++  }
++  const uint8_t pointSize = SETTINGS.fontPointSize;
++  if (entry.font && entry.pointSize == pointSize) return entry.fontId;
++  if (entry.font) releaseFont(entry);  // the reader size changed; keep the bytes
++  return load(entry, pointSize, baseFontId) ? entry.fontId : baseFontId;
++#else
++  (void)face;
++  return baseFontId;
++#endif
++}
++
++bool BookFontSet::load(Face& face, const uint8_t pointSize, const int baseFontId) {
++#if CROSSPOINT_VECTOR_FONTS
++  if (!epub_) return false;
++  if (!face.bytes) {
++    size_t length = 0;
++    if (!epub_->getItemSize(face.path, &length) || length < 64 || length > kMaxFaceBytes) {
++      LOG_ERR("BOOKFONT", "Face %s: %s missing or unusable (%u B)", face.family.c_str(), face.path.c_str(),
++              static_cast<unsigned>(length));
++      face.failed = true;
++      return false;
++    }
++    if (HalMemory::getPsramHeap().freeBytes < length + kFirstArenaStep + kPsramReserve) {
++      // Not marked failed: PSRAM may be free again later. Wait before asking again.
++      face.refusedAt = millis();
++      if (face.refusedAt == 0) face.refusedAt = 1;
++      LOG_INF("BOOKFONT", "Face %s (%u KB) waits: PSRAM short (%u KB free)", face.family.c_str(),
++              static_cast<unsigned>(length / 1024),
++              static_cast<unsigned>(HalMemory::getPsramHeap().freeBytes / 1024));
++      return false;
++    }
++    face.bytes = epub_->readItemContentsToBytes(face.path, &face.length);
++    if (!face.bytes) {
++      face.failed = true;
++      return false;
++    }
++  }
++  auto font = makeUniqueNoThrow<TtfEpdFont>();
++  if (!font) return false;
++  font->addResidentSource(TtfEpdFont::Regular, face.bytes, static_cast<uint32_t>(face.length));
++  const bool fourBit = renderer_.getGrayscaleLevels() == 16;
++  // A decorative or heading face draws a few hundred distinct glyphs at most.
++  if (!font->load(pointSize, /*twoBit=*/true, kGlyphCacheBytes, kMaxGlyphs, fourBit)) {
++    LOG_ERR("BOOKFONT", "Face %s: %s is not a usable font", face.family.c_str(), face.path.c_str());
++    free(face.bytes);
++    face.bytes = nullptr;
++    face.length = 0;
++    face.failed = true;
++    return false;
++  }
++  font->build(" ");
++  face.fontId = bookFontId(face.path, pointSize);
++  renderer_.insertFont(face.fontId, font->family());
++  renderer_.registerTtfFont(face.fontId, font.get());
++  renderer_.setFallbackFont(face.fontId, baseFontId);
++  face.font = std::move(font);
++  face.pointSize = pointSize;
++  LOG_INF("BOOKFONT", "Face %s loaded from %s (%u KB) at %upt", face.family.c_str(), face.path.c_str(),
++          static_cast<unsigned>(face.length / 1024), pointSize);
++  return true;
++#else
++  (void)face;
++  (void)pointSize;
++  (void)baseFontId;
++  return false;
++#endif
++}
++
++void BookFontSet::releaseFont(Face& face) {
++#if CROSSPOINT_VECTOR_FONTS
++  if (face.font) {
++    renderer_.unregisterTtfFont(face.fontId);
++    renderer_.removeFont(face.fontId);
++    face.font.reset();
++  }
++#endif
++  face.fontId = 0;
++  face.pointSize = 0;
++}
++
++void BookFontSet::unload(Face& face) {
++  releaseFont(face);
++  if (face.bytes) {
++    free(face.bytes);
++    face.bytes = nullptr;
++    face.length = 0;
++  }
++}
+--- /dev/null
++++ b/src/activities/reader/BookFontSet.h
+@@ -0,0 +1,91 @@
++#pragma once
++
++#include <Epub/BookFonts.h>
++#include <VectorFontSupport.h>
++
++#include <cstdint>
++#include <memory>
++#include <string>
++#include <string_view>
++#include <vector>
++
++class Epub;
++class GfxRenderer;
++class TtfEpdFont;
++
++// The fonts a typeset book ships (its @font-face rules), loaded on first use.
++//
++// Layout asks for a face by the CSS font-family candidate list; the first candidate that
++// names one of the book's faces wins (as in a browser), otherwise the reader font stays.
++// A face is read from the EPUB into PSRAM only when a word actually uses it, then built as
++// a TtfEpdFont at the reader's point size with the reader font as its missing-glyph fallback
++// (book fonts are usually subsets of the characters the book uses).
++//
++// Loading is skipped while PSRAM is short: illustrations and the page cache come first.
++// Every call happens on the render task or under its lock (layout and drawing alike).
++class BookFontSet final : public bookfonts::Resolver {
++ public:
++  explicit BookFontSet(GfxRenderer& renderer) : renderer_(renderer) {}
++  ~BookFontSet() override;
++  BookFontSet(const BookFontSet&) = delete;
++  BookFontSet& operator=(const BookFontSet&) = delete;
++
++  // Read the book's usable faces (a declared file that exists in the EPUB, first per family).
++  void open(const Epub& epub);
++  bool empty() const { return faces_.empty(); }
++  // A face is in use: the reader font then carries less of the text.
++  bool anyLoaded() const;
++  // Fingerprint of the usable faces, for the section cache key (0 = none).
++  uint32_t key() const { return key_; }
++
++  uint8_t faceForFamily(std::string_view candidates) override;
++  int fontIdFor(uint8_t face, int baseFontId, uint16_t size) override;
++
++  // PSRAM kept free when loading a face: decoded illustrations, the chapter's text and
++  // the reader glyph cache need it more than a decorative face does.
++  static constexpr size_t kPsramReserve = 512 * 1024;  // one illustration decode (~400 KB) plus slack
++  // Glyph cache cap per book face. A face can carry whole chapters of body text (间客 sets
++  // its notes in its own Song), and a page at 18 pt needs ~300 glyphs of ~0.7 KB; a smaller
++  // cache re-rasterized every page. The arena grows in 64 KB steps only as glyphs arrive
++  // and the engine flushes rather than grow while PSRAM is short, so this is a ceiling.
++  static constexpr size_t kGlyphCacheBytes = 384 * 1024;
++  static constexpr uint16_t kMaxGlyphs = 1024;
++  // Free PSRAM checked before loading a face: its bytes plus the first arena step.
++  static constexpr size_t kFirstArenaStep = 64 * 1024;
++  // After a face is refused for PSRAM, layout and drawing keep the reader font for this
++  // long instead of asking again for every word.
++  static constexpr uint32_t kRetryAfterMs = 15000;
++  static constexpr size_t kMaxFaceBytes = 4 * 1024 * 1024;
++  static constexpr size_t kMaxFaces = 31;
++
++ private:
++  struct Face {
++    std::string family;
++    std::string path;
++    bool failed = false;
++    uint32_t refusedAt = 0;  // millis() of the last PSRAM refusal, 0 = none
++    uint8_t* bytes = nullptr;  // malloc'd by Epub::readItemContentsToBytes
++    size_t length = 0;
++#if CROSSPOINT_VECTOR_FONTS
++    std::unique_ptr<TtfEpdFont> font;
++#endif
++    int fontId = 0;
++    uint8_t pointSize = 0;
++    // Defined in the .cpp, where TtfEpdFont is complete (unique_ptr of an incomplete type).
++    Face();
++    ~Face();
++    Face(Face&&) noexcept;
++    Face& operator=(Face&&) noexcept;
++  };
++
++  void collectFaces();
++  bool load(Face& face, uint8_t pointSize, int baseFontId);
++  void releaseFont(Face& face);  // the TTF face only; the file bytes stay for a rebuild
++  void unload(Face& face);
++
++  GfxRenderer& renderer_;
++  const Epub* epub_ = nullptr;
++  bool collected_ = false;
++  uint32_t key_ = 0;
++  std::vector<Face> faces_;
++};
 --- a/src/activities/reader/EpubReaderActivity.cpp
 +++ b/src/activities/reader/EpubReaderActivity.cpp
 @@ -1,5 +1,6 @@
@@ -194523,7 +195040,40 @@
    } else if (perr == "access expired") {
      msg = StrId::STR_LOAN_EXPIRED;
    } else if (perr == "loan date unverified") {
-@@ -1891,7 +1935,7 @@
+@@ -1780,11 +1824,19 @@
+   renderer.getOrientedViewableTRBL(&viewable.top, &viewable.right, &viewable.bottom, &viewable.left);
+   const int screenMargin = SETTINGS.screenMargin;
+   const auto mode = readingMode::modeFor(SETTINGS.readingMode);
+-  const bool textLane = SETTINGS.statusBarSpec().textLaneVisible();
++  const auto sb = SETTINGS.statusBarSpec();
++  const bool textLane = sb.textLaneVisible();
++  const auto chrome = UiHighDpiProfile::enabled
++                          ? readerChrome::compactLayout(
++                                std::max({renderer.getLineHeight(RickyDesignUi::CAPTION),
++                                          renderer.getLineHeight(RickyDesignUi::BODY),
++                                          renderer.getLineHeight(BaseTheme::STATUS_NUMERIC_FONT_ID)}),
++                                textLane, sb.showsProgressBar(), sb.progressBarHeightPx)
++                          : readerChrome::CompactLayout{};
+ 
+   int top = viewable.top + screenMargin;
+   if (readingMode::showsHeader(mode) && UiHighDpiProfile::enabled && textLane) {
+-    top += ricky::ds::layout::kReaderHeaderHeight + ricky::ds::layout::kReaderHeaderGap;
++    top = viewable.top + std::max(screenMargin, chrome.headerReserve);
+   }
+   int bottomReserve = 0;
+   if (readingMode::showsFooter(mode)) {
+@@ -1794,8 +1846,8 @@
+         (statusBarHeight == 0 || statusBarHeight == UITheme::getInstance().getProgressBarHeight())) {
+       bottomReserve += UITheme::getInstance().getMetrics().statusBarVerticalMargin;
+     }
+-    if (UiHighDpiProfile::enabled && textLane) {
+-      bottomReserve = std::max(bottomReserve, static_cast<int>(ricky::ds::layout::kReaderFooterHeight));
++    if (UiHighDpiProfile::enabled && (!automaticPageTurnActive || textLane)) {
++      bottomReserve = chrome.footerReserve;
+     }
+   }
+   const readingMode::Margins base{top, viewable.right + screenMargin,
+@@ -1891,7 +1943,7 @@
        return;
      }
  
@@ -194532,7 +195082,7 @@
      ++sectionGeneration_;
  #endif
      const bool cacheLoaded = section->loadSectionFile(renderSpec);
-@@ -2307,14 +2351,19 @@
+@@ -2307,14 +2359,19 @@
    }
  }
  
@@ -194555,7 +195105,7 @@
  bool EpubReaderActivity::pageCacheEligible() const {
    // No !section->isBuilding() here, deliberately. The page cache renders ONE page --
    // the current one or the next -- and Section::loadPage() is written to serve exactly
-@@ -2328,7 +2377,12 @@
+@@ -2328,7 +2385,12 @@
    // engages at all -- every turn is a full render instead of the cached one.
    return !pageCacheFailed_ && section && renderer.hasFrameBuffer() && !activityManager.isSwitchPending() &&
           overlay == Overlay::None && fontPromptState == FontPromptState::Idle && !renderer.isInverted() &&
@@ -194569,7 +195119,7 @@
  }
  
  ReaderPageCacheKey EpubReaderActivity::pageCacheKey(const int page, const int top, const int right, const int bottom,
-@@ -2369,8 +2423,34 @@
+@@ -2369,8 +2431,34 @@
    }
  }
  
@@ -194604,7 +195154,7 @@
    // Every exit below names the condition it took. Without that, "the cache never hits"
    // is indistinguishable from "the build was cancelled", "the layout moved since the
    // last render" and "the next page has images" -- and each of those needs a different
-@@ -2400,6 +2480,9 @@
+@@ -2400,6 +2488,9 @@
    const auto& layout = renderedPageKey_;
    // A main-loop reflow/jump may have replaced the section since the last render.
    if (layout != pageCacheKey(section->currentPage, layout.top, layout.right, layout.bottom, layout.left)) {
@@ -194614,7 +195164,7 @@
      LOG_DBG("ERS", "Page cache: skip, layout moved since the last render");
      return;
    }
-@@ -2412,26 +2495,38 @@
+@@ -2412,26 +2503,38 @@
    // A build cut short by input stays retryable: the render task re-arms the idle pass
    // once input is quiet, and a Skipped slot would otherwise never be built again.
    const auto build = [&](const int slot, const ReaderPageCacheKey& key) {
@@ -194663,7 +195213,7 @@
  // On a chapter's last page the forward slot is free: build the next chapter and render
  // its first page into it. Comics put one picture in each chapter, so without this every
  // turn decoded a JPEG in the foreground (~3.5 s); now it happens while the page is read.
-@@ -2464,6 +2559,12 @@
+@@ -2464,6 +2567,12 @@
    }
    if (nextSection->pageCount == 0 || activityManager.idleRenderCancelled(generation)) return;
    const bool ready = buildPageCacheSlot(0, key, generation, nextSection.get());
@@ -194676,7 +195226,7 @@
    LOG_DBG("ERS", "Next chapter prefetch: spine %d ready=%d in %lums", next, ready, millis() - started);
  }
  #endif
-@@ -2527,13 +2628,18 @@
+@@ -2527,13 +2636,18 @@
    if (!pageCacheBase_[slot]) {
      constexpr size_t kContiguousReserve = 16 * 1024;
      // Reserve the slots still to allocate; the forward slot is already charged for slot 1.
@@ -194699,7 +195249,7 @@
        freePageCache();
        pageCacheFailed_ = true;
        LOG_ERR("ERS", "Page cache off: PSRAM allocation of %u B failed", static_cast<unsigned>(4 * bytes));
-@@ -2579,12 +2685,26 @@
+@@ -2579,12 +2693,26 @@
    const readingMode::Box textBox = readingMode::textBox(renderer.getScreenWidth(), renderer.getScreenHeight(),
                                                          {key.top, key.right, key.bottom, key.left});
    const int pitch = renderer.getLineHeight(key.spec.fontId, key.spec.lineCompression);
@@ -194726,7 +195276,7 @@
    };
  
    // Load glyphs on demand: a whole-page prewarm cannot be interrupted. Check
-@@ -2597,9 +2717,10 @@
+@@ -2597,9 +2725,10 @@
      GfxRenderer::SyntheticBoldScope syntheticBold(renderer, key.fakeBold);
      GfxRenderer::TextWeightScope textWeight(renderer, readerTextWeightCurve(key.textWeight),
                                              readerTextWeightSpread(key.textWeight));
@@ -194738,7 +195288,7 @@
      }
      if (vertical) readerChrome::drawColumnRules(renderer, *page, textBox, pitch);
      // Match foreground ordering: all text first, then the guide lines.
-@@ -2636,9 +2757,10 @@
+@@ -2636,9 +2765,10 @@
        GfxRenderer::SyntheticBoldScope syntheticBold(renderer, key.fakeBold);
        GfxRenderer::TextWeightScope textWeight(renderer, readerTextWeightCurve(key.textWeight),
                                                readerTextWeightSpread(key.textWeight));
@@ -194750,7 +195300,7 @@
        }
        if (vertical) readerChrome::drawColumnRules(renderer, *page, textBox, pitch);
      }
-@@ -2671,6 +2793,10 @@
+@@ -2671,6 +2801,10 @@
    }
    pageCacheMissingCodepoint_[slot] = fcm ? fcm->consumeMissingChineseCodepoint() : 0;
    pageCache_[slot].state = ReaderPageCache::State::Ready;
@@ -194761,7 +195311,7 @@
    LOG_DBG("ERS", "Page cache: slot %d, page %d ready in %lums", slot, key.page, millis() - started);
    return true;
  }
-@@ -2732,7 +2858,7 @@
+@@ -2732,7 +2866,7 @@
        if (manager) manager->clearCache();
      }
    } rawFontCacheGuard;
@@ -194770,7 +195320,7 @@
    const auto key = pageCacheKey(section ? section->currentPage : -1, orientedMarginTop, orientedMarginRight,
                                  orientedMarginBottom, orientedMarginLeft);
    // Either slot may hold this page: slot 0 was built for it as a forward turn, slot 1
-@@ -2779,8 +2905,7 @@
+@@ -2779,8 +2913,7 @@
    // RickyOS: every text face (2-bit downloaded fonts too) and synthetic bold draw straight
    // into the 16-level frame, and JPEG illustrations decode into it, so anti-aliased pages
    // take the single-render path.
@@ -194780,7 +195330,7 @@
    const bool needsAnyGrayscale = grayscaleEnabled && (SETTINGS.textAntiAliasing || pageHasImages);
    const bool absoluteImageGrayscale = grayscaleEnabled && pageHasImages && !gpio.deviceIsX3() &&
                                        display.getController() == HalDisplay::Controller::UC8279 &&
-@@ -2844,7 +2969,7 @@
+@@ -2844,7 +2977,7 @@
    };
  
    unsigned long cacheBaseMs = 0;
@@ -194789,7 +195339,7 @@
    if (use16LevelText) {
      // The 16-level pass below clears the frame and renders (or copies from the cache)
      // the page, writing the B/W proxy as it goes, so a B/W render here is thrown away.
-@@ -2859,7 +2984,7 @@
+@@ -2859,7 +2992,7 @@
    {
      renderPageWithGuideLines();
    }
@@ -194798,7 +195348,7 @@
    const uint32_t missingCodepoint =
        pageCacheHit ? pageCacheMissingCodepoint_[pageCacheLiveSlot_] : fcm->consumeMissingChineseCodepoint();
  #else
-@@ -2869,7 +2994,14 @@
+@@ -2869,7 +3002,14 @@
      uint32_t expected = 0;
      pendingMissingChineseCodepoint_.compare_exchange_strong(expected, missingCodepoint, std::memory_order_relaxed);
    }
@@ -194813,7 +195363,7 @@
    const auto tBwRender = millis();
  
    if (absoluteImageGrayscale) {
-@@ -2889,6 +3021,7 @@
+@@ -2889,6 +3029,7 @@
      // twice (more flash, more time), and the 16-level waveform is a full-screen one anyway,
      // so ghosting is still cleared.
    } else if (combinedGrayscaleBase) {
@@ -194821,7 +195371,7 @@
      ReaderUtils::displayBaseWithRefreshCycle(renderer, pagesUntilFullRefresh, manualRefreshPending);
    } else if (pageHasImages) {
      // Image pages use one base refresh before the grayscale pass. FAST leaves
-@@ -2903,6 +3036,7 @@
+@@ -2903,6 +3044,7 @@
        pagesUntilFullRefresh = 1;
      }
    } else {
@@ -194829,7 +195379,7 @@
      ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh, overlapRefresh);
    }
    const auto tDisplay = millis();
-@@ -2912,7 +3046,7 @@
+@@ -2912,7 +3054,7 @@
      const auto t16Begin = millis();
      if (renderer.beginGrayscale16()) {
        const auto t16Cleared = millis();
@@ -194838,7 +195388,7 @@
        if (pageCacheHit && pageCacheIs16_[pageCacheLiveSlot_] && pageCache16_[pageCacheLiveSlot_]) {
          memcpy(renderer.grayscale16Frame(), pageCache16_[pageCacheLiveSlot_].get(), renderer.grayscale16FrameBytes());
          memcpy(renderer.getFrameBuffer(), pageCacheBase_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
-@@ -2926,22 +3060,33 @@
+@@ -2926,22 +3068,33 @@
        renderStatusBar();
        LOG_DBG("ERS", "16-level timing: before=%lums begin=%lums page=%lums status=%lums", t16Begin - t0,
                t16Cleared - t16Begin, t16Page - t16Cleared, millis() - t16Page);
@@ -194875,7 +195425,7 @@
          ttf = {};
  #endif
        }
-@@ -2951,16 +3096,31 @@
+@@ -2951,16 +3104,31 @@
          return;
        }
  #if !defined(SIMULATOR)
@@ -194910,7 +195460,7 @@
  #if RICKYOS_PAINT_PROFILE
          LOG_INF("PERF", "reader commit=%lums total=%lums", tEnd - tCommit, tEnd - t0);
  #endif
-@@ -3137,7 +3297,7 @@
+@@ -3137,7 +3305,7 @@
        }
        const auto tBwStore = millis();
  
@@ -194919,7 +195469,7 @@
        if (pageCacheHit) {
          // Both planes were rendered at idle; putting them in place is one copy
          // each instead of a full page render each.
-@@ -3164,7 +3324,7 @@
+@@ -3164,7 +3332,7 @@
          return;
        }
  
@@ -194928,7 +195478,7 @@
        if (pageCacheHit) {
          memcpy(renderer.getFrameBuffer(), pageCacheMsb_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
          renderer.copyGrayscaleMsbBuffers();
-@@ -3212,9 +3372,12 @@
+@@ -3212,9 +3380,12 @@
  }
  
  void EpubReaderActivity::renderStatusBar() const {
@@ -194941,7 +195491,7 @@
      readerChrome::PageInfo info;
      info.bookTitle = epub ? epub->getTitle().c_str() : nullptr;
      // A chapter the table of contents names, not currentChapterTitle()'s "unnamed".
-@@ -3225,11 +3388,18 @@
+@@ -3225,11 +3396,18 @@
      }
      info.chapterTitle = chapter.c_str();
      info.pageInChapter = currentPage;
@@ -194962,7 +195512,7 @@
    const float pageCount = section ? section->estimatedTotalPages() : 1;
    const float sectionChapterProg = (pageCount > 0) ? (static_cast<float>(currentPage) / pageCount) : 0;
    const float bookProgress = epub ? (epub->calculateProgress(currentSpineIndex, sectionChapterProg) * 100) : 0;
-@@ -3266,8 +3436,12 @@
+@@ -3266,8 +3444,12 @@
        auto chapter = renderer.truncatedText(RickyDesignUi::BODY, title.c_str(), column);
        title = book + " · " + chapter;
      }
@@ -195030,6 +195580,43 @@
    void prefetchNextChapter(const ReaderPageCacheKey& layout, uint32_t generation);
  #endif
    void freePageCache();
+--- a/src/activities/reader/ReaderChrome.h
++++ b/src/activities/reader/ReaderChrome.h
+@@ -10,6 +10,34 @@
+ // (B/W base, 16-level page, gray planes), so it draws with the plain B/W API and
+ // only adds gray where the 16-level frame is open. No heap; Flash art only.
+ namespace readerChrome {
++
++// Distances relative to the oriented safe area. Layout and drawing must use
++// this same geometry: a nominal 96 px footer wasted space, while shrinking
++// only the reservation would let the last body line collide with its labels.
++// Pass the tallest caption/fallback/numeric font so real CJK ink fits too.
++struct CompactLayout {
++  int rowHeight;
++  int headerTextY;
++  int headerReserve;
++  int footerTextBottom;
++  int progressBottom;
++  int footerReserve;
++};
++
++constexpr CompactLayout compactLayout(const int textHeight, const bool textLane, const bool progress,
++                                      const int progressHeight) {
++  constexpr int headerPadding = 4;
++  constexpr int bottomPadding = 12;
++  constexpr int contentGap = 8;
++  constexpr int progressGap = 8;
++  const int row = textHeight < 28 ? 28 : textHeight;  // 24 px icons + their 4 px inset
++  const int textBottom = bottomPadding + row;
++  const int barBottom = textLane ? textBottom + progressGap : bottomPadding;
++  const int barHeight = progressHeight < 1 ? 1 : progressHeight;
++  const int occupied = progress ? barBottom + barHeight : textLane ? textBottom : 0;
++  return {row, headerPadding, textLane ? headerPadding * 2 + row + contentGap : 0,
++          textBottom, barBottom, occupied ? occupied + contentGap : 0};
++}
+ 
+ struct PageInfo {
+   const char* bookTitle = nullptr;
 --- a/src/activities/settings/ClockSyncActivity.cpp
 +++ b/src/activities/settings/ClockSyncActivity.cpp
 @@ -22,6 +22,7 @@
@@ -196840,7 +197427,15 @@
 +</svg>
 --- a/src/components/themes/BaseTheme.cpp
 +++ b/src/components/themes/BaseTheme.cpp
-@@ -171,6 +171,7 @@
+@@ -15,6 +15,7 @@
+ #include "I18n.h"
+ #include "RecentBooksStore.h"
+ #include "SdCardFontSystem.h"
++#include "activities/reader/ReaderChrome.h"
+ #include "components/HeaderBackTapTarget.h"
+ #include "components/RickyBrandMark.h"
+ #include "components/RickyPageUi.h"
+@@ -171,6 +172,7 @@
  }
  
  void BaseTheme::fillBatteryIcon(const GfxRenderer& renderer, Rect rect, uint16_t percentage) const {
@@ -196848,7 +197443,7 @@
    const bool charging = gpio.isUsbConnected();
    if (rect.width == UiHighDpiProfile::batteryWidth && rect.height == UiHighDpiProfile::batteryHeight) {
      // The bar sits inside the body with a white gap all round (rickyBatteryIcons.h);
-@@ -213,6 +214,7 @@
+@@ -213,6 +215,7 @@
  void BaseTheme::drawBatteryLeft(const GfxRenderer& renderer, Rect rect, const bool showPercentage) const {
    // Left aligned: icon on left, percentage on right (reader mode)
    const uint16_t percentage = powerManager.getBatteryPercentage();
@@ -196856,7 +197451,7 @@
    const int y = rect.y + (UiHighDpiProfile::enabled ? 8 : 6);
  
    if (showPercentage) {
-@@ -261,6 +263,7 @@
+@@ -261,6 +264,7 @@
  void BaseTheme::drawBatteryRight(const GfxRenderer& renderer, Rect rect, const bool showPercentage,
                                   const int numericFontId) const {
    const uint16_t percentage = powerManager.getBatteryPercentage();
@@ -196864,7 +197459,7 @@
    // NotoSans 12 digits and the cropped battery share their visible center at this offset.
    const int y = rect.y + (UiHighDpiProfile::enabled ? 8 : 6);
    const int gap = UiHighDpiProfile::enabled ? UiHighDpiProfile::controlGap : batteryPercentSpacing;
-@@ -561,14 +564,16 @@
+@@ -561,14 +565,16 @@
    // (passive frames), while the uiScale FONT_SMALL is for list subtitles.
    status.battery.text.font = freeink::ui::GfxRendererTarget::FONT_LABEL;
  
@@ -196884,7 +197479,65 @@
      snprintf(percentText, sizeof(percentText), "%u%%", static_cast<unsigned>(percentage));
      status.battery.label = percentText;
    }
-@@ -1437,7 +1442,7 @@
+@@ -1139,8 +1145,12 @@
+   const int right = safe.x + safe.width - ds::layout::kReaderChromeInset;
+   if (right <= left) return;
+   const GfxRenderer::ClipScope clip(renderer, safe.x, safe.y, safe.width, safe.height);
++  const auto chrome = readerChrome::compactLayout(
++      std::max({renderer.getLineHeight(RickyDesignUi::CAPTION), renderer.getLineHeight(RickyDesignUi::BODY),
++                renderer.getLineHeight(STATUS_NUMERIC_FONT_ID)}),
++      sb.textLaneVisible(), sb.showsProgressBar(), sb.progressBarHeightPx);
+   if (sb.textLaneVisible() && header) {
+-    const int y = safe.y + (ds::layout::kReaderHeaderHeight - ds::type::kCaption.lineHeight) / 2;
++    const int y = safe.y + chrome.headerTextY;
+     int titleLeft = left, titleRight = right;
+     // Retain clock visibility/12-hour policy. Its old side setting remains
+     // meaningful: a right clock precedes the battery, a left clock leads.
+@@ -1172,12 +1182,12 @@
+     if (title && *title && titleRight > titleLeft) {
+       RickyDesignUi::secondaryText(renderer,
+                                    {static_cast<int16_t>(titleLeft), static_cast<int16_t>(y),
+-                                    static_cast<int16_t>(titleRight - titleLeft), ds::type::kBody.lineHeight},
++                                    static_cast<int16_t>(titleRight - titleLeft), static_cast<int16_t>(chrome.rowHeight)},
+                                    title, RickyDesignUi::CAPTION, false, freeink::ui::TextAlign::Center);
+     }
+   }
+   if (sb.textLaneVisible()) {
+-    const int textY = safe.y + safe.height - ds::space::kBlockGap - ds::type::kCaption.lineHeight;
++    const int textY = safe.y + safe.height - chrome.footerTextBottom;
+     int counterLeft = left;
+     if (bleinput::isConnected()) {
+       drawBluetoothStatusIcon(renderer, counterLeft, textY + 4);
+@@ -1192,7 +1202,7 @@
+       snprintf(pages, sizeof(pages), "%s%d / %d", estimated ? "~" : "", currentPage, pageCount);
+       RickyDesignUi::secondaryText(renderer,
+                                    {static_cast<int16_t>(counterLeft), static_cast<int16_t>(textY),
+-                                    static_cast<int16_t>((right - counterLeft) / 2), ds::type::kBody.lineHeight},
++                                    static_cast<int16_t>((right - counterLeft) / 2), static_cast<int16_t>(chrome.rowHeight)},
+                                    pages, RickyDesignUi::CAPTION);
+     }
+     if (sb.showBookProgressPercent) {
+@@ -1200,7 +1210,7 @@
+       snprintf(percent, sizeof(percent), "%.0f%%", std::clamp(bookProgress, 0.0f, 100.0f));
+       RickyDesignUi::secondaryText(renderer,
+                                    {static_cast<int16_t>(left), static_cast<int16_t>(textY),
+-                                    static_cast<int16_t>(right - left), ds::type::kBody.lineHeight},
++                                    static_cast<int16_t>(right - left), static_cast<int16_t>(chrome.rowHeight)},
+                                    percent, RickyDesignUi::CAPTION, false, freeink::ui::TextAlign::Right);
+     }
+   }
+@@ -1213,9 +1223,7 @@
+     RickyDesignUi::progress(
+         renderer,
+         {static_cast<int16_t>(left),
+-         static_cast<int16_t>(
+-             safe.y + safe.height - height -
+-             (sb.textLaneVisible() ? ds::space::kBlockGap + ds::type::kCaption.lineHeight + ds::space::kInlineGap : 0)),
++         static_cast<int16_t>(safe.y + safe.height - height - chrome.progressBottom),
+          static_cast<int16_t>(right - left), static_cast<int16_t>(height)},
+         percent);
+   }
+@@ -1437,7 +1445,7 @@
  }
  
  void BaseTheme::drawOptionPopup(const GfxRenderer& renderer, const char* title, const std::vector<std::string>& options,
@@ -197836,6 +198489,33 @@
  inline constexpr char COS_ROOT_CA[] = R"PEM(-----BEGIN CERTIFICATE-----
  MIIDXzCCAkegAwIBAgILBAAAAAABIVhTCKIwDQYJKoZIhvcNAQELBQAwTDEgMB4G
  A1UECxMXR2xvYmFsU2lnbiBSb290IENBIC0gUjMxEzARBgNVBAoTCkdsb2JhbFNp
+--- /dev/null
++++ b/src/network/RickyReaderResources.h
+@@ -0,0 +1,24 @@
++#pragma once
++
++#include "RickyCos.h"
++
++// Separate from the ordinary font catalog: automatic reader fallback requires
++// the original NotoSansSC coverage and the exact cpfont ABI, not a UI subset.
++namespace RickyReaderResources {
++
++inline constexpr bool ENABLED = RickyCos::ENABLED;
++inline constexpr char FONT_MANIFEST_FORMAT[] = RICKYOS_COS_BASE "/font-fallback/m%s-b%s/cos.json";
++inline constexpr char DICTIONARY_MANIFEST_FORMAT[] = RICKYOS_COS_BASE "/dictionaries/m%u/cos.json";
++
++// Match the owned origin and its slash boundary, not a suffix host or user-info.
++// This is a catalog routing guard, not a replacement for downloader/TLS checks.
++constexpr bool isOwnedUrl(const char* url) {
++  if (!ENABLED || !url) return false;
++  const char* base = RICKYOS_COS_BASE;
++  for (; *base; ++base, ++url) {
++    if (*url != *base) return false;
++  }
++  return *url == '/';
++}
++
++}  // namespace RickyReaderResources
 --- a/src/network/WifiPowerSaveGuard.h
 +++ b/src/network/WifiPowerSaveGuard.h
 @@ -1,5 +1,17 @@

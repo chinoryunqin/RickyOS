@@ -113,6 +113,16 @@
       "ported_sha256": "48611842ccad140257b0dc463d9ea6b0b618ef08a3be1e0e1de48e492556370d"
     },
     {
+      "path": "lib/Epub/Epub/BookFonts.cpp",
+      "baseline_sha256": null,
+      "ported_sha256": "18afee9c70e32865c0fcb594a7be7a28f4eb2b90955158f5bff2807b45417a50"
+    },
+    {
+      "path": "lib/Epub/Epub/BookFonts.h",
+      "baseline_sha256": null,
+      "ported_sha256": "a8c2c81a82c7d7b962f56e0e23349435659fa47bec8a87e95a9612652791d217"
+    },
+    {
       "path": "lib/Epub/Epub/Page.cpp",
       "baseline_sha256": "3041bb6d9f0a1d20b49400a39816568f58db4590dde8e9c1e849f005ecd4d25c",
       "ported_sha256": "3dd79e2e8dbb9e547582a47bc9feb28d66356f345950fa12de6645e51d55b879"
@@ -141,6 +151,11 @@
       "path": "lib/Epub/Epub/Section.cpp",
       "baseline_sha256": "01de5535d5106a94583eeeae5b1b59ad6878acbf75d2771f07d91e79a0bbde15",
       "ported_sha256": "5fa9f1e8d443a310f882e3d97bf087d75221269d4258dcb2309fa24340601aed"
+    },
+    {
+      "path": "lib/Epub/Epub/WordLook.h",
+      "baseline_sha256": null,
+      "ported_sha256": "60cd0f104e6870f22b7e9ee367c3f5e001888915589db5bff4236ea242254946"
     },
     {
       "path": "lib/Epub/Epub/blocks/BlockStyle.h",
@@ -405,12 +420,12 @@
     {
       "path": "lib/hal/HalStorage.cpp",
       "baseline_sha256": "8b12b963ffa643f66bbeb74bcb754d54fbe570417af171b569170d653dcfd870",
-      "ported_sha256": "5af6f1034044f1df66ad8cd2afeefc6d7a37ac242e3b96d52caba93ca3231288"
+      "ported_sha256": "f908d3d5298dfb44998fca838465379583a85413b1dee939359a938509dd628c"
     },
     {
       "path": "lib/hal/HalStorage.h",
       "baseline_sha256": "77fef824405ef1faf3f96612d9590073fd37c7eafaa425172b8dd009e45d2c9e",
-      "ported_sha256": "53484b3ffd0cae792344524a34c8568fa3e53a0d6621510b8efe8a766ce79767"
+      "ported_sha256": "347de3d49bcfe7e38a68d2c2922d48c99d31e0be3066a6fec4aa24229e0703ea"
     },
     {
       "path": "lib/hal/HalSystem.cpp",
@@ -713,14 +728,29 @@
       "ported_sha256": "6f33cf02cd335c93eae565e17114365eab7b6d3d6578ec638db7aebd3d3cd3f3"
     },
     {
+      "path": "src/activities/reader/BookFontSet.cpp",
+      "baseline_sha256": null,
+      "ported_sha256": "a3c46dce9a4f4444f201a3d5b7db03ac340b69e740908b777b55d76c9a33cb84"
+    },
+    {
+      "path": "src/activities/reader/BookFontSet.h",
+      "baseline_sha256": null,
+      "ported_sha256": "0b12d45b851286d5544e616f034ce05be91198f3470ea0aa44dedae9262dd573"
+    },
+    {
       "path": "src/activities/reader/EpubReaderActivity.cpp",
       "baseline_sha256": "330723cad52ac629fa1451c9ca90cffff0a04b06e0266861e092ff93e8ffa1c9",
-      "ported_sha256": "8df31c07aa006d38d48f4511788423df03771bee5a32a7b736304cff17fb8f52"
+      "ported_sha256": "f8709e2fa6dfd7dc180ad83a014125833895710a38e1f2eeba6d777dec1d2072"
     },
     {
       "path": "src/activities/reader/EpubReaderActivity.h",
       "baseline_sha256": "6fb5eb74b19af5cbfe08ae3974b70d49d6019dc888535f7091ceeb389f3dd650",
       "ported_sha256": "65b4ce54a45897968e9f41859328f18b1975c9e7dfaaa150c6ca39b10c0b0020"
+    },
+    {
+      "path": "src/activities/reader/ReaderChrome.h",
+      "baseline_sha256": "79cbe3ebc3ae39099850b91dc96c9d930b17e534f394bec2dfe5a95ae08931a1",
+      "ported_sha256": "b0e67ad3196aa07c14e82abbb7956a9d2d22b0785b0ba25794af379f42a2c120"
     },
     {
       "path": "src/activities/settings/ClockSyncActivity.cpp",
@@ -840,7 +870,7 @@
     {
       "path": "src/components/themes/BaseTheme.cpp",
       "baseline_sha256": "e54b5b4ab7ec37346bf3d19929021e05a03408ff6cd347efc9fe74a317ae8f79",
-      "ported_sha256": "a1b3b9c98bb15497ee751312e50b403d08f5e850f0663a0f34b66ae23b7bc4cd"
+      "ported_sha256": "47b1212da0e4187feb18681efbf3d6ab002bdcb7b5264395be4bce83e22c45d3"
     },
     {
       "path": "src/components/themes/BaseTheme.h",
@@ -901,6 +931,11 @@
       "path": "src/network/RickyOtaTrust.h",
       "baseline_sha256": "032e277a59fffc330935ffc806c8b75a91039399963712cfe54293bd4bc695e2",
       "ported_sha256": "22b47241516b4ec57d653a55603fbea7745066abce4a8881d214f2272d875e97"
+    },
+    {
+      "path": "src/network/RickyReaderResources.h",
+      "baseline_sha256": null,
+      "ported_sha256": "46ce9459487310bad98a46aeb4046de47fa98b5b4e8753a4f0ca8d16eefc08eb"
     },
     {
       "path": "src/network/WifiPowerSaveGuard.h",
