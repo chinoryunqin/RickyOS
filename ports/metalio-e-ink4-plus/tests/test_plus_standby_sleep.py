@@ -25,6 +25,7 @@ using esp_err_t=int;
 using gpio_num_t=int;
 constexpr int ESP_OK=0,GPIO_INTR_LOW_LEVEL=4,GPIO_INTR_NEGEDGE=2;
 constexpr int IO_EXPANDER_INT_GPIO=2,TOUCH_INT_PIN=5,TOUCH_I2C_ADDR=0x38,BOOT_BUTTON_GPIO=61,BOOT_BUTTON_ACTIVE_LEVEL=0;
+constexpr int FL_COOL_PIN=6,FL_WARM_PIN=7;
 constexpr int ESP_SLEEP_WAKEUP_EXT1=1,ESP_SLEEP_WAKEUP_TIMER=2,ESP_EXT1_WAKEUP_ANY_LOW=0,RTC_GPIO_MODE_INPUT_ONLY=1;
 struct gpio_io_config_t { bool ie=true,oe=false,slp_sel=false,pu=false,pd=false; };
 inline uint32_t now=0,wokeAt=0;
@@ -125,6 +126,10 @@ inline int rtc_gpio_pullup_dis(int pin){assert(pin==2 && rtcClock);rtcPu=false;r
 inline int rtc_gpio_pulldown_en(int pin){assert(pin==2 && rtcClock);rtcPd=true;return call("rtc_pd_en");}
 inline int rtc_gpio_pulldown_dis(int pin){assert(pin==2 && rtcClock);rtcPd=false;return call("rtc_pd_dis");}
 inline int rtc_gpio_get_level(int pin){assert(pin==2 && rtcMux && rtcInput && !isrEnabled);return !(irqLow || (irqOnArm && sourceWake));}
+// Frontlight pads: latched low around the light sleep.
+inline int frontlightHeld=0;
+inline int gpio_hold_en(int pin){assert(pin==FL_COOL_PIN || pin==FL_WARM_PIN);frontlightHeld|=1<<(pin-FL_COOL_PIN);return ESP_OK;}
+inline int gpio_hold_dis(int pin){assert(pin==FL_COOL_PIN || pin==FL_WARM_PIN);frontlightHeld&=~(1<<(pin-FL_COOL_PIN));return ESP_OK;}
 inline int rtc_gpio_hold_dis(int pin){assert(pin==2 && !sourceWake);rtcHeld=false;return call("rtc_unhold");}
 inline int rtc_gpio_deinit(int pin){assert(pin==2 && !rtcHeld);rtcMux=false;rtcClock=false;rtcInput=false;rtcPu=false;rtcPd=false;return call("rtc_deinit");}
 inline int esp_sleep_enable_ext1_wakeup_io(uint64_t mask,int mode){

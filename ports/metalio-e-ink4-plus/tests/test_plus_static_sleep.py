@@ -211,14 +211,18 @@ int main(){
  for(int failure=0;failure<8;++failure){
   reset();switch(failure){case 0:suspendFail=true;break;case 1:sdFail=true;break;case 2:imuFail=true;break;
    case 3:parkCheckFail=true;break;case 4:remountFail=true;break;case 5:restoreCheckFail=true;break;case 6:fault="sleep";break;default:keysRestoreFail=true;}
-  assert(plus_board::standbyStaticSleep(60,lease)==StandbyWake::Failed);clean();
+  // A card that does not remount is HalStorage's to recover (next storage use);
+  // the wake itself, and later sleeps, still go ahead.
+  const auto wanted=failure==4?StandbyWake::Timer:StandbyWake::Failed;
+  assert(plus_board::standbyStaticSleep(60,lease)==wanted);clean();
   assert(sleeps==(failure>=4));
+  if(failure==4)assert(plus_board::standbySleepReady() && std::count(calls.begin(),calls.end(),std::string("sd_remount"))==1);
   if(failure==7){
    assert(railsOff && !plus_board::standbySleepReady());
    assert(std::find(calls.begin(),calls.end(),"rails_restore")==calls.end());
    const int before=sleeps;assert(plus_board::standbyStaticSleep(60,lease)==StandbyWake::Failed && sleeps==before);
   }
-  if(failure==2 || failure==4 || failure==5)assert(!plus_board::standbySleepReady());
+  if(failure==2 || failure==5)assert(!plus_board::standbySleepReady());
  }
 }
 '''.replace('PRODUCTION', str(PORT/'firmware/rickyos-plus-1.2/components/rickyos_application/port/PlusBoard.cpp'))
@@ -271,20 +275,29 @@ struct StandbyActivity {
  DisplayMode mode_=DisplayMode::Immersive;SyncState syncState_=SyncState::Idle;
  Face* currentFace_=&face;bool drewFrame_=true;uint32_t lastInputMs_=0;unsigned long enteredMs_=0;
  struct {void waitRefreshComplete(){}} renderer;
- bool tryLightSleep(uint32_t);void requestUpdate(){assert(false);}void processFaceTick(bool){assert(false);}
+ int ticks=0;
+ bool tryLightSleep(uint32_t);void requestUpdate(){assert(false);}
+ void processFaceTick(bool wait){assert(wait && currentFace_->wantsClock());++ticks;}
 };
 ''' + method(source,'bool StandbyActivity::tryLightSleep(') + r'''
 int main(){
  StandbyActivity activity;
- face.clock=true;assert(!activity.tryLightSleep(35000) && !powerManager.sleeps);
- face.clock=false;activity.drewFrame_=false;assert(!activity.tryLightSleep(35000) && !powerManager.sleeps);
- activity.drewFrame_=true;
- for(int i=0;i<100;++i)assert(activity.tryLightSleep(35000));assert(powerManager.sleeps==100);
+ // No face parks before its first paint.
+ for(bool clock:{false,true}){face.clock=clock;activity.drewFrame_=false;assert(!activity.tryLightSleep(35000) && !powerManager.sleeps);}
+ face.clock=false;activity.drewFrame_=true;
+ for(int i=0;i<100;++i)assert(activity.tryLightSleep(35000));assert(powerManager.sleeps==100 && !activity.ticks);
  powerManager.reason=HalPowerManager::LightSleepWakeReason::PowerButton;assert(activity.tryLightSleep(35000) && activityManager.closes==1);
  powerManager.reason=HalPowerManager::LightSleepWakeReason::PowerButtonHeld;assert(activity.tryLightSleep(35000));
  // Auto power-off disabled: one day per park; already past the deadline: one second.
  SETTINGS.powerOffMs=0;powerManager.expect=86400;assert(activity.tryLightSleep(35000));
  SETTINGS.powerOffMs=30000;powerManager.expect=1;assert(activity.tryLightSleep(35000));
+ assert(!activity.ticks);
+ // A clock/date face sleeps one second past its next change, then redraws once.
+ face.clock=true;powerManager.reason=HalPowerManager::LightSleepWakeReason::Timer;
+ SETTINGS.powerOffMs=6UL*3600UL*1000UL;powerManager.expect=3601;
+ assert(activity.tryLightSleep(35000) && activity.ticks==1);
+ // ...but never past auto power-off.
+ SETTINGS.powerOffMs=30000;powerManager.expect=1;assert(activity.tryLightSleep(35000) && activity.ticks==2);
 }
 ''')
 
@@ -321,6 +334,10 @@ inline void xSemaphoreGiveRecursive(SemaphoreHandle_t m){--depth;m->unlock();}
 class String: public std::string {};
 class Print {public:virtual ~Print()=default;virtual size_t write(const uint8_t*,size_t){return 0;}virtual size_t write(uint8_t){return 0;}};
 #define LOG_ERR(...) ((void)0)
+#define LOG_INF(...) ((void)0)
+inline uint32_t fakeNow=1;
+inline uint32_t millis(){return fakeNow;}
+inline void delay(uint32_t ms){fakeNow+=ms;}
 template<class T,class... A>std::unique_ptr<T> makeUniqueNoThrow(A&&...a){return std::make_unique<T>(std::forward<A>(a)...);}
 inline std::map<std::string,std::string> files{{"/font","abcdefgh"},{"/book","0123456789"},{"/dir",""},{"/scratch","abcdefgh"}};
 inline bool mounted=true,failMount=false,failOpen=false,failSync=false,failClose=false;
@@ -389,8 +406,16 @@ int main(){
  font.close();
  {HalStorage::StandbySession lease;assert(lease.suspend());failOpen=true;assert(!lease.resume());failOpen=false;assert(!moved);}
  moved.close();auto last=Storage.open("/book");
- {HalStorage::StandbySession lease;assert(lease.suspend());failMount=true;assert(!lease.resume());failMount=false;assert(!last);}
- mounted=true;last.close();assert(depth==0);
+ assert(last.seek64(4));
+ // A card that does not come back: three mounts, the handle stays parked...
+ {HalStorage::StandbySession lease;assert(lease.suspend());const int before=mounts;failMount=true;
+  assert(!lease.resume() && mounts==before+3);failMount=false;assert(!last && !mounted);}
+ // ...the next storage use within 2 s does not retry, the one after mounts it and reopens the handle in place.
+ {HalStorage::StorageLock lock;assert(!mounted);}
+ fakeNow+=2000;{HalStorage::StorageLock lock;assert(mounted && last && last.position()==4);}
+ // That card is no longer parked in Standby for the rest of the boot.
+ {const int previous=stops;HalStorage::StandbySession lease;assert(!lease.suspend() && mounted && stops==previous && last);}
+ last.close();assert(depth==0);
 }
 '''
         # Include the real position/seek wrappers as well and test nonzero offsets.

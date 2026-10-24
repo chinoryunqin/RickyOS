@@ -18,6 +18,16 @@
       "ported_sha256": "bbf2ce8435a86784c03b8436d43ea5cf83beb0af1eb0279214951cdb5d1f1439"
     },
     {
+      "path": "freeink-sdk/libs/hardware/FrontlightManager/include/FrontlightManager.h",
+      "baseline_sha256": "981d6bf33786e861d16f573d014777560ed4f12893cbe5b24ecdd8c9eec9e13b",
+      "ported_sha256": "4a4beb791a029a0fbc9ff168bb0af9c248b76a02a80415a9eec4fd2728b6e6d7"
+    },
+    {
+      "path": "freeink-sdk/libs/hardware/FrontlightManager/src/FrontlightManager.cpp",
+      "baseline_sha256": "e687a061e08c2b0387c7af27082ebc66a804d6f1e7d80f4f0e2b7c5305ffb298",
+      "ported_sha256": "5de1bbd49a3492f1bd34a1886ca9c0416be84eac986fd9f6edd03e5ea4dcf9f7"
+    },
+    {
       "path": "freeink-sdk/libs/hardware/InputManager/include/InputManager.h",
       "baseline_sha256": "f093f88a3096281e2cd5d0a766e20abaa263bb4efbe49379fc4c4c64dd419baa",
       "ported_sha256": "4c7b2152ea3b3542aab2913d1a8fb393667b382aa51eaed3305f5b2354121cf8"
@@ -620,7 +630,7 @@
     {
       "path": "src/activities/apps/standby/StandbyActivity.cpp",
       "baseline_sha256": "29dde67945a5e69415ed2f40ca0d287d364f1ff7bf74cc241dd3ead386105696",
-      "ported_sha256": "9a82220d911dc53ada4d83bc5de49840378cc0d563ba6bd7147fdd10fa91f30f"
+      "ported_sha256": "0147ff66961e4acf3ef175dedce2bb49bebac64d961316056a2fa1b5171fc6ec"
     },
     {
       "path": "src/activities/apps/standby/StandbyActivity.h",

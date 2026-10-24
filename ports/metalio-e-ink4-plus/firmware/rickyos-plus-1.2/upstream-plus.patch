@@ -228,6 +228,63 @@
 +  return s;
 +}
 +#endif
+--- a/freeink-sdk/libs/hardware/FrontlightManager/include/FrontlightManager.h
++++ b/freeink-sdk/libs/hardware/FrontlightManager/include/FrontlightManager.h
+@@ -122,6 +122,7 @@
+ #endif
+ 
+   bool _begun = false;
++  bool _pwmAttached = false;  // Plus: LEDC attached only while lit (see apply())
+ #if FREEINK_DEVICE_EEGO_A4
+   bool _i2cConfigured = false;
+ #endif
+--- a/freeink-sdk/libs/hardware/FrontlightManager/src/FrontlightManager.cpp
++++ b/freeink-sdk/libs/hardware/FrontlightManager/src/FrontlightManager.cpp
+@@ -204,6 +204,9 @@
+ #else
+   (void)attachOk;
+ #endif
++#if FREEINK_DEVICE_METALIO_PLUS
++  _pwmAttached = attachOk;
++#endif
+   _begun = true;
+   setBrightness(0);
+   LOG_INF("FrontlightMgr", "begin: attached gpio=%d warm=%d ok=%d", fl.gpio, fl.gpioWarm, attachOk ? 1 : 0);
+@@ -331,6 +334,34 @@
+   }
+ #ifdef FREEINK_FRONTLIGHT_LS
+   updateLsKeepAlive(totalDuty != 0);
++#endif
++#if FREEINK_DEVICE_METALIO_PLUS && !defined(FREEINK_FRONTLIGHT_LS) && defined(ARDUINO) && ESP_ARDUINO_VERSION_MAJOR >= 3
++  // Plus standby measured ~13 mA after the light had been used once since boot,
++  // ~6 mA when it never had. Off means no PWM at all: detaching the last channel
++  // pauses and deconfigures the LEDC timer; the pads become plain GPIO at the
++  // off level. Lighting it again attaches fresh channels.
++  if (totalDuty == 0) {
++    if (_pwmAttached) {
++      for (const int8_t pin : {fl.gpio, fl.gpioWarm}) {
++        if (pin < 0) continue;
++        ledcDetach(pin);
++        pinMode(pin, OUTPUT);
++        digitalWrite(pin, fl.activeHigh ? LOW : HIGH);
++      }
++      _pwmAttached = false;
++      LOG_INF("FrontlightMgr", "apply: off, PWM detached");
++    }
++    return;
++  }
++  if (!_pwmAttached) {
++    bool attached = attachChannel(fl.gpio, LEDC_CH_COOL, fl.pwmFrequency, fl.pwmResolutionBits);
++    if (dual) attached = attachChannel(fl.gpioWarm, LEDC_CH_WARM, fl.pwmFrequency, fl.pwmResolutionBits) && attached;
++    _pwmAttached = attached;
++    if (!attached) {
++      LOG_ERR("FrontlightMgr", "apply: PWM attach failed");
++      return;
++    }
++  }
+ #endif
+   writeChannel(fl.gpio, LEDC_CH_COOL, physicalDuty(coolDuty, full, fl.activeHigh));
+ 
 --- a/freeink-sdk/libs/hardware/InputManager/include/InputManager.h
 +++ b/freeink-sdk/libs/hardware/InputManager/include/InputManager.h
 @@ -365,6 +365,11 @@
@@ -190996,7 +191053,7 @@
    requestUpdate();
  }
  
-@@ -430,9 +448,30 @@
+@@ -430,9 +448,29 @@
  
  bool StandbyActivity::tryLightSleep(const uint32_t idleMs) {
  #if CROSSPOINT_EMULATED == 0
@@ -191015,9 +191072,8 @@
    // Touch does not wake light sleep: stay awake while waiting for a picture to be picked.
    if (currentFace_->needsPicture()) return false;
 +#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
-+  // A static image must have completed its first paint before any bus/rail park.
-+  // Clock faces stay awake: post-timer rendering is a separate unresolved path.
-+  if (currentFace_->wantsClock() || !drewFrame_) return false;
++  // Any face must have completed its first paint before any bus/rail park.
++  if (!drewFrame_) return false;
 +#endif
 +#if FREEINK_DEVICE_METALIO_PLUS
 +  // Side-key/timer candidate only. Preserve first-swipe semantics until touch
@@ -191027,7 +191083,7 @@
  
    const bool syncActive = syncState_ != SyncState::Idle;
    const bool wifiActive = WiFi.getMode() != WIFI_MODE_NULL;
-@@ -446,16 +485,37 @@
+@@ -446,16 +484,44 @@
      return false;
    }
  
@@ -191035,13 +191091,16 @@
 +  // A static face sleeps until the power key or auto power-off: the board keeps
 +  // its peripherals parked across timer and shared-IRQ wakes (one restore per
 +  // standby). millis() keeps counting through light sleep, so the power-off
-+  // check in loop() fires on the wake at the deadline.
++  // check in loop() fires on the wake at the deadline. A clock or date face
++  // sleeps only until its next change (one second past it, so the minute or day
++  // has turned), then redraws and parks again.
 +  const unsigned long powerOffMs = SETTINGS.getStandbyPowerOffMs();
 +  const unsigned long elapsedMs = millis() - enteredMs_;
-+  const uint32_t seconds =
++  uint32_t seconds =
 +      powerOffMs == 0 ? 24u * 60u * 60u
 +                      : static_cast<uint32_t>(std::clamp<unsigned long>(
 +                            (powerOffMs > elapsedMs ? powerOffMs - elapsedMs : 0) / 1000UL + 1, 1, 24UL * 60UL * 60UL));
++  if (currentFace_->wantsClock()) seconds = std::min(seconds, currentFace_->secondsUntilNextWake() + 1u);
 +#else
    const uint32_t seconds = std::clamp<uint32_t>(currentFace_->secondsUntilNextWake(), 1, kMaxLightSleepSeconds);
 +#endif
@@ -191057,15 +191116,19 @@
      case HalPowerManager::LightSleepWakeReason::Timer:
        STANDBY_DIAG("wake: timer");
 +#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
-+      // OEM Park: a timer slice performs no face tick and submits no refresh.
-+      STANDBY_DIAG("static timer: no redraw");
++      // A picture face draws nothing on a timer wake. A clock face redraws, and
++      // the refresh lands before the next park.
++      if (currentFace_->wantsClock()) {
++        processFaceTick(true);
++        renderer.waitRefreshComplete();
++      }
 +#else
        processFaceTick(true);
 +#endif
        return true;
      case HalPowerManager::LightSleepWakeReason::PowerButton:
        // A short press, already over before main.cpp's key poll could see it: leave
-@@ -468,13 +528,21 @@
+@@ -468,13 +534,21 @@
        // Still down: main.cpp finishes it (release = leave Standby, hold = power off).
        STANDBY_DIAG("wake: key still down");
        lastInputMs_ = millis();
@@ -191087,7 +191150,7 @@
        return true;
    }
  #else
-@@ -484,7 +552,14 @@
+@@ -484,7 +558,14 @@
  }
  
  void StandbyActivity::loop() {
@@ -191103,7 +191166,7 @@
      // One shortcut switch owns both entry and exit; the side power key stays independent.
      if (SETTINGS.standbyShortcutEnabled) {
        STANDBY_DIAG("close: Back released");
-@@ -507,6 +582,7 @@
+@@ -507,6 +588,7 @@
        if (action == StandbyFace::PictureAction::Download &&
            !startActivityForResultWith<RickyWallpaperDownloadActivity>([this](const ActivityResult&) {
              if (currentFace_) currentFace_->onEnter();
@@ -191111,7 +191174,7 @@
              requestUpdate();
            })) {
          LOG_ERR("STANDBY", "Cannot open the picture downloader");
-@@ -531,11 +607,17 @@
+@@ -531,11 +613,17 @@
  
  void StandbyActivity::render(RenderLock&&) {
    if (!currentFace_) return;
@@ -191130,7 +191193,7 @@
      renderer.clearScreen();
      {
        const GfxRenderer::ClipScope clip(renderer, viewport.x, viewport.y, viewport.width, viewport.height);
-@@ -649,6 +731,7 @@
+@@ -649,6 +737,7 @@
        return;
      }
      if (currentFace_) currentFace_->onEnter();

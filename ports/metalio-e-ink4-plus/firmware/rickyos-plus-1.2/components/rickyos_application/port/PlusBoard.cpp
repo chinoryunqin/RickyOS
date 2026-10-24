@@ -537,6 +537,12 @@ static StandbyWake standbySleepOnce(const uint32_t seconds, StandbyStorage* stor
   if (!staticPark) epd_board_metalio_eink4_plus_bus_hold_low();
   sleepCheckpoint(SleepStage::BusLatch);
   epd_board_metalio_eink4_plus_bus_latch_for_sleep();
+  // Standby turns the frontlight off before it sleeps (StandbyActivity never
+  // sleeps while it is lit), so both YX6016N EN/PWM pads are low here. Latch
+  // them: the LEDC channel stops in light sleep and must not leave the driver
+  // enabled. Released below, before anything can light it again.
+  gpio_hold_en(FL_COOL_PIN);
+  gpio_hold_en(FL_WARM_PIN);
   ESP_LOGI("PlusSleep", "enter: seconds=%lu ext1_gpio=2", static_cast<unsigned long>(seconds));
   STANDBY_DIAG("board sleep enter: seconds=%lu display_fault=0x%08lx", static_cast<unsigned long>(seconds),
                static_cast<unsigned long>(epd_lcd_get_first_fault()));
@@ -592,6 +598,8 @@ static StandbyWake standbySleepOnce(const uint32_t seconds, StandbyStorage* stor
   STANDBY_DIAG("wake final: valid=%u p1=%02x cause=%d other=%u slept_ms=%lu", wakeInputsValid, wakeP1,
                static_cast<int>(cause), otherWakes, static_cast<unsigned long>(millis() - sleepStarted));
   sleepCheckpoint(SleepStage::WakeCleanup);
+  gpio_hold_dis(FL_COOL_PIN);
+  gpio_hold_dis(FL_WARM_PIN);
   const bool restored = cleanup();
 #if defined(RICKYOS_PLUS_STATIC_STANDBY)
   const bool peripheralRestored = !staticPark || restorePeripherals();
