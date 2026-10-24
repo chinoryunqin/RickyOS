@@ -265,7 +265,7 @@
     {
       "path": "lib/JpegToBmpConverter/JpegToBmpConverter.cpp",
       "baseline_sha256": "a7bcdaa84264b1f20301c5436baf3fc0d030cf16094ea6e29a14068bba7b506b",
-      "ported_sha256": "a59d11706f188d4779938de7453842047760ac4a3be38a874f3c0563ac4fb9a9"
+      "ported_sha256": "83f62b3fb1bb671509065f827c0d55855a83fb14899d5ced19ac66ced3470299"
     },
     {
       "path": "lib/LibraryIndex/LibraryBuilder.cpp",
