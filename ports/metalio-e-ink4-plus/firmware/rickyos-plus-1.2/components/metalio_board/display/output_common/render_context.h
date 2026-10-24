@@ -10,6 +10,7 @@
 #include "line_queue.h"
 #include "lut.h"
 #include "sdkconfig.h"
+#include "../ricky_native_turn.h"
 
 #define NUM_RENDER_THREADS 2
 
@@ -59,6 +60,14 @@ typedef struct {
     size_t conversion_lut_size;
     // Lookup table space.
     uint8_t* conversion_lut;
+    // Optional turn-scoped phase bank and 16px delay grid (PSRAM).
+    uint8_t* turn_luts;
+    uint8_t* turn_delays;
+    uint8_t* turn_window;
+    int turn_phases, turn_cols;
+    int turn_producer_tick; // Immutable while either feeder is active; ISR never reads it.
+    bool reader_text_finish; // One pure-text transaction; independent of spatial turn style.
+    RickyNativeTurnRegion turn_region;
 
     /// LUT lookup function. Must not be NULL.
     lut_func_t lut_lookup_func;

@@ -11,6 +11,7 @@
 
 #include "epd_highlevel.h"
 #include "epdiy.h"
+#include "waveforms/my_waveform.h"
 
 #ifndef _swap_int
 #define _swap_int(a, b) \
@@ -182,6 +183,16 @@ enum EpdDrawError epd_hl_update_screen_reader(
         body.x <= epd_width() && body.y <= epd_height() &&
         body.width <= epd_width() - body.x && body.height <= epd_height() - body.y;
     return update_screen_full(state, MODE_GC16_FAST, temperature, valid ? &body : NULL);
+}
+
+enum EpdDrawError epd_hl_update_screen_reader_paper(
+    EpdiyHighlevelState* state, int temperature, EpdRect body
+) {
+    // Same one-scan chrome mask, but paper grays retain their erase pulses.
+    const bool valid = body.x >= 0 && body.y >= 0 && body.width > 0 && body.height > 0 &&
+        body.x <= epd_width() && body.y <= epd_height() &&
+        body.width <= epd_width() - body.x && body.height <= epd_height() - body.y;
+    return update_screen_full(state, (enum EpdDrawMode)MY_MODE_READER_PAPER_TURN, temperature, valid ? &body : NULL);
 }
 
 enum EpdDrawError epd_hl_update_screen_from_white(

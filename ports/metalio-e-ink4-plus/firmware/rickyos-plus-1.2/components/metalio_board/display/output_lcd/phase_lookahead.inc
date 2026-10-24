@@ -80,7 +80,14 @@ static void lcd_do_update_lookahead(RenderContext_t* ctx) {
             memset(next, 0, ctx->lines_total);
             const EpdWaveformPhases* phases =
                 ctx->waveform->mode_data[ctx->waveform_index]->range_data[ctx->waveform_range];
-            ctx->lut_build_func(ctx->conversion_lut, phases, phase + 1);
+            if (ctx->turn_phases) {
+                // Current ISR consumes only committed internal rows. Both
+                // producers have joined, so changing their phase/window is safe.
+                ctx->turn_producer_tick = phase + 1;
+                ricky_turn_prepare_window(ctx);
+            } else {
+                ctx->lut_build_func(ctx->conversion_lut, phases, phase + 1);
+            }
             s_phase_producer_ready = next;
             start_phase_feeders(ctx, &pending);
         }
@@ -115,6 +122,11 @@ static void lcd_do_update_lookahead(RenderContext_t* ctx) {
     ctx->line_ready = original_ready;
     ctx->line_threads = original_threads;
     epd_set_mode(0);
+    if (__atomic_load_n(&ctx->error, __ATOMIC_ACQUIRE)) {
+        ESP_LOGE("epd_lcd", "first fault since boot=0x%08lx native=%d producer_tick=%d current=%d",
+                 (unsigned long)epd_lcd_get_first_fault(), ctx->turn_phases,
+                 ctx->turn_producer_tick, ctx->current_frame);
+    }
     if (!epd_lcd_set_line_timing(0, 0)) ctx->error |= EPD_DRAW_NO_PHASES_AVAILABLE;
     if (periods) {
         __atomic_store_n(&last_phase_average, (int)(period_total / periods), __ATOMIC_RELAXED);

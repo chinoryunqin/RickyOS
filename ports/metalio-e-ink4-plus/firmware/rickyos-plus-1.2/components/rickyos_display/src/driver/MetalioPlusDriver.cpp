@@ -10,6 +10,9 @@
 #include <NativeGrayRefreshPolicy.h>
 #include <cstdio>
 #include <cstring>
+extern "C" {
+#include <ricky_native_turn.h>
+}
 
 namespace freeink {
 namespace {
@@ -52,8 +55,18 @@ void dumpFrame(const uint8_t* fb, const char* kind) {
 }
 #endif
 uint8_t nextGrayProfile = 0;
+RickyNativeTurn nextTurn = {};
+struct MainTabTurn {
+  bool enabled = false;
+  uint8_t orientation = 0;
+  bool fromRight = false;
+  ricky::gray::Area content;
+};
+MainTabTurn nextTabTurn;
+bool nextAdaptiveUi = false;
 ricky::gray::Area nextNavigation;
 ricky::gray::Area nextReaderBody;
+bool nextReaderTextFinish = false;
 uint8_t contentEvery = 8, smallEvery = 32;
 // No additional framebuffer allocation: EPDiy owns its front/back buffers in
 // PSRAM; FreeInk's original native 1-bit buffer remains the application surface.
@@ -70,12 +83,20 @@ class MetalioPlusDriver final : public PanelDriver {
     if (!ready_) ESP_LOGE("PlusDisplay", "panel initialization failed");
   }
   void deepSleep(EpdBus&) override {
+    nextReaderTextFinish = false;
+    nextTurn = {};
+    nextTabTurn = {};
+    nextAdaptiveUi = false;
     discardOverlay();
     if (ready_) epd_poweroff();
   }
   OpticalState opticalState() const override { return state_; }
   void setBackgroundHint(bool darkBackground) override { darkBackground_ = darkBackground; }
   void display(EpdBus&, const uint8_t* fb, const uint8_t*, RefreshMode mode, bool turnOff) override {
+    nextReaderTextFinish = false;
+    nextTurn = {};
+    nextTabTurn = {};
+    nextAdaptiveUi = false;
 #if RICKYOS_PLUS_GRAY_CALIBRATION
     calibrationHeld_ = false;  // Home/menu/BW navigation exits the diagnostic.
     calibrationShown_ = false;  // Returning to a book can open the card again.
@@ -117,8 +138,16 @@ class MetalioPlusDriver final : public PanelDriver {
     return true;
   }
   bool commitGrayscale16(const uint8_t* proxy) override {
+    const auto turn = nextTurn;
+    nextTurn = {};
+    const auto tabTurn = nextTabTurn;
+    const bool adaptiveUi = nextAdaptiveUi;
+    nextTabTurn = {};
+    nextAdaptiveUi = false;
     const uint8_t profile = nextGrayProfile;
     const auto readerBody = nextReaderBody;
+    const bool readerTextFinish = nextReaderTextFinish;
+    nextReaderTextFinish = false;
     nextGrayProfile = 0;
     nextReaderBody = {};
     if (!ready_) return false;
@@ -136,10 +165,11 @@ class MetalioPlusDriver final : public PanelDriver {
 #endif
     bool success;
     if (profile == 4 && state_ != OpticalState::Unknown) {
-      success = refreshUi();
+      success = refreshUi(tabTurn, adaptiveUi);
     } else {
       ledger_ = {};
-      const bool full = profile != 1;
+      const bool paper = profile == 5;
+      const bool full = profile != 1 && !paper;
       // An ordinary reader turn drives the whole screen with the vendor GL16, as the vendor
       // firmware does. The held-diagonal table and the changed-rows mask left a stroke that
       // stays black across turns undriven until the next cleanup, so text faded between
@@ -147,7 +177,11 @@ class MetalioPlusDriver final : public PanelDriver {
       // Its black-to-black cell erases and rewrites: body ink stays full. A reader
       // layout hint holds only unchanged chrome outside the text box in this same scan.
       if (!full && state_ != OpticalState::Unknown) {
-        success = refreshTurn(MetalioEpd_Hl(), readerBody) == EPD_DRAW_SUCCESS;
+        epd_set_native_turn(turn.style, turn.orientation, turn.from_right);
+        if (turn.has_origin) epd_set_native_ripple_origin(turn.origin_x, turn.origin_y);
+        epd_set_native_reader_text_finish(readerTextFinish && !paper);
+        success = refreshTurn(MetalioEpd_Hl(), readerBody, paper) == EPD_DRAW_SUCCESS;
+        epd_set_native_turn(0, 0, false);
       } else {
         success = refresh(MetalioEpd_Hl(), full ? MODE_GC16 : MODE_GL16_FAST, full) == EPD_DRAW_SUCCESS;
       }
@@ -161,12 +195,20 @@ class MetalioPlusDriver final : public PanelDriver {
     return success;
   }
   void cancelGrayscale16() override {
+    nextReaderTextFinish = false;
+    nextTurn = {};
+    nextTabTurn = {};
+    nextAdaptiveUi = false;
     overlayStage_ = 0;
     nextGrayProfile = 0;
     nextReaderBody = {};
     if (lastProxy_ && state_ != OpticalState::Unknown) restoreBaseline(lastProxy_);
   }
   void requestResync(uint8_t) override {
+    nextReaderTextFinish = false;
+    nextTurn = {};
+    nextTabTurn = {};
+    nextAdaptiveUi = false;
     overlayStage_ = 0;
     state_ = OpticalState::Unknown;
     ledger_ = {};
@@ -194,6 +236,7 @@ class MetalioPlusDriver final : public PanelDriver {
     overlayStage_ = 2;
   }
   void displayGray(EpdBus&, const uint8_t*, bool, const unsigned char* lut, bool factoryMode) override {
+    nextReaderTextFinish = false;
     // fb is the final MSB selector, not the page. Never use PanelDriver's
     // default display(fb): it turns untouched page margins into black ink.
     if (overlayStage_ != 2 || lut || state_ != OpticalState::Bw) {
@@ -267,13 +310,13 @@ class MetalioPlusDriver final : public PanelDriver {
       proxy[i] = value;
     }
   }
-  bool refreshUi() {
+  bool refreshUi(const MainTabTurn& turn, bool adaptive) {
     auto* hl = MetalioEpd_Hl();
     if (!hl || !hl->front_fb || !hl->back_fb) return false;
     const auto nav = ricky::gray::navigationZone(nextNavigation, geometry().width, geometry().height);
     const auto damage = ricky::gray::difference(hl->front_fb, hl->back_fb, geometry().width, geometry().height, nav);
     auto candidate = ledger_;
-    const auto plan = candidate.advance(damage, nav, contentEvery, smallEvery);
+    const auto plan = candidate.advance(damage, nav, contentEvery, smallEvery, adaptive);
     if (!plan.count) return true;  // Identical native frame: no rails and no aging.
     const int64_t startedUs = esp_timer_get_time();
     epd_poweron();
@@ -286,8 +329,16 @@ class MetalioPlusDriver final : public PanelDriver {
         // slot, see my_waveform.c): unchanged pixels are not driven and the old and new
         // marks cross-fade, so tab icons and labels do not flash and a moved marker fades
         // rather than being wiped. The ledger's cleanup steps still clean with GC16.
+        // Stage the wavefront before the only physical submission. Never
+        // animate cleanup or feedback with no changed content. update_region
+        // keeps the full raster stride and applies dirty-line/column masks.
+        if (turn.enabled && plan.count == 1 && !step.cleanup && !damage.content.empty()) {
+          epd_set_native_ui_turn(turn.orientation, turn.fromRight, turn.content.x, turn.content.y,
+                                 turn.content.width, turn.content.height);
+        }
         result = step.cleanup ? epd_hl_update_area_full(hl, MODE_GC16, 25, area)
                               : epd_hl_update_area(hl, MODE_GL16_INV, 25, area);
+        epd_set_native_turn(0, 0, false);
         if (result != EPD_DRAW_SUCCESS) break;
       }
     }
@@ -300,14 +351,16 @@ class MetalioPlusDriver final : public PanelDriver {
   }
   // Retained black in the body is erased and rewritten. With a layout hint,
   // equal chrome pixels are masked to no-drive without adding a second scan.
-  EpdDrawError refreshTurn(EpdiyHighlevelState* hl, const ricky::gray::Area& body) {
+  EpdDrawError refreshTurn(EpdiyHighlevelState* hl, const ricky::gray::Area& body, bool paper) {
     const int64_t startedUs = esp_timer_get_time();
     epd_poweron();
     auto result = EPD_DRAW_EMPTY_LINE_QUEUE;
     // The reader-turn table (MODE_GC16_FAST slot, my_waveform.c): the page lands at once
     // and black strokes that stay are briefly re-driven to keep their ink.
     if (epd_board_metalio_eink4_plus_tps_ok()) {
-      if (body.width > 0 && body.height > 0) {
+      if (paper) {
+        result = epd_hl_update_screen_reader_paper(hl, 25, {body.x, body.y, body.width, body.height});
+      } else if (body.width > 0 && body.height > 0) {
         result = epd_hl_update_screen_reader(hl, 25, {body.x, body.y, body.width, body.height});
       } else {
         result = epd_hl_update_screen_full(hl, MODE_GC16_FAST, 25);
@@ -358,14 +411,42 @@ PanelDriver& metalioPlusDriver() {
   return driver;
 }
 void metalioPlusSetGray16Profile(uint8_t profile) {
+  nextReaderTextFinish = false;
+  nextTurn = {};
+  nextTabTurn = {};
+  nextAdaptiveUi = false;
   nextGrayProfile = profile;
   nextReaderBody = {};
 }
-void metalioPlusSetGray16ReaderRefresh(int x, int y, int width, int height) {
-  nextReaderBody = {x, y, width, height};
-  nextGrayProfile = 1;
+void metalioPlusSetPageTurn(uint8_t style, uint8_t orientation, bool fromRight, int originX, int originY) {
+  nextTurn = {};
+  nextTurn.style = style <= 3 ? style : 0;
+  nextTurn.orientation = orientation;
+  nextTurn.from_right = fromRight;
+  if (style == 3 && originX >= 0 && originX <= 1023 && originY >= 0 && originY <= 1023) {
+    nextTurn.has_origin = true;
+    nextTurn.origin_x = originX;
+    nextTurn.origin_y = originY;
+  }
 }
-void metalioPlusSetGray16UiRefresh(int x, int y, int width, int height, uint8_t content, uint8_t small) {
+void metalioPlusSetMainTabTurn(uint8_t orientation, bool fromRight, int x, int y, int width, int height) {
+  nextReaderTextFinish = false;
+  nextTabTurn = {true, orientation, fromRight, {x, y, width, height}};
+}
+void metalioPlusSetGray16ReaderRefresh(int x, int y, int width, int height) {
+  nextReaderTextFinish = false;
+  nextReaderBody = {x, y, width, height};
+  // A layout hint must not overwrite the explicit one-shot reading-background profile.
+  if (nextGrayProfile != 5) nextGrayProfile = 1;
+}
+void metalioPlusSetGray16ReaderTextFinish(bool enabled) {
+  nextReaderTextFinish = enabled;
+}
+void metalioPlusSetGray16UiRefresh(int x, int y, int width, int height, uint8_t content, uint8_t small, bool adaptive) {
+  nextReaderTextFinish = false;
+  nextTurn = {};
+  nextTabTurn = {};
+  nextAdaptiveUi = adaptive;
   nextReaderBody = {};
   nextNavigation = {x, y, width, height};
   contentEvery = content ? content : 8;

@@ -16,6 +16,7 @@
 #include "../output_common/line_queue.h"
 #include "../output_common/lut.h"
 #include "../output_common/render_context.h"
+#include "../output_common/ricky_turn_line.h"
 #include "epd_board.h"
 #include "epdiy.h"
 #include "lcd_driver.h"
@@ -431,7 +432,8 @@ lcd_calculate_frame(RenderContext_t* ctx, int thread_id) {
             }
         }
 
-        ctx->lut_lookup_func(lp, buf, ctx->conversion_lut, ctx->display_width);
+        if (ctx->turn_phases) ricky_turn_line(ctx, lp, buf, l);
+        else ctx->lut_lookup_func(lp, buf, ctx->conversion_lut, ctx->display_width);
         epd_apply_line_mask_VE(buf, ctx->line_mask, ctx->display_width / 4);
         lq_commit(lq);
         __atomic_store_n(&ready[l],1,__ATOMIC_RELEASE);

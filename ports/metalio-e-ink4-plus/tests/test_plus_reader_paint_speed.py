@@ -102,7 +102,7 @@ captured = []
 module.run_cpp = lambda program, include_dirs=(): captured.append((program, include_dirs))
 module.ReaderPageCacheTest().test_render_task_priorities_and_waiter()
 program, includes = captured[0]
-program = '#define FREEINK_DEVICE_METALIO_PLUS 1\n' + program
+program = '#define FREEINK_DEVICE_METALIO_PLUS 1\n#include "activities/MainTabMotion.h"\n' + program
 program = program.replace('constexpr int eIncrement=0;', '''
 constexpr int eIncrement=0;
 constexpr uint32_t kGraySettleDelayMs=1500;
@@ -115,6 +115,7 @@ program = program.replace('unsigned delay=400;', '''
   unsigned delay=400;
 ''')
 program = program.replace('void renderTaskLoop();', '''
+  MainTabMotion mainTabMotion_;
   bool renderDirectGray(RenderLock&&){return false;}
   void settleToGray(RenderLock&&,uint32_t){}
   void renderTaskLoop();
@@ -142,7 +143,7 @@ program = program.replace('int main() {', '''int main() {
 module_spec = importlib.util.spec_from_file_location('reading_ui', ROOT / 'scripts/tests/test_reading_ui_regressions.py')
 runner = importlib.util.module_from_spec(module_spec)
 module_spec.loader.exec_module(runner)
-runner.run_cpp(program, includes)
+runner.run_cpp(program, (*includes, ROOT / 'src'))
 
 contents = method((ROOT / 'src/activities/reader/EpubReaderActivity.cpp').read_text(),
                   'void EpubReaderActivity::renderContents(')

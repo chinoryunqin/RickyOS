@@ -88,29 +88,64 @@
       "ported_sha256": "d4111cd762a8e5976ab8e1c23c54a27ea6b9f43c4f8b768e2522b58ea35af4cd"
     },
     {
+      "path": "lib/EpdFont/builtinFonts/notosans_cjk_10.h",
+      "baseline_sha256": "7971ead5003be78d2a5df8d67ff272240084d0ab669708a593096ce6f7649bac",
+      "ported_sha256": "cba6e330133e8f540b907d938f47bcc1a0711acd7f8edec6fc0bd7a28c52ad72"
+    },
+    {
+      "path": "lib/EpdFont/builtinFonts/notosans_cjk_12.h",
+      "baseline_sha256": "f2772d09397c0a7ac8e3c582d3c6023b7ee10d9ec44febf66803eb8ce316a1b9",
+      "ported_sha256": "972665c74b7acb951349bdb39e8018325af76b0149e160fc2f408ba37ac74761"
+    },
+    {
       "path": "lib/EpdFont/builtinFonts/notosans_cjk_14.h",
       "baseline_sha256": "56d1b1092c13ed0a8a918280de3f9c03045bdf0bd97aa554ff208493ea1dcf5d",
-      "ported_sha256": "10517c78872475c4c23e4a11a741646f8f3ee0b935b9f44fad4925dbbc69873e"
+      "ported_sha256": "1a298c300e3edd6d6a03629f069f28e8a81fdff3ba35bced9b2db62086cb5763"
     },
     {
       "path": "lib/EpdFont/builtinFonts/notosans_cjk_16.h",
       "baseline_sha256": "49d4e1846c27fa058dd343d20548a80314ed853bd8d98c528016a53da48c7e85",
-      "ported_sha256": "a284203ceaf85d3962336affd29053532c5b5b580b526ab48cba56fe8982d66e"
+      "ported_sha256": "85eb6ebd8118cf580f52bbd7173679bf994336b75a1232836bc1fee81762d975"
+    },
+    {
+      "path": "lib/EpdFont/builtinFonts/notosans_cjk_18.h",
+      "baseline_sha256": "4842a61e8f0e680c81af99a2c79eff1c779249119a4848ae4c1ed1c74768792c",
+      "ported_sha256": "ab26952d2ac8d10ffc56bafaaa4bf7fab4096c9ba49b1ddfc36c294d84ebd66e"
+    },
+    {
+      "path": "lib/EpdFont/builtinFonts/notosans_cjk_8.h",
+      "baseline_sha256": "d82568dc62adb87e4de09b79908fe2bd07667866a008e1da4979e81b52a968d5",
+      "ported_sha256": "db8d04dc1e2c105b38118a459ad1e291133f7a741ec6f7b8efe08f31733af848"
+    },
+    {
+      "path": "lib/EpdFont/builtinFonts/notosans_cjk_common_intervals.h",
+      "baseline_sha256": "ba5bf100757b0d883357e0447f312cd3ca0946ff3353bd845b5175aa1387605a",
+      "ported_sha256": "73738c0787764f06730ef2700d1d7b0369311ff49ef2b04a1f55aabbb3f4d0ef"
     },
     {
       "path": "lib/EpdFont/builtinFonts/ricky_caption_10_regular.h",
       "baseline_sha256": "d9e32b31e4a385b9b846ab3d80d66b6dc79b513c1c9ce2f58ce9ac5c08355cb5",
-      "ported_sha256": "089f1c60c9d0485884d03d44b4d0cc4738dcc097e613b5d3adaf3f697cc8452b"
+      "ported_sha256": "0a0cf32ef3f374aafd8187e167c0cdf08ab5acafdb9a260fa4a525697c8256b9"
     },
     {
       "path": "lib/EpdFont/builtinFonts/ricky_headline_14_medium.h",
       "baseline_sha256": "6440daae5bef749d4ac14557bcbb77130d165bc12790bc03fb06e016dbac73ab",
-      "ported_sha256": "d68688dfafd0b202bc1183f3c7411b264fca87c4332ec02a84bb220c80bbc6cf"
+      "ported_sha256": "593cc83f336728bfd280ee029521ee98c8a832dd29352ce078b9efc41b1c8fd5"
     },
     {
       "path": "lib/EpdFont/builtinFonts/ricky_title_16_bold.h",
       "baseline_sha256": "ef9b2a5868a9c9d0232f96edccc3346b34be7f5969b0fb7a19e76d3169421ac0",
-      "ported_sha256": "7ef5d11ac442833b2c293439d03e1a0c7d139c0c3b003a70f913e3e7fe0198bb"
+      "ported_sha256": "281cec5a7e4d82be5bbec38fc84daa5acda68524cd0a136754f77f40582756b3"
+    },
+    {
+      "path": "lib/EpdFont/scripts/cn_common_chars.txt",
+      "baseline_sha256": "5e76b157c329b56c6c0a21dc12a73004e9c2c2920a48cae94f2551f0172ef411",
+      "ported_sha256": "65885c872d18a96d9e0a22345b3fce68b02d306e8f1848d182467273231c9265"
+    },
+    {
+      "path": "lib/EpdFont/scripts/cn_i18n_chars.txt",
+      "baseline_sha256": "d13e7b41e90b999d53d937c519ca059cfa815cfadb844a7fb9d175bfa44dc87e",
+      "ported_sha256": "831853120c8e550baaae7852735bc1200f9b73ba7bd67636e939cb0376997297"
     },
     {
       "path": "lib/Epub/Epub.cpp",
@@ -245,22 +280,22 @@
     {
       "path": "lib/GfxRenderer/GfxRenderer.cpp",
       "baseline_sha256": "d9bb2737f8a0da787c6e8b956410d1aeee92e58d6cb87f80eb776f4bba3c4075",
-      "ported_sha256": "39ea205f616280cad893556d7973a3ef1707fddc41e654d816aa857ee2e23dc4"
+      "ported_sha256": "e136f01c64f81939dcac355da163efe41a9da44e9446150e08d78d0a3bb74e95"
     },
     {
       "path": "lib/GfxRenderer/GfxRenderer.h",
       "baseline_sha256": "d0b47eb0d21f8256d9d509e910dbd8c94795c27621d7b85e8638aa0370097f13",
-      "ported_sha256": "0498b45db49b015e29410a63a9e9e82ed0f38c0ee599ab8768cd2e1573ff9ce3"
+      "ported_sha256": "fcfd310ed21619f3b5aa4d75b51658aafa81bb94219f9cda9eb2f3da2cbd7cd2"
     },
     {
       "path": "lib/I18n/translations/chinese.yaml",
       "baseline_sha256": "021ec5b9e5880155fea752af9c60ce83a259dd69131f9bd12ffe0ca59e3366bd",
-      "ported_sha256": "0b8f10abb7581317a853c6b1c3bed632307e679dd57ed21a6ba33ed435904d81"
+      "ported_sha256": "4bbdd58855d75a8cdd89d2da4663c6872f0a590ee222fae13c41c71c5adf43f0"
     },
     {
       "path": "lib/I18n/translations/english.yaml",
       "baseline_sha256": "85a4d226f1400f6a185759420c63ecff5f81eeb3722afd66c312d4aec6bcb315",
-      "ported_sha256": "44cbeb242df24e3b217db69adbc416bb8a432d3cfd1af76e1d5656707a4827f5"
+      "ported_sha256": "96a2b0d5493bfb59ea816552c52795947d99b24b262f2fe340da9c5ada9914a2"
     },
     {
       "path": "lib/JpegToBmpConverter/JpegToBmpConverter.cpp",
@@ -390,12 +425,12 @@
     {
       "path": "lib/hal/HalDisplay.cpp",
       "baseline_sha256": "0b168b7f240f557d75a138ee6f9fc7073e2ecd2431b794bd0e8502977a831fcb",
-      "ported_sha256": "e3cc9c64e8c9117d9b16671d38745143d2aed9718648fbe921ee61964fae39ed"
+      "ported_sha256": "0afb29d5ef3b7dc14bcfb226245d94821a006286585ce70a433d5653adc0a580"
     },
     {
       "path": "lib/hal/HalDisplay.h",
       "baseline_sha256": "a2eed517fa85335c0857981ae01bf05799d3bdeae36fcb2d767b6901d51fe58c",
-      "ported_sha256": "86e97c51112921d58149e1346df64eab0b36c3a80c731f6111eb64b5e15c7761"
+      "ported_sha256": "5f3a2fc61b2afebae11be5101bd85f2bee53f17ce4f7a8288b86a55c5d59a08c"
     },
     {
       "path": "lib/hal/HalGPIO.cpp",
@@ -448,6 +483,11 @@
       "ported_sha256": "0195b2b6a3fc2eaaaadb1586f0ddd1d1af5a04a6d36267d719384c8f51378464"
     },
     {
+      "path": "lib/hal/NativeGrayRefreshPolicy.h",
+      "baseline_sha256": "5d8e4550754003da8ef4d33c57cd343fd7020de3b94c3d7bacb9280c5d4c3f0a",
+      "ported_sha256": "014c72a10c8af8f9838ba0826c6f66c66c69a76e2d8e1ba7e8a47db418a6b527"
+    },
+    {
       "path": "lib/hal/RecorderWav.h",
       "baseline_sha256": null,
       "ported_sha256": "9381a4422b2f5b0a39d001c8cf3ccd7b39e8503a423778a9a557a0f4d523dcd1"
@@ -475,12 +515,12 @@
     {
       "path": "src/CrossPointSettings.cpp",
       "baseline_sha256": "549f275cd35b12b0479eadda063c5460e167d1156274e759bee34e2232b4dc37",
-      "ported_sha256": "1a5ad4e57c8587a4e223fa9b78f4d035b2868fd4eee86aba72b60401c77ab797"
+      "ported_sha256": "08e4f7fa1b654ad14ef933b91aa88d69dd1f81638b80b718d2072230e46d8c0e"
     },
     {
       "path": "src/CrossPointSettings.h",
       "baseline_sha256": "c5a733423898aad83b2f932929b80d3de201da9aa0e181d82d0071a2ac576330",
-      "ported_sha256": "b957c687734e9dce96fb91a7cf211362f097ff5b31e536358f33361212647f01"
+      "ported_sha256": "f185a3420dd789d358cb02971bdc6d1d3d22eda095aa44f0221797d597f5e9cd"
     },
     {
       "path": "src/InxItemLayout.h",
@@ -508,6 +548,11 @@
       "ported_sha256": "fa8d9bbd9c946d36494483d6dee4fb55e3a1ea0e10793cf8adc78b08abbb73c0"
     },
     {
+      "path": "src/SettingsList.h",
+      "baseline_sha256": "47ca912ff8e169d64ef58e3da86d57ccd581fe11f9f3cf283d75ed471398e583",
+      "ported_sha256": "c09dbea722bd8ca93df9f83938d628e5ab6022cbb9e0cb87697598d31365daaf"
+    },
+    {
       "path": "src/activities/Activity.cpp",
       "baseline_sha256": "e7981a965a7468c6848d27c272501d1608fd23702a3eb00dfbab74c701062a73",
       "ported_sha256": "7c6343d94b569da668167bd6023cd688f95a7988c32dcc1ccc221322c5ef82e9"
@@ -520,12 +565,17 @@
     {
       "path": "src/activities/ActivityManager.cpp",
       "baseline_sha256": "e97372dc858385e6ac21bac9d545abadd7bcd9ca036feb7c3dc8ed8bf8cb9ada",
-      "ported_sha256": "05fb4fb4f863f7de37d34a545a3ef6e4eb37ed0dff9a78c3a9383cc8e17ceddf"
+      "ported_sha256": "aa34934b1fb10ec11debf60519ac9ed42934ab7b6eea8ab485b8452994fbf2eb"
     },
     {
       "path": "src/activities/ActivityManager.h",
       "baseline_sha256": "01c40530f8ee1ae4a1cd07ba1c02d2a8c494992c72ed0bafd12c4924bf65ff80",
-      "ported_sha256": "5d261d0cff3b054b86fde73227db7696efbb871deab80ff9c588707d21bb9781"
+      "ported_sha256": "022970f411564d80b85d68fbd2abea6c91533417c48a2cb968d44d5d4051705c"
+    },
+    {
+      "path": "src/activities/MainTabMotion.h",
+      "baseline_sha256": null,
+      "ported_sha256": "50ae4c4fe4e90f8f066525d7b7173ca9f43191a5cd6b8d18866a7670d1cbef95"
     },
     {
       "path": "src/activities/UiListActivity.h",
@@ -770,12 +820,17 @@
     {
       "path": "src/activities/reader/EpubReaderActivity.cpp",
       "baseline_sha256": "330723cad52ac629fa1451c9ca90cffff0a04b06e0266861e092ff93e8ffa1c9",
-      "ported_sha256": "de882b2be9f30aaf5525620cc68032947787d49f8476efb6465349f74559367c"
+      "ported_sha256": "f8af56da6d9de35aff993c3a6594afd9dcbb0ff575a7c5455ee3280c33dff086"
     },
     {
       "path": "src/activities/reader/EpubReaderActivity.h",
       "baseline_sha256": "6fb5eb74b19af5cbfe08ae3974b70d49d6019dc888535f7091ceeb389f3dd650",
-      "ported_sha256": "65b4ce54a45897968e9f41859328f18b1975c9e7dfaaa150c6ca39b10c0b0020"
+      "ported_sha256": "ca0bdf69a731cab15a1fddcb8a86de2044e0ed5e565ddc4b8d5e026c6fe9429e"
+    },
+    {
+      "path": "src/activities/reader/NativeTurnRequest.h",
+      "baseline_sha256": null,
+      "ported_sha256": "c71be08e82bda8adcb1b82a0c2ed826212d95975876a34a95f8db5515bc821ec"
     },
     {
       "path": "src/activities/reader/ReaderChrome.h",

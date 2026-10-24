@@ -18,6 +18,9 @@
 #include <string.h>
 
 #include "esp_heap_caps.h"
+#if defined(CONFIG_IDF_TARGET_ESP32S31)
+#include "esp_private/esp_clk.h"
+#endif
 #include "output_common/line_queue.h"
 #include "output_common/lut.h"
 #include "output_common/render_context.h"
@@ -45,6 +48,7 @@ const int clear_cycle_time = 15;
     } while (0)
 
 static RenderContext_t render_context;
+#include "ricky_native_turn.inc"
 
 #if defined(RENDER_METHOD_LCD) && RICKYOS_PLUS_GRAY_CALIBRATION
 enum EpdDrawError epd_calibrate_timed_samples(const EpdRect* cells, int count) {
@@ -109,6 +113,12 @@ enum EpdDrawError IRAM_ATTR epd_draw_base(
     const uint8_t* drawn_columns,
     const EpdWaveform* waveform
 ) {
+    const RickyNativeTurn turn = s_next_native_turn;
+    const RickyNativeTurnRegion turnRegion = s_next_native_region;
+    const bool readerTextFinish = s_next_reader_text_finish;
+    s_next_native_turn = (RickyNativeTurn){0};
+    s_next_native_region = (RickyNativeTurnRegion){0};
+    s_next_reader_text_finish = false;
     if (waveform == NULL) {
         return EPD_DRAW_NO_PHASES_AVAILABLE;
     }
@@ -186,6 +196,8 @@ enum EpdDrawError IRAM_ATTR epd_draw_base(
     render_context.lines_consumed = 0;
     render_context.lines_total = rounded_display_height();
     render_context.current_frame = 0;
+    render_context.turn_region = turnRegion;
+    render_context.reader_text_finish = readerTextFinish;
     render_context.cycle_frames = frame_count;
     render_context.phase_times = NULL;
     if (waveform_phases != NULL && waveform_phases->phase_times != NULL) {
@@ -199,7 +211,9 @@ enum EpdDrawError IRAM_ATTR epd_draw_base(
 #ifdef RENDER_METHOD_I2S
     i2s_do_update(&render_context);
 #elif defined(RENDER_METHOD_LCD)
+    ricky_native_begin(&render_context, waveform_phases, turn);
     lcd_do_update(&render_context);
+    ricky_native_end(&render_context);
 #endif
 
     if (render_context.error & EPD_DRAW_EMPTY_LINE_QUEUE) {

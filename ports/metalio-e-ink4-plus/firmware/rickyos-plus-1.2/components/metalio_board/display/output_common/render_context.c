@@ -6,6 +6,7 @@
 #include "../epdiy.h"
 #include "lut.h"
 #include "render_method.h"
+#include "ricky_turn_line.h"
 
 /// For waveforms without timing and the I2S diving method,
 /// the default hold time for each line is 12us
@@ -71,7 +72,7 @@ void get_buffer_params(
 void IRAM_ATTR prepare_context_for_next_frame(RenderContext_t* ctx) {
     int frame_time = DEFAULT_FRAME_TIME;
     if (ctx->phase_times != NULL) {
-        frame_time = ctx->phase_times[ctx->current_frame];
+        frame_time = ctx->phase_times[ctx->turn_phases ? 0 : ctx->current_frame];
     }
 
     if (ctx->mode & MODE_EPDIY_MONOCHROME) {
@@ -83,7 +84,9 @@ void IRAM_ATTR prepare_context_for_next_frame(RenderContext_t* ctx) {
         = ctx->waveform->mode_data[ctx->waveform_index]->range_data[ctx->waveform_range];
 
     assert(ctx->lut_build_func != NULL);
-    ctx->lut_build_func(ctx->conversion_lut, phases, ctx->current_frame);
+    if (!ctx->turn_phases) ctx->lut_build_func(ctx->conversion_lut, phases, ctx->current_frame);
+    ctx->turn_producer_tick = ctx->current_frame;
+    ricky_turn_prepare_window(ctx);
 
     ctx->lines_prepared = 0;
     ctx->lines_consumed = 0;

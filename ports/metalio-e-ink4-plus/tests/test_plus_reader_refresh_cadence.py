@@ -7,7 +7,7 @@ PORT = Path(__file__).resolve().parents[1] / 'firmware/rickyos-plus-1.2'
 UP = PORT / 'upstream'
 reader = (UP / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
 start = reader.index('      const auto refresh = ReaderUtils::consumeRefreshMode(pagesUntilFullRefresh);')
-end = reader.index('\n', reader.index('display.setNextGray16Profile(', start))
+end = reader.index('#endif', reader.index('display.setNextGray16Profile(', start)) + len('#endif')
 turn = reader[start:end]
 stubs = {
     'CrossPointSettings.h': r'''
@@ -32,10 +32,12 @@ struct GfxRenderer {
 ''',
 }
 program = r'''
+#define FREEINK_DEVICE_METALIO_PLUS 1
 #include <cassert>
 #include <climits>
 #include <cstdint>
 #include "ReaderRefresh.h"
+namespace ReadingBackground {bool on=false;bool active(){return on;}}
 struct Page {bool fill;bool hasPanelFill()const{return fill;}};
 struct {int profile=0;void setNextGray16Profile(int p){profile=p;}} display;
 struct Reader {
@@ -50,7 +52,8 @@ struct Reader {
 int main(){
  uint32_t seed=12345;
  const auto next=[&]{seed=seed*1103515245u+12345u;return seed>>16;};
- for(int interval:{5,10,15,30}){
+ for(bool background:{false,true})for(int interval:{5,10,15,30}){
+  ReadingBackground::on=background;
   SETTINGS.frequency=interval;
   Reader reader;reader.pagesUntilFullRefresh=interval;  // Opening a book.
   bool previousFill=false;int sinceClean=0,scheduled=0,panels=0;
@@ -65,6 +68,7 @@ int main(){
     sinceClean=0;
    }else{
     assert(!panelTurn);
+    assert(display.profile==(background?5:1));
    }
    assert(sinceClean<interval);  // Never overdue either.
   }
@@ -72,9 +76,10 @@ int main(){
  }
  // An interval shortened in the control center applies to the open book at once,
  // including from "never".
- for(int before:{INT_MAX,30}){
+ for(bool background:{false,true})for(int before:{INT_MAX,30}){
+  ReadingBackground::on=background;
   SETTINGS.frequency=before;Reader reader;reader.pagesUntilFullRefresh=before;
-  for(int n=0;n<3;++n)assert(reader.turn(false)==1);
+  for(int n=0;n<3;++n)assert(reader.turn(false)==(background?5:1));
   SETTINGS.frequency=10;int pages=0;
   while(reader.turn(false)!=2){++pages;assert(pages<10);}
  }

@@ -79,7 +79,13 @@ static bool scan_joinable;
 static atomic_bool scanning,aborted;
 static atomic_int scan_count,expected_phase,overlapped,render_mode;
 static atomic_int active_feeders;
-static int fault,slow;
+static int fault,slow,animated,compact,completion_only;
+static int animation_tick(int row,int global) {
+ if(!animated)return global;
+ const bool delayed=animated==1 || (row>=ctx.turn_region.y && row<ctx.turn_region.y+ctx.turn_region.height);
+ const int phase=global-(!completion_only&&delayed?(row/16)%8:0);
+ return phase>=0 && phase<37?phase:-1;
+}
 static atomic_bool fault_taken;
 static atomic_bool stalled_row;
 static uint8_t* input;
@@ -149,7 +155,18 @@ bool epd_lcd_set_line_timing(int line,int gate){assert(line==0&&gate==0);return 
 // atomic publications; all phases use the same context payload.
 void epd_lcd_line_source_cb(line_cb_func_t cb,void* payload){if(cb)atomic_store(&source_payload,payload);atomic_store(&source_cb,cb);}
 void epd_lcd_frame_done_cb(frame_done_func_t cb,void* payload){if(cb)atomic_store(&done_payload,payload);atomic_store(&done_cb,cb);}
-static uint8_t sample(int row,int phase,int x){return (uint8_t)((row+phase*17+x*31)&255)&mask[x];}
+static uint8_t sample(int row,int phase,int x){
+ const int local=animation_tick(row,phase);
+ if(compact) {
+   uint8_t result=0;
+   for(int lane=0;lane<4;lane++) {
+     const int pixel=input[row*16+x*4+lane];
+     result|=(local<0?0:(pixel+local)%3+1)<<(6-lane*2);
+   }
+   return result&mask[x];
+ }
+ return local<0?0:(uint8_t)((row+local*17+x*31)&255)&mask[x];
+}
 static void* scanner(void* unused){
  (void)unused;const int phase=atomic_load(&expected_phase);
  if(fault==7 && phase==0){
@@ -194,7 +211,9 @@ static void lookup(const uint32_t* source,uint8_t* dest,const uint8_t* table,uin
    atomic_store(&stalled_row,true);
    while(!__atomic_load_n(&ctx.error,__ATOMIC_ACQUIRE))nap(10);
  }
- if(phase>0 && atomic_load(&scanning)&&atomic_load(&expected_phase)==phase-1)atomic_fetch_add(&overlapped,1);
+ if(animated)assert(phase==animation_tick(row,ctx.turn_producer_tick));
+ const int producer=animated?ctx.turn_producer_tick:phase;
+ if(producer>0 && atomic_load(&scanning)&&atomic_load(&expected_phase)==producer-1)atomic_fetch_add(&overlapped,1);
  if((fault==2&&phase==1&&row==100)||(fault==3&&phase==0&&row==10))
    __atomic_fetch_or(&ctx.error,EPD_DRAW_EMPTY_LINE_QUEUE,__ATOMIC_RELEASE);
  for(int x=0;x<4;x++)dest[x]=(uint8_t)((row+phase*17+x*31)&255);
@@ -202,13 +221,33 @@ static void lookup(const uint32_t* source,uint8_t* dest,const uint8_t* table,uin
 int main(int argc,char** argv){
  fault=argc>1?atoi(argv[1]):0;slow=argc>2?atoi(argv[2]):0;const bool gl16=argc>3&&atoi(argv[3]);
  const bool legacy=argc>4&&atoi(argv[4]);
+ animated=argc>5?atoi(argv[5]):0;
+ completion_only=animated==5;
+ compact=animated>2;if(compact)animated-=2;
+ if(completion_only)animated=1;
  memset(&ctx,0,sizeof(ctx));ctx.display_width=16;ctx.display_height=684;ctx.lines_total=688;
  ctx.area=(EpdRect){0,0,16,684};ctx.crop_to=(EpdRect){0,10,16,600};
  ctx.mode=(legacy?MODE_GC16:gl16?MODE_GL16:MODE_GL16_FAST)|MODE_PACKING_1PPB_DIFFERENCE;ctx.cycle_frames=48;
  ctx.data_ptr=input=calloc(684,16);dirty=calloc(684,sizeof(bool));assert(input&&dirty);
  for(int row=0;row<684;row++){input[row*16]=row&255;input[row*16+1]=row>>8;dirty[row]=row%7!=0;}
  ctx.drawn_lines=dirty;ctx.line_mask=mask;ctx.conversion_lut=lut;ctx.lut_build_func=build;ctx.lut_lookup_func=lookup;
- EpdWaveformPhases phases={48,NULL,NULL};const EpdWaveformPhases* ranges[]={&phases};
+ if(animated) {
+   ctx.turn_phases=37;ctx.turn_cols=1;ctx.cycle_frames=37+(completion_only?0:animated==2?8:7);
+   ctx.reader_text_finish=completion_only;
+   ctx.turn_luts=calloc(37,1024);ctx.turn_delays=calloc(43,1);
+   // Padded lookup cases retain fault/slow-peer instrumentation; separate cases
+   // execute the actual S31 compact hot converter through both real feeders.
+   ctx.turn_window=compact?calloc(9,256):NULL;
+   assert(ctx.turn_luts && ctx.turn_delays && (!compact || ctx.turn_window));
+   for(int p=0;p<37;p++) {
+     if(compact)for(int pair=0;pair<256;pair++)ctx.turn_luts[p*1024+pair*4]=(pair+p)%3+1;
+     else memset(ctx.turn_luts+p*1024,p,1024);
+   }
+   for(int r=0;r<43;r++)ctx.turn_delays[r]=completion_only?0:r%8;
+   if(animated==2)ctx.turn_region=(RickyNativeTurnRegion){0,37,16,503,8};
+ }
+ const int expected_scans=ctx.cycle_frames;
+ EpdWaveformPhases phases={animated?37:48,NULL,NULL};const EpdWaveformPhases* ranges[]={&phases};
  EpdWaveformMode mode={6,1,ranges};const EpdWaveformMode* modes[]={&mode};EpdWaveform wave={1,1,modes,NULL};ctx.waveform=&wave;
  uint8_t* original_ready=ctx.line_ready=calloc(688,1);uint8_t* original_threads=ctx.line_threads=calloc(688,1);
  sem_init_host(&frame_sem);ctx.frame_done=&frame_sem;
@@ -228,8 +267,8 @@ int main(int argc,char** argv){
  if(fault==8)assert(first_fault==((0u<<16)|(255u<<8)|LCD_FAULT_FRAME_SHORT));
  if(fault==9)assert(first_fault==((65535u<<16)|(255u<<8)|LCD_FAULT_FRAME_TIMEOUT));
  if(fault){assert(ctx.error);}else{
-   assert(!ctx.error&&ctx.current_frame==48&&atomic_load(&scan_count)==48);
-   assert(legacy?atomic_load(&overlapped)==0:atomic_load(&overlapped)>0);
+   assert(!ctx.error&&ctx.current_frame==expected_scans&&atomic_load(&scan_count)==expected_scans);
+   if(!compact)assert(legacy?atomic_load(&overlapped)==0:atomic_load(&overlapped)>0);
  }
  // Context reuse / sleep may follow only after ALL callbacks and workers stop.
  assert(!atomic_load(&scanning) && !atomic_load(&active_feeders));
@@ -237,6 +276,9 @@ int main(int argc,char** argv){
    assert(!feed_sem[i].count);
    assert(atomic_load(&ctx.line_queues[i].current)==atomic_load(&ctx.line_queues[i].last));
  }
+ free(ctx.turn_luts);free(ctx.turn_delays);free(ctx.turn_window);
+ ctx.turn_luts=ctx.turn_delays=ctx.turn_window=NULL;ctx.turn_phases=0;ctx.turn_region=(RickyNativeTurnRegion){0};animated=compact=completion_only=0;
+ ctx.reader_text_finish=false;
  if(!fault || legacy){
    // Reuse the same context on the legacy GC path after a pipelined cycle.
    fault=0;
@@ -285,16 +327,29 @@ with tempfile.TemporaryDirectory(prefix='plus-phase-lookahead-') as folder:
     # UI area updates (GL16) take the same pipeline, with the same exact order and cleanup.
     for fault, slow in ((0, 0), (0, 1), (2, 0)):
         subprocess.run([str(binary), str(fault), str(slow), '1'], check=True, timeout=20)
+    # Real staggered row generation while the ISR still drains the prior phase.
+    # Both reader and UI tick/window must be producer-owned, not current_frame.
+    for animation in (1, 2):
+        for fault, slow in ((0,0),(0,1),(1,0),(2,0),(4,0),(6,0),(8,0),(9,0)):
+            subprocess.run([str(binary),str(fault),str(slow),'1','0',str(animation)],check=True,timeout=20)
+    for animation in (3, 4, 5):
+        for fault in (0, 1, 4, 6, 8, 9):
+            subprocess.run([str(binary),str(fault),'0','1','0',str(animation)],check=True,timeout=20)
     def check_stuck_worker(*args):
         fatal = subprocess.run([str(binary), *args], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=20)
         assert fatal.returncode == -signal.SIGABRT and b'PRODUCTION_QUIESCE_GUARD' in fatal.stderr, \
             'Production quiescence guard must abort; a harness assertion or returned context is not success'
+    check_stuck_worker('5', '0', '1', '0', '2')
     check_stuck_worker('5', '0')
     check_stuck_worker('5', '0', '0', '1')
+    for animation in (1, 2):
+        subprocess.run([str(binary),'0','0','0','1',str(animation)],check=True,timeout=20)
     # The non-lookahead build must retain the same recovery ownership contract.
     compile_args[3] = '-DRICKYOS_PLUS_PHASE_LOOKAHEAD=0'
     subprocess.run(compile_args, check=True)
     for fault, slow in ((6, 0), (0, 0), (0, 1), (1, 0), (2, 0), (3, 0), (4, 0), (7, 0), (8, 0), (9, 0)):
         subprocess.run([str(binary), str(fault), str(slow), '0', '1'], check=True, timeout=20)
     check_stuck_worker('5', '0', '0', '1')
+    for animation in (1, 2):
+        subprocess.run([str(binary),'0','0','0','1',str(animation)],check=True,timeout=20)
 print('Actual LCD legacy GC and lookahead GL16_FAST/GL16: exact row/mask/crop order, delayed peer/ack, exclusive queue reset, frame/prefix/feed failure cleanup, recovery redraw, and production fatal quiesce guards passed (ASan/UBSan)')

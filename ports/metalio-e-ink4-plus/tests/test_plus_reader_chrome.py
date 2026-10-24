@@ -57,11 +57,13 @@ int main(void){
  assert(retained_black_drive==10); // Existing faint-ink protection is not removed.
  EpdiyHighlevelState s={front,back,diff,lines,cols,&MY_WAVEFORM};
  const EpdRect bodies[]={{8,4,48,16},{4,8,52,8},{1,1,62,22}};
- for(unsigned b=0;b<sizeof(bodies)/sizeof(bodies[0]);++b){
+ for(int paper=0;paper<2;++paper)for(unsigned b=0;b<sizeof(bodies)/sizeof(bodies[0]);++b){
   for(int value=0;value<256;++value){
    memset(front,(value>>4)*17,N);memset(back,(value&15)*17,N);
-   int before=calls;assert(epd_hl_update_screen_reader(&s,25,bodies[b])==EPD_DRAW_SUCCESS);
-   assert(calls==before+1&&selected_mode==MY_MODE_READER_TURN);
+   int before=calls;
+   assert((paper?epd_hl_update_screen_reader_paper(&s,25,bodies[b]):
+                 epd_hl_update_screen_reader(&s,25,bodies[b]))==EPD_DRAW_SUCCESS);
+   assert(calls==before+1&&selected_mode==(paper?MY_MODE_READER_PAPER_TURN:MY_MODE_READER_TURN));
    for(int y=0;y<H;++y)for(int x=0;x<W;++x){
     bool equal=(value>>4)==(value&15);bool held=equal&&!inside(x,y,bodies[b]);
     assert(captured[y*W+x]==(held?255:value));
@@ -78,10 +80,15 @@ int main(void){
  for(unsigned i=0;i<sizeof(invalid)/sizeof(invalid[0]);++i){
   assert(epd_hl_update_screen_reader(&s,25,invalid[i])==EPD_DRAW_SUCCESS);
   for(int p=0;p<N*2;++p)assert(captured[p]==0); // Fail safe to the existing full reader scan.
+  assert(epd_hl_update_screen_reader_paper(&s,25,invalid[i])==EPD_DRAW_SUCCESS);
+  assert(selected_mode==MY_MODE_READER_PAPER_TURN);
+  for(int p=0;p<N*2;++p)assert(captured[p]==0);
  }
  memset(front,0,N);memset(back,255,N);fail=1;
  assert(epd_hl_update_screen_reader(&s,25,bodies[0])!=EPD_DRAW_SUCCESS);
  for(int i=0;i<N;++i)assert(back[i]==255); // Failed physical drive never publishes new baseline.
+ assert(epd_hl_update_screen_reader_paper(&s,25,bodies[0])!=EPD_DRAW_SUCCESS);
+ for(int i=0;i<N;++i)assert(back[i]==255);
 }
 '''
 with tempfile.TemporaryDirectory(prefix='plus-reader-chrome-') as folder:

@@ -174,9 +174,10 @@ static const EpdWaveformMode s_ui_turn_mode = {
 // phases, then as many darkening ones. Fully held, black strokes that stay across turns
 // faded; the vendor's full 18 + 18 erase and rewrite kept them dark but read as a blink.
 #define MY_READER_TURN_FRAMES MY_UI_TURN_FRAMES
-// The UI turn table before its targets below white lose their leading erase. The
-// reader keeps that erase for paper-light targets (see my_waveform_init).
-static uint8_t s_ui_turn_erase[MY_UI_TURN_FRAMES][16][4];
+// Reuse the gallery's 2368-byte erase snapshot as its final paper table. The
+// ordinary reader table remains byte-identical to the accepted white-page build;
+// no extra frame, heap allocation or waveform bank beyond the gallery budget.
+static uint8_t s_paper_turn_data[MY_UI_TURN_FRAMES][16][4];
 #define MY_READER_PAPER_GRAY 8  // reading-background paper sits at or above this level
 #define MY_READER_TURN_PULSE 5  // erase phases, then as many darkening ones
 static uint8_t s_turn_data[MY_READER_TURN_FRAMES][16][4];
@@ -191,6 +192,17 @@ static const EpdWaveformMode s_turn_mode = {
     .temp_ranges = 1,
     .range_data = &s_turn_ranges[0],
 };
+static const EpdWaveformPhases s_paper_turn_phases = {
+    .phases = MY_READER_TURN_FRAMES,
+    .phase_times = NULL,
+    .luts = (const uint8_t*)&s_paper_turn_data[0],
+};
+static const EpdWaveformPhases* s_paper_turn_ranges[] = { &s_paper_turn_phases };
+static const EpdWaveformMode s_paper_turn_mode = {
+    .type = MY_MODE_READER_PAPER_TURN,
+    .temp_ranges = 1,
+    .range_data = &s_paper_turn_ranges[0],
+};
 
 static const EpdWaveformMode* s_modes[] = {
     &s_du_mode,
@@ -199,6 +211,7 @@ static const EpdWaveformMode* s_modes[] = {
     &s_reader_gl16_mode,
     &s_ui_turn_mode,
     &s_turn_mode,
+    &s_paper_turn_mode,
 };
 
 const EpdWaveform MY_WAVEFORM = {
@@ -241,7 +254,7 @@ static void ui_turn_build(void) {
             s_ui_turn_data[f][v][v / 4] &= (uint8_t)~(3u << (6 - 2 * (v % 4)));
         }
     }
-    memcpy(s_ui_turn_erase, s_ui_turn_data, sizeof(s_ui_turn_erase));
+    memcpy(s_paper_turn_data, s_ui_turn_data, sizeof(s_paper_turn_data));
     // Target black (to != 15): drop the leading erase-to-white (action 2) so the new mark
     // goes straight to black. Target white keeps its erase: that is what clears the old.
     for (int to = 0; to < 15; to++) {
@@ -315,13 +328,17 @@ void my_waveform_init(void) {
     // without the erase it went black before settling (a dark flash where the
     // previous page's text was). Ink and dark anti-aliasing keep the straight path.
     for (int f = 0; f < MY_READER_TURN_FRAMES; f++) {
-        for (int to = MY_READER_PAPER_GRAY; to < 15; to++) {
-            memcpy(s_turn_data[f][to], s_ui_turn_erase[f][to], sizeof(s_turn_data[f][to]));
+        for (int to = 0; to < 16; to++) {
+            if (to < MY_READER_PAPER_GRAY || to == 15) {
+                memcpy(s_paper_turn_data[f][to], s_turn_data[f][to], sizeof(s_paper_turn_data[f][to]));
+            }
         }
     }
     for (int f = 0; f < MY_READER_TURN_PULSE; f++) {
         lut_or(s_turn_data, f, 0, 0, 2);
         lut_or(s_turn_data, f + MY_READER_TURN_PULSE, 0, 0, 1);
+        lut_or(s_paper_turn_data, f, 0, 0, 2);
+        lut_or(s_paper_turn_data, f + MY_READER_TURN_PULSE, 0, 0, 1);
     }
     ESP_LOGD(TAG, "reader GL16=%d (short experiment=%d)",
              MY_READER_GL16_FRAMES, RICKYOS_PLUS_READER_SHORT_WAVEFORM);

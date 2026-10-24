@@ -20,7 +20,7 @@ program=r'''
 #include <string>
 #include <vector>
 #define LOG_ERR(...) ((void)0)
-struct {bool textAntiAliasing=true;} SETTINGS;
+struct {bool textAntiAliasing=true;uint8_t nativePageTurn=0;} SETTINGS;
 namespace ReadingBackground {bool on=false;bool active(){return on;}}
 struct Page {bool image=false,panel=false;bool hasImages()const{return image;}
 bool hasPanelFill()const{return panel;}};
@@ -46,9 +46,11 @@ std::unique_ptr<PngToFramebufferConverter> ImageDecoderFactory::pngDecoder;
 ''' + method(factory,'ImageToFramebufferDecoder* ImageDecoderFactory::getDecoder(') + r'''
 int main(){
 EpubReaderActivity r;Page text,image,panel;image.image=true;panel.panel=true;
-for(bool aa:{false,true}){
+for(int style=0;style<=4;style++)for(bool aa:{false,true}){
 SETTINGS.textAntiAliasing=aa;
-assert(r.nativeGray16Page(image));assert(r.nativeGray16Page(panel));assert(r.nativeGray16Page(text)==aa);
+SETTINGS.nativePageTurn=style;
+assert(r.nativeGray16Page(image));assert(r.nativeGray16Page(panel));
+assert(r.nativeGray16Page(text)==(aa || (style>=1 && style<=3)));
 for(unsigned weight=0;weight<5;++weight){auto* curve=readerTextWeightCurve(weight);
 if(!aa){assert(curve);for(int i=0;i<16;++i)assert(curve[i]==0||curve[i]==15);assert(curve[0]==0&&curve[15]==15);}}
 r.renderer.inverted=true;assert(!r.nativeGray16Page(image)&&!r.nativeGray16Page(text)&&!r.nativeGray16Page(panel));r.renderer.inverted=false;
@@ -79,4 +81,40 @@ native=contents[contents.index('if (use16LevelText) {',contents.index('const aut
 assert native.count('renderer.commitGrayscale16()')==1
 assert 'renderer.displayGrayBuffer()' not in native
 assert 'renderer.cancelGrayscale16()' in native and 'renderer.displayBuffer(HalDisplay::FULL_REFRESH)' in native
+
+# Execute the actual text-finish arming block. The option is a pure-text AA
+# hint, not tied to motion, images, CSS panels, or scheduled/manual cleanup.
+arming=native[native.index('if (refresh == HalDisplay::FAST_REFRESH && !panelTurn)'):]
+arming=arming.split('#endif',1)[0]
+run_cpp(r'''
+#include <cassert>
+#include <initializer_list>
+struct HalDisplay {enum {FAST_REFRESH=0,FULL_REFRESH=1};};
+struct {bool textAntiAliasing=false;int nativePageTurn=0;} SETTINGS;
+struct Renderer {int getScreenWidth(){return 684;}int getScreenHeight(){return 1216;}
+void setNextGray16ReaderRefresh(int,int,int,int){}} renderer;
+struct {bool called=false,value=false;void setNextGray16ReaderTextFinish(bool v){called=true;value=v;}} display;
+int main(){
+const int orientedMarginLeft=24,orientedMarginTop=32,orientedMarginRight=24,orientedMarginBottom=64;
+for(int refresh:{0,1})for(bool panelTurn:{false,true})for(bool pageHasImages:{false,true})
+for(bool readerBackground:{false,true})for(bool aa:{false,true})for(int motion:{0,1,2,3}){
+ SETTINGS.textAntiAliasing=aa;SETTINGS.nativePageTurn=motion;display.called=display.value=false;
+''' + arming + r'''
+ assert(display.called==(refresh==HalDisplay::FAST_REFRESH&&!panelTurn));
+ assert(display.value==(refresh==HalDisplay::FAST_REFRESH&&!panelTurn&&!pageHasImages&&!readerBackground&&aa));
+}}
+''')
+
+hal=(ROOT/'lib/hal/HalDisplay.cpp').read_text()
+forward=method(hal,'void HalDisplay::setNextGray16ReaderTextFinish(')
+for plus in (0,1):
+    run_cpp(f'#define FREEINK_DEVICE_METALIO_PLUS {plus}\n'+r'''
+#include <cassert>
+namespace freeink {bool called=false,value=false;void metalioPlusSetGray16ReaderTextFinish(bool v){called=true;value=v;}}
+struct HalDisplay {void setNextGray16ReaderTextFinish(bool);};
+'''+forward+r'''
+int main(){HalDisplay h;h.setNextGray16ReaderTextFinish(true);
+assert(freeink::called==bool(FREEINK_DEVICE_METALIO_PLUS));
+if(FREEINK_DEVICE_METALIO_PLUS){assert(freeink::value);h.setNextGray16ReaderTextFinish(false);assert(!freeink::value);}}
+''')
 print('Plus mixed-image native gate, binary text AA-off coverage, night fallback, signature probing/OOM and single native commit order passed')

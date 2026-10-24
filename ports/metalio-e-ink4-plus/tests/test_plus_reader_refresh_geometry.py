@@ -13,9 +13,11 @@ program = r'''
 #include <cstdint>
 #include <array>
 struct Display {
- std::array<int,4> body{},nav{};
+ std::array<int,4> body{},nav{},motion{};
+ bool adaptive=false;
  void setNextGray16ReaderRefresh(int x,int y,int w,int h){body={x,y,w,h};}
- void setNextGray16UiRefresh(int x,int y,int w,int h,uint8_t,uint8_t){nav={x,y,w,h};}
+ void setNextGray16UiRefresh(int x,int y,int w,int h,uint8_t,uint8_t,bool a){nav={x,y,w,h};adaptive=a;}
+ void setNextMainTabTurn(uint8_t,bool,int x,int y,int w,int h){motion={x,y,w,h};}
 };
 static Display display;
 struct GfxRenderer {
@@ -24,7 +26,8 @@ struct GfxRenderer {
  int getScreenWidth()const{return orientation==Portrait||orientation==PortraitInverted?panelHeight:panelWidth;}
  int getScreenHeight()const{return orientation==Portrait||orientation==PortraitInverted?panelWidth:panelHeight;}
  void mapGrayRefreshArea(int&,int&,int&,int&)const;
- void setNextGray16UiRefresh(int,int,int,int,uint8_t,uint8_t)const;
+ void setNextGray16UiRefresh(int,int,int,int,uint8_t,uint8_t,bool adaptive=false)const;
+ void setNextMainTabTurn(int,int,int,int,bool)const;
  void setNextGray16ReaderRefresh(int,int,int,int)const;
 };
 ''' + actual + r'''
@@ -34,7 +37,11 @@ int main(){
   R r{o};int left=24,top=100,right=r.getScreenWidth()-24,bottom=r.getScreenHeight()-80;
   r.setNextGray16ReaderRefresh(left,top,right-left,bottom-top);
   r.setNextGray16UiRefresh(left,top,right-left,bottom-top,8,32);
-  assert(display.body==display.nav);
+  assert(display.body==display.nav && !display.adaptive);
+  r.setNextMainTabTurn(left,top,right-left,bottom-top,true);
+  assert(display.motion==display.body);
+  r.setNextGray16UiRefresh(left,top,right-left,bottom-top,8,32,true);
+  assert(display.adaptive);
   int x0=1216,y0=684,x1=0,y1=0;
   // Independent map of every logical point, including the footer's near edge.
   for(int y=0;y<r.getScreenHeight();++y)for(int x=0;x<r.getScreenWidth();++x){
@@ -54,6 +61,9 @@ int main(){
   assert((display.body==std::array<int,4>{0,0,1216,684}));
  }
  struct LegacyDisplay{} legacy;configureGrayReader(legacy,0,0,1,1); // Older simulator HAL: no-op.
+ configureMainTabTurn(legacy,0,true,0,0,1,1);
+ struct OlderUi {bool called=false;void setNextGray16UiRefresh(int,int,int,int,uint8_t,uint8_t){called=true;}} older;
+ configureGrayUi(older,0,0,1,1,8,32,true);assert(older.called);
 }
 '''
 reader = (PORT / 'upstream/src/activities/reader/EpubReaderActivity.cpp').read_text()

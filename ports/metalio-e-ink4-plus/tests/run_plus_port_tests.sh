@@ -3,6 +3,8 @@ set -euo pipefail
 TASK_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$TASK_ROOT"
 mkdir -p .local
+python3 tests/test_plus_font_resources.py
+python3 scripts/check_plus_font_resources.py
 clang++ -std=c++20 -Wall -Wextra -Werror tests/test_plus_framebuffer.cpp -o .local/test_plus_framebuffer
 .local/test_plus_framebuffer
 python3 tests/test_battery_stability.py
@@ -49,9 +51,16 @@ python3 tests/test_plus_haptic_input.py
 python3 tests/test_plus_recorder.py
 python3 tests/test_plus_recorder_ui.py
 python3 tests/test_plus_regional_gray.py
+python3 tests/test_native_page_turn.py
+python3 tests/test_main_tab_motion.py
+python3 tests/test_plus_main_tab_pipeline.py
+python3 tests/test_native_gray_refresh_policy.py
 python3 tests/test_plus_reader_chrome.py
+python3 tests/test_plus_compact_reader_chrome.py
+python3 tests/test_plus_compact_reader_margins.py
 python3 tests/test_plus_reader_refresh_geometry.py
 python3 tests/test_plus_reader_refresh_cadence.py
+python3 tests/test_plus_reading_background.py
 python3 tests/test_plus_image_page_polarity.py
 python3 tests/test_plus_regional_raster.py
 python3 tests/test_plus_transparent_wallpaper.py

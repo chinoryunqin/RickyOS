@@ -9,6 +9,8 @@ extern const EpdWaveform MY_WAVEFORM;
 #define MY_MODE_UI_TURN 0xB  // the MODE_GL16_INV slot in epdiy.h
 // Reader page turns: the UI turn plus a short re-drive of retained black, see my_waveform.c.
 #define MY_MODE_READER_TURN 0x3  // the MODE_GC16_FAST slot in epdiy.h
+// Port-private waveform slot, not a packing flag; background gray retains its erase.
+#define MY_MODE_READER_PAPER_TURN 0xC
 
 /**
  * @brief 开机装配 MY_WAVEFORM（DU 完备；GC/GL 按 MY_WAVEFORM_TRIM 裁或拷全表）

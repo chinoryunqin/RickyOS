@@ -18,6 +18,24 @@ shim = r'''
 #include "PlusFramebuffer.h"
 #include "NativeGrayRefreshPolicy.h"
 #include "GrayscaleCapabilities.h"
+#include "PlusDisplayProfile.h"
+extern "C" {
+#include "ricky_native_turn.h"
+}
+static RickyNativeTurn armedTurn{}, observedTurn{};
+static bool armedTextFinish=false, observedTextFinish=false;
+extern "C" void epd_set_native_turn(uint8_t style, uint8_t orientation, bool right) {
+ armedTurn={}; armedTurn.style=style;armedTurn.orientation=orientation;armedTurn.from_right=right;
+ armedTextFinish=false;
+}
+extern "C" void epd_set_native_reader_text_finish(bool enabled) {armedTextFinish=enabled;}
+static RickyNativeTurnRegion armedRegion{}, observedRegion{};
+extern "C" void epd_set_native_ripple_origin(uint16_t x,uint16_t y) {
+ armedTurn.has_origin=true;armedTurn.origin_x=x;armedTurn.origin_y=y;
+}
+extern "C" void epd_set_native_ui_turn(uint8_t o,bool right,int x,int y,int w,int h) {
+ epd_set_native_turn(1,o,right);armedRegion={x,y,w,h,RICKY_UI_TURN_SPREAD};
+}
 template <class... A> static void ESP_LOGI(const char*, const char*, A...) {}
 #define ESP_LOGE(...) ((void)0)
 static int64_t esp_timer_get_time() { return 0; }
@@ -25,6 +43,7 @@ constexpr int W=1216,H=684,N=W*H/2;
 struct EpdRect {int x,y,width,height;};
 enum EpdDrawMode {MODE_GC16=1,MODE_DU=2,MODE_GL16=3,MODE_GL16_FAST=6,MODE_GL4=10,MODE_GL16_INV=11,MODE_GC16_FAST=12};
 constexpr int MODE_PACKING_1PPB_DIFFERENCE=16;
+#define MY_MODE_READER_PAPER_TURN 13
 enum EpdDrawError {EPD_DRAW_SUCCESS=0,EPD_DRAW_EMPTY_LINE_QUEUE=1};
 struct EpdiyHighlevelState {uint8_t *front_fb,*back_fb,*difference_fb; bool* dirty_lines; uint8_t* dirty_columns; void* waveform;};
 uint8_t front[N],back[N],diff[N*2],cols[W/2]; bool lines[H];
@@ -48,6 +67,7 @@ EpdRect epd_difference_image_cropped(const uint8_t* to,const uint8_t* from,EpdRe
 EpdDrawError epd_draw_base(EpdRect,const uint8_t*,EpdRect a,int mode,int,bool*,uint8_t* columns,void*){
  assert(a.x==0 && a.y==0 && a.width==W && a.height==H);
  bool any=false;for(int x=0;x<W/2;++x)any|=columns[x]!=0;assert(any);
+ observedTurn=armedTurn;observedRegion=armedRegion;
  calls.push_back({a,(mode&15)==MODE_GC16,mode&15});
  if(failDraw && --failDraw==0)return EPD_DRAW_EMPTY_LINE_QUEUE;
  return EPD_DRAW_SUCCESS;
@@ -62,9 +82,17 @@ EpdDrawError epd_clear_checked(){++cleared;return EPD_DRAW_SUCCESS;}
 EpdDrawError epd_hl_update_screen_from_white(EpdiyHighlevelState*,EpdDrawMode m,int){selectedModes.push_back(m);++full;memcpy(back,front,N);return EPD_DRAW_SUCCESS;}
 EpdDrawError epd_hl_update_screen_full(EpdiyHighlevelState*,EpdDrawMode m,int){selectedModes.push_back(m);++full;memcpy(back,front,N);return EPD_DRAW_SUCCESS;}
 EpdRect readerBody{};
-int readerSubmissions=0;
+int readerSubmissions=0, failReader=0;
 EpdDrawError epd_hl_update_screen_reader(EpdiyHighlevelState*,int,EpdRect body){
- readerBody=body;++readerSubmissions;selectedModes.push_back(MODE_GC16_FAST);memcpy(back,front,N);return EPD_DRAW_SUCCESS;
+ observedTurn=armedTurn;
+ observedTextFinish=armedTextFinish;
+ readerBody=body;++readerSubmissions;selectedModes.push_back(MODE_GC16_FAST);
+ if(failReader)return EPD_DRAW_EMPTY_LINE_QUEUE;
+ memcpy(back,front,N);return EPD_DRAW_SUCCESS;
+}
+EpdDrawError epd_hl_update_screen_reader_paper(EpdiyHighlevelState* s,int t,EpdRect body){
+ auto result=epd_hl_update_screen_reader(s,t,body);
+ selectedModes.back()=MY_MODE_READER_PAPER_TURN;return result;
 }
 EpdDrawError epd_hl_update_screen(EpdiyHighlevelState* s,EpdDrawMode m,int t){selectedModes.push_back(m);return epd_hl_update_area(s,m,t,epd_full_screen());}
 namespace freeink {
@@ -119,20 +147,53 @@ int main(){
  // An explicit reader body is one-shot and never changes the cleanup policy.
  d.beginGrayscale16();memcpy(front,back,N);front[1]=0x89;
  metalioPlusSetGray16ReaderRefresh(96,32,W-192,H-64);
+ metalioPlusSetPageTurn(2,2,true);
+ metalioPlusSetGray16ReaderTextFinish(true);
  assert(d.commitGrayscale16(proxy));assert(readerSubmissions==1 && readerBody.x==96);
+ assert(observedTextFinish && !armedTextFinish && !nextReaderTextFinish);
+ assert(observedTurn.style==2 && observedTurn.orientation==2 && observedTurn.from_right && !armedTurn.style);
  assert(readerBody.width==W-192 && readerBody.height==H-64);
- d.beginGrayscale16();memcpy(front,back,N);front[1]=0x88;
- metalioPlusSetGray16Profile(1);assert(d.commitGrayscale16(proxy));assert(readerSubmissions==1);
+ // Completion-only text remains available with spatial motion OFF.
+ d.beginGrayscale16();memcpy(front,back,N);front[1]=0x87;
  metalioPlusSetGray16ReaderRefresh(96,32,W-192,H-64);
- metalioPlusSetGray16Profile(2);assert(d.commitGrayscale16(proxy));assert(readerSubmissions==1);
+ metalioPlusSetGray16ReaderTextFinish(true);
+ assert(d.commitGrayscale16(proxy) && observedTextFinish && !observedTurn.style);
+ const int textSubmissions=readerSubmissions;assert(textSubmissions==2);
+ d.beginGrayscale16();memcpy(front,back,N);front[1]=0x88;
+ metalioPlusSetGray16Profile(1);assert(d.commitGrayscale16(proxy));assert(readerSubmissions==textSubmissions);
+ metalioPlusSetGray16ReaderRefresh(96,32,W-192,H-64);
+ metalioPlusSetGray16ReaderTextFinish(true);
+ metalioPlusSetGray16Profile(2);assert(d.commitGrayscale16(proxy));assert(readerSubmissions==textSubmissions);
+ assert(!nextReaderTextFinish && !armedTextFinish);
  assert(selectedModes.back()==MODE_GC16);
- metalioPlusSetGray16ReaderRefresh(96,32,W-192,H-64);d.cancelGrayscale16();
- assert(d.commitGrayscale16(proxy));assert(readerSubmissions==1);
+ metalioPlusSetGray16ReaderRefresh(96,32,W-192,H-64);metalioPlusSetGray16ReaderTextFinish(true);d.cancelGrayscale16();
+ assert(!nextReaderTextFinish);
+ assert(d.commitGrayscale16(proxy));assert(readerSubmissions==textSubmissions);
  d.beginGrayscale16();memcpy(front,back,N);front[1]=0x99;
  metalioPlusSetGray16Profile(2);assert(d.commitGrayscale16(proxy));
  assert(selectedModes.back()==MODE_GC16); // Cycle/manual cleanup is never suppressed.
  d.beginGrayscale16();memcpy(front,back,N);front[1]=0xaa;
  assert(d.commitGrayscale16(proxy));assert(selectedModes.back()==MODE_GC16); // Profile is one-shot.
+ // Reading-background profile survives the geometry hint but never inherits the
+ // white-text convergence timing. Spatial motion remains available, AA or not.
+ for(int motion:{0,1,2,3})for(bool finish:{false,true}){
+   d.beginGrayscale16();memcpy(front,back,N);front[1]=0x89;
+   metalioPlusSetGray16Profile(5);
+   metalioPlusSetGray16ReaderRefresh(96,32,W-192,H-64);
+   assert(nextGrayProfile==5);
+   metalioPlusSetPageTurn(motion,0,true);
+   metalioPlusSetGray16ReaderTextFinish(finish);
+   assert(d.commitGrayscale16(proxy));
+   assert(selectedModes.back()==MY_MODE_READER_PAPER_TURN && !observedTextFinish);
+   assert(observedTurn.style==motion && !armedTurn.style);
+   assert(readerBody.x==96 && readerBody.width==W-192);
+   assert(nextGrayProfile==0 && !nextReaderTextFinish);
+ }
+ metalioPlusSetGray16Profile(5);d.cancelGrayscale16();
+ assert(d.commitGrayscale16(proxy));assert(selectedModes.back()==MODE_GC16);
+ metalioPlusSetGray16Profile(5);metalioPlusSetGray16ReaderRefresh(0,0,W,H);
+ metalioPlusSetGray16Profile(2);assert(d.commitGrayscale16(proxy));
+ assert(selectedModes.back()==MODE_GC16);
  int prior=powered;
  metalioPlusSetGray16UiRefresh(W-32,0,32,H,1,4);
  d.beginGrayscale16();memcpy(front,back,N);assert(d.commitGrayscale16(proxy));assert(powered==prior);
@@ -151,8 +212,34 @@ int main(){
  assert(!metalioPlusRestoreGray16Baseline(proxy));
  d.beginGrayscale16();front[1]=0;metalioPlusSetGray16UiRefresh(0,0,0,0,8,32);
  assert(d.commitGrayscale16(proxy));assert(cleared==2);assert(powered==off);
+ // Ripple origin reaches the physical reader submission as one request.
+ d.beginGrayscale16();memcpy(front,back,N);front[1]^=0x11;
+ metalioPlusSetGray16ReaderRefresh(96,32,W-192,H-64);
+ metalioPlusSetPageTurn(3,0,false,371,693);
+ assert(d.commitGrayscale16(proxy));
+ assert(observedTurn.style==3 && observedTurn.has_origin && observedTurn.origin_x==371 && observedTurn.origin_y==693);
+ assert(!armedTurn.style);
+ // Main tab: before the only regional scan, content wavefront is armed.
+ d.beginGrayscale16();memcpy(front,back,N);front[2]^=0x11;
+ metalioPlusSetGray16UiRefresh(W-32,0,32,H,8,32,true);
+ metalioPlusSetMainTabTurn(2,true,7,9,W-60,H-20);
+ calls.clear();assert(d.commitGrayscale16(proxy));assert(calls.size()==1);
+ assert(!calls[0].cleanup && calls[0].mode==MODE_GL16_INV);
+ assert(observedTurn.style==1 && observedTurn.orientation==2 && observedTurn.from_right);
+ assert(observedRegion.x==7 && observedRegion.width==W-60 && !armedTurn.style);
+ // Cancelled/manual-clean requests cannot leak their wavefront into another frame.
+ metalioPlusSetGray16UiRefresh(W-32,0,32,H,8,32,true);
+ metalioPlusSetMainTabTurn(0,true,0,0,W,H);d.cancelGrayscale16();
+ d.beginGrayscale16();memcpy(front,back,N);front[2]^=0x11;
+ metalioPlusSetGray16UiRefresh(W-32,0,32,H,8,32,true);
+ assert(d.commitGrayscale16(proxy));assert(!observedTurn.style);
+ metalioPlusSetGray16UiRefresh(W-32,0,32,H,8,32,true);
+ metalioPlusSetMainTabTurn(0,true,0,0,W,H);metalioPlusSetGray16Profile(2);
+ assert(d.commitGrayscale16(proxy));assert(selectedModes.back()==MODE_GC16 && !armedTurn.style);
+ assert(powered==off);
  // New gray is never reduced to DU and ledger uses constant bounded storage.
- static_assert(sizeof(ricky::gray::Ledger)<=64);
+ // Two 64-bit gray-travel counters add 16 bytes; still no heap/snapshot.
+ static_assert(sizeof(ricky::gray::Ledger)<=80);
  // Reproduce EPUB PNG / mixed-page fallback. The argument to displayGray is
  // the final selector mask, NOT a B/W page. The default PanelDriver method
  // would display it and turn every untouched white margin black.
@@ -213,12 +300,22 @@ int main(){
  d.display(bus,proxy,nullptr,RefreshMode::Fast,false);assert(cleared==previousClear+1);
  d.copyGrayscaleLsb(bus,lsb);d.copyGrayscaleMsb(bus,msb);
  d.displayGray(bus,msb,false,nullptr,true);assert(d.opticalState()==OpticalState::Gray && powered==off);
+ // A failed text-finish transaction clears both one-shot hints and refuses to
+ // publish its pixels; recovery is the original GC path, not a leaked effect.
+ d.beginGrayscale16();memcpy(front,back,N);front[8]^=255;const auto oldPixel=back[8];
+ metalioPlusSetGray16ReaderRefresh(96,32,W-192,H-64);metalioPlusSetGray16ReaderTextFinish(true);
+ metalioPlusSetPageTurn(3,0,true);failReader=1;
+ assert(!d.commitGrayscale16(proxy));
+ assert(d.opticalState()==OpticalState::Unknown && back[8]==oldPixel);
+ assert(!nextReaderTextFinish && !armedTextFinish && !armedTurn.style);
+ failReader=0;d.cancelGrayscale16();
+ assert(d.commitGrayscale16(proxy) && selectedModes.back()==MODE_GC16 && powered==off);
 }
 '''
 def run_program(program):
     with tempfile.TemporaryDirectory(prefix='plus-regional-test-') as folder:
         p=Path(folder);(p/'test.cpp').write_text(program)
-        subprocess.run(['clang++','-std=c++20','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-fsanitize=address,undefined','-I',str(PORT/'components/rickyos_display/include'),'-I',str(PORT/'upstream/lib/hal'),str(p/'test.cpp'),'-o',str(p/'test')],check=True)
+        subprocess.run(['clang++','-std=c++20','-Wall','-Wextra','-Werror','-Wno-unused-parameter','-fsanitize=address,undefined','-I',str(PORT/'components/metalio_board/display'),'-I',str(PORT/'components/rickyos_display/include'),'-I',str(PORT/'upstream/lib/hal'),str(p/'test.cpp'),'-o',str(p/'test')],check=True)
         subprocess.run([str(p/'test')],check=True)
 
 

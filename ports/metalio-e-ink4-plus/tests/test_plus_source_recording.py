@@ -1,6 +1,7 @@
 """Source records must use and verify the separate pinned SDK baseline."""
 import importlib.util
 import json
+import subprocess
 from pathlib import Path
 import tempfile
 import unittest
@@ -13,6 +14,31 @@ SPEC.loader.exec_module(sync)
 
 
 class RecordingTests(unittest.TestCase):
+    def test_patch_round_trip_without_final_newlines(self):
+        for before, after in [(b'old', b'new'), (b'old\n', b'new'), (b'old', b'new\n'),
+                              (b'', b'new'), ('字\u2028符'.encode(), '字\u2028表'.encode())]:
+            with tempfile.TemporaryDirectory(prefix='plus-patch-eof-') as temporary:
+                root = Path(temporary)
+                original = root / 'chars.txt'
+                following = root / 'next.cpp'
+                if before:
+                    original.write_bytes(before)
+                following.write_bytes(b'old following\n')
+                text = sync.unified_source_patch(before, after, 'chars.txt', bool(before))
+                text += sync.unified_source_patch(b'old following\n', b'new following\n', 'next.cpp', True)
+                patch_file = root / 'changes.patch'
+                patch_file.write_text(text)
+                subprocess.run(['patch', '--batch', '-p1', '-i', str(patch_file)], cwd=root, check=True,
+                               stdout=subprocess.DEVNULL)
+                self.assertEqual(original.read_bytes(), after)
+                self.assertEqual(following.read_bytes(), b'new following\n')
+                subprocess.run(['patch', '--batch', '-R', '-p1', '-i', str(patch_file)], cwd=root, check=True,
+                               stdout=subprocess.DEVNULL)
+                if before:
+                    self.assertEqual(original.read_bytes(), before)
+                else:
+                    self.assertFalse(original.exists())
+
     def record(self, baseline, expected_success):
         with tempfile.TemporaryDirectory(prefix='plus-record-test-') as temporary:
             root = Path(temporary)

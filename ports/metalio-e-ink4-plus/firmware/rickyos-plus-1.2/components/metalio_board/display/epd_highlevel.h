@@ -174,6 +174,7 @@ enum EpdDrawError epd_hl_update_area_full(EpdiyHighlevelState* state, enum EpdDr
 // One reader scan: retained body ink is refreshed, equal chrome pixels held.
 // body is in physical coordinates; cleanup must use the normal full API.
 enum EpdDrawError epd_hl_update_screen_reader(EpdiyHighlevelState* state, int temperature, EpdRect body);
+enum EpdDrawError epd_hl_update_screen_reader_paper(EpdiyHighlevelState* state, int temperature, EpdRect body);
 #ifdef __cplusplus
 }
 #endif

@@ -93,7 +93,7 @@ wave = r'''
 #include "waveforms/my_waveform.h"
 int main(void){
  my_waveform_init();
- assert(MY_WAVEFORM.num_modes==6); // DU, GC16, GL16, held reader table, UI turn, reader turn
+ assert(MY_WAVEFORM.num_modes==7); // Six accepted modes plus the isolated reading-paper table.
  for(int m=0;m<MY_WAVEFORM.num_modes;++m)
    assert(MY_WAVEFORM.mode_data[m]->type!=10); // Obsolete whole-phase experiment removed.
 }

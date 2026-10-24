@@ -25,12 +25,13 @@ static int action(const EpdWaveformPhases* p,int f,int to,int from) {
 }
 int main(void) {
     my_waveform_init();
-    assert(MY_WAVEFORM.num_modes==6); // Measurement mode never leaks into default builds.
+    assert(MY_WAVEFORM.num_modes==7); // Six accepted modes plus the isolated reading-paper table.
     // Reader turn: the UI-turn table (37 phases, unchanged pixels held) plus a short
     // balanced re-drive of retained black: 5 erase phases, then 5 darkening ones.
     const EpdWaveformPhases* turn=mode(MY_MODE_READER_TURN);
+    const EpdWaveformPhases* paper=mode(MY_MODE_READER_PAPER_TURN);
     const EpdWaveformPhases* uiTurn=mode(MY_MODE_UI_TURN);
-    assert(turn->phases==37);
+    assert(turn->phases==37 && paper->phases==37);
     {
         int erase=0,dark=0;
         for(int f=0; f<turn->phases; ++f){erase+=action(turn,f,0,0)==2; dark+=action(turn,f,0,0)==1;}
@@ -38,20 +39,24 @@ int main(void) {
         assert(action(turn,0,0,15)==1); // white to black: darkening from phase 0
         for(int to=0; to<16; ++to) for(int from=0; from<16; ++from) {
             if(to==0 && from==0) continue;
+            // White-paper mode is exactly the accepted pre-gallery table, not
+            // silently changed by installing a background-capable build.
+            for(int f=0; f<turn->phases; ++f) assert(action(turn,f,to,from)==action(uiTurn,f,to,from));
             // Paper-light targets (a reading background's grays) keep the leading erase the
             // UI turn drops, so old text fades out before settling instead of going black
             // first. Past that erase, and for every other target, all as the UI turn.
             const int light = to>=8 && to<15;
             int erasing = light;
             for(int f=0; f<turn->phases; ++f) {
-                const int t=action(turn,f,to,from), u=action(uiTurn,f,to,from);
+                const int t=action(paper,f,to,from), u=action(uiTurn,f,to,from);
                 if(erasing && t==2 && u==0) continue;
                 erasing=0;
                 assert(t==u);
             }
-            if(to==from) for(int f=0; f<turn->phases; ++f) assert(action(turn,f,to,from)==0); // unchanged: held
+            if(to==from) for(int f=0; f<turn->phases; ++f) assert(action(paper,f,to,from)==0); // unchanged: held
         }
-        for(int to=8; to<15; ++to) assert(action(turn,0,to,0)==2); // old ink fades to paper gray by erasing first
+        for(int f=0; f<turn->phases; ++f) assert(action(paper,f,0,0)==action(turn,f,0,0));
+        for(int to=8; to<15; ++to) assert(action(paper,0,to,0)==2); // old ink fades to paper gray by erasing first
     }
     // UI turn (Read Pico text-turn table): 37 phases, unchanged pixels held, sequences toward
     // white start on the first beat (left-aligned), toward black never begin with an erase.

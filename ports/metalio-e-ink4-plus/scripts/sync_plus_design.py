@@ -50,6 +50,21 @@ def sha(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def unified_source_patch(before, after, name, existing):
+    # Git/patch lines are LF-delimited, not Python's wider set of Unicode line
+    # separators. Character lists intentionally have no final newline. difflib
+    # does not emit the required no-newline marker: joining its raw output glues
+    # the next file's header into the last added line and corrupts restoration.
+    def lines(data):
+        text = data.decode('utf-8', 'surrogateescape')
+        parts = text.split('\n')
+        return [line + '\n' for line in parts[:-1]] + ([parts[-1]] if parts[-1] else [])
+    diff = difflib.unified_diff(lines(before), lines(after),
+                                fromfile=f'a/{name}' if existing else '/dev/null', tofile=f'b/{name}')
+    return ''.join(line if line.endswith('\n') else line + '\n\\ No newline at end of file\n'
+                   for line in diff)
+
+
 def stage(repo, old, new, manifest, changes):
     adapted = {item['path']: item for item in changes['changes']}
     status = git(repo, 'diff', '--name-status', '--no-renames', old, new, text=True).splitlines()
@@ -121,10 +136,7 @@ def finish(repo, new, manifest, changes, files, sdk_repo=None):
             old = show(repo, new, name) if base else None
         if base and (old is None or sha(old) != base):
             raise SystemExit(f'Missing/mismatched pinned source for {name}; supply --sdk-repo for SDK sources')
-        before = (old or b'').decode('utf-8', 'surrogateescape').splitlines(True)
-        after = path.read_text(encoding='utf-8', errors='surrogateescape').splitlines(True)
-        patch.extend(difflib.unified_diff(before, after, fromfile=f'a/{name}' if base else '/dev/null',
-                                          tofile=f'b/{name}'))
+        patch.append(unified_source_patch(old or b'', path.read_bytes(), name, base is not None))
     changes['baseline'] = new
     changes['changes'] = records
     MANIFEST.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + '\n')
