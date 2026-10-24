@@ -515,12 +515,12 @@
     {
       "path": "src/CrossPointSettings.cpp",
       "baseline_sha256": "549f275cd35b12b0479eadda063c5460e167d1156274e759bee34e2232b4dc37",
-      "ported_sha256": "08e4f7fa1b654ad14ef933b91aa88d69dd1f81638b80b718d2072230e46d8c0e"
+      "ported_sha256": "2fb61b109d2d55a3aa89e2701846f0a57becd0ec5789a1afdd63363c66d6614e"
     },
     {
       "path": "src/CrossPointSettings.h",
       "baseline_sha256": "c5a733423898aad83b2f932929b80d3de201da9aa0e181d82d0071a2ac576330",
-      "ported_sha256": "f185a3420dd789d358cb02971bdc6d1d3d22eda095aa44f0221797d597f5e9cd"
+      "ported_sha256": "1f99a850e4f27ee335df79369eddcf6b2230749eeada6f6b6f950732e60cb4c2"
     },
     {
       "path": "src/InxItemLayout.h",

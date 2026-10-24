@@ -107,9 +107,9 @@ int main() {
                             "-o", str(binary)], check=True)
             subprocess.run([str(binary)], check=True)
 
-    def test_opt_in_and_single_page_only(self):
+    def test_on_by_default_and_single_page_only(self):
         settings = (ROOT / "src/CrossPointSettings.h").read_text()
-        self.assertIn("uint8_t nativePageTurn = 0", settings)
+        self.assertIn("uint8_t nativePageTurn = 1", settings)  # skim
         reader = (ROOT / "src/activities/reader/EpubReaderActivity.cpp").read_text()
         self.assertIn("pendingNativeTurn_.exchange(0)", reader)
         self.assertIn("nativeTurnDirection != 0 && previousNativeText && !pageHasImages", reader)

@@ -68,13 +68,17 @@ int main(){
 }
 ''')
 
-    def test_settings_are_independent_and_opt_in(self):
+    def test_settings_are_independent_and_on_by_default(self):
         source = (ROOT / "src/CrossPointSettings.h").read_text()
-        self.assertIn("uint8_t nativePageTurn = 0", source)
-        self.assertIn("uint8_t mainTabMotion = 0", source)
+        # Both motions start on (page turn: skim); a saved choice, off included, is kept.
+        self.assertIn("uint8_t nativePageTurn = 1", source)
+        self.assertIn("uint8_t mainTabMotion = 1", source)
         save = (ROOT / "src/CrossPointSettings.cpp").read_text()
         self.assertIn('doc["mainTabMotion"] = mainTabMotion', save)
-        self.assertIn('(doc["mainTabMotion"] | 0) == 1 ? 1 : 0', save)
+        self.assertIn('doc["nativePageTurn"] = nativePageTurn', save)
+        self.assertIn('(doc["mainTabMotion"] | 1) == 1 ? 1 : 0', save)
+        self.assertIn('nativePageTurn = doc["nativePageTurn"] | static_cast<uint8_t>(1);', save)
+        self.assertIn('if (nativePageTurn > 3) nativePageTurn = 1;', save)
         policy = (ROOT / 'src/activities/MainTabMotion.h').read_text()
         self.assertIn('#define RICKYOS_MAIN_TAB_MOTION_ENABLED 1', policy)
         menu = (ROOT / 'src/SettingsList.h').read_text()

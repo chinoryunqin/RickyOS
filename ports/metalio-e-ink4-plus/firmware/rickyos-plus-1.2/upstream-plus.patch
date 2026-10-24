@@ -353855,7 +353855,7 @@
    frontButtonBack = clamp(doc["frontButtonBack"] | (uint8_t)FRONT_HW_BACK, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_BACK);
    frontButtonConfirm =
        clamp(doc["frontButtonConfirm"] | (uint8_t)FRONT_HW_CONFIRM, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_CONFIRM);
-@@ -513,11 +535,15 @@
+@@ -513,11 +535,17 @@
    // Missing keys take the defaults: Home swipe starts off for everyone, as agreed.
    rickyGestureBack = (doc["rickyGestureBack"] | 1) ? 1 : 0;
    rickyGestureHome = (doc["rickyGestureHome"] | 0) ? 1 : 0;
@@ -353865,13 +353865,15 @@
    rickyGestureStatus = (doc["rickyGestureStatus"] | 1) ? 1 : 0;
    rickyTextWeight = doc["rickyTextWeight"] | static_cast<uint8_t>(RICKY_TEXT_WEIGHT_STANDARD);
    if (rickyTextWeight >= RICKY_TEXT_WEIGHT_COUNT) rickyTextWeight = RICKY_TEXT_WEIGHT_STANDARD;
-+  nativePageTurn = doc["nativePageTurn"] | static_cast<uint8_t>(0);
-+  if (nativePageTurn > 3) nativePageTurn = 0;
-+  mainTabMotion = (doc["mainTabMotion"] | 0) == 1 ? 1 : 0;
++  // Settings saved before these options existed take the defaults: both on. A choice
++  // the user saved (including off) is kept.
++  nativePageTurn = doc["nativePageTurn"] | static_cast<uint8_t>(1);
++  if (nativePageTurn > 3) nativePageTurn = 1;
++  mainTabMotion = (doc["mainTabMotion"] | 1) == 1 ? 1 : 0;
    rickyStandbyFace = doc["rickyStandbyFace"] | static_cast<uint8_t>(RICKY_STANDBY_PICTURE);
    if (rickyStandbyFace >= RICKY_STANDBY_FACE_COUNT) rickyStandbyFace = RICKY_STANDBY_PICTURE;
    rickyAutoOffIndex = doc["rickyAutoOffIndex"] | static_cast<uint8_t>(3);
-@@ -551,6 +577,10 @@
+@@ -551,6 +579,10 @@
      rickyPowerOffScreen = doc["rickyPowerOffScreen"] | static_cast<uint8_t>(RICKY_POWER_OFF_DEFAULT);
      if (rickyPowerOffScreen >= RICKY_POWER_OFF_SCREEN_COUNT) rickyPowerOffScreen = RICKY_POWER_OFF_DEFAULT;
    }
@@ -353882,7 +353884,7 @@
    // Old backups/direct JSON edits must not select a different product layout.
    struct FixedLayout {
      const char* key;
-@@ -876,6 +906,7 @@
+@@ -876,6 +908,7 @@
  
  uint8_t CrossPointSettings::rickySleepScreenMode() const {
    if (rickyPowerOffScreen == RICKY_POWER_OFF_BLANK) return BLANK;
@@ -353927,8 +353929,8 @@
    uint8_t sleepTimeoutMinutes = 10;
    // E-ink refresh frequency (default 15 pages)
    uint8_t refreshFrequency = REFRESH_15;
-+uint8_t nativePageTurn = 0; // Experimental: off / skim / shallow arc / ripple. Saved IDs never reorder.
-+  uint8_t mainTabMotion = 0; // Independent opt-in native UI experiment.
++uint8_t nativePageTurn = 1; // off / skim (default) / shallow arc / ripple. Saved IDs never reorder.
++  uint8_t mainTabMotion = 1; // Native main-tab motion, on by default; independent of the page turn.
    uint8_t hyphenationEnabled = 0;
  
    // Reader screen margin settings
