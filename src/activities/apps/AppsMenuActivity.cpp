@@ -117,6 +117,21 @@ constexpr int kAppTileRadius = ricky::ds::radius::kControl;
 constexpr int kAppTileStroke = ricky::ds::stroke::kHairline;
 constexpr int kAppPillWidth = kAppTileSize;  // the tile's footprint in the cell layout
 constexpr int kAppPillHeight = kAppTileSize;
+// Three columns, rows 224 px apart as the original two-row grid; a seventh app adds a
+// row (one page) where the screen has room, else pages of what fits.
+constexpr int kAppColumns = 3;
+constexpr int kAppRowPitch = 224;
+
+int appGridRows(const int visibleCount) { return std::max(2, (std::max(1, visibleCount) + kAppColumns - 1) / kAppColumns); }
+
+int appGridPageSize(const Rect& content, const int visibleCount) {
+  const int availableRows = std::max(2, content.height / kAppRowPitch);
+  return kAppColumns * std::min(availableRows, appGridRows(visibleCount));
+}
+
+int appGridPageStart(const int selected, const int count, const int pageSize) {
+  return count > 0 ? std::clamp(selected, 0, count - 1) / pageSize * pageSize : 0;
+}
 
 void drawRickyAppIcon(const GfxRenderer& renderer, const uint8_t* icon, const int x, const int y, const bool selected) {
   const int tileX = x + (kRickyAppIconSize - kAppTileSize) / 2;
@@ -204,15 +219,18 @@ Rect AppsMenuActivity::appContentRect() const {
   content.width -= ricky::ds::space::kPageMargin * 2;
   content.y += ricky::ds::layout::kPageHeaderHeight;
   content.height -= ricky::ds::layout::kPageHeaderHeight;
-  content.height = std::min(content.height, 448);
+  content.height = std::min(content.height, kAppRowPitch * appGridRows(getVisibleAppCount()));
   return content;
 }
 
 int AppsMenuActivity::iconIndexFromPoint(const int x, const int y) const {
   const Rect content = appContentRect();
-  for (int i = 0; i < getVisibleAppCount(); ++i) {
-    const auto rect = RickyPageLayout::cell(content, i, 6, ricky::ds::space::kGutter, 3);
-    if (x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height) return i;
+  const int visibleCount = getVisibleAppCount();
+  const int pageSize = appGridPageSize(content, visibleCount);
+  const int start = appGridPageStart(nav.selected, visibleCount, pageSize);
+  for (int slot = 0; slot < pageSize && start + slot < visibleCount; ++slot) {
+    const auto rect = RickyPageLayout::cell(content, slot, pageSize, ricky::ds::space::kGutter, kAppColumns);
+    if (x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height) return start + slot;
   }
   return -1;
 }
@@ -251,13 +269,18 @@ bool AppsMenuActivity::handleCustomInput() {
     return true;
   }
   const auto swipe = mappedInput.wasSwipe();
+  const int pageSize = appGridPageSize(appContentRect(), visibleCount);
+  if (visibleCount <= pageSize &&
+      (swipe == MappedInputManager::SwipeDir::Up || swipe == MappedInputManager::SwipeDir::Down)) {
+    return true;  // One page: a swipe must not move focus or cause an e-ink refresh.
+  }
   if (swipe == MappedInputManager::SwipeDir::Up) {
-    nav.selected = ButtonNavigator::nextPageIndex(nav.selected, visibleCount, InxGridGeometry::itemsPerPage);
+    nav.selected = ButtonNavigator::nextPageIndex(nav.selected, visibleCount, pageSize);
     requestUpdate();
     return true;
   }
   if (swipe == MappedInputManager::SwipeDir::Down) {
-    nav.selected = ButtonNavigator::previousPageIndex(nav.selected, visibleCount, InxGridGeometry::itemsPerPage);
+    nav.selected = ButtonNavigator::previousPageIndex(nav.selected, visibleCount, pageSize);
     requestUpdate();
     return true;
   }
@@ -265,14 +288,15 @@ bool AppsMenuActivity::handleCustomInput() {
 }
 
 void AppsMenuActivity::drawIconGrid(const Rect& rect, const int visibleCount, const bool showSelection) const {
-  const int start = InxGridGeometry::pageStart(nav.selected, visibleCount);
+  const int pageSize = appGridPageSize(rect, visibleCount);
+  const int start = appGridPageStart(nav.selected, visibleCount, pageSize);
   const int lineHeight = renderer.getLineHeight(UI_10_FONT_ID);
 
-  for (int slot = 0; slot < InxGridGeometry::itemsPerPage && start + slot < visibleCount; ++slot) {
+  for (int slot = 0; slot < pageSize && start + slot < visibleCount; ++slot) {
     const int visibleIndex = start + slot;
     const int appIndex = getAppIndexForVisibleIndex(visibleIndex);
     if (appIndex < 0) continue;
-    const Rect cell = RickyPageLayout::cell(rect, slot, 6, ricky::ds::space::kGutter, 3);
+    const Rect cell = RickyPageLayout::cell(rect, slot, pageSize, ricky::ds::space::kGutter, kAppColumns);
     const bool isSelected = showSelection && visibleIndex == nav.selected;
     const std::string label =
         renderer.truncatedText(UI_10_FONT_ID, I18N.get(kAppEntries[appIndex].titleId), std::max(1, cell.width - 8));
@@ -310,7 +334,7 @@ void AppsMenuActivity::drawIconGrid(const Rect& rect, const int visibleCount, co
     renderer.drawText(UI_10_FONT_ID, labelX, iconY + iconSize + 8, label.c_str(), !isSelected);
   }
 
-  GUI.drawSideScrollBar(renderer, rect, visibleCount, start, InxGridGeometry::itemsPerPage);
+  if (visibleCount > pageSize) GUI.drawSideScrollBar(renderer, rect, visibleCount, start, pageSize);
 }
 
 void AppsMenuActivity::buildScreen(UiScreen& screen) {
