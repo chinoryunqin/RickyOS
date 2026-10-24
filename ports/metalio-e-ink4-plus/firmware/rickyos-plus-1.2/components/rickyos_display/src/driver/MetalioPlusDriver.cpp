@@ -74,6 +74,7 @@ class MetalioPlusDriver final : public PanelDriver {
     if (ready_) epd_poweroff();
   }
   OpticalState opticalState() const override { return state_; }
+  void setBackgroundHint(bool darkBackground) override { darkBackground_ = darkBackground; }
   void display(EpdBus&, const uint8_t* fb, const uint8_t*, RefreshMode mode, bool turnOff) override {
 #if RICKYOS_PLUS_GRAY_CALIBRATION
     calibrationHeld_ = false;  // Home/menu/BW navigation exits the diagnostic.
@@ -89,8 +90,11 @@ class MetalioPlusDriver final : public PanelDriver {
     // FreeInk is native landscape, MSB-first 1bit, white=1. EPDiy stores
     // even pixels in the low nibble, white=15. Rotation belongs to GfxRenderer.
     plus::expandMonochrome(fb, geometry().bufferSize, hl->front_fb);
-    const auto waveform = state_ == OpticalState::Unknown || mode == RefreshMode::Full ? MODE_GC16 : MODE_DU;
-    const auto result = refresh(hl, waveform, mode == RefreshMode::Full);
+    // Light pages clean through the 16-gray path; Night mode is BW only, so its
+    // HALF (the reader's due page, Refresh screen) must clean here, or it is DU.
+    const bool full = mode == RefreshMode::Full || (darkBackground_ && mode == RefreshMode::Half);
+    const auto waveform = state_ == OpticalState::Unknown || full ? MODE_GC16 : MODE_DU;
+    const auto result = refresh(hl, waveform, full);
     state_ = result == EPD_DRAW_SUCCESS ? OpticalState::Bw : OpticalState::Unknown;
 #if RICKYOS_PLUS_SCREEN_DUMP
     if (result == EPD_DRAW_SUCCESS) dumpFrame(hl->front_fb, "bw");
@@ -345,6 +349,7 @@ class MetalioPlusDriver final : public PanelDriver {
   uint8_t* lastProxy_ = nullptr;
   uint8_t overlayStage_ = 0;  // 0: none, 1: LSB staged, 2: complete native target.
   bool ready_ = false;
+  bool darkBackground_ = false;
   OpticalState state_ = OpticalState::Unknown;
 };
 }

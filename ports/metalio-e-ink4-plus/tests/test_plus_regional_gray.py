@@ -77,6 +77,7 @@ public:
  virtual uint32_t spiHz()const=0; virtual BusyPolarity busyPolarity()const=0; virtual PanelGeometry geometry()const=0;
  virtual bool usesExternalBus()const=0;virtual void begin(EpdBus&)=0;virtual void deepSleep(EpdBus&)=0;
  virtual OpticalState opticalState()const=0;
+ virtual void setBackgroundHint(bool){}
  virtual void display(EpdBus&,const uint8_t*,const uint8_t*,RefreshMode,bool)=0;
  virtual uint8_t* beginGrayscale16()=0;virtual bool commitGrayscale16(const uint8_t*)=0;
  virtual void cancelGrayscale16()=0;virtual void requestResync(uint8_t)=0;
@@ -191,6 +192,13 @@ int main(){
  d.copyGrayscaleLsb(bus,lsb);d.copyGrayscaleLsb(bus,lsb);d.copyGrayscaleMsb(bus,msb);
  d.displayGray(bus,msb,false,nullptr,false);assert(d.opticalState()==OpticalState::Gray);
  d.display(bus,proxy,nullptr,RefreshMode::Fast,false);
+ // B/W HALF stays DU on a light page (it cleans through the 16-gray path); Night
+ // mode is B/W only, so its HALF (due page, Refresh screen) must clean with GC16.
+ d.display(bus,proxy,nullptr,RefreshMode::Half,false);assert(selectedModes.back()==MODE_DU);
+ d.setBackgroundHint(true);
+ d.display(bus,proxy,nullptr,RefreshMode::Half,false);assert(selectedModes.back()==MODE_GC16);
+ d.display(bus,proxy,nullptr,RefreshMode::Fast,false);assert(selectedModes.back()==MODE_DU);
+ d.setBackgroundHint(false);
  d.copyGrayscaleLsb(bus,lsb);d.beginGrayscale16();prior=powered;
  d.displayGray(bus,msb,false,nullptr,false);assert(powered==prior);
  d.cancelGrayscale16();assert(memcmp(front,back,N)==0);
