@@ -36,10 +36,22 @@ int main(void) {
         for(int f=0; f<turn->phases; ++f){erase+=action(turn,f,0,0)==2; dark+=action(turn,f,0,0)==1;}
         assert(erase==5 && dark==5 && action(turn,0,0,0)==2 && action(turn,5,0,0)==1);
         assert(action(turn,0,0,15)==1); // white to black: darkening from phase 0
-        for(int to=0; to<16; ++to) for(int from=0; from<16; ++from) for(int f=0; f<turn->phases; ++f) {
+        for(int to=0; to<16; ++to) for(int from=0; from<16; ++from) {
             if(to==0 && from==0) continue;
-            assert(action(turn,f,to,from)==action(uiTurn,f,to,from)); // all else as the UI turn
+            // Paper-light targets (a reading background's grays) keep the leading erase the
+            // UI turn drops, so old text fades out before settling instead of going black
+            // first. Past that erase, and for every other target, all as the UI turn.
+            const int light = to>=8 && to<15;
+            int erasing = light;
+            for(int f=0; f<turn->phases; ++f) {
+                const int t=action(turn,f,to,from), u=action(uiTurn,f,to,from);
+                if(erasing && t==2 && u==0) continue;
+                erasing=0;
+                assert(t==u);
+            }
+            if(to==from) for(int f=0; f<turn->phases; ++f) assert(action(turn,f,to,from)==0); // unchanged: held
         }
+        for(int to=8; to<15; ++to) assert(action(turn,0,to,0)==2); // old ink fades to paper gray by erasing first
     }
     // UI turn (Read Pico text-turn table): 37 phases, unchanged pixels held, sequences toward
     // white start on the first beat (left-aligned), toward black never begin with an erase.

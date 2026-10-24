@@ -14,6 +14,12 @@ module.ReaderPageCacheTest().test_cache_identity_cancellation_and_lifetime()
 program,includes=captured[0]
 program=program[:program.index('void reset()')]
 program='#define FREEINK_DEVICE_METALIO_PLUS 1\n'+program
+# 阅读背景 draws nothing here: these paths are about cache identity, not the paper.
+program=program.replace('struct GfxRenderer;', '''struct GfxRenderer;
+namespace ReadingBackground {
+struct TextBox {int left=0,top=0,right=0,bottom=0,pitch=0,rule=0;};
+template<class Renderer> bool paint(Renderer&,const TextBox&){return false;}
+}''',1)
 program=program.replace('struct GfxRenderer;', '''
 int nativeImageBlocks=0, cancelNativeImageAt=0;
 bool failNativeImage=false;

@@ -63,10 +63,10 @@ int main(){
  w.canAllocate=false;w.onEnter();assert(w.state_==RickyWallpaperDownloadActivity::State::Failed);
 }
 '''
-# Every face reload, including returning from a picture picker, must release the static latch.
+# Every face reload, including returning from the picture gallery, must release the static latch.
 for marker in ('currentFace_->onEnter();\n  drewFrame_ = false;',
  'if (currentFace_) currentFace_->onEnter();\n            drewFrame_ = false;',
- 'if (currentFace_) currentFace_->onEnter();\n    drewFrame_ = false;'):
+ 'if (currentFace_) currentFace_->onEnter();\n        drewFrame_ = false;'):
  assert marker in s,marker
 with tempfile.TemporaryDirectory() as tmp:
  p=Path(tmp);(p/'test.cpp').write_text(code)

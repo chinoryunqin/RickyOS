@@ -255,12 +255,12 @@
     {
       "path": "lib/I18n/translations/chinese.yaml",
       "baseline_sha256": "021ec5b9e5880155fea752af9c60ce83a259dd69131f9bd12ffe0ca59e3366bd",
-      "ported_sha256": "b87938dd1cc9b9535603011e4e0f61e8969880139b8bd38d33cf7b46efbdb916"
+      "ported_sha256": "0b8f10abb7581317a853c6b1c3bed632307e679dd57ed21a6ba33ed435904d81"
     },
     {
       "path": "lib/I18n/translations/english.yaml",
       "baseline_sha256": "85a4d226f1400f6a185759420c63ecff5f81eeb3722afd66c312d4aec6bcb315",
-      "ported_sha256": "64d93c328b2c13094f7d6bff23c4f9c50a3c0c861a9c7224674ff1e2aa5cce20"
+      "ported_sha256": "44cbeb242df24e3b217db69adbc416bb8a432d3cfd1af76e1d5656707a4827f5"
     },
     {
       "path": "lib/JpegToBmpConverter/JpegToBmpConverter.cpp",
@@ -455,7 +455,7 @@
     {
       "path": "scripts/build_rickyos_app_icons.cjs",
       "baseline_sha256": "f5c925378ef61f596f7810d80df3fe088beba4a4759fb64d6b97dfdfb50dff97",
-      "ported_sha256": "46a11b070180e21fdcd8e0193b138804bb8a3070817cb14416ecdee34b544a9a"
+      "ported_sha256": "bc16a09ed7913f208a7aa755dd909793c12205118dbf6df8bb3d7e4277c0e3d4"
     },
     {
       "path": "scripts/tests/test_reader_page_cache.py",
@@ -470,17 +470,17 @@
     {
       "path": "src/AppVisibility.h",
       "baseline_sha256": "8f0c96c1d8143203efcd5097edda1c466765889742f0d8305299cbef9ac4182a",
-      "ported_sha256": "4ce8d33efb8679cfaf886c9cd80c8fc888ba3de11670c6cb2e57838bde3f8467"
+      "ported_sha256": "b9fdad6922a19590726f5f83e82f188074a2dc1a2eab740836d50ea220f89f43"
     },
     {
       "path": "src/CrossPointSettings.cpp",
       "baseline_sha256": "549f275cd35b12b0479eadda063c5460e167d1156274e759bee34e2232b4dc37",
-      "ported_sha256": "a7478163dd9c1d7f7bf6e9af62e2e2dc0cae7e8fc8986920049425bd3f135fda"
+      "ported_sha256": "1a5ad4e57c8587a4e223fa9b78f4d035b2868fd4eee86aba72b60401c77ab797"
     },
     {
       "path": "src/CrossPointSettings.h",
       "baseline_sha256": "c5a733423898aad83b2f932929b80d3de201da9aa0e181d82d0071a2ac576330",
-      "ported_sha256": "200bcb127cf6232ef2d6b8d23fbf9b08d9a4ab7ab781a52991c0de0a2d0b80a5"
+      "ported_sha256": "b957c687734e9dce96fb91a7cf211362f097ff5b31e536358f33361212647f01"
     },
     {
       "path": "src/InxItemLayout.h",
@@ -520,12 +520,12 @@
     {
       "path": "src/activities/ActivityManager.cpp",
       "baseline_sha256": "e97372dc858385e6ac21bac9d545abadd7bcd9ca036feb7c3dc8ed8bf8cb9ada",
-      "ported_sha256": "c7a8ed49449783b4a9a733860cd7c441e331106d97deb796db8700b47f463ffb"
+      "ported_sha256": "05fb4fb4f863f7de37d34a545a3ef6e4eb37ed0dff9a78c3a9383cc8e17ceddf"
     },
     {
       "path": "src/activities/ActivityManager.h",
       "baseline_sha256": "01c40530f8ee1ae4a1cd07ba1c02d2a8c494992c72ed0bafd12c4924bf65ff80",
-      "ported_sha256": "2bda95e8ade298d892c5a974bda92f8dd5880cc7aed88cd1d2ca783e9c65e4fa"
+      "ported_sha256": "5d261d0cff3b054b86fde73227db7696efbb871deab80ff9c588707d21bb9781"
     },
     {
       "path": "src/activities/UiListActivity.h",
@@ -535,7 +535,7 @@
     {
       "path": "src/activities/apps/AppsMenuActivity.cpp",
       "baseline_sha256": "aee473e42f7d5e8545965aa5d6be38ce36966fa25e1122e28984f65c40c093e6",
-      "ported_sha256": "c3948133b98f25e9185f00d4390c19ffa7df0dcebe88954b1f47bfc0f9083d32"
+      "ported_sha256": "60f358015eeda6850868e8b4c2ad27ee86407038f728970d499040c81410a741"
     },
     {
       "path": "src/activities/apps/gomoku/GomokuArt.h",
@@ -610,12 +610,12 @@
     {
       "path": "src/activities/apps/standby/RickyStandbySettingsActivity.cpp",
       "baseline_sha256": "670da33bf0a95ebf85ba5f4df0950d84ba425f1b1f02fd6ddd4b6f8bf313bae4",
-      "ported_sha256": "902ec3988608685eadfd381229f10cebb11a4e86b860072e28c82f6210db0608"
+      "ported_sha256": "12a867c02a4caec9bb7543644fac7a03a4cc0fbe85179afc53ece6f82016af31"
     },
     {
       "path": "src/activities/apps/standby/RickyStandbySettingsActivity.h",
       "baseline_sha256": "90b97c88aa8b99bb478095c869285c40a8150e463904503281d5eae76ccf1623",
-      "ported_sha256": "46d2712a9eee477d2950b8f116638c8ef87ecc3a5c86b35171d6ea061d74915d"
+      "ported_sha256": "995fea25d736fa2d7df1602e61e023aff0d9b05508cfdcf925ee54bbe486bfaa"
     },
     {
       "path": "src/activities/apps/standby/RickyWallpaperDownloadActivity.cpp",
@@ -630,12 +630,32 @@
     {
       "path": "src/activities/apps/standby/StandbyActivity.cpp",
       "baseline_sha256": "29dde67945a5e69415ed2f40ca0d287d364f1ff7bf74cc241dd3ead386105696",
-      "ported_sha256": "0147ff66961e4acf3ef175dedce2bb49bebac64d961316056a2fa1b5171fc6ec"
+      "ported_sha256": "29f7acae1fcb63d55707dab2a5fcb2f3f845929e14e5cdaa8069c9a9beef7fea"
     },
     {
       "path": "src/activities/apps/standby/StandbyActivity.h",
       "baseline_sha256": "819202486c48dfdb3816e4eef79a286b93ed2d7d305e0f6f027fed4cfc2e7e30",
-      "ported_sha256": "88bd3f256ae38d18c6eb0fb0fafa50017efe0c97c35d680463bc71ab9fa24b0e"
+      "ported_sha256": "c00e8257856bb5acb63f83e7f8c9638fa2a9d37f4366be39cec24cc38dd23729"
+    },
+    {
+      "path": "src/activities/apps/standby/StandbyGalleryActivity.cpp",
+      "baseline_sha256": null,
+      "ported_sha256": "c33fbb063cff7e4888e8791d3584a7462c9d4548c149935bd0346ee001f350f4"
+    },
+    {
+      "path": "src/activities/apps/standby/StandbyGalleryActivity.h",
+      "baseline_sha256": null,
+      "ported_sha256": "a3caa64eda42a1e4de8d94dc62a1c05255c0a3826eff54d71163519e4fd4937d"
+    },
+    {
+      "path": "src/activities/apps/standby/StandbyPictures.cpp",
+      "baseline_sha256": null,
+      "ported_sha256": "4c0478714ce8d44af00371986aaf66ac8f992546483fdfb5f93629048e5973e4"
+    },
+    {
+      "path": "src/activities/apps/standby/StandbyPictures.h",
+      "baseline_sha256": null,
+      "ported_sha256": "5d227e1c84e12ede255501b5904c6add56e74729c4eb0974b3647db11039205e"
     },
     {
       "path": "src/activities/apps/standby/WallpaperFace.cpp",
@@ -750,7 +770,7 @@
     {
       "path": "src/activities/reader/EpubReaderActivity.cpp",
       "baseline_sha256": "330723cad52ac629fa1451c9ca90cffff0a04b06e0266861e092ff93e8ffa1c9",
-      "ported_sha256": "ca6013e9a1a49dccbbc57946ca73b0773a02943da756f61676b0bfa94cd456f1"
+      "ported_sha256": "de882b2be9f30aaf5525620cc68032947787d49f8476efb6465349f74559367c"
     },
     {
       "path": "src/activities/reader/EpubReaderActivity.h",
@@ -825,12 +845,12 @@
     {
       "path": "src/activities/util/ImageViewerActivity.cpp",
       "baseline_sha256": "2ce0b62995eaea1b70f33432e01d9f22253163cbae59aca5b56944d8c8b66070",
-      "ported_sha256": "af1ed6eced37141f7e8f9f5d4426df2cb532039b2daa47407842851520db8a60"
+      "ported_sha256": "340c25a5a49e36f1818ca206bd99bcdd3496d48b1f0bfc7f15d8cb583d41866a"
     },
     {
       "path": "src/activities/util/ImageViewerActivity.h",
       "baseline_sha256": "d68b0fd94aa4344dd1c07b98144a35e6b3c0b7dded3c1b723a7874e88f0b18ec",
-      "ported_sha256": "569a75ab3c91bf41dac4c2871ddb22bcb7d4beaa0d488a17f0cd2793bb8d7f06"
+      "ported_sha256": "36109e82b94398521001ddc5e6bc50b0cb13d1aa18874a04d698b1991b2763e5"
     },
     {
       "path": "src/components/OptionPopup.h",
@@ -875,12 +895,22 @@
     {
       "path": "src/components/icons/rickyAppIcons.h",
       "baseline_sha256": "b64188539b8276460b41f143da2dbe5965116b87472ea288d1fa967784cdd602",
-      "ported_sha256": "ed434304276048354deaa927fc5e7aae354f4c7cde71d356d7e7a1395bc0cf20"
+      "ported_sha256": "5049252f250c8c9e673e638eb68c3a30e7a608acbad12ba360e24bc02c327b82"
+    },
+    {
+      "path": "src/components/icons/sources/rickyos/apps/gallery.svg",
+      "baseline_sha256": null,
+      "ported_sha256": "5b1c88bf789527d977c96d89834542e7c6feb0b0651760145cb9770b7d65ad23"
     },
     {
       "path": "src/components/icons/sources/rickyos/apps/recorder.svg",
       "baseline_sha256": null,
       "ported_sha256": "83857a5f1733566493921d49f64bed6831777329bd6d5bf200b979247f3bd4c7"
+    },
+    {
+      "path": "src/components/icons/sources/rickyos/apps/wallpaper.svg",
+      "baseline_sha256": null,
+      "ported_sha256": "a880953920c47ed4b49ffd6a2e6a29609c71aebd030fbabc8a6e3566f706c6dc"
     },
     {
       "path": "src/components/themes/BaseTheme.cpp",
@@ -890,7 +920,7 @@
     {
       "path": "src/components/themes/BaseTheme.h",
       "baseline_sha256": "378abe736a3301c0d1a2caac764177f0f6346679e2a35a408a3af9458778a48a",
-      "ported_sha256": "c28527cd25a91a28231f1d6da2b13d364fa6e4d000151d21d651d47b6b4d6e1f"
+      "ported_sha256": "7b4f0449df237c88c6bfe43fde147f4e8a83d24702a108f4f17c1d0ef30f04ac"
     },
     {
       "path": "src/components/themes/inx/InxTheme.cpp",
@@ -971,6 +1001,16 @@
       "path": "src/util/PlusButtonInput.h",
       "baseline_sha256": null,
       "ported_sha256": "88c15f24d43979de701a5e0b669112ff87eb8bf63257c83ab6f7c67496725da8"
+    },
+    {
+      "path": "src/util/ReadingBackground.cpp",
+      "baseline_sha256": null,
+      "ported_sha256": "056837450a569d9217bc697023e5cb88ff38df52c3ec6a9c1fd78fdf76d8211e"
+    },
+    {
+      "path": "src/util/ReadingBackground.h",
+      "baseline_sha256": null,
+      "ported_sha256": "fba08481909a9ec3be4f67937380de9c502fa9f47591181f06b9711fd16a5734"
     },
     {
       "path": "src/util/UserGuide.cpp",

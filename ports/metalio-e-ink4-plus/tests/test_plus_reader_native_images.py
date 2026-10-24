@@ -21,6 +21,7 @@ program=r'''
 #include <vector>
 #define LOG_ERR(...) ((void)0)
 struct {bool textAntiAliasing=true;} SETTINGS;
+namespace ReadingBackground {bool on=false;bool active(){return on;}}
 struct Page {bool image=false,panel=false;bool hasImages()const{return image;}
 bool hasPanelFill()const{return panel;}};
 struct Renderer {bool inverted=false;int levels=16;
@@ -52,6 +53,9 @@ for(unsigned weight=0;weight<5;++weight){auto* curve=readerTextWeightCurve(weigh
 if(!aa){assert(curve);for(int i=0;i<16;++i)assert(curve[i]==0||curve[i]==15);assert(curve[0]==0&&curve[15]==15);}}
 r.renderer.inverted=true;assert(!r.nativeGray16Page(image)&&!r.nativeGray16Page(text)&&!r.nativeGray16Page(panel));r.renderer.inverted=false;
 r.renderer.levels=4;assert(!r.nativeGray16Page(image)&&!r.nativeGray16Page(panel));r.renderer.levels=16;
+// 阅读背景 lives in the 16-level frame: a plain text page carries it too, never in Night mode.
+ReadingBackground::on=true;assert(r.nativeGray16Page(text));
+r.renderer.inverted=true;assert(!r.nativeGray16Page(text));r.renderer.inverted=false;ReadingBackground::on=false;
 }
 Storage.bytes={137,80,78,71,13,10,26,10};
 assert(dynamic_cast<PngToFramebufferConverter*>(ImageDecoderFactory::getDecoder("legacy.jpg")));

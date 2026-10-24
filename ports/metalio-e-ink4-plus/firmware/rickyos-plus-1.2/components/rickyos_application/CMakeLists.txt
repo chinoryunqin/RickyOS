@@ -5,6 +5,7 @@ idf_component_register(
  SRCS
   "${APP_ROOT}/src/util/BootPreparation.cpp"
   "${APP_ROOT}/src/util/PanelTileCache.cpp"
+  "${APP_ROOT}/src/util/ReadingBackground.cpp"
   "${APP_ROOT}/src/activities/reader/ReaderChrome.cpp"
   "${APP_ROOT}/src/activities/reader/BookFontSet.cpp"
   "${APP_ROOT}/src/activities/apps/reading-stats/RickyMonthReportActivity.cpp"
@@ -406,6 +407,8 @@ idf_component_register(
   "${APP_ROOT}/src/activities/apps/standby/RickyStandbySettingsActivity.cpp"
   "${APP_ROOT}/src/activities/apps/standby/ChineseAlmanac.cpp"
   "${APP_ROOT}/src/activities/apps/standby/StandbyActivity.cpp"
+  "${APP_ROOT}/src/activities/apps/standby/StandbyGalleryActivity.cpp"
+  "${APP_ROOT}/src/activities/apps/standby/StandbyPictures.cpp"
   "${APP_ROOT}/src/activities/apps/standby/SloppyClockFace.cpp"
   "${APP_ROOT}/src/activities/apps/gomoku/GomokuGameActivity.cpp"
   "${APP_ROOT}/src/activities/apps/gomoku/GomokuBoard.cpp"

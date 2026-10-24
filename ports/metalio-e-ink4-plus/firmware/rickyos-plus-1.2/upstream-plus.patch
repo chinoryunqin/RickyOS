@@ -184054,17 +184054,44 @@
  STR_LIBRARY_REBUILDING: "正在整理书库"
  STR_LIBRARY_REBUILD_DONE: "书库已更新"
  STR_LIBRARY_REBUILD_FAILED: "书库更新失败，请检查 SD 卡"
-@@ -1469,6 +1487,9 @@
+@@ -1464,11 +1482,35 @@
+ STR_RICKY_SELECT_TRANSPARENT: "选择透明图片"
+ STR_RICKY_CLEAR_TRANSPARENT: "移除透明图片"
+ STR_RICKY_SET_TRANSPARENT: "设为透明壁纸"
+-STR_RICKY_POWER_PAGE_TITLE: "屏保"
++STR_RICKY_POWER_PAGE_TITLE: "壁纸"
+ STR_RICKY_TAB_STANDBY: "待机"
  STR_RICKY_TAB_POWER_OFF: "关机"
  STR_RICKY_POWER_OFF_SCREEN: "关机画面"
  STR_RICKY_POWER_OFF_SAME: "和待机一样"
 +STR_RICKY_POWER_OFF_CUSTOM: "自定义壁纸"
 +STR_RICKY_SELECT_POWER_OFF_WALLPAPER: "选择关机图片"
++STR_RICKY_DEFAULT_PICTURES: "默认图片"
++STR_RICKY_MY_PICTURES: "我的图片"
++STR_RICKY_IN_USE: "使用中"
++STR_RICKY_TRANSFER_PICTURES: "传图片"
++STR_RICKY_CHIP_TIME: "时间"
++STR_RICKY_CHIP_WHOLE: "完整"
++STR_RICKY_CHIP_FILL: "铺满"
++STR_RICKY_CHIP_ORIGINAL: "原图"
++STR_RICKY_CHIP_CONTRAST: "高对比"
++STR_RICKY_CHIP_INVERT: "反色"
++STR_RICKY_CARD_PICTURE: "图片"
++STR_RICKY_CARD_COVER: "书籍封面"
++STR_RICKY_CARD_CALENDAR: "日历时钟"
++STR_RICKY_CARD_KEEP: "阅读页"
++STR_RICKY_CARD_STICKER: "透明叠图"
++STR_RICKY_CARD_SAME: "同待机"
++STR_RICKY_CARD_DEFAULT: "默认"
++STR_RICKY_CARD_BLANK: "空白"
++STR_RICKY_ALL_PICTURES: "全部 %u"
++STR_RICKY_CHANGE_PICTURE: "更换图片"
++STR_RICKY_PICTURES: "图片"
 +STR_RICKY_SET_POWER_OFF_WALLPAPER: "设为关机壁纸"
  STR_RICKY_POWERED_OFF: "已关机 · 长按开机"
  STR_RICKY_PICTURE_FIT: "显示方式"
  STR_RICKY_PICTURE_FIT_WHOLE: "完整显示"
-@@ -1552,6 +1573,7 @@
+@@ -1552,6 +1594,7 @@
  STR_RICKY_GESTURE_READING: "阅读手势"
  STR_RICKY_GESTURE_BACK: "左侧右滑返回"
  STR_RICKY_GESTURE_HOME: "底部上滑回首页"
@@ -184072,7 +184099,16 @@
  STR_RICKY_GESTURE_CONTROL: "顶部下滑打开控制中心"
  STR_RICKY_GESTURE_STATUS: "点状态栏打开控制中心"
  STR_RICKY_GESTURE_TOUCH_TURN: "触屏翻页"
-@@ -1600,3 +1622,111 @@
+@@ -1589,7 +1632,7 @@
+ STR_RICKY_HELP_START_1: "在应用中打开文件传输，按照屏幕提示用手机或电脑传入书籍。"
+ STR_RICKY_HELP_START_2: "书库中点选书籍开始阅读。全部、在读、未读可以切换筛选。文件夹在存储中浏览。"
+ STR_RICKY_HELP_START_3: "阅读时点击屏幕中部打开菜单。目录、加书签、文字和查词位于顶部。返回键关闭菜单。"
+-STR_RICKY_HELP_DISPLAY_1: "显示与待机中可以设置自动待机和电源键行为；屏保应用可以选择待机画面。"
++STR_RICKY_HELP_DISPLAY_1: "显示与待机中可以设置自动待机和电源键行为；壁纸应用可以选择待机画面。"
+ STR_RICKY_HELP_DISPLAY_2: "出现残影时可在设置中执行屏幕修复。全刷间隔越短，残影越少，但闪屏更频繁。"
+ STR_RICKY_HELP_DISPLAY_3: "阅读字体在文字设置中调整；头像、昵称和首页短句在设置顶部的资料卡中修改。"
+ STR_RICKY_HELP_UPDATE_1: "设置中的更新固件会检查 RickyOS 更新。更新前请保证电量充足，勿在过程中断电。"
+@@ -1600,3 +1643,128 @@
  STR_RICKY_HELP_FEEDBACK_3: "通过你现有的 Ricky AI Studio 联系渠道发送反馈。本页面不会自动上传设备信息。官网入口可扫码打开。"
  STR_RICKY_MENU_AUTO_TURN: "自动翻页"
  STR_RICKY_MENU_PROGRESS: "阅读进度"
@@ -184184,6 +184220,23 @@
 +STR_SGM_RULES_1: "基本玩法 · 1/3\n\n黑棋先手，任意方向连成五子或更多即获胜，不设禁手。\n\n每回合落子或发动一个技能。初始 3 能量，上限 8；普通落子增加 1 能量。\n\n点棋盘定位，再确认落子。菜单里可以选技能或悔棋。返回可取消待发动的技能，不扣能量。\n\n棋盘满或累计 400 次行动判和。技能模式与传统模式分别存档。"
 +STR_SGM_RULES_2: "普通技能 · 2/3\n\n飞沙走石（3 能量）：移除对方一枚棋子。\n\n偷梁换柱（4 能量）：将对方一枚棋子变为己方颜色。\n\n移花接木（2 能量）：选己方棋子并确认，再选空位并确认移动。\n\n这三个技能发动后，需要自己再完成两次行动才可再次使用。选错目标、取消操作不扣能量，不计回合。"
 +STR_SGM_RULES_3: "强力技能 · 3/3\n\n静如止水（5）：落一子，对方跳过回合，自己继续。\n\n两极反转（6）：交换全部棋子颜色，场上须有双方棋子。\n\n力拔山兮（8）：清空指定 3×3 区域，己方棋子也会移除。\n\n以上技能每位玩家每局各限一次。\n\n休养生息：恢复 3 能量并结束回合。悔棋还原能量、冷却和技能次数，仅保留本次进入后的最近 8 次行动。"
++STR_GALLERY_TITLE: "图库"
++STR_RICKY_SET_STANDBY_SHORT: "设为待机"
++STR_RICKY_SET_POWER_OFF_SHORT: "设为关机"
++STR_RICKY_SET_READING_SHORT: "设为阅读背景"
++STR_RICKY_SET_READING_BACKGROUND: "设为阅读背景"
++STR_RICKY_TAB_READING: "阅读背景"
++STR_RICKY_SELECT_READING_BACKGROUND: "选择阅读背景"
++STR_RICKY_READING_BG_OFF: "关闭"
++STR_RICKY_READING_BG_LIGHT: "浅"
++STR_RICKY_READING_BG_MEDIUM: "中"
++STR_RICKY_READING_BG_DEEP: "深"
++STR_RICKY_READING_BG_SHADE: "深浅"
++STR_RICKY_READING_PAPER: "纸样"
++STR_RICKY_PAPER_PICTURE: "图片"
++STR_RICKY_PAPER_LINES: "横线"
++STR_RICKY_PAPER_GRID: "方格"
++STR_RICKY_PAPER_DOTS: "网点"
 --- a/lib/I18n/translations/english.yaml
 +++ b/lib/I18n/translations/english.yaml
 @@ -396,6 +396,24 @@
@@ -184211,17 +184264,44 @@
  STR_LIBRARY_REBUILDING: "Reading your books..."
  STR_LIBRARY_REBUILD_DONE: "Library index rebuilt"
  STR_LIBRARY_REBUILD_FAILED: "Could not rebuild the index"
-@@ -1491,6 +1509,9 @@
+@@ -1486,11 +1504,35 @@
+ STR_RICKY_SELECT_TRANSPARENT: "Choose overlay PNG"
+ STR_RICKY_CLEAR_TRANSPARENT: "Remove overlay PNG"
+ STR_RICKY_SET_TRANSPARENT: "Set transparent wallpaper"
+-STR_RICKY_POWER_PAGE_TITLE: "Screensaver"
++STR_RICKY_POWER_PAGE_TITLE: "Wallpaper"
+ STR_RICKY_TAB_STANDBY: "Standby"
  STR_RICKY_TAB_POWER_OFF: "Power off"
  STR_RICKY_POWER_OFF_SCREEN: "Power-off screen"
  STR_RICKY_POWER_OFF_SAME: "Same as standby"
 +STR_RICKY_POWER_OFF_CUSTOM: "Custom wallpaper"
 +STR_RICKY_SELECT_POWER_OFF_WALLPAPER: "Choose power-off image"
++STR_RICKY_DEFAULT_PICTURES: "Defaults"
++STR_RICKY_MY_PICTURES: "Mine"
++STR_RICKY_IN_USE: "In use"
++STR_RICKY_TRANSFER_PICTURES: "Transfer Pictures"
++STR_RICKY_CHIP_TIME: "Time"
++STR_RICKY_CHIP_WHOLE: "Whole"
++STR_RICKY_CHIP_FILL: "Fill"
++STR_RICKY_CHIP_ORIGINAL: "Original"
++STR_RICKY_CHIP_CONTRAST: "Contrast"
++STR_RICKY_CHIP_INVERT: "Invert"
++STR_RICKY_CARD_PICTURE: "Picture"
++STR_RICKY_CARD_COVER: "Cover"
++STR_RICKY_CARD_CALENDAR: "Calendar"
++STR_RICKY_CARD_KEEP: "Page"
++STR_RICKY_CARD_STICKER: "Overlay"
++STR_RICKY_CARD_SAME: "Standby"
++STR_RICKY_CARD_DEFAULT: "Default"
++STR_RICKY_CARD_BLANK: "Blank"
++STR_RICKY_ALL_PICTURES: "All %u"
++STR_RICKY_CHANGE_PICTURE: "Change Picture"
++STR_RICKY_PICTURES: "Pictures"
 +STR_RICKY_SET_POWER_OFF_WALLPAPER: "Set power-off wallpaper"
  STR_RICKY_POWERED_OFF: "Off · hold to turn on"
  STR_RICKY_PICTURE_FIT: "Picture fit"
  STR_RICKY_PICTURE_FIT_WHOLE: "Whole picture"
-@@ -1574,6 +1595,7 @@
+@@ -1574,6 +1616,7 @@
  STR_RICKY_GESTURE_READING: "Reading"
  STR_RICKY_GESTURE_BACK: "Swipe right from the left: Back"
  STR_RICKY_GESTURE_HOME: "Swipe up from the bottom: Home"
@@ -184229,7 +184309,7 @@
  STR_RICKY_GESTURE_CONTROL: "Swipe down from the top: Control center"
  STR_RICKY_GESTURE_STATUS: "Tap the status bar: Control center"
  STR_RICKY_GESTURE_TOUCH_TURN: "Touch page turns"
-@@ -1622,3 +1644,111 @@
+@@ -1622,3 +1665,128 @@
  STR_RICKY_HELP_FEEDBACK_3: "Send feedback through your existing Ricky AI Studio contact channel. This page does not upload device information. Scan the website QR code to visit the site."
  STR_RICKY_MENU_AUTO_TURN: "Auto page turn"
  STR_RICKY_MENU_PROGRESS: "Reading progress"
@@ -184341,6 +184421,23 @@
 +STR_SGM_RULES_1: "SKILL GOMOKU · 1/3\n\nBlack starts. Connect five or more to win. Each turn: place OR cast.\n\nStart with 3 energy; maximum 8. Normal placement adds 1.\n\nTouch aims; Confirm commits. Menu opens skills and undo. Back cancels an armed skill without spending.\n\nA full board or 400 actions is a draw. Saves are separate from traditional Gomoku."
 +STR_SGM_RULES_2: "SKILLS · 2/3\n\nFlying sand (3): remove an opponent stone.\n\nSwitch sides (4): convert an opponent stone.\n\nStone shuffle (2): select your stone, confirm; select an empty destination, confirm.\n\nThese skills cool down for your next 2 successful actions. Invalid targets and cancellation cost nothing."
 +STR_SGM_RULES_3: "POWER SKILLS · 3/3\n\nStill water (5): place, then play again.\n\nPolar reversal (6): swap every stone colour. Requires both colours on the board.\n\nMountain mover (8): clear a 3×3 area, including your stones.\n\nEach power skill is usable once per player per game.\n\nCatch a breath: gain 3 energy, end turn. Undo restores energy, cooldowns and used skills; last 8 actions, this session only."
++STR_GALLERY_TITLE: "Gallery"
++STR_RICKY_SET_STANDBY_SHORT: "Standby"
++STR_RICKY_SET_POWER_OFF_SHORT: "Power off"
++STR_RICKY_SET_READING_SHORT: "Reading"
++STR_RICKY_SET_READING_BACKGROUND: "Set reading background"
++STR_RICKY_TAB_READING: "Reading"
++STR_RICKY_SELECT_READING_BACKGROUND: "Choose reading background"
++STR_RICKY_READING_BG_OFF: "Off"
++STR_RICKY_READING_BG_LIGHT: "Light"
++STR_RICKY_READING_BG_MEDIUM: "Medium"
++STR_RICKY_READING_BG_DEEP: "Deep"
++STR_RICKY_READING_BG_SHADE: "Shade"
++STR_RICKY_READING_PAPER: "Paper"
++STR_RICKY_PAPER_PICTURE: "Picture"
++STR_RICKY_PAPER_LINES: "Lines"
++STR_RICKY_PAPER_GRID: "Grid"
++STR_RICKY_PAPER_DOTS: "Dots"
 --- a/lib/JpegToBmpConverter/JpegToBmpConverter.cpp
 +++ b/lib/JpegToBmpConverter/JpegToBmpConverter.cpp
 @@ -606,10 +606,11 @@
@@ -187377,7 +187474,7 @@
  const SIZE = 40;
  const THRESHOLD = 110;
 -const names = ['transfer', 'opds', 'weread', 'stats', 'gomoku', 'calculator', 'standby'];
-+const names = ['transfer', 'opds', 'weread', 'stats', 'gomoku', 'calculator', 'standby', 'recorder'];
++const names = ['transfer', 'opds', 'weread', 'stats', 'gomoku', 'calculator', 'standby', 'recorder', 'gallery', 'wallpaper'];
  
  let output = path.join(root, 'src/components/icons/rickyAppIcons.h');
  const args = process.argv.slice(2);
@@ -187543,13 +187640,14 @@
          config = configparser.ConfigParser(interpolation=None)
 --- a/src/AppVisibility.h
 +++ b/src/AppVisibility.h
-@@ -23,7 +23,8 @@
+@@ -23,7 +23,9 @@
    OpdsBrowser = 14,
    Calculator = 15,
    Woodfish = 16,
 -  Count = 17,
 +  Recorder = 17,
-+  Count = 18,
++  Gallery = 18,
++  Count = 19,
  };
  
  constexpr uint32_t appBit(const AppId id) { return uint32_t{1} << static_cast<uint8_t>(id); }
@@ -187572,7 +187670,7 @@
    doc["rickyBadgesSeen"] = rickyBadgesSeen;
    doc["frontButtonConfirm"] = frontButtonConfirm;
    doc["frontButtonLeft"] = frontButtonLeft;
-@@ -277,9 +283,11 @@
+@@ -277,13 +283,17 @@
    doc["rickyHomePhrase"] = rickyHomePhrase;
    doc["rickyGestureBack"] = rickyGestureBack;
    doc["rickyGestureHome"] = rickyGestureHome;
@@ -187584,7 +187682,13 @@
    doc["rickyTextWeight"] = rickyTextWeight;
    doc["rickyStandbyFace"] = rickyStandbyFace;
    doc["rickyAutoOffIndex"] = rickyAutoOffIndex;
-@@ -311,6 +319,7 @@
+   doc["rickyPowerOffScreen"] = rickyPowerOffScreen;
++  doc["readingBackground"] = readingBackground;
++  doc["readingPaper"] = readingPaper;
+   doc["rickyTapTurn"] = 1;       // the swipe-only default migration has run
+   doc["rickyStandbyKeyOn"] = 1;  // the Back-key Standby shortcut was turned on once
+   // Dictionary folder name — uses dynamic getter/setter in SettingsList, save manually
+@@ -311,6 +321,7 @@
  bool CrossPointSettings::fromJson(JsonVariantConst doc) {
    CrossPointSettings& s = *this;
    bool needsResave = false;
@@ -187592,7 +187696,7 @@
  
    auto clamp = [](uint8_t val, uint8_t maxVal, uint8_t def) -> uint8_t { return val < maxVal ? val : def; };
  
-@@ -401,6 +410,7 @@
+@@ -401,6 +412,7 @@
    // Reading mode lives in the reader menu, not in SettingsList, so it loads here.
    // The custom reading background became the puppy reading mode.
    rickyBadgesSeen = doc["rickyBadgesSeen"] | static_cast<uint32_t>(0);
@@ -187600,7 +187704,7 @@
    if (doc["readingMode"].isNull()) {
      readingMode = (doc["readingBackgroundEnabled"] | static_cast<uint8_t>(0)) != 0 ? 1 : 0;  // 1 = Puppy
      if (readingMode != 0) needsResave = true;
-@@ -445,6 +455,14 @@
+@@ -445,6 +457,14 @@
      needsResave = true;
    }
    // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
@@ -187615,7 +187719,7 @@
    frontButtonBack = clamp(doc["frontButtonBack"] | (uint8_t)FRONT_HW_BACK, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_BACK);
    frontButtonConfirm =
        clamp(doc["frontButtonConfirm"] | (uint8_t)FRONT_HW_CONFIRM, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_CONFIRM);
-@@ -513,6 +531,7 @@
+@@ -513,6 +533,7 @@
    // Missing keys take the defaults: Home swipe starts off for everyone, as agreed.
    rickyGestureBack = (doc["rickyGestureBack"] | 1) ? 1 : 0;
    rickyGestureHome = (doc["rickyGestureHome"] | 0) ? 1 : 0;
@@ -187623,7 +187727,18 @@
    rickyCompanion = (doc["rickyCompanion"] | 0) == RICKY_COMPANION_CAT ? RICKY_COMPANION_CAT : RICKY_COMPANION_DOG;
    rickyGestureControl = (doc["rickyGestureControl"] | 1) ? 1 : 0;
    rickyGestureStatus = (doc["rickyGestureStatus"] | 1) ? 1 : 0;
-@@ -876,6 +895,7 @@
+@@ -551,6 +572,10 @@
+     rickyPowerOffScreen = doc["rickyPowerOffScreen"] | static_cast<uint8_t>(RICKY_POWER_OFF_DEFAULT);
+     if (rickyPowerOffScreen >= RICKY_POWER_OFF_SCREEN_COUNT) rickyPowerOffScreen = RICKY_POWER_OFF_DEFAULT;
+   }
++  readingBackground = doc["readingBackground"] | static_cast<uint8_t>(READING_BACKGROUND_OFF);
++  if (readingBackground >= READING_BACKGROUND_COUNT) readingBackground = READING_BACKGROUND_OFF;
++  readingPaper = doc["readingPaper"] | static_cast<uint8_t>(READING_PAPER_PICTURE);
++  if (readingPaper >= READING_PAPER_COUNT) readingPaper = READING_PAPER_PICTURE;
+   // Old backups/direct JSON edits must not select a different product layout.
+   struct FixedLayout {
+     const char* key;
+@@ -876,6 +901,7 @@
  
  uint8_t CrossPointSettings::rickySleepScreenMode() const {
    if (rickyPowerOffScreen == RICKY_POWER_OFF_BLANK) return BLANK;
@@ -187664,7 +187779,7 @@
    uint8_t homeButtonTapAction = static_cast<uint8_t>(HomeButtonAction::Home);
    uint8_t homeButtonDoubleTapAction = static_cast<uint8_t>(HomeButtonAction::ToggleFrontlight);
    uint8_t homeButtonLongPressAction = static_cast<uint8_t>(HomeButtonAction::ReaderMenu);
-@@ -457,11 +467,12 @@
+@@ -457,14 +467,33 @@
    };
    uint8_t rickyStandbyFace = RICKY_STANDBY_PICTURE;
    // What stays on the screen once the device is off: what Standby showed, the RickyOS
@@ -187678,7 +187793,28 @@
      RICKY_POWER_OFF_SCREEN_COUNT
    };
    uint8_t rickyPowerOffScreen = RICKY_POWER_OFF_DEFAULT;
-@@ -503,6 +514,7 @@
++  // 阅读背景: /readingbg.bmp under the page, lightened by this much (off by default).
++  enum READING_BACKGROUND : uint8_t {
++    READING_BACKGROUND_OFF = 0,
++    READING_BACKGROUND_LIGHT,
++    READING_BACKGROUND_MEDIUM,
++    READING_BACKGROUND_DEEP,
++    READING_BACKGROUND_COUNT
++  };
++  uint8_t readingBackground = READING_BACKGROUND_OFF;
++  // What lies under the page: the chosen picture, or ruled paper drawn to the text's rows.
++  enum READING_PAPER : uint8_t {
++    READING_PAPER_PICTURE = 0,
++    READING_PAPER_LINES,
++    READING_PAPER_GRID,
++    READING_PAPER_DOTS,
++    READING_PAPER_COUNT
++  };
++  uint8_t readingPaper = READING_PAPER_PICTURE;
+   // The sleepScreen mode the power-off screen draws with (SleepActivity).
+   uint8_t rickySleepScreenMode() const;
+   // Standby that has run this long powers off (index into RICKY_AUTO_OFF_HOURS; 0 = never).
+@@ -503,6 +532,7 @@
    // last lines of a page and on the tab bar, so readers left books by accident.
    uint8_t rickyGestureBack = 1;     // swipe right from the left side: Back
    uint8_t rickyGestureHome = 0;     // swipe up from the bottom: Home
@@ -187686,7 +187822,7 @@
    uint8_t rickyGestureControl = 1;  // swipe down from the top: control center
    uint8_t rickyGestureStatus = 1;   // tap the status bar: control center
    // Body-text stroke weight in the reader: 0 thinnest .. 2 the font as drawn .. 4 boldest.
-@@ -567,6 +579,7 @@
+@@ -567,6 +597,7 @@
    uint8_t showReaderMenu = READER_MENU_TAP;
    // Frontlight quick-panel state. Brightness and warmth remain persisted even
    // when restore-on-wake is disabled.
@@ -188304,7 +188440,7 @@
  
  #include <BoardConfig.h>
  #include <FontCacheManager.h>
-@@ -15,7 +44,10 @@
+@@ -15,9 +44,13 @@
  #include "CrossPointSettings.h"
  #include "apps/AppsMenuActivity.h"
  #include "apps/calculator/CalculatorActivity.h"
@@ -188315,8 +188451,11 @@
 +#include "apps/gomoku/GomokuModeActivity.h"
  #include "apps/reading-stats/RickyReadingStatsActivity.h"
  #include "apps/standby/RickyStandbySettingsActivity.h"
++#include "apps/standby/StandbyGalleryActivity.h"
  #include "apps/standby/StandbyActivity.h"
-@@ -117,7 +149,7 @@
+ #include "apps/weread/WeReadActivity.h"
+ #include "boot_sleep/BootActivity.h"
+@@ -117,7 +150,7 @@
    self->renderTaskLoop();
  }
  
@@ -188325,7 +188464,7 @@
  namespace {
  // Keep the previous B/W + delayed-gray candidate available for A/B builds.
  // The direct-gray experiment skips both the B/W submission and this idle redraw.
-@@ -144,12 +176,20 @@
+@@ -144,12 +177,20 @@
      // looks the same from outside whichever of these fired.
      if (idleArmed && foreground) {
        LOG_DBG("ACT", "Idle render: preempted by an update");
@@ -188346,7 +188485,7 @@
        // One idle attempt per render, but a page turn's own touch-up or key release lands
        // during that render and used to spend the attempt: on device the reader's page
        // cache hit about 1 turn in 40. Input that queues no render re-arms the wait, so
-@@ -177,14 +217,14 @@
+@@ -177,14 +218,14 @@
          // before calling them. Input during the render also cancels its idle pass.
          auto delayMs = currentActivity->idleRenderDelayMs();
          [[maybe_unused]] bool directGray = false;
@@ -188363,7 +188502,7 @@
          // A missing gray buffer or failed commit gets the existing readable B/W
          // fallback. The direct path never arms a second, delayed submission.
          if (!directGray || !renderDirectGray(std::move(lock))) currentActivity->render(std::move(lock));
-@@ -194,12 +234,15 @@
+@@ -194,12 +235,15 @@
          idleDelayTicks = delayMs != 0 ? pdMS_TO_TICKS(delayMs) : portMAX_DELAY;
          waitTicks = idleDelayTicks;
        } else if (!idleRenderCancelled(idleGeneration)) {
@@ -188380,7 +188519,7 @@
          }
  #else
          currentActivity->renderIdle(idleGeneration);
-@@ -208,7 +251,29 @@
+@@ -208,7 +252,29 @@
      }
      // An idle timeout must never acknowledge requestUpdateAndWait(): its
      // notification may have arrived while the idle callback was cancelling.
@@ -188411,7 +188550,7 @@
      TaskHandle_t waiter = nullptr;
      taskENTER_CRITICAL(&activityManagerSpinlock);
      waiter = waitingTaskHandle;
-@@ -220,13 +285,16 @@
+@@ -220,13 +286,16 @@
    }
  }
  
@@ -188429,7 +188568,7 @@
    const uint32_t renderGeneration = renderRequestGeneration.load(std::memory_order_relaxed);
    // Renderers may release the lock; capture page-owned geometry first.
    const Rect navigation = currentActivity->usesMainTabBar() ? currentActivity->mainTabLayout().tabBar : Rect{};
-@@ -255,6 +323,10 @@
+@@ -255,6 +324,10 @@
    if (committed) renderer.clearNextRefreshOverride();
    LOG_DBG("ACT", "Direct gray: %s paint=%lu ms submit=%lu ms total=%lu ms", committed ? "done" : "failed, B/W fallback",
            painted - started, millis() - painted, millis() - started);
@@ -188440,7 +188579,7 @@
  #if RICKYOS_PERF_SD_LOG
    {
      char line[256];
-@@ -356,6 +428,111 @@
+@@ -356,6 +429,111 @@
      resetHomeStandbyInput();
      return;
    }
@@ -188552,7 +188691,7 @@
  
    if (currentActivity && currentActivity->requiresExclusiveStorageLoop()) {
      currentActivity->loop();
-@@ -817,9 +994,12 @@
+@@ -817,9 +995,12 @@
  
  void ActivityManager::goToReadingStats() { goToRickyReadingStats(); }
  
@@ -188566,7 +188705,17 @@
  
  void ActivityManager::goToStandby() { replaceActivityWith<StandbyActivity>(); }
  
-@@ -896,7 +1076,7 @@
+@@ -840,6 +1021,9 @@
+   popActivity();  // back to the page under it; Home when Standby was the only one
+ }
+ void ActivityManager::goToStandbySettings() { replaceActivityWith<RickyStandbySettingsActivity>(); }
++void ActivityManager::goToGallery() {
++  replaceActivityWith<StandbyGalleryActivity>(StandbyPictures::Target::Standby, StandbyGalleryActivity::Mode::Browse);
++}
+ 
+ void ActivityManager::goToWeRead() { replaceActivityWith<WeReadActivity>(); }
+ 
+@@ -896,7 +1080,7 @@
    cancelIdleRender();
    if (!currentActivity) return false;
    if (currentActivity->handleForcedRefresh()) return true;
@@ -188575,7 +188724,7 @@
    if (ricky::ds::refresh::kDirectGrayUi && currentActivity->wantsGraySettle() &&
        currentActivity->idleRenderDelayMs() == 0) {
      // Refresh the real gray UI, not its approximate 1-bit proxy.
-@@ -931,7 +1111,7 @@
+@@ -931,7 +1115,7 @@
  #endif
  
  void ActivityManager::requestUpdate(bool immediate) {
@@ -188584,7 +188733,7 @@
    renderRequestGeneration.fetch_add(1, std::memory_order_relaxed);
  #endif
  #if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
-@@ -949,7 +1129,7 @@
+@@ -949,7 +1133,7 @@
    }
  }
  void ActivityManager::requestUpdateAndWait() {
@@ -188623,6 +188772,14 @@
    void goToStandby();
    // Side key / inactivity: Standby over whatever is open, popping back to it on close.
    void openStandby();
+@@ -174,6 +177,7 @@
+   }
+   // Apps → Standby: choose what the sleeping screen shows; full-screen Standby is a row there.
+   void goToStandbySettings();
++  void goToGallery();
+   void goToWeRead();
+   void goHome(HomeMenuItem initialMenuItem = HomeMenuItem::NONE);
+   MainTabFocus getMainTabFocus() const { return mainTabFocus; }
 --- a/src/activities/UiListActivity.h
 +++ b/src/activities/UiListActivity.h
 @@ -18,7 +18,7 @@
@@ -188636,15 +188793,17 @@
  #endif
 --- a/src/activities/apps/AppsMenuActivity.cpp
 +++ b/src/activities/apps/AppsMenuActivity.cpp
-@@ -38,10 +38,17 @@
+@@ -38,10 +38,18 @@
      {AppId::ReadingStats, StrId::STR_READING_STATS, UIIcon::ReadingStats, &ActivityManager::goToRickyReadingStats},
      {AppId::Gomoku, StrId::STR_GOMOKU_TITLE, UIIcon::Gomoku, &ActivityManager::goToGomoku},
      {AppId::Calculator, StrId::STR_CALCULATOR_TITLE, UIIcon::Calculator, &ActivityManager::goToCalculator},
 +#if FREEINK_DEVICE_METALIO_PLUS
 +    {AppId::Recorder, StrId::STR_REC_TITLE, UIIcon::Recorder, &ActivityManager::goToRecorder},
 +#endif
++    {AppId::Gallery, StrId::STR_GALLERY_TITLE, UIIcon::Gallery, &ActivityManager::goToGallery},
      // The one entry for Standby & power off (not repeated in Settings).
-     {AppId::Standby, StrId::STR_RICKY_POWER_PAGE_TITLE, UIIcon::Standby, &ActivityManager::goToStandbySettings},
+-    {AppId::Standby, StrId::STR_RICKY_POWER_PAGE_TITLE, UIIcon::Standby, &ActivityManager::goToStandbySettings},
++    {AppId::Standby, StrId::STR_RICKY_POWER_PAGE_TITLE, UIIcon::Wallpaper, &ActivityManager::goToStandbySettings},
  };
  
 +// Preserve the product's three columns; page capacity follows the Plus viewport.
@@ -188654,16 +188813,20 @@
  constexpr int kAppCount = static_cast<int>(sizeof(kAppEntries) / sizeof(kAppEntries[0]));
  
  constexpr int visibleAppCount(const uint32_t hiddenMask) {
-@@ -101,6 +108,8 @@
+@@ -101,6 +109,12 @@
        return ricky_app_calculator_40;
      case UIIcon::Standby:
        return ricky_app_standby_40;
 +    case UIIcon::Recorder:
 +      return ricky_app_recorder_40;
++    case UIIcon::Gallery:
++      return ricky_app_gallery_40;
++    case UIIcon::Wallpaper:
++      return ricky_app_wallpaper_40;
      default:
        return nullptr;
    }
-@@ -114,6 +123,21 @@
+@@ -114,6 +128,21 @@
  constexpr int kAppTileStroke = ricky::ds::stroke::kHairline;
  constexpr int kAppPillWidth = kAppTileSize;  // the tile's footprint in the cell layout
  constexpr int kAppPillHeight = kAppTileSize;
@@ -188685,7 +188848,7 @@
  
  void drawRickyAppIcon(const GfxRenderer& renderer, const uint8_t* icon, const int x, const int y, const bool selected) {
    const int tileX = x + (kRickyAppIconSize - kAppTileSize) / 2;
-@@ -201,15 +225,20 @@
+@@ -201,15 +230,20 @@
    content.width -= ricky::ds::space::kPageMargin * 2;
    content.y += ricky::ds::layout::kPageHeaderHeight;
    content.height -= ricky::ds::layout::kPageHeaderHeight;
@@ -188709,7 +188872,7 @@
    }
    return -1;
  }
-@@ -248,13 +277,18 @@
+@@ -248,13 +282,18 @@
      return true;
    }
    const auto swipe = mappedInput.wasSwipe();
@@ -188730,7 +188893,7 @@
      requestUpdate();
      return true;
    }
-@@ -262,14 +296,15 @@
+@@ -262,14 +301,15 @@
  }
  
  void AppsMenuActivity::drawIconGrid(const Rect& rect, const int visibleCount, const bool showSelection) const {
@@ -188749,7 +188912,7 @@
      const bool isSelected = showSelection && visibleIndex == nav.selected;
      const std::string label =
          renderer.truncatedText(UI_10_FONT_ID, I18N.get(kAppEntries[appIndex].titleId), std::max(1, cell.width - 8));
-@@ -307,7 +342,7 @@
+@@ -307,7 +347,7 @@
      renderer.drawText(UI_10_FONT_ID, labelX, iconY + iconSize + 8, label.c_str(), !isSelected);
    }
  
@@ -190822,79 +190985,860 @@
 +#endif
 --- a/src/activities/apps/standby/RickyStandbySettingsActivity.cpp
 +++ b/src/activities/apps/standby/RickyStandbySettingsActivity.cpp
-@@ -28,6 +28,7 @@
+@@ -3,6 +3,7 @@
+ #include <Bitmap.h>
+ #include <FsHelpers.h>
+ #include <GfxRenderer.h>
++#include <HalClock.h>
+ #include <HalStorage.h>
+ #include <I18n.h>
+ #include <Logging.h>
+@@ -15,37 +16,43 @@
+ 
+ #include "CrossPointSettings.h"
+ #include "KeepPageFace.h"
+-#include "RickyWallpaperDownloadActivity.h"
+ #include "StandbyActivity.h"
++#include "StandbyGalleryActivity.h"
+ #include "activities/home/FileBrowserActivity.h"
+ #include "activities/util/ImageViewerActivity.h"
++#include "components/RickyDesignUi.h"
++#include "components/RickyGrayStroke.h"
+ #include "components/RickyPageUi.h"
+ #include "components/UITheme.h"
+ #include "fontIds.h"
+-#include "util/RickyStorageLayout.h"
++#include "util/PanelTileCache.h"
++#include "util/ReadingBackground.h"
+ 
+ namespace {
  namespace fui = freeink::ui;
++namespace ds = ricky::ds;
  using Settings = CrossPointSettings;
++using Item = RickyStandbySettingsActivity::Item;
  constexpr char kPicture[] = "/sleep.bmp";
 +constexpr char kPowerOffPicture[] = "/poweroff.bmp";
  
  // Standby styles in the order people pick them; stored values differ (RICKY_STANDBY_FACE).
  constexpr uint8_t kStyles[] = {Settings::RICKY_STANDBY_PICTURE, Settings::RICKY_STANDBY_COVER,
-@@ -56,14 +57,15 @@
+                                Settings::RICKY_STANDBY_CALENDAR, Settings::RICKY_STANDBY_KEEP_PAGE,
+                                Settings::RICKY_STANDBY_TRANSPARENT};
+-constexpr StrId kStyleLabels[] = {StrId::STR_RICKY_STANDBY_STYLE_PICTURE, StrId::STR_RICKY_STANDBY_STYLE_COVER,
+-                                  StrId::STR_RICKY_STANDBY_STYLE_CALENDAR, StrId::STR_RICKY_STANDBY_STYLE_KEEP,
+-                                  StrId::STR_RICKY_STANDBY_STYLE_TRANSPARENT};
++constexpr StrId kStyleCards[] = {StrId::STR_RICKY_CARD_PICTURE, StrId::STR_RICKY_CARD_COVER,
++                                 StrId::STR_RICKY_CARD_CALENDAR, StrId::STR_RICKY_CARD_KEEP,
++                                 StrId::STR_RICKY_CARD_STICKER};
+ static_assert(std::size(kStyles) == Settings::RICKY_STANDBY_FACE_COUNT);
+-static_assert(std::size(kStyleLabels) == std::size(kStyles));
+-constexpr StrId kFitLabels[] = {StrId::STR_RICKY_PICTURE_FIT_WHOLE, StrId::STR_RICKY_PICTURE_FIT_FILL};
+-static_assert(std::size(kFitLabels) == Settings::SLEEP_SCREEN_COVER_MODE_COUNT);
+-constexpr StrId kFilterLabels[] = {StrId::STR_NONE_OPT, StrId::STR_RICKY_PICTURE_FILTER_CONTRAST,
+-                                   StrId::STR_RICKY_PICTURE_FILTER_INVERT};
+-static_assert(std::size(kFilterLabels) == Settings::SLEEP_SCREEN_COVER_FILTER_COUNT);
+-constexpr StrId kInfoLabels[] = {StrId::STR_RICKY_STANDBY_INFO_NONE, StrId::STR_RICKY_STANDBY_INFO_DATE,
+-                                 StrId::STR_RICKY_STANDBY_INFO_TIME};
+-static_assert(std::size(kInfoLabels) == Settings::STANDBY_OVERLAY_COUNT);
++static_assert(std::size(kStyleCards) == std::size(kStyles));
++constexpr StrId kInfoChips[] = {StrId::STR_RICKY_STANDBY_INFO_NONE, StrId::STR_RICKY_STANDBY_INFO_DATE,
++                                StrId::STR_RICKY_CHIP_TIME};
++static_assert(std::size(kInfoChips) == Settings::STANDBY_OVERLAY_COUNT);
++constexpr StrId kFitChips[] = {StrId::STR_RICKY_CHIP_WHOLE, StrId::STR_RICKY_CHIP_FILL};
++static_assert(std::size(kFitChips) == Settings::SLEEP_SCREEN_COVER_MODE_COUNT);
++constexpr StrId kFilterChips[] = {StrId::STR_RICKY_CHIP_ORIGINAL, StrId::STR_RICKY_CHIP_CONTRAST,
++                                  StrId::STR_RICKY_CHIP_INVERT};
++static_assert(std::size(kFilterChips) == Settings::SLEEP_SCREEN_COVER_FILTER_COUNT);
+ // Minutes before Standby; SLEEP_TIMEOUT_NEVER_MINUTES means never.
+ constexpr uint8_t kStandbyMinutes[] = {1, 3, 5, 10, 15, 30, Settings::SLEEP_TIMEOUT_NEVER_MINUTES};
+ constexpr StrId kStandbyMinuteLabels[] = {
+@@ -56,15 +63,19 @@
                                      StrId::STR_RICKY_HOURS_6, StrId::STR_RICKY_HOURS_12, StrId::STR_RICKY_HOURS_24};
  static_assert(std::size(kAutoOffLabels) == Settings::RICKY_AUTO_OFF_COUNT);
  constexpr StrId kPowerOffLabels[] = {StrId::STR_RICKY_POWER_OFF_SAME, StrId::STR_RICKY_SLEEP_LIGHT,
 -                                     StrId::STR_RICKY_SLEEP_BLANK};
 +                                     StrId::STR_RICKY_SLEEP_BLANK, StrId::STR_RICKY_POWER_OFF_CUSTOM};
++constexpr StrId kPowerOffCards[] = {StrId::STR_RICKY_CARD_SAME, StrId::STR_RICKY_CARD_DEFAULT,
++                                    StrId::STR_RICKY_CARD_BLANK, StrId::STR_RICKY_CARD_PICTURE};
  static_assert(std::size(kPowerOffLabels) == Settings::RICKY_POWER_OFF_SCREEN_COUNT);
- 
- constexpr StrId kRowLabels[] = {
-     StrId::STR_RICKY_STANDBY_STYLE, StrId::STR_RICKY_SELECT_WALLPAPER,   StrId::STR_RICKY_WALLPAPER_DOWNLOAD,
-     StrId::STR_RICKY_PICTURE_FIT,   StrId::STR_RICKY_PICTURE_FILTER,     StrId::STR_RICKY_STANDBY_INFO,
-     StrId::STR_RICKY_AUTO_STANDBY,  StrId::STR_RICKY_STANDBY_NOW,        StrId::STR_RICKY_POWER_OFF_SCREEN,
+-
+-constexpr StrId kRowLabels[] = {
+-    StrId::STR_RICKY_STANDBY_STYLE, StrId::STR_RICKY_SELECT_WALLPAPER,   StrId::STR_RICKY_WALLPAPER_DOWNLOAD,
+-    StrId::STR_RICKY_PICTURE_FIT,   StrId::STR_RICKY_PICTURE_FILTER,     StrId::STR_RICKY_STANDBY_INFO,
+-    StrId::STR_RICKY_AUTO_STANDBY,  StrId::STR_RICKY_STANDBY_NOW,        StrId::STR_RICKY_POWER_OFF_SCREEN,
 -    StrId::STR_RICKY_AUTO_OFF,      StrId::STR_RICKY_SELECT_TRANSPARENT, StrId::STR_RICKY_CLEAR_TRANSPARENT};
-+    StrId::STR_RICKY_AUTO_OFF,      StrId::STR_RICKY_SELECT_TRANSPARENT, StrId::STR_RICKY_CLEAR_TRANSPARENT,
-+    StrId::STR_RICKY_SELECT_POWER_OFF_WALLPAPER};
- static_assert(std::size(kRowLabels) == RickyStandbySettingsActivity::RowKinds);
+-static_assert(std::size(kRowLabels) == RickyStandbySettingsActivity::RowKinds);
++static_assert(std::size(kPowerOffCards) == std::size(kPowerOffLabels));
++constexpr StrId kReadingShades[] = {StrId::STR_RICKY_READING_BG_OFF, StrId::STR_RICKY_READING_BG_LIGHT,
++                                    StrId::STR_RICKY_READING_BG_MEDIUM, StrId::STR_RICKY_READING_BG_DEEP};
++static_assert(std::size(kReadingShades) == Settings::READING_BACKGROUND_COUNT);
++constexpr StrId kReadingPapers[] = {StrId::STR_RICKY_PAPER_PICTURE, StrId::STR_RICKY_PAPER_LINES,
++                                    StrId::STR_RICKY_PAPER_GRID, StrId::STR_RICKY_PAPER_DOTS};
++static_assert(std::size(kReadingPapers) == Settings::READING_PAPER_COUNT);
++// The plate around a card or a tile: the inverted selection shows as this ink margin.
++constexpr int kPlate = 8;
  
  int styleIndex() {
-@@ -111,6 +113,7 @@
-   auto add = [this](const Row row) { rows_[rowCount_++] = row; };
+   for (size_t i = 0; i < std::size(kStyles); ++i)
+@@ -92,45 +103,201 @@
+     SETTINGS.saveToFile();
+   });
+ }
++
++void saveSetting(uint8_t& field, const uint8_t value) {
++  if (field == value) return;
++  field = value;
++  SETTINGS.saveToFile();
++}
++
++fui::Rect rect(const int x, const int y, const int width, const int height) {
++  return {static_cast<int16_t>(x), static_cast<int16_t>(y), static_cast<int16_t>(width),
++          static_cast<int16_t>(height)};
++}
++
++fui::Rect inset(const fui::Rect& r, const int by) { return rect(r.x + by, r.y + by, r.width - 2 * by, r.height - 2 * by); }
++
++// A chip or a button: ink when chosen, else paper with the light-gray hairline edge the
++// Home and Library controls rest with.
++void control(const GfxRenderer& renderer, const fui::Rect& r, const bool chosen, const int radius) {
++  RickyDesignUi::fill(renderer, r, chosen ? ds::gray::kInk : ds::gray::kPaper, radius);
++  if (!chosen) RickyGrayStroke::ring(renderer, r.x, r.y, r.width, r.height, ds::stroke::kHairline, radius, ds::gray::kLine);
++}
++
++// A screen-shaped preview's frame: the light-gray cover edge.
++void previewFrame(const GfxRenderer& renderer, const fui::Rect& r) {
++  RickyGrayStroke::ring(renderer, r.x, r.y, r.width, r.height, ds::stroke::kCoverEdge, 0, ds::gray::kLine);
++}
++
++// Key focus on a control that already shows its choice by inversion: an emphasis ring
++// around it, so focus and choice never read alike.
++void focusRing(const GfxRenderer& renderer, const fui::Rect& r, const int radius) {
++  constexpr int gap = 6;
++  renderer.drawRoundedRect(r.x - gap, r.y - gap, r.width + 2 * gap, r.height + 2 * gap, ds::stroke::kEmphasis,
++                           radius + gap, true);
++}
++
++// One line centred in a box: RickyDesignUi::text starts at the top of its box.
++void centered(const GfxRenderer& renderer, const fui::Rect& r, const char* value, const int font,
++              const bool inverted, const ds::gray::Level tone = ds::gray::kInk) {
++  const int height = renderer.getLineHeight(RickyDesignUi::fontFor(renderer, font, value));
++  RickyDesignUi::text(renderer, rect(r.x, r.y + (r.height - height) / 2, r.width, height), value, font, inverted,
++                      fui::TextAlign::Center, 1, tone);
++}
++
++void circle(const GfxRenderer& renderer, const int cx, const int cy, const int radius, const ds::gray::Level tone) {
++  RickyDesignUi::fill(renderer, rect(cx - radius, cy - radius, 2 * radius, 2 * radius), tone, radius);
++}
++
++void textLines(const GfxRenderer& renderer, const fui::Rect& art, const ds::gray::Level tone) {
++  const int pad = art.width / 8;
++  for (int y = art.y + pad, i = 0; y + 3 < art.bottom() - pad; y += std::max(8, art.height / 12), ++i)
++    RickyDesignUi::fill(renderer, rect(art.x + pad, y, art.width - 2 * pad - (i % 4 == 3 ? art.width / 4 : 0), 3),
++                        tone);
++}
++
++// A small drawing of each style, standing in for the screen it gives.
++void styleArt(const GfxRenderer& renderer, const fui::Rect& art, const uint8_t face) {
++  RickyDesignUi::fill(renderer, art, ds::gray::kPaper);
++  switch (face) {
++    case Settings::RICKY_STANDBY_PICTURE: {
++      RickyDesignUi::fill(renderer, art, ds::gray::kTint);
++      circle(renderer, art.x + art.width * 2 / 3, art.y + art.height / 4, art.width / 9, ds::gray::kPaper);
++      const int ground = art.y + art.height * 3 / 5;
++      RickyDesignUi::fill(renderer, rect(art.x, ground, art.width, art.bottom() - ground), ds::gray::kLine);
++      RickyDesignUi::fill(renderer, rect(art.x, art.y + art.height * 4 / 5, art.width, art.height / 5),
++                          ds::gray::kInk2);
++      break;
++    }
++    case Settings::RICKY_STANDBY_COVER: {
++      const fui::Rect book =
++          rect(art.x + art.width / 5, art.y + art.height / 10, art.width * 3 / 5, art.height * 4 / 5);
++      RickyDesignUi::fill(renderer, book, ds::gray::kTint);
++      RickyGrayStroke::ring(renderer, book.x, book.y, book.width, book.height, ds::stroke::kHairline, 0, ds::gray::kLine);
++      RickyDesignUi::fill(renderer, rect(book.x + 8, book.y + book.height / 5, book.width - 16, 4), ds::gray::kInk2);
++      RickyDesignUi::fill(renderer, rect(book.x + 8, book.y + book.height / 5 + 10, book.width / 2, 4),
++                          ds::gray::kInk2);
++      break;
++    }
++    case Settings::RICKY_STANDBY_CALENDAR: {
++      centered(renderer, rect(art.x, art.y + art.height / 8, art.width, art.height / 3), "10:24",
++               RickyDesignUi::CAPTION, false);
++      const int cell = std::max(6, art.width / 9);
++      const int left = art.x + (art.width - (5 * cell + 4 * 4)) / 2;
++      for (int row = 0; row < 3; ++row)
++        for (int col = 0; col < 5; ++col)
++          RickyDesignUi::fill(renderer,
++                              rect(left + col * (cell + 4), art.y + art.height / 2 + row * (cell + 4), cell, cell),
++                              row == 1 && col == 2 ? ds::gray::kInk : ds::gray::kLine);
++      break;
++    }
++    case Settings::RICKY_STANDBY_KEEP_PAGE:
++      textLines(renderer, art, ds::gray::kInk2);
++      break;
++    default:
++      textLines(renderer, art, ds::gray::kLine);
++      circle(renderer, art.x + art.width * 2 / 3, art.y + art.height * 3 / 4, art.width / 6, ds::gray::kInk);
++      break;
++  }
++}
++
++// A picture file drawn into a box (fitted, or filling it and cropped): 16-gray on a gray frame.
++bool drawPicture(const GfxRenderer& renderer, const char* path, const fui::Rect& box, const bool fill) {
++  HalFile file;
++  if (!Storage.openFileForRead("STANDBY", path, file)) return false;
++  Bitmap bitmap(file, !renderer.isGrayscale16Active());
++  if (bitmap.parseHeaders() != BmpReaderError::Ok || bitmap.getWidth() <= 0 || bitmap.getHeight() <= 0) return false;
++  const float sx = static_cast<float>(box.width) / bitmap.getWidth();
++  const float sy = static_cast<float>(box.height) / bitmap.getHeight();
++  const float scale = fill ? std::max(sx, sy) : std::min(sx, sy);
++  const int width = static_cast<int>(std::lround(bitmap.getWidth() * scale));
++  const int height = static_cast<int>(std::lround(bitmap.getHeight() * scale));
++  const GfxRenderer::ClipScope clip(renderer, box.x, box.y, box.width, box.height);
++  const int x = box.x + (box.width - width) / 2;
++  const int y = box.y + (box.height - height) / 2;
++  if (renderer.isGrayscale16Active() && bitmap.hasGreyscale())
++    return renderer.drawBitmapGrayscale16(bitmap, x, y, width, height);
++  return renderer.drawBitmap(bitmap, x, y, width, height, 0, 0);
++}
++
++bool isPicture(const Item item) { return item >= Item::Picture0 && item <= Item::Picture3; }
+ }  // namespace
+ 
+ void RickyStandbySettingsActivity::onEnter() {
+   KeepPageFace::recoverSticker();
++  reloadPictures();
+   rebuildRows();
+   UiTabListActivity::onEnter();
+ }
+ 
++void RickyStandbySettingsActivity::onExit() {
++  strip_.clear();
++  strip_.shrink_to_fit();
++  UiTabListActivity::onExit();
++}
++
++void RickyStandbySettingsActivity::reloadPictures() {
++  std::vector<StandbyPictures::Entry> all;
++  StandbyPictures::list(StandbyPictures::Filter::All, all);
++  pictureCount_ = static_cast<int>(all.size());
++  strip_.assign(all.begin(), all.begin() + std::min<int>(kStripTiles, pictureCount_));
++  standbySource_ = StandbyPictures::sourceInUse(StandbyPictures::Target::Standby);
++  // Keep the picture in use in view: it takes the first tile when it is further in.
++  const auto inUse = std::find_if(all.begin(), all.end(),
++                                  [this](const StandbyPictures::Entry& entry) { return entry.path == standbySource_; });
++  if (inUse != all.end() && inUse - all.begin() >= kStripTiles) strip_.front() = *inUse;
++  snprintf(allPictures_, sizeof(allPictures_), tr(STR_RICKY_ALL_PICTURES), static_cast<unsigned>(pictureCount_));
++  thumbPending_ = 0;
++  thumbAttempted_ = 0;
++  // The converted screens may have changed behind this page.
++  PanelTileCache::forget(kPicture);
++  PanelTileCache::forget(kPowerOffPicture);
++  PanelTileCache::forget(ReadingBackground::kPath);
++}
++
+ const char* RickyStandbySettingsActivity::headerTitle() const { return tr(STR_RICKY_POWER_PAGE_TITLE); }
+ 
+ const char* RickyStandbySettingsActivity::tabLabel(const int index) const {
++  if (index == ReadingTab) return tr(STR_RICKY_TAB_READING);
+   return index == PowerOffTab ? tr(STR_RICKY_TAB_POWER_OFF) : tr(STR_RICKY_TAB_STANDBY);
+ }
+ 
+ void RickyStandbySettingsActivity::rebuildRows() {
+-  rowCount_ = 0;
+-  auto add = [this](const Row row) { rows_[rowCount_++] = row; };
++  itemCount_ = 0;
++  auto add = [this](const Item item) { items_[itemCount_++] = item; };
++  if (tab_ == ReadingTab) {
++    for (int i = 0; i < Settings::READING_PAPER_COUNT; ++i) add(static_cast<Item>(ReadingPaper0 + i));
++    for (int i = 0; i < Settings::READING_BACKGROUND_COUNT; ++i) add(static_cast<Item>(ReadingShade0 + i));
++    if (SETTINGS.readingPaper == Settings::READING_PAPER_PICTURE) add(ChangeReadingPicture);
++    return;
++  }
    if (tab_ == PowerOffTab) {
-     add(PowerOffScreen);
-+    add(ChoosePowerOffPicture);
+-    add(PowerOffScreen);
++    for (int i = 0; i < 4; ++i) add(static_cast<Item>(PowerOff0 + i));
++    if (SETTINGS.rickyPowerOffScreen == Settings::RICKY_POWER_OFF_CUSTOM) add(ChangePowerOffPicture);
      add(AutoPowerOff);
      return;
    }
-@@ -212,10 +215,12 @@
-   renderer.drawRoundedRect(box.x, box.y, box.width, box.height, 2, 10, true);
-   const bool off = tab_ == PowerOffTab;
-   const bool sameAsStandby = !off || SETTINGS.rickyPowerOffScreen == Settings::RICKY_POWER_OFF_SAME;
--  const bool picture = sameAsStandby && SETTINGS.rickyStandbyFace == Settings::RICKY_STANDBY_PICTURE;
-+  const bool customPowerOff = off && SETTINGS.rickyPowerOffScreen == Settings::RICKY_POWER_OFF_CUSTOM;
-+  const bool picture = customPowerOff ||
-+                       (sameAsStandby && SETTINGS.rickyStandbyFace == Settings::RICKY_STANDBY_PICTURE);
-   if (picture) {
-     HalFile file;
--    if (Storage.openFileForRead("STANDBY", kPicture, file)) {
-+    if (Storage.openFileForRead("STANDBY", customPowerOff ? kPowerOffPicture : kPicture, file)) {
-       Bitmap bitmap(file, true);
-       if (bitmap.parseHeaders() == BmpReaderError::Ok) {
-         const int innerWidth = box.width - 8;
-@@ -233,7 +238,8 @@
-   // Nothing to draw small: name what the screen shows inside the frame.
-   const char* label = picture         ? tr(STR_RICKY_STANDBY_EMPTY)
-                       : sameAsStandby ? I18N.get(kStyleLabels[styleIndex()])
--                                      : I18N.get(kPowerOffLabels[std::min<int>(SETTINGS.rickyPowerOffScreen, 2)]);
-+                                      : I18N.get(kPowerOffLabels[std::min<int>(SETTINGS.rickyPowerOffScreen,
-+                                                                             std::size(kPowerOffLabels) - 1)]);
-   const int lineHeight = renderer.getLineHeight(SMALL_FONT_ID);
-   UITheme::drawCenteredText(renderer, box, SMALL_FONT_ID, box.y + (box.height - lineHeight) / 2, label);
- }
-@@ -290,22 +296,26 @@
+-  add(Style);
++  const bool transparent = SETTINGS.rickyStandbyFace == Settings::RICKY_STANDBY_TRANSPARENT;
++  if (showsPicture())
++    for (int i = 0; i < 3; ++i) add(static_cast<Item>(Info0 + i));
++  if (showsPicture() || transparent)
++    for (int i = 0; i < 2; ++i) add(static_cast<Item>(Fit0 + i));
++  if (showsPicture())
++    for (int i = 0; i < 3; ++i) add(static_cast<Item>(Filter0 + i));
++#if !((defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4))
++  // The A4's top key already enters standby with a short press.
++  add(StandbyNow);
++#endif
++  for (int i = 0; i < 5; ++i) add(static_cast<Item>(Style0 + i));
+   if (SETTINGS.rickyStandbyFace == Settings::RICKY_STANDBY_PICTURE) {
+-    add(ChoosePicture);
+-    add(DownloadPictures);
+-  }
+-  if (showsPicture()) {
+-    add(PictureFit);
+-    add(PictureFilter);
+-    add(StandbyInfo);
+-  }
+-  if (SETTINGS.rickyStandbyFace == Settings::RICKY_STANDBY_TRANSPARENT) {
++    for (int i = 0; i < static_cast<int>(strip_.size()); ++i) add(static_cast<Item>(Picture0 + i));
++    add(AllPictures);
++  }
++  if (transparent) {
+     add(ChooseSticker);
+     if (Storage.exists(KeepPageFace::kStickerPath)) add(ClearSticker);
+-    add(PictureFit);
    }
+   add(AutoStandby);
+-  add(StandbyNow);
  }
  
+ void RickyStandbySettingsActivity::onTabAction(const int index) {
+@@ -152,7 +319,7 @@
+ 
+ bool RickyStandbySettingsActivity::handleCustomInput() {
+   return optionPopup.handleInput(mappedInput, [this] {
+-    rebuildRows();  // a new style shows different rows
++    rebuildRows();
+     requestUpdate();
+   });
+ }
+@@ -179,63 +346,137 @@
+   UiTabListActivity::render(std::move(lock));
+ }
+ 
+-const char* RickyStandbySettingsActivity::rowValue(const Row row) const {
+-  switch (row) {
+-    case Style:
+-      return I18N.get(kStyleLabels[styleIndex()]);
+-    case PictureFit:
+-      return I18N.get(kFitLabels[std::min<int>(SETTINGS.sleepScreenCoverMode, std::size(kFitLabels) - 1)]);
+-    case PictureFilter:
+-      return I18N.get(kFilterLabels[std::min<int>(SETTINGS.sleepScreenCoverFilter, std::size(kFilterLabels) - 1)]);
+-    case StandbyInfo:
+-      return I18N.get(kInfoLabels[std::min<int>(SETTINGS.standbyOverlay, std::size(kInfoLabels) - 1)]);
+-    case AutoStandby: {
+-      const int preset = standbyMinutesIndex();
+-      if (preset >= 0) return I18N.get(kStandbyMinuteLabels[preset]);
+-      // A value set before the presets (any minute from 1 to 30).
+-      auto* self = const_cast<RickyStandbySettingsActivity*>(this);
+-      snprintf(self->minutes_, sizeof(minutes_), tr(STR_RICKY_MINUTES_N),
+-               static_cast<unsigned>(SETTINGS.sleepTimeoutMinutes));
+-      return minutes_;
+-    }
+-    case PowerOffScreen:
+-      return I18N.get(kPowerOffLabels[std::min<int>(SETTINGS.rickyPowerOffScreen, std::size(kPowerOffLabels) - 1)]);
+-    case AutoPowerOff:
+-      return I18N.get(kAutoOffLabels[std::min<int>(SETTINGS.rickyAutoOffIndex, std::size(kAutoOffLabels) - 1)]);
+-    default:
+-      return nullptr;
+-  }
+-}
+-
+-// A small 9:16 picture of what the screen shows in Standby, or once powered off.
++void RickyStandbySettingsActivity::loop() {
++  UiTabListActivity::loop();
++  if (thumbPending_) makePendingThumbnail();
++}
++
++void RickyStandbySettingsActivity::makePendingThumbnail() {
++  StandbyPictures::Entry entry;
++  int width = 0;
++  int height = 0;
++  bool last = false;
++  {
++    RenderLock lock(*this);
++    if (!thumbPending_) return;
++    const int slot = __builtin_ctz(thumbPending_);
++    thumbPending_ &= thumbPending_ - 1;
++    thumbAttempted_ |= 1u << slot;
++    if (slot >= static_cast<int>(strip_.size())) return;
++    entry = strip_[static_cast<size_t>(slot)];
++    width = thumbWidth_;
++    height = thumbHeight_;
++    last = thumbPending_ == 0;
++  }
++  // One picture per loop pass, like the gallery: the decode borrows the framebuffer.
++  bool made = false;
++  {
++    RenderLock lock(*this);
++    GfxRenderer::FrameBufferLoan loan(renderer);
++    made = StandbyPictures::ensureThumbnail(entry, width, height);
++  }
++  if (!made) LOG_INF("STANDBY", "no thumbnail: %s", entry.path.c_str());
++  if (last) {
++    RenderLock lock(*this);
++    requestUpdate();
++  }
++}
++
++// What the screen shows in Standby, or once powered off, at the size of the box.
+ void RickyStandbySettingsActivity::drawPreview(const Rect& box) const {
+-  renderer.drawRoundedRect(box.x, box.y, box.width, box.height, 2, 10, true);
++  const fui::Rect frame = rect(box.x, box.y, box.width, box.height);
+   const bool off = tab_ == PowerOffTab;
+-  const bool sameAsStandby = !off || SETTINGS.rickyPowerOffScreen == Settings::RICKY_POWER_OFF_SAME;
+-  const bool picture = sameAsStandby && SETTINGS.rickyStandbyFace == Settings::RICKY_STANDBY_PICTURE;
++  const uint8_t powerOff = std::min<uint8_t>(SETTINGS.rickyPowerOffScreen, std::size(kPowerOffLabels) - 1);
++  const bool sameAsStandby = !off || powerOff == Settings::RICKY_POWER_OFF_SAME;
++  const bool customPowerOff = off && powerOff == Settings::RICKY_POWER_OFF_CUSTOM;
++  const bool picture =
++      customPowerOff || (sameAsStandby && SETTINGS.rickyStandbyFace == Settings::RICKY_STANDBY_PICTURE);
++  const fui::Rect inner = inset(frame, ds::stroke::kHairline);
++  bool painted = false;
+   if (picture) {
+-    HalFile file;
+-    if (Storage.openFileForRead("STANDBY", kPicture, file)) {
+-      Bitmap bitmap(file, true);
+-      if (bitmap.parseHeaders() == BmpReaderError::Ok) {
+-        const int innerWidth = box.width - 8;
+-        const int innerHeight = box.height - 8;
+-        const float scale = std::min(static_cast<float>(innerWidth) / bitmap.getWidth(),
+-                                     static_cast<float>(innerHeight) / bitmap.getHeight());
+-        const int width = static_cast<int>(std::lround(bitmap.getWidth() * scale));
+-        const int height = static_cast<int>(std::lround(bitmap.getHeight() * scale));
+-        renderer.drawBitmap(bitmap, box.x + (box.width - width) / 2, box.y + (box.height - height) / 2, width, height,
+-                            0, 0);
+-        return;
+-      }
+-    }
+-  }
+-  // Nothing to draw small: name what the screen shows inside the frame.
+-  const char* label = picture         ? tr(STR_RICKY_STANDBY_EMPTY)
+-                      : sameAsStandby ? I18N.get(kStyleLabels[styleIndex()])
+-                                      : I18N.get(kPowerOffLabels[std::min<int>(SETTINGS.rickyPowerOffScreen, 2)]);
+-  const int lineHeight = renderer.getLineHeight(SMALL_FONT_ID);
+-  UITheme::drawCenteredText(renderer, box, SMALL_FONT_ID, box.y + (box.height - lineHeight) / 2, label);
++    const char* path = customPowerOff ? kPowerOffPicture : kPicture;
++    const bool fill = !customPowerOff && SETTINGS.sleepScreenCoverMode == Settings::SLEEP_SCREEN_COVER_MODE::CROP;
++    char key[56];
++    snprintf(key, sizeof(key), "%s|pv|%d,%d,%d,%d|%d", path, inner.x, inner.y, inner.width, inner.height, fill);
++    RickyDesignUi::fill(renderer, inner, ds::gray::kPaper);
++    painted = PanelTileCache::draw(renderer, key, path, inner.x, inner.y, inner.width, inner.height,
++                                   [&] { return drawPicture(renderer, path, inner, fill); });
++  }
++  if (!painted) {
++    if (picture) {
++      RickyDesignUi::fill(renderer, inner, ds::gray::kTint);
++      centered(renderer, inner, tr(STR_RICKY_STANDBY_EMPTY), RickyDesignUi::CAPTION, false, ds::gray::kInk2);
++    } else if (sameAsStandby) {
++      styleArt(renderer, inner, SETTINGS.rickyStandbyFace);
++    } else if (powerOff == Settings::RICKY_POWER_OFF_BLANK) {
++      RickyDesignUi::fill(renderer, inner, ds::gray::kPaper);
++    } else {
++      RickyDesignUi::fill(renderer, inner, ds::gray::kPaper);
++      centered(renderer, inner, "RickyOS", RickyDesignUi::HEADLINE, false);
++    }
++  }
++  // The time and date sit low on the picture, as Standby shows them.
++  std::tm local{};
++  if (sameAsStandby && showsPicture() && SETTINGS.standbyOverlay != Settings::STANDBY_OVERLAY_NONE &&
++      halClock.localTime(local)) {
++    static constexpr StrId weekdays[] = {
++        StrId::STR_CAL_WEEKDAY_SUN, StrId::STR_CAL_WEEKDAY_MON, StrId::STR_CAL_WEEKDAY_TUE, StrId::STR_CAL_WEEKDAY_WED,
++        StrId::STR_CAL_WEEKDAY_THU, StrId::STR_CAL_WEEKDAY_FRI, StrId::STR_CAL_WEEKDAY_SAT};
++    char date[48];
++    snprintf(date, sizeof(date), tr(STR_RICKY_HOME_DATE), static_cast<unsigned>(local.tm_mon + 1),
++             static_cast<unsigned>(local.tm_mday), I18N.get(weekdays[std::clamp(local.tm_wday, 0, 6)]));
++    char clock[8];
++    snprintf(clock, sizeof(clock), "%02d:%02d", local.tm_hour, local.tm_min);
++    const int dateHeight = renderer.getLineHeight(RickyDesignUi::CAPTION);
++    const int timeHeight = renderer.getLineHeight(RickyDesignUi::HEADLINE);
++    const bool time = SETTINGS.standbyOverlay == Settings::STANDBY_OVERLAY_TIME;
++    // A narrow preview wraps the date rather than cut the weekday off.
++    const int dateLines = renderer.getTextWidth(RickyDesignUi::CAPTION, date) > inner.width - 16 ? 2 : 1;
++    const int blockHeight = dateHeight * dateLines + (time ? timeHeight : 0) + 16;
++    const fui::Rect band = rect(inner.x, inner.bottom() - blockHeight - inner.height / 8, inner.width, blockHeight);
++    RickyDesignUi::fill(renderer, band, ds::gray::kPaper);
++    if (time)
++      centered(renderer, rect(band.x, band.y + 8, band.width, timeHeight), clock, RickyDesignUi::HEADLINE, false);
++    RickyDesignUi::text(renderer,
++                        rect(band.x + 8, band.y + 8 + (time ? timeHeight : 0), band.width - 16, dateHeight * dateLines),
++                        date, RickyDesignUi::CAPTION, false, fui::TextAlign::Center, dateLines);
++  }
++  previewFrame(renderer, frame);
++}
++
++void RickyStandbySettingsActivity::drawReadingPreview(const fui::Rect& frame) const {
++  const fui::Rect inner = inset(frame, ds::stroke::kHairline);
++  const uint8_t shade = SETTINGS.readingBackground;
++  const bool picture = SETTINGS.readingPaper == Settings::READING_PAPER_PICTURE;
++  bool painted = false;
++  if (!picture && shade != Settings::READING_BACKGROUND_OFF) {
++    // Ruled paper to the sample text's rows, as the reader rules the real ones.
++    RickyDesignUi::fill(renderer, inner, ds::gray::kPaper);
++    const int pad = inner.width / 8;
++    const int step = std::max(8, inner.height / 12);
++    ReadingBackground::TextBox box{inner.x + pad, inner.y + pad, inner.right() - pad, inner.bottom() - pad, step,
++                                   3 + std::max(2, step / 4)};
++    ReadingBackground::drawPaper(renderer, SETTINGS.readingPaper, shade, box);
++    painted = true;
++  } else if (shade != Settings::READING_BACKGROUND_OFF && Storage.exists(ReadingBackground::kPath)) {
++    char key[64];
++    snprintf(key, sizeof(key), "%s|pv|%d,%d,%d,%d|%u", ReadingBackground::kPath, inner.x, inner.y, inner.width,
++             inner.height, static_cast<unsigned>(shade));
++    painted = PanelTileCache::draw(renderer, key, ReadingBackground::kPath, inner.x, inner.y, inner.width,
++                                   inner.height, [&] {
++                                     if (!drawPicture(renderer, ReadingBackground::kPath, inner, true)) return false;
++                                     if (!renderer.isGrayscale16Active()) return true;
++                                     // As the reader draws it: lightened under the text.
++                                     for (int y = inner.y; y < inner.bottom(); ++y)
++                                       for (int x = inner.x; x < inner.right(); ++x)
++                                         renderer.drawGrayscale16Pixel(
++                                             x, y, ReadingBackground::lighten(renderer.grayscale16Level(x, y), shade) * 17);
++                                     return true;
++                                   });
++  }
++  if (!painted) RickyDesignUi::fill(renderer, inner, ds::gray::kPaper);
++  textLines(renderer, inner, ds::gray::kInk);
++  previewFrame(renderer, frame);
+ }
+ 
+ void RickyStandbySettingsActivity::buildScreen(UiScreen& screen) {
+@@ -247,129 +488,418 @@
+   const auto& theme = screen.theme();
+   auto& target = screen.target();
+   screen.insetContent(fui::Insets{static_cast<int16_t>(theme.spaceLg), theme.spaceLg, theme.spaceSm, theme.spaceLg});
+-  const int gap = std::max<int>(12, theme.spaceSm);
+-  const int bodyHeight = target.lineHeight(theme.bodyText.font);
+-  // Ring position 0 is the tab bar; rows follow.
+-  const int selected = RickyPageUi::syncNav(activeNav(), rowCount_ + 1) - 1;
++  const int gap = ds::space::kGutter;
++  const int chipHeight = ds::layout::kButtonCompactHeight;
++  const int captionHeight = renderer.getLineHeight(RickyDesignUi::CAPTION);
++  const int headingHeight = renderer.getLineHeight(RickyDesignUi::HEADLINE);
++  // Ring position 0 is the tab bar; controls follow.
++  const int selected = RickyPageUi::syncNav(activeNav(), itemCount_ + 1) - 1;
+   const bool focus = showMainTabContentSelection();
+-  RickyPageUi::Bold bold(renderer, 1);
+-
+-  // Rows shrink a little when the Standby tab lists all of them, so the preview keeps room.
+-  const int rowGap = rowCount_ > 6 ? gap * 3 / 4 : gap;
+-  const int rowHeight = bodyHeight + rowGap * 2;
+-  const int rowsHeight = rowHeight * rowCount_ + rowGap * (rowCount_ - 1);
+-  const int previewHeight = std::clamp(static_cast<int>(screen.body().height) - rowsHeight - gap * 3, 160, 560);
+-  const auto previewBlock = screen.takeTop(previewHeight, gap * 2);
+-  const int previewWidth = previewHeight * 9 / 16;
+-  drawPreview(
+-      Rect{previewBlock.x + (previewBlock.width - previewWidth) / 2, previewBlock.y, previewWidth, previewHeight});
+-
+-  auto label = theme.bodyText;
+-  label.maxLines = 1;
+-  auto value = theme.smallText;
+-  value.maxLines = 1;
+-  value.align = fui::TextAlign::Right;
+-  const int smallHeight = target.lineHeight(theme.smallText.font);
+-  for (int i = 0; i < rowCount_; ++i) {
+-    const auto row = screen.takeTop(rowHeight, i + 1 < rowCount_ ? rowGap : 0);
+-    RickyPageUi::card(target, row, focus && selected == i);
+-    screen.frame().hit(row, ACTION_ROW, i, fui::InputTouch);
+-    const int middle = row.y + row.height / 2;
+-    const int textX = row.x + gap * 2;
+-    const int chevronX = row.right() - 24 - gap;
+-    target.text(fui::Rect{static_cast<int16_t>(textX), static_cast<int16_t>(middle - bodyHeight / 2),
+-                          static_cast<int16_t>(row.width / 2), static_cast<int16_t>(bodyHeight)},
+-                I18N.get(kRowLabels[rows_[i]]), label);
+-    if (const char* current = rowValue(rows_[i])) {
+-      target.text(
+-          fui::Rect{static_cast<int16_t>(row.x + row.width / 2), static_cast<int16_t>(middle - smallHeight / 2),
+-                    static_cast<int16_t>(chevronX - gap - row.x - row.width / 2), static_cast<int16_t>(smallHeight)},
+-          current, value);
+-    }
+-    RickyPageUi::chevron(target, fui::Rect{static_cast<int16_t>(chevronX), row.y, 24, row.height});
+-  }
+-}
+-
 -void RickyStandbySettingsActivity::openPicturePicker(const std::string& folder, const bool sticker) {
-+void RickyStandbySettingsActivity::openPicturePicker(const std::string& folder, const bool sticker,
-+                                                     const bool powerOff) {
++  auto indexOf = [this](const Item item) {
++    for (int i = 0; i < itemCount_; ++i)
++      if (items_[i] == item) return i;
++    return -1;
++  };
++  auto hit = [&](const fui::Rect& r, const Item item) {
++    const int index = indexOf(item);
++    if (index >= 0) screen.frame().hit(r, ACTION_ROW, index, fui::InputTouch);
++    return index >= 0 && focus && selected == index;
++  };
++
++  if (tab_ == ReadingTab) {
++    // The picture's button at the bottom, the shade and the paper above it, a sample page
++    // on the background filling the rest.
++    if (indexOf(ChangeReadingPicture) >= 0) {
++      const auto button =
++          screen.takeBottom(static_cast<int16_t>(ds::layout::kButtonHeight), static_cast<int16_t>(gap));
++      const bool buttonPicked = hit(button, ChangeReadingPicture);
++      control(renderer, button, buttonPicked, ds::radius::kControl);
++      centered(renderer, button,
++               Storage.exists(ReadingBackground::kPath) ? tr(STR_RICKY_CHANGE_PICTURE)
++                                                        : tr(STR_RICKY_SELECT_READING_BACKGROUND),
++               RickyDesignUi::BODY, buttonPicked);
++    }
++    const auto chipRow = [&](const StrId title, const StrId* labels, const int count, const Item first,
++                             const int chosenIndex) {
++      const auto row =
++          screen.takeBottom(static_cast<int16_t>(captionHeight + 4 + chipHeight), static_cast<int16_t>(gap));
++      RickyDesignUi::text(renderer, rect(row.x, row.y, row.width, captionHeight), I18N.get(title),
++                          RickyDesignUi::CAPTION, false, fui::TextAlign::Left, 1, ds::gray::kInk2);
++      const int chipWidth = (row.width - 12 * (count - 1)) / count;
++      for (int i = 0; i < count; ++i) {
++        const fui::Rect chip = rect(row.x + i * (chipWidth + 12), row.y + captionHeight + 4, chipWidth, chipHeight);
++        const bool picked = hit(chip, static_cast<Item>(first + i));
++        control(renderer, chip, chosenIndex == i, chipHeight / 2);
++        centered(renderer, chip, I18N.get(labels[i]), RickyDesignUi::CAPTION, chosenIndex == i);
++        if (picked) focusRing(renderer, chip, chipHeight / 2);
++      }
++    };
++    // Taken from the bottom up: the shade sits under the paper.
++    chipRow(StrId::STR_RICKY_READING_BG_SHADE, kReadingShades, Settings::READING_BACKGROUND_COUNT, ReadingShade0,
++            SETTINGS.readingBackground);
++    chipRow(StrId::STR_RICKY_READING_PAPER, kReadingPapers, Settings::READING_PAPER_COUNT, ReadingPaper0,
++            SETTINGS.readingPaper);
++    const auto top = screen.body();
++    const int available = std::max(120, static_cast<int>(top.height) - gap);
++    const int previewHeight = available;
++    const int previewWidth = std::min<int>(top.width, previewHeight * renderer.getScreenWidth() /
++                                                          std::max(1, renderer.getScreenHeight()));
++    drawReadingPreview(rect(top.x + (top.width - previewWidth) / 2, top.y, previewWidth, previewHeight));
++    return;
++  }
++
++  // The bottom row: when Standby starts, or when it powers off.
++  const auto bottom = screen.takeBottom(static_cast<int16_t>(ds::layout::kRowHeight), static_cast<int16_t>(gap / 2));
++  {
++    const Item item = tab_ == PowerOffTab ? AutoPowerOff : AutoStandby;
++    const bool picked = hit(bottom, item);
++    RickyPageUi::card(target, bottom, picked);
++    const char* labelText = tab_ == PowerOffTab ? tr(STR_RICKY_AUTO_OFF) : tr(STR_RICKY_AUTO_STANDBY);
++    const char* value = nullptr;
++    if (tab_ == PowerOffTab) {
++      value = I18N.get(kAutoOffLabels[std::min<int>(SETTINGS.rickyAutoOffIndex, std::size(kAutoOffLabels) - 1)]);
++    } else if (const int preset = standbyMinutesIndex(); preset >= 0) {
++      value = I18N.get(kStandbyMinuteLabels[preset]);
++    } else {
++      // A value set before the presets (any minute from 1 to 30).
++      snprintf(minutes_, sizeof(minutes_), tr(STR_RICKY_MINUTES_N),
++               static_cast<unsigned>(SETTINGS.sleepTimeoutMinutes));
++      value = minutes_;
++    }
++    const int bodyHeight = renderer.getLineHeight(RickyDesignUi::BODY);
++    const int middle = bottom.y + bottom.height / 2;
++    RickyDesignUi::text(renderer, rect(bottom.x + gap, middle - bodyHeight / 2, bottom.width / 2, bodyHeight),
++                        labelText, RickyDesignUi::BODY, picked);
++    const int chevronX = bottom.right() - 24 - gap;
++    RickyDesignUi::text(renderer,
++                        rect(bottom.x + bottom.width / 2, middle - captionHeight / 2,
++                             chevronX - gap - bottom.x - bottom.width / 2, captionHeight),
++                        value, RickyDesignUi::CAPTION, picked, fui::TextAlign::Right, 1, ds::gray::kInk2);
++    RickyPageUi::chevron(target, rect(chevronX, bottom.y, 24, bottom.height), picked);
++  }
++
++  // Cards: the styles, or the power-off screens, each a small drawing over its name.
++  const int cardCount = tab_ == PowerOffTab ? 4 : 5;
++  const int cardGap = tab_ == PowerOffTab ? gap : 12;
++  const int cardWidth = (screen.body().width - cardGap * (cardCount - 1)) / cardCount;
++  const int artWidth = cardWidth - 2 * kPlate;
++  const int artHeight = std::min(artWidth * 6 / 5, std::max(80, screen.body().height / 7));
++  const int cardHeight = artHeight + 2 * kPlate + 8 + captionHeight;
++
++  // The strip or the overlay's controls under the cards (Standby only).
++  const bool pictureStyle = tab_ == StandbyTab && SETTINGS.rickyStandbyFace == Settings::RICKY_STANDBY_PICTURE;
++  const bool transparent = tab_ == StandbyTab && SETTINGS.rickyStandbyFace == Settings::RICKY_STANDBY_TRANSPARENT;
++  const bool customPowerOff =
++      tab_ == PowerOffTab && SETTINGS.rickyPowerOffScreen == Settings::RICKY_POWER_OFF_CUSTOM;
++  const int stripCellWidth = (screen.body().width - gap * (kStripTiles - 1)) / kStripTiles;
++  const int stripArtWidth = stripCellWidth - 2 * kPlate;
++  // Tiles show the middle of each picture at 3:4; the gallery and the preview show it whole.
++  const int stripArtHeight = std::min(stripArtWidth * 4 / 3, std::max(96, screen.body().height / 6));
++  int underCards = 0;
++  if (pictureStyle) underCards = headingHeight + 8 + stripArtHeight + 2 * kPlate;
++  if (transparent || customPowerOff) underCards = ds::layout::kButtonHeight;
++  if (underCards) {
++    const auto under = screen.takeBottom(static_cast<int16_t>(underCards), static_cast<int16_t>(gap));
++    if (pictureStyle) {
++      const fui::Rect heading = rect(under.x, under.y, under.width, headingHeight);
++      RickyDesignUi::text(renderer, heading, tr(STR_RICKY_PICTURES), RickyDesignUi::HEADLINE, false);
++      // "All 24 ›": the gallery.
++      const int linkWidth = renderer.getTextWidth(RickyDesignUi::CAPTION, allPictures_) + 32;
++      const fui::Rect link = rect(heading.right() - linkWidth - 8, heading.y - 8, linkWidth + 8, headingHeight + 16);
++      const bool linkPicked = hit(link, AllPictures);
++      if (linkPicked) RickyDesignUi::fill(renderer, link, ds::gray::kInk, ds::radius::kControl);
++      RickyDesignUi::text(renderer,
++                          rect(link.x + 4, heading.y + (headingHeight - captionHeight) / 2, linkWidth - 28,
++                               captionHeight),
++                          allPictures_, RickyDesignUi::CAPTION, linkPicked, fui::TextAlign::Right, 1,
++                          ds::gray::kInk2);
++      RickyPageUi::chevron(target, rect(link.right() - 28, heading.y, 24, headingHeight), linkPicked);
++      const int tilesY = heading.bottom() + 8;
++      if (thumbWidth_ != stripArtWidth || thumbHeight_ != stripArtHeight) thumbAttempted_ = 0;
++      thumbWidth_ = stripArtWidth;
++      thumbHeight_ = stripArtHeight;
++      thumbPending_ = 0;
++      if (strip_.empty()) {
++        centered(renderer, rect(under.x, tilesY, under.width, stripArtHeight), tr(STR_RICKY_STANDBY_EMPTY),
++                 RickyDesignUi::CAPTION, false, ds::gray::kInk2);
++      }
++      for (int i = 0; i < static_cast<int>(strip_.size()); ++i) {
++        const auto& entry = strip_[static_cast<size_t>(i)];
++        const fui::Rect cell =
++            rect(under.x + i * (stripCellWidth + gap), tilesY, stripCellWidth, stripArtHeight + 2 * kPlate);
++        const bool picked = hit(cell, static_cast<Item>(Picture0 + i));
++        const bool inUse = entry.path == standbySource_;
++        if (picked) RickyDesignUi::fill(renderer, cell, ds::gray::kInk, ds::radius::kControl);
++        const fui::Rect art = inset(cell, kPlate);
++        const std::string thumb = StandbyPictures::thumbnailPath(entry, stripArtWidth, stripArtHeight);
++        char key[48];
++        snprintf(key, sizeof(key), "|ss|%d,%d,%d,%d|%d", art.x, art.y, art.width, art.height, picked ? 1 : 0);
++        const bool painted =
++            PanelTileCache::draw(renderer, thumb + key, thumb, art.x, art.y, art.width, art.height, [&] {
++              HalFile file;
++              if (!Storage.openFileForRead("STANDBY", thumb.c_str(), file)) return false;
++              Bitmap bitmap(file);
++              return bitmap.parseHeaders() == BmpReaderError::Ok &&
++                     GUI.drawCoverThumbFill(renderer, bitmap, Rect{art.x, art.y, art.width, art.height});
++            });
++        if (!painted) {
++          RickyDesignUi::fill(renderer, art, ds::gray::kTint);
++          if (!(thumbAttempted_ & (1u << i))) thumbPending_ |= 1u << i;
++        }
++        if (!picked) RickyGrayStroke::ring(renderer, art.x, art.y, art.width, art.height, ds::stroke::kCoverEdge, 0, ds::gray::kLine);
++        if (inUse) {
++          // The picture in use: a check on the lower right, ink on whatever the picture is.
++          const int size = std::max(28, art.width / 4);
++          const int cx = art.right() - size / 2 - 8;
++          const int cy = art.bottom() - size / 2 - 8;
++          circle(renderer, cx, cy, size / 2 + 2, ds::gray::kPaper);  // a paper edge parts it from the picture
++          circle(renderer, cx, cy, size / 2, ds::gray::kInk);
++          const auto paper = fui::Paint::solid(fui::Color::White);
++          target.line({static_cast<int16_t>(cx - size / 4), static_cast<int16_t>(cy)},
++                      {static_cast<int16_t>(cx - size / 12), static_cast<int16_t>(cy + size / 5)}, 3, paper);
++          target.line({static_cast<int16_t>(cx - size / 12), static_cast<int16_t>(cy + size / 5)},
++                      {static_cast<int16_t>(cx + size / 4), static_cast<int16_t>(cy - size / 6)}, 3, paper);
++        }
++      }
++    } else {
++      // The overlay's picture (choose or clear), or another power-off picture.
++      const Item main = transparent ? ChooseSticker : ChangePowerOffPicture;
++      const bool clearable = transparent && indexOf(ClearSticker) >= 0;
++      const int buttonWidth = clearable ? (under.width - gap) / 2 : under.width;
++      const fui::Rect primary = rect(under.x, under.y, buttonWidth, under.height);
++      const bool picked = hit(primary, main);
++      control(renderer, primary, picked, ds::radius::kControl);
++      centered(renderer, primary, transparent ? tr(STR_RICKY_SELECT_TRANSPARENT) : tr(STR_RICKY_CHANGE_PICTURE),
++               RickyDesignUi::BODY, picked);
++      if (clearable) {
++        const fui::Rect clear = rect(under.right() - buttonWidth, under.y, buttonWidth, under.height);
++        const bool clearPicked = hit(clear, ClearSticker);
++        control(renderer, clear, clearPicked, ds::radius::kControl);
++        centered(renderer, clear, tr(STR_RICKY_CLEAR_TRANSPARENT), RickyDesignUi::BODY, clearPicked);
++      }
++    }
++  }
++
++  const auto cards =
++      screen.takeBottom(static_cast<int16_t>(headingHeight + 8 + cardHeight), static_cast<int16_t>(gap));
++  RickyDesignUi::text(renderer, rect(cards.x, cards.y, cards.width, headingHeight),
++                      tab_ == PowerOffTab ? tr(STR_RICKY_POWER_OFF_SCREEN) : tr(STR_RICKY_STANDBY_STYLE),
++                      RickyDesignUi::HEADLINE, false);
++  for (int i = 0; i < cardCount; ++i) {
++    const fui::Rect cell =
++        rect(cards.x + i * (cardWidth + cardGap), cards.y + headingHeight + 8, cardWidth, cardHeight);
++    const Item item = static_cast<Item>((tab_ == PowerOffTab ? PowerOff0 : Style0) + i);
++    const bool picked = hit(cell, item);
++    const bool chosen = tab_ == PowerOffTab ? SETTINGS.rickyPowerOffScreen == i : styleIndex() == i;
++    if (chosen) RickyDesignUi::fill(renderer, cell, ds::gray::kInk, ds::radius::kControl);
++    const fui::Rect art = rect(cell.x + kPlate, cell.y + kPlate, artWidth, artHeight);
++    if (tab_ == PowerOffTab) {
++      if (i == Settings::RICKY_POWER_OFF_SAME) {
++        if (!(SETTINGS.rickyStandbyFace == Settings::RICKY_STANDBY_PICTURE &&
++              PanelTileCache::draw(renderer, std::string(kPicture) + "|card", kPicture, art.x, art.y, art.width,
++                                   art.height, [&] { return drawPicture(renderer, kPicture, art, true); })))
++          styleArt(renderer, art, SETTINGS.rickyStandbyFace);
++      } else if (i == Settings::RICKY_POWER_OFF_CUSTOM) {
++        if (!PanelTileCache::draw(renderer, std::string(kPowerOffPicture) + "|card", kPowerOffPicture, art.x, art.y,
++                                  art.width, art.height,
++                                  [&] { return drawPicture(renderer, kPowerOffPicture, art, true); }))
++          styleArt(renderer, art, Settings::RICKY_STANDBY_PICTURE);
++      } else {
++        RickyDesignUi::fill(renderer, art, ds::gray::kPaper);
++        if (i == Settings::RICKY_POWER_OFF_DEFAULT) centered(renderer, art, "RickyOS", RickyDesignUi::CAPTION, false);
++      }
++    } else {
++      styleArt(renderer, art, kStyles[i]);
++    }
++    if (!chosen) RickyGrayStroke::ring(renderer, art.x, art.y, art.width, art.height, ds::stroke::kHairline, 0, ds::gray::kLine);
++    centered(renderer, rect(cell.x, art.bottom() + 8, cell.width, captionHeight),
++             I18N.get(tab_ == PowerOffTab ? kPowerOffCards[i] : kStyleCards[i]), RickyDesignUi::CAPTION, chosen);
++    if (picked) focusRing(renderer, cell, ds::radius::kControl);
++  }
++
++  // The preview, with the corner, fit and filter beside it (Standby) or what it is (power-off).
++  const auto top = screen.body();
++  const int available = std::max(120, static_cast<int>(top.height) - gap);
++  const int previewWidth = std::min<int>(top.width * 2 / 5, available * renderer.getScreenWidth() /
++                                                                std::max(1, renderer.getScreenHeight()));
++  const int previewHeight =
++      std::min(available, previewWidth * renderer.getScreenHeight() / std::max(1, renderer.getScreenWidth()));
++  drawPreview(Rect{top.x, top.y, previewWidth, previewHeight});
++  const int columnX = top.x + previewWidth + gap + 8;
++  const int columnWidth = top.right() - columnX;
++  int y = top.y;
++  auto chipGroup = [&](const StrId title, const StrId* labels, const int count, const Item first, const int chosen) {
++    RickyDesignUi::text(renderer, rect(columnX, y, columnWidth, captionHeight), I18N.get(title),
++                        RickyDesignUi::CAPTION, false, fui::TextAlign::Left, 1, ds::gray::kInk2);
++    y += captionHeight + 4;
++    const int chipWidth = (columnWidth - 12 * (count - 1)) / count;
++    for (int i = 0; i < count; ++i) {
++      const fui::Rect chip = rect(columnX + i * (chipWidth + 12), y, chipWidth, chipHeight);
++      const bool picked = hit(chip, static_cast<Item>(first + i));
++      control(renderer, chip, chosen == i, chipHeight / 2);
++      centered(renderer, chip, I18N.get(labels[i]), RickyDesignUi::CAPTION, chosen == i);
++      if (picked) focusRing(renderer, chip, chipHeight / 2);
++    }
++    y += chipHeight + 12;
++  };
++  if (tab_ == StandbyTab) {
++    if (showsPicture())
++      chipGroup(StrId::STR_RICKY_STANDBY_INFO, kInfoChips, 3, Info0, std::min<int>(SETTINGS.standbyOverlay, 2));
++    if (showsPicture() || transparent)
++      chipGroup(StrId::STR_RICKY_PICTURE_FIT, kFitChips, 2, Fit0, std::min<int>(SETTINGS.sleepScreenCoverMode, 1));
++    if (showsPicture())
++      chipGroup(StrId::STR_RICKY_PICTURE_FILTER, kFilterChips, 3, Filter0,
++                std::min<int>(SETTINGS.sleepScreenCoverFilter, 2));
++    if (indexOf(StandbyNow) >= 0) {
++      const int buttonY = std::max(y, top.y + previewHeight - chipHeight);
++      const fui::Rect now = rect(columnX, buttonY, columnWidth, chipHeight);
++      const bool picked = hit(now, StandbyNow);
++      control(renderer, now, picked, ds::radius::kControl);
++      centered(renderer, now, tr(STR_RICKY_STANDBY_NOW), RickyDesignUi::BODY, picked);
++    }
++  } else {
++    const uint8_t powerOff = std::min<uint8_t>(SETTINGS.rickyPowerOffScreen, std::size(kPowerOffLabels) - 1);
++    RickyDesignUi::text(renderer, rect(columnX, y, columnWidth, headingHeight * 2),
++                        I18N.get(kPowerOffLabels[powerOff]), RickyDesignUi::HEADLINE, false, fui::TextAlign::Left, 2);
++  }
++}
++
++void RickyStandbySettingsActivity::openGallery(const StandbyPictures::Target target) {
++  app.clearTapFlash();
++  startActivityForResultWith<StandbyGalleryActivity>(
++      [this](const ActivityResult&) {
++        reloadPictures();
++        rebuildRows();
++        requestUpdate();
++      },
++      target);
++}
++
++void RickyStandbySettingsActivity::openStickerPicker(const std::string& folder) {
    // Back from the preview returns to the list it was opened from, not to this page.
 -  const auto previewDone = [this, sticker](const ActivityResult& result) {
-+  const auto previewDone = [this, sticker, powerOff](const ActivityResult& result) {
++  const auto previewDone = [this](const ActivityResult& result) {
      const auto* entry = std::get_if<FilePathResult>(&result.data);
      if (result.isCancelled && entry) {
 -      openPicturePicker(FsHelpers::extractFolderPath(entry->path), sticker);
-+      openPicturePicker(FsHelpers::extractFolderPath(entry->path), sticker, powerOff);
++      openStickerPicker(FsHelpers::extractFolderPath(entry->path));
        return;
      }
      rebuildRows();
@@ -190902,56 +191846,305 @@
    };
    if (!startActivityForResultWith<FileBrowserActivity>(
 -          [this, previewDone, sticker](const ActivityResult& result) {
-+          [this, previewDone, sticker, powerOff](const ActivityResult& result) {
++          [this, previewDone](const ActivityResult& result) {
              const auto* entry = std::get_if<FilePathResult>(&result.data);
              if (result.isCancelled || !entry ||
 -                !startActivityForResultWith<ImageViewerActivity>(previewDone, entry->path, true, sticker)) {
-+                !startActivityForResultWith<ImageViewerActivity>(
-+                    previewDone, entry->path, true, sticker,
-+                    powerOff ? ImageViewerActivity::WallpaperTarget::PowerOff
-+                             : ImageViewerActivity::WallpaperTarget::Standby)) {
++                !startActivityForResultWith<ImageViewerActivity>(previewDone, entry->path, true, true)) {
                requestUpdate();
              }
            },
-@@ -326,6 +336,9 @@
-     case ChoosePicture:
-       openPicturePicker();
+-          folder, sticker ? FileBrowserActivity::Mode::PickPng : FileBrowserActivity::Mode::PickWallpaper)) {
+-    LOG_ERR("STANDBY", "Cannot open the picture picker");
++          folder, FileBrowserActivity::Mode::PickPng)) {
++    LOG_ERR("STANDBY", "Cannot open the sticker picker");
+   }
+ }
+ 
+ void RickyStandbySettingsActivity::activateIndex(const int index) {
+-  if (index < 0 || index >= rowCount_ || optionPopup.isActive()) return;
++  if (index < 0 || index >= itemCount_ || optionPopup.isActive()) return;
+   app.clearTapFlash();
+   activeNav().selected = index + 1;
+-  switch (rows_[index]) {
+-    case Style:
+-      showOption(optionPopup, StrId::STR_RICKY_STANDBY_STYLE, kStyleLabels, styleIndex(),
+-                 [](const int chosen) { SETTINGS.rickyStandbyFace = kStyles[chosen]; });
+-      break;
+-    case ChoosePicture:
+-      openPicturePicker();
++  const Item item = items_[index];
++  if (item >= Info0 && item <= Info2) {
++    saveSetting(SETTINGS.standbyOverlay, static_cast<uint8_t>(item - Info0));
++  } else if (item >= Fit0 && item <= Fit1) {
++    saveSetting(SETTINGS.sleepScreenCoverMode, static_cast<uint8_t>(item - Fit0));
++  } else if (item >= Filter0 && item <= Filter2) {
++    saveSetting(SETTINGS.sleepScreenCoverFilter, static_cast<uint8_t>(item - Filter0));
++  } else if (item >= Style0 && item <= Style4) {
++    saveSetting(SETTINGS.rickyStandbyFace, kStyles[item - Style0]);
++    rebuildRows();
++  } else if (isPicture(item)) {
++    // A tile opens its picture full screen: set it from there, or flip on through the gallery.
++    std::vector<StandbyPictures::Entry> all;
++    StandbyPictures::list(StandbyPictures::Filter::All, all);
++    std::vector<std::string> paths;
++    paths.reserve(all.size());
++    int start = 0;
++    const auto& chosen = strip_[static_cast<size_t>(item - Picture0)];
++    for (const auto& entry : all) {
++      if (entry.path == chosen.path) start = static_cast<int>(paths.size());
++      paths.push_back(entry.path);
++    }
++    startActivityForResultWith<ImageViewerActivity>(
++        [this](const ActivityResult&) {
++          reloadPictures();
++          requestUpdate();
++        },
++        std::move(paths), start, ImageViewerActivity::WallpaperTarget::Standby);
++    return;
++  } else if (item >= ReadingPaper0 && item <= ReadingPaper3) {
++    const auto paper = static_cast<uint8_t>(item - ReadingPaper0);
++    // The picture paper needs a picture: choose it now when there is none yet.
++    if (paper == Settings::READING_PAPER_PICTURE && !Storage.exists(ReadingBackground::kPath)) {
++      openGallery(StandbyPictures::Target::Reading);
        return;
-+    case ChoosePowerOffPicture:
-+      openPicturePicker(RickyStorageLayout::IMAGES, false, true);
-+      return;
-     case ChooseSticker:
-       openPicturePicker(RickyStorageLayout::IMAGES, true);
+-    case ChooseSticker:
+-      openPicturePicker(RickyStorageLayout::IMAGES, true);
++    }
++    saveSetting(SETTINGS.readingPaper, paper);
++    // Choosing a paper shows it: at medium when the background was off.
++    if (SETTINGS.readingBackground == Settings::READING_BACKGROUND_OFF)
++      saveSetting(SETTINGS.readingBackground, Settings::READING_BACKGROUND_MEDIUM);
++    ReadingBackground::invalidate();
++    rebuildRows();
++  } else if (item >= ReadingShade0 && item <= ReadingShade3) {
++    const auto shade = static_cast<uint8_t>(item - ReadingShade0);
++    // A picture shade needs a picture: choose it now when there is none yet.
++    if (shade != Settings::READING_BACKGROUND_OFF && SETTINGS.readingPaper == Settings::READING_PAPER_PICTURE &&
++        !Storage.exists(ReadingBackground::kPath)) {
++      openGallery(StandbyPictures::Target::Reading);
        return;
-@@ -361,7 +374,7 @@
+-    case ClearSticker:
+-      // Remove a stale backup first, so a later entry cannot resurrect an old sticker.
+-      if ((Storage.exists(KeepPageFace::kStickerBackupPath) && !Storage.remove(KeepPageFace::kStickerBackupPath)) ||
+-          !Storage.remove(KeepPageFace::kStickerPath))
+-        GUI.drawPopup(renderer, tr(STR_FAILED_LOWER));
+-      rebuildRows();
+-      break;
+-    case DownloadPictures:
+-      // Restarts to Home when it leaves after using the network, like the font downloader.
+-      startActivityForResultWith<RickyWallpaperDownloadActivity>([this](const ActivityResult&) { requestUpdate(); });
++    }
++    saveSetting(SETTINGS.readingBackground, shade);
++    ReadingBackground::invalidate();
++  } else if (item >= PowerOff0 && item <= PowerOff3) {
++    const auto screen = static_cast<uint8_t>(item - PowerOff0);
++    // A picture of its own needs one: choose it now when there is none yet.
++    if (screen == Settings::RICKY_POWER_OFF_CUSTOM && !Storage.exists(kPowerOffPicture)) {
++      openGallery(StandbyPictures::Target::PowerOff);
        return;
-     case PowerOffScreen:
-       showOption(optionPopup, StrId::STR_RICKY_POWER_OFF_SCREEN, kPowerOffLabels,
+-    case PictureFit:
+-      showOption(optionPopup, StrId::STR_RICKY_PICTURE_FIT, kFitLabels, SETTINGS.sleepScreenCoverMode,
+-                 [](const int chosen) { SETTINGS.sleepScreenCoverMode = static_cast<uint8_t>(chosen); });
+-      break;
+-    case PictureFilter:
+-      showOption(optionPopup, StrId::STR_RICKY_PICTURE_FILTER, kFilterLabels, SETTINGS.sleepScreenCoverFilter,
+-                 [](const int chosen) { SETTINGS.sleepScreenCoverFilter = static_cast<uint8_t>(chosen); });
+-      break;
+-    case StandbyInfo:
+-      showOption(optionPopup, StrId::STR_RICKY_STANDBY_INFO, kInfoLabels, std::min<int>(SETTINGS.standbyOverlay, 2),
+-                 [](const int chosen) { SETTINGS.standbyOverlay = static_cast<uint8_t>(chosen); });
+-      break;
+-    case AutoStandby:
+-      showOption(optionPopup, StrId::STR_RICKY_AUTO_STANDBY, kStandbyMinuteLabels, std::max(0, standbyMinutesIndex()),
+-                 [](const int chosen) { SETTINGS.sleepTimeoutMinutes = kStandbyMinutes[chosen]; });
+-      break;
+-    case StandbyNow:
+-      startActivityForResultWith<StandbyActivity>([this](const ActivityResult&) { requestUpdate(); });
+-      return;
+-    case PowerOffScreen:
+-      showOption(optionPopup, StrId::STR_RICKY_POWER_OFF_SCREEN, kPowerOffLabels,
 -                 std::min<int>(SETTINGS.rickyPowerOffScreen, 2),
-+                 std::min<int>(SETTINGS.rickyPowerOffScreen, std::size(kPowerOffLabels) - 1),
-                  [](const int chosen) { SETTINGS.rickyPowerOffScreen = static_cast<uint8_t>(chosen); });
-       break;
-     case AutoPowerOff:
+-                 [](const int chosen) { SETTINGS.rickyPowerOffScreen = static_cast<uint8_t>(chosen); });
+-      break;
+-    case AutoPowerOff:
+-      showOption(optionPopup, StrId::STR_RICKY_AUTO_OFF, kAutoOffLabels, SETTINGS.rickyAutoOffIndex,
+-                 [](const int chosen) { SETTINGS.rickyAutoOffIndex = static_cast<uint8_t>(chosen); });
+-      break;
+-    default:
+-      return;
++    }
++    saveSetting(SETTINGS.rickyPowerOffScreen, screen);
++    rebuildRows();
++  } else {
++    switch (item) {
++      case AllPictures:
++        openGallery(StandbyPictures::Target::Standby);
++        return;
++      case ChangePowerOffPicture:
++        openGallery(StandbyPictures::Target::PowerOff);
++        return;
++      case ChangeReadingPicture:
++        openGallery(StandbyPictures::Target::Reading);
++        return;
++      case ChooseSticker:
++        openStickerPicker();
++        return;
++      case ClearSticker:
++        // Remove a stale backup first, so a later entry cannot resurrect an old sticker.
++        if ((Storage.exists(KeepPageFace::kStickerBackupPath) && !Storage.remove(KeepPageFace::kStickerBackupPath)) ||
++            !Storage.remove(KeepPageFace::kStickerPath))
++          GUI.drawPopup(renderer, tr(STR_FAILED_LOWER));
++        rebuildRows();
++        break;
++      case StandbyNow:
++        startActivityForResultWith<StandbyActivity>([this](const ActivityResult&) { requestUpdate(); });
++        return;
++      case AutoStandby:
++        showOption(optionPopup, StrId::STR_RICKY_AUTO_STANDBY, kStandbyMinuteLabels,
++                   std::max(0, standbyMinutesIndex()),
++                   [](const int chosen) { SETTINGS.sleepTimeoutMinutes = kStandbyMinutes[chosen]; });
++        break;
++      case AutoPowerOff:
++        showOption(optionPopup, StrId::STR_RICKY_AUTO_OFF, kAutoOffLabels, SETTINGS.rickyAutoOffIndex,
++                   [](const int chosen) { SETTINGS.rickyAutoOffIndex = static_cast<uint8_t>(chosen); });
++        break;
++      default:
++        return;
++    }
+   }
+   requestUpdate();
+ }
 --- a/src/activities/apps/standby/RickyStandbySettingsActivity.h
 +++ b/src/activities/apps/standby/RickyStandbySettingsActivity.h
-@@ -30,6 +30,7 @@
-     AutoPowerOff,
+@@ -1,41 +1,75 @@
+ #pragma once
+ 
+ #include <string>
++#include <vector>
+ 
++#include "StandbyPictures.h"
+ #include "activities/UiTabListActivity.h"
+ #include "components/OptionPopup.h"
+ #include "util/RickyStorageLayout.h"
+ 
+-// The Standby & power-off page. Standby tab: what the screen shows while the device
+-// waits (the picture, the book's cover, the calendar clock, or the page as it was),
+-// the picture and how it sits, the corner, when Standby starts, and "Standby now".
+-// Power-off tab: what stays on the screen once the device is off, and when Standby
+-// powers off by itself.
++// 壁纸: what the screen shows in Standby, once powered off and under the reading page,
++// as one page with a live preview. Standby tab: the preview with the corner, fit and
++// filter choices beside it, the five styles as cards, the picture strip (or the
++// transparent overlay's controls), and when Standby starts. Power-off tab: the
++// preview, the four power-off screens as cards, and when Standby powers off by
++// itself. Reading tab: a sample page on the background, the paper (a picture or ruled
++// lines, grid or dots), its shade, and the picture.
++// Every control is one stop on the tab ring, in reading order.
+ class RickyStandbySettingsActivity final : public UiTabListActivity {
+  public:
+   RickyStandbySettingsActivity(GfxRenderer& renderer, MappedInputManager& input)
+       : UiTabListActivity("RickyStandbySettings", renderer, input) {}
+ 
+-  enum Tab : int { StandbyTab, PowerOffTab, TabCount };
+-  enum Row : uint8_t {
+-    Style,
+-    ChoosePicture,
+-    DownloadPictures,
+-    PictureFit,
+-    PictureFilter,
+-    StandbyInfo,
+-    AutoStandby,
++  enum Tab : int { StandbyTab, PowerOffTab, ReadingTab, TabCount };
++  // One focusable control; the active tab lists the ones it shows, in ring order.
++  enum Item : uint8_t {
++    Info0,
++    Info1,
++    Info2,
++    Fit0,
++    Fit1,
++    Filter0,
++    Filter1,
++    Filter2,
+     StandbyNow,
+-    PowerOffScreen,
+-    AutoPowerOff,
++    Style0,
++    Style1,
++    Style2,
++    Style3,
++    Style4,
++    Picture0,
++    Picture1,
++    Picture2,
++    Picture3,
++    AllPictures,
      ChooseSticker,
      ClearSticker,
-+    ChoosePowerOffPicture,
-     RowKinds
+-    RowKinds
++    AutoStandby,
++    PowerOff0,
++    PowerOff1,
++    PowerOff2,
++    PowerOff3,
++    ChangePowerOffPicture,
++    AutoPowerOff,
++    ReadingPaper0,
++    ReadingPaper1,
++    ReadingPaper2,
++    ReadingPaper3,
++    ReadingShade0,
++    ReadingShade1,
++    ReadingShade2,
++    ReadingShade3,
++    ChangeReadingPicture,
++    ItemKinds
    };
++  static constexpr int kStripTiles = 4;
  
-@@ -54,7 +55,8 @@
+  protected:
+   void onEnter() override;
+-  int listCount() const override { return rowCount_; }
++  void onExit() override;
++  void loop() override;
++  int listCount() const override { return itemCount_; }
+   const char* headerTitle() const override;
+   void buildScreen(UiScreen& screen) override;
+   void activateIndex(int index) override;
+@@ -50,15 +84,28 @@
+   void stepTab(int direction) override;
+ 
+  private:
+-  // The rows the active tab shows now; the Standby tab's depend on its style.
++  // The controls the active tab shows now; the Standby tab's depend on its style.
    void rebuildRows();
-   const char* rowValue(Row row) const;
+-  const char* rowValue(Row row) const;
++  void reloadPictures();
    void drawPreview(const Rect& box) const;
 -  void openPicturePicker(const std::string& folder = RickyStorageLayout::IMAGES, bool sticker = false);
-+  void openPicturePicker(const std::string& folder = RickyStorageLayout::IMAGES, bool sticker = false,
-+                         bool powerOff = false);
++  void drawReadingPreview(const freeink::ui::Rect& box) const;
++  void openGallery(StandbyPictures::Target target);
++  void openStickerPicker(const std::string& folder = RickyStorageLayout::IMAGES);
++  void makePendingThumbnail();
  
    OptionPopup optionPopup;
    int tab_ = StandbyTab;
+-  Row rows_[RowKinds] = {};
+-  int rowCount_ = 0;
++  Item items_[ItemKinds] = {};
++  int itemCount_ = 0;
+   char minutes_[24] = {};  // the auto-standby value when it is not one of the presets
++  char allPictures_[24] = {};
++
++  // The picture strip: the gallery's first pictures, thumbnails made in the background.
++  std::vector<StandbyPictures::Entry> strip_;
++  int pictureCount_ = 0;
++  std::string standbySource_;
++  int thumbWidth_ = 0;
++  int thumbHeight_ = 0;
++  uint32_t thumbPending_ = 0;
++  uint32_t thumbAttempted_ = 0;
+ };
 --- a/src/activities/apps/standby/RickyWallpaperDownloadActivity.cpp
 +++ b/src/activities/apps/standby/RickyWallpaperDownloadActivity.cpp
 @@ -93,8 +93,13 @@
@@ -191039,7 +192232,28 @@
  #include <I18n.h>
  #include <Logging.h>
  #include <Memory.h>
-@@ -47,7 +53,7 @@
+@@ -26,19 +32,17 @@
+ #include "NetworkStartup.h"
+ #include "ReadingStatsStore.h"
+ #include "RickyWallpaperDownloadActivity.h"
++#include "StandbyGalleryActivity.h"
+ #include "SloppyClockFace.h"
+ #include "StandbyDiag.h"
+ #include "StandbyTime.h"
+ #include "WallpaperFace.h"
+ #include "WifiCredentialStore.h"
+ #include "activities/ActivityResult.h"
+-#include "activities/home/FileBrowserActivity.h"
+ #include "activities/network/WifiSelectionActivity.h"
+-#include "activities/util/ImageViewerActivity.h"
+ #include "components/UITheme.h"
+ #include "fontIds.h"
+ #include "util/PaginationDots.h"
+-#include "util/RickyStorageLayout.h"
+ #include "util/TimeUtils.h"
+ 
+ namespace {
+@@ -47,7 +51,7 @@
  constexpr uint32_t kNtpTimeoutMs = 12000u;
  constexpr uint32_t kSyncDelayMs = 1500u;
  #if CROSSPOINT_EMULATED == 0
@@ -191048,7 +192262,7 @@
  #endif
  
  // Face factory table. Add new faces by appending a row here and including the
-@@ -129,6 +135,14 @@
+@@ -129,6 +133,14 @@
  
  void StandbyActivity::onEnter() {
    Activity::onEnter();
@@ -191063,7 +192277,7 @@
  #if CROSSPOINT_EMULATED == 0
    HalPowerManager::beginStandbyKeyWatch();
  #endif
-@@ -191,6 +205,9 @@
+@@ -191,6 +203,9 @@
    renderer.setOrientation(savedOrientation_);
    // Time in Standby is not reading time: the book under it starts its gap afresh.
    READING_STATS.resumeSession();
@@ -191073,7 +192287,7 @@
    LOG_DBG("STANDBY", "onExit free heap=%u", static_cast<unsigned>(ESP.getFreeHeap()));
    Activity::onExit();
  }
-@@ -216,6 +233,7 @@
+@@ -216,6 +231,7 @@
      return;
    }
    currentFace_->onEnter();
@@ -191081,7 +192295,7 @@
    requestUpdate();
  }
  
-@@ -430,9 +448,29 @@
+@@ -430,9 +446,29 @@
  
  bool StandbyActivity::tryLightSleep(const uint32_t idleMs) {
  #if CROSSPOINT_EMULATED == 0
@@ -191111,7 +192325,7 @@
  
    const bool syncActive = syncState_ != SyncState::Idle;
    const bool wifiActive = WiFi.getMode() != WIFI_MODE_NULL;
-@@ -446,16 +484,44 @@
+@@ -446,16 +482,44 @@
      return false;
    }
  
@@ -191156,7 +192370,7 @@
        return true;
      case HalPowerManager::LightSleepWakeReason::PowerButton:
        // A short press, already over before main.cpp's key poll could see it: leave
-@@ -468,13 +534,21 @@
+@@ -468,13 +532,21 @@
        // Still down: main.cpp finishes it (release = leave Standby, hold = power off).
        STANDBY_DIAG("wake: key still down");
        lastInputMs_ = millis();
@@ -191178,7 +192392,7 @@
        return true;
    }
  #else
-@@ -484,7 +558,14 @@
+@@ -484,7 +556,14 @@
  }
  
  void StandbyActivity::loop() {
@@ -191194,7 +192408,7 @@
      // One shortcut switch owns both entry and exit; the side power key stays independent.
      if (SETTINGS.standbyShortcutEnabled) {
        STANDBY_DIAG("close: Back released");
-@@ -507,6 +588,7 @@
+@@ -507,6 +586,7 @@
        if (action == StandbyFace::PictureAction::Download &&
            !startActivityForResultWith<RickyWallpaperDownloadActivity>([this](const ActivityResult&) {
              if (currentFace_) currentFace_->onEnter();
@@ -191202,7 +192416,7 @@
              requestUpdate();
            })) {
          LOG_ERR("STANDBY", "Cannot open the picture downloader");
-@@ -531,11 +613,17 @@
+@@ -531,11 +611,17 @@
  
  void StandbyActivity::render(RenderLock&&) {
    if (!currentFace_) return;
@@ -191221,17 +192435,58 @@
      renderer.clearScreen();
      {
        const GfxRenderer::ClipScope clip(renderer, viewport.x, viewport.y, viewport.width, viewport.height);
-@@ -649,6 +737,7 @@
-       return;
-     }
-     if (currentFace_) currentFace_->onEnter();
-+    drewFrame_ = false;
-     lastInputMs_ = millis();
-     requestUpdate();
-   };
+@@ -638,28 +724,16 @@
+   renderer.restoreBwBuffer();
+ }
+ 
+-// Same flow as Settings → Power & Standby → Choose Standby Image: an image picker
+-// in /images, then a preview whose Set action installs /sleep.bmp.
+-void StandbyActivity::openPicturePicker(const std::string& folder) {
+-  const auto reload = [this](const ActivityResult& result) {
+-    // Back from the preview returns to the list it was opened from.
+-    const auto* entry = std::get_if<FilePathResult>(&result.data);
+-    if (result.isCancelled && entry) {
+-      openPicturePicker(FsHelpers::extractFolderPath(entry->path));
+-      return;
+-    }
+-    if (currentFace_) currentFace_->onEnter();
+-    lastInputMs_ = millis();
+-    requestUpdate();
+-  };
+-  const bool opened = startActivityForResultWith<FileBrowserActivity>(
+-      [this, reload](const ActivityResult& result) {
+-        const auto* entry = std::get_if<FilePathResult>(&result.data);
+-        if (result.isCancelled || !entry ||
+-            !startActivityForResultWith<ImageViewerActivity>(reload, entry->path, true)) {
+-          reload(ActivityResult{});
+-        }
++// The same gallery as the 屏保 page: thumbnails, then a preview whose Set action
++// installs /sleep.bmp.
++void StandbyActivity::openPicturePicker() {
++  const bool opened = startActivityForResultWith<StandbyGalleryActivity>(
++      [this](const ActivityResult&) {
++        if (currentFace_) currentFace_->onEnter();
++        drewFrame_ = false;
++        lastInputMs_ = millis();
++        requestUpdate();
+       },
+-      folder, FileBrowserActivity::Mode::PickWallpaper);
+-  if (!opened) LOG_ERR("STANDBY", "Cannot open the picture picker");
+-}
++      StandbyPictures::Target::Standby);
++  if (!opened) LOG_ERR("STANDBY", "Cannot open the picture gallery");
++}
 --- a/src/activities/apps/standby/StandbyActivity.h
 +++ b/src/activities/apps/standby/StandbyActivity.h
-@@ -46,6 +46,7 @@
+@@ -6,7 +6,6 @@
+ 
+ #include "StandbyFace.h"
+ #include "activities/Activity.h"
+-#include "util/RickyStorageLayout.h"
+ 
+ struct ActivityResult;
+ 
+@@ -46,6 +45,7 @@
    uint32_t syncStartMs_ = 0;
    DisplayMode mode_ = DisplayMode::Normal;
    uint32_t lastInputMs_ = 0;
@@ -191239,6 +192494,861 @@
    bool inverseMode_ = false;  // Confirm toggles black-bg/white-content. Not persisted.
  
    void switchFace(int8_t delta);
+@@ -59,7 +59,7 @@
+   void completeTimeSync();
+   void processFaceTick(bool waitForUpdate);
+   bool tryLightSleep(uint32_t idleMs);
+-  void openPicturePicker(const std::string& folder = RickyStorageLayout::IMAGES);
++  void openPicturePicker();
+   bool drewFrame_ = false;  // B/W frames after the first refresh fast
+   GfxRenderer::Orientation savedOrientation_ = GfxRenderer::Orientation::Portrait;  // restored on exit
+   unsigned long enteredMs_ = 0;                                                     // for the auto power-off
+--- /dev/null
++++ b/src/activities/apps/standby/StandbyGalleryActivity.cpp
+@@ -0,0 +1,408 @@
++#include "StandbyGalleryActivity.h"
++
++#include <Bitmap.h>
++#include <GfxRenderer.h>
++#include <HalStorage.h>
++#include <I18n.h>
++#include <Logging.h>
++
++#include <algorithm>
++#include <cstdio>
++
++#include "RickyWallpaperDownloadActivity.h"
++#include "activities/ActivityManager.h"
++#include "activities/util/ImageViewerActivity.h"
++#include "components/RickyDesignUi.h"
++#include "components/RickyGrayStroke.h"
++#include "components/UITheme.h"
++#include "util/PanelTileCache.h"
++
++namespace fui = freeink::ui;
++namespace ds = ricky::ds;
++
++namespace {
++template <typename Screen>
++void contentMargins(Screen& screen, const Rect& bounds, int height) {
++  screen.setContentMarginFromScreen(
++      fui::Insets{static_cast<int16_t>(bounds.y), 0, static_cast<int16_t>(height - bounds.y - bounds.height), 0});
++}
++
++constexpr int kColumns = 3;
++// The plate around a tile: the inverted selection shows as this ink margin.
++constexpr int kPlate = 8;
++// Thumbnails are tracked in a 32-bit mask per page.
++constexpr int kMaxPageTiles = 32;
++
++constexpr StrId kFilterLabels[] = {StrId::STR_RICKY_BOOKS_ALL, StrId::STR_RICKY_DEFAULT_PICTURES,
++                                   StrId::STR_RICKY_MY_PICTURES};
++
++fui::Rect inset(const fui::Rect& r, const int by) {
++  return {static_cast<int16_t>(r.x + by), static_cast<int16_t>(r.y + by), static_cast<int16_t>(r.width - 2 * by),
++          static_cast<int16_t>(r.height - 2 * by)};
++}
++
++// A pill or a button: ink when chosen, else paper with the light-gray hairline edge the
++// Home and Library controls rest with.
++void control(const GfxRenderer& renderer, const fui::Rect& r, const bool chosen, const int radius) {
++  RickyDesignUi::fill(renderer, r, chosen ? ds::gray::kInk : ds::gray::kPaper, radius);
++  if (!chosen) RickyGrayStroke::ring(renderer, r.x, r.y, r.width, r.height, ds::stroke::kHairline, radius, ds::gray::kLine);
++}
++
++// One line centred in a control: RickyDesignUi::text starts at the top of its box.
++void label(const GfxRenderer& renderer, const fui::Rect& r, const char* value, const int font, const bool inverted) {
++  const int height = renderer.getLineHeight(RickyDesignUi::fontFor(renderer, font, value));
++  RickyDesignUi::text(renderer,
++                      fui::Rect{r.x, static_cast<int16_t>(r.y + (r.height - height) / 2), r.width,
++                                static_cast<int16_t>(height)},
++                      value, font, inverted, fui::TextAlign::Center);
++}
++
++void pageArrow(fui::DrawTarget& target, const fui::Rect& r, const bool left, const bool enabled) {
++  const auto paint = fui::Paint::solid(enabled ? fui::Color::Black : fui::Color::LightGray);
++  const int16_t midX = static_cast<int16_t>(r.x + r.width / 2);
++  const int16_t midY = static_cast<int16_t>(r.y + r.height / 2);
++  const int16_t tip = static_cast<int16_t>(left ? midX - 5 : midX + 5);
++  const int16_t tail = static_cast<int16_t>(left ? midX + 4 : midX - 4);
++  target.line({tail, static_cast<int16_t>(midY - 9)}, {tip, midY}, 2, paint);
++  target.line({tip, midY}, {tail, static_cast<int16_t>(midY + 9)}, 2, paint);
++}
++}  // namespace
++
++const char* StandbyGalleryActivity::headerTitle() const {
++  if (mode == Mode::Browse) return tr(STR_GALLERY_TITLE);
++  if (target == StandbyPictures::Target::Reading) return tr(STR_RICKY_SELECT_READING_BACKGROUND);
++  return target == StandbyPictures::Target::PowerOff ? tr(STR_RICKY_SELECT_POWER_OFF_WALLPAPER)
++                                                     : tr(STR_RICKY_SELECT_WALLPAPER);
++}
++
++void StandbyGalleryActivity::onEnter() {
++  UiListActivity::onEnter();
++  app.on(
++      ACTION_TOOL,
++      [](const fui::ActionEvent& event, void* user) { static_cast<StandbyGalleryActivity*>(user)->runTool(event.value); },
++      this);
++  reload();
++  // Open on the picture in use, so the reader sees where they are.
++  const auto current = std::find_if(pictures.begin(), pictures.end(),
++                                    [this](const StandbyPictures::Entry& entry) { return entry.path == inUse; });
++  nav.selected = current == pictures.end() ? 0 : static_cast<int>(current - pictures.begin());
++}
++
++void StandbyGalleryActivity::onExit() {
++  pictures.clear();
++  pictures.shrink_to_fit();
++  UiListActivity::onExit();
++}
++
++void StandbyGalleryActivity::reload() {
++  RenderLock lock(*this);
++  listFailed = !StandbyPictures::list(filter, pictures);
++  inUse = StandbyPictures::sourceInUse(target);
++  thumbPageStart = -1;
++  thumbPending = 0;
++  thumbAttempted = 0;
++  requestUpdate();
++}
++
++void StandbyGalleryActivity::runTool(const int tool) {
++  switch (tool) {
++    case FilterAll:
++    case FilterDefaults:
++    case FilterMine: {
++      const auto chosen = static_cast<StandbyPictures::Filter>(tool - FilterAll);
++      if (chosen == filter) break;
++      filter = chosen;
++      reload();
++      nav.selected = 0;
++      break;
++    }
++    case PrevPage:
++      turnPage(-1);
++      break;
++    case NextPage:
++      turnPage(1);
++      break;
++    case Download:
++      app.clearTapFlash();
++      // Restarts to Home when it leaves after using the network, like the font downloader.
++      startActivityForResultWith<RickyWallpaperDownloadActivity>([this](const ActivityResult&) { reload(); });
++      return;
++    case Transfer:
++      app.clearTapFlash();
++      activityManager.goToFileTransfer();
++      return;
++    default:
++      return;
++  }
++  app.clearTapFlash();
++  requestUpdate();
++}
++
++void StandbyGalleryActivity::turnPage(const int direction) {
++  RenderLock lock(*this);
++  const int count = listCount();
++  if (count == 0) return;
++  const int capacity = std::max(1, pageCapacity);
++  const int start = std::clamp<int>(nav.selected, 0, count - 1) / capacity * capacity + direction * capacity;
++  if (start < 0 || start >= count) return;
++  nav.selected = start;
++  requestUpdate();
++}
++
++bool StandbyGalleryActivity::handleCustomInput() {
++  // A swipe turns the page; the grid has no viewport to scroll.
++  const auto swipe = mappedInput.wasSwipe();
++  if (swipe == MappedInputManager::SwipeDir::Left || swipe == MappedInputManager::SwipeDir::Up) {
++    turnPage(1);
++    return true;
++  }
++  if (swipe == MappedInputManager::SwipeDir::Right || swipe == MappedInputManager::SwipeDir::Down) {
++    turnPage(-1);
++    return true;
++  }
++  return false;
++}
++
++void StandbyGalleryActivity::activateIndex(const int index) {
++  if (index < 0 || index >= listCount()) return;
++  app.clearTapFlash();
++  nav.selected = index;
++  std::vector<std::string> paths;
++  paths.reserve(pictures.size());
++  for (const auto& entry : pictures) paths.push_back(entry.path);
++  const auto previewTarget = target == StandbyPictures::Target::PowerOff ? ImageViewerActivity::WallpaperTarget::PowerOff
++                             : target == StandbyPictures::Target::Reading
++                                 ? ImageViewerActivity::WallpaperTarget::Reading
++                                 : ImageViewerActivity::WallpaperTarget::Standby;
++  const bool opened = startActivityForResultWith<ImageViewerActivity>(
++      [this](const ActivityResult& result) {
++        // Back on the picture last shown, whether or not it was set.
++        if (const auto* entry = std::get_if<FilePathResult>(&result.data)) {
++          for (size_t i = 0; i < pictures.size(); ++i)
++            if (pictures[i].path == entry->path) nav.selected = static_cast<int>(i);
++        }
++        inUse = StandbyPictures::sourceInUse(target);
++        requestUpdate();
++      },
++      std::move(paths), index, previewTarget);
++  if (!opened) LOG_ERR("STANDBY", "Cannot open the picture preview");
++}
++
++void StandbyGalleryActivity::loop() {
++  UiListActivity::loop();
++  if (thumbPending) {
++    makePendingThumbnail();
++  } else {
++    prefetchThumbnail();
++  }
++}
++
++void StandbyGalleryActivity::prefetchThumbnail() {
++  // Quiet for a moment after the page completed, so a reader still tapping is not
++  // held up by a decode they did not ask for.
++  constexpr unsigned long kSettleMs = 1500;
++  StandbyPictures::Entry entry;
++  int width = 0;
++  int height = 0;
++  {
++    RenderLock lock(*this);
++    if (pageSettledMs == 0 || millis() - pageSettledMs < kSettleMs || thumbWidth <= 0) return;
++    const int nextStart = thumbPageStart + std::max(1, pageCapacity);
++    const int nextEnd = std::min(listCount(), nextStart + std::max(1, pageCapacity));
++    if (prefetchIndex < nextStart) prefetchIndex = nextStart;
++    if (prefetchIndex >= nextEnd) return;
++    entry = pictures[static_cast<size_t>(prefetchIndex++)];
++    width = thumbWidth;
++    height = thumbHeight;
++  }
++  if (Storage.exists(StandbyPictures::thumbnailPath(entry, width, height).c_str())) return;
++  const unsigned long started = millis();
++  bool made = false;
++  {
++    RenderLock lock(*this);
++    GfxRenderer::FrameBufferLoan loan(renderer);
++    made = StandbyPictures::ensureThumbnail(entry, width, height);
++  }
++  LOG_INF("STANDBY", "prefetched thumbnail %s in %lu ms: %s", made ? "ready" : "failed", millis() - started,
++          entry.path.c_str());
++  // The decode borrowed the framebuffer: rebuild it. The page itself is unchanged, so
++  // the panel is not driven.
++  RenderLock lock(*this);
++  requestUpdate();
++}
++
++void StandbyGalleryActivity::makePendingThumbnail() {
++  StandbyPictures::Entry entry;
++  int width = 0;
++  int height = 0;
++  {
++    RenderLock lock(*this);
++    if (!thumbPending) return;
++    const int slot = __builtin_ctz(thumbPending);
++    thumbPending &= thumbPending - 1;
++    thumbAttempted |= 1u << slot;
++    const int index = thumbPageStart + slot;
++    if (index < 0 || index >= listCount()) return;
++    entry = pictures[static_cast<size_t>(index)];
++    width = thumbWidth;
++    height = thumbHeight;
++  }
++  // One picture per loop pass: input queued meanwhile is handled before the next. The
++  // decode borrows the framebuffer, which the repaint after each one redraws, so the
++  // page fills in picture by picture instead of all at once at the end.
++  const unsigned long started = millis();
++  bool made = false;
++  {
++    RenderLock lock(*this);
++    GfxRenderer::FrameBufferLoan loan(renderer);
++    made = StandbyPictures::ensureThumbnail(entry, width, height);
++  }
++  LOG_INF("STANDBY", "thumbnail %s in %lu ms: %s", made ? "ready" : "failed", millis() - started, entry.path.c_str());
++  RenderLock lock(*this);
++  requestUpdate();
++}
++
++void StandbyGalleryActivity::buildScreen(UiScreen& screen) {
++  contentMargins(screen, pageContentRect(), renderer.getScreenHeight());
++  const auto& theme = screen.theme();
++  auto& target = screen.target();
++  screen.insetContent(fui::Insets{static_cast<int16_t>(theme.spaceLg), theme.spaceLg, theme.spaceSm, theme.spaceLg});
++  const int gap = ds::space::kGutter;
++  const int compact = ds::layout::kButtonCompactHeight;
++  const int captionHeight = target.lineHeight(theme.smallText.font);
++
++  // Filters along the top.
++  const auto tools = screen.takeTop(static_cast<int16_t>(compact), static_cast<int16_t>(theme.spaceLg));
++  int chipX = tools.x;
++  for (int i = 0; i < static_cast<int>(std::size(kFilterLabels)); ++i) {
++    const char* text = I18N.get(kFilterLabels[i]);
++    const int textWidth = renderer.getTextWidth(RickyDesignUi::fontFor(renderer, RickyDesignUi::CAPTION, text), text);
++    const fui::Rect chip{static_cast<int16_t>(chipX), tools.y, static_cast<int16_t>(textWidth + 2 * 24),
++                         static_cast<int16_t>(compact)};
++    const bool chosen = static_cast<int>(filter) == i;
++    control(renderer, chip, chosen, compact / 2);
++    label(renderer, chip, text, RickyDesignUi::CAPTION, chosen);
++    screen.frame().hit(chip, ACTION_TOOL, FilterAll + i, fui::InputTouch);
++    chipX += chip.width + 12;
++  }
++
++  // Download and transfer at the bottom, the page readout above them.
++  const auto buttons = screen.takeBottom(static_cast<int16_t>(ds::layout::kButtonHeight), static_cast<int16_t>(gap));
++  const int buttonWidth = (buttons.width - gap) / 2;
++  const fui::Rect download{buttons.x, buttons.y, static_cast<int16_t>(buttonWidth), buttons.height};
++  const fui::Rect transfer{static_cast<int16_t>(buttons.right() - buttonWidth), buttons.y,
++                           static_cast<int16_t>(buttonWidth), buttons.height};
++  control(renderer, download, false, ds::radius::kControl);
++  control(renderer, transfer, false, ds::radius::kControl);
++  label(renderer, download, tr(STR_RICKY_WALLPAPER_DOWNLOAD), RickyDesignUi::BODY, false);
++  label(renderer, transfer, tr(STR_RICKY_TRANSFER_PICTURES), RickyDesignUi::BODY, false);
++  screen.frame().hit(download, ACTION_TOOL, Download, fui::InputTouch);
++  screen.frame().hit(transfer, ACTION_TOOL, Transfer, fui::InputTouch);
++  const auto pager = screen.takeBottom(static_cast<int16_t>(compact), static_cast<int16_t>(gap));
++
++  // The grid: tiles shaped like the screen, as many rows as fit.
++  const auto grid = screen.body();
++  const int count = listCount();
++  const int cellWidth = (grid.width - gap * (kColumns - 1)) / kColumns;
++  const int innerWidth = cellWidth - 2 * kPlate;
++  const int innerHeight = innerWidth * renderer.getScreenHeight() / std::max(1, renderer.getScreenWidth());
++  const int cellHeight = innerHeight + 2 * kPlate;
++  const int rows = std::max(1, (grid.height + gap) / (cellHeight + gap));
++  const int capacity = std::min(kMaxPageTiles, rows * kColumns);
++  const int selected = count == 0 ? 0 : std::clamp<int>(nav.selected, 0, count - 1);
++  nav.selected = selected;
++  const int start = selected / capacity * capacity;
++  const int visible = std::min(capacity, count - start);
++  pageCapacity = capacity;
++  if (start != thumbPageStart || innerWidth != thumbWidth || innerHeight != thumbHeight) {
++    thumbPageStart = start;
++    thumbAttempted = 0;
++    prefetchIndex = -1;
++  }
++  thumbWidth = innerWidth;
++  thumbHeight = innerHeight;
++  thumbPending = 0;
++
++  if (count == 0) {
++    const char* message = listFailed ? tr(STR_FAILED_LOWER) : tr(STR_RICKY_STANDBY_EMPTY);
++    RickyDesignUi::secondaryText(renderer,
++                                 fui::Rect{grid.x, static_cast<int16_t>(grid.y + grid.height / 2 - captionHeight),
++                                           grid.width, static_cast<int16_t>(captionHeight * 2)},
++                                 message, RickyDesignUi::BODY, false, fui::TextAlign::Center);
++  }
++
++  const bool focus = showMainTabContentSelection();
++  for (int slot = 0; slot < visible; ++slot) {
++    const int index = start + slot;
++    const auto& entry = pictures[static_cast<size_t>(index)];
++    const fui::Rect cell{static_cast<int16_t>(grid.x + slot % kColumns * (cellWidth + gap)),
++                         static_cast<int16_t>(grid.y + slot / kColumns * (cellHeight + gap)),
++                         static_cast<int16_t>(cellWidth), static_cast<int16_t>(cellHeight)};
++    const bool picked = focus && index == selected;
++    if (picked) RickyDesignUi::fill(renderer, cell, ds::gray::kInk, ds::radius::kControl);
++    const fui::Rect art = inset(cell, kPlate);
++    const std::string thumb = StandbyPictures::thumbnailPath(entry, innerWidth, innerHeight);
++    char key[48];
++    snprintf(key, sizeof(key), "|sg|%d,%d,%d,%d|%d", art.x, art.y, art.width, art.height, picked ? 1 : 0);
++    const bool painted = PanelTileCache::draw(renderer, thumb + key, thumb, art.x, art.y, art.width, art.height, [&] {
++      HalFile file;
++      if (!Storage.openFileForRead("STANDBY", thumb.c_str(), file)) return false;
++      Bitmap bitmap(file);
++      return bitmap.parseHeaders() == BmpReaderError::Ok &&
++             GUI.drawCoverThumbFill(renderer, bitmap, Rect{art.x, art.y, art.width, art.height});
++    });
++    if (!painted) {
++      RickyDesignUi::fill(renderer, art, ds::gray::kTint);
++      if (!(thumbAttempted & (1u << slot))) thumbPending |= 1u << slot;
++    }
++    // A picture at rest gets the light-gray cover edge, as a book on the shelf does.
++    if (!picked) RickyGrayStroke::ring(renderer, art.x, art.y, art.width, art.height, ds::stroke::kCoverEdge, 0, ds::gray::kLine);
++    if (entry.path == inUse) {
++      // "In use" sits on the picture's lower left, paper on whatever the picture is.
++      const char* text = tr(STR_RICKY_IN_USE);
++      const int textWidth = renderer.getTextWidth(RickyDesignUi::fontFor(renderer, RickyDesignUi::CAPTION, text), text);
++      const int badgeHeight = captionHeight + 16;
++      const fui::Rect badge{static_cast<int16_t>(art.x + 12),
++                            static_cast<int16_t>(art.bottom() - 12 - badgeHeight),
++                            static_cast<int16_t>(std::min<int>(textWidth + 32, art.width - 24)),
++                            static_cast<int16_t>(badgeHeight)};
++      control(renderer, badge, false, badgeHeight / 2);
++      label(renderer, badge, text, RickyDesignUi::CAPTION, false);
++    }
++    screen.frame().hit(cell, ACTION_ROW, index, fui::InputTouch);
++  }
++  nav.drawnCount = count;
++  nav.onListRendered(start, visible, true);
++  if (thumbPending) {
++    pageSettledMs = 0;
++  } else if (pageSettledMs == 0) {
++    pageSettledMs = millis();
++  }
++
++  // Page readout between the two page buttons.
++  const int pages = std::max(1, (count + capacity - 1) / capacity);
++  const int page = start / capacity + 1;
++  snprintf(pageText, sizeof(pageText), "%d / %d", page, pages);
++  const int arrowWidth = ds::layout::kTouchMin;
++  const fui::Rect prev{pager.x, pager.y, static_cast<int16_t>(arrowWidth), pager.height};
++  const fui::Rect next{static_cast<int16_t>(pager.right() - arrowWidth), pager.y, static_cast<int16_t>(arrowWidth),
++                       pager.height};
++  const bool hasPrev = page > 1;
++  const bool hasNext = page < pages;
++  // Only a page button that goes somewhere is drawn; the readout stays centred.
++  if (hasPrev) {
++    control(renderer, prev, false, ds::radius::kControl);
++    pageArrow(target, prev, true, true);
++  }
++  if (hasNext) {
++    control(renderer, next, false, ds::radius::kControl);
++    pageArrow(target, next, false, true);
++  }
++  if (pages > 1)
++    label(renderer,
++          fui::Rect{static_cast<int16_t>(prev.right()), pager.y, static_cast<int16_t>(next.x - prev.right()),
++                    pager.height},
++          pageText, RickyDesignUi::BODY, false);
++  if (hasPrev) screen.frame().hit(prev, ACTION_TOOL, PrevPage, fui::InputTouch);
++  if (hasNext) screen.frame().hit(next, ACTION_TOOL, NextPage, fui::InputTouch);
++}
+--- /dev/null
++++ b/src/activities/apps/standby/StandbyGalleryActivity.h
+@@ -0,0 +1,64 @@
++#pragma once
++
++#include <string>
++#include <vector>
++
++#include "StandbyPictures.h"
++#include "activities/UiListActivity.h"
++
++// Choose a standby or power-off picture from thumbnails laid out in a grid, a page
++// at a time; as the 图库 app, the same grid just for looking. A tile opens the
++// picture full screen, where it can be set as either screen and the neighbours
++// flipped through. Thumbnails are made in the background, one per loop pass, each
++// shown as it lands; once the page is complete and left alone, the next page's are
++// made ahead.
++class StandbyGalleryActivity final : public UiListActivity {
++ public:
++  enum class Mode : uint8_t { Pick, Browse };
++  StandbyGalleryActivity(GfxRenderer& renderer, MappedInputManager& input, StandbyPictures::Target target,
++                         Mode mode = Mode::Pick)
++      : UiListActivity("StandbyGallery", renderer, input), target(target), mode(mode) {}
++
++  void onEnter() override;
++  void onExit() override;
++  void loop() override;
++
++ protected:
++  int listCount() const override { return static_cast<int>(pictures.size()); }
++  const char* headerTitle() const override;
++  void buildScreen(UiScreen& screen) override;
++  void activateIndex(int index) override;
++  bool handleCustomInput() override;
++
++ private:
++  enum Tool : int { FilterAll, FilterDefaults, FilterMine, PrevPage, NextPage, Download, Transfer };
++  static constexpr freeink::ui::ActionId ACTION_TOOL = ACTION_USER;
++
++  void reload();
++  void runTool(int tool);
++  void turnPage(int direction);
++  // One missing thumbnail of the shown page, then a repaint.
++  void makePendingThumbnail();
++  // One thumbnail of the next page, while the shown one is complete and idle.
++  void prefetchThumbnail();
++
++  StandbyPictures::Target target;
++  Mode mode;
++  StandbyPictures::Filter filter = StandbyPictures::Filter::All;
++  std::vector<StandbyPictures::Entry> pictures;
++  std::string inUse;
++  bool listFailed = false;
++
++  // Geometry of the last page drawn (render task), read by the loop under RenderLock.
++  int pageCapacity = 6;
++  int thumbWidth = 0;
++  int thumbHeight = 0;
++  int thumbPageStart = -1;
++  uint32_t thumbPending = 0;
++  uint32_t thumbAttempted = 0;
++  // Next-page prefetch: starts once the shown page has had nothing to make for a while.
++  unsigned long pageSettledMs = 0;
++  int prefetchIndex = -1;
++
++  char pageText[24] = {};
++};
+--- /dev/null
++++ b/src/activities/apps/standby/StandbyPictures.cpp
+@@ -0,0 +1,320 @@
++#include "StandbyPictures.h"
++
++#include <Bitmap.h>
++#include <FsHelpers.h>
++#include <HalStorage.h>
++#include <JpegToBmpConverter.h>
++#include <Logging.h>
++#include <Memory.h>
++#include <PngToBmpConverter.h>
++
++#include <algorithm>
++#include <cstdio>
++#include <cstring>
++
++#include "CrossPointSettings.h"
++#include "network/RickyWallpaperCatalog.h"
++#include "util/RickyStorageLayout.h"
++
++namespace StandbyPictures {
++namespace {
++constexpr char kThumbDir[] = "/.crosspoint/standby-thumbs";
++// Bounded like the image viewer's previews: start over rather than track ages.
++constexpr int kThumbCacheMax = 240;
++constexpr char kStandbySource[] = "/.crosspoint/standby-source.txt";
++constexpr char kPowerOffSource[] = "/.crosspoint/poweroff-source.txt";
++constexpr char kReadingSource[] = "/.crosspoint/reading-background-source.txt";
++
++enum class Kind : uint8_t { Bmp, Jpeg, Png };
++
++// The signature decides, as in the image viewer; the extension is the fallback.
++Kind sniff(const std::string& path) {
++  uint8_t head[8] = {};
++  HalFile file;
++  if (Storage.openFileForRead("STANDBY", path.c_str(), file) && file.read(head, sizeof(head)) == sizeof(head)) {
++    static constexpr uint8_t kPng[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
++    if (memcmp(head, kPng, sizeof(kPng)) == 0) return Kind::Png;
++    if (head[0] == 0xFF && head[1] == 0xD8 && head[2] == 0xFF) return Kind::Jpeg;
++    if (head[0] == 'B' && head[1] == 'M') return Kind::Bmp;
++  }
++  if (FsHelpers::hasPngExtension(path)) return Kind::Png;
++  if (FsHelpers::hasJpgExtension(path)) return Kind::Jpeg;
++  return Kind::Bmp;
++}
++
++// Files of one folder, names sorted, appended to `out` until it holds kMaxPictures.
++void addFolder(const std::string& folder, std::vector<Entry>& out) {
++  HalFile dir = Storage.open(folder.c_str());
++  if (!dir || !dir.isDirectory()) return;
++  std::vector<std::string> names;
++  std::vector<uint32_t> sizes;
++  char name[256];
++  for (HalFile file = dir.openNextFile(); file; file = dir.openNextFile()) {
++    if (file.isDirectory()) continue;
++    name[0] = '\0';
++    file.getName(name, sizeof(name));
++    if (name[0] == '\0' || name[0] == '.' || !FsHelpers::hasImageExtension(name)) continue;
++    names.emplace_back(name);
++    sizes.push_back(static_cast<uint32_t>(file.fileSize()));
++  }
++  // Sort names, keeping each size with its name.
++  std::vector<std::string> sorted = names;
++  FsHelpers::sortFileList(sorted);
++  for (const auto& entry : sorted) {
++    if (static_cast<int>(out.size()) >= kMaxPictures) return;
++    const auto it = std::find(names.begin(), names.end(), entry);
++    Entry item;
++    item.path = folder == "/" ? "/" + entry : folder + "/" + entry;
++    item.size = sizes[static_cast<size_t>(it - names.begin())];
++    out.push_back(std::move(item));
++  }
++}
++
++void pruneThumbs() {
++  // Once a boot: listing the folder for every thumbnail made each one slower.
++  static bool pruned = false;
++  if (pruned) return;
++  pruned = true;
++  HalFile dir = Storage.open(kThumbDir);
++  if (!dir || !dir.isDirectory()) return;
++  std::vector<std::string> names;
++  char name[64];
++  for (HalFile entry = dir.openNextFile(); entry; entry = dir.openNextFile()) {
++    name[0] = '\0';
++    entry.getName(name, sizeof(name));
++    if (name[0] != '\0' && name[0] != '.') names.emplace_back(name);
++  }
++  dir.close();
++  if (static_cast<int>(names.size()) < kThumbCacheMax) return;
++  // Keep the newer half (the folder lists in creation order) instead of starting over.
++  const size_t drop = names.size() - kThumbCacheMax / 2;
++  for (size_t i = 0; i < drop; ++i) Storage.remove((std::string(kThumbDir) + "/" + names[i]).c_str());
++}
++
++void write16(HalFile& out, const uint16_t value) {
++  out.write(static_cast<uint8_t>(value & 0xFF));
++  out.write(static_cast<uint8_t>(value >> 8));
++}
++
++void write32(HalFile& out, const uint32_t value) {
++  for (int i = 0; i < 4; ++i) out.write(static_cast<uint8_t>(value >> (i * 8)));
++}
++
++// An 8-bit gray, top-down BMP, the format the gray thumbnail converters write.
++bool writeGray8Bmp(HalFile& out, const uint8_t* pixels, const int width, const int height) {
++  const int stride = (width + 3) / 4 * 4;
++  const uint32_t palette = 256 * 4;
++  const uint32_t imageSize = static_cast<uint32_t>(stride) * static_cast<uint32_t>(height);
++  out.write('B');
++  out.write('M');
++  write32(out, 14 + 40 + palette + imageSize);
++  write32(out, 0);
++  write32(out, 14 + 40 + palette);
++  write32(out, 40);
++  write32(out, static_cast<uint32_t>(width));
++  write32(out, static_cast<uint32_t>(-height));
++  write16(out, 1);
++  write16(out, 8);
++  write32(out, 0);
++  write32(out, imageSize);
++  write32(out, 2835);
++  write32(out, 2835);
++  write32(out, 256);
++  write32(out, 256);
++  for (int i = 0; i < 256; ++i) {
++    const uint8_t gray = static_cast<uint8_t>(i);
++    out.write(gray);
++    out.write(gray);
++    out.write(gray);
++    out.write(static_cast<uint8_t>(0));
++  }
++  static constexpr uint8_t kPad[3] = {};
++  for (int y = 0; y < height; ++y) {
++    if (out.write(pixels + static_cast<size_t>(y) * width, width) != static_cast<size_t>(width)) return false;
++    if (stride > width && out.write(kPad, stride - width) != static_cast<size_t>(stride - width)) return false;
++  }
++  return true;
++}
++
++// A BMP shrunk to cover width×height (box average), so the gallery never reads a
++// full-screen picture per tile. Row by row: the source is never held whole.
++bool bmpToThumb(const std::string& source, HalFile& out, const int width, const int height) {
++  HalFile file;
++  if (!Storage.openFileForRead("STANDBY", source.c_str(), file)) return false;
++  Bitmap bitmap(file);
++  if (bitmap.parseHeaders() != BmpReaderError::Ok || bitmap.rewindToData() != BmpReaderError::Ok) return false;
++  const int srcW = bitmap.getWidth();
++  const int srcH = bitmap.getHeight();
++  if (srcW <= 0 || srcH <= 0) return false;
++  // Cover the slot, like the JPEG/PNG thumbnails; the drawer crops the centre.
++  const float scale = std::max(static_cast<float>(width) / srcW, static_cast<float>(height) / srcH);
++  const int outW = std::max(1, std::min(srcW, static_cast<int>(srcW * scale + 0.5f)));
++  const int outH = std::max(1, std::min(srcH, static_cast<int>(srcH * scale + 0.5f)));
++  // Scratch for one thumbnail (about 60 KB at 172×306): the picture is written once,
++  // after the last row, because bottom-up BMPs deliver rows in reverse.
++  auto pixels = makeUniqueNoThrow<uint8_t[]>(static_cast<size_t>(outW) * outH);
++  auto row = makeUniqueNoThrow<uint8_t[]>(static_cast<size_t>(srcW));
++  auto raw = makeUniqueNoThrow<uint8_t[]>(static_cast<size_t>(bitmap.getRowBytes()));
++  auto sums = makeUniqueNoThrow<uint32_t[]>(static_cast<size_t>(outW));
++  if (!pixels || !row || !raw || !sums) {
++    LOG_ERR("STANDBY", "OOM: thumbnail scratch for %dx%d", outW, outH);
++    return false;
++  }
++  int currentOut = -1;
++  int rowsInSum = 0;
++  const auto flush = [&]() {
++    if (currentOut < 0 || rowsInSum == 0) return;
++    const int y = bitmap.isTopDown() ? currentOut : outH - 1 - currentOut;
++    uint8_t* dest = pixels.get() + static_cast<size_t>(y) * outW;
++    for (int x = 0; x < outW; ++x) dest[x] = static_cast<uint8_t>(sums[x] / static_cast<uint32_t>(rowsInSum));
++  };
++  for (int sy = 0; sy < srcH; ++sy) {
++    if (bitmap.readNextRow(row.get(), raw.get(), nullptr, Bitmap::RowOutput::Gray8) != BmpReaderError::Ok)
++      return false;
++    const int oy = std::min(outH - 1, static_cast<int>(static_cast<int64_t>(sy) * outH / srcH));
++    if (oy != currentOut) {
++      flush();
++      currentOut = oy;
++      rowsInSum = 0;
++      std::fill(sums.get(), sums.get() + outW, 0u);
++    }
++    // Horizontal box: each output column averages the source columns it spans.
++    for (int x = 0; x < outW; ++x) {
++      const int from = static_cast<int>(static_cast<int64_t>(x) * srcW / outW);
++      const int to = std::max(from + 1, static_cast<int>(static_cast<int64_t>(x + 1) * srcW / outW));
++      uint32_t total = 0;
++      for (int sx = from; sx < to; ++sx) total += row[sx];
++      sums[x] += total / static_cast<uint32_t>(to - from);
++    }
++    ++rowsInSum;
++  }
++  flush();
++  return writeGray8Bmp(out, pixels.get(), outW, outH);
++}
++
++std::string readLine(const char* path) {
++  HalFile file;
++  if (!Storage.openFileForRead("STANDBY", path, file)) return {};
++  char buffer[256];
++  const int count = file.read(buffer, sizeof(buffer) - 1);
++  if (count <= 0) return {};
++  buffer[count] = '\0';
++  std::string line(buffer);
++  while (!line.empty() && (line.back() == '\n' || line.back() == '\r')) line.pop_back();
++  return line;
++}
++}  // namespace
++
++bool list(const Filter filter, std::vector<Entry>& out) {
++  out.clear();
++  const std::string root = RickyStorageLayout::IMAGES;
++  HalFile dir = Storage.open(root.c_str());
++  if (!dir || !dir.isDirectory()) return Storage.exists(root.c_str()) ? false : true;
++  std::vector<std::string> folders;
++  char name[256];
++  for (HalFile entry = dir.openNextFile(); entry; entry = dir.openNextFile()) {
++    if (!entry.isDirectory()) continue;
++    name[0] = '\0';
++    entry.getName(name, sizeof(name));
++    if (name[0] == '\0' || name[0] == '.') continue;
++    const std::string path = root + "/" + name;
++    if (path == RickyWallpaperCatalog::STICKER_FOLDER || path == RickyWallpaperCatalog::FOLDER) continue;
++    folders.push_back(path);
++  }
++  dir.close();
++  FsHelpers::sortFileList(folders);
++  if (filter != Filter::Defaults) {
++    addFolder(root, out);
++    for (const auto& folder : folders) addFolder(folder, out);
++  }
++  if (filter != Filter::Mine) addFolder(RickyWallpaperCatalog::FOLDER, out);
++  return true;
++}
++
++std::string thumbnailPath(const Entry& entry, const int width, const int height) {
++  // FNV-1a over path, size and slot: a replaced picture or a new layout converts again.
++  uint32_t hash = 2166136261u;
++  const auto mix = [&hash](const uint8_t byte) { hash = (hash ^ byte) * 16777619u; };
++  for (const char c : entry.path) mix(static_cast<uint8_t>(c));
++  for (const uint32_t value : {entry.size, static_cast<uint32_t>(width), static_cast<uint32_t>(height)})
++    for (int i = 0; i < 4; ++i) mix(static_cast<uint8_t>(value >> (i * 8)));
++  char name[64];
++  snprintf(name, sizeof(name), "%s/%08x.bmp", kThumbDir, static_cast<unsigned>(hash));
++  return name;
++}
++
++bool ensureThumbnail(const Entry& entry, const int width, const int height) {
++  const std::string path = thumbnailPath(entry, width, height);
++  if (Storage.exists(path.c_str())) return true;
++  if (!Storage.ensureDirectoryExists(kThumbDir)) return false;
++  pruneThumbs();
++  // Written aside and renamed, so a conversion cut short is never taken for a thumbnail.
++  const std::string part = path + ".part";
++  if (Storage.exists(part.c_str()) && !Storage.remove(part.c_str())) return false;
++  bool made = false;
++  {
++    HalFile input, output;
++    if (!Storage.openFileForWrite("STANDBY", part, output)) return false;
++    switch (sniff(entry.path)) {
++      case Kind::Jpeg:
++        made = Storage.openFileForRead("STANDBY", entry.path.c_str(), input) &&
++               JpegToBmpConverter::jpegFileToThumbBmpStreamWithSize(input, output, width, height);
++        break;
++      case Kind::Png:
++        made = Storage.openFileForRead("STANDBY", entry.path.c_str(), input) &&
++               PngToBmpConverter::pngFileToThumbBmpStreamWithSize(input, output, width, height);
++        break;
++      case Kind::Bmp:
++        made = bmpToThumb(entry.path, output, width, height);
++        break;
++    }
++    output.flush();
++  }
++  made = made && Storage.rename(part.c_str(), path.c_str());
++  if (!made) Storage.remove(part.c_str());
++  return made;
++}
++
++static const char* sourceFile(const Target target) {
++  switch (target) {
++    case Target::PowerOff:
++      return kPowerOffSource;
++    case Target::Reading:
++      return kReadingSource;
++    default:
++      return kStandbySource;
++  }
++}
++
++std::string currentSource(const Target target) {
++  return readLine(sourceFile(target));
++}
++
++std::string sourceInUse(const Target target) {
++  bool shown = false;
++  switch (target) {
++    case Target::PowerOff:
++      shown = SETTINGS.rickyPowerOffScreen == CrossPointSettings::RICKY_POWER_OFF_CUSTOM;
++      break;
++    case Target::Reading:
++      shown = SETTINGS.readingBackground != CrossPointSettings::READING_BACKGROUND_OFF &&
++              SETTINGS.readingPaper == CrossPointSettings::READING_PAPER_PICTURE;
++      break;
++    default:
++      shown = SETTINGS.rickyStandbyFace == CrossPointSettings::RICKY_STANDBY_PICTURE;
++      break;
++  }
++  return shown ? currentSource(target) : std::string();
++}
++
++void rememberSource(const Target target, const std::string& path) {
++  const char* file = sourceFile(target);
++  HalFile out;
++  if (!Storage.openFileForWrite("STANDBY", file, out)) {
++    LOG_ERR("STANDBY", "Cannot record the picture source");
++    return;
++  }
++  out.write(reinterpret_cast<const uint8_t*>(path.data()), path.size());
++}
++
++}  // namespace StandbyPictures
+--- /dev/null
++++ b/src/activities/apps/standby/StandbyPictures.h
+@@ -0,0 +1,42 @@
++#pragma once
++
++#include <cstdint>
++#include <string>
++#include <vector>
++
++// The pictures Standby and power-off can show, their gallery thumbnails, and which
++// picture each screen was last set from. /sleep.bmp and /poweroff.bmp are converted
++// copies; the gallery marks the source they came from.
++namespace StandbyPictures {
++
++enum class Target : uint8_t { Standby, PowerOff, Reading };
++enum class Filter : uint8_t { All, Defaults, Mine };
++
++struct Entry {
++  std::string path;
++  uint32_t size = 0;  // part of the thumbnail key: a replaced file under the same name converts again
++};
++
++// Gallery order: the reader's own pictures first, then the downloaded defaults; names
++// sorted within each. /images and its subfolders one level down, never the stickers.
++// At most kMaxPictures. False when /images cannot be read (an empty list is fine).
++constexpr int kMaxPictures = 300;
++bool list(Filter filter, std::vector<Entry>& out);
++
++// The cached thumbnail for `entry` at `width`×`height` (filled and cropped like a
++// cover). No SD access; the file may not exist yet.
++std::string thumbnailPath(const Entry& entry, int width, int height);
++// Make the thumbnail if it is missing. Borrows the caller's buffers only through the
++// converters, which the caller runs under a FrameBufferLoan. False when the picture
++// cannot be decoded.
++bool ensureThumbnail(const Entry& entry, int width, int height);
++
++// The picture a target was last set from, empty when unknown (set before this record).
++std::string currentSource(Target target);
++// That picture only while the target actually shows it (the standby style is the
++// picture, the power-off screen is its own picture, the reading paper is the picture
++// and on); empty otherwise. What the gallery marks "in use".
++std::string sourceInUse(Target target);
++void rememberSource(Target target, const std::string& path);
++
++}  // namespace StandbyPictures
 --- a/src/activities/apps/standby/WallpaperFace.cpp
 +++ b/src/activities/apps/standby/WallpaperFace.cpp
 @@ -99,6 +99,7 @@
@@ -194984,14 +197094,16 @@
 +};
 --- a/src/activities/reader/EpubReaderActivity.cpp
 +++ b/src/activities/reader/EpubReaderActivity.cpp
-@@ -1,5 +1,6 @@
+@@ -1,5 +1,8 @@
  #include "EpubReaderActivity.h"
  
++#include "util/ReadingBackground.h"
++
 +#include <RickyPerf.h>
  #include <Epub/Page.h>
  #include <Epub/blocks/TextBlock.h>
  #include <Epub/css/CssParser.h>
-@@ -16,9 +17,13 @@
+@@ -16,9 +19,13 @@
  #include <SdCardFontCache.h>
  #include <TrustedTime.h>
  #include <Txt.h>
@@ -195005,7 +197117,7 @@
  
  #include <algorithm>
  #include <cmath>
-@@ -27,7 +32,7 @@
+@@ -27,7 +34,7 @@
  #include <functional>
  #include <iterator>
  #include <limits>
@@ -195014,7 +197126,7 @@
  #if CROSSPOINT_VECTOR_FONTS
  #include <TtfEpdFont.h>
  #endif
-@@ -64,6 +69,7 @@
+@@ -64,6 +71,7 @@
  #include "activities/settings/TextSettingsActivity.h"
  #include "components/FontPreloadView.h"
  #include "components/RickyBadgeNotice.h"
@@ -195022,7 +197134,7 @@
  #include "components/UITheme.h"
  #include "components/icons/rickyReaderDog.h"
  #include "fontIds.h"
-@@ -75,7 +81,6 @@
+@@ -75,7 +83,6 @@
  #include "util/ReadingGuideLine.h"
  #include "util/ScreenshotUtil.h"
  #include "util/TimeUtils.h"
@@ -195030,7 +197142,7 @@
  
  namespace {
  constexpr uint8_t MAX_PAGE_TURN_RATE = 30;
-@@ -105,6 +110,17 @@
+@@ -105,6 +112,17 @@
        {0, 4, 6, 7, 8, 9, 10, 11, 11, 12, 12, 13, 14, 14, 15, 15},
        {0, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 12, 13, 14, 14, 15},
    };
@@ -195048,7 +197160,7 @@
    return weight < std::size(kCurves) && weight != 2 ? kCurves[weight] : nullptr;
  }
  
-@@ -341,7 +357,7 @@
+@@ -341,7 +359,7 @@
  
    READING_STATS.endSession();
    ACHIEVEMENTS.recordSessionEnded(READING_STATS.getLastSessionSnapshot());
@@ -195057,7 +197169,7 @@
    // Four frames of PSRAM; the reader is the only owner and gives them back here.
    freePageCache();
  #endif
-@@ -349,6 +365,7 @@
+@@ -349,6 +367,7 @@
  #if RICKYOS_PRODUCT
    rickyBadgeNotice::announceNew(renderer);
  #endif
@@ -195065,7 +197177,7 @@
    ReaderActivity::onExit();
  #if FREEINK_DEVICE_READPICO
    // The last page is 16-level; a fast B/W frame over it leaves its gray text behind,
-@@ -361,7 +378,7 @@
+@@ -361,7 +380,7 @@
  void EpubReaderActivity::showOpeningPopup() {
    // Even a cached book takes a few seconds on device to its first page (measured
    // 2.7-3.6 s), with the tapped screen unchanged meanwhile. Say so at once.
@@ -195074,7 +197186,7 @@
    // Drawn into the retained 16-level frame: the screen keeps its grays and only the
    // popup's area is driven, instead of a B/W refresh of the whole screen.
    if (renderer.beginRetainedGrayscale16()) {
-@@ -449,6 +466,17 @@
+@@ -449,6 +468,17 @@
      return false;
    }
    epub = std::move(loadedEpub);
@@ -195092,7 +197204,7 @@
  
    ImageBlock::clearSessionRenderFailures();
    ImageBlock::setExtractor(epub.get(), [](void* ctx, const char* src, const char* dest, CancelCheck cancellation) {
-@@ -648,6 +676,16 @@
+@@ -648,6 +678,16 @@
    auto spec = vertical ? SETTINGS.readerRenderSpec(height, width) : SETTINGS.readerRenderSpec(width, height);
    spec.collectTouchLinks = mappedInput.hasTouch() && !vertical;
    if (stylesDisabledForSession_) spec.embeddedStyle = false;
@@ -195109,7 +197221,7 @@
    if (vertical) {
      spec.verticalText = true;
      // Columns keep one pitch so the 界行 stay on their grid; images have no column
-@@ -883,7 +921,7 @@
+@@ -883,7 +923,7 @@
      return;
    }
  
@@ -195118,7 +197230,7 @@
    constexpr unsigned long IDLE_PREWARM_DEBOUNCE_MS = 400;
    auto* fcm = renderer.getFontCacheManager();
    {
-@@ -1680,6 +1718,12 @@
+@@ -1680,6 +1720,12 @@
    bool offerSync = false;
    if (perr == "txt progress migration failed") {
      msg = StrId::STR_TXT_PROGRESS_MIGRATION_FAILED;
@@ -195131,7 +197243,7 @@
    } else if (perr == "access expired") {
      msg = StrId::STR_LOAN_EXPIRED;
    } else if (perr == "loan date unverified") {
-@@ -1780,11 +1824,19 @@
+@@ -1780,11 +1826,19 @@
    renderer.getOrientedViewableTRBL(&viewable.top, &viewable.right, &viewable.bottom, &viewable.left);
    const int screenMargin = SETTINGS.screenMargin;
    const auto mode = readingMode::modeFor(SETTINGS.readingMode);
@@ -195153,7 +197265,7 @@
    }
    int bottomReserve = 0;
    if (readingMode::showsFooter(mode)) {
-@@ -1794,8 +1846,8 @@
+@@ -1794,8 +1848,8 @@
          (statusBarHeight == 0 || statusBarHeight == UITheme::getInstance().getProgressBarHeight())) {
        bottomReserve += UITheme::getInstance().getMetrics().statusBarVerticalMargin;
      }
@@ -195164,7 +197276,7 @@
      }
    }
    const readingMode::Margins base{top, viewable.right + screenMargin,
-@@ -1891,7 +1943,7 @@
+@@ -1891,7 +1945,7 @@
        return;
      }
  
@@ -195173,7 +197285,7 @@
      ++sectionGeneration_;
  #endif
      const bool cacheLoaded = section->loadSectionFile(renderSpec);
-@@ -2307,14 +2359,19 @@
+@@ -2307,14 +2361,20 @@
    }
  }
  
@@ -195182,8 +197294,9 @@
  // only JPEG ones (they decode straight into the frame). Must match use16LevelText.
  bool EpubReaderActivity::nativeGray16Page(const Page& page) const {
 +#if FREEINK_DEVICE_METALIO_PLUS
++  // 阅读背景 lives in the 16-level frame, so a page under it is 16-level too.
 +  return !renderer.isInverted() && renderer.getGrayscaleLevels() == 16 &&
-+         (SETTINGS.textAntiAliasing || page.hasImages() || page.hasPanelFill());
++         (SETTINGS.textAntiAliasing || page.hasImages() || page.hasPanelFill() || ReadingBackground::active());
 +#else
    return SETTINGS.textAntiAliasing && !renderer.isInverted() && renderer.getGrayscaleLevels() == 16 &&
           page.imagesAreAllJpeg();
@@ -195196,7 +197309,7 @@
  bool EpubReaderActivity::pageCacheEligible() const {
    // No !section->isBuilding() here, deliberately. The page cache renders ONE page --
    // the current one or the next -- and Section::loadPage() is written to serve exactly
-@@ -2328,7 +2385,12 @@
+@@ -2328,7 +2388,12 @@
    // engages at all -- every turn is a full render instead of the cached one.
    return !pageCacheFailed_ && section && renderer.hasFrameBuffer() && !activityManager.isSwitchPending() &&
           overlay == Overlay::None && fontPromptState == FontPromptState::Idle && !renderer.isInverted() &&
@@ -195210,7 +197323,7 @@
  }
  
  ReaderPageCacheKey EpubReaderActivity::pageCacheKey(const int page, const int top, const int right, const int bottom,
-@@ -2369,8 +2431,34 @@
+@@ -2369,8 +2434,34 @@
    }
  }
  
@@ -195245,7 +197358,7 @@
    // Every exit below names the condition it took. Without that, "the cache never hits"
    // is indistinguishable from "the build was cancelled", "the layout moved since the
    // last render" and "the next page has images" -- and each of those needs a different
-@@ -2400,6 +2488,9 @@
+@@ -2400,6 +2491,9 @@
    const auto& layout = renderedPageKey_;
    // A main-loop reflow/jump may have replaced the section since the last render.
    if (layout != pageCacheKey(section->currentPage, layout.top, layout.right, layout.bottom, layout.left)) {
@@ -195255,7 +197368,7 @@
      LOG_DBG("ERS", "Page cache: skip, layout moved since the last render");
      return;
    }
-@@ -2412,26 +2503,38 @@
+@@ -2412,26 +2506,38 @@
    // A build cut short by input stays retryable: the render task re-arms the idle pass
    // once input is quiet, and a Skipped slot would otherwise never be built again.
    const auto build = [&](const int slot, const ReaderPageCacheKey& key) {
@@ -195304,7 +197417,7 @@
  // On a chapter's last page the forward slot is free: build the next chapter and render
  // its first page into it. Comics put one picture in each chapter, so without this every
  // turn decoded a JPEG in the foreground (~3.5 s); now it happens while the page is read.
-@@ -2464,6 +2567,12 @@
+@@ -2464,6 +2570,12 @@
    }
    if (nextSection->pageCount == 0 || activityManager.idleRenderCancelled(generation)) return;
    const bool ready = buildPageCacheSlot(0, key, generation, nextSection.get());
@@ -195317,7 +197430,7 @@
    LOG_DBG("ERS", "Next chapter prefetch: spine %d ready=%d in %lums", next, ready, millis() - started);
  }
  #endif
-@@ -2527,13 +2636,18 @@
+@@ -2527,13 +2639,18 @@
    if (!pageCacheBase_[slot]) {
      constexpr size_t kContiguousReserve = 16 * 1024;
      // Reserve the slots still to allocate; the forward slot is already charged for slot 1.
@@ -195340,7 +197453,7 @@
        freePageCache();
        pageCacheFailed_ = true;
        LOG_ERR("ERS", "Page cache off: PSRAM allocation of %u B failed", static_cast<unsigned>(4 * bytes));
-@@ -2579,12 +2693,26 @@
+@@ -2579,12 +2696,26 @@
    const readingMode::Box textBox = readingMode::textBox(renderer.getScreenWidth(), renderer.getScreenHeight(),
                                                          {key.top, key.right, key.bottom, key.left});
    const int pitch = renderer.getLineHeight(key.spec.fontId, key.spec.lineCompression);
@@ -195367,7 +197480,7 @@
    };
  
    // Load glyphs on demand: a whole-page prewarm cannot be interrupted. Check
-@@ -2597,9 +2725,10 @@
+@@ -2597,9 +2728,10 @@
      GfxRenderer::SyntheticBoldScope syntheticBold(renderer, key.fakeBold);
      GfxRenderer::TextWeightScope textWeight(renderer, readerTextWeightCurve(key.textWeight),
                                              readerTextWeightSpread(key.textWeight));
@@ -195379,7 +197492,24 @@
      }
      if (vertical) readerChrome::drawColumnRules(renderer, *page, textBox, pitch);
      // Match foreground ordering: all text first, then the guide lines.
-@@ -2636,9 +2765,10 @@
+@@ -2632,13 +2764,27 @@
+       GfxRenderer& renderer;
+       ~EndOffscreen() { renderer.endGrayscale16Offscreen(); }
+     } endOffscreen{renderer};
++#if FREEINK_DEVICE_METALIO_PLUS
++    {
++      // Ruled paper follows this page's text box and rows.
++      ReadingBackground::TextBox box{key.left, key.top, renderer.getScreenWidth() - key.right,
++                                     renderer.getScreenHeight() - key.bottom};
++      if (!vertical) {
++        box.pitch = renderer.getLineHeight(key.spec.fontId, key.spec.lineCompression);
++        box.rule = readingGuideLine::rowOffset(box.pitch, renderer.getFontAscenderSize(key.spec.fontId),
++                                               readingGuideLine::emFor(renderer, key.spec.fontId));
++      }
++      ReadingBackground::paint(renderer, box);
++    }
++#endif
+     {
        GfxRenderer::SyntheticBoldScope syntheticBold(renderer, key.fakeBold);
        GfxRenderer::TextWeightScope textWeight(renderer, readerTextWeightCurve(key.textWeight),
                                                readerTextWeightSpread(key.textWeight));
@@ -195391,7 +197521,7 @@
        }
        if (vertical) readerChrome::drawColumnRules(renderer, *page, textBox, pitch);
      }
-@@ -2671,6 +2801,10 @@
+@@ -2671,6 +2817,10 @@
    }
    pageCacheMissingCodepoint_[slot] = fcm ? fcm->consumeMissingChineseCodepoint() : 0;
    pageCache_[slot].state = ReaderPageCache::State::Ready;
@@ -195402,7 +197532,7 @@
    LOG_DBG("ERS", "Page cache: slot %d, page %d ready in %lums", slot, key.page, millis() - started);
    return true;
  }
-@@ -2732,7 +2866,7 @@
+@@ -2732,7 +2882,7 @@
        if (manager) manager->clearCache();
      }
    } rawFontCacheGuard;
@@ -195411,7 +197541,7 @@
    const auto key = pageCacheKey(section ? section->currentPage : -1, orientedMarginTop, orientedMarginRight,
                                  orientedMarginBottom, orientedMarginLeft);
    // Either slot may hold this page: slot 0 was built for it as a forward turn, slot 1
-@@ -2779,8 +2913,7 @@
+@@ -2779,8 +2929,7 @@
    // RickyOS: every text face (2-bit downloaded fonts too) and synthetic bold draw straight
    // into the 16-level frame, and JPEG illustrations decode into it, so anti-aliased pages
    // take the single-render path.
@@ -195421,7 +197551,7 @@
    const bool needsAnyGrayscale = grayscaleEnabled && (SETTINGS.textAntiAliasing || pageHasImages);
    const bool absoluteImageGrayscale = grayscaleEnabled && pageHasImages && !gpio.deviceIsX3() &&
                                        display.getController() == HalDisplay::Controller::UC8279 &&
-@@ -2844,7 +2977,7 @@
+@@ -2844,7 +2993,7 @@
    };
  
    unsigned long cacheBaseMs = 0;
@@ -195430,7 +197560,7 @@
    if (use16LevelText) {
      // The 16-level pass below clears the frame and renders (or copies from the cache)
      // the page, writing the B/W proxy as it goes, so a B/W render here is thrown away.
-@@ -2859,7 +2992,7 @@
+@@ -2859,7 +3008,7 @@
    {
      renderPageWithGuideLines();
    }
@@ -195439,7 +197569,7 @@
    const uint32_t missingCodepoint =
        pageCacheHit ? pageCacheMissingCodepoint_[pageCacheLiveSlot_] : fcm->consumeMissingChineseCodepoint();
  #else
-@@ -2869,7 +3002,14 @@
+@@ -2869,7 +3018,14 @@
      uint32_t expected = 0;
      pendingMissingChineseCodepoint_.compare_exchange_strong(expected, missingCodepoint, std::memory_order_relaxed);
    }
@@ -195454,7 +197584,7 @@
    const auto tBwRender = millis();
  
    if (absoluteImageGrayscale) {
-@@ -2889,6 +3029,7 @@
+@@ -2889,6 +3045,7 @@
      // twice (more flash, more time), and the 16-level waveform is a full-screen one anyway,
      // so ghosting is still cleared.
    } else if (combinedGrayscaleBase) {
@@ -195462,7 +197592,7 @@
      ReaderUtils::displayBaseWithRefreshCycle(renderer, pagesUntilFullRefresh, manualRefreshPending);
    } else if (pageHasImages) {
      // Image pages use one base refresh before the grayscale pass. FAST leaves
-@@ -2903,6 +3044,7 @@
+@@ -2903,6 +3060,7 @@
        pagesUntilFullRefresh = 1;
      }
    } else {
@@ -195470,7 +197600,7 @@
      ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh, overlapRefresh);
    }
    const auto tDisplay = millis();
-@@ -2912,7 +3054,7 @@
+@@ -2912,7 +3070,7 @@
      const auto t16Begin = millis();
      if (renderer.beginGrayscale16()) {
        const auto t16Cleared = millis();
@@ -195479,7 +197609,27 @@
        if (pageCacheHit && pageCacheIs16_[pageCacheLiveSlot_] && pageCache16_[pageCacheLiveSlot_]) {
          memcpy(renderer.grayscale16Frame(), pageCache16_[pageCacheLiveSlot_].get(), renderer.grayscale16FrameBytes());
          memcpy(renderer.getFrameBuffer(), pageCacheBase_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
-@@ -2926,22 +3068,33 @@
+@@ -2920,28 +3078,53 @@
+       } else
+ #endif
+       {
++#if FREEINK_DEVICE_METALIO_PLUS
++        {
++          // Ruled paper follows this page's text box and rows.
++          ReadingBackground::TextBox box{orientedMarginLeft, orientedMarginTop,
++                                         renderer.getScreenWidth() - orientedMarginRight,
++                                         renderer.getScreenHeight() - orientedMarginBottom};
++          if (!vertical) {
++            box.pitch = renderer.getLineHeight(fontId, SETTINGS.getReaderLineCompression());
++            box.rule = readingGuideLine::rowOffset(box.pitch, renderer.getFontAscenderSize(fontId),
++                                                   readingGuideLine::emFor(renderer, fontId));
++          }
++          ReadingBackground::paint(renderer, box);
++        }
++#endif
+         renderPageWithGuideLines();
+       }
+       const auto t16Page = millis();
        renderStatusBar();
        LOG_DBG("ERS", "16-level timing: before=%lums begin=%lums page=%lums status=%lums", t16Begin - t0,
                t16Cleared - t16Begin, t16Page - t16Cleared, millis() - t16Page);
@@ -195516,7 +197666,7 @@
          ttf = {};
  #endif
        }
-@@ -2951,16 +3104,34 @@
+@@ -2951,16 +3134,34 @@
          return;
        }
  #if !defined(SIMULATOR)
@@ -195554,7 +197704,7 @@
  #if RICKYOS_PAINT_PROFILE
          LOG_INF("PERF", "reader commit=%lums total=%lums", tEnd - tCommit, tEnd - t0);
  #endif
-@@ -3137,7 +3308,7 @@
+@@ -3137,7 +3338,7 @@
        }
        const auto tBwStore = millis();
  
@@ -195563,7 +197713,7 @@
        if (pageCacheHit) {
          // Both planes were rendered at idle; putting them in place is one copy
          // each instead of a full page render each.
-@@ -3164,7 +3335,7 @@
+@@ -3164,7 +3365,7 @@
          return;
        }
  
@@ -195572,7 +197722,7 @@
        if (pageCacheHit) {
          memcpy(renderer.getFrameBuffer(), pageCacheMsb_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
          renderer.copyGrayscaleMsbBuffers();
-@@ -3212,9 +3383,12 @@
+@@ -3212,9 +3413,12 @@
  }
  
  void EpubReaderActivity::renderStatusBar() const {
@@ -195585,7 +197735,7 @@
      readerChrome::PageInfo info;
      info.bookTitle = epub ? epub->getTitle().c_str() : nullptr;
      // A chapter the table of contents names, not currentChapterTitle()'s "unnamed".
-@@ -3225,11 +3399,18 @@
+@@ -3225,11 +3429,18 @@
      }
      info.chapterTitle = chapter.c_str();
      info.pageInChapter = currentPage;
@@ -195606,7 +197756,7 @@
    const float pageCount = section ? section->estimatedTotalPages() : 1;
    const float sectionChapterProg = (pageCount > 0) ? (static_cast<float>(currentPage) / pageCount) : 0;
    const float bookProgress = epub ? (epub->calculateProgress(currentSpineIndex, sectionChapterProg) * 100) : 0;
-@@ -3266,8 +3447,12 @@
+@@ -3266,8 +3477,12 @@
        auto chapter = renderer.truncatedText(RickyDesignUi::BODY, title.c_str(), column);
        title = book + " · " + chapter;
      }
@@ -197034,7 +199184,14 @@
    void adjustWarmth(int delta);
 --- a/src/activities/util/ImageViewerActivity.cpp
 +++ b/src/activities/util/ImageViewerActivity.cpp
-@@ -10,6 +10,7 @@
+@@ -1,4 +1,6 @@
+ #include "ImageViewerActivity.h"
++
++#include "util/ReadingBackground.h"
+ 
+ #include <Bitmap.h>
+ #include <FsHelpers.h>
+@@ -10,9 +12,11 @@
  #include <PngToBmpConverter.h>
  
  #include <algorithm>
@@ -197042,17 +199199,23 @@
  
  #include "CrossPointSettings.h"
  #include "activities/apps/standby/KeepPageFace.h"
-@@ -22,6 +23,9 @@
++#include "activities/apps/standby/StandbyPictures.h"
+ #include "components/UITheme.h"
+ #include "fontIds.h"
+ 
+@@ -22,6 +26,11 @@
  constexpr const char* SLEEP_IMAGE_PATH = "/sleep.bmp";
  constexpr const char* SLEEP_IMAGE_PART_PATH = "/sleep.bmp.part";
  constexpr const char* SLEEP_IMAGE_BACKUP_PATH = "/sleep.bmp.bak";
 +constexpr const char* POWER_OFF_IMAGE_PATH = "/poweroff.bmp";
 +constexpr const char* POWER_OFF_IMAGE_PART_PATH = "/poweroff.bmp.part";
 +constexpr const char* POWER_OFF_IMAGE_BACKUP_PATH = "/poweroff.bmp.bak";
++constexpr const char* READING_IMAGE_PART_PATH = "/readingbg.bmp.part";
++constexpr const char* READING_IMAGE_BACKUP_PATH = "/readingbg.bmp.bak";
  // Converted previews are kept: a PNG takes seconds to convert, and the same pictures
  // are opened again and again while choosing a wallpaper. Bounded by kPreviewCacheMax.
  constexpr const char* PREVIEW_CACHE_DIR = "/.crosspoint/previews";
-@@ -61,7 +65,10 @@
+@@ -61,7 +70,11 @@
    for (const auto& entry : names) Storage.remove((std::string(PREVIEW_CACHE_DIR) + "/" + entry).c_str());
  }
  
@@ -197061,10 +199224,55 @@
 +    const bool sticker = false,
 +    const ImageViewerActivity::WallpaperTarget target = ImageViewerActivity::WallpaperTarget::Standby) {
 +  if (target == ImageViewerActivity::WallpaperTarget::PowerOff) return StrId::STR_RICKY_SET_POWER_OFF_WALLPAPER;
++  if (target == ImageViewerActivity::WallpaperTarget::Reading) return StrId::STR_RICKY_SET_READING_BACKGROUND;
    return sticker ? StrId::STR_RICKY_SET_TRANSPARENT : StrId::STR_RICKY_SET_WALLPAPER;
  }
  
-@@ -74,11 +81,13 @@
+@@ -71,14 +84,140 @@
+               renderer.getScreenHeight() - metrics.contentSidePadding - metrics.menuRowHeight,
+               renderer.getScreenWidth() - metrics.contentSidePadding * 2, metrics.menuRowHeight);
+ }
++
++// The gallery's three buttons share the action row: power-off, reading background,
++// then standby on the right where the single "set" button's thumb lands.
++void galleryActionRects(const GfxRenderer& renderer, Rect& powerOff, Rect& reading, Rect& standby) {
++  const Rect row = sleepCoverActionRect(renderer);
++  const int gap = UITheme::getInstance().getMetrics().contentSidePadding / 2;
++  const int width = (row.width - 2 * gap) / 3;
++  powerOff = Rect(row.x, row.y, width, row.height);
++  reading = Rect(row.x + width + gap, row.y, width, row.height);
++  standby = Rect(row.x + row.width - width, row.y, width, row.height);
++}
++
++// The paper band the gallery's caption and buttons sit on, so the picture never shows
++// through them; the rest of the screen stays the picture.
++Rect galleryBand(const GfxRenderer& renderer) {
++  const Rect row = sleepCoverActionRect(renderer);
++  const int padding = UITheme::getInstance().getMetrics().contentSidePadding / 2;
++  const int top = row.y - renderer.getLineHeight(UI_10_FONT_ID) - padding * 3;
++  return Rect(0, top, renderer.getScreenWidth(), renderer.getScreenHeight() - top);
++}
++
++void galleryButton(const GfxRenderer& renderer, const Rect& r, const char* label, const bool primary) {
++  const int radius = UITheme::getInstance().getMetrics().optionPopupSelectionRadius;
++  renderer.fillRoundedRect(r.x, r.y, r.width, r.height, radius, primary ? Color::Black : Color::White);
++  if (!primary) renderer.drawRoundedRect(r.x, r.y, r.width, r.height, 2, radius, true);
++  const int textWidth = renderer.getTextWidth(UI_10_FONT_ID, label, EpdFontFamily::BOLD);
++  renderer.drawText(UI_10_FONT_ID, r.x + (r.width - textWidth) / 2,
++                    r.y + (r.height - renderer.getLineHeight(UI_10_FONT_ID)) / 2, label, !primary,
++                    EpdFontFamily::BOLD);
++}
++
++StandbyPictures::Target pictureTarget(const ImageViewerActivity::WallpaperTarget target) {
++  switch (target) {
++    case ImageViewerActivity::WallpaperTarget::PowerOff:
++      return StandbyPictures::Target::PowerOff;
++    case ImageViewerActivity::WallpaperTarget::Reading:
++      return StandbyPictures::Target::Reading;
++    default:
++      return StandbyPictures::Target::Standby;
++  }
++}
  }  // namespace
  
  ImageViewerActivity::ImageViewerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string path,
@@ -197077,10 +199285,93 @@
 -      stickerPicker(stickerPicker) {}
 +      stickerPicker(stickerPicker),
 +      wallpaperTarget(wallpaperTarget) {}
++
++ImageViewerActivity::ImageViewerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
++                                         std::vector<std::string> pictures, const int index,
++                                         const WallpaperTarget wallpaperTarget)
++    : Activity("ImageViewer", renderer, mappedInput),
++      wallpaperPicker(true),
++      wallpaperTarget(wallpaperTarget),
++      siblingImages(std::move(pictures)),
++      gallery(true) {
++  currentImageIndex = siblingImages.empty() ? -1 : std::clamp(index, 0, static_cast<int>(siblingImages.size()) - 1);
++  if (currentImageIndex >= 0) filePath = siblingImages[static_cast<size_t>(currentImageIndex)];
++}
++
++void ImageViewerActivity::drawActions() const {
++  if (!mappedInput.hasTouch()) return;
++  if (!gallery) {
++    GUI.drawActionButton(renderer, sleepCoverActionRect(renderer),
++                         I18N.get(sleepCoverLabel(stickerPicker, wallpaperTarget)));
++    return;
++  }
++  const Rect band = galleryBand(renderer);
++  renderer.fillRect(band.x, band.y, band.width, band.height, false);
++  renderer.fillRect(band.x, band.y, band.width, 2, true);
++  // Which picture, and where it is in the gallery: "Leaves  3 / 12".
++  std::string name = filePath.substr(filePath.find_last_of('/') + 1);
++  if (const size_t dot = name.find_last_of('.'); dot != std::string::npos && dot > 0) name.resize(dot);
++  char position[24];
++  snprintf(position, sizeof(position), "  %d / %d", currentImageIndex + 1, static_cast<int>(siblingImages.size()));
++  name += position;
++  const int padding = UITheme::getInstance().getMetrics().contentSidePadding / 2;
++  renderer.drawCenteredText(UI_10_FONT_ID, band.y + padding * 2, name.c_str());
++  Rect powerOff, reading, standby;
++  galleryActionRects(renderer, powerOff, reading, standby);
++  // The gallery's own screen is the primary button.
++  galleryButton(renderer, powerOff, tr(STR_RICKY_SET_POWER_OFF_SHORT), wallpaperTarget == WallpaperTarget::PowerOff);
++  galleryButton(renderer, reading, tr(STR_RICKY_SET_READING_SHORT), wallpaperTarget == WallpaperTarget::Reading);
++  galleryButton(renderer, standby, tr(STR_RICKY_SET_STANDBY_SHORT), wallpaperTarget == WallpaperTarget::Standby);
++}
++
++bool ImageViewerActivity::tapAction() {
++  if (!mappedInput.hasTouch()) return false;
++  if (!gallery) {
++    const Rect action = sleepCoverActionRect(renderer);
++    if (!mappedInput.wasTapInRect(action.x, action.y, action.width, action.height)) return false;
++    showSleepCoverOptions();
++    return true;
++  }
++  Rect powerOff, reading, standby;
++  galleryActionRects(renderer, powerOff, reading, standby);
++  if (mappedInput.wasTapInRect(powerOff.x, powerOff.y, powerOff.width, powerOff.height)) {
++    setFromGallery(WallpaperTarget::PowerOff);
++    return true;
++  }
++  if (mappedInput.wasTapInRect(reading.x, reading.y, reading.width, reading.height)) {
++    setFromGallery(WallpaperTarget::Reading);
++    return true;
++  }
++  if (mappedInput.wasTapInRect(standby.x, standby.y, standby.width, standby.height)) {
++    setFromGallery(WallpaperTarget::Standby);
++    return true;
++  }
++  return false;
++}
++
++const char* ImageViewerActivity::wallpaperSource() const {
++  return isPng() || isJpeg() ? previewPath.c_str() : filePath.c_str();
++}
++
++void ImageViewerActivity::rememberSource() const {
++  StandbyPictures::rememberSource(pictureTarget(wallpaperTarget), filePath);
++}
++
++bool ImageViewerActivity::setFromGallery(const WallpaperTarget target) {
++  // The gallery offers both screens; the install follows the one chosen. Back in the
++  // gallery its own screen is marked again, so the switch is not undone here.
++  wallpaperTarget = target;
++  if (!doSetSleepCover(wallpaperSource(), false)) return false;
++  ActivityResult result;
++  result.data = FilePathResult{filePath};
++  setResult(std::move(result));
++  finish();
++  return true;
++}
  
  void ImageViewerActivity::loadSiblingImages() {
    siblingImages.clear();
-@@ -114,7 +123,26 @@
+@@ -114,7 +253,26 @@
    }
  }
  
@@ -197108,7 +199399,7 @@
  
  bool ImageViewerActivity::preparePreview() {
    previewPath = previewCachePath(filePath);
-@@ -161,7 +189,8 @@
+@@ -161,7 +319,8 @@
    // commit below clears what was underneath.
    Rect popupRect = GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
    GUI.fillPopupProgress(renderer, popupRect, 20);  // Initial 20% progress
@@ -197118,7 +199409,7 @@
    const unsigned long tPrep = millis();
    const bool prepared = !needsPreview || preparePreview();
    LOG_DBG("IMGV", "timing: preview %lu ms", millis() - tPrep);
-@@ -207,7 +236,7 @@
+@@ -207,7 +366,7 @@
        bool hasNext = (siblingImages.size() > 1 && currentImageIndex != -1 &&
                        currentImageIndex < static_cast<int>(siblingImages.size()) - 1);
  
@@ -197127,44 +199418,49 @@
                                                  (hasPrevious ? "<" : ""), (hasNext ? ">" : ""));
  
        GUI.fillPopupProgress(renderer, popupRect, 50);
-@@ -225,7 +254,8 @@
+@@ -224,9 +383,7 @@
+ 
        // Draw UI hints on the base layer
        GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-       if (mappedInput.hasTouch()) {
+-      if (mappedInput.hasTouch()) {
 -        GUI.drawActionButton(renderer, sleepCoverActionRect(renderer), I18N.get(sleepCoverLabel(stickerPicker)));
-+        GUI.drawActionButton(renderer, sleepCoverActionRect(renderer),
-+                             I18N.get(sleepCoverLabel(stickerPicker, wallpaperTarget)));
-       }
+-      }
++      drawActions();
        // Native 16-gray, as Standby and the sleep screen draw it. The overlay-mask path
        // also painted the Set button into its gray planes, turning it into a dark bar
-@@ -242,7 +272,7 @@
+       // with no readable label. Here the button is drawn in B/W and copied in.
+@@ -241,8 +398,8 @@
+         if (shown) display.setNextGray16Profile(3);
  #endif
          if (shown && mappedInput.hasTouch()) {
-           const Rect action = sleepCoverActionRect(renderer);
+-          const Rect action = sleepCoverActionRect(renderer);
 -          GUI.drawActionButton(renderer, action, I18N.get(sleepCoverLabel(stickerPicker)));
-+          GUI.drawActionButton(renderer, action, I18N.get(sleepCoverLabel(stickerPicker, wallpaperTarget)));
++          const Rect action = gallery ? galleryBand(renderer) : sleepCoverActionRect(renderer);
++          drawActions();
            renderer.copyBwToGrayscale16(action.x, action.y, action.width, action.height);
          }
          shown = shown && renderer.commitGrayscale16();
-@@ -275,7 +305,8 @@
+@@ -274,8 +431,7 @@
+             break;
            }
            GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-           if (mappedInput.hasTouch())
+-          if (mappedInput.hasTouch())
 -            GUI.drawActionButton(renderer, sleepCoverActionRect(renderer), I18N.get(sleepCoverLabel(stickerPicker)));
-+            GUI.drawActionButton(renderer, sleepCoverActionRect(renderer),
-+                                 I18N.get(sleepCoverLabel(stickerPicker, wallpaperTarget)));
++          drawActions();
            if (mode == GfxRenderer::GRAYSCALE_LSB) {
              renderer.copyGrayscaleLsbBuffers();
            } else {
-@@ -332,21 +363,29 @@
+@@ -332,21 +488,31 @@
  
  bool ImageViewerActivity::doSetSleepCover(const char* sourcePath, const bool transparent) {
    if (!imageReady) return false;
 +  const bool powerOff = wallpaperTarget == WallpaperTarget::PowerOff;
-+  if (powerOff && transparent) return false;
-+  const char* destination = powerOff ? POWER_OFF_IMAGE_PATH : SLEEP_IMAGE_PATH;
-+  const char* part = powerOff ? POWER_OFF_IMAGE_PART_PATH : SLEEP_IMAGE_PART_PATH;
-+  const char* backup = powerOff ? POWER_OFF_IMAGE_BACKUP_PATH : SLEEP_IMAGE_BACKUP_PATH;
++  const bool reading = wallpaperTarget == WallpaperTarget::Reading;
++  if ((powerOff || reading) && transparent) return false;
++  const char* destination = reading ? ReadingBackground::kPath : powerOff ? POWER_OFF_IMAGE_PATH : SLEEP_IMAGE_PATH;
++  const char* part = reading ? READING_IMAGE_PART_PATH : powerOff ? POWER_OFF_IMAGE_PART_PATH : SLEEP_IMAGE_PART_PATH;
++  const char* backup =
++      reading ? READING_IMAGE_BACKUP_PATH : powerOff ? POWER_OFF_IMAGE_BACKUP_PATH : SLEEP_IMAGE_BACKUP_PATH;
    GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
  
    const char* preparedPath = sourcePath;
@@ -197190,7 +199486,7 @@
        const uint64_t expected = inFile.fileSize64();
        uint64_t copied = 0;
        // A full-screen 16-gray BMP is ~400 KB: 128-byte chunks took over ten seconds.
-@@ -360,19 +399,17 @@
+@@ -360,19 +526,17 @@
          copied += bytesRead;
        }
        outFile.flush();
@@ -197215,7 +199511,7 @@
        }
        success = false;
      }
-@@ -380,25 +417,30 @@
+@@ -380,25 +544,42 @@
  
    if (success) {
      const uint8_t previousMode = SETTINGS.sleepScreen;
@@ -197225,7 +199521,14 @@
      const uint8_t previousFace = SETTINGS.rickyStandbyFace;
 -    if (!transparent) SETTINGS.rickyStandbyFace = CrossPointSettings::RICKY_STANDBY_PICTURE;
 +    const uint8_t previousPowerOff = SETTINGS.rickyPowerOffScreen;
-+    if (powerOff) {
++    const uint8_t previousReading = SETTINGS.readingBackground;
++    const uint8_t previousPaper = SETTINGS.readingPaper;
++    if (reading) {
++      // Choosing a picture shows it under the page, at medium unless a shade is set.
++      SETTINGS.readingPaper = CrossPointSettings::READING_PAPER_PICTURE;
++      if (SETTINGS.readingBackground == CrossPointSettings::READING_BACKGROUND_OFF)
++        SETTINGS.readingBackground = CrossPointSettings::READING_BACKGROUND_MEDIUM;
++    } else if (powerOff) {
 +      SETTINGS.rickyPowerOffScreen = CrossPointSettings::RICKY_POWER_OFF_CUSTOM;
 +    } else {
 +      SETTINGS.sleepScreen = transparent ? CrossPointSettings::SLEEP_SCREEN_MODE::TRANSPARENT
@@ -197236,6 +199539,8 @@
        SETTINGS.sleepScreen = previousMode;
        SETTINGS.rickyStandbyFace = previousFace;
 +      SETTINGS.rickyPowerOffScreen = previousPowerOff;
++      SETTINGS.readingBackground = previousReading;
++      SETTINGS.readingPaper = previousPaper;
        (void)SETTINGS.saveToFile();
 -      Storage.remove(SLEEP_IMAGE_PATH);
 -      if (Storage.exists(SLEEP_IMAGE_BACKUP_PATH)) {
@@ -197252,17 +199557,32 @@
 -  if (success) Storage.remove(SLEEP_IMAGE_BACKUP_PATH);
 +  Storage.remove(part);
 +  if (success) Storage.remove(backup);
++  if (success && reading) ReadingBackground::invalidate();
++  // The gallery marks the picture each screen was set from.
++  if (success && !transparent) rememberSource();
    GUI.drawPopup(renderer, success ? tr(STR_DONE) : tr(STR_FAILED_LOWER));
    delay(1000);
    return success;
-@@ -406,13 +448,19 @@
+@@ -406,15 +587,31 @@
  
  void ImageViewerActivity::showSleepCoverOptions() {
    if (!imageReady) return;
++  if (gallery) {
++    // Keys only: the touch screen shows both buttons. Its own screen is listed first.
++    static constexpr StrId standbyFirst[] = {StrId::STR_RICKY_SET_WALLPAPER, StrId::STR_RICKY_SET_POWER_OFF_WALLPAPER};
++    static constexpr StrId powerOffFirst[] = {StrId::STR_RICKY_SET_POWER_OFF_WALLPAPER, StrId::STR_RICKY_SET_WALLPAPER};
++    const bool offFirst = wallpaperTarget == WallpaperTarget::PowerOff;
++    sleepCoverPopup.show(sleepCoverLabel(false, wallpaperTarget), offFirst ? powerOffFirst : standbyFirst, 2, 0,
++                         [this, offFirst](const int index) {
++                           const bool powerOff = (index == 0) == offFirst;
++                           setFromGallery(powerOff ? WallpaperTarget::PowerOff : WallpaperTarget::Standby);
++                         });
++    requestUpdate();
++    return;
++  }
 +  if (wallpaperTarget == WallpaperTarget::PowerOff) {
 +    // Power-off is a complete still image, never the retained-page sticker mode.
-+    const char* source = isPng() || isJpeg() ? previewPath.c_str() : filePath.c_str();
-+    if (doSetSleepCover(source, false) && wallpaperPicker) finish();
++    if (doSetSleepCover(wallpaperSource(), false) && wallpaperPicker) finish();
 +    return;
 +  }
    if (stickerPicker) {
@@ -197272,10 +199592,45 @@
    if (!isPng()) {
      // Picking a wallpaper ends here: return to the page that asked, which shows the new picture.
 -    if (doSetSleepCover(FsHelpers::hasJpgExtension(filePath) ? previewPath.c_str() : filePath.c_str(), false) &&
-+    if (doSetSleepCover(isJpeg() ? previewPath.c_str() : filePath.c_str(), false) &&
-         wallpaperPicker)
-       finish();
+-        wallpaperPicker)
+-      finish();
++    if (doSetSleepCover(wallpaperSource(), false) && wallpaperPicker) finish();
      return;
+   }
+ 
+@@ -507,9 +704,13 @@
+       return false;
+     }
+     currentImageIndex = nextIndex;
+-    std::string dirPath = FsHelpers::extractFolderPath(filePath);
+-    if (dirPath.back() != '/') dirPath += "/";
+-    filePath = dirPath + siblingImages[currentImageIndex];
++    if (gallery) {
++      filePath = siblingImages[currentImageIndex];
++    } else {
++      std::string dirPath = FsHelpers::extractFolderPath(filePath);
++      if (dirPath.back() != '/') dirPath += "/";
++      filePath = dirPath + siblingImages[currentImageIndex];
++    }
+     onEnter();
+     return true;
+   };
+@@ -537,14 +738,7 @@
+     return;
+   }
+ 
+-  if (mappedInput.hasTouch()) {
+-    const Rect sleepCoverAction = sleepCoverActionRect(renderer);
+-    if (mappedInput.wasTapInRect(sleepCoverAction.x, sleepCoverAction.y, sleepCoverAction.width,
+-                                 sleepCoverAction.height)) {
+-      showSleepCoverOptions();
+-      return;
+-    }
+-  }
++  if (tapAction()) return;
+ 
+   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+     showSleepCoverOptions();
 --- a/src/activities/util/ImageViewerActivity.h
 +++ b/src/activities/util/ImageViewerActivity.h
 @@ -1,5 +1,6 @@
@@ -197285,15 +199640,19 @@
  #include <string>
  #include <vector>
  
-@@ -9,8 +10,14 @@
+@@ -9,8 +10,18 @@
  
  class ImageViewerActivity final : public Activity {
   public:
-+  enum class WallpaperTarget : uint8_t { Standby, PowerOff };
++  enum class WallpaperTarget : uint8_t { Standby, PowerOff, Reading };
    ImageViewerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string filePath,
 -                      bool wallpaperPicker = false, bool stickerPicker = false);
 +                      bool wallpaperPicker = false, bool stickerPicker = false,
 +                      WallpaperTarget wallpaperTarget = WallpaperTarget::Standby);
++  // From the gallery: flip through `pictures` (full paths) starting at `index`, and set
++  // the one shown as the standby, the power-off or the reading background picture.
++  ImageViewerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::vector<std::string> pictures,
++                      int index, WallpaperTarget wallpaperTarget);
 +
 +  // What the file holds, read from its first bytes: saved pictures often carry the wrong
 +  // extension (a JPEG named .png), and a decoder chosen by name then rejects them.
@@ -197301,15 +199660,24 @@
  
    void onEnter() override;
    void onExit() override;
-@@ -20,6 +27,7 @@
+@@ -20,17 +31,30 @@
   private:
    void loadSiblingImages();
    bool isPng() const;
 +  bool isJpeg() const;
    bool preparePreview();
    bool doSetSleepCover(const char* sourcePath, bool transparent);
++  // Record the shown picture as the source of the screen just set (the gallery marks it).
++  void rememberSource() const;
++  // The converted picture to copy for this file (the BMP itself when it already is one).
++  const char* wallpaperSource() const;
++  bool setFromGallery(WallpaperTarget target);
++  // The tappable action row: one "set" button, or the gallery's power-off, standby and
++  // reading-background trio.
++  void drawActions() const;
++  bool tapAction();
    bool doSetSticker();
-@@ -27,8 +35,10 @@
+   void showSleepCoverOptions();
  
    std::string filePath;
    std::string previewPath;  // the converted BMP shown for a PNG/JPEG
@@ -197318,8 +199686,12 @@
    bool stickerPicker = false;
 +  WallpaperTarget wallpaperTarget = WallpaperTarget::Standby;
    bool imageReady = false;
-   std::vector<std::string> siblingImages;
+-  std::vector<std::string> siblingImages;
++  std::vector<std::string> siblingImages;  // names in the file's folder, or full paths in the gallery
++  bool gallery = false;
    int currentImageIndex = -1;
+   OptionPopup sleepCoverPopup;
+ };
 --- a/src/components/OptionPopup.h
 +++ b/src/components/OptionPopup.h
 @@ -214,7 +214,7 @@
@@ -197511,7 +199883,7 @@
        case UIIcon::Settings:
 --- a/src/components/icons/rickyAppIcons.h
 +++ b/src/components/icons/rickyAppIcons.h
-@@ -112,3 +112,18 @@
+@@ -112,3 +112,48 @@
      0xF8, 0x00, 0x3F, 0xFF, 0xFF, 0xFF, 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
      0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
  };
@@ -197530,12 +199902,76 @@
 +    0xFF, 0xE7, 0xFF, 0xFF, 0xFF, 0xFF, 0xE7, 0xFF, 0xFF, 0xFF, 0xF0, 0x00, 0x0F, 0xFF, 0xFF, 0xF8, 0x00, 0x1F, 0xFF,
 +    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 +};
++
++// gallery; 200 bytes in Flash.
++static constexpr uint8_t ricky_app_gallery_40[] = {
++    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xF8, 0x00, 0x00, 0x3F, 0xFF, 0xE0, 0x00, 0x00,
++    0x0F, 0xFF, 0xCF, 0xFF, 0xFF, 0xC7, 0xFF, 0x9F, 0xFF, 0xFF, 0xE7, 0xFF, 0x9F, 0xFF, 0xFF, 0xF3, 0xFF, 0x9F, 0xFF,
++    0xFF, 0xF3, 0xFF, 0x9F, 0xFF, 0xFF, 0xF3, 0xEF, 0x9F, 0xC3, 0xFF, 0xF3, 0xCF, 0x9F, 0x81, 0xFF, 0xF3, 0xCF, 0x9F,
++    0x18, 0xFF, 0xF3, 0xCF, 0x9F, 0x3C, 0xFF, 0xF3, 0xCF, 0x9F, 0x3C, 0xFF, 0xF3, 0xCF, 0x9F, 0x3C, 0xFF, 0xF3, 0xCF,
++    0x9F, 0x18, 0xFF, 0xF3, 0xCF, 0x9F, 0x81, 0xFF, 0xF3, 0xCF, 0x9F, 0xFF, 0xFE, 0xF3, 0xCF, 0x9F, 0xFF, 0xF8, 0x13,
++    0xCF, 0x9F, 0xFF, 0xE1, 0x83, 0xCF, 0x9F, 0xFF, 0xC7, 0xC3, 0xCF, 0x9F, 0xFF, 0x8F, 0xE3, 0xCF, 0x9F, 0xFF, 0x1F,
++    0xF3, 0xCF, 0x9F, 0xFE, 0x3F, 0xF3, 0xCF, 0x9F, 0xFC, 0x7F, 0xF3, 0xCF, 0x9F, 0xF8, 0xFF, 0xF3, 0xCF, 0x9F, 0xF1,
++    0xFF, 0xF3, 0xCF, 0x9F, 0xE3, 0xFF, 0xF7, 0xCF, 0xCF, 0xC7, 0xFF, 0xE7, 0xCF, 0xC0, 0x00, 0x00, 0x0F, 0xCF, 0xF0,
++    0x00, 0x00, 0x1F, 0xCF, 0xFF, 0xFF, 0xFF, 0xFF, 0xCF, 0xFF, 0xFF, 0xFF, 0xFF, 0xCF, 0xFF, 0xFF, 0xFF, 0xFF, 0xE7,
++    0xFF, 0xFF, 0xFF, 0xFF, 0xE3, 0xFF, 0xFF, 0xFF, 0xFF, 0xF0, 0x00, 0x00, 0x01, 0xFF, 0xFC, 0x00, 0x00, 0x03, 0xFF,
++    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
++};
++
++// wallpaper; 200 bytes in Flash.
++static constexpr uint8_t ricky_app_wallpaper_40[] = {
++    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
++    0xFF, 0xF8, 0x00, 0x00, 0x00, 0x1F, 0xF0, 0x00, 0x00, 0x00, 0x0F, 0xE7, 0xFF, 0xFF, 0xFF, 0xE7, 0xEF, 0xFF, 0xFF,
++    0xFF, 0xF7, 0xCF, 0xFF, 0xFF, 0xFF, 0xF3, 0xCF, 0xFF, 0xFF, 0xFF, 0xF3, 0xCF, 0xFF, 0xFF, 0xFF, 0xF3, 0xCF, 0xE0,
++    0xFF, 0xFF, 0xF3, 0xCF, 0xC0, 0x7F, 0xFF, 0xF3, 0xCF, 0x8E, 0x7F, 0xFF, 0xF3, 0xCF, 0x9F, 0x7F, 0xFF, 0xF3, 0xCF,
++    0x9F, 0x7F, 0xFF, 0xF3, 0xCF, 0x8E, 0x7F, 0xC7, 0xF3, 0xCF, 0xC0, 0x7F, 0x83, 0xF3, 0xCF, 0xE0, 0xFE, 0x38, 0xF3,
++    0xCF, 0xFF, 0xFC, 0x7C, 0x73, 0xCF, 0xFF, 0xF8, 0xFE, 0x33, 0xCF, 0xFF, 0xF1, 0xFF, 0x13, 0xCF, 0xFF, 0xE3, 0xFF,
++    0x83, 0xCF, 0xFF, 0xC7, 0xFF, 0xC3, 0xCF, 0xFF, 0x8F, 0xFF, 0xE3, 0xEF, 0xFF, 0x1F, 0xFF, 0xF7, 0xE7, 0xFE, 0x3F,
++    0xFF, 0xFF, 0xE0, 0x00, 0x07, 0xFF, 0xFF, 0xF0, 0x00, 0x07, 0xFF, 0xFF, 0xFF, 0xFF, 0xE7, 0xFF, 0xFF, 0xFF, 0xFF,
++    0xE7, 0xFF, 0xFF, 0xFF, 0xFF, 0xE7, 0xFF, 0xFF, 0xFF, 0xFF, 0xE7, 0xFF, 0xFF, 0xFF, 0xFF, 0xE7, 0xFF, 0xFF, 0xFF,
++    0xF8, 0x00, 0x1F, 0xFF, 0xFF, 0xF8, 0x00, 0x1F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
++    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
++};
+--- /dev/null
++++ b/src/components/icons/sources/rickyos/apps/gallery.svg
+@@ -0,0 +1,14 @@
++<svg
++  xmlns="http://www.w3.org/2000/svg"
++  viewBox="0 0 24 24"
++  fill="none"
++  stroke="#000"
++  stroke-width="1.2"
++  stroke-linecap="round"
++  stroke-linejoin="round"
++>
++  <path d="M18 22H4a2 2 0 0 1-2-2V6" />
++  <path d="m22 13-1.296-1.296a2.41 2.41 0 0 0-3.408 0L11 18" />
++  <circle cx="12" cy="8" r="2" />
++  <rect width="16" height="16" x="6" y="2" rx="2" />
++</svg>
 --- /dev/null
 +++ b/src/components/icons/sources/rickyos/apps/recorder.svg
 @@ -0,0 +1,4 @@
 +<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
 +<rect x="9" y="2" width="6" height="12" rx="3"/>
 +<path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/>
++</svg>
+--- /dev/null
++++ b/src/components/icons/sources/rickyos/apps/wallpaper.svg
+@@ -0,0 +1,14 @@
++<svg
++  xmlns="http://www.w3.org/2000/svg"
++  viewBox="0 0 24 24"
++  fill="none"
++  stroke="#000"
++  stroke-width="1.2"
++  stroke-linecap="round"
++  stroke-linejoin="round"
++>
++  <circle cx="8" cy="9" r="2" />
++  <path d="m9 17 6.1-6.1a2 2 0 0 1 2.81.01L22 15V5a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h8" />
++  <path d="M8 21h8" />
++  <path d="M12 17v4" />
 +</svg>
 --- a/src/components/themes/BaseTheme.cpp
 +++ b/src/components/themes/BaseTheme.cpp
@@ -197660,17 +200096,19 @@
    const auto pageHeight = renderer.getScreenHeight();
 --- a/src/components/themes/BaseTheme.h
 +++ b/src/components/themes/BaseTheme.h
-@@ -180,7 +180,8 @@
+@@ -180,7 +180,10 @@
    Calculator,
    Woodfish,
    Usb,
 -  Blocks
 +  Blocks,
-+  Recorder
++  Recorder,
++  Gallery,
++  Wallpaper
  };
  
  // Default theme implementation (Classic Theme)
-@@ -415,8 +416,9 @@
+@@ -415,8 +418,9 @@
    // drawPopup() with room for fillPopupProgress() below the message and an empty track,
    // so a long task shows how far it has come.
    Rect drawProgressPopup(const GfxRenderer& renderer, const char* message) const;
@@ -198777,6 +201215,251 @@
 +  bool ready = false, previous = false, captured = false, fired = false, discarded = false;
 +};
 +}  // namespace plus_keys
+--- /dev/null
++++ b/src/util/ReadingBackground.cpp
+@@ -0,0 +1,194 @@
++#include "ReadingBackground.h"
++
++#include <Bitmap.h>
++#include <GfxRenderer.h>
++#include <HalStorage.h>
++#include <Logging.h>
++#include <esp_heap_caps.h>
++
++#include <algorithm>
++#include <cmath>
++#include <cstring>
++
++#include "CrossPointSettings.h"
++
++namespace ReadingBackground {
++namespace {
++// How much of the picture's darkness is kept: light, medium, deep.
++constexpr uint8_t kInkPercent[] = {0, 25, 40, 55};
++static_assert(std::size(kInkPercent) == CrossPointSettings::READING_BACKGROUND_COUNT);
++// Ruled paper is a few thin marks, not a picture: it needs a darker gray and a little
++// more weight than a lightened picture to be seen at all (level, line, grid line, dot).
++struct PaperInk {
++  uint8_t level;
++  uint8_t line;
++  uint8_t grid;
++  uint8_t dot;
++};
++constexpr PaperInk kPaperInk[] = {{15, 0, 0, 0}, {10, 2, 2, 4}, {7, 2, 2, 5}, {4, 3, 2, 6}};
++static_assert(std::size(kPaperInk) == CrossPointSettings::READING_BACKGROUND_COUNT);
++
++int8_t present = -1;  // the file exists: -1 unknown
++uint32_t generation = 0;
++
++// The drawn background for one screen shape, paper and strength, reused for every page.
++struct Copy {
++  uint8_t* frame = nullptr;
++  size_t bytes = 0;
++  int orientation = -1;
++  uint8_t strength = 0;
++  uint8_t paper = 0;
++  TextBox box;
++  uint32_t generation = UINT32_MAX;
++} copy;
++
++bool sameBox(const TextBox& a, const TextBox& b) {
++  return a.left == b.left && a.top == b.top && a.right == b.right && a.bottom == b.bottom && a.pitch == b.pitch &&
++         a.rule == b.rule;
++}
++
++bool picturePaper() { return SETTINGS.readingPaper == CrossPointSettings::READING_PAPER_PICTURE; }
++
++bool drawPicture(const GfxRenderer& renderer, uint8_t* frame, const size_t bytes, const uint8_t strength) {
++  HalFile file;
++  if (!Storage.openFileForRead("READBG", kPath, file)) {
++    present = 0;
++    return false;
++  }
++  Bitmap bitmap(file, false);
++  if (bitmap.parseHeaders() != BmpReaderError::Ok || bitmap.getWidth() <= 0 || bitmap.getHeight() <= 0 ||
++      !bitmap.hasGreyscale()) {
++    LOG_ERR("READBG", "Background picture unreadable");
++    return false;
++  }
++  // Fill the screen and crop the middle, as a cover is drawn.
++  const int screenWidth = renderer.getScreenWidth();
++  const int screenHeight = renderer.getScreenHeight();
++  const float scale = std::max(static_cast<float>(screenWidth) / bitmap.getWidth(),
++                               static_cast<float>(screenHeight) / bitmap.getHeight());
++  const int width = static_cast<int>(std::lround(bitmap.getWidth() * scale));
++  const int height = static_cast<int>(std::lround(bitmap.getHeight() * scale));
++  bool drawn = false;
++  {
++    const GfxRenderer::ClipScope clip(renderer, 0, 0, screenWidth, screenHeight);
++    drawn = renderer.drawBitmapGrayscale16(bitmap, (screenWidth - width) / 2, (screenHeight - height) / 2, width,
++                                           height);
++  }
++  if (!drawn) {
++    memset(frame, 0xFF, bytes);
++    LOG_ERR("READBG", "Background picture draw failed");
++    return false;
++  }
++  // Two pixels a byte: lighten both nibbles through one table.
++  uint8_t table[256];
++  for (int value = 0; value < 256; ++value)
++    table[value] = static_cast<uint8_t>(lighten(value & 15, strength) | (lighten(value >> 4, strength) << 4));
++  for (size_t i = 0; i < bytes; ++i) frame[i] = table[frame[i]];
++  return true;
++}
++}  // namespace
++
++bool active() {
++  if (SETTINGS.readingBackground == CrossPointSettings::READING_BACKGROUND_OFF) return false;
++  if (!picturePaper()) return true;
++  if (present < 0) present = Storage.exists(kPath) ? 1 : 0;
++  return present == 1;
++}
++
++void invalidate() {
++  present = -1;
++  ++generation;
++}
++
++uint8_t lighten(const uint8_t level, const uint8_t strength) {
++  const int ink = kInkPercent[std::min<int>(strength, std::size(kInkPercent) - 1)];
++  const int dark = 15 - std::min<int>(level, 15);
++  return static_cast<uint8_t>(15 - (dark * ink + 50) / 100);
++}
++
++void drawPaper(const GfxRenderer& renderer, const uint8_t paper, const uint8_t strength, const TextBox& box) {
++  if (box.pitch <= 0 || box.right <= box.left || box.bottom <= box.top) return;
++  const PaperInk& ink = kPaperInk[std::min<int>(strength, std::size(kPaperInk) - 1)];
++  if (ink.level >= 15) return;
++  const uint8_t level = ink.level;
++  const bool gray = renderer.isGrayscale16Active();
++  const auto rect = [&](const int x, const int y, const int width, const int height) {
++    if (gray) {
++      renderer.fillGrayscale16Rect(x, y, width, height, level);
++    } else {
++      renderer.fillRect(x, y, width, height, true);
++    }
++  };
++  // One rule per text row, where the reading guide line sits under the glyphs.
++  const int width = box.right - box.left;
++  const int firstRule = box.top + box.rule;
++  switch (paper) {
++    case CrossPointSettings::READING_PAPER_LINES:
++      for (int y = firstRule; y + ink.line <= box.bottom; y += box.pitch) rect(box.left, y, width, ink.line);
++      break;
++    case CrossPointSettings::READING_PAPER_GRID: {
++      // Square cells a row high; the columns start at the text's left edge.
++      const int gridTop = std::max(box.top, firstRule - box.pitch);
++      int gridBottom = gridTop;
++      for (int y = firstRule - box.pitch; y + ink.grid <= box.bottom; y += box.pitch) {
++        if (y < box.top) continue;
++        rect(box.left, y, width, ink.grid);
++        gridBottom = y + ink.grid - 1;
++      }
++      for (int x = box.left; x + ink.grid <= box.right + 1; x += box.pitch)
++        rect(x, gridTop, ink.grid, gridBottom - gridTop + 1);
++      break;
++    }
++    case CrossPointSettings::READING_PAPER_DOTS:
++      // A dot on every grid crossing.
++      // Centred on the crossing.
++      for (int y = firstRule; y + ink.dot / 2 <= box.bottom; y += box.pitch)
++        for (int x = box.left; x + ink.dot / 2 <= box.right; x += box.pitch)
++          rect(x - ink.dot / 2, y - ink.dot / 2, ink.dot, ink.dot);
++      break;
++    default:
++      break;
++  }
++}
++
++bool paint(const GfxRenderer& renderer, const TextBox& box) {
++  if (!active()) return false;
++  uint8_t* frame = renderer.grayscale16Frame();
++  const size_t bytes = renderer.grayscale16FrameBytes();
++  if (!frame || bytes == 0) return false;
++  const uint8_t strength = SETTINGS.readingBackground;
++  const uint8_t paper = SETTINGS.readingPaper;
++  if (!picturePaper() && box.pitch <= 0) return false;  // ruled paper follows horizontal rows only
++  const int orientation = static_cast<int>(renderer.getOrientation());
++  if (copy.frame && copy.bytes == bytes && copy.orientation == orientation && copy.strength == strength &&
++      copy.paper == paper && copy.generation == generation && (picturePaper() || sameBox(copy.box, box))) {
++    memcpy(frame, copy.frame, bytes);
++    return true;
++  }
++
++  if (picturePaper()) {
++    if (!drawPicture(renderer, frame, bytes, strength)) return false;
++  } else {
++    memset(frame, 0xFF, bytes);
++    drawPaper(renderer, paper, strength, box);
++  }
++  // The proxy took the background's own darks; popups over the page expect paper.
++  memset(renderer.getFrameBuffer(), 0xFF, renderer.getBufferSize());
++
++  if (copy.bytes != bytes) {
++    heap_caps_free(copy.frame);
++    copy.frame = static_cast<uint8_t*>(heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
++    copy.bytes = copy.frame ? bytes : 0;
++  }
++  if (copy.frame) {
++    memcpy(copy.frame, frame, bytes);
++    copy.orientation = orientation;
++    copy.strength = strength;
++    copy.paper = paper;
++    copy.box = box;
++    copy.generation = generation;
++  }
++  return true;
++}
++
++}  // namespace ReadingBackground
+--- /dev/null
++++ b/src/util/ReadingBackground.h
+@@ -0,0 +1,45 @@
++#pragma once
++
++#include <cstdint>
++
++class GfxRenderer;
++
++// 阅读背景: what lies under the reading page, lightened so the text stays the darkest
++// thing on it. Either a picture (/readingbg.bmp, converted like /sleep.bmp) or ruled
++// paper (lines, a grid or dots) drawn to the rows of the text. The setting chooses how
++// light it is drawn, or turns it off. Only 16-level pages carry it (not Night mode).
++namespace ReadingBackground {
++
++constexpr char kPath[] = "/readingbg.bmp";
++
++// Where the text sits, so ruled paper lines up with it. Screen coordinates; `pitch` is
++// the body line height and `rule` how far below a line's top its ruling falls. A zero
++// pitch (vertical text) leaves ruled paper out.
++struct TextBox {
++  int left = 0;
++  int top = 0;
++  int right = 0;
++  int bottom = 0;
++  int pitch = 0;
++  int rule = 0;
++};
++
++// On, with something to show. The picture's file is checked once until invalidate().
++bool active();
++// The picture or the setting changed: check the file again and redraw the copy.
++void invalidate();
++
++// A 4-bit level as drawn at `strength` (READING_BACKGROUND_*): white stays white,
++// black comes out as a light or mid gray.
++uint8_t lighten(uint8_t level, uint8_t strength);
++
++// Ruled paper (READING_PAPER_*) into the active 16-level frame, at `strength`.
++void drawPaper(const GfxRenderer& renderer, uint8_t paper, uint8_t strength, const TextBox& box);
++
++// Inside a 16-level pass, right after its clear and before the page: fill the frame
++// with the background. The first call draws it; later ones copy the result kept in
++// PSRAM while the paper, shade, orientation and text box stay the same. The B/W proxy
++// stays paper. False when inactive or failed.
++bool paint(const GfxRenderer& renderer, const TextBox& box);
++
++}  // namespace ReadingBackground
 --- a/src/util/UserGuide.cpp
 +++ b/src/util/UserGuide.cpp
 @@ -1,4 +1,13 @@

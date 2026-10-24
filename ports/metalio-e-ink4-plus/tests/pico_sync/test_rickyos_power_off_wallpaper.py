@@ -66,7 +66,9 @@ int HalFile::write(const char* in, size_t size) {
 struct CrossPointSettings {
   enum SLEEP_SCREEN_MODE { CUSTOM = 2, TRANSPARENT = 7 };
   enum { RICKY_STANDBY_PICTURE = 0, RICKY_POWER_OFF_CUSTOM = 3 };
+  enum { READING_BACKGROUND_OFF = 0, READING_BACKGROUND_MEDIUM = 2, READING_PAPER_PICTURE = 0 };
   uint8_t sleepScreen = 6, rickyStandbyFace = 4, rickyPowerOffScreen = 1;
+  uint8_t readingBackground = 0, readingPaper = 2;
   int failedSaves = 0;
   bool saveToFile() { if (failedSaves) { --failedSaves; return false; } return true; }
 } SETTINGS;
@@ -76,7 +78,7 @@ struct PngToBmpConverter {
     Storage.data[out] = "alpha"; return true;
   }
 };
-enum class StrId { STR_NORMAL, STR_TRANSPARENT };
+enum class StrId { STR_NORMAL, STR_TRANSPARENT, STR_RICKY_SET_WALLPAPER, STR_RICKY_SET_POWER_OFF_WALLPAPER };
 constexpr int STR_LOADING_POPUP = 0, STR_DONE = 1, STR_FAILED_LOWER = 2;
 const char* tr(int) { return ""; }
 struct { void drawPopup(GfxRenderer&, const char*) {} } GUI;
@@ -88,8 +90,13 @@ bool hasJpgExtension(const std::string& p) { return p.ends_with(".jpg") || p.end
 struct Popup {
   template<class F> void show(StrId, const StrId*, int, int, F cb) { cb(0); }
 };
+namespace ReadingBackground {
+constexpr char kPath[] = "/readingbg.bmp";
+int invalidations = 0;
+void invalidate() { ++invalidations; }
+}
 struct ImageViewerActivity {
-  enum class WallpaperTarget : uint8_t { Standby, PowerOff };
+  enum class WallpaperTarget : uint8_t { Standby, PowerOff, Reading };
   WallpaperTarget wallpaperTarget = WallpaperTarget::Standby;
   bool imageReady = true, wallpaperPicker = true, stickerPicker = false;
   bool png = false, jpeg = false;
@@ -101,9 +108,14 @@ struct ImageViewerActivity {
   bool doSetSticker() { ++stickers; return true; }
   void finish() { ++finishes; }
   void requestUpdate() {}
+  bool gallery = false;
+  const char* wallpaperSource() const { return png || jpeg ? previewPath.c_str() : filePath.c_str(); }
+  bool setFromGallery(WallpaperTarget) { return true; }
+  void rememberSource() const {}
   bool doSetSleepCover(const char*, bool);
   void showSleepCoverOptions();
 };
+constexpr StrId sleepCoverLabel(bool, ImageViewerActivity::WallpaperTarget) { return StrId::STR_NORMAL; }
 ''' + methods + r'''
 void reset() {
   Storage = {}; SETTINGS = {};
@@ -175,15 +187,35 @@ int main() {
   reset(); Storage.rename(POWER_OFF_IMAGE_PATH, POWER_OFF_IMAGE_BACKUP_PATH); Storage.readFails = true;
   assert(!off.doSetSleepCover("/original.bmp", false));
   assert(Storage.data.at("/poweroff.bmp") == "old-off"); preserved();
+  // 阅读背景: its own file; the picture paper is chosen and shown (medium when it was off).
+  ImageViewerActivity reading; reading.wallpaperTarget = Target::Reading;
+  reset(); ReadingBackground::invalidations = 0;
+  assert(reading.doSetSleepCover("/original.bmp", false)); preserved();
+  assert(Storage.data.at("/readingbg.bmp") == Storage.data.at("/original.bmp"));
+  assert(Storage.data.at("/poweroff.bmp") == "old-off" && SETTINGS.rickyPowerOffScreen == 1);
+  assert(SETTINGS.readingPaper == 0 && SETTINGS.readingBackground == 2 && ReadingBackground::invalidations == 1);
+  assert(!Storage.exists("/readingbg.bmp.part") && !Storage.exists("/readingbg.bmp.bak"));
+  reset(); SETTINGS.readingBackground = 3;
+  assert(reading.doSetSleepCover("/original.bmp", false) && SETTINGS.readingBackground == 3);  // a set shade stays
+  assert(!reading.doSetSleepCover("/original.bmp", true));  // no transparent path for the reading background
+  // A failed save restores the paper and the shade, and leaves no unselected picture.
+  reset(); ReadingBackground::invalidations = 0; SETTINGS.failedSaves = 1;
+  assert(!reading.doSetSleepCover("/original.bmp", false)); preserved();
+  assert(!Storage.exists("/readingbg.bmp") && SETTINGS.readingPaper == 2 && SETTINGS.readingBackground == 0);
+  assert(ReadingBackground::invalidations == 0);
 }
 ''', defines=('RICKYOS_PRODUCT',))
 
     def test_picker_cancel_keeps_target_and_saved_ids(self):
         page = (ROOT / 'src/activities/apps/standby/RickyStandbySettingsActivity.cpp').read_text()
-        picker = method(page, 'void RickyStandbySettingsActivity::openPicturePicker(')
-        self.assertIn('openPicturePicker(FsHelpers::extractFolderPath(entry->path), sticker, powerOff)', picker)
-        self.assertIn('powerOff ? ImageViewerActivity::WallpaperTarget::PowerOff', picker)
+        # The overlay picker reopens its list on cancel; power-off pictures come from the gallery.
+        picker = method(page, 'void RickyStandbySettingsActivity::openStickerPicker(')
+        self.assertIn('openStickerPicker(FsHelpers::extractFolderPath(entry->path))', picker)
         self.assertIn('result.isCancelled || !entry ||', picker)
+        activate = method(page, 'void RickyStandbySettingsActivity::activateIndex(')
+        self.assertIn('openGallery(StandbyPictures::Target::PowerOff);', activate)
+        gallery = (ROOT / 'src/activities/apps/standby/StandbyGalleryActivity.cpp').read_text()
+        self.assertIn('ImageViewerActivity::WallpaperTarget::PowerOff', gallery)
         settings = (ROOT / 'src/CrossPointSettings.h').read_text()
         enum = settings.split('enum RICKY_POWER_OFF_SCREEN : uint8_t {')[1].split('};')[0]
         positions = [enum.index(key) for key in ('RICKY_POWER_OFF_SAME = 0', 'RICKY_POWER_OFF_DEFAULT',
