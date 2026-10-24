@@ -290,12 +290,12 @@
     {
       "path": "lib/I18n/translations/chinese.yaml",
       "baseline_sha256": "021ec5b9e5880155fea752af9c60ce83a259dd69131f9bd12ffe0ca59e3366bd",
-      "ported_sha256": "4bbdd58855d75a8cdd89d2da4663c6872f0a590ee222fae13c41c71c5adf43f0"
+      "ported_sha256": "95f4aa7537fb4c345379ec3b145a74c22c8e01180e1200c283994030c1dcb1af"
     },
     {
       "path": "lib/I18n/translations/english.yaml",
       "baseline_sha256": "85a4d226f1400f6a185759420c63ecff5f81eeb3722afd66c312d4aec6bcb315",
-      "ported_sha256": "96a2b0d5493bfb59ea816552c52795947d99b24b262f2fe340da9c5ada9914a2"
+      "ported_sha256": "c4233b2429ec983418e369a5992fbe2b7d9701bd9365abed3026b5b0086cfec8"
     },
     {
       "path": "lib/JpegToBmpConverter/JpegToBmpConverter.cpp",
@@ -660,7 +660,7 @@
     {
       "path": "src/activities/apps/standby/RickyStandbySettingsActivity.cpp",
       "baseline_sha256": "670da33bf0a95ebf85ba5f4df0950d84ba425f1b1f02fd6ddd4b6f8bf313bae4",
-      "ported_sha256": "12a867c02a4caec9bb7543644fac7a03a4cc0fbe85179afc53ece6f82016af31"
+      "ported_sha256": "e6c3705cd6c2c527c30922ffbbff65ec87dab9615c83bfcd1a95d0ac6ed0bc88"
     },
     {
       "path": "src/activities/apps/standby/RickyStandbySettingsActivity.h",
@@ -670,7 +670,7 @@
     {
       "path": "src/activities/apps/standby/RickyWallpaperDownloadActivity.cpp",
       "baseline_sha256": "93b97e40e79147da72f4fec6914b7c70d73546c72a792728e5ee47ce1c7807db",
-      "ported_sha256": "a2d2a9fd48506317d115c79da1790a45901ffd08245fda9482d877180ce06591"
+      "ported_sha256": "3e6080f4f182e326eb85428d5d9b759e78fe65b1efbc420f48fb255859d7bdb2"
     },
     {
       "path": "src/activities/apps/standby/RickyWallpaperDownloadActivity.h",

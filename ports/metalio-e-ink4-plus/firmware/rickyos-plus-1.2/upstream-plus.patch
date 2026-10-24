@@ -350016,7 +350016,17 @@
  
  STR_IME_PINYIN: "拼音"
  STR_IME_ENGLISH: "EN"
-@@ -465,7 +470,25 @@
+@@ -333,7 +338,8 @@
+ STR_RICKY_WALLPAPER_DOWNLOAD: "下载默认图片"
+ STR_RICKY_WALLPAPER_LOADING: "正在获取图片列表…"
+ STR_RICKY_WALLPAPER_PROGRESS: "正在下载 %u / %u"
+-STR_RICKY_WALLPAPER_DONE: "已下载 %u 个图片"
++STR_RICKY_WALLPAPER_DONE: "已下载 %u 个待机图片"
++STR_RICKY_WALLPAPER_DONE_SPLIT: "已下载 %u 个待机图片、%u 个透明壁纸"
+ STR_RICKY_WALLPAPER_FAILED: "下载失败，请检查网络后重试"
+ STR_RICKY_SET_WALLPAPER: "设为待机壁纸"
+ STR_RICKY_STANDBY: "待机"
+@@ -465,7 +471,25 @@
  STR_LIBRARY_TAB_TITLE: "书名"
  STR_LIBRARY_TAB_AUTHOR: "作者"
  STR_LIBRARY_SEARCH: "搜索书籍"
@@ -350043,7 +350053,7 @@
  STR_LIBRARY_REBUILDING: "正在整理书库"
  STR_LIBRARY_REBUILD_DONE: "书库已更新"
  STR_LIBRARY_REBUILD_FAILED: "书库更新失败，请检查 SD 卡"
-@@ -1464,11 +1487,35 @@
+@@ -1464,11 +1488,35 @@
  STR_RICKY_SELECT_TRANSPARENT: "选择透明图片"
  STR_RICKY_CLEAR_TRANSPARENT: "移除透明图片"
  STR_RICKY_SET_TRANSPARENT: "设为透明壁纸"
@@ -350080,7 +350090,7 @@
  STR_RICKY_POWERED_OFF: "已关机 · 长按开机"
  STR_RICKY_PICTURE_FIT: "显示方式"
  STR_RICKY_PICTURE_FIT_WHOLE: "完整显示"
-@@ -1552,6 +1599,7 @@
+@@ -1552,6 +1600,7 @@
  STR_RICKY_GESTURE_READING: "阅读手势"
  STR_RICKY_GESTURE_BACK: "左侧右滑返回"
  STR_RICKY_GESTURE_HOME: "底部上滑回首页"
@@ -350088,7 +350098,7 @@
  STR_RICKY_GESTURE_CONTROL: "顶部下滑打开控制中心"
  STR_RICKY_GESTURE_STATUS: "点状态栏打开控制中心"
  STR_RICKY_GESTURE_TOUCH_TURN: "触屏翻页"
-@@ -1589,7 +1637,7 @@
+@@ -1589,7 +1638,7 @@
  STR_RICKY_HELP_START_1: "在应用中打开文件传输，按照屏幕提示用手机或电脑传入书籍。"
  STR_RICKY_HELP_START_2: "书库中点选书籍开始阅读。全部、在读、未读可以切换筛选。文件夹在存储中浏览。"
  STR_RICKY_HELP_START_3: "阅读时点击屏幕中部打开菜单。目录、加书签、文字和查词位于顶部。返回键关闭菜单。"
@@ -350097,7 +350107,7 @@
  STR_RICKY_HELP_DISPLAY_2: "出现残影时可在设置中执行屏幕修复。全刷间隔越短，残影越少，但闪屏更频繁。"
  STR_RICKY_HELP_DISPLAY_3: "阅读字体在文字设置中调整；头像、昵称和首页短句在设置顶部的资料卡中修改。"
  STR_RICKY_HELP_UPDATE_1: "设置中的更新固件会检查 RickyOS 更新。更新前请保证电量充足，勿在过程中断电。"
-@@ -1600,3 +1648,128 @@
+@@ -1600,3 +1649,128 @@
  STR_RICKY_HELP_FEEDBACK_3: "通过你现有的 Ricky AI Studio 联系渠道发送反馈。本页面不会自动上传设备信息。官网入口可扫码打开。"
  STR_RICKY_MENU_AUTO_TURN: "自动翻页"
  STR_RICKY_MENU_PROGRESS: "阅读进度"
@@ -350240,7 +350250,17 @@
  
  STR_IME_PINYIN: "Pinyin"
  STR_IME_ENGLISH: "EN"
-@@ -396,6 +401,24 @@
+@@ -263,7 +268,8 @@
+ STR_RICKY_WALLPAPER_DOWNLOAD: "Download Default Pictures"
+ STR_RICKY_WALLPAPER_LOADING: "Getting the picture list…"
+ STR_RICKY_WALLPAPER_PROGRESS: "Downloading %u of %u"
+-STR_RICKY_WALLPAPER_DONE: "Downloaded %u pictures"
++STR_RICKY_WALLPAPER_DONE: "Downloaded %u standby pictures"
++STR_RICKY_WALLPAPER_DONE_SPLIT: "Downloaded %u standby pictures and %u transparent wallpapers"
+ STR_RICKY_WALLPAPER_FAILED: "Download failed. Check the network and try again."
+ STR_RICKY_SET_WALLPAPER: "Set Standby Wallpaper"
+ STR_RICKY_STANDBY: "Standby"
+@@ -396,6 +402,24 @@
  STR_LIBRARY_GROUP_POSITION: "%d/%d groups"
  STR_LIBRARY_USE_METADATA: "Use Book Metadata"
  STR_LIBRARY_REBUILD: "Refresh library"
@@ -350265,7 +350285,7 @@
  STR_LIBRARY_REBUILDING: "Reading your books..."
  STR_LIBRARY_REBUILD_DONE: "Library index rebuilt"
  STR_LIBRARY_REBUILD_FAILED: "Could not rebuild the index"
-@@ -1486,11 +1509,35 @@
+@@ -1486,11 +1510,35 @@
  STR_RICKY_SELECT_TRANSPARENT: "Choose overlay PNG"
  STR_RICKY_CLEAR_TRANSPARENT: "Remove overlay PNG"
  STR_RICKY_SET_TRANSPARENT: "Set transparent wallpaper"
@@ -350302,7 +350322,7 @@
  STR_RICKY_POWERED_OFF: "Off · hold to turn on"
  STR_RICKY_PICTURE_FIT: "Picture fit"
  STR_RICKY_PICTURE_FIT_WHOLE: "Whole picture"
-@@ -1574,6 +1621,7 @@
+@@ -1574,6 +1622,7 @@
  STR_RICKY_GESTURE_READING: "Reading"
  STR_RICKY_GESTURE_BACK: "Swipe right from the left: Back"
  STR_RICKY_GESTURE_HOME: "Swipe up from the bottom: Home"
@@ -350310,7 +350330,7 @@
  STR_RICKY_GESTURE_CONTROL: "Swipe down from the top: Control center"
  STR_RICKY_GESTURE_STATUS: "Tap the status bar: Control center"
  STR_RICKY_GESTURE_TOUCH_TURN: "Touch page turns"
-@@ -1622,3 +1670,128 @@
+@@ -1622,3 +1671,128 @@
  STR_RICKY_HELP_FEEDBACK_3: "Send feedback through your existing Ricky AI Studio contact channel. This page does not upload device information. Scan the website QR code to visit the site."
  STR_RICKY_MENU_AUTO_TURN: "Auto page turn"
  STR_RICKY_MENU_PROGRESS: "Reading progress"
@@ -357267,7 +357287,7 @@
  #include <HalStorage.h>
  #include <I18n.h>
  #include <Logging.h>
-@@ -15,37 +16,43 @@
+@@ -15,37 +16,44 @@
  
  #include "CrossPointSettings.h"
  #include "KeepPageFace.h"
@@ -357282,6 +357302,7 @@
  #include "components/UITheme.h"
  #include "fontIds.h"
 -#include "util/RickyStorageLayout.h"
++#include "network/RickyWallpaperCatalog.h"
 +#include "util/PanelTileCache.h"
 +#include "util/ReadingBackground.h"
  
@@ -357325,7 +357346,7 @@
  // Minutes before Standby; SLEEP_TIMEOUT_NEVER_MINUTES means never.
  constexpr uint8_t kStandbyMinutes[] = {1, 3, 5, 10, 15, 30, Settings::SLEEP_TIMEOUT_NEVER_MINUTES};
  constexpr StrId kStandbyMinuteLabels[] = {
-@@ -56,15 +63,19 @@
+@@ -56,15 +64,19 @@
                                      StrId::STR_RICKY_HOURS_6, StrId::STR_RICKY_HOURS_12, StrId::STR_RICKY_HOURS_24};
  static_assert(std::size(kAutoOffLabels) == Settings::RICKY_AUTO_OFF_COUNT);
  constexpr StrId kPowerOffLabels[] = {StrId::STR_RICKY_POWER_OFF_SAME, StrId::STR_RICKY_SLEEP_LIGHT,
@@ -357353,7 +357374,7 @@
  
  int styleIndex() {
    for (size_t i = 0; i < std::size(kStyles); ++i)
-@@ -92,45 +103,201 @@
+@@ -92,45 +104,201 @@
      SETTINGS.saveToFile();
    });
  }
@@ -357570,7 +357591,7 @@
  }
  
  void RickyStandbySettingsActivity::onTabAction(const int index) {
-@@ -152,7 +319,7 @@
+@@ -152,7 +320,7 @@
  
  bool RickyStandbySettingsActivity::handleCustomInput() {
    return optionPopup.handleInput(mappedInput, [this] {
@@ -357579,7 +357600,7 @@
      requestUpdate();
    });
  }
-@@ -179,63 +346,137 @@
+@@ -179,63 +347,137 @@
    UiTabListActivity::render(std::move(lock));
  }
  
@@ -357771,7 +357792,7 @@
  }
  
  void RickyStandbySettingsActivity::buildScreen(UiScreen& screen) {
-@@ -247,129 +488,418 @@
+@@ -247,129 +489,420 @@
    const auto& theme = screen.theme();
    auto& target = screen.target();
    screen.insetContent(fui::Insets{static_cast<int16_t>(theme.spaceLg), theme.spaceLg, theme.spaceSm, theme.spaceLg});
@@ -358262,7 +358283,9 @@
 +        openGallery(StandbyPictures::Target::Reading);
 +        return;
 +      case ChooseSticker:
-+        openStickerPicker();
++        // Straight into the downloaded transparent wallpapers when there are any.
++        openStickerPicker(Storage.exists(RickyWallpaperCatalog::STICKER_FOLDER) ? RickyWallpaperCatalog::STICKER_FOLDER
++                                                                                 : RickyStorageLayout::IMAGES);
 +        return;
 +      case ClearSticker:
 +        // Remove a stale backup first, so a later entry cannot resurrect an old sticker.
@@ -358471,8 +358494,12 @@
    if (ok) installFirstIfUnset();
    {
      RenderLock lock(*this);
-@@ -326,6 +352,8 @@
-   char status[64];
+@@ -323,9 +349,11 @@
+   const int lineHeight = renderer.getLineHeight(UI_12_FONT_ID);
+   const int centerY = height / 2;
+   UITheme::drawCenteredText(renderer, page, UI_12_FONT_ID, centerY - lineHeight * 3, tr(STR_RICKY_WALLPAPER_DOWNLOAD));
+-  char status[64];
++  char status[96];
    switch (state_) {
      case State::Connecting:
 +      snprintf(status, sizeof(status), "%s", tr(STR_CONNECTING_SAVED_WIFI));
@@ -358480,6 +358507,25 @@
      case State::Loading:
        snprintf(status, sizeof(status), "%s", tr(STR_RICKY_WALLPAPER_LOADING));
        break;
+@@ -334,7 +362,17 @@
+                static_cast<unsigned>(std::min(currentItem_ + 1, items_.size())), static_cast<unsigned>(items_.size()));
+       break;
+     case State::Done:
+-      snprintf(status, sizeof(status), tr(STR_RICKY_WALLPAPER_DONE), static_cast<unsigned>(items_.size()));
++    {
++      // Two folders: the gallery lists the standby pictures, 透明壁纸 holds the stickers.
++      const auto stickers = static_cast<unsigned>(
++          std::count_if(items_.begin(), items_.end(), [](const Item& item) { return item.sticker; }));
++      const auto pictures = static_cast<unsigned>(items_.size()) - stickers;
++      if (stickers) {
++        snprintf(status, sizeof(status), tr(STR_RICKY_WALLPAPER_DONE_SPLIT), pictures, stickers);
++      } else {
++        snprintf(status, sizeof(status), tr(STR_RICKY_WALLPAPER_DONE), pictures);
++      }
++    }
+       break;
+     case State::Failed:
+       snprintf(status, sizeof(status), "%s", tr(STR_RICKY_WALLPAPER_FAILED));
 --- a/src/activities/apps/standby/RickyWallpaperDownloadActivity.h
 +++ b/src/activities/apps/standby/RickyWallpaperDownloadActivity.h
 @@ -50,5 +50,6 @@
