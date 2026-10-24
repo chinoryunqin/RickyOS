@@ -195516,7 +195516,7 @@
          ttf = {};
  #endif
        }
-@@ -2951,16 +3104,31 @@
+@@ -2951,16 +3104,34 @@
          return;
        }
  #if !defined(SIMULATOR)
@@ -195531,6 +195531,9 @@
 +      const bool panelFill = !vertical && page->hasPanelFill();
 +      const bool panelTurn = panelFill || lastPageHadPanelFill_;
 +      lastPageHadPanelFill_ = panelFill;
++      // A panel page (and the page leaving one) is itself a full GC16 clean, so the
++      // interval counts again from here; otherwise the due clean followed it early.
++      if (panelTurn && refresh == HalDisplay::FAST_REFRESH) pagesUntilFullRefresh = SETTINGS.getRefreshFrequency();
 +      display.setNextGray16Profile(refresh == HalDisplay::FAST_REFRESH && !panelTurn ? 1 : 2);
 +#if FREEINK_DEVICE_METALIO_PLUS
 +      if (refresh == HalDisplay::FAST_REFRESH && !panelTurn) {
@@ -195551,7 +195554,7 @@
  #if RICKYOS_PAINT_PROFILE
          LOG_INF("PERF", "reader commit=%lums total=%lums", tEnd - tCommit, tEnd - t0);
  #endif
-@@ -3137,7 +3305,7 @@
+@@ -3137,7 +3308,7 @@
        }
        const auto tBwStore = millis();
  
@@ -195560,7 +195563,7 @@
        if (pageCacheHit) {
          // Both planes were rendered at idle; putting them in place is one copy
          // each instead of a full page render each.
-@@ -3164,7 +3332,7 @@
+@@ -3164,7 +3335,7 @@
          return;
        }
  
@@ -195569,7 +195572,7 @@
        if (pageCacheHit) {
          memcpy(renderer.getFrameBuffer(), pageCacheMsb_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
          renderer.copyGrayscaleMsbBuffers();
-@@ -3212,9 +3380,12 @@
+@@ -3212,9 +3383,12 @@
  }
  
  void EpubReaderActivity::renderStatusBar() const {
@@ -195582,7 +195585,7 @@
      readerChrome::PageInfo info;
      info.bookTitle = epub ? epub->getTitle().c_str() : nullptr;
      // A chapter the table of contents names, not currentChapterTitle()'s "unnamed".
-@@ -3225,11 +3396,18 @@
+@@ -3225,11 +3399,18 @@
      }
      info.chapterTitle = chapter.c_str();
      info.pageInChapter = currentPage;
@@ -195603,7 +195606,7 @@
    const float pageCount = section ? section->estimatedTotalPages() : 1;
    const float sectionChapterProg = (pageCount > 0) ? (static_cast<float>(currentPage) / pageCount) : 0;
    const float bookProgress = epub ? (epub->calculateProgress(currentSpineIndex, sectionChapterProg) * 100) : 0;
-@@ -3266,8 +3444,12 @@
+@@ -3266,8 +3447,12 @@
        auto chapter = renderer.truncatedText(RickyDesignUi::BODY, title.c_str(), column);
        title = book + " · " + chapter;
      }

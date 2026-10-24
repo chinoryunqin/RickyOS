@@ -750,7 +750,7 @@
     {
       "path": "src/activities/reader/EpubReaderActivity.cpp",
       "baseline_sha256": "330723cad52ac629fa1451c9ca90cffff0a04b06e0266861e092ff93e8ffa1c9",
-      "ported_sha256": "f8709e2fa6dfd7dc180ad83a014125833895710a38e1f2eeba6d777dec1d2072"
+      "ported_sha256": "ca6013e9a1a49dccbbc57946ca73b0773a02943da756f61676b0bfa94cd456f1"
     },
     {
       "path": "src/activities/reader/EpubReaderActivity.h",
