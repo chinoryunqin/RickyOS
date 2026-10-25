@@ -41,14 +41,19 @@ int main(void) {
             if(to==0 && from==0) continue;
             // White-paper mode is exactly the accepted pre-gallery table, not
             // silently changed by installing a background-capable build.
-            for(int f=0; f<turn->phases; ++f) assert(action(turn,f,to,from)==action(uiTurn,f,to,from));
+            int last=-1;
+            for(int f=0; f<turn->phases; ++f) if(action(turn,f,to,from)) last=f;
+            for(int f=0; f<turn->phases; ++f) {
+                const int restored=to==0 && f>last && f<=last+2;
+                assert(action(uiTurn,f,to,from)==(restored?1:action(turn,f,to,from)));
+            }
             // Paper-light targets (a reading background's grays) keep the leading erase the
             // UI turn drops, so old text fades out before settling instead of going black
             // first. Past that erase, and for every other target, all as the UI turn.
             const int light = to>=8 && to<15;
             int erasing = light;
             for(int f=0; f<turn->phases; ++f) {
-                const int t=action(paper,f,to,from), u=action(uiTurn,f,to,from);
+                const int t=action(paper,f,to,from), u=action(turn,f,to,from);
                 if(erasing && t==2 && u==0) continue;
                 erasing=0;
                 assert(t==u);

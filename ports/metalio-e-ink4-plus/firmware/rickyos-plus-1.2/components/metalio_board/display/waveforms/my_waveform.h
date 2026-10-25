@@ -5,9 +5,9 @@
 /** GC16/GL16 + 完备 DU；GL16_FAST 为阅读专用 37 相裁剪/保持对角线实验表。 */
 extern const EpdWaveform MY_WAVEFORM;
 
-// Regional UI updates (tab switches): the Read Pico's text-turn table, see my_waveform.c.
+// Regional UI updates: text-turn table with an isolated black saturation margin.
 #define MY_MODE_UI_TURN 0xB  // the MODE_GL16_INV slot in epdiy.h
-// Reader page turns: the UI turn plus a short re-drive of retained black, see my_waveform.c.
+// Reader page turns: the original text-turn table plus a short re-drive of retained black.
 #define MY_MODE_READER_TURN 0x3  // the MODE_GC16_FAST slot in epdiy.h
 // Port-private waveform slot, not a packing flag; background gray retains its erase.
 #define MY_MODE_READER_PAPER_TURN 0xC

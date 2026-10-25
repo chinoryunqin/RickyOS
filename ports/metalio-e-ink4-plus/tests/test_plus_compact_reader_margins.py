@@ -145,6 +145,11 @@ class GfxRenderer {
    assert(x>=0 && x+w<=width && y>=0 && y+h<=height);
  }
 };
+// Numeric status face keeps its established +8px offset; the actual font-aware
+// helper is verified separately by test_plus_battery_alignment.py.
+namespace ricky::battery {
+inline int iconTop(const GfxRenderer&,int,int textY,int) {return textY+8;}
+}
 struct Metrics { int batteryWidth=32,batteryHeight=20,statusBarHorizontalMargin=14,statusBarVerticalMargin=48; };
 struct BaseTheme {
  static constexpr int STATUS_NUMERIC_FONT_ID=3,batteryPercentSpacing=4;

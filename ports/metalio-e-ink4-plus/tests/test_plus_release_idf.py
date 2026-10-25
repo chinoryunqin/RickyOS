@@ -47,9 +47,15 @@ class ReleaseIdfTest(unittest.TestCase):
     def test_shell_checks_before_build_and_after(self):
         shell = (ROOT / 'scripts/build_rickyos_plus.sh').read_text()
         first = shell.index('verify_plus_release_idf.py')
-        build = shell.index('reconfigure build')
+        configure = shell.index('"${PLUS_IDF_COMMAND[@]}" reconfigure')
+        security = shell.index('check_plus_wifi_security.py')
+        private_profile = shell.index('check_plus_private_network_profile.py')
+        build = shell.index('"${PLUS_IDF_COMMAND[@]}" build')
         last = shell.rindex('verify_plus_release_idf.py')
-        self.assertLess(first, build)
+        self.assertLess(first, configure)
+        self.assertLess(configure, security)
+        self.assertLess(security, private_profile)
+        self.assertLess(private_profile, build)
         self.assertGreater(last, build)
 
 

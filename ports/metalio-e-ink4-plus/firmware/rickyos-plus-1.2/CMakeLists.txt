@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-set(PROJECT_VER "1.2.7")
+set(PROJECT_VER "1.2.8")
 if(NOT "$ENV{RICKYOS_PLUS_VERSION}" STREQUAL "")
   set(PROJECT_VER "$ENV{RICKYOS_PLUS_VERSION}")
 endif()

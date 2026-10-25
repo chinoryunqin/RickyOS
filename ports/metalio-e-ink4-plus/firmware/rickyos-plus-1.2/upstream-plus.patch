@@ -349880,7 +349880,29 @@
    }
 --- a/lib/GfxRenderer/GfxRenderer.cpp
 +++ b/lib/GfxRenderer/GfxRenderer.cpp
-@@ -132,7 +132,24 @@
+@@ -18,10 +18,19 @@
+ #ifndef RICKYOS_GRAY_PRESET
+ #define RICKYOS_GRAY_PRESET 3
+ #endif
++#if FREEINK_DEVICE_METALIO_PLUS
++static constexpr bool kPlusUiTone = true;
++#else
++static constexpr bool kPlusUiTone = false;
++#endif
+ static constexpr uint8_t kLightGrayLevel =
+-    RICKYOS_GRAY_PRESET == 3 ? 8 : (RICKYOS_GRAY_PRESET == 2 ? 7 : (RICKYOS_GRAY_PRESET == 1 ? 9 : 11));
++    RICKYOS_GRAY_PRESET == 3 ? 8
++    : RICKYOS_GRAY_PRESET == 2 ? (kPlusUiTone ? 4 : 7)
++    : RICKYOS_GRAY_PRESET == 1 ? 9 : 11;
+ static constexpr uint8_t kDarkGrayLevel =
+-    RICKYOS_GRAY_PRESET == 3 ? 5 : (RICKYOS_GRAY_PRESET == 2 ? 4 : (RICKYOS_GRAY_PRESET == 1 ? 6 : 7));
++    RICKYOS_GRAY_PRESET == 3 ? 5
++    : RICKYOS_GRAY_PRESET == 2 ? (kPlusUiTone ? 2 : 4)
++    : RICKYOS_GRAY_PRESET == 1 ? 6 : 7;
+ #include <memory>
+ #include <new>
+ #include <string_view>
+@@ -132,7 +141,24 @@
  }
  }  // namespace
  
@@ -349905,7 +349927,7 @@
    // Vector (TTF) fonts: the glyph bitmap lives in the font's own cache, keyed by
    // the EpdGlyph the miss handler returned. Checked first so it never reaches the
    // SdCardFont overflow cast below. nullptr = zero-width glyph (e.g. space).
-@@ -1951,15 +1968,28 @@
+@@ -1951,15 +1977,28 @@
  
  namespace {
  template <typename Display>
@@ -349938,7 +349960,7 @@
    const int x0 = std::clamp(x, 0, getScreenWidth());
    const int y0 = std::clamp(y, 0, getScreenHeight());
    const int x1 = std::clamp(x + std::max(0, width), 0, getScreenWidth());
-@@ -1986,7 +2016,22 @@
+@@ -1986,7 +2025,22 @@
      case LandscapeCounterClockwise:
        break;
    }
@@ -350026,6 +350048,19 @@
  STR_RICKY_WALLPAPER_FAILED: "下载失败，请检查网络后重试"
  STR_RICKY_SET_WALLPAPER: "设为待机壁纸"
  STR_RICKY_STANDBY: "待机"
+@@ -370,9 +376,9 @@
+ STR_FIRST_LINE_INDENT_INDENT: "缩进"
+ STR_FIRST_LINE_INDENT_NO_INDENT: "不缩进"
+ STR_TEXT_AA: "文字抗锯齿"
+-STR_PAGE_TURN_DIRECTION: "翻页方向"
+-STR_PAGE_TURN_LTR: "从左到右"
+-STR_PAGE_TURN_RTL: "从右到左"
++STR_PAGE_TURN_DIRECTION: "惯用手"
++STR_PAGE_TURN_LTR: "右手"
++STR_PAGE_TURN_RTL: "左手"
+ STR_FAKE_BOLD: "伪粗体"
+ STR_FAKE_BOLD_LIGHT: "轻度"
+ STR_FAKE_BOLD_STANDARD: "标准"
 @@ -465,7 +471,25 @@
  STR_LIBRARY_TAB_TITLE: "书名"
  STR_LIBRARY_TAB_AUTHOR: "作者"
@@ -350260,6 +350295,19 @@
  STR_RICKY_WALLPAPER_FAILED: "Download failed. Check the network and try again."
  STR_RICKY_SET_WALLPAPER: "Set Standby Wallpaper"
  STR_RICKY_STANDBY: "Standby"
+@@ -302,9 +308,9 @@
+ STR_FIRST_LINE_INDENT_NO_INDENT: "No Indent"
+ STR_PARAGRAPH_INDENTATION: "Paragraph Indentation"
+ STR_TEXT_AA: "Text Anti-Aliasing"
+-STR_PAGE_TURN_DIRECTION: "Page Turn Direction"
+-STR_PAGE_TURN_LTR: "Left to Right"
+-STR_PAGE_TURN_RTL: "Right to Left"
++STR_PAGE_TURN_DIRECTION: "Holding Hand"
++STR_PAGE_TURN_LTR: "Right Hand"
++STR_PAGE_TURN_RTL: "Left Hand"
+ STR_FAKE_BOLD: "Synthetic Bold"
+ STR_FAKE_BOLD_LIGHT: "Light"
+ STR_FAKE_BOLD_STANDARD: "Standard"
 @@ -396,6 +402,24 @@
  STR_LIBRARY_GROUP_POSITION: "%d/%d groups"
  STR_LIBRARY_USE_METADATA: "Use Book Metadata"
@@ -353632,6 +353680,17 @@
  
  let output = path.join(root, 'src/components/icons/rickyAppIcons.h');
  const args = process.argv.slice(2);
+--- a/scripts/build_rickyos_page_icons.cjs
++++ b/scripts/build_rickyos_page_icons.cjs
+@@ -33,7 +33,7 @@
+ ];
+ // Row icons use the same sources but the approved 32 px optical tier.
+ const ROW_ICONS = [
+-  ['row_night', 'moon', 32], ['row_rotate', 'rotate-cw', 32],
++  ['row_night', 'moon', 32], ['row_rotate', 'rotate-cw', 32], ['row_hand', 'hand', 32],
+   ['row_timer', 'timer', 32], ['row_percent', 'percent', 32],
+   ['row_bookmark', 'bookmark', 32], ['row_sync', 'refresh-cw', 32],
+   ['row_more', 'list-tree', 32], ['row_light', 'sun', 32],
 --- a/scripts/tests/test_reader_page_cache.py
 +++ b/scripts/tests/test_reader_page_cache.py
 @@ -33,7 +33,16 @@
@@ -353792,6 +353851,36 @@
  
      def test_only_product_builds_exclude_game_sources(self):
          config = configparser.ConfigParser(interpolation=None)
+--- a/scripts/tests/test_rickyos_interior_ui.py
++++ b/scripts/tests/test_rickyos_interior_ui.py
+@@ -17,12 +17,12 @@
+ enum class Action {SELECT_CHAPTER, FOOTNOTES, TEXT_SETTINGS, NIGHT_MODE, FRONTLIGHT,
+   GO_TO_PERCENT, AUTO_PAGE_TURN, ROTATE_SCREEN, BOOKMARKS, TOGGLE_BOOKMARK,
+   SCREENSHOT, DISPLAY_QR, GO_HOME, SYNC, DELETE_CACHE, DICTIONARY, READING_MODE, READING_LINE,
+-  FONT_SIZE, TEXT_WEIGHT};
++  FONT_SIZE, TEXT_WEIGHT, HOLDING_HAND};
+ struct Item {Action action;};
+ int main() {
+   for(int flags=0; flags<8; ++flags) {
+     std::vector<Item> items;
+-    for(int action=0; action<20; ++action) {
++    for(int action=0; action<21; ++action) {
+       const auto a=static_cast<Action>(action);
+       if(a==Action::FOOTNOTES && !(flags&1)) continue;
+       if(a==Action::BOOKMARKS && !(flags&2)) continue;
+@@ -32,7 +32,11 @@
+     const auto root=RickyReaderMenuLayout::build<Action>(items,false);
+     const auto more=RickyReaderMenuLayout::build<Action>(items,true);
+     assert(root.quickCount==4);
+-    assert(root.count<=12 && more.count<=9);
++    assert(root.count<=12 && more.count<=10);
++    // 惯用手 sits in More, right after 屏幕方向.
++    for(int i=0; i+1<more.count; ++i)
++      if(items[more.indices[i]].action==Action::ROTATE_SCREEN)
++        assert(items[more.indices[i+1]].action==Action::HOLDING_HAND);
+     // 字号 and 字重 are one tap from the page.
+     bool size=false, weight=false;
+     for(int i=root.quickCount; i<root.count; ++i) {
 --- a/src/AppVisibility.h
 +++ b/src/AppVisibility.h
 @@ -23,7 +23,9 @@
@@ -364338,6 +364427,69 @@
    bool skipPages(int amount) override;
    bool isAtEndOfBook() const override;
    void onReturnFromEndOfBook() override;
+--- a/src/activities/reader/EpubReaderMenuActivity.cpp
++++ b/src/activities/reader/EpubReaderMenuActivity.cpp
+@@ -30,6 +30,8 @@
+       return icon_ricky_row_light_32;
+     case Action::ROTATE_SCREEN:
+       return icon_ricky_row_rotate_32;
++    case Action::HOLDING_HAND:
++      return icon_ricky_row_hand_32;
+     case Action::READING_MODE:
+       return icon_ricky_row_books_32;
+     case Action::READING_LINE:
+@@ -158,6 +160,7 @@
+   }
+   items.push_back({MenuAction::DICTIONARY, StrId::STR_LOOKUP});
+   items.push_back({MenuAction::ROTATE_SCREEN, StrId::STR_ORIENTATION});
++  items.push_back({MenuAction::HOLDING_HAND, StrId::STR_PAGE_TURN_DIRECTION});
+   items.push_back({MenuAction::READING_MODE, StrId::STR_READING_MODE});
+   items.push_back({MenuAction::READING_LINE, StrId::STR_READING_GUIDE_LINE});
+   items.push_back({MenuAction::FONT_SIZE, StrId::STR_FONT_SIZE});
+@@ -287,6 +290,14 @@
+                        SETTINGS.saveToFile();
+                        requestUpdate();
+                      });
++    requestUpdate();
++    return;
++  }
++
++  if (selectedAction == MenuAction::HOLDING_HAND) {
++    // Two choices: a tap switches hands, and the page-turn zones follow on return.
++    SETTINGS.pageTurnDirection = SETTINGS.pageTurnDirection == 0 ? 1 : 0;
++    SETTINGS.saveToFile();
+     requestUpdate();
+     return;
+   }
+@@ -398,6 +409,8 @@
+     const auto action = menuItems[menuView.indices[i]].action;
+     if (action == MenuAction::ROTATE_SCREEN) {
+       menuRowItems[i].value = I18N.get(orientationLabels[pendingOrientation]);
++    } else if (action == MenuAction::HOLDING_HAND) {
++      menuRowItems[i].value = I18N.get(holdingHandLabels[SETTINGS.pageTurnDirection != 0 ? 1 : 0]);
+     } else if (action == MenuAction::AUTO_PAGE_TURN) {
+       menuRowItems[i].value = pageTurnLabels[selectedPageTurnOption];
+     } else if (action == MenuAction::READING_LINE) {
+--- a/src/activities/reader/EpubReaderMenuActivity.h
++++ b/src/activities/reader/EpubReaderMenuActivity.h
+@@ -34,7 +34,8 @@
+     READING_MODE,   // 原版 / 小狗伴读 / 沉浸 / 古籍; applied when the menu closes.
+     READING_LINE,   // 阅读线: off or one of its looks; redrawn when the menu closes.
+     FONT_SIZE,      // 字号: re-paginated when the menu closes.
+-    TEXT_WEIGHT     // 字重: redrawn when the menu closes.
++    TEXT_WEIGHT,    // 字重: redrawn when the menu closes.
++    HOLDING_HAND    // 惯用手 (pageTurnDirection): mirrors the page-turn taps and swipes at once.
+   };
+ 
+   struct MenuItem {
+@@ -91,6 +92,7 @@
+   std::string title = "Reader Menu";
+   uint8_t pendingOrientation = 0;
+   uint8_t selectedPageTurnOption = 0;
++  const std::vector<StrId> holdingHandLabels = {StrId::STR_PAGE_TURN_LTR, StrId::STR_PAGE_TURN_RTL};
+   const std::vector<StrId> orientationLabels = {StrId::STR_PORTRAIT, StrId::STR_LANDSCAPE_CW, StrId::STR_INVERTED,
+                                                 StrId::STR_LANDSCAPE_CCW};
+   const std::vector<const char*> pageTurnLabels = {I18N.get(StrId::STR_STATE_OFF), "1", "3", "6", "12"};
 --- /dev/null
 +++ b/src/activities/reader/NativeTurnRequest.h
 @@ -0,0 +1,19 @@
@@ -364415,6 +364567,26 @@
    if (deferClean && pagesUntilFullRefresh <= 1) {
      // Keep the debt: the next ordinary page must still clean.
      pagesUntilFullRefresh = 1;
+--- a/src/activities/reader/ReaderUtils.h
++++ b/src/activities/reader/ReaderUtils.h
+@@ -136,10 +136,13 @@
+   }
+ 
+   // Give the whole page to the sole tap-enabled direction. When both accept
+-  // taps, split at the left third. RTL books and Inverted Tap each reverse
+-  // the shared zones, and so does the page-turn direction.
+-  const bool inverted = (SETTINGS.pageTurnGesture == CrossPointSettings::INVERTED_TAP ||
+-                         SETTINGS.previousPageGesture == CrossPointSettings::INVERTED_TAP) != mirrored;
++  // taps, split at the left third. 惯用手：左手 and Inverted Tap ask for the same
++  // thing, so either one mirrors the zones and both together still mirror them once
++  // (XORing them made a left-handed reader who had also tried Inverted Tap get the
++  // right-handed zones back). An RTL book reverses the result as before.
++  const bool invertedTap = SETTINGS.pageTurnGesture == CrossPointSettings::INVERTED_TAP ||
++                           SETTINGS.previousPageGesture == CrossPointSettings::INVERTED_TAP;
++  const bool inverted = rtlBook != (SETTINGS.pageTurnDirection != 0 || invertedTap);
+   const bool nextZone = inverted ? x < (width * 2) / 3 : x >= width / 3;
+   result.next = nextTaps && (!prevTaps || nextZone);
+   result.prev = prevTaps && (!nextTaps || !nextZone);
 --- a/src/activities/settings/ClockSyncActivity.cpp
 +++ b/src/activities/settings/ClockSyncActivity.cpp
 @@ -22,6 +22,7 @@
@@ -365032,6 +365204,23 @@
        case SettingAction::RickyScreenRepair: {
          // Residual charge in the film shows old screens through new ones. Full GC16
          // black/white pairs are DC-balanced and drive every pixel through both
+@@ -1305,10 +1313,13 @@
+   if (usesMainTabBar() && !showMainTabContentSelection()) productProps.selectedIndex = -1;
+   GfxRenderer::SyntheticBoldScope productBold(renderer, CrossPointSettings::SYNTHETIC_BOLD_OFF);
+   if (designRows) {
+-    // The reader menu's rows: a chevron marks every row that opens a page or a picker.
+-    RickyRowList::draw(screen, renderer, nav, productProps, [this](const int i) {
++    // System is a quiet settings list. Repeating disclosure arrows on nearly
++    // every entry made a second visual rail; keep values/toggles and full-row
++    // actions, while other settings retain their existing disclosure policy.
++    const bool quietSystem = currentSettings == &systemSettings;
++    RickyRowList::draw(screen, renderer, nav, productProps, [this, quietSystem](const int i) {
+       RickyRowList::RowStyle style;
+-      style.chevron = i < settingsCount && opensPage((*currentSettings)[i]);
++      style.chevron = !quietSystem && i < settingsCount && opensPage((*currentSettings)[i]);
+       return style;
+     });
+     return;
 --- a/src/activities/util/FrontlightPanelActivity.cpp
 +++ b/src/activities/util/FrontlightPanelActivity.cpp
 @@ -2,7 +2,9 @@
@@ -366269,6 +366458,34 @@
    int currentImageIndex = -1;
    OptionPopup sleepCoverPopup;
  };
+--- /dev/null
++++ b/src/components/BatteryStatusLayout.h
+@@ -0,0 +1,25 @@
++#pragma once
++
++#include <algorithm>
++
++namespace ricky::battery {
++// Status fonts are registered built-in numeric faces. Use a fixed digit/%
++// sample so 9 -> 10 -> 100 never moves the icon, and font leading is excluded.
++template <class Renderer>
++int iconTop(const Renderer& renderer, int fontId, int textY, int iconHeight) {
++  const auto& fonts = renderer.getFontMap();
++  const auto face = fonts.find(fontId);
++  if (face == fonts.end()) return textY + (renderer.getLineHeight(fontId) - iconHeight) / 2;
++  const auto* data = face->second.getData();
++  int top = renderer.getLineHeight(fontId), bottom = 0;
++  for (const char* digit = "0123456789%"; *digit; ++digit) {
++    const auto* glyph = face->second.getGlyph(static_cast<unsigned char>(*digit));
++    if (!glyph || !glyph->width || !glyph->height) continue;
++    const int inkTop = data->ascender - glyph->top;
++    top = std::min(top, inkTop);
++    bottom = std::max(bottom, inkTop + glyph->height);
++  }
++  if (bottom <= top) return textY + (renderer.getLineHeight(fontId) - iconHeight) / 2;
++  return textY + (top + bottom - iconHeight) / 2;
++}
++}  // namespace ricky::battery
 --- a/src/components/OptionPopup.h
 +++ b/src/components/OptionPopup.h
 @@ -214,7 +214,7 @@
@@ -366292,7 +366509,25 @@
        return;
 --- a/src/components/RickyDesignTokens.h
 +++ b/src/components/RickyDesignTokens.h
-@@ -214,6 +214,8 @@
+@@ -47,9 +47,17 @@
+ inline constexpr Level kLine = 8;   // 分隔线/进度轨/边框：机身按键的印刷灰
+ inline constexpr Level kTint = 12;  // 小面积底（仅静止帧）
+ #elif RICKYOS_GRAY_PRESET == 2
++#if FREEINK_DEVICE_METALIO_PLUS
++// Plus menu chrome needs more separation from paper after fast gray updates.
++// Keep the black/white endpoints, antialias coverage and image tones unchanged.
++inline constexpr Level kInk2 = 2;
++inline constexpr Level kMute = 3;
++inline constexpr Level kLine = 5;
++#else
+ inline constexpr Level kInk2 = 2;   // 次级文字（仅静止帧）
+ inline constexpr Level kMute = 5;   // 禁用/占位（仅静止帧）
+ inline constexpr Level kLine = 7;   // 分隔线/进度轨（仅静止帧）
++#endif
+ inline constexpr Level kTint = 12;  // 小面积底（仅静止帧）
+ #elif RICKYOS_GRAY_PRESET == 1
+ inline constexpr Level kInk2 = 3;   // 次级文字（仅静止帧）
+@@ -214,6 +222,8 @@
  namespace stroke {
  inline constexpr uint8_t kHairline = RICKYOS_GRAY_PRESET >= 2 ? 3 : 2;  // 卡片描边、分隔线、次按钮、进度轨(1-bit)
  inline constexpr uint8_t kEmphasis = 4;        // 弹窗边框、按下态主按钮、强调线
@@ -366420,6 +366655,68 @@
      }
    }
  }
+--- a/src/components/RickyReaderMenuLayout.h
++++ b/src/components/RickyReaderMenuLayout.h
+@@ -9,7 +9,7 @@
+ // ListItems; the only extra residency is this bounded index map.
+ namespace RickyReaderMenuLayout {
+ inline constexpr int8_t More = -1;
+-// Every action the reader can list (20 with reading mode, lines, size and weight) plus More.
++// Every action the reader can list (21 with reading mode, lines, size, weight and hand) plus More.
+ inline constexpr size_t kMaxItems = 22;
+ struct View {
+   std::array<int8_t, kMaxItems> indices{};
+@@ -30,8 +30,9 @@
+     }
+   };
+   if (more) {
+-    for (auto action : {Action::FOOTNOTES, Action::BOOKMARKS, Action::ROTATE_SCREEN, Action::AUTO_PAGE_TURN,
+-                        Action::SYNC, Action::SCREENSHOT, Action::DISPLAY_QR, Action::GO_HOME, Action::DELETE_CACHE})
++    for (auto action : {Action::FOOTNOTES, Action::BOOKMARKS, Action::ROTATE_SCREEN, Action::HOLDING_HAND,
++                        Action::AUTO_PAGE_TURN, Action::SYNC, Action::SCREENSHOT, Action::DISPLAY_QR,
++                        Action::GO_HOME, Action::DELETE_CACHE})
+       add(action);
+     return view;
+   }
+--- a/src/components/RickyRowList.h
++++ b/src/components/RickyRowList.h
+@@ -36,6 +36,19 @@
+   props.textGap = ricky::ds::space::kInlineGap;
+   props.rowInset = 0;
+   props.iconSize = 32;
++}
++
++// A floating scroll hint, never a full-height rail beside every trailing value.
++// Position carries progress; cap its length so a nearly fitting list cannot
++// produce the page-long line reported on the System settings screen.
++inline fui::Rect scrollThumb(fui::Rect body, int count, int visible, int top) {
++  if (body.empty() || visible <= 0 || count <= visible) return {};
++  const int width = std::min(2, static_cast<int>(body.width));
++  const int height = std::clamp(body.height * visible / count, std::min(12, static_cast<int>(body.height)),
++                                std::min(64, static_cast<int>(body.height)));
++  const int y = body.y + (body.height - height) * std::clamp(top, 0, count - visible) / (count - visible);
++  return {static_cast<int16_t>(body.right() - width), static_cast<int16_t>(y), static_cast<int16_t>(width),
++           static_cast<int16_t>(height)};
+ }
+ 
+ // Draws the synced viewport of `props`. `style(i)` describes row i; `actionOffset`
+@@ -98,14 +111,8 @@
+   }
+   nav.drawnCount = props.count;
+   nav.onListRendered(props.topIndex, drawn, selectedDrawn);
+-  if (drawn && props.count > drawn) {
+-    const fui::Rect track{static_cast<int16_t>(body.right() - 2), body.y, 2, body.height};
+-    RickyDesignUi::fill(renderer, track, ricky::ds::gray::kLine);
+-    const int height = std::max(12, body.height * drawn / props.count);
+-    const int y = body.y + (body.height - height) * props.topIndex / (props.count - drawn);
+-    RickyDesignUi::fill(renderer, {track.x, static_cast<int16_t>(y), 2, static_cast<int16_t>(height)},
+-                        ricky::ds::gray::kInk);
+-  }
++  if (props.scrollIndicator)
++    RickyDesignUi::fill(renderer, scrollThumb(body, props.count, drawn, props.topIndex), ricky::ds::gray::kLine);
+ }
+ 
+ }  // namespace RickyRowList
 --- a/src/components/UITheme.cpp
 +++ b/src/components/UITheme.cpp
 @@ -124,7 +124,7 @@
@@ -366458,6 +366755,69 @@
    if (UiHighDpiProfile::enabled) {
      switch (icon) {
        case UIIcon::Settings:
+--- a/src/components/icons/rickyAaIcons.h
++++ b/src/components/icons/rickyAaIcons.h
+@@ -808,6 +808,27 @@
+     0x0C, 0x0F, 0x0E, 0x05, 0xF0, 0x00, 0x01, 0x08, 0x0E, 0x1F, 0x0E, 0x1D, 0x0E, 0x1F, 0x0E, 0x08, 0x01, 0xF0, 0x40, 0x04,
+     0x08, 0x0A, 0x1B, 0x0A, 0x08, 0x04, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xB0,
+ };
++inline constexpr uint8_t k_icon_ricky_row_hand_32[] = {
++    0xF0, 0xF0, 0xE0, 0x11, 0xF0, 0xB0, 0x02, 0x0B, 0x1F, 0x0B, 0x02, 0xF0, 0x90, 0x0D, 0x0F, 0x19, 0x0F, 0x0D, 0xF0, 0x50,
++    0x03, 0x06, 0x15, 0x0F, 0x06, 0x10, 0x06, 0x0F, 0x15, 0x06, 0x03, 0xF0, 0x00, 0x09, 0x2F, 0x0E, 0x0F, 0x02, 0x10, 0x02,
++    0x0F, 0x0E, 0x2F, 0x09, 0xE0, 0x06, 0x0F, 0x09, 0x03, 0x06, 0x1F, 0x02, 0x10, 0x02, 0x1F, 0x06, 0x03, 0x09, 0x0F, 0x06,
++    0xD0, 0x0B, 0x0E, 0x20, 0x0C, 0x0F, 0x03, 0x10, 0x03, 0x0F, 0x0C, 0x20, 0x0E, 0x0B, 0x08, 0x0B, 0x09, 0x03, 0x90, 0x1C,
++    0x20, 0x09, 0x0F, 0x02, 0x10, 0x02, 0x0F, 0x09, 0x20, 0x0C, 0x1F, 0x0D, 0x0E, 0x0F, 0x05, 0x80, 0x1C, 0x20, 0x07, 0x0F,
++    0x02, 0x10, 0x02, 0x0F, 0x07, 0x20, 0x0E, 0x0F, 0x04, 0x00, 0x01, 0x1D, 0x80, 0x1C, 0x20, 0x07, 0x0F, 0x02, 0x10, 0x02,
++    0x0F, 0x07, 0x20, 0x1E, 0x20, 0x08, 0x0F, 0x01, 0x70, 0x1C, 0x20, 0x07, 0x0F, 0x02, 0x10, 0x02, 0x0F, 0x07, 0x20, 0x1D,
++    0x20, 0x07, 0x0F, 0x02, 0x70, 0x1C, 0x20, 0x07, 0x0F, 0x02, 0x10, 0x02, 0x0F, 0x07, 0x20, 0x1C, 0x20, 0x07, 0x0F, 0x02,
++    0x70, 0x1C, 0x20, 0x07, 0x0F, 0x02, 0x10, 0x01, 0x0F, 0x06, 0x20, 0x1C, 0x20, 0x07, 0x0F, 0x02, 0x70, 0x1C, 0x20, 0x04,
++    0x0B, 0x01, 0x20, 0x01, 0x30, 0x1C, 0x20, 0x07, 0x0F, 0x02, 0x70, 0x1C, 0xD0, 0x14, 0x20, 0x07, 0x0F, 0x02, 0x30, 0x05,
++    0x0B, 0x0C, 0x08, 0x1C, 0xF0, 0x20, 0x07, 0x0F, 0x02, 0x20, 0x07, 0x0F, 0x0E, 0x0C, 0x1F, 0x0C, 0xF0, 0x20, 0x07, 0x0F,
++    0x02, 0x10, 0x01, 0x0F, 0x0B, 0x01, 0x00, 0x05, 0x1F, 0x02, 0xF0, 0x10, 0x07, 0x0F, 0x02, 0x10, 0x03, 0x0F, 0x06, 0x20,
++    0x07, 0x0F, 0x0D, 0x01, 0xF0, 0x00, 0x08, 0x0F, 0x01, 0x10, 0x02, 0x0F, 0x09, 0x30, 0x05, 0x0B, 0x01, 0xF0, 0x00, 0x0A,
++    0x0E, 0x30, 0x0A, 0x0F, 0x07, 0xF0, 0x60, 0x0E, 0x0B, 0x30, 0x01, 0x0C, 0x0F, 0x07, 0xF0, 0x40, 0x04, 0x0F, 0x06, 0x40,
++    0x01, 0x0C, 0x0F, 0x07, 0xF0, 0x30, 0x0C, 0x0E, 0x01, 0x50, 0x01, 0x0C, 0x0F, 0x06, 0xF0, 0x10, 0x06, 0x0F, 0x07, 0x70,
++    0x01, 0x0C, 0x0F, 0x07, 0xF0, 0x04, 0x0F, 0x0C, 0x90, 0x01, 0x0C, 0x0F, 0x09, 0xD0, 0x06, 0x0F, 0x0D, 0x02, 0xA0, 0x01,
++    0x0A, 0x0F, 0x0D, 0x05, 0x90, 0x04, 0x0C, 0x0F, 0x0C, 0x02, 0xD0, 0x06, 0x0E, 0x0F, 0x0E, 0x0B, 0x09, 0x08, 0x27, 0x08,
++    0x0A, 0x0E, 0x0F, 0x0E, 0x07, 0xF0, 0x00, 0x01, 0x06, 0x0A, 0x0E, 0x5F, 0x0E, 0x0B, 0x06, 0x01, 0xF0, 0x60, 0x01, 0x22,
++    0x01, 0xF0, 0xF0, 0xB0,
++};
+ inline constexpr uint8_t k_icon_ricky_row_timer_32[] = {
+     0xF0, 0xF0, 0xC0, 0x52, 0xF0, 0x80, 0x06, 0x5F, 0x06, 0xF0, 0x70, 0x01, 0x57, 0x01, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0,
+     0xF0, 0x70, 0x03, 0x08, 0x0A, 0x1B, 0x0A, 0x08, 0x03, 0xF0, 0x50, 0x05, 0x0D, 0x1F, 0x0E, 0x1D, 0x0E, 0x1F, 0x0D, 0x05,
+@@ -987,6 +1008,16 @@
+     0x0F, 0x09, 0xD0, 0x1C, 0x50, 0x0B, 0x0D, 0x30, 0x09, 0x0F, 0x09, 0xE0, 0x0D, 0x0B, 0x50, 0x08, 0x0F, 0x05, 0x10, 0x09,
+     0x0F, 0x09, 0xE0, 0x05, 0x0F, 0x08, 0x50, 0x01, 0x0D, 0x0F, 0x0D, 0x0E, 0x0F, 0x0E, 0xEC, 0x0D, 0x0F, 0x0D, 0x01, 0x60,
+     0x01, 0x08, 0x0B, 0x0D, 0x0E, 0xFC, 0x0B, 0x08, 0x01, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0x30,
++};
++inline constexpr uint8_t k_icon_ricky_row_lines_32[] = {
++    0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0x60, 0x14, 0xD0, 0x14, 0xD0, 0x1C, 0xD0, 0x1C, 0xD0, 0x1C, 0xD0, 0x1C,
++    0xD0, 0x1C, 0xD0, 0x1C, 0xD0, 0x1C, 0xD0, 0x1C, 0xD0, 0x1C, 0xD0, 0x1C, 0xD0, 0x1C, 0xD0, 0x1C, 0xD0, 0x1C, 0xD0, 0x1C,
++    0xD0, 0x1C, 0xD0, 0x1C, 0xD0, 0x1C, 0xD0, 0x1C, 0xD0, 0x0A, 0x0E, 0xD0, 0x0E, 0x0A, 0xD0, 0x07, 0x0F, 0x03, 0xB0, 0x03,
++    0x0F, 0x07, 0xD0, 0x03, 0x0F, 0x08, 0xB0, 0x09, 0x0F, 0x03, 0xE0, 0x0B, 0x0F, 0x03, 0x90, 0x03, 0x0F, 0x0A, 0xF0, 0x02,
++    0x0E, 0x0D, 0x02, 0x70, 0x02, 0x0D, 0x0E, 0x02, 0xF0, 0x00, 0x04, 0x1E, 0x06, 0x50, 0x06, 0x1E, 0x04, 0xF0, 0x20, 0x03,
++    0x0D, 0x0F, 0x0E, 0x0A, 0x18, 0x0A, 0x0E, 0x0F, 0x0C, 0x03, 0xF0, 0x50, 0x06, 0x0B, 0x3F, 0x0B, 0x06, 0xF0, 0xA0, 0x11,
++    0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0x30, 0xF2, 0x52, 0x80, 0x06, 0xFF, 0x5F, 0x06, 0x70, 0x01, 0xF7, 0x57, 0x01, 0xF0, 0xF0,
++    0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0x30,
+ };
+ 
+ inline constexpr Icon kIcons[] = {
+@@ -1033,6 +1064,7 @@
+     {0x894F81F5u, 40, 40, k_icon_ricky_more_40, 178},  // icon_ricky_more_40_bits
+     {0xBE83CA09u, 32, 32, k_icon_ricky_row_night_32, 268},  // icon_ricky_row_night_32_bits
+     {0xDC0A3113u, 32, 32, k_icon_ricky_row_rotate_32, 253},  // icon_ricky_row_rotate_32_bits
++    {0x84E3F4CAu, 32, 32, k_icon_ricky_row_hand_32, 364},  // icon_ricky_row_hand_32_bits
+     {0x58239B21u, 32, 32, k_icon_ricky_row_timer_32, 267},  // icon_ricky_row_timer_32_bits
+     {0x3A6BFAE1u, 32, 32, k_icon_ricky_row_percent_32, 244},  // icon_ricky_row_percent_32_bits
+     {0x5764B3F1u, 32, 32, k_icon_ricky_row_bookmark_32, 255},  // icon_ricky_row_bookmark_32_bits
+@@ -1045,6 +1077,7 @@
+     {0x324A1A9Au, 32, 32, k_icon_ricky_row_books_32, 280},  // icon_ricky_row_books_32_bits
+     {0x4510C78Du, 32, 32, k_icon_ricky_row_text_32, 312},  // icon_ricky_row_text_32_bits
+     {0xB143A8C4u, 32, 32, k_icon_ricky_row_image_32, 276},  // icon_ricky_row_image_32_bits
++    {0x15B107ACu, 32, 32, k_icon_ricky_row_lines_32, 147},  // icon_ricky_row_lines_32_bits
+ };
+ 
+ }  // namespace ricky_aa_icons
 --- a/src/components/icons/rickyAppIcons.h
 +++ b/src/components/icons/rickyAppIcons.h
 @@ -112,3 +112,48 @@
@@ -366509,6 +366869,27 @@
 +    0xF8, 0x00, 0x1F, 0xFF, 0xFF, 0xF8, 0x00, 0x1F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 +    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 +};
+--- a/src/components/icons/rickyPageIcons.h
++++ b/src/components/icons/rickyPageIcons.h
+@@ -493,6 +493,18 @@
+ };
+ inline constexpr freeink::Icon icon_ricky_row_rotate_32 = {32, 32, 14, icon_ricky_row_rotate_32_bits};
+ 
++// row_hand (lucide: hand)
++inline constexpr uint8_t icon_ricky_row_hand_32_bits[] = {
++    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFC, 0x3F, 0xFF, 0xFF, 0xF8, 0x1F, 0xFF, 0xFF, 0xFB, 0xDF,
++    0xFF, 0xFF, 0x03, 0xC0, 0xFF, 0xFF, 0x33, 0xCC, 0xFF, 0xFE, 0x73, 0xCE, 0x4F, 0xFE, 0x73, 0xCE, 0x07, 0xFE, 0x7B,
++    0xDE, 0x73, 0xFE, 0x7B, 0xDE, 0x7B, 0xFE, 0x7B, 0xDE, 0x7B, 0xFE, 0x7B, 0xDE, 0x7B, 0xFE, 0x7B, 0xDE, 0x7B, 0xFE,
++    0x7B, 0xFE, 0x7B, 0xFE, 0x7F, 0xFF, 0xFB, 0xF2, 0x7F, 0xFF, 0xFB, 0xE0, 0x7F, 0xFF, 0xFB, 0xCE, 0x7F, 0xFF, 0xFB,
++    0xDF, 0x3F, 0xFF, 0xFB, 0xCF, 0xBF, 0xFF, 0xF3, 0xCF, 0xFF, 0xFF, 0xF3, 0xE7, 0xFF, 0xFF, 0xF7, 0xF3, 0xFF, 0xFF,
++    0xE7, 0xF9, 0xFF, 0xFF, 0xEF, 0xFC, 0xFF, 0xFF, 0xCF, 0xFE, 0x3F, 0xFF, 0x9F, 0xFF, 0x1F, 0xFE, 0x3F, 0xFF, 0xC1,
++    0xF0, 0xFF, 0xFF, 0xF0, 0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
++};
++inline constexpr freeink::Icon icon_ricky_row_hand_32 = {32, 32, 15, icon_ricky_row_hand_32_bits};
++
+ // row_timer (lucide: timer)
+ inline constexpr uint8_t icon_ricky_row_timer_32_bits[] = {
+     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xF8, 0x1F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 --- /dev/null
 +++ b/src/components/icons/sources/rickyos/apps/gallery.svg
 @@ -0,0 +1,14 @@
@@ -366552,15 +366933,16 @@
 +</svg>
 --- a/src/components/themes/BaseTheme.cpp
 +++ b/src/components/themes/BaseTheme.cpp
-@@ -15,6 +15,7 @@
+@@ -15,6 +15,8 @@
  #include "I18n.h"
  #include "RecentBooksStore.h"
  #include "SdCardFontSystem.h"
 +#include "activities/reader/ReaderChrome.h"
++#include "components/BatteryStatusLayout.h"
  #include "components/HeaderBackTapTarget.h"
  #include "components/RickyBrandMark.h"
  #include "components/RickyPageUi.h"
-@@ -171,6 +172,7 @@
+@@ -171,6 +173,7 @@
  }
  
  void BaseTheme::fillBatteryIcon(const GfxRenderer& renderer, Rect rect, uint16_t percentage) const {
@@ -366568,23 +366950,33 @@
    const bool charging = gpio.isUsbConnected();
    if (rect.width == UiHighDpiProfile::batteryWidth && rect.height == UiHighDpiProfile::batteryHeight) {
      // The bar sits inside the body with a white gap all round (rickyBatteryIcons.h);
-@@ -213,6 +215,7 @@
+@@ -213,7 +216,10 @@
  void BaseTheme::drawBatteryLeft(const GfxRenderer& renderer, Rect rect, const bool showPercentage) const {
    // Left aligned: icon on left, percentage on right (reader mode)
    const uint16_t percentage = powerManager.getBatteryPercentage();
+-  const int y = rect.y + (UiHighDpiProfile::enabled ? 8 : 6);
 +  if (percentage > 100) return;  // Initial telemetry pending: do not invent a level or label.
-   const int y = rect.y + (UiHighDpiProfile::enabled ? 8 : 6);
++  const int y = UiHighDpiProfile::enabled
++                    ? ricky::battery::iconTop(renderer, STATUS_NUMERIC_FONT_ID, rect.y, rect.height)
++                    : rect.y + 6;
  
    if (showPercentage) {
-@@ -261,6 +264,7 @@
+     const auto percentageText = std::to_string(percentage) + "%";
+@@ -261,8 +267,11 @@
  void BaseTheme::drawBatteryRight(const GfxRenderer& renderer, Rect rect, const bool showPercentage,
                                   const int numericFontId) const {
    const uint16_t percentage = powerManager.getBatteryPercentage();
+-  // NotoSans 12 digits and the cropped battery share their visible center at this offset.
+-  const int y = rect.y + (UiHighDpiProfile::enabled ? 8 : 6);
 +  if (percentage > 100) return;
-   // NotoSans 12 digits and the cropped battery share their visible center at this offset.
-   const int y = rect.y + (UiHighDpiProfile::enabled ? 8 : 6);
++  // Align the visible numeric ink, rather than the font's line box/leading.
++  const int y = UiHighDpiProfile::enabled
++                    ? ricky::battery::iconTop(renderer, numericFontId, rect.y, rect.height)
++                    : rect.y + 6;
    const int gap = UiHighDpiProfile::enabled ? UiHighDpiProfile::controlGap : batteryPercentSpacing;
-@@ -561,14 +565,16 @@
+ 
+   if (showPercentage) {
+@@ -561,14 +570,16 @@
    // (passive frames), while the uiScale FONT_SMALL is for list subtitles.
    status.battery.text.font = freeink::ui::GfxRendererTarget::FONT_LABEL;
  
@@ -366604,7 +366996,7 @@
      snprintf(percentText, sizeof(percentText), "%u%%", static_cast<unsigned>(percentage));
      status.battery.label = percentText;
    }
-@@ -1139,8 +1145,12 @@
+@@ -1139,8 +1150,12 @@
    const int right = safe.x + safe.width - ds::layout::kReaderChromeInset;
    if (right <= left) return;
    const GfxRenderer::ClipScope clip(renderer, safe.x, safe.y, safe.width, safe.height);
@@ -366618,7 +367010,7 @@
      int titleLeft = left, titleRight = right;
      // Retain clock visibility/12-hour policy. Its old side setting remains
      // meaningful: a right clock precedes the battery, a left clock leads.
-@@ -1172,12 +1182,12 @@
+@@ -1172,12 +1187,12 @@
      if (title && *title && titleRight > titleLeft) {
        RickyDesignUi::secondaryText(renderer,
                                     {static_cast<int16_t>(titleLeft), static_cast<int16_t>(y),
@@ -366633,7 +367025,7 @@
      int counterLeft = left;
      if (bleinput::isConnected()) {
        drawBluetoothStatusIcon(renderer, counterLeft, textY + 4);
-@@ -1192,7 +1202,7 @@
+@@ -1192,7 +1207,7 @@
        snprintf(pages, sizeof(pages), "%s%d / %d", estimated ? "~" : "", currentPage, pageCount);
        RickyDesignUi::secondaryText(renderer,
                                     {static_cast<int16_t>(counterLeft), static_cast<int16_t>(textY),
@@ -366642,7 +367034,7 @@
                                     pages, RickyDesignUi::CAPTION);
      }
      if (sb.showBookProgressPercent) {
-@@ -1200,7 +1210,7 @@
+@@ -1200,7 +1215,7 @@
        snprintf(percent, sizeof(percent), "%.0f%%", std::clamp(bookProgress, 0.0f, 100.0f));
        RickyDesignUi::secondaryText(renderer,
                                     {static_cast<int16_t>(left), static_cast<int16_t>(textY),
@@ -366651,7 +367043,7 @@
                                     percent, RickyDesignUi::CAPTION, false, freeink::ui::TextAlign::Right);
      }
    }
-@@ -1213,9 +1223,7 @@
+@@ -1213,9 +1228,7 @@
      RickyDesignUi::progress(
          renderer,
          {static_cast<int16_t>(left),
@@ -366662,7 +367054,7 @@
           static_cast<int16_t>(right - left), static_cast<int16_t>(height)},
          percent);
    }
-@@ -1437,7 +1445,7 @@
+@@ -1437,7 +1450,7 @@
  }
  
  void BaseTheme::drawOptionPopup(const GfxRenderer& renderer, const char* title, const std::vector<std::string>& options,

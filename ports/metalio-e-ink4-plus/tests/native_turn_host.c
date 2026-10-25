@@ -338,7 +338,43 @@ static void exercise_paper_turn(void) {
     real_wave=false;
     puts("reading paper: real waveform x 256 pairs x 3 styles x 4 orientations; preserved erase and ordinary fallback PASS");
 }
+static void exercise_ui_ink_finish(void) {
+    my_waveform_init();
+    const EpdWaveformPhases* wave=NULL;
+    for(int i=0;i<MY_WAVEFORM.num_modes;i++)
+        if(MY_WAVEFORM.mode_data[i]->type==MY_MODE_UI_TURN)
+            wave=MY_WAVEFORM.mode_data[i]->range_data[0];
+    assert(wave && wave->phases==37);
+    real_wave=true;
+    uint8_t original[37*1024],adjusted[37*1024];
+    for(int tick=0;tick<37;tick++)build(original+tick*1024,wave,tick);
+    memcpy(adjusted,original,sizeof(original));
+    ricky_ui_lock_completion(adjusted,37);
+    for(int pair=0;pair<256;pair++) {
+        int before[37],after[37],a=0,b=0,last=-1;
+        for(int tick=0;tick<37;tick++) {
+            int old=original[tick*1024+pair*4],now=adjusted[tick*1024+pair*4];
+            if(old)before[a++]=old;
+            if(now){after[b++]=now;last=tick;}
+        }
+        assert(a==b && memcmp(before,after,(size_t)a*sizeof(int))==0);
+        if(b) assert(last==((pair>>4)==0?29:33));
+        if((pair>>4)==(pair&15))assert(!b); // retained cells remain HOLD
+        // Full sequence, including internal HOLDs, shifts without pulse edits.
+        int first=0,end=36;
+        while(first<37 && !original[first*1024+pair*4])first++;
+        while(end>=first && !original[end*1024+pair*4])end--;
+        if(first<37) {
+            int shift=((pair>>4)==0?29:33)-end;
+            for(int tick=first;tick<=end;tick++)
+                assert(original[tick*1024+pair*4]==adjusted[(tick+shift)*1024+pair*4]);
+        }
+    }
+    real_wave=false;
+    puts("UI black finish: actual 256 transitions, pulse counts/order/internal HOLDs preserved, black tail 7 PASS");
+}
 int main(void) {
+    exercise_ui_ink_finish();
     exercise_text_finish();
     exercise_paper_turn();
     exercise_ripple();

@@ -205,6 +205,11 @@ struct GfxRenderer {
  void drawText(int,int,int,const char* s) const {text=s;}
  int getTextWidth(int,const char* s) const {return std::string(s).size()*10;}
 };
+// Actual font geometry is exercised by test_plus_battery_alignment.py. This
+// fixture isolates telemetry labels (pending, real zero and full) from layout.
+namespace ricky::battery {
+inline int iconTop(const GfxRenderer&,int,int textY,int) {return textY+8;}
+}
 struct Power {uint16_t percent=101;uint16_t getBatteryPercentage(){return percent;}} powerManager;
 struct BaseTheme {
  static constexpr int STATUS_NUMERIC_FONT_ID=1,batteryPercentSpacing=4;

@@ -43,7 +43,12 @@ static void ricky_ui_lock_completion(uint8_t* bank, int phases) {
         if (last < 0) continue; // unchanged/HOLD-only transitions stay inert
         // Retain the calibrated three final HOLD phases for settling; do not
         // trade those for an earlier animation. Unexpected tables stay as-is.
-        const int shift = phases - 4 - last;
+        // Plus UI uses the accepted reader's black-ink settling interval:
+        // pure black lands four ticks before gray edges (seven final HOLDs).
+        // Preserve every pulse and internal HOLD; do not add a refresh/phase.
+        const int to = pair >> 4;
+        const int finish = phases - (to == 0 ? 8 : 4);
+        const int shift = finish - last;
         if (shift <= 0) continue;
         for (int tick = phases - 1; tick >= 0; --tick) {
             uint32_t action = 0;

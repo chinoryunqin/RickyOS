@@ -28,6 +28,14 @@
 #define MY_TRIM_SAT_CUT 5
 #define MY_TRIM_WHITE_SAT_CUT 0
 #define MY_TRIM_HOLD 3
+// UI-only optical experiment: restore part of the five discarded black
+// saturation phases. Reader tables are copied BEFORE this adjustment.
+#ifndef RICKYOS_PLUS_UI_BLACK_RESTORE_PHASES
+#define RICKYOS_PLUS_UI_BLACK_RESTORE_PHASES 2
+#endif
+#if RICKYOS_PLUS_UI_BLACK_RESTORE_PHASES < 0 || RICKYOS_PLUS_UI_BLACK_RESTORE_PHASES > MY_TRIM_SAT_CUT
+#error "UI black restoration must remain within the original saturation margin"
+#endif
 // A normal layout build must not silently include the unaccepted short-waveform
 // experiment. Keep it opt-in, and retain every changing-pixel pulse by default.
 #ifndef RICKYOS_PLUS_READER_SHORT_WAVEFORM
@@ -268,6 +276,30 @@ static void ui_turn_build(void) {
     }
 }
 
+static void ui_restore_black_margin(void) {
+    // Only changing pixels whose final target is pure black. Do not touch
+    // unchanged cells, gray antialias edges, white erases or reading/images.
+    // No added scan: replace trailing HOLD within this existing 37-phase bank,
+    // leaving at least the calibrated three settling phases. Never exceed the
+    // original full GL16 table's darkening count for the same transition.
+    for (int from = 1; from < 16; ++from) {
+        int original_dark = 0, current_dark = 0, last = -1;
+        for (int f = 0; f < MY_FULL_GL16_FRAMES; ++f)
+            original_dark += lut_get(my_gl_25_0_data, f, 0, from) == 1;
+        for (int f = 0; f < MY_UI_TURN_FRAMES; ++f) {
+            const int action = lut_get((const uint8_t (*)[16][4])s_ui_turn_data, f, 0, from);
+            current_dark += action == 1;
+            if (action) last = f;
+        }
+        if (last < 0) continue;
+        const int available = MY_UI_TURN_FRAMES - MY_TRIM_HOLD - last - 1;
+        int restore = original_dark - current_dark;
+        if (restore > RICKYOS_PLUS_UI_BLACK_RESTORE_PHASES) restore = RICKYOS_PLUS_UI_BLACK_RESTORE_PHASES;
+        if (restore > available) restore = available;
+        for (int f = 1; f <= restore; ++f) lut_or(s_ui_turn_data, last + f, 0, from, 1);
+    }
+}
+
 void my_waveform_init(void) {
     complete_du_build();
     ui_turn_build();
@@ -340,6 +372,8 @@ void my_waveform_init(void) {
         lut_or(s_paper_turn_data, f, 0, 0, 2);
         lut_or(s_paper_turn_data, f + MY_READER_TURN_PULSE, 0, 0, 1);
     }
+    // Keep every reader/paper/image table byte-identical to the accepted build.
+    ui_restore_black_margin();
     ESP_LOGD(TAG, "reader GL16=%d (short experiment=%d)",
              MY_READER_GL16_FRAMES, RICKYOS_PLUS_READER_SHORT_WAVEFORM);
 }

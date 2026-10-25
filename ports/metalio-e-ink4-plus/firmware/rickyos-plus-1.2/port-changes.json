@@ -280,7 +280,7 @@
     {
       "path": "lib/GfxRenderer/GfxRenderer.cpp",
       "baseline_sha256": "d9bb2737f8a0da787c6e8b956410d1aeee92e58d6cb87f80eb776f4bba3c4075",
-      "ported_sha256": "e136f01c64f81939dcac355da163efe41a9da44e9446150e08d78d0a3bb74e95"
+      "ported_sha256": "e834d7cb74e879e204efdf8e18b838635df92d0aa99bd49bd1db9df4b92859e6"
     },
     {
       "path": "lib/GfxRenderer/GfxRenderer.h",
@@ -290,12 +290,12 @@
     {
       "path": "lib/I18n/translations/chinese.yaml",
       "baseline_sha256": "021ec5b9e5880155fea752af9c60ce83a259dd69131f9bd12ffe0ca59e3366bd",
-      "ported_sha256": "95f4aa7537fb4c345379ec3b145a74c22c8e01180e1200c283994030c1dcb1af"
+      "ported_sha256": "aa673622913c588c908af5ed8c46123393893b003ff35032f20b45b8dba4f34e"
     },
     {
       "path": "lib/I18n/translations/english.yaml",
       "baseline_sha256": "85a4d226f1400f6a185759420c63ecff5f81eeb3722afd66c312d4aec6bcb315",
-      "ported_sha256": "c4233b2429ec983418e369a5992fbe2b7d9701bd9365abed3026b5b0086cfec8"
+      "ported_sha256": "76a66ae6436a84a4c2207740877a4d38c529327924da6047f0c3b64404bb61bf"
     },
     {
       "path": "lib/JpegToBmpConverter/JpegToBmpConverter.cpp",
@@ -498,6 +498,11 @@
       "ported_sha256": "bc16a09ed7913f208a7aa755dd909793c12205118dbf6df8bb3d7e4277c0e3d4"
     },
     {
+      "path": "scripts/build_rickyos_page_icons.cjs",
+      "baseline_sha256": "ded0860bbebf3c65e2ed28a23515204e91f3bab5a6f2cd77a8353c7029aab1a0",
+      "ported_sha256": "4d112f65496592dd5751686bd3727834667d9e4a59a0a7fa027d4f68a0d85731"
+    },
+    {
       "path": "scripts/tests/test_reader_page_cache.py",
       "baseline_sha256": "7153d307adee5a6960f252e680077353bb32ef22105d7cd5911554b492602b1e",
       "ported_sha256": "201b519fd10ed1a669297456c10fc1cc8d15ff643c6a14121a983fe5f390cc20"
@@ -506,6 +511,11 @@
       "path": "scripts/tests/test_rickyos_app_profile.py",
       "baseline_sha256": "dcea506c3ba494d742ca22a63a8af5823e296d723d415f42ca2dbd68b54c712d",
       "ported_sha256": "7c59000e6852cb1ba53d405d58d000393e5ad735afaf8e4fb41e11de63c3fdac"
+    },
+    {
+      "path": "scripts/tests/test_rickyos_interior_ui.py",
+      "baseline_sha256": "b74d60e8f83e96750320175d3fff6bef3fd407a87207c362f9995763b9b38c6c",
+      "ported_sha256": "14663a5f957de0ea9beb97b1f2ac0432807e72529946e66ee36129c1c40e7c62"
     },
     {
       "path": "src/AppVisibility.h",
@@ -828,6 +838,16 @@
       "ported_sha256": "ca0bdf69a731cab15a1fddcb8a86de2044e0ed5e565ddc4b8d5e026c6fe9429e"
     },
     {
+      "path": "src/activities/reader/EpubReaderMenuActivity.cpp",
+      "baseline_sha256": "10f81dc59a4993bdc732321fa65bf70c86f26d6add5af9bd4c4d9c1b9ad30804",
+      "ported_sha256": "f212348617b2416abec8cbf617b23b674d6c6c1d365500cd816db05c3774e2fb"
+    },
+    {
+      "path": "src/activities/reader/EpubReaderMenuActivity.h",
+      "baseline_sha256": "4203d66954b8a513fac86c3d9fc4ca33fbe0b4776f64886635e235e920a0ed1c",
+      "ported_sha256": "4c8c7263662d8aee7b1071abd36ae66c7efc6b89201c356b9ecd0ec13c4bc5e6"
+    },
+    {
       "path": "src/activities/reader/NativeTurnRequest.h",
       "baseline_sha256": null,
       "ported_sha256": "c71be08e82bda8adcb1b82a0c2ed826212d95975876a34a95f8db5515bc821ec"
@@ -841,6 +861,11 @@
       "path": "src/activities/reader/ReaderRefresh.h",
       "baseline_sha256": "4c9018d2057078d2620ee6412403da868a2e4a9a52c31ef0c20bf4c06a3f1697",
       "ported_sha256": "c3f827b7bcb68cc0860ab5a8513d82f2534f29cbbe521f28b724c0326b533e51"
+    },
+    {
+      "path": "src/activities/reader/ReaderUtils.h",
+      "baseline_sha256": "efe1b606f9e3e1dd33a990130104a3831b94fa29cc4ae185840bd610f4595052",
+      "ported_sha256": "5d0a90b8970fbdd6cf56f5073ea9352d84a8d803dc30f0707d98c339c73ef369"
     },
     {
       "path": "src/activities/settings/ClockSyncActivity.cpp",
@@ -885,7 +910,7 @@
     {
       "path": "src/activities/settings/SettingsActivity.cpp",
       "baseline_sha256": "772d10b0d827b2760a4abcfec811feb9cc741274dd505243a5233676bc680391",
-      "ported_sha256": "92b708aecf7e005b5ee13ad9c076993814191e00bae6ee7a8fdcf062f23a3dbc"
+      "ported_sha256": "1d3f3199f6c7b52f05fedb53d733bfb4f80cae126a1aea962fb4b545a0e7a3e4"
     },
     {
       "path": "src/activities/util/FrontlightPanelActivity.cpp",
@@ -908,6 +933,11 @@
       "ported_sha256": "849a1764b36e83bfc03d035e94ce78e8bf4d8dc2cf04b3456fded804df9ecad6"
     },
     {
+      "path": "src/components/BatteryStatusLayout.h",
+      "baseline_sha256": null,
+      "ported_sha256": "4f003ba2f1f3a64c772e94fd8d62f06b3a2f47637ccee359aae0a61ad1c241aa"
+    },
+    {
       "path": "src/components/OptionPopup.h",
       "baseline_sha256": "6eac94c75a2a250fcc759c91100c9aa52b0c51c611b6f5919a3ad590acd3f8b5",
       "ported_sha256": "4fb05269ef9e0d341cd2f0970abace7aa5d0189420ffb2cf92bee6bcc65f0d25"
@@ -915,7 +945,7 @@
     {
       "path": "src/components/RickyDesignTokens.h",
       "baseline_sha256": "d59af1ca42d6ae6d74732304d67ba45bbf23bcc382760403d6ca7c67ceb5278b",
-      "ported_sha256": "30c1dce733099f5bfc71af8b7ff3d65c9ea2863b50286aeff43316f04f99695f"
+      "ported_sha256": "2a6bfbbc4c0316fe48f44f2010a994dc1d9c5af2de3abf14de1e01a1ef18d926"
     },
     {
       "path": "src/components/RickyDesignUi.h",
@@ -938,6 +968,16 @@
       "ported_sha256": "18a02d97fc1d62882ff3979c1b4373a6c4d53538fa81bc223107f83ed3406915"
     },
     {
+      "path": "src/components/RickyReaderMenuLayout.h",
+      "baseline_sha256": "a83890eca3f01b59dabaa69b50d0b7d3b5c62133c0fd0331c9d8999f12dbd4d6",
+      "ported_sha256": "e8523aa28bb53125b1bee72512e1057e959a2c1d18f1a9e7fec1e02e89cb3331"
+    },
+    {
+      "path": "src/components/RickyRowList.h",
+      "baseline_sha256": "ab0b31a20b44ed39615b921c73fb64aa84ce51b75f06ecfa849cfc7721e6db84",
+      "ported_sha256": "2a996cc5a5425f1b36de5ac24a661cab2eb8a127ca89ce92826d594f77635559"
+    },
+    {
       "path": "src/components/UITheme.cpp",
       "baseline_sha256": "8229fe954cb82d346c6297657a2b597128379b71bf5e5e5b9c38ffac84aab2aa",
       "ported_sha256": "42e4e6263e20d803363bc9235a2528bbe4d570a132ed79aff2c23efe61c163c9"
@@ -948,9 +988,19 @@
       "ported_sha256": "c28296020b5d04a78d3687e7bcf8e2ce9e1f80edbd817081ac2349faa216dada"
     },
     {
+      "path": "src/components/icons/rickyAaIcons.h",
+      "baseline_sha256": "aca9684a0ba70f68288545d8d76373cd90ec68e11d8f90fd3d9f2445354a7d25",
+      "ported_sha256": "efa03de935d539e6eebfc830feac75ed8ada30db267b610156daf5a21cdfb16d"
+    },
+    {
       "path": "src/components/icons/rickyAppIcons.h",
       "baseline_sha256": "b64188539b8276460b41f143da2dbe5965116b87472ea288d1fa967784cdd602",
       "ported_sha256": "5049252f250c8c9e673e638eb68c3a30e7a608acbad12ba360e24bc02c327b82"
+    },
+    {
+      "path": "src/components/icons/rickyPageIcons.h",
+      "baseline_sha256": "c27a38304b40c5616e51ed99286ca2dcd164bca3a0677389508ca5755f6cdbff",
+      "ported_sha256": "1d1b161daa7c7461b5ad5a0f00c123e0ced2add113b528089540feb53a920de1"
     },
     {
       "path": "src/components/icons/sources/rickyos/apps/gallery.svg",
@@ -970,7 +1020,7 @@
     {
       "path": "src/components/themes/BaseTheme.cpp",
       "baseline_sha256": "e54b5b4ab7ec37346bf3d19929021e05a03408ff6cd347efc9fe74a317ae8f79",
-      "ported_sha256": "47b1212da0e4187feb18681efbf3d6ab002bdcb7b5264395be4bce83e22c45d3"
+      "ported_sha256": "9d8eba20f2b3f4d0bd9b5af17074e003cb8a5bfadb6b2ee49f323a1379ec465e"
     },
     {
       "path": "src/components/themes/BaseTheme.h",

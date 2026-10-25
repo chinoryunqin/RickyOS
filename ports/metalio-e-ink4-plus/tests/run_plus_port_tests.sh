@@ -32,6 +32,10 @@ python3 tests/test_plus_clock_owner.py
 python3 tests/test_plus_clock_radio.py
 python3 tests/test_plus_net_alloc_trace.py
 python3 tests/test_plus_font_network_auto.py
+python3 tests/test_plus_wifi_security.py
+python3 tests/test_plus_radio_auto.py
+python3 tests/test_plus_private_network_profile.py
+python3 tests/test_plus_wpa3_report.py
 
 clang++ -std=c++17 -Wall -Wextra -Werror tests/test_plus_http_date.cpp -o .local/test_plus_http_date
 .local/test_plus_http_date
@@ -53,6 +57,12 @@ python3 tests/test_plus_haptic_input.py
 python3 tests/test_plus_recorder.py
 python3 tests/test_plus_recorder_ui.py
 python3 tests/test_plus_regional_gray.py
+python3 tests/test_plus_battery_alignment.py
+python3 tests/test_plus_ui_contrast.py
+python3 tests/test_plus_ui_text_roles.py
+python3 tests/test_plus_ui_black_margin.py
+python3 tests/test_plus_quiet_settings.py
+python3 tests/test_plus_holding_hand.py
 python3 tests/test_native_page_turn.py
 python3 tests/test_main_tab_motion.py
 python3 tests/test_plus_main_tab_pipeline.py
