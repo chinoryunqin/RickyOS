@@ -3,6 +3,7 @@ from pathlib import Path
 import sys
 
 expected = {
+    'CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL': '2048',
     'CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP': '1',
     'CONFIG_ESP_WIFI_STATIC_TX_BUFFER': '1',
     'CONFIG_ESP_WIFI_STATIC_TX_BUFFER_NUM': '16',
@@ -21,7 +22,7 @@ def check(path):
         raise SystemExit('Stale Plus network config: ' + ', '.join(missing) +
                          '. Reconfigure from sdkconfig.defaults using RICKYOS_SDKCONFIG and '
                          'RICKYOS_SDKCONFIG_DEFAULTS; do not flash this build.')
-    print('Configured Plus network PSRAM preference and bounded static TX buffers verified')
+    print('Configured Plus ordinary/internal allocation preference and network buffer defaults verified')
 
 
 if __name__ == '__main__':

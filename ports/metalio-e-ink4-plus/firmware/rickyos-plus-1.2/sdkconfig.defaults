@@ -9,6 +9,11 @@ CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_SPIRAM_SPEED_200M=y
 CONFIG_SPIRAM_USE_MALLOC=y
 CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=65536
+# Ordinary UI allocations above 2 KiB prefer PSRAM. The SDK's 16 KiB default
+# leaves too little internal/DMA memory beside retained Settings/font screens.
+# Explicit INTERNAL/DMA allocations keep their capability requirements.
+# See docs/plus-network-allocation-20261025.md for controlled device samples.
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=2048
 # S31 supports Wi-Fi/lwIP control and packet allocations in PSRAM. Keep DMA
 # buffers internal and bounded; concurrent browser sockets must not exhaust
 # the same internal heap used by TCP sends. See plus-web-response-20261020.md.

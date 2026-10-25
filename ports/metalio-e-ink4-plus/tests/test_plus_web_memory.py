@@ -23,4 +23,12 @@ with tempfile.TemporaryDirectory() as temporary:
             assert key in str(error)
         else:
             raise AssertionError('Stale configuration passed: ' + key)
+    header.write_text('\n'.join(f'#define {key} {16384 if key == "CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL" else value}'
+                                for key, value in module.expected.items()))
+    try:
+        module.check(header)
+    except SystemExit as error:
+        assert 'CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL' in str(error)
+    else:
+        raise AssertionError('Legacy 16 KiB internal preference passed')
 print('Plus web memory: PSRAM preference, bounded DMA TX pool and stale configured-build rejection passed')
