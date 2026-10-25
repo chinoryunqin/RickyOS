@@ -11,6 +11,8 @@ idf_component_register(
   "${APP_ROOT}/src/activities/apps/reading-stats/RickyMonthReportActivity.cpp"
   "${APP_ROOT}/src/activities/apps/reading-stats/RickyBadgesActivity.cpp"
   "port/LoggingProxy.cpp"
+  "port/PlusNetAllocTrace.cpp"
+  "port/PlusFontNetworkAuto.cpp"
   "port/KindleDocument.cpp"
   "port/KindleImport.cpp"
   "${APP_ROOT}/lib/Txt/TxtEncoding.cpp"

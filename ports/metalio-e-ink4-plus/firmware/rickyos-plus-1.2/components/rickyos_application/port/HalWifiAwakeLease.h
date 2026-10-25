@@ -1,4 +1,5 @@
 #pragma once
+#include "PlusNetAllocTrace.h"
 
 #include <Logging.h>
 #include <esp_wifi.h>
@@ -88,6 +89,9 @@ class HalWifiAwakeLease {
 #endif
     }
     xSemaphoreGive(s.mutex);
+#if RICKYOS_PLUS_NET_ALLOC_TRACE
+    plusNetAllocTraceSnapshot("lease-acquire");
+#endif
     return true;
   }
 
@@ -118,6 +122,9 @@ class HalWifiAwakeLease {
       }
     }
     xSemaphoreGive(s.mutex);
+#if RICKYOS_PLUS_NET_ALLOC_TRACE
+    plusNetAllocTraceSnapshot("lease-release");
+#endif
   }
 
   static unsigned activeCount() {

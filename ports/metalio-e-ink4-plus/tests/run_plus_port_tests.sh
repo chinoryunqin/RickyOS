@@ -30,6 +30,8 @@ clang++ -std=c++20 -Wall -Wextra -Werror -Wno-missing-field-initializers -Wl,-de
 
 python3 tests/test_plus_clock_owner.py
 python3 tests/test_plus_clock_radio.py
+python3 tests/test_plus_net_alloc_trace.py
+python3 tests/test_plus_font_network_auto.py
 
 clang++ -std=c++17 -Wall -Wextra -Werror tests/test_plus_http_date.cpp -o .local/test_plus_http_date
 .local/test_plus_http_date

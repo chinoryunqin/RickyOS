@@ -570,7 +570,7 @@
     {
       "path": "src/activities/ActivityManager.h",
       "baseline_sha256": "01c40530f8ee1ae4a1cd07ba1c02d2a8c494992c72ed0bafd12c4924bf65ff80",
-      "ported_sha256": "022970f411564d80b85d68fbd2abea6c91533417c48a2cb968d44d5d4051705c"
+      "ported_sha256": "586d507d6db28330db4924205b1d86a906fb3e884ad5cabc894109bc76b322de"
     },
     {
       "path": "src/activities/MainTabMotion.h",
@@ -865,7 +865,7 @@
     {
       "path": "src/activities/settings/FontDownloadActivity.h",
       "baseline_sha256": "5b4eef1fea6533015d61ead60bb307743d2bd25e49193852966a786edb96ad99",
-      "ported_sha256": "e604acbf521a8214711cbb081172f0d4358c8ae4f041904b0bb8fb257cf595f2"
+      "ported_sha256": "dfcf99b56e9497cf614c2573afd52d6e85d397c7f8d3661f0d3cad4ecfafc3ad"
     },
     {
       "path": "src/activities/settings/HomeButtonSettingsActivity.cpp",

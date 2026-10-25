@@ -16,8 +16,22 @@
 #include <Memory.h>
 #include <WeReadClient.h>
 
+#if RICKYOS_PLUS_TCP_TRACE
 extern void plusTcpTraceBegin();
 extern void plusTcpTraceEnd();
+#endif
+
+namespace WeReadClient {
+// Existing test peer; this diagnostic only observes phase before a step. Stop
+// before renewal/login can clear or replace the device's saved account.
+struct OperationTestPeer {
+  static bool authenticationPending(const Operation& op) {
+    using Phase = Operation::Phase;
+    return op.phase_ == Phase::Renew || op.phase_ == Phase::LoginUid ||
+           op.phase_ == Phase::LoginPollWait || op.phase_ == Phase::LoginPoll;
+  }
+};
+}
 
 namespace {
 constexpr char cosHost[] = "rickyos-1309217881.cos.ap-guangzhou.myqcloud.com";
@@ -85,7 +99,9 @@ bool download(const Download& item) {
     bool cancel = false;
     bool onlyCos = true;
   } context{millis()};
+#if RICKYOS_PLUS_TCP_TRACE
   plusTcpTraceBegin();
+#endif
   const auto result = item.index ? HttpDownloader::downloadIndex(item.url, path)
       : HttpDownloader::downloadToFile(item.url, path,
           [&context](size_t bytes, size_t total) {
@@ -101,7 +117,9 @@ bool download(const Download& item) {
             value->onlyCos = value->onlyCos && host && std::strcmp(host, cosHost) == 0;
           }, &context);
   const uint32_t elapsed = millis() - context.started;
+#if RICKYOS_PLUS_TCP_TRACE
   plusTcpTraceEnd();
+#endif
   uint32_t bytes = 0, crc = 0xffffffffu;
   bool readOk = false;
   {
@@ -165,6 +183,70 @@ bool weread(unsigned round) {
           powerBefore, powerAfter);
   return ok;
 }
+}
+
+// Narrow entry for the finite font-page comparison. Reuse the production
+// download/SD readback/CRC/owned-temp cleanup above; no WeRead operation or
+// other acceptance scenario is run by this entry.
+bool plusNetworkFontBodyOnConnected() { return download(font); }
+
+// 0 = failed, 1 = authenticated shelf sync completed, 2 = login is required.
+// No progress upload, login polling, logout, account switch or book download.
+int plusNetworkWeReadOnConnected(unsigned round) {
+  WeReadStore::Session saved;
+  if (!WeReadStore::loadSession(saved) || !saved.valid()) {
+    LOG_INF("ACCEPT", "weread_probe round=%u result=2 reason=login_required", round);
+    return 2;
+  }
+  auto operation = makeUniqueNoThrow<WeReadClient::Operation>();
+  if (!operation) {
+    LOG_ERR("ACCEPT", "weread_probe round=%u result=0 reason=operation_oom", round);
+    return 0;
+  }
+  using Event = WeReadClient::Operation::Event;
+  auto run = [&](WeReadClient::Operation::Kind kind, const WeReadStore::ShelfRecord* book,
+                 Event expected, const char* stage) {
+    struct Budget { uint32_t started; } budget{millis()};
+    WeReadHttpClient::AbortScope abort(
+        [](void* state) { return millis() - static_cast<Budget*>(state)->started >= 60000; }, &budget);
+    Event event = Event::None;
+    bool authPending = false;
+    if (operation->begin(kind, book)) {
+      while (millis() - budget.started < 60000) {
+        if (WeReadClient::OperationTestPeer::authenticationPending(*operation)) {
+          authPending = true;
+          break;
+        }
+        event = operation->step();
+        if (event == expected || event == Event::Failed || event == Event::Cancelled || event == Event::QrReady) break;
+        delay(10);
+      }
+    }
+    const int result = authPending || event == Event::QrReady ? 2 : (event == expected ? 1 : 0);
+    LOG_INF("ACCEPT", "weread_probe round=%u stage=%s result=%d event=%u error=%u ms=%lu", round, stage,
+            result, unsigned(event), unsigned(operation->error()),
+            static_cast<unsigned long>(millis() - budget.started));
+    if (operation->active()) operation->cancel();
+    return result;
+  };
+  const int result = run(WeReadClient::Operation::Kind::Sync, nullptr, Event::Complete, "shelf");
+  if (result != 1) return result;
+  uint32_t count = 0;
+  WeReadStore::ShelfRecord first;
+  bool readable = false, haveBook = false;
+  {
+    HalFile file;
+    readable = WeReadStore::openShelf(file, count);
+    haveBook = readable && count && WeReadStore::readShelfRecord(file, 0, first);
+  }
+  LOG_INF("ACCEPT", "weread_probe round=%u stage=cache readable=%u count=%lu", round, unsigned(readable),
+          static_cast<unsigned long>(count));
+  if (!readable || (count && !haveBook)) return 0;
+  if (haveBook) {
+    const int detail = run(WeReadClient::Operation::Kind::Detail, &first, Event::DetailReady, "detail");
+    if (detail != 1) return detail;
+  }
+  return 1;
 }
 
 void plusNetworkAcceptanceOnConnected() {

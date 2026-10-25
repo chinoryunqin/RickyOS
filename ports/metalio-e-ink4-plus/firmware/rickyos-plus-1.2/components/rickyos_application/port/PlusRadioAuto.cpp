@@ -9,11 +9,14 @@
 
 #include "HalPowerManager.h"
 #include "HalWifiDiagnostics.h"
+#include "PlusNetAllocTrace.h"
 #include "NetworkStartup.h"
 #include "WifiCredentialStore.h"
 
 #if RICKYOS_PLUS_OTA_SELFTEST
 extern void plusOtaSelfTestOnConnected();
+#elif RICKYOS_PLUS_NET_AUTORUN
+extern void plusFontNetworkAutoRun(GfxRenderer& renderer);
 #else
 extern void plusRadioCompareOnConnected();
 #endif
@@ -24,7 +27,17 @@ void plusRadioAutoStart(GfxRenderer& renderer) {
     // Release this lock before the comparison obtains its own performance lock.
     HalPowerManager::Lock performance;
     plusWifiDiagnosticsBegin();
+#if RICKYOS_PLUS_NET_ALLOC_TRACE
+    plusNetAllocTraceSnapshot("autorun-bootstrap");
+#endif
     WIFI_STORE.loadFromFile();
+#if RICKYOS_PLUS_NET_AUTORUN
+    const auto lastNetwork = WIFI_STORE.getLastConnectedSsid();
+    if (lastNetwork.empty()) {
+      LOG_ERR("FONTNETAUTO", "No previous network; automatic comparison not started");
+      return;
+    }
+#endif
     const size_t saved = std::min(WIFI_STORE.getCredentialCount(), size_t(8));
     LOG_INF("RADIOAUTO", "begin saved_profiles=%u", static_cast<unsigned>(saved));
     struct Candidate { size_t profile; int32_t rssi; };
@@ -47,6 +60,9 @@ void plusRadioAutoStart(GfxRenderer& renderer) {
       for (size_t i = 0; i < saved; ++i) {
         const auto name = WIFI_STORE.getSsidAt(i);
         if (!name) continue;
+#if RICKYOS_PLUS_NET_AUTORUN
+        if (*name != lastNetwork) continue;  // Do not silently compare a different saved network.
+#endif
         int32_t best = -127;
         for (int ap = 0; ap < scan; ++ap)
           if (*name == WiFi.SSID(ap).c_str()) best = std::max(best, WiFi.RSSI(ap));
@@ -78,6 +94,8 @@ void plusRadioAutoStart(GfxRenderer& renderer) {
     LOG_INF("RADIOAUTO", "default_sta_route=%d", route);
 #if RICKYOS_PLUS_OTA_SELFTEST
     if (route) plusOtaSelfTestOnConnected();
+#elif RICKYOS_PLUS_NET_AUTORUN
+    if (route) plusFontNetworkAutoRun(renderer);
 #else
     if (route) plusRadioCompareOnConnected();
 #endif

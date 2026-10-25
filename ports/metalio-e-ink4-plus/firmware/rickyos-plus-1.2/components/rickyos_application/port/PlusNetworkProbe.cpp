@@ -1,4 +1,5 @@
 #include <PlusNetworkProbe.h>
+#include "PlusNetAllocTrace.h"
 #include <Arduino.h>
 #include <Logging.h>
 #include <WiFi.h>
@@ -42,6 +43,9 @@ void start(Probe& probe, const char* address, unsigned port, const uint8_t* payl
 }
 
 void metalioPlusProbeNetwork() {
+#if RICKYOS_PLUS_NET_ALLOC_TRACE
+  plusNetAllocTraceSnapshot("probe-begin");
+#endif
   // Diagnostic only: no clock changes, DNS replacement or credential output.
   // Stack buffers; lwIP sockets own bounded temporary buffers and all close on return.
   char local[16], gateway[16], dns[16], mask[16];
@@ -95,4 +99,7 @@ void metalioPlusProbeNetwork() {
     }
   }
   for (const auto& probe : probes) if (!probe.done) LOG_ERR("NETPROBE", "%s no response within 2200 ms", probe.name);
+#if RICKYOS_PLUS_NET_ALLOC_TRACE
+  plusNetAllocTraceSnapshot("probe-end");
+#endif
 }

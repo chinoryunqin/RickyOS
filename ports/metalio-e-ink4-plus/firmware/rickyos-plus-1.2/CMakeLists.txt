@@ -55,6 +55,52 @@ if("$ENV{RICKYOS_PAINT_PROFILE}" STREQUAL "1")
 endif()
 
 # Explicit packet-header diagnostics; normal builds have no hooks or log code.
+if("$ENV{RICKYOS_PLUS_NET_ALLOC_TRACE}" STREQUAL "1")
+    idf_component_get_property(PLUS_NET_ALLOC_APP_LIB rickyos_application COMPONENT_LIB)
+    target_compile_definitions(${PLUS_NET_ALLOC_APP_LIB} PRIVATE RICKYOS_PLUS_NET_ALLOC_TRACE=1)
+    target_link_options(${CMAKE_PROJECT_NAME}.elf PRIVATE
+        "-Wl,--wrap=pbuf_alloc,--wrap=esp_netif_transmit_wrap,--wrap=esp_wifi_internal_tx,--wrap=esp_wifi_internal_tx_by_ref"
+        "-Wl,-u,__wrap_pbuf_alloc,-u,__wrap_esp_netif_transmit_wrap,-u,__wrap_esp_wifi_internal_tx,-u,__wrap_esp_wifi_internal_tx_by_ref"
+        "-Wl,--wrap=heap_caps_malloc,--wrap=heap_caps_calloc,--wrap=heap_caps_realloc"
+        "-Wl,-u,__wrap_heap_caps_malloc,-u,__wrap_heap_caps_calloc,-u,__wrap_heap_caps_realloc")
+endif()
+
+# A single-factor experiment: use the SDK's copying API instead of retaining
+# a pbuf reference. Keep every radio/configuration setting and deadline intact.
+if("$ENV{RICKYOS_PLUS_NET_COPY_TX}" STREQUAL "1")
+    if(NOT "$ENV{RICKYOS_PLUS_NET_ALLOC_TRACE}" STREQUAL "1")
+        message(FATAL_ERROR "Copy-TX comparison requires allocation diagnostics")
+    endif()
+    target_compile_definitions(${PLUS_NET_ALLOC_APP_LIB} PRIVATE RICKYOS_PLUS_NET_COPY_TX=1)
+endif()
+
+if("$ENV{RICKYOS_PLUS_NET_AUTORUN}" STREQUAL "1")
+    if(NOT "$ENV{RICKYOS_PLUS_NET_ALLOC_TRACE}" STREQUAL "1")
+        message(FATAL_ERROR "Automatic font-network comparison requires allocation diagnostics")
+    endif()
+    if(NOT "$ENV{RICKYOS_PLUS_NET_COPY_TX}" STREQUAL "1")
+        message(FATAL_ERROR "Automatic A/B/A requires explicit copy-TX comparison support")
+    endif()
+    target_compile_definitions(${PLUS_NET_ALLOC_APP_LIB} PRIVATE
+        RICKYOS_PLUS_NET_AUTORUN=1 RICKYOS_PLUS_RADIO_AUTOSTART=1)
+    if("$ENV{RICKYOS_PLUS_NET_UI_AUTORUN}" STREQUAL "1")
+        target_compile_definitions(${PLUS_NET_ALLOC_APP_LIB} PRIVATE RICKYOS_PLUS_NET_UI_AUTORUN=1)
+        if("$ENV{RICKYOS_PLUS_NET_AUTORUN_FROM_READER}" STREQUAL "1")
+            target_compile_definitions(${PLUS_NET_ALLOC_APP_LIB} PRIVATE RICKYOS_PLUS_NET_AUTORUN_FROM_READER=1)
+        endif()
+    endif()
+    if("$ENV{RICKYOS_PLUS_NET_HEAP_POLICY}" STREQUAL "1")
+        target_compile_definitions(${PLUS_NET_ALLOC_APP_LIB} PRIVATE RICKYOS_PLUS_NET_HEAP_POLICY=1)
+    endif()
+    if("$ENV{RICKYOS_PLUS_NET_BODY_AUTORUN}" STREQUAL "1")
+        if(NOT "$ENV{RICKYOS_PLUS_NET_UI_AUTORUN}" STREQUAL "1" OR
+           NOT "$ENV{RICKYOS_PLUS_NETWORK_ACCEPTANCE}" STREQUAL "1")
+            message(FATAL_ERROR "Font body comparison requires UI autorun and the existing network acceptance helper")
+        endif()
+        target_compile_definitions(${PLUS_NET_ALLOC_APP_LIB} PRIVATE RICKYOS_PLUS_NET_BODY_AUTORUN=1)
+    endif()
+endif()
+
 if("$ENV{RICKYOS_PLUS_TCP_TRACE}" STREQUAL "1")
     idf_component_get_property(PLUS_APP_LIB rickyos_application COMPONENT_LIB)
     target_compile_definitions(${PLUS_APP_LIB} PRIVATE RICKYOS_PLUS_TCP_TRACE=1)

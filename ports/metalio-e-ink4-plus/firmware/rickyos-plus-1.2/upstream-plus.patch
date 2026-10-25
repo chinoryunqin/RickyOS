@@ -354998,7 +354998,17 @@
  #include "util/ScreenshotInfo.h"
  
  class Activity;    // forward declaration
-@@ -70,7 +71,8 @@
+@@ -38,6 +39,9 @@
+  */
+ class ActivityManager {
+   friend class RenderLock;
++#if RICKYOS_PLUS_NET_AUTORUN
++  friend class PlusFontNetworkAutoRunner;
++#endif
+ 
+  protected:
+   GfxRenderer& renderer;
+@@ -70,7 +74,8 @@
    TaskHandle_t renderTaskHandle = nullptr;
    static void renderTaskTrampoline(void* param);
    [[noreturn]] virtual void renderTaskLoop();
@@ -355008,7 +355018,7 @@
    bool renderDirectGray(RenderLock&& lock);
    void settleToGray(RenderLock&& lock, uint32_t generation);
  #endif
-@@ -85,7 +87,7 @@
+@@ -85,7 +90,7 @@
    // Cross-task render request flag. requestUpdate() may set it from any task;
    // loop() consumes and clears it with exchange(false).
    std::atomic<bool> requestedUpdate{false};
@@ -355017,7 +355027,7 @@
    // Unlike requestedUpdate, this survives loop() consuming the notification.
    std::atomic<uint32_t> renderRequestGeneration{0};
  #endif
-@@ -160,6 +162,9 @@
+@@ -160,6 +165,9 @@
    void goToApps();
    void goToGomoku();
    void goToCalculator();
@@ -355027,7 +355037,7 @@
    void goToStandby();
    // Side key / inactivity: Standby over whatever is open, popping back to it on close.
    void openStandby();
-@@ -174,6 +179,7 @@
+@@ -174,6 +182,7 @@
    }
    // Apps → Standby: choose what the sleeping screen shows; full-screen Standby is a row there.
    void goToStandbySettings();
@@ -364772,7 +364782,18 @@
      GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 --- a/src/activities/settings/FontDownloadActivity.h
 +++ b/src/activities/settings/FontDownloadActivity.h
-@@ -97,7 +97,9 @@
+@@ -17,6 +17,10 @@
+ #define FONT_MANIFEST_URL_STRINGIFY(x) FONT_MANIFEST_URL_STRINGIFY_INNER(x)
+ 
+ class FontDownloadActivity final : public UiListActivity {
++#if RICKYOS_PLUS_NET_AUTORUN
++  // Diagnostic runner uses the real bounded fetch/parser without installing fonts.
++  friend class PlusFontNetworkAutoRunner;
++#endif
+  public:
+   enum class Purpose : uint8_t { Manage, PromptThenManage, ReaderAutoInstall };
+   enum class StartMode : uint8_t { Normal, PreviewOnly, ResumeFontLoadError };
+@@ -97,7 +101,9 @@
    size_t currentFileTotal_ = 0;
    size_t downloadProgress_ = 0;
    size_t downloadTotal_ = 0;
@@ -364783,7 +364804,7 @@
    int downloadingFamilyIndex_ = -1;
    std::string errorMessage_;
    bool cancelRequested_ = false;
-@@ -149,6 +151,7 @@
+@@ -149,6 +155,7 @@
    void resetDownloadProgress(size_t total);
    void updateDownloadProgress(size_t completed);
    void finishDownloadProgress();
