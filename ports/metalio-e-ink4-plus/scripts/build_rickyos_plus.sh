@@ -32,7 +32,10 @@ fi
 if [[ -n "${RICKYOS_SDKCONFIG_DEFAULTS:-}" ]]; then
   PLUS_IDF_COMMAND+=(-D "SDKCONFIG_DEFAULTS=$RICKYOS_SDKCONFIG_DEFAULTS")
 fi
-IDF_TARGET=esp32s31 "${PLUS_IDF_COMMAND[@]}" reconfigure build
+IDF_TARGET=esp32s31 "${PLUS_IDF_COMMAND[@]}" reconfigure
+python3 "$TASK_ROOT/scripts/check_plus_wifi_security.py" "$BUILD_DIR/config/sdkconfig.h"
+python3 "$TASK_ROOT/scripts/check_plus_private_network_profile.py" "$BUILD_DIR/compile_commands.json"
+IDF_TARGET=esp32s31 "${PLUS_IDF_COMMAND[@]}" build
 python3 "$TASK_ROOT/scripts/check_plus_web_memory.py" "$BUILD_DIR/config/sdkconfig.h"
 # The device bootloader is IDF release/v6.1 9a97f6c5. An app built with another
 # IDF (e.g. the plain v6.1 tag) locks up in early startup, and Plus has no OTA

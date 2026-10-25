@@ -6,6 +6,7 @@ with tempfile.TemporaryDirectory() as directory:
  root=Path(directory);(root/'production.cpp').write_bytes(source.read_bytes())
  (root/'Arduino.h').write_text('#pragma once\n#include <cstdint>\ninline uint32_t now=0;inline uint32_t millis(){return now;}inline void delay(unsigned n){now+=n;}\n')
  (root/'Logging.h').write_text('#pragma once\n#define LOG_INF(...) ((void)0)\n#define LOG_ERR(...) ((void)0)\n')
+ (root/'PlusNetAllocTrace.h').write_text('#pragma once\n')
  (root/'WiFi.h').write_text('''#pragma once
 #include <string>
 #include <cassert>
@@ -57,4 +58,25 @@ int main(){GfxRenderer renderer;
 ''')
  subprocess.run(['clang++','-std=c++20','-fsanitize=address,undefined','-I'+str(root),str(root/'test.cpp'),'-o',str(root/'test')],check=True)
  subprocess.run([str(root/'test')],check=True)
+ # A private test profile must never load/fall back to saved networks, even on
+ # association failure. The actual secret-bearing header is never used here.
+ (root/'PlusPrivateNetworkProfile.h').write_text('''#pragma once
+inline bool privateConnects=true;
+static bool plusPrivateNetworkBootstrap(GfxRenderer&){connected=privateConnects;return connected;}
+''')
+ (root/'private-test.cpp').write_text('''#define RICKYOS_PLUS_RADIO_AUTOSTART 1
+#define RICKYOS_PLUS_NET_PRIVATE_PROFILE 1
+#include "production.cpp"
+inline unsigned comparisons=0;
+void plusRadioCompareOnConnected(){assert(locks==0);++comparisons;}
+int main(){GfxRenderer renderer;
+ plusRadioAutoStart(renderer);
+ assert(comparisons==1&&loads==0&&scans==0&&begins==0&&locks==0);
+ privateConnects=false;comparisons=0;plusRadioAutoStart(renderer);
+ assert(comparisons==0&&loads==0&&scans==0&&begins==0&&locks==0);
+}
+''')
+ subprocess.run(['clang++','-std=c++20','-fsanitize=address,undefined','-I'+str(root),
+                 str(root/'private-test.cpp'),'-o',str(root/'private-test')],check=True)
+ subprocess.run([str(root/'private-test')],check=True)
 print('Actual radio auto bootstrap: strongest visible saved profile, fallback, unavailable network and non-nested power locks passed')

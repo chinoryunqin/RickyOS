@@ -12,6 +12,7 @@
 #include <NetworkStartup.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
+#include <cstring>
 #if RICKYOS_PLUS_NET_HEAP_POLICY
 #include <esp_heap_caps.h>
 #include <sdkconfig.h>
@@ -127,7 +128,21 @@ class PlusFontNetworkAutoRunner {
 #endif
       const uint32_t joinStart = millis();
       const unsigned phase = (round - 1) / 4;  // Four reference, four copy, four reference again.
+#if RICKYOS_PLUS_NET_SECURITY_CHECK
+      // Exercise Arduino's production begin() builder on every round rather
+      // than replaying a driver-normalized configuration across deinit/init.
+      const bool useCopy = false;
+      const uint8_t roundProtocols = protocols;
+#elif RICKYOS_PLUS_NET_AX_COMPARE
+      // WifiSelectionActivity.cpp:601-605 pins b/g/n to work around an old HE
+      // stall. Compare only this protocol mask, keeping the original TX API.
+      const bool useCopy = false;
+      const uint8_t roundProtocols = phase == 1 ? uint8_t(protocols | WIFI_PROTOCOL_11AX)
+                                                : uint8_t(protocols & ~WIFI_PROTOCOL_11AX);
+#else
       const bool useCopy = phase == 1;
+      const uint8_t roundProtocols = protocols;
+#endif
       // Mirror normal startup's stop/reinitialize sequence; credentials remain
       // on the device stack and are not logged or changed in the SD store.
       bool joined = NetworkStartup::setMode(renderer, WIFI_STA);
@@ -136,10 +151,22 @@ class PlusFontNetworkAutoRunner {
       plusNetAllocTraceSetCopyTx(useCopy);
 #endif
       joined = joined && NetworkStartup::setMode(renderer, WIFI_STA);
+#if RICKYOS_PLUS_NET_SECURITY_CHECK
+      joined = joined && esp_wifi_set_storage(WIFI_STORAGE_RAM) == ESP_OK &&
+               esp_wifi_set_protocol(WIFI_IF_STA, roundProtocols) == ESP_OK;
+      if (joined) {
+        char ssid[sizeof(saved.sta.ssid) + 1]{};
+        char password[sizeof(saved.sta.password) + 1]{};
+        std::memcpy(ssid, saved.sta.ssid, sizeof(saved.sta.ssid));
+        std::memcpy(password, saved.sta.password, sizeof(saved.sta.password));
+        WiFi.begin(ssid, password);
+      }
+#else
       wifi_config_t current = saved;
       joined = joined && esp_wifi_set_storage(WIFI_STORAGE_RAM) == ESP_OK &&
-               esp_wifi_set_protocol(WIFI_IF_STA, protocols) == ESP_OK &&
+               esp_wifi_set_protocol(WIFI_IF_STA, roundProtocols) == ESP_OK &&
                esp_wifi_set_config(WIFI_IF_STA, &current) == ESP_OK && WiFi.reconnect();
+#endif
       while (joined && WiFi.status() != WL_CONNECTED && millis() - joinStart < 35000) delay(50);
       joined = joined && WiFi.status() == WL_CONNECTED && Network.setDefaultInterface(WiFi.STA);
       LOG_INF("FONTNETAUTO", "round=%u phase=%u copy_tx=%u joined=%u join_ms=%lu", round, phase,
@@ -147,8 +174,31 @@ class PlusFontNetworkAutoRunner {
               static_cast<unsigned long>(millis() - joinStart));
       if (!joined) {
         plusNetAllocTraceSnapshot("autorun-join-failed");
+#if (RICKYOS_PLUS_NET_AX_COMPARE || RICKYOS_PLUS_NET_SECURITY_CHECK) && RICKYOS_PLUS_NET_UI_AUTORUN
+        // Keep failed association samples and still reach the reverse b/g/n
+        // group. Otherwise one HE join failure would erase the A/B/A check.
+        uiPage.reset();
+        if (activityManager.currentActivity.get() != libraryParent) break;
+        activityManager.popActivity();
+        if (!drainTransitions()) break;
+        activityManager.requestUpdateAndWait();
+        WiFi.disconnect(true, false);
+        delay(750);
+        continue;
+#else
         break;
+#endif
       }
+      // Record the actual link security in every automatic regression run;
+      // an ordinary WPA2 connection must not be reported as a WPA3 test.
+      wifi_phy_mode_t negotiated{};
+      wifi_ap_record_t ap{};
+      const auto phyResult = esp_wifi_sta_get_negotiated_phymode(&negotiated);
+      const auto apResult = esp_wifi_sta_get_ap_info(&ap);
+      LOG_INF("FONTNETAUTO", "link round=%u phase=%u protocols=%u phy_result=%d phy=%u he20=%u ap_result=%d ap_ax=%u auth=%u",
+              round, phase, unsigned(roundProtocols), phyResult, unsigned(negotiated),
+              unsigned(phyResult == ESP_OK && negotiated == WIFI_PHY_MODE_HE20), apResult,
+              unsigned(apResult == ESP_OK && ap.phy_11ax), unsigned(apResult == ESP_OK ? ap.authmode : 255));
       // As in the UI, NTP runs while the production font fetch/parser executes.
       const bool clockStarted = halClock.requestSync();
 #if !RICKYOS_PLUS_NET_UI_AUTORUN

@@ -12,6 +12,7 @@ idf_component_register(
   "${APP_ROOT}/src/activities/apps/reading-stats/RickyBadgesActivity.cpp"
   "port/LoggingProxy.cpp"
   "port/PlusNetAllocTrace.cpp"
+  "port/PlusWifiSecurity.cpp"
   "port/PlusFontNetworkAuto.cpp"
   "port/KindleDocument.cpp"
   "port/KindleImport.cpp"

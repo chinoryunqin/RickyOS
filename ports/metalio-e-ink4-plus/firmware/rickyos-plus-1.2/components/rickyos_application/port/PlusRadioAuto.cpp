@@ -13,6 +13,10 @@
 #include "NetworkStartup.h"
 #include "WifiCredentialStore.h"
 
+#if RICKYOS_PLUS_NET_PRIVATE_PROFILE
+#include "PlusPrivateNetworkProfile.h"
+#endif
+
 #if RICKYOS_PLUS_OTA_SELFTEST
 extern void plusOtaSelfTestOnConnected();
 #elif RICKYOS_PLUS_NET_AUTORUN
@@ -30,6 +34,9 @@ void plusRadioAutoStart(GfxRenderer& renderer) {
 #if RICKYOS_PLUS_NET_ALLOC_TRACE
     plusNetAllocTraceSnapshot("autorun-bootstrap");
 #endif
+#if RICKYOS_PLUS_NET_PRIVATE_PROFILE
+    connected = plusPrivateNetworkBootstrap(renderer);
+#else
     WIFI_STORE.loadFromFile();
 #if RICKYOS_PLUS_NET_AUTORUN
     const auto lastNetwork = WIFI_STORE.getLastConnectedSsid();
@@ -88,6 +95,7 @@ void plusRadioAutoStart(GfxRenderer& renderer) {
       }
       if (!connected && round < 2) delay(5000);
     }
+#endif
   }
   if (connected) {
     const bool route = Network.setDefaultInterface(WiFi.STA);

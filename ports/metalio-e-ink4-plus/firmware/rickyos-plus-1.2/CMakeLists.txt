@@ -9,6 +9,11 @@ set(EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/../../.local/arduino-esp32-4
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(RickyOS-Plus-1.2)
 
+# Apply Plus security policy to every Arduino STA connection, without modifying
+# the shared/pinned Arduino dependency or changing SoftAP configuration.
+target_link_options(${CMAKE_PROJECT_NAME}.elf PRIVATE
+    "-Wl,--wrap=esp_wifi_set_config,-u,__wrap_esp_wifi_set_config")
+
 # IDF's S31 HAL zero-initializes register unions; GCC C++ warns about the
 # remaining fields. Match the vendor build for this one warning, scoped to
 # Arduino rather than disabling errors for the application.
@@ -83,6 +88,25 @@ if("$ENV{RICKYOS_PLUS_NET_AUTORUN}" STREQUAL "1")
     endif()
     target_compile_definitions(${PLUS_NET_ALLOC_APP_LIB} PRIVATE
         RICKYOS_PLUS_NET_AUTORUN=1 RICKYOS_PLUS_RADIO_AUTOSTART=1)
+    if("$ENV{RICKYOS_PLUS_NET_AX_COMPARE}" STREQUAL "1")
+        target_compile_definitions(${PLUS_NET_ALLOC_APP_LIB} PRIVATE RICKYOS_PLUS_NET_AX_COMPARE=1)
+    endif()
+    if("$ENV{RICKYOS_PLUS_NET_SECURITY_CHECK}" STREQUAL "1")
+        target_compile_definitions(${PLUS_NET_ALLOC_APP_LIB} PRIVATE RICKYOS_PLUS_NET_SECURITY_CHECK=1)
+    endif()
+    # Test-only credentials stay in an ignored local header, never the port or
+    # saved-network store. Ordinary builds cannot include this profile.
+    if("$ENV{RICKYOS_PLUS_NET_PRIVATE_PROFILE}" STREQUAL "1")
+        if(NOT "$ENV{RICKYOS_PLUS_NET_SECURITY_CHECK}" STREQUAL "1")
+            message(FATAL_ERROR "Private Wi-Fi test profile requires the explicit security diagnostic")
+        endif()
+        set(PLUS_PRIVATE_WIFI_DIR "${CMAKE_CURRENT_LIST_DIR}/../../.local/plus-private-wifi-test")
+        if(NOT EXISTS "${PLUS_PRIVATE_WIFI_DIR}/PlusPrivateNetworkProfile.h")
+            message(FATAL_ERROR "Local Wi-Fi test profile header is missing")
+        endif()
+        target_compile_definitions(${PLUS_NET_ALLOC_APP_LIB} PRIVATE RICKYOS_PLUS_NET_PRIVATE_PROFILE=1)
+        target_include_directories(${PLUS_NET_ALLOC_APP_LIB} PRIVATE "${PLUS_PRIVATE_WIFI_DIR}")
+    endif()
     if("$ENV{RICKYOS_PLUS_NET_UI_AUTORUN}" STREQUAL "1")
         target_compile_definitions(${PLUS_NET_ALLOC_APP_LIB} PRIVATE RICKYOS_PLUS_NET_UI_AUTORUN=1)
         if("$ENV{RICKYOS_PLUS_NET_AUTORUN_FROM_READER}" STREQUAL "1")
