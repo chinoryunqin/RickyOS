@@ -1,5 +1,6 @@
 #include <HalStorage.h>
 #include <gtest/gtest.h>
+#include <unistd.h>
 
 #include <array>
 #include <atomic>
@@ -17,7 +18,8 @@ class TxtChapterCacheTest : public ::testing::Test {
  protected:
   void SetUp() override {
     static std::atomic<unsigned> serial{0};
-    root_ = std::filesystem::temp_directory_path() / ("crossmux-txt-chapters-" + std::to_string(serial++));
+    root_ = std::filesystem::temp_directory_path() /
+            ("crossmux-txt-chapters-" + std::to_string(getpid()) + "-" + std::to_string(serial++));
     std::error_code error;
     std::filesystem::remove_all(root_, error);
     ASSERT_TRUE(std::filesystem::create_directories(root_, error));
@@ -184,3 +186,74 @@ TEST_F(TxtChapterCacheTest, MarkdownLongFenceInfoDoesNotLeakFakeHeadings) {
   EXPECT_EQ(count, 2U);
 }
 #endif
+
+TEST_F(TxtChapterCacheTest, Utf16EndianChapterOffsetsAndChunkCarry) {
+  for (bool big : {false, true}) {
+    std::u16string text = u"第一章 起点\r\n正文\u0a41\n";
+    text += std::u16string(244, u'x');
+    text += u"\U0001f431\n第二章 终点\n尾";
+    std::string bytes;
+    bytes.reserve(2 + text.size() * 2);
+    bytes += big ? std::string("\xfe\xff", 2) : std::string("\xff\xfe", 2);
+    for (char16_t c : text) {
+      bytes.push_back(big ? c >> 8 : c & 255);
+      bytes.push_back(big ? c & 255 : c >> 8);
+    }
+    writeBook(bytes);
+    Txt txt("/book.txt", "/.crosspoint");
+    ASSERT_TRUE(txt.load());
+    // Odd read capacity forces code units and surrogate pairs across reads.
+    std::array<uint8_t, 1027> scratch{};
+    uint32_t count = 0;
+    auto encoding = txt_encoding::Encoding::Unknown;
+    txt_encoding::ReadError error = txt_encoding::ReadError::Io;
+    ASSERT_TRUE(txt.buildChapterIndex(encoding, scratch.data(), scratch.size(), count, &error));
+    EXPECT_EQ(error, txt_encoding::ReadError::None);
+    EXPECT_EQ(count, 2U);
+    EXPECT_EQ(encoding, big ? txt_encoding::Encoding::Utf16Be : txt_encoding::Encoding::Utf16Le);
+    HalFile index;
+    ASSERT_TRUE(txt.openChapterIndex(index, encoding, count));
+    txt_chapter_index::Record record;
+    ASSERT_TRUE(txt.readChapter(index, count, 0, record));
+    EXPECT_STREQ(record.title, "第一章 起点");
+    EXPECT_EQ(record.sourceOffset, 2U);
+    ASSERT_TRUE(txt.readChapter(index, count, 1, record));
+    EXPECT_STREQ(record.title, "第二章 终点");
+    EXPECT_EQ(record.sourceOffset, 2 + text.find(u"第二章") * 2);
+  }
+}
+TEST_F(TxtChapterCacheTest, Utf16MalformedInputIsNotAnIoErrorOrCommittedIndex) {
+  for (const auto& bytes : {std::string("\xff\xfe\x00\xd8", 4), std::string("\xfe\xff\x41", 3),
+                            std::string("\xff\xfe\x00\x00", 4), std::string("\x00\x00\xfe\xff", 4)}) {
+    writeBook(bytes);
+    Txt txt("/book.txt", "/.crosspoint");
+    ASSERT_TRUE(txt.load());
+    std::array<uint8_t, 1027> scratch{};
+    uint32_t count = 0;
+    auto encoding = txt_encoding::Encoding::Unknown;
+    txt_encoding::ReadError error = txt_encoding::ReadError::None;
+    EXPECT_FALSE(txt.buildChapterIndex(encoding, scratch.data(), scratch.size(), count, &error));
+    EXPECT_EQ(error, txt_encoding::ReadError::InvalidData);
+    EXPECT_EQ(count, 0U);
+    EXPECT_FALSE(std::filesystem::exists(hostPath(txt.getCachePath() + "/chapters.bin")));
+  }
+}
+TEST_F(TxtChapterCacheTest, UserUtf16SampleBuildsDirectoryWithoutLoadingWholeBook) {
+  const char* sample = std::getenv("RICKYOS_UTF16_SAMPLE");
+  if (!sample) GTEST_SKIP() << "optional local sample";
+  std::filesystem::copy_file(sample, hostPath("/book.txt"), std::filesystem::copy_options::overwrite_existing);
+  Txt txt("/book.txt", "/.crosspoint");
+  ASSERT_TRUE(txt.load());
+  std::array<uint8_t, 8193> scratch{};
+  uint32_t count = 0;
+  auto encoding = txt_encoding::Encoding::Unknown;
+  ASSERT_TRUE(txt.buildChapterIndex(encoding, scratch.data(), scratch.size(), count));
+  EXPECT_EQ(encoding, txt_encoding::Encoding::Utf16Le);
+  EXPECT_GT(count, 0U);
+  HalFile index;
+  ASSERT_TRUE(txt.openChapterIndex(index, encoding, count));
+  txt_chapter_index::Record last;
+  ASSERT_TRUE(txt.readChapter(index, count, count - 1, last));
+  EXPECT_LT(last.sourceOffset, txt.getFileSize());
+  EXPECT_EQ(last.sourceOffset % 2, 0U);
+}

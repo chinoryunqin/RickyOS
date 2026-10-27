@@ -13,7 +13,7 @@
 
 namespace {
 constexpr uint32_t CHAPTER_INDEX_MAGIC = 0x43545854;  // "TXTC"
-constexpr uint8_t CHAPTER_INDEX_VERSION = 1;
+constexpr uint8_t CHAPTER_INDEX_VERSION = 3;
 constexpr size_t INDEX_YIELD_BYTES = 64 * 1024;
 
 struct ChapterIndexHeader {
@@ -36,6 +36,10 @@ txt_encoding::Encoding detectEncoding(HalFile& source, uint8_t* buffer, const si
     const size_t chunkSize = std::min(capacity, fileSize - sourceOffset);
     const int bytesRead = source.read(buffer, chunkSize);
     if (bytesRead <= 0) break;
+    if (sourceOffset == 0 && bytesRead >= 2 &&
+        ((buffer[0] == 0xff && buffer[1] == 0xfe) || (buffer[0] == 0xfe && buffer[1] == 0xff) ||
+         (bytesRead >= 4 && buffer[0] == 0 && buffer[1] == 0 && buffer[2] == 0xfe && buffer[3] == 0xff)))
+      return txt_encoding::detect(buffer, static_cast<size_t>(bytesRead), static_cast<size_t>(bytesRead) == fileSize);
     for (int i = 0; i < bytesRead; ++i) {
       if (buffer[i] < 0x80) continue;
       const size_t nonAsciiOffset = sourceOffset + static_cast<size_t>(i);
@@ -251,7 +255,7 @@ bool Txt::openChapterIndex(HalFile& file, txt_encoding::Encoding& encoding, uint
 
   ChapterIndexHeader header;
   if (file.read(&header, sizeof(header)) != static_cast<int>(sizeof(header)) || header.magic != CHAPTER_INDEX_MAGIC ||
-      header.version != (markdown ? 2 : CHAPTER_INDEX_VERSION) ||
+      header.version != (markdown ? 4 : CHAPTER_INDEX_VERSION) ||
       header.recordSize != sizeof(txt_chapter_index::Record) || header.fileSize != fileSize ||
       !txt_encoding::isSerializedValueValid(static_cast<uint8_t>(header.encoding)) ||
       !txt_encoding::isSupported(header.encoding) || !encodingMatches(encoding, header.encoding) ||
@@ -283,7 +287,8 @@ bool Txt::openChapterIndex(HalFile& file, txt_encoding::Encoding& encoding, uint
 }
 
 bool Txt::buildChapterIndex(txt_encoding::Encoding& encoding, uint8_t* scratch, const size_t scratchSize,
-                            uint32_t& count) const {
+                            uint32_t& count, txt_encoding::ReadError* error) const {
+  if (error) *error = txt_encoding::ReadError::Io;
   count = 0;
   if (!loaded || !scratch || scratchSize < 1024 || fileSize > std::numeric_limits<uint32_t>::max()) return false;
 
@@ -303,7 +308,10 @@ bool Txt::buildChapterIndex(txt_encoding::Encoding& encoding, uint8_t* scratch, 
     encoding = detectEncoding(source, scratch, readCapacity, fileSize);
     if (!source.seek(0)) return false;
   }
-  if (!txt_encoding::isSupported(encoding)) return false;
+  if (!txt_encoding::isSupported(encoding)) {
+    if (error) *error = txt_encoding::ReadError::InvalidData;
+    return false;
+  }
 
   ChapterIndexHeader header;
 #ifdef RICKYOS_PRODUCT
@@ -311,7 +319,7 @@ bool Txt::buildChapterIndex(txt_encoding::Encoding& encoding, uint8_t* scratch, 
 #else
   constexpr bool markdown = false;
 #endif
-  header.version = markdown ? 2 : CHAPTER_INDEX_VERSION;
+  header.version = markdown ? 4 : CHAPTER_INDEX_VERSION;
   txt_chapter_index::MarkdownHeadings headings;
   header.fileSize = static_cast<uint32_t>(fileSize);
   header.encoding = encoding;
@@ -327,6 +335,8 @@ bool Txt::buildChapterIndex(txt_encoding::Encoding& encoding, uint8_t* scratch, 
     size_t lineStartOffset = 0;
     size_t sourceOffset = 0;
     bool lineTooLong = false;
+    const bool utf16 = txt_encoding::isUtf16(encoding);
+    txt_encoding::Utf16Decoder decoder(encoding);
 
     const auto appendChapter = [&]() {
       if (lineLength == 0 || lineTooLong) return true;
@@ -364,15 +374,32 @@ bool Txt::buildChapterIndex(txt_encoding::Encoding& encoding, uint8_t* scratch, 
       const int bytesRead = source.read(scratch, chunkSize);
       if (bytesRead <= 0) break;
       for (int i = 0; i < bytesRead; ++i) {
-        const uint8_t value = scratch[i];
+        uint32_t value = scratch[i];
+        uint8_t encoded[4] = {scratch[i]};
+        size_t length = 1;
+        if (utf16) {
+          const auto status = decoder.push(scratch[i], value);
+          if (status == txt_encoding::Utf16Decoder::Status::Invalid) {
+            if (error) *error = txt_encoding::ReadError::InvalidData;
+            return false;
+          }
+          if (status == txt_encoding::Utf16Decoder::Status::NeedMore) continue;
+          if (sourceOffset + static_cast<size_t>(i) == 1 && value == 0xfeff) {
+            lineStartOffset = 2;
+            continue;
+          }
+          length = txt_encoding::encodeUtf8(value, encoded);
+        }
         if (value == '\n') {
           if (!appendChapter()) return false;
           lineLength = 0;
           lineTooLong = false;
           lineStartOffset = sourceOffset + static_cast<size_t>(i) + 1;
         } else if (!lineTooLong) {
-          if (lineLength + 1 < (markdown ? lineCapacity : txt_chapter_index::TITLE_CAPACITY)) {
-            lineBuffer[lineLength++] = value;
+          const size_t limit = markdown ? lineCapacity : txt_chapter_index::TITLE_CAPACITY;
+          if (lineLength + length < limit) {
+            memcpy(lineBuffer + lineLength, encoded, length);
+            lineLength += length;
           } else {
             lineTooLong = true;
           }
@@ -382,6 +409,10 @@ bool Txt::buildChapterIndex(txt_encoding::Encoding& encoding, uint8_t* scratch, 
       if (sourceOffset % INDEX_YIELD_BYTES < static_cast<size_t>(bytesRead)) vTaskDelay(1);
     }
 
+    if (utf16 && decoder.pending()) {
+      if (error) *error = txt_encoding::ReadError::InvalidData;
+      return false;
+    }
     if (sourceOffset != fileSize || !appendChapter()) return false;
     if (!output.seek(0) || output.write(&header, sizeof(header)) != sizeof(header)) return false;
     output.flush();
@@ -405,6 +436,7 @@ bool Txt::buildChapterIndex(txt_encoding::Encoding& encoding, uint8_t* scratch, 
   }
   if (hadFinal) Storage.remove(backupPath.c_str());
   count = header.count;
+  if (error) *error = txt_encoding::ReadError::None;
   LOG_DBG("TXT", "Built TXT chapter index: %u entries", static_cast<unsigned>(count));
   return true;
 }

@@ -6,7 +6,7 @@
 
 namespace txt_progress {
 constexpr uint32_t MAGIC = 0x4D545854;  // "TXTM"
-constexpr uint8_t VERSION = 1;
+constexpr uint8_t VERSION = 2;
 struct Header {
   uint32_t magic = MAGIC;
   uint32_t sourceSize = 0;

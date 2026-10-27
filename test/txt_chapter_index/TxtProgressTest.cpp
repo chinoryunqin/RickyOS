@@ -1,5 +1,6 @@
 #include <HalStorage.h>
 #include <gtest/gtest.h>
+#include <unistd.h>
 
 #include <array>
 #include <cstdlib>
@@ -14,7 +15,8 @@
 namespace {
 class TxtProgressTest : public ::testing::Test {
  protected:
-  std::filesystem::path root = std::filesystem::temp_directory_path() / "crossmux-txt-progress";
+  std::filesystem::path root =
+      std::filesystem::temp_directory_path() / ("crossmux-txt-progress-" + std::to_string(getpid()));
   void SetUp() override {
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root / "old");
@@ -196,3 +198,40 @@ TEST_F(TxtProgressTest, MarkdownFirstPageZeroOffsetIsNotAnInvalidCoordinate) {
   EXPECT_FALSE(std::filesystem::exists(root / "old/md-resume-v1.bin"));
 }
 }  // namespace
+
+TEST_F(TxtProgressTest, Utf16RawByteMappingsAndLegacyMapCompatibility) {
+  for (uint8_t encoding : {3, 4}) {
+    std::vector<uint8_t> bytes;
+    txt_progress::Header h{txt_progress::MAGIC, 10, 5, 12, txt_progress::VERSION, encoding};
+    const txt_progress::Record records[] = {{0, 1, 2, 0}, {2, 1, 2, 1}, {4, 2, 4, 1}, {8, 3, 2, 0}, {10, 3, 0, 0}};
+    bytes.resize(sizeof(h) + sizeof(records));
+    memcpy(bytes.data(), &h, sizeof(h));
+    memcpy(bytes.data() + sizeof(h), records, sizeof(records));
+    write("map.bin", bytes);
+    HalFile file;
+    ASSERT_TRUE(Storage.openFileForRead("TEST", "/map.bin", file));
+    for (uint32_t offset = 4; offset < 8; offset++) {
+      uint32_t visible = 0;
+      ASSERT_TRUE(txt_progress::resolve(file, 10, offset, visible));
+      EXPECT_EQ(visible, 2U);
+    }
+    uint32_t source = 0;
+    ASSERT_TRUE(txt_progress::sourceForVisible(file, 10, 2, source));
+    EXPECT_EQ(source, 4U);
+    ASSERT_TRUE(txt_progress::sourceForVisible(file, 10, 1, source));
+    EXPECT_EQ(source, 2U);
+    uint32_t visible = 0;
+    ASSERT_TRUE(txt_progress::resolve(file, 10, 10, visible));
+    EXPECT_EQ(visible, 3U);
+    file.close();
+    bytes[14] = 1;
+    write("map.bin", bytes);
+    ASSERT_TRUE(Storage.openFileForRead("TEST", "/map.bin", file));
+    EXPECT_FALSE(txt_progress::resolve(file, 10, 0, visible));  // Old readers never wrote UTF-16 maps.
+    file.close();
+    bytes[15] = 1;
+    write("map.bin", bytes);
+    ASSERT_TRUE(Storage.openFileForRead("TEST", "/map.bin", file));
+    EXPECT_TRUE(txt_progress::resolve(file, 10, 0, visible));  // Existing UTF-8/GBK maps remain readable for resume.
+  }
+}

@@ -1,7 +1,10 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <string_view>
 
@@ -25,7 +28,7 @@ class StringPrint : public Print {
 
 const std::string kHeader =
     "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
-    "<!-- TXT_CACHE_VERSION: 2 -->\n"
+    "<!-- TXT_CACHE_VERSION: 3 -->\n"
     "<!DOCTYPE html>\n<html>\n<head><title>test</title></head>\n<body>\n";
 const std::string kFooter = "\n</body>\n</html>\n";
 
@@ -52,7 +55,7 @@ TEST(TxtToHtmlTest, PreservesCacheVersionTagsForBothFormats) {
   StringPrint out;
   ASSERT_TRUE(TxtToHtml::stream("test.MD", "text", out));
   EXPECT_EQ(out.str,
-            "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!-- MD_CACHE_VERSION: 5 -->\n"
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!-- MD_CACHE_VERSION: 6 -->\n"
             "<!DOCTYPE html>\n<html>\n<head><title>test</title></head>\n<body>\n<p>text</p>" +
                 kFooter);
   EXPECT_NE(out.str.find(TxtToHtml::cacheVersionTag("test.MD")), std::string::npos);
@@ -171,3 +174,92 @@ TEST(TxtToHtmlStream, EmitsSourceMappingAndChapterAnchorsInSourceOrder) {
   EXPECT_EQ(context.lastVisible, 1U + 5U + 9U + 2U + 4U);
 }
 }  // namespace
+
+namespace {
+std::string utf16Bytes(std::u16string_view text, bool big) {
+  std::string out;
+  out.reserve(2 + text.size() * 2);
+  out += big ? std::string("\xfe\xff", 2) : std::string("\xff\xfe", 2);
+  for (auto c : text) {
+    out.push_back(big ? c >> 8 : c & 255);
+    out.push_back(big ? c & 255 : c >> 8);
+  }
+  return out;
+}
+}  // namespace
+TEST(TxtToHtmlUtf16, LeBeSingleByteChunksAndRawCoordinates) {
+  const auto text = u"第一章\r\n  中文\U0001f431\u0a41<&>  空 格\n结尾";
+  StringPrint expected;
+  // Build the expected UTF-8 from exact scalars rather than locale conversion.
+  const std::string utf8 = "第一章\r\n  中文\xf0\x9f\x90\xb1\xe0\xa9\x81<&>  空 格\n结尾";
+  expected.str.clear();
+  ASSERT_TRUE(TxtToHtml::stream("test.txt", utf8, expected));
+  for (bool big : {false, true})
+    for (size_t chunk : {1U, 3U, 7U, 8191U}) {
+      const auto bytes = utf16Bytes(text, big);
+      ChunkReader reader{bytes, 0, chunk};
+      StringPrint out;
+      txt_encoding::ReadError error = txt_encoding::ReadError::Io;
+      TxtToHtml::Options opts;
+      opts.encoding = big ? txt_encoding::Encoding::Utf16Be : txt_encoding::Encoding::Utf16Le;
+      opts.error = &error;
+      struct Mapping {
+        uint32_t last = 0, end = 0;
+        int surrogate = 0;
+      };
+      Mapping map;
+      opts.context = &map;
+      opts.map = [](void* opaque, uint32_t source, uint32_t, uint8_t width, uint8_t) {
+        auto& m = *static_cast<Mapping*>(opaque);
+        EXPECT_EQ(source % 2, 0U);
+        EXPECT_GE(source, m.last);
+        m.last = source;
+        EXPECT_TRUE(width == 0 || width == 2 || width == 4);
+        if (width == 4) m.surrogate++;
+        if (!width) m.end = source;
+        return true;
+      };
+      ASSERT_TRUE(TxtToHtml::stream("test.txt", &reader, ChunkReader::read, out, opts));
+      EXPECT_EQ(out.str, expected.str);
+      EXPECT_EQ(error, txt_encoding::ReadError::None);
+      EXPECT_EQ(map.end, bytes.size());
+      EXPECT_EQ(map.surrogate, 1);
+    }
+}
+TEST(TxtToHtmlUtf16, RejectsOddBytesAndBadSurrogatesAsDataNotIo) {
+  for (const auto& bytes : {std::string("\xff\xfe\x41", 3), std::string("\xff\xfe\x00\xd8", 4),
+                            std::string("\xff\xfe\x00\xdc", 4), std::string("\xff\xfe\x00\xd8\x41\x00", 6)}) {
+    ChunkReader reader{bytes, 0, 1};
+    StringPrint out;
+    TxtToHtml::Options opts;
+    txt_encoding::ReadError error = txt_encoding::ReadError::None;
+    opts.error = &error;
+    opts.encoding = txt_encoding::Encoding::Utf16Le;
+    EXPECT_FALSE(TxtToHtml::stream("test.txt", &reader, ChunkReader::read, out, opts));
+    EXPECT_EQ(error, txt_encoding::ReadError::InvalidData);
+  }
+  StringPrint out;
+  TxtToHtml::Options opts;
+  txt_encoding::ReadError error = txt_encoding::ReadError::None;
+  opts.error = &error;
+  opts.encoding = txt_encoding::Encoding::Utf16Le;
+  EXPECT_FALSE(TxtToHtml::stream("test.txt", nullptr, [](void*, uint8_t*, size_t) { return -1; }, out, opts));
+  EXPECT_EQ(error, txt_encoding::ReadError::Io);
+}
+
+TEST(TxtToHtmlUtf16, UserBookMatchesIndependentUtf8ReferenceInBoundedReads) {
+  const char* sample = std::getenv("RICKYOS_UTF16_SAMPLE");
+  const char* reference = std::getenv("RICKYOS_UTF8_REFERENCE");
+  if (!sample || !reference) GTEST_SKIP() << "optional local user book and independent UTF-8 reference";
+  std::ifstream a(sample, std::ios::binary), b(reference, std::ios::binary);
+  ASSERT_TRUE(a && b);
+  const std::string raw((std::istreambuf_iterator<char>(a)), {}), utf8((std::istreambuf_iterator<char>(b)), {});
+  ChunkReader reader{raw, 0, 4093};
+  StringPrint actual, expected;
+  TxtToHtml::Options opts;
+  opts.encoding = txt_encoding::Encoding::Utf16Le;
+  ASSERT_TRUE(TxtToHtml::stream("test.txt", &reader, ChunkReader::read, actual, opts));
+  ASSERT_TRUE(TxtToHtml::stream("test.txt", utf8, expected));
+  EXPECT_EQ(actual.str, expected.str);
+  EXPECT_EQ(reader.pos, raw.size());
+}

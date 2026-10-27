@@ -24,7 +24,8 @@ class Txt {
   static bool isTxtOrMd(std::string_view path);
   static bool validateCache(const std::string& filepath, const std::string& cachePath, size_t cachedSize);
   static void invalidateCache(const std::string& cachePath);
-  static bool streamTxtToHtml(const std::string& filepath, Print& out, const std::string& cachePath);
+  static bool streamTxtToHtml(const std::string& filepath, Print& out, const std::string& cachePath,
+                              txt_encoding::ReadError* error = nullptr);
   static int tocIndexForPosition(const std::string& filepath, const std::string& cachePath, uint32_t visibleOffset,
                                  uint8_t* chapterProgress = nullptr);
   static bool resolveChapterPosition(const std::string& filepath, const std::string& cachePath, std::string_view anchor,
@@ -61,7 +62,7 @@ class Txt {
   // count does not affect steady-state RAM usage.
   [[nodiscard]] bool openChapterIndex(HalFile& file, txt_encoding::Encoding& encoding, uint32_t& count) const;
   [[nodiscard]] bool buildChapterIndex(txt_encoding::Encoding& encoding, uint8_t* scratch, size_t scratchSize,
-                                       uint32_t& count) const;
+                                       uint32_t& count, txt_encoding::ReadError* error = nullptr) const;
   [[nodiscard]] bool readChapter(HalFile& file, uint32_t count, uint32_t index,
                                  txt_chapter_index::Record& chapter) const;
   [[nodiscard]] bool findChapterForOffset(HalFile& file, uint32_t count, uint32_t sourceOffset,

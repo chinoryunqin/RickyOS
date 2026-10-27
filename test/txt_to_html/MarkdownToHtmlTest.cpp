@@ -46,7 +46,7 @@ TEST(Markdown, CommonReadingBlocksAndInlineStyles) {
       "- 喝杯茶\n- 再读一页\n\n1. 清晨\n2. 夜晚\n\n> 慢一点。\n---\n";
   for (size_t chunk : {1U, 7U, 4096U, 8192U}) {
     const auto html = convert(source, chunk);
-    EXPECT_NE(html.find("<!-- MD_CACHE_VERSION: 5 -->"), std::string::npos);
+    EXPECT_NE(html.find("<!-- MD_CACHE_VERSION: 6 -->"), std::string::npos);
     EXPECT_NE(html.find("<h1>阅读与生活</h1>"), std::string::npos);
     EXPECT_NE(html.find("<h2>安静的一页</h2>"), std::string::npos);
     EXPECT_NE(html.find("<strong>粗体</strong>"), std::string::npos);
@@ -80,7 +80,7 @@ TEST(Markdown, LongLinesNeverTruncateAndTxtConversionIsUnchanged) {
   Output plain;
   ASSERT_TRUE(TxtToHtml::stream("plain.txt", "# 标题\n**普通文本**", plain));
   EXPECT_NE(plain.text.find("# 标题<br />**普通文本**"), std::string::npos);
-  EXPECT_NE(plain.text.find("<!-- TXT_CACHE_VERSION: 2 -->"), std::string::npos);
+  EXPECT_NE(plain.text.find("<!-- TXT_CACHE_VERSION: 3 -->"), std::string::npos);
 }
 
 TEST(Markdown, UnmatchedSyntaxAndLiteralHashtagsRemainReadable) {
@@ -308,4 +308,35 @@ TEST(Markdown, TocLabelsReuseInlineParserAndCanWriteInPlace) {
   const std::string incomplete = std::string(190, 'x') + '\xE4';
   MarkdownFormatter::plainText(incomplete, title);
   EXPECT_EQ(std::string(title), incomplete);
+}
+
+TEST(Markdown, Utf16LeBeTablesInlineAndPendingNewlineCoordinates) {
+  const std::u16string text =
+      u"# 标题\r\n\n| 中文 | 猫\U0001f431 |\r\n| -- | -- |\n| **字** | [链接](x) |\n\n- 项目\n尾";
+  const std::string expected =
+      convert("# 标题\r\n\n| 中文 | 猫🐱 |\r\n| -- | -- |\n| **字** | [链接](x) |\n\n- 项目\n尾");
+  for (bool big : {false, true})
+    for (size_t chunk : {1U, 3U, 1023U}) {
+      std::string raw;
+      raw += big ? std::string("\xfe\xff", 2) : std::string("\xff\xfe", 2);
+      for (char16_t c : text) {
+        raw.push_back(big ? c >> 8 : c & 255);
+        raw.push_back(big ? c & 255 : c >> 8);
+      }
+      Reader reader{raw, 0, chunk};
+      Output out;
+      TxtToHtml::Options opts;
+      opts.encoding = big ? txt_encoding::Encoding::Utf16Be : txt_encoding::Encoding::Utf16Le;
+      uint32_t end = 0;
+      opts.context = &end;
+      opts.map = [](void* p, uint32_t source, uint32_t, uint8_t width, uint8_t) {
+        EXPECT_EQ(source % 2, 0U);
+        EXPECT_TRUE(width == 0 || width == 2 || width == 4);
+        if (!width) *static_cast<uint32_t*>(p) = source;
+        return true;
+      };
+      ASSERT_TRUE(TxtToHtml::stream("中文.MD", &reader, Reader::read, out, opts));
+      EXPECT_EQ(out.text, expected);
+      EXPECT_EQ(end, raw.size());
+    }
 }

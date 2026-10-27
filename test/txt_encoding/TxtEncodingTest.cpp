@@ -86,3 +86,46 @@ TEST(TxtEncoding, FitsTheMaximumGbkSourceChunkInTheSharedBuffer) {
   EXPECT_EQ(result.utf8Length, rawLength / 2 * 3);
   EXPECT_EQ(txt_encoding::gbkSourceLength(buffer.data(), result.utf8Length), rawLength);
 }
+
+TEST(TxtEncoding, Utf16BomAndStreamingScalarBoundaries) {
+  using namespace txt_encoding;
+  const uint8_t le[] = {0xff, 0xfe, 0x41, 0}, be[] = {0xfe, 0xff, 0, 0x41};
+  const uint8_t utf32[] = {0xff, 0xfe, 0, 0};
+  EXPECT_EQ(detect(le, 4, true), Encoding::Utf16Le);
+  EXPECT_EQ(detect(be, 4, true), Encoding::Utf16Be);
+  EXPECT_EQ(detect(utf32, 4, true), Encoding::Unsupported);
+  EXPECT_FALSE(isSupported(Encoding::Unsupported));
+  for (bool big : {false, true}) {
+    for (uint32_t cp : {0U, 0x41U, 0x7ffU, 0x800U, 0xd7ffU, 0xe000U, 0xfeffU, 0xffffU, 0x10000U, 0x1f431U, 0x10ffffU}) {
+      Utf16Decoder decoder(big ? Encoding::Utf16Be : Encoding::Utf16Le);
+      uint16_t units[2] = {static_cast<uint16_t>(cp), 0};
+      int n = 1;
+      if (cp > 0xffff) {
+        units[0] = 0xd800 + ((cp - 0x10000) >> 10);
+        units[1] = 0xdc00 + ((cp - 0x10000) & 1023);
+        n = 2;
+      }
+      uint32_t result = 0;
+      for (int i = 0; i < n; i++) {
+        EXPECT_EQ(decoder.push(big ? units[i] >> 8 : units[i] & 255, result), Utf16Decoder::Status::NeedMore);
+        EXPECT_EQ(decoder.push(big ? units[i] & 255 : units[i] >> 8, result),
+                  i + 1 == n ? Utf16Decoder::Status::Ready : Utf16Decoder::Status::NeedMore);
+      }
+      EXPECT_EQ(result, cp);
+      EXPECT_FALSE(decoder.pending());
+      uint8_t out[4];
+      EXPECT_GE(encodeUtf8(cp, out), 1U);
+      EXPECT_LE(encodeUtf8(cp, out), 4U);
+    }
+  }
+  Utf16Decoder low(Encoding::Utf16Le);
+  uint32_t cp = 0;
+  EXPECT_EQ(low.push(0, cp), Utf16Decoder::Status::NeedMore);
+  EXPECT_EQ(low.push(0xdc, cp), Utf16Decoder::Status::Invalid);
+  Utf16Decoder high(Encoding::Utf16Be);
+  EXPECT_EQ(high.push(0xd8, cp), Utf16Decoder::Status::NeedMore);
+  EXPECT_EQ(high.push(0, cp), Utf16Decoder::Status::NeedMore);
+  EXPECT_TRUE(high.pending());
+  EXPECT_EQ(high.push(0, cp), Utf16Decoder::Status::NeedMore);
+  EXPECT_EQ(high.push(0x41, cp), Utf16Decoder::Status::Invalid);
+}

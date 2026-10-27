@@ -55,7 +55,7 @@ partial pagination because missing glyphs now occupy an ascender-scaled outline
 box. Reopening a book rebuilds pagination automatically; metadata, chapter
 indexes and source-offset reading progress are retained.
 
-TXT `chapters.bin` version 1 is an optional source-offset chapter index built
+TXT `chapters.bin` version 3 is an optional source-offset chapter index built
 the first time the chapter list opens. It is independent of pagination and is
 invalidated by file size, encoding, or chapter-index version.
 
@@ -150,16 +150,16 @@ struct PageLine {
 TXT and Markdown now use the EPUB reader and section format. Conversion is
 streaming: two checked 8KiB buffers, plus one disk-backed chapter record; the
 8KiB chapter-index workspace is released before conversion. The HTML and metadata
-conversion markers are version 2 for TXT/upstream Markdown and version 5 for
-RickyOS 1.1.5 Markdown (3: initial candidate; 4: tables; 5: ATX TOC). Markdown
+conversion markers are version 3 for TXT/upstream Markdown and version 6 for
+RickyOS Markdown (3: initial candidate; 4: tables; 5: ATX TOC; 6: UTF-16). Markdown
 borrows the input buffer as 1KiB input, 4KiB UTF-8 line and 3KiB pending header;
 the output stays 8KiB. No table-sized conversion allocation. Before rebuilding
-version 2, 3 or 4 Markdown conversion, preserve its
+version 2, 3, 4 or 5 Markdown conversion, preserve its
 source-coordinate checkpoint (`md-resume-v1.bin`), resolve it against the new map,
 and clear it only after the new page progress saves successfully. Never use an old
 visible-text offset unchanged after removing Markdown syntax. See the file-format
 contract for failure/restart handling and page-only legacy behavior.
-`txt-map.bin` version 1 records source byte to
+`txt-map.bin` version 2 records source byte to
 visible codepoint runs (see `docs/file-formats.md`). Chapters are processed one at
 a time and parser boundary IDs do not accumulate in the anchor table. The inverse
 map resolves the page's visible offset to a source position, then binary-searches
@@ -167,11 +167,11 @@ the existing disk chapter index for menu/status/statistics titles. Chapter stepp
 and scrubbing use the same pending-anchor path as the Contents panel; the one-spine
 conversion never turns chapter navigation into a no-op.
 
-RickyOS Markdown uses chapter index semantic version 2 (same 196-byte record),
+RickyOS Markdown uses chapter index semantic version 4 (same 196-byte record),
 retaining the ATX prefix in its raw UTF-8 title. Metadata strips inline markup
 and stores levels 1–6. Matching fenced code excludes fake headings; empty,
 indented and oversized headings are not indexed. Only that book's old MD index
-and conversion are rebuilt; TXT stays on chapter index version 1. Chapter anchor
+and conversion are rebuilt; TXT uses chapter index version 3. Chapter anchor
 emission flushes pending table-header lookahead and closes the previous table.
 No new heap buffers or in-RAM document-wide heading list are introduced.
 
@@ -226,3 +226,16 @@ reading-background changes. Confirm no hangs, damaged frames, partial `.pxc`
 files, or sustained heap loss, and retry the interrupted image in the foreground.
 Until these measurements pass, keep the follow-up PR Draft; other PSRAM boards
 receive only the I/O optimization.
+
+## UTF-16 TXT/Markdown migration (2026-10-27)
+
+UTF-16 LE/BE BOM detection and scalar decoding use original-file byte offsets.
+Map version 2 and chapter versions 3 (TXT) / 4 (product MD) make this semantic
+extension explicit. Old map version 1 remains readable for encodings 0–2 only,
+so existing UTF-8/GBK Markdown progress can be checkpointed before replacement.
+Old conversion markers rebuild only the affected book's HTML/sections/index;
+books, old source progress and unrelated caches are not removed. No full SD-card
+cache wipe is required. New conversion failure never publishes a partial map.
+
+See [the UTF-16 handoff](../txt-utf16-20261027.md) for regression commands, supported
+encodings and firmware build evidence.

@@ -106,8 +106,9 @@ LegacyResult readLegacySource(const char* cachePath, const uint32_t sourceSize, 
 namespace {
 bool readMapping(HalFile& mapping, uint32_t sourceSize, Header& header, Record& end) {
   if (!mapping.seek(0) || mapping.read(&header, sizeof(header)) != sizeof(header) || header.magic != MAGIC ||
-      header.version != VERSION || header.sourceSize != sourceSize || header.recordSize != sizeof(Record) ||
-      !header.count || !txt_encoding::isSerializedValueValid(header.encoding) ||
+      (header.version != VERSION && !(header.version == 1 && header.encoding <= 2)) ||
+      header.sourceSize != sourceSize || header.recordSize != sizeof(Record) || !header.count ||
+      !txt_encoding::isSerializedValueValid(header.encoding) ||
       mapping.fileSize64() != sizeof(Header) + uint64_t(header.count) * sizeof(Record))
     return false;
   return readRecord(mapping, header.count - 1, end) && end.source == sourceSize && end.width == 0;

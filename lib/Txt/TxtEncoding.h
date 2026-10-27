@@ -5,7 +5,25 @@
 
 namespace txt_encoding {
 
-enum class Encoding : uint8_t { Unknown = 0, Utf8 = 1, Gbk = 2 };
+enum class Encoding : uint8_t { Unknown = 0, Utf8 = 1, Gbk = 2, Utf16Le = 3, Utf16Be = 4, Unsupported = 255 };
+enum class ReadError : uint8_t { None, InvalidData, Io, OutOfMemory };
+
+bool isUtf16(Encoding encoding);
+size_t encodeUtf8(uint32_t codepoint, uint8_t* output);
+
+// Four-byte carry only; original byte offsets remain the reader's coordinates.
+class Utf16Decoder {
+ public:
+  enum class Status { NeedMore, Ready, Invalid };
+  explicit Utf16Decoder(Encoding encoding) : bigEndian_(encoding == Encoding::Utf16Be) {}
+  Status push(uint8_t byte, uint32_t& codepoint);
+  bool pending() const { return length_ != 0; }
+
+ private:
+  uint8_t bytes_[4] = {};
+  uint8_t length_ = 0;
+  bool bigEndian_;
+};
 
 struct TranscodeResult {
   size_t rawLength;

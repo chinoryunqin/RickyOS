@@ -155,12 +155,12 @@
     {
       "path": "lib/Epub/Epub.cpp",
       "baseline_sha256": "a104a180f95744bcdd6ef4fede82fe33cc20e539cd8fb9e075f0f52002b6e95e",
-      "ported_sha256": "b6ca7beb2ab24fba966efc56b3d71f4d1798862db86d94d5c61df124b63cddb9"
+      "ported_sha256": "7ca64eef1a6dadf278a18dedcea0396153acf8d29e5e0ed723ca9b4f40a5e910"
     },
     {
       "path": "lib/Epub/Epub.h",
       "baseline_sha256": "0f47da662224f5dac3f3a37aae7bc0d3574abb1aad1424f2293bf30247a89671",
-      "ported_sha256": "48611842ccad140257b0dc463d9ea6b0b618ef08a3be1e0e1de48e492556370d"
+      "ported_sha256": "c803f97f7a632d610fde01a2778f152bd3bb896faa63544f3449bd864d9abd5c"
     },
     {
       "path": "lib/Epub/Epub/BookFonts.cpp",
@@ -200,7 +200,7 @@
     {
       "path": "lib/Epub/Epub/Section.cpp",
       "baseline_sha256": "01de5535d5106a94583eeeae5b1b59ad6878acbf75d2771f07d91e79a0bbde15",
-      "ported_sha256": "27805fb11797fd0f99c759260c561227dc685412d3ecf09fc609c55d81ff96ad"
+      "ported_sha256": "86b49e012c48b8e4eea188196f15bbe86e54dc847d0ba248e6f0785557742f72"
     },
     {
       "path": "lib/Epub/Epub/WordLook.h",
@@ -378,6 +378,61 @@
       "ported_sha256": "d4b345eed4d32ec44803c6c61096ad045b5c26c87a540736722737200d472b00"
     },
     {
+      "path": "lib/Txt/MarkdownFormatter.cpp",
+      "baseline_sha256": "8a80e8622e85e85926931c0702166c0b9f5ee76132dae9dede849bfad1800557",
+      "ported_sha256": "aff6d4b234970144014e2041e06bd4269da025a2f5de037c2117f1697ec85707"
+    },
+    {
+      "path": "lib/Txt/MarkdownFormatter.h",
+      "baseline_sha256": "5e920223e230cab56b0489eca5ecd7cb2c23e69a81fd017c631f5f394be76772",
+      "ported_sha256": "69039aa5066d3098c472f1264da59beb52e41bfe5128f7c03b48402976d9d280"
+    },
+    {
+      "path": "lib/Txt/Txt.cpp",
+      "baseline_sha256": "a8318bd9c2448077462d38cfbd0e78f3a2fc47688811f8d538e564e12f393c84",
+      "ported_sha256": "0ac87a42cf91ce6cd2c33850c84618fd256d3e3d0f908b5df9782fef23bc5876"
+    },
+    {
+      "path": "lib/Txt/Txt.h",
+      "baseline_sha256": "768fddee05bb7b2574ef3ab9e9e2fab94333630a19902acdeadcc1e2d561fad0",
+      "ported_sha256": "0c4ba8b63f672ef8ac779a8c16f8af598aa477749051402e2b81808c49e20833"
+    },
+    {
+      "path": "lib/Txt/TxtCache.cpp",
+      "baseline_sha256": "00c77a8ce05d4da6e94b23ae55530a5085809a669e30a52f6c2437c5d6813ade",
+      "ported_sha256": "13bcd2045cffd428df949614eaa86ee55fcbbb7c631a99a9e207b8ec526cfef4"
+    },
+    {
+      "path": "lib/Txt/TxtEncoding.cpp",
+      "baseline_sha256": "5bb7df1d6423abb56a35abc6693e5666895bb1a967a9be5c5e06e16a0a53a0c8",
+      "ported_sha256": "4ab5cd725848248fcd1f5ffc5dbcfc11868c032ca6fa9281ea1326fe9026429f"
+    },
+    {
+      "path": "lib/Txt/TxtEncoding.h",
+      "baseline_sha256": "4fe627be857dfb9aed1980b1c61f5d004700c5aae25a0356f3cbc7ba894a9e04",
+      "ported_sha256": "c8e14bacf5eca39719dcba86616f4a8288ae61415bfce5d7d929bb72b2af72ec"
+    },
+    {
+      "path": "lib/Txt/TxtProgress.cpp",
+      "baseline_sha256": "f966844ca219351f7d43a4b5b178ae6027af770ad8209b46494d402bfa19d2d4",
+      "ported_sha256": "9e46424b509441d1503e6268bde29d327d7befd34b0ffe4af8ff3854bf6c88e0"
+    },
+    {
+      "path": "lib/Txt/TxtProgress.h",
+      "baseline_sha256": "ff8d64ba7edbb7d3820041be2ffe6d8c91a209854c166059acc59283218ca396",
+      "ported_sha256": "d03bc8d67691cdc2ed90b22400653044b66a3d8af9fa3e3cb90a0de6cf59e4d1"
+    },
+    {
+      "path": "lib/Txt/TxtToHtml.cpp",
+      "baseline_sha256": "792c52965cef5e188045346f34425958e59cad260ecea6dd90fdb743f2b35a38",
+      "ported_sha256": "8a6e5cbffc77c663d0460aab42b772f54e8353f5745bd652e5123b020e076f2a"
+    },
+    {
+      "path": "lib/Txt/TxtToHtml.h",
+      "baseline_sha256": "6ef5bb23899b3a8d87b59f2315474732856c08871772d99597c84a5437f656be",
+      "ported_sha256": "82cb2acb68ad7b5b5c1725c17e523ce310fd707c19908703a1b42f4719e2dd9c"
+    },
+    {
       "path": "lib/WeReadWebApi/src/WeReadClient.cpp",
       "baseline_sha256": "e257fb9dbf31aef9ed6e86d1d294cd983fc8bf9d3627df6d0c1697bba7ad8cc6",
       "ported_sha256": "4be190bbde96255f0ad5a743145d7f4697f9398eecf7936a8596b57537157da3"
@@ -506,6 +561,11 @@
       "path": "scripts/build_rickyos_page_icons.cjs",
       "baseline_sha256": "ded0860bbebf3c65e2ed28a23515204e91f3bab5a6f2cd77a8353c7029aab1a0",
       "ported_sha256": "4d112f65496592dd5751686bd3727834667d9e4a59a0a7fa027d4f68a0d85731"
+    },
+    {
+      "path": "scripts/tests/run_txt_utf16_tests.py",
+      "baseline_sha256": null,
+      "ported_sha256": "e3115f06fa4eefa1b60ba8a35d19becce2ccb135777db3bf83ce42713dbffefc"
     },
     {
       "path": "scripts/tests/test_battery_icon_alignment.py",
@@ -1178,6 +1238,11 @@
       "ported_sha256": "f077c58e6ff59f7ef36f6e92fdf732d0063f0a9c1b5102644795797eae462ef3"
     },
     {
+      "path": "test/CMakeLists.txt",
+      "baseline_sha256": "d248d84f479f67bb1cf097ae3312c81e1f535e795d6769b9fe8462cfb0432475",
+      "ported_sha256": "f6e556747434dba7501d37917afe24ff6c602793c4e77e65c583b12941a9e7ef"
+    },
+    {
       "path": "test/chapter_html_slim_parser/CMakeLists.txt",
       "baseline_sha256": "ad6cde6708c1660d08bcc0675812ea1d2fa9b3164a844fff29db320aee7603a5",
       "ported_sha256": "7f3b3ae2e9d57477435a05838621789384f3f1fa5824668f08fc65f84066872f"
@@ -1211,6 +1276,41 @@
       "path": "test/inx_navigation/test_unified_keyboard.py",
       "baseline_sha256": "cb6712f7e5e7e4fbf0c20f5db03830e832af995e92a743e342e2c2e8ccf5c2c3",
       "ported_sha256": "6503b06d9e6cf7d3d3ad41ce0473bb9ef6081ecf7eab01c46a0226d0014a4ac2"
+    },
+    {
+      "path": "test/txt_chapter_index/TxtChapterCacheTest.cpp",
+      "baseline_sha256": "b2cdea7658030840c5b9578d39cd3e65f343071ff3d0230f7830d987300b8735",
+      "ported_sha256": "14766f3bce48078494947b5d2b80c60112e4a5b1cfa4039e0dfd6c1f1da7c0cc"
+    },
+    {
+      "path": "test/txt_chapter_index/TxtProgressTest.cpp",
+      "baseline_sha256": "8077a0d8cd91901bda238fb10352d5f441fb00dd8f516252e33636977c89044f",
+      "ported_sha256": "cb46c1f00733d59c69edd8a2efcf99308cb5fe62b600707e84a2bb109efa5103"
+    },
+    {
+      "path": "test/txt_encoding/TxtEncodingTest.cpp",
+      "baseline_sha256": "f3945affe41b8b3a5253b9ba54be72c430096486149bc88b1c175985a9bd2ec1",
+      "ported_sha256": "6d0547c6520eec8f54cb5aed998b810ea0e8375e45c265e767bcea615695aa6e"
+    },
+    {
+      "path": "test/txt_to_html/MarkdownToHtmlTest.cpp",
+      "baseline_sha256": "7b0f585c8c85c734982fc9b67bb1a83a71d02dd455028ede5d9b78f2eaa64b03",
+      "ported_sha256": "98c87b67998154ab576938224b0c21dc9d6c8f0eaba3de81acb2ede0f8c65497"
+    },
+    {
+      "path": "test/txt_to_html/TxtToHtmlTest.cpp",
+      "baseline_sha256": "0d8e47da578b3785a17848bd689593e1441ae0efab95d2afac631d035fa5f608",
+      "ported_sha256": "c43d84dced8da72fc956168d3e0f6a5d787b3e657e64c9bbafcfa6fd57fb908d"
+    },
+    {
+      "path": "test/txt_utf16_pipeline/CMakeLists.txt",
+      "baseline_sha256": null,
+      "ported_sha256": "c3e9910cc0f301a51215fc69f42d9d3a81b989b9ba4bc5ff1885611d09708d98"
+    },
+    {
+      "path": "test/txt_utf16_pipeline/TxtUtf16PipelineTest.cpp",
+      "baseline_sha256": null,
+      "ported_sha256": "0c523d87d604df5a89fcba9ce76a2db043803c3f974e9b8e3d5051ec78b25a1c"
     }
   ],
   "feature_sources": {
