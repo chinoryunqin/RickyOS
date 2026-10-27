@@ -14,6 +14,7 @@ namespace baseline {
 #include <builtinFonts/ricky_headline_14_medium.h>
 #include <builtinFonts/ricky_display_23_bold.h>
 #include <builtinFonts/ricky_caption_10_regular.h>
+#include <builtinFonts/ricky_book_12_medium.h>
 }
 namespace packed {
 #include <fonts/notosans_cjk_12_rickyos.packed.h>
@@ -23,6 +24,7 @@ namespace packed {
 #include <fonts/ricky_headline_14_medium.packed.h>
 #include <fonts/ricky_display_23_bold.packed.h>
 #include <fonts/ricky_caption_10_regular.packed.h>
+#include <fonts/ricky_book_12_medium.packed.h>
 }
 static void verify(const EpdFontData& original, const EpdFontData& compressed) {
   assert(original.is4Bit == compressed.is4Bit && original.is2Bit == compressed.is2Bit);
@@ -120,6 +122,40 @@ static void verifyUpstreamPacked(const EpdFontData& source, const EpdFontData& c
   }
   printf("%zu glyphs: upstream-packed copy identical and decodable\n", glyphCount);
 }
+
+static size_t glyphIndex(const EpdFontData& face, uint32_t cp) {
+  for (size_t i=0; i<face.intervalCount; ++i) {
+    const auto& span=face.intervals[i];
+    if (cp>=span.first && cp<=span.last) return span.offset+cp-span.first;
+  }
+  assert(false); return 0;
+}
+
+static void verifyBookTitleTypography() {
+  const auto& regular=packed::notosans_cjk_12_rickyos;
+  const auto& medium=packed::ricky_book_12_medium;
+  assert(medium.advanceY==regular.advanceY && medium.advanceY==36);
+  assert(medium.ascender==regular.ascender && medium.ascender==29);
+  assert(medium.is2Bit && !medium.is4Bit); // same AA format as BODY, real different face
+  // Every previously supported character must remain supported by Medium.
+  for(size_t i=0;i<regular.intervalCount;++i)
+    for(uint32_t cp=regular.intervals[i].first;cp<=regular.intervals[i].last;++cp)
+      (void)glyphIndex(medium,cp);
+  FontDecompressor a,b; assert(a.init() && b.init());
+  const unsigned char* cursor=reinterpret_cast<const unsigned char*>("银河英雄传说超神机械师随身书房阅读与生活间客");
+  size_t regularInk=0,mediumInk=0,checked=0;
+  for(uint32_t cp;(cp=utf8NextCodepoint(&cursor))!=0;) {
+    const auto ai=glyphIndex(regular,cp),bi=glyphIndex(medium,cp);
+    const auto& ga=regular.glyph[ai];const auto& gb=medium.glyph[bi];
+    const auto* pa=a.getBitmap(&regular,&ga,ai);const auto* pb=b.getBitmap(&medium,&gb,bi);
+    assert(pa && pb && ga.advanceX==gb.advanceX); // unchanged CJK tracking/line fitting
+    for(size_t p=0;p<size_t(ga.width)*ga.height;++p)regularInk+=(pa[p/4]>>(6-2*(p%4)))&3;
+    for(size_t p=0;p<size_t(gb.width)*gb.height;++p)mediumInk+=(pb[p/4]>>(6-2*(p%4)))&3;
+    ++checked;
+  }
+  assert(checked>20 && mediumInk>regularInk);
+  printf("Book-title Medium: full BODY repertoire, same 36px/29px metrics; %zu CJK glyphs coverage sum %zu > Regular %zu (raster coverage, not optical density)\n",checked,mediumInk,regularInk);
+}
 int main() {
   uzlib_init();
   verifyUpstreamPacked(baseline::notosans_cjk_12_rickyos, packed::notosans_cjk_12_rickyos);
@@ -129,4 +165,6 @@ int main() {
   verify(baseline::ricky_headline_14_medium, packed::ricky_headline_14_medium);
   verify(baseline::ricky_display_23_bold, packed::ricky_display_23_bold);
   verify(baseline::ricky_caption_10_regular, packed::ricky_caption_10_regular);
+  verify(baseline::ricky_book_12_medium, packed::ricky_book_12_medium);
+  verifyBookTitleTypography();
 }

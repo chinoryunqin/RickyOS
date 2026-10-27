@@ -12,6 +12,7 @@ idf_component_register(
   "${APP_ROOT}/src/activities/apps/reading-stats/RickyBadgesActivity.cpp"
   "port/LoggingProxy.cpp"
   "port/PlusNetAllocTrace.cpp"
+  "port/PlusFieldDiagnostics.cpp"
   "port/PlusWifiSecurity.cpp"
   "port/PlusFontNetworkAuto.cpp"
   "port/KindleDocument.cpp"
@@ -710,6 +711,9 @@ endif()
 # Standby trace logging (diagnostic builds only; never enables sleep by itself).
 if("$ENV{RICKYOS_PLUS_SD_FAULT_TEST}" STREQUAL "1")
   target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_SD_FAULT_TEST=1)
+endif()
+if("$ENV{RICKYOS_PLUS_FIELD_DIAG}" STREQUAL "1")
+  target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_FIELD_DIAG=1)
 endif()
 if("$ENV{RICKYOS_PLUS_STANDBY_DIAG}" STREQUAL "1")
   target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_STANDBY_DIAG=1)

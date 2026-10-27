@@ -65,6 +65,7 @@ typedef struct {
     uint8_t* turn_delays;
     uint8_t* turn_window;
     int turn_phases, turn_cols;
+    int turn_window_tick; // Last prepared immutable bank tick; reset at every begin/end.
     int turn_producer_tick; // Immutable while either feeder is active; ISR never reads it.
     bool reader_text_finish; // One pure-text transaction; independent of spatial turn style.
     RickyNativeTurnRegion turn_region;

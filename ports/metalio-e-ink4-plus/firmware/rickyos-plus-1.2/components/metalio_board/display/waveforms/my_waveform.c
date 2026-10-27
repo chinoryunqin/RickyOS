@@ -10,6 +10,7 @@
 #include "my_waveform_trim.h"
 
 #include <assert.h>
+#include <stdbool.h>
 #include <string.h>
 
 #include <esp_log.h>
@@ -24,10 +25,24 @@
 #define MY_FULL_DU_FRAMES 20
 #define MY_FULL_GC16_FRAMES 48
 #define MY_FULL_GL16_FRAMES 48
+#ifndef RICKYOS_PLUS_READER_QUALITY
+#define RICKYOS_PLUS_READER_QUALITY 0
+#endif
+#if RICKYOS_PLUS_READER_QUALITY != 0 && RICKYOS_PLUS_READER_QUALITY != 1
+#error "Reader quality experiment must be 0 or 1"
+#endif
 #define MY_TRIM_ERASE_MAX 11
 #define MY_TRIM_SAT_CUT 5
 #define MY_TRIM_WHITE_SAT_CUT 0
 #define MY_TRIM_HOLD 3
+// Opt-in UI gray-floor experiment. Reuse GL16's existing white maintenance
+// action after reader/paper tables have been copied. No additional scan/array.
+#ifndef RICKYOS_PLUS_UI_WHITE_MAINTENANCE
+#define RICKYOS_PLUS_UI_WHITE_MAINTENANCE 0
+#endif
+#if RICKYOS_PLUS_UI_WHITE_MAINTENANCE != 0 && RICKYOS_PLUS_UI_WHITE_MAINTENANCE != 1
+#error "UI white maintenance must be 0 or 1"
+#endif
 // UI-only optical experiment: restore part of the five discarded black
 // saturation phases. Reader tables are copied BEFORE this adjustment.
 #ifndef RICKYOS_PLUS_UI_BLACK_RESTORE_PHASES
@@ -36,10 +51,20 @@
 #if RICKYOS_PLUS_UI_BLACK_RESTORE_PHASES < 0 || RICKYOS_PLUS_UI_BLACK_RESTORE_PHASES > MY_TRIM_SAT_CUT
 #error "UI black restoration must remain within the original saturation margin"
 #endif
+// Opt-in reader ink experiment; default reproduces the released reader.
+#ifndef RICKYOS_PLUS_READER_BLACK_RESTORE_PHASES
+#define RICKYOS_PLUS_READER_BLACK_RESTORE_PHASES 0
+#endif
+#if RICKYOS_PLUS_READER_BLACK_RESTORE_PHASES < 0 || RICKYOS_PLUS_READER_BLACK_RESTORE_PHASES > MY_TRIM_SAT_CUT
+#error "Reader black restoration must remain within the original saturation margin"
+#endif
 // A normal layout build must not silently include the unaccepted short-waveform
 // experiment. Keep it opt-in, and retain every changing-pixel pulse by default.
 #ifndef RICKYOS_PLUS_READER_SHORT_WAVEFORM
 #define RICKYOS_PLUS_READER_SHORT_WAVEFORM 0
+#endif
+#if RICKYOS_PLUS_READER_QUALITY && RICKYOS_PLUS_READER_SHORT_WAVEFORM
+#error "Reader quality requires the full source waveform"
 #endif
 #if RICKYOS_PLUS_READER_SHORT_WAVEFORM
 #define MY_READER_GL16_FRAMES 37
@@ -187,7 +212,17 @@ static const EpdWaveformMode s_ui_turn_mode = {
 // no extra frame, heap allocation or waveform bank beyond the gallery budget.
 static uint8_t s_paper_turn_data[MY_UI_TURN_FRAMES][16][4];
 #define MY_READER_PAPER_GRAY 8  // reading-background paper sits at or above this level
-#define MY_READER_TURN_PULSE 5  // erase phases, then as many darkening ones
+// Retained-black optical experiment. Default keeps the accepted 5+5 re-drive.
+// At most 17+17 fits this 37-phase bank with the final three HOLDs intact, and
+// stays within the full GC/GL black-cell erase and darkening pulse counts.
+#ifndef RICKYOS_PLUS_READER_RETAINED_BLACK_PULSE
+#define RICKYOS_PLUS_READER_RETAINED_BLACK_PULSE 5
+#endif
+#if RICKYOS_PLUS_READER_RETAINED_BLACK_PULSE < 5 || \
+    RICKYOS_PLUS_READER_RETAINED_BLACK_PULSE > ((MY_READER_TURN_FRAMES - MY_TRIM_HOLD) / 2)
+#error "Retained black re-drive must preserve the three-phase settling tail"
+#endif
+#define MY_READER_TURN_PULSE RICKYOS_PLUS_READER_RETAINED_BLACK_PULSE
 static uint8_t s_turn_data[MY_READER_TURN_FRAMES][16][4];
 static const EpdWaveformPhases s_turn_phases = {
     .phases = MY_READER_TURN_FRAMES,
@@ -276,27 +311,30 @@ static void ui_turn_build(void) {
     }
 }
 
-static void ui_restore_black_margin(void) {
+static void restore_black_margin(uint8_t (*data)[16][4], int frames, int limit, bool reader) {
     // Only changing pixels whose final target is pure black. Do not touch
-    // unchanged cells, gray antialias edges, white erases or reading/images.
+    // unchanged cells, gray antialias edges or white erases.
     // No added scan: replace trailing HOLD within this existing 37-phase bank,
     // leaving at least the calibrated three settling phases. Never exceed the
     // original full GL16 table's darkening count for the same transition.
     for (int from = 1; from < 16; ++from) {
-        int original_dark = 0, current_dark = 0, last = -1;
-        for (int f = 0; f < MY_FULL_GL16_FRAMES; ++f)
+        int original_dark = 0, clean_dark = 0, current_dark = 0, last = -1;
+        for (int f = 0; f < MY_FULL_GL16_FRAMES; ++f) {
             original_dark += lut_get(my_gl_25_0_data, f, 0, from) == 1;
-        for (int f = 0; f < MY_UI_TURN_FRAMES; ++f) {
-            const int action = lut_get((const uint8_t (*)[16][4])s_ui_turn_data, f, 0, from);
+            clean_dark += lut_get(my_gc_25_0_data, f, 0, from) == 1;
+        }
+        if (reader && clean_dark < original_dark) original_dark = clean_dark;
+        for (int f = 0; f < frames; ++f) {
+            const int action = lut_get((const uint8_t (*)[16][4])data, f, 0, from);
             current_dark += action == 1;
             if (action) last = f;
         }
         if (last < 0) continue;
-        const int available = MY_UI_TURN_FRAMES - MY_TRIM_HOLD - last - 1;
+        const int available = frames - MY_TRIM_HOLD - last - 1;
         int restore = original_dark - current_dark;
-        if (restore > RICKYOS_PLUS_UI_BLACK_RESTORE_PHASES) restore = RICKYOS_PLUS_UI_BLACK_RESTORE_PHASES;
+        if (restore > limit) restore = limit;
         if (restore > available) restore = available;
-        for (int f = 1; f <= restore; ++f) lut_or(s_ui_turn_data, last + f, 0, from, 1);
+        for (int f = 1; f <= restore; ++f) lut_or(data, last + f, 0, from, 1);
     }
 }
 
@@ -347,12 +385,21 @@ void my_waveform_init(void) {
 #else
     memcpy(s_reader_gl16_data, my_gl_25_0_data, sizeof(s_reader_gl16_data));
 #endif
+#if !RICKYOS_PLUS_READER_QUALITY
     for (int f = 0; f < MY_READER_GL16_FRAMES; ++f) {
         for (int gray = 0; gray < 16; ++gray) {
             s_reader_gl16_data[f][gray][gray / 4] &=
                 (uint8_t)~(3u << (6 - 2 * (gray % 4)));
         }
     }
+#else
+    // Reuse the already-reserved 48-phase reader bank verbatim. Full GL16's
+    // white->white cell is HOLD, so the unchanged-chrome mask remains valid;
+    // every other source transition, including retained ink, keeps its timing.
+    // No additional table/framebuffer. Native scratch can grow in PSRAM only.
+    s_turn_ranges[0] = &s_reader_gl16_phases;
+    s_paper_turn_ranges[0] = &s_reader_gl16_phases;
+#endif
     memset(s_turn_data, 0, sizeof(s_turn_data));
     memcpy(s_turn_data, s_ui_turn_data, sizeof(s_ui_turn_data));
     // Under a reading background the paper is a light gray, not white. The old text
@@ -372,8 +419,18 @@ void my_waveform_init(void) {
         lut_or(s_paper_turn_data, f, 0, 0, 2);
         lut_or(s_paper_turn_data, f + MY_READER_TURN_PULSE, 0, 0, 1);
     }
-    // Keep every reader/paper/image table byte-identical to the accepted build.
-    ui_restore_black_margin();
+    // Reading black restoration is opt-in; its default preserves the released
+    // tables. Image banks remain unchanged, including in the experiment.
+    restore_black_margin(s_turn_data, MY_READER_TURN_FRAMES, RICKYOS_PLUS_READER_BLACK_RESTORE_PHASES, true);
+    restore_black_margin(s_paper_turn_data, MY_READER_TURN_FRAMES, RICKYOS_PLUS_READER_BLACK_RESTORE_PHASES, true);
+    restore_black_margin(s_ui_turn_data, MY_UI_TURN_FRAMES, RICKYOS_PLUS_UI_BLACK_RESTORE_PHASES, false);
+#if RICKYOS_PLUS_UI_WHITE_MAINTENANCE
+    // ui_turn_build deliberately held every diagonal cell, also removing the
+    // already-present GL16 white->white maintenance action. Restore ONLY that
+    // action in the UI bank. Do this last so neither reading nor paper inherits
+    // it. Changed gray/black/white sequences and the 37-phase budget stay intact.
+    gl16_white_tick(s_ui_turn_data, MY_UI_TURN_FRAMES);
+#endif
     ESP_LOGD(TAG, "reader GL16=%d (short experiment=%d)",
              MY_READER_GL16_FRAMES, RICKYOS_PLUS_READER_SHORT_WAVEFORM);
 }

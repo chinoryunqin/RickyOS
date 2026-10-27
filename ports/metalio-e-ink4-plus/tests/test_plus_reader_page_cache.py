@@ -14,6 +14,7 @@ module.ReaderPageCacheTest().test_cache_identity_cancellation_and_lifetime()
 program,includes=captured[0]
 program=program[:program.index('void reset()')]
 program='#define FREEINK_DEVICE_METALIO_PLUS 1\n'+program
+program=program.replace('uint8_t textAntiAliasing=1,', 'uint8_t nativePageTurn=0; uint8_t textAntiAliasing=1,')
 # 阅读背景 draws nothing here: these paths are about cache identity, not the paper.
 program=program.replace('struct GfxRenderer;', '''struct GfxRenderer;
 namespace ReadingBackground {
@@ -70,6 +71,32 @@ program+=r'''
 void nativeImageStep(){if(++nativeImageBlocks==cancelNativeImageAt)activityManager.cancelled=true;}
 void resetNative(){assert(memory::live==0);memory::allocations=0;memory::failAt=0;memory::headroom=true;activityManager={};SETTINGS={};renders=0;cancelAt=0;heapFree=1<<20;nativeImageBlocks=0;cancelNativeImageAt=0;failNativeImage=false;nextChapterImages=false;pageLoads.clear();}
 int main(){
+ for(int style=1;style<=3;++style){
+  resetNative();SETTINGS.textAntiAliasing=0;SETTINGS.nativePageTurn=style;
+  EpubReaderActivity r;const auto original=r.renderer.frame;
+  assert(r.pageCacheEligible());r.renderIdle(0);
+  assert(memory::live==6 && memory::allocations==6 && r.renderer.frame==original);
+  assert(!r.pageCache_[0].key.antiAliasing && r.pageCacheIs16_[0]);
+  assert(r.consume());
+  const auto key=r.pageCache_[0].key;SETTINGS.textAntiAliasing=1;
+  assert(!(key==r.pageCacheKey(key.page,1,1,1,1)));
+  r.freePageCache();assert(memory::live==0);
+ }
+ for(int style:{0,4}){
+  resetNative();SETTINGS.textAntiAliasing=0;SETTINGS.nativePageTurn=style;
+  EpubReaderActivity r;assert(!r.pageCacheEligible());r.renderIdle(0);assert(memory::allocations==0);
+ }
+ for(int fail=1;fail<=6;++fail){
+  resetNative();SETTINGS.textAntiAliasing=0;SETTINGS.nativePageTurn=3;memory::failAt=fail;
+  EpubReaderActivity r;const auto original=r.renderer.frame;r.renderIdle(0);
+  assert(r.renderer.frame==original && r.renderer.active16==nullptr && memory::live<=6);
+  int owned=0;for(int slot=0;slot<2;++slot){
+   owned+=bool(r.pageCacheBase_[slot])+bool(r.pageCacheStash_[slot])+bool(r.pageCache16_[slot]);
+   if(r.pageCache_[slot].state==ReaderPageCache::State::Ready)
+    assert(r.pageCacheBase_[slot] && r.pageCacheStash_[slot] && r.pageCache16_[slot]);
+  }
+  assert(memory::live==owned);r.freePageCache();assert(memory::live==0);
+ }
  resetNative();
  {
   EpubReaderActivity r;const auto original=r.renderer.frame;

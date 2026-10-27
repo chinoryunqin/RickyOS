@@ -105,13 +105,17 @@ void epd_lcd_get_timing(int* average,int* minimum,int* maximum) {
     *maximum=__atomic_load_n(&last_phase_maximum,__ATOMIC_RELAXED);
 }
 
-static void pace_phase(int64_t phase_start_us) {
+static void pace_phase_min(int64_t phase_start_us, int minimum_us) {
     for (;;) {
-        if (esp_timer_get_time() - phase_start_us >= EPD_MIN_PHASE_US) {
+        if (esp_timer_get_time() - phase_start_us >= minimum_us) {
             break;
         }
         vTaskDelay(0);
     }
+}
+
+static void pace_phase(int64_t phase_start_us) {
+    pace_phase_min(phase_start_us, EPD_MIN_PHASE_US);
 }
 
 #if RICKYOS_PLUS_PHASE_LOOKAHEAD

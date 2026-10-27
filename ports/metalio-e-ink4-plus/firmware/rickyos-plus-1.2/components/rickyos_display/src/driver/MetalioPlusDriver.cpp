@@ -81,6 +81,9 @@ class MetalioPlusDriver final : public PanelDriver {
     ready_ = MetalioEpd_Init();
     state_ = OpticalState::Unknown;
     if (!ready_) ESP_LOGE("PlusDisplay", "panel initialization failed");
+#if RICKYOS_PLUS_TURN_SELFTEST
+    if (ready_) runTurnSelfTest();
+#endif
   }
   void deepSleep(EpdBus&) override {
     nextReaderTextFinish = false;
@@ -371,6 +374,52 @@ class MetalioPlusDriver final : public PanelDriver {
              body.width, body.height, result, (esp_timer_get_time() - startedUs) / 1000);
     return result;
   }
+#if RICKYOS_PLUS_TURN_SELFTEST
+  // Boot-only and opt-in: no SD, account, page position or preference writes.
+  // Reuse the existing native frame/diff and worker buffers. Abort the bounded
+  // trial on its first driver error; normal application startup resynchronizes.
+  void runTurnSelfTest() {
+    auto* hl = MetalioEpd_Hl();
+    if (!hl || !hl->front_fb) return;
+    memset(hl->front_fb, 0xff, geometry().bufferSize * 4);
+    auto result = refresh(hl, MODE_GC16, true);
+    ESP_LOGI("TurnTest", "BEGIN baseline=0x%x", result);
+    if (result != EPD_DRAW_SUCCESS) return;
+    for (int page = 0; page < 32; ++page) {
+      if (page && page % 8 == 0) {
+        memset(hl->front_fb, 0xff, geometry().bufferSize * 4);
+        result = refresh(hl, MODE_GC16, true);
+        ESP_LOGI("TurnTest", "motion baseline=0x%x", result);
+        if (result != EPD_DRAW_SUCCESS) break;
+      }
+      // All rows dirty, distributed AA coverage, realistic short glyph-sized
+      // runs plus a binary variant. Full physical width1216, height684.
+      for (int y = 0; y < 684; ++y) for (int x = 0; x < 1216; x += 2) {
+        uint8_t pair = 0;
+        for (int lane = 0; lane < 2; ++lane) {
+          const int px = x + lane;
+          const bool ink = ((px + (page % 8) * 5) % 31 < 20) && ((y + (page % 8) * 3) % 35 < 26);
+          const bool edge = (px + (page % 8) * 5) % 31 == 19;
+          const int gray = !ink ? 15 : edge && page % 2 ? (y + (page % 8)) % 15 : 0;
+          pair |= gray << (lane * 4);
+        }
+        hl->front_fb[y * 608 + x / 2] = pair;
+      }
+      const int style = page / 8;
+      epd_set_native_turn(style, page % 4, page % 2);
+      if (style == 3) epd_set_native_ripple_origin(page % 2 ? 1023 : 0, 512);
+      epd_set_native_reader_text_finish(true);
+      const int64_t started = esp_timer_get_time();
+      result = refreshTurn(hl, {}, false);
+      epd_set_native_turn(0, 0, false);
+      ESP_LOGI("TurnTest", "page=%d result=0x%x ms=%lld", page, result,
+               (esp_timer_get_time() - started) / 1000);
+      if (result != EPD_DRAW_SUCCESS) break;
+    }
+    ESP_LOGI("TurnTest", "END result=0x%x", result);
+    state_ = OpticalState::Unknown;
+  }
+#endif
   EpdDrawError refresh(EpdiyHighlevelState* hl, EpdDrawMode waveform, bool full) {
     // A native gray frame and a full application/page change need a clean
     // optical baseline, not only a RAM diff against the previous UI image.

@@ -1,6 +1,24 @@
 // Included only by render_lcd.c when explicitly testing phase lookahead.
 // A phase's LUT is reused ONLY after both feeders acknowledge completion.
 // The ISR consumes committed internal queue rows, never the LUT or PSRAM.
+// Opt-in optical A/B: launch intervals, not CKV/line timing or LUT counts.
+#ifndef RICKYOS_PLUS_READER_MOTION_PERIOD_US
+#define RICKYOS_PLUS_READER_MOTION_PERIOD_US 0
+#endif
+#if RICKYOS_PLUS_READER_MOTION_PERIOD_US != 0 && \
+    (RICKYOS_PLUS_READER_MOTION_PERIOD_US < EPD_MIN_PHASE_US || RICKYOS_PLUS_READER_MOTION_PERIOD_US > 25000)
+#error "Reader motion period must be 0 or 12000..25000 us"
+#endif
+static int reader_motion_period_us(const RenderContext_t* ctx) {
+#if defined(CONFIG_IDF_TARGET_ESP32S31) && RICKYOS_PLUS_READER_MOTION_PERIOD_US
+    if (ctx->turn_phases && !ctx->turn_region.spread && ctx->reader_text_finish &&
+        ctx->cycle_frames > ctx->turn_phases) return RICKYOS_PLUS_READER_MOTION_PERIOD_US;
+#else
+    (void)ctx;
+#endif
+    return 0;
+}
+
 static bool wait_phase_feeders(RenderContext_t* ctx, unsigned* pending) {
     for (int i = 0; i < NUM_RENDER_THREADS; ++i) {
         if (!(*pending & (1u << i))) continue;
@@ -37,6 +55,7 @@ static bool wait_phase_prefill(RenderContext_t* ctx) {
 
 static void lcd_do_update_lookahead(RenderContext_t* ctx) {
     const int64_t cycle_start = esp_timer_get_time();
+    const int motion_period = reader_motion_period_us(ctx);
     uint8_t* const original_ready = ctx->line_ready;
     uint8_t* const original_threads = ctx->line_threads;
     unsigned pending = 0;
@@ -61,7 +80,11 @@ static void lcd_do_update_lookahead(RenderContext_t* ctx) {
         if (__atomic_load_n(&ctx->error, __ATOMIC_ACQUIRE)) break;
         epd_lcd_frame_done_cb((frame_done_func_t)handle_lcd_frame_done, ctx);
         epd_lcd_line_source_cb((line_cb_func_t)retrieve_line_isr, ctx);
-        const int64_t started = epd_lcd_start_frame_at(0);
+        // Anchor to the preceding ACTUAL launch. A late phase never causes
+        // a shortened catch-up interval. Prefill is still mandatory first;
+        // the hardware waits outside its critical section for this deadline.
+        const int64_t deadline = motion_period && previous_start ? previous_start + motion_period : 0;
+        const int64_t started = epd_lcd_start_frame_at(deadline);
         if (previous_start) {
             const int period = (int)(started - previous_start);
             if (period < period_min) period_min = period;
@@ -99,7 +122,13 @@ static void lcd_do_update_lookahead(RenderContext_t* ctx) {
         if (__atomic_load_n(&ctx->error, __ATOMIC_ACQUIRE)) break;
         // Keep the existing minimum settling cadence, timed from actual scan
         // start (not from before LUT build/prefill). No shortened waveforms.
-        pace_phase(started);
+        // Only the final phase needs its full hold here. Other fixed-cadence
+        // phases wait in the next hardware start, including its setup/prefix,
+        // rather than adding that setup time after a full software delay.
+        if (motion_period && phase + 1 == ctx->cycle_frames)
+            pace_phase_min(started, motion_period);
+        else
+            pace_phase(started);
         ++ctx->current_frame;
     }
 

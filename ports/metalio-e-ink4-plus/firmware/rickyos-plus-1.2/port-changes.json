@@ -123,6 +123,11 @@
       "ported_sha256": "73738c0787764f06730ef2700d1d7b0369311ff49ef2b04a1f55aabbb3f4d0ef"
     },
     {
+      "path": "lib/EpdFont/builtinFonts/ricky_book_12_medium.h",
+      "baseline_sha256": null,
+      "ported_sha256": "037d89412eb026cba7d8deb06e56c411c9dbc969f4b373c213e8fcefc38d052d"
+    },
+    {
       "path": "lib/EpdFont/builtinFonts/ricky_caption_10_regular.h",
       "baseline_sha256": "d9e32b31e4a385b9b846ab3d80d66b6dc79b513c1c9ce2f58ce9ac5c08355cb5",
       "ported_sha256": "0a0cf32ef3f374aafd8187e167c0cdf08ab5acafdb9a260fa4a525697c8256b9"
@@ -280,7 +285,7 @@
     {
       "path": "lib/GfxRenderer/GfxRenderer.cpp",
       "baseline_sha256": "d9bb2737f8a0da787c6e8b956410d1aeee92e58d6cb87f80eb776f4bba3c4075",
-      "ported_sha256": "e834d7cb74e879e204efdf8e18b838635df92d0aa99bd49bd1db9df4b92859e6"
+      "ported_sha256": "5d95e3365e9810d5d547a38b471dc0fd71afd3be1aeb5342c278d449ba01fee8"
     },
     {
       "path": "lib/GfxRenderer/GfxRenderer.h",
@@ -555,7 +560,7 @@
     {
       "path": "src/SdCardFontSystem.h",
       "baseline_sha256": "af8139402245ebebd239697cd753b680fcbb46461019f2085d3590acf9b14f6a",
-      "ported_sha256": "fa8d9bbd9c946d36494483d6dee4fb55e3a1ea0e10793cf8adc78b08abbb73c0"
+      "ported_sha256": "50b8b5e4cae41bd50bc90f9ce557127049ec288d24c2e5f1be870823e2fb4f74"
     },
     {
       "path": "src/SettingsList.h",
@@ -770,7 +775,7 @@
     {
       "path": "src/activities/library/LibraryListActivity.cpp",
       "baseline_sha256": "390421f0e356311b536e8d9d3ec0f7805fbe83ca0ee641fec6303ce7a995c465",
-      "ported_sha256": "069bdfec7bbdfc448e269e7453a94ece12df5e11947323fcd566ff508e1f776a"
+      "ported_sha256": "bdff0e1bb238e2905777853f97552c816ff068ce131042098f049eeb16741c49"
     },
     {
       "path": "src/activities/library/LibraryListActivity.h",
@@ -830,7 +835,7 @@
     {
       "path": "src/activities/reader/EpubReaderActivity.cpp",
       "baseline_sha256": "330723cad52ac629fa1451c9ca90cffff0a04b06e0266861e092ff93e8ffa1c9",
-      "ported_sha256": "f8af56da6d9de35aff993c3a6594afd9dcbb0ff575a7c5455ee3280c33dff086"
+      "ported_sha256": "80c384f27cf7510c388310f5ccaeaf23b614238c9779733304a85895afb5fbad"
     },
     {
       "path": "src/activities/reader/EpubReaderActivity.h",
@@ -851,6 +856,11 @@
       "path": "src/activities/reader/NativeTurnRequest.h",
       "baseline_sha256": null,
       "ported_sha256": "c71be08e82bda8adcb1b82a0c2ed826212d95975876a34a95f8db5515bc821ec"
+    },
+    {
+      "path": "src/activities/reader/ReaderActivity.cpp",
+      "baseline_sha256": "add5d8195d6aa38ad0abc769be80e4ce383cdf401df03130a5b1c452a2bacc87",
+      "ported_sha256": "9bb64fb9c2267f68f93857cf2e2849fe6c0ba181fde49a18c07fc155aa3c4332"
     },
     {
       "path": "src/activities/reader/ReaderChrome.h",
@@ -950,12 +960,12 @@
     {
       "path": "src/components/RickyDesignUi.h",
       "baseline_sha256": "ae5acc8b93778f862a8de972123e1fda1490b603638396d33d220e49e99ce5ca",
-      "ported_sha256": "631fc27d265a7c3b17bf73e4663ec00efa1762aa04070de9d2bc1358d7d17f71"
+      "ported_sha256": "9cf7eb57ea6abd76bccb96ef26c7dd756ff74e785132a1258d075911a97cf9b3"
     },
     {
       "path": "src/components/RickyHomeUi.cpp",
       "baseline_sha256": "85d40f37352a3df9b434762459291e312b59e4ce3728f5fd8b779fd016abbb3c",
-      "ported_sha256": "50ea66e6a0a318c65eb2e301bb728830f65edd7a26b894119de949a71de19478"
+      "ported_sha256": "34c207b6baa632f43791f1e984d4e45fe8f0d13176005f4a6dd5dc5b5279925e"
     },
     {
       "path": "src/components/RickyPageUi.h",
@@ -1040,7 +1050,7 @@
     {
       "path": "src/main.cpp",
       "baseline_sha256": "a9593200335b30dace971723992905ac8ce0beb05159ecb6d17d837bdb73fdc5",
-      "ported_sha256": "a942abb90794725bb15f1e9c8a17967bff301e9e85b660a5d37610e8376b84d3"
+      "ported_sha256": "5aef0a7582385dd6df7d82c9c25ebc93613b526aff4dd6f673b7458f831c0485"
     },
     {
       "path": "src/network/CrossPointWebServer.cpp",

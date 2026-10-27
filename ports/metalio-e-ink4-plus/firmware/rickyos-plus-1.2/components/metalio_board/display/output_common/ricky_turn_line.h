@@ -2,16 +2,43 @@
 #pragma once
 #include "../ricky_native_turn.h"
 
+// Immutable for the duration of both producers. Inline this inexpensive
+// selector so a 16px run never calls a Flash-resident scheduling helper.
+static inline __attribute__((always_inline)) int ricky_turn_window_spread(const RenderContext_t* ctx) {
+    if (ctx->turn_region.spread) return ctx->turn_region.spread;
+#if defined(CONFIG_IDF_TARGET_ESP32S31) && RICKYOS_PLUS_READER_FINE_RIPPLE
+    if (ctx->cycle_frames - ctx->turn_phases == RICKYOS_PLUS_READER_RIPPLE_SPREAD)
+        return RICKYOS_PLUS_READER_RIPPLE_SPREAD;
+#endif
+#if defined(CONFIG_IDF_TARGET_ESP32S31)
+    if (ctx->cycle_frames - ctx->turn_phases == RICKYOS_PLUS_READER_SWEEP_SPREAD)
+        return RICKYOS_PLUS_READER_SWEEP_SPREAD;
+#endif
+    return 7;
+}
+
 static inline void ricky_turn_prepare_window(RenderContext_t* ctx) {
     if (!ctx->turn_window) return;
     // Both feeders finished the previous production; the ISR may still be
     // draining their queue tail. Fill this ring before notifying either next
     // producer. Only internal queued rows, never this ring, are read by the ISR.
-    const int spread = ctx->turn_region.spread ? ctx->turn_region.spread : 7;
+    const int spread = ricky_turn_window_spread(ctx);
     const int slots = spread + 1;
-    const int lo = ctx->turn_producer_tick > spread
+    int lo = ctx->turn_producer_tick > spread
         ? ctx->turn_producer_tick - spread : 0;
     const int hi = ctx->turn_producer_tick < ctx->turn_phases ? ctx->turn_producer_tick : ctx->turn_phases - 1;
+#if defined(CONFIG_IDF_TARGET_ESP32S31) && RICKYOS_PLUS_READER_FINE_RIPPLE
+    if (!ctx->turn_region.spread && spread == RICKYOS_PLUS_READER_RIPPLE_SPREAD) {
+        // Sequential ticks retain every still-live ring slot. Only one phase
+        // enters the window; after the final source phase no copy is needed.
+        // A new transaction, repeated tick, jump or rewind seeds the complete
+        // needed range instead. Both workers have joined before any write.
+        if (ctx->turn_window_tick >= 0 &&
+            ctx->turn_producer_tick == ctx->turn_window_tick + 1)
+            lo = ctx->turn_producer_tick;
+        ctx->turn_window_tick = ctx->turn_producer_tick;
+    }
+#endif
     for (int phase = lo; phase <= hi; ++phase) {
 #if defined(CONFIG_IDF_TARGET_ESP32S31)
         uint8_t* dest = ctx->turn_window + (phase % slots) * 256;
@@ -23,13 +50,13 @@ static inline void ricky_turn_prepare_window(RenderContext_t* ctx) {
     }
 }
 
-static inline const uint8_t* ricky_turn_lut(RenderContext_t* ctx, int phase) {
+static inline __attribute__((always_inline)) const uint8_t* ricky_turn_lut(RenderContext_t* ctx, int phase) {
 #if defined(CONFIG_IDF_TARGET_ESP32S31)
     const int stride = 256;
 #else
     const int stride = 1024;
 #endif
-    return ctx->turn_window ? ctx->turn_window + (phase % ((ctx->turn_region.spread ? ctx->turn_region.spread : 7) + 1)) * stride
+    return ctx->turn_window ? ctx->turn_window + (phase % (ricky_turn_window_spread(ctx) + 1)) * stride
                             : ctx->turn_luts + phase * 1024;
 }
 

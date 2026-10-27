@@ -124,7 +124,7 @@ def build(name):
 
 
 if __name__ == '__main__':
-    results = [build(name) for name in ('notosans_cjk_12_rickyos', 'notosans_cjk_14', 'notosans_cjk_16', 'ricky_caption_10_regular', 'ricky_display_23_bold', 'ricky_headline_14_medium', 'ricky_title_16_bold')]
+    results = [build(name) for name in ('notosans_cjk_12_rickyos', 'notosans_cjk_14', 'notosans_cjk_16', 'ricky_caption_10_regular', 'ricky_display_23_bold', 'ricky_headline_14_medium', 'ricky_title_16_bold', 'ricky_book_12_medium')]
     (PROJECT / 'generated/fonts/packing-report.json').write_text(json.dumps(results, indent=2) + '\n')
     for result in results:
         if result['compressor'] == 'upstream':

@@ -145,6 +145,32 @@ Device acceptance must still check short taps/swipes/menu entry during cache
 construction, reflow to the old cached page number, image-page idle SD activity,
 framebuffer integrity and PSRAM recovery after leaving/reopening the reader.
 
+### Plus native reading cache
+
+Plus native page caching accepts anti-aliased text and binary text with a valid
+native page-turn style. The AA setting still controls glyph coverage; it must not
+silently disable the binary animation's idle pre-render. Both use the same bounded
+two-slot pool, existing PSRAM headroom/cancellation checks and reader-exit cleanup.
+An AA change invalidates the pixel key. Binary reading without a native turn keeps
+the previous cache gate. Test both settings in `test_plus_reader_page_cache.py`;
+check partially allocated slots remain owned and are released on exit.
+
+### Plus reader exit cleanup (local ui3 experiment)
+
+Before releasing reader-owned images, page frames or overlay snapshots, finish
+the pending display transfer while holding the existing render lock. Do not take
+a second render lock in `onExit()`. Plus also sheds rebuildable font caches and
+re-arms TTF warm-up; shared font sources and UI missing-glyph fallback faces stay
+valid. Activity destruction releases the book and section before the destination
+enters. Request the destination's full refresh after any exit notifications; the
+direct-gray controller consumes it only after a successful commit and suppresses
+the Tab animation for that clean frame. This is separate from normal page turns.
+
+Run `ports/metalio-e-ink4-plus/tests/test_plus_reader_exit.py` and the existing
+direct-gray/page-cache regressions. Real residual ink and post-reading heap
+recovery still require device acceptance; see the Plus investigation dated
+2026-10-26.
+
 ### FreeRTOS Task Guidelines
 
 **Source**: [src/activities/util/KeyboardEntryActivity.cpp:45-50](../../src/activities/util/KeyboardEntryActivity.cpp)
@@ -190,3 +216,81 @@ OpenDyslexic and the broad Noto reader families live in the SD font catalog
 renderer.insertFont(FONT_UI_MEDIUM, ui12FontFamily);
 renderer.drawText(FONT_UI_MEDIUM, x, y, "Hello", true);
 ```
+
+
+### Plus experimental fine reader ripple
+
+`RICKYOS_PLUS_READER_FINE_RIPPLE=1` is an opt-in S31-only launch schedule for
+reader style3. It uses 24 radial positions (spread23); other reader styles, UI
+regions, and targets retain their schedules. The 48-phase quality waveform thus
+needs 71 global scans instead of 55: drive sequences are preserved, elapsed time
+is not assumed unchanged. The renderer reserves 24 * 256 = 6144 internal bytes
+for direct action lookup (default flag0 retains9 * 256 = 2304 bytes). This adds
+3840 bytes of bounded static storage, with no fragmented per-turn allocation or
+new framebuffer. The earlier 2-bit packed variant is rejected: an actual
+1216x684 boot exercise underruns at row670/tick14 even after inlining helpers.
+Do not reintroduce packed per-pixel decoding based on host tests alone.
+
+Preparation precedes both producers. Row feeders read only the internal byte
+window; tiny schedule selectors are forced inline to avoid Flash calls per run.
+No LCD clock, queue depth, heap floor, waveform action or clean interval changes.
+Opt-in `RICKYOS_PLUS_TURN_SELFTEST=1` runs at most16 full-panel transitions (eight matched OFF/ON patterns) before
+application startup, stops on the first driver error and resynchronizes the
+normal screen afterward. It has no SD/preferences access and uses existing
+frames. Disable the boot exercise in the normal trial image; require on-device
+result0 for every trial plus optical/latency acceptance and a total internal
+code/data budget comparison before enabling by default.
+
+The S31 fine-ripple hot ring tracks its last prepared tick in one context int.
+Sequential ticks load only the newly entering source phase; tail ticks load none.
+Begin/end reset the marker. Cold/repeated/jumped/rewound ticks seed the full active
+range; both producers must finish before preparation, and ISR never reads this
+ring. Other modes retain their original fill policy. Source waveform/drive counts
+stay exact; measure actual cadence and optical ghosting rather than inferring
+screen quality from reduced table reads.
+
+
+Plus optical A/B flag `RICKYOS_PLUS_READER_MOTION_PERIOD_US` defaults to0.
+With phase-lookahead it optionally schedules pure native-text motion at a fixed
+12000..25000us scan-start interval (trial20000). Deadline is the preceding
+actual scan start plus the interval; never catch up from an earlier ideal
+schedule. Existing prefill/error checks precede the hardware deadline wait,
+which stays outside critical sections and preserves CKV/prefix timing. The
+final phase retains its full settling interval. OFF/UI/paper/normal cleanup
+keep their paths. LUT counts/order do not change, but physical duration does;
+ink/gray/ghosting/latency require optical A/B before release. No new heap pool
+or framebuffer is allocated. Keep the confirmed native16 wake-cleanup fix.
+
+
+The S31 fine ripple optionally accepts `RICKYOS_PLUS_READER_RIPPLE_SPREAD=9..23`
+(default23). Trial15 retains the accepted20ms motion period and48 local phases,
+reducing only spatial staggering from71 to63 global scans. Geometry/origin stays
+radial smoothstep with16 launch positions. Keep the existing6144-byte maximum
+hot ring;16 active slots use4096 bytes but unused bytes are not reclaimed heap.
+Indexing/incremental reuse follow the configured spread, with UI precedence.
+Verify all local actions/rotations/ring wraps/recovery and hardware cadence;
+shorter stagger/post-completion HOLD and tighter animation still need optical
+acceptance. The q7 package remains the rollback baseline.
+
+
+### Plus q6-based ripple erase overlap experiment (2026-10-27)
+
+`RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES` defaults to0, range0..8,
+requires full reader quality and early erase. Only S31 white-text ripple applies
+it after completion alignment and before starting either feeder. It delays only
+white-target exterior HOLD to overlap departing-text erase with new-black write;
+all active pulses and internal HOLD remain, black/gray/chrome unchanged. Trial8
+uses spread15 and period0 (q6 cadence), not q7's rejected fixed20ms. No new
+allocation or pool;6144B hot-table maximum remains reserved. Runtime timing,
+short old/new text overlap and optical ghosting must be checked separately.
+See the port's plus-display-memory-investigation-20261026.md for evidence.
+
+
+Plus q10 extends the opt-in erase-overlap preparation to all three reading
+motion styles (1..3), retaining motion OFF and UI paths. S31 SWEEP_SPREAD is
+explicit3..7/default7; trial4 reduces skim/arc spatial launch staggering by3
+scans with all48 per-pixel waveform steps retained. Hot-ring modulo follows
+the actual configured spread, UI region takes precedence. Paper motion uses
+the shorter spatial sweep but retains its unmodified waveform. Boot-only
+selftest now compares OFF/skim/arc/ripple in32 bounded matched transitions;
+no extra frame/heap/queue. Hardware optical acceptance remains separate.

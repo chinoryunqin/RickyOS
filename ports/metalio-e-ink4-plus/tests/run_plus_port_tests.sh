@@ -5,6 +5,7 @@ cd "$TASK_ROOT"
 mkdir -p .local
 python3 tests/test_plus_font_resources.py
 python3 scripts/check_plus_font_resources.py
+python3 tests/test_plus_book_titles.py
 clang++ -std=c++20 -Wall -Wextra -Werror tests/test_plus_framebuffer.cpp -o .local/test_plus_framebuffer
 .local/test_plus_framebuffer
 python3 tests/test_battery_stability.py
@@ -31,6 +32,8 @@ clang++ -std=c++20 -Wall -Wextra -Werror -Wno-missing-field-initializers -Wl,-de
 python3 tests/test_plus_clock_owner.py
 python3 tests/test_plus_clock_radio.py
 python3 tests/test_plus_net_alloc_trace.py
+python3 tests/test_plus_memory_logging.py
+python3 tests/test_plus_field_diagnostics.py
 python3 tests/test_plus_font_network_auto.py
 python3 tests/test_plus_wifi_security.py
 python3 tests/test_plus_radio_auto.py
@@ -61,6 +64,7 @@ python3 tests/test_plus_battery_alignment.py
 python3 tests/test_plus_ui_contrast.py
 python3 tests/test_plus_ui_text_roles.py
 python3 tests/test_plus_ui_black_margin.py
+python3 tests/test_plus_ui_white_maintenance.py
 python3 tests/test_plus_quiet_settings.py
 python3 tests/test_plus_holding_hand.py
 python3 tests/test_native_page_turn.py
@@ -72,6 +76,7 @@ python3 tests/test_plus_compact_reader_chrome.py
 python3 tests/test_plus_compact_reader_margins.py
 python3 tests/test_plus_reader_refresh_geometry.py
 python3 tests/test_plus_reader_refresh_cadence.py
+python3 tests/test_plus_reader_exit.py
 python3 tests/test_plus_reading_background.py
 python3 tests/test_plus_image_page_polarity.py
 python3 tests/test_plus_regional_raster.py
@@ -109,6 +114,16 @@ python3 tests/test_plus_reader_image_layout.py
 python3 tests/test_plus_reader_image_cache.py
 python3 tests/test_plus_reader_native_images.py
 python3 tests/test_plus_reader_waveform.py
+python3 tests/test_plus_reader_ink.py
+python3 tests/test_plus_reader_retained_ink.py
+python3 tests/test_plus_reader_quality.py
+python3 tests/test_plus_reader_early_erase.py
+python3 tests/test_plus_reader_erase_overlap.py
+python3 tests/test_plus_reader_white_preimage.py
+python3 tests/test_plus_reader_fine_ripple.py
+python3 tests/test_plus_turn_selftest.py
+python3 tests/test_plus_native_cleanup_override.py
+python3 tests/test_plus_reader_motion_cadence.py
 python3 tests/test_plus_direct_calibration.py
 python3 tests/test_plus_usb_retry.py
 python3 tests/test_plus_ota_manifest.py

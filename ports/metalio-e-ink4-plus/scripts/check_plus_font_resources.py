@@ -7,7 +7,7 @@ from pathlib import Path
 FACES = (
     'notosans_cjk_12_rickyos', 'notosans_cjk_14', 'notosans_cjk_16',
     'ricky_caption_10_regular', 'ricky_display_23_bold',
-    'ricky_headline_14_medium', 'ricky_title_16_bold',
+    'ricky_headline_14_medium', 'ricky_title_16_bold', 'ricky_book_12_medium',
 )
 
 
@@ -16,7 +16,7 @@ def verify(project):
     records = json.loads(report.read_text())
     names = [record['name'] for record in records]
     if len(names) != len(FACES) or set(names) != set(FACES):
-        raise ValueError('Packed font report does not cover the seven Plus faces exactly once')
+        raise ValueError('Packed font report does not cover the eight Plus faces exactly once')
     stale = []
     for record in records:
         name = record['name']
@@ -35,4 +35,4 @@ if __name__ == '__main__':
         verify(project)
     except (OSError, ValueError, KeyError, TypeError) as error:
         raise SystemExit(f'{error}\nRun scripts/prepare_rickyos_plus_resources.sh with the resource Python first.')
-    print('Packed Plus fonts match all seven restored source faces')
+    print('Packed Plus fonts match all eight restored source faces')

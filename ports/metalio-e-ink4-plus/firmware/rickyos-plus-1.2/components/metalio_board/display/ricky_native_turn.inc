@@ -4,12 +4,37 @@
 static RickyNativeTurn s_next_native_turn;
 static RickyNativeTurnRegion s_next_native_region;
 static bool s_next_reader_text_finish;
+#ifndef RICKYOS_PLUS_READER_EARLY_ERASE
+#define RICKYOS_PLUS_READER_EARLY_ERASE 0
+#endif
+#if RICKYOS_PLUS_READER_EARLY_ERASE != 0 && RICKYOS_PLUS_READER_EARLY_ERASE != 1
+#error "Early reader erase must be 0 or 1"
+#endif
+#if RICKYOS_PLUS_READER_EARLY_ERASE && !RICKYOS_PLUS_READER_QUALITY
+#error "Early reader erase requires the complete quality waveform"
+#endif
+#ifndef RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES
+#define RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES 0
+#endif
+#if RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES < 0 || RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES > 8
+#error "Reader erase overlap must be 0..8 phases"
+#endif
+#if RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES && (!RICKYOS_PLUS_READER_EARLY_ERASE || !RICKYOS_PLUS_READER_QUALITY)
+#error "Reader erase overlap requires early erase and the complete quality waveform"
+#endif
 #if defined(CONFIG_IDF_TARGET_ESP32S31)
 // This renderer has one serialized context. Reserve its bounded hot working set
 // in HP DRAM at link time, not in the fragmented reading heap. S31's C feeder
 // needs only the low action byte of each padded 32-bit LUT entry: 9 * 256 B.
 // No full-frame/static phase bank, and no ISR accesses this producer-only table.
-static DRAM_ATTR uint8_t s_native_turn_window[9 * 256] __attribute__((aligned(16)));
+// Direct byte actions deliberately trade 3840 B of bounded static storage
+// for eliminating per-pixel packed decoding, which underruns on the real panel.
+#if RICKYOS_PLUS_READER_FINE_RIPPLE
+enum { RICKY_NATIVE_HOT_SLOTS = 24 };
+#else
+enum { RICKY_NATIVE_HOT_SLOTS = 9 };
+#endif
+static DRAM_ATTR uint8_t s_native_turn_window[RICKY_NATIVE_HOT_SLOTS * 256] __attribute__((aligned(16)));
 #endif
 
 void epd_set_native_turn(uint8_t style, uint8_t orientation, bool from_right) {
@@ -74,12 +99,39 @@ static int ricky_ui_trim_idle_head(uint8_t* bank, int phases) {
     return phases - head;
 }
 
-// Pure AA text only: changing black/gray strokes finish near their gray edges.
+// Pure white-paper text: changing black/gray strokes finish near their gray edges.
 // Move only exterior HOLD: keep every original active action and internal HOLD,
 // at least three final settling ticks, unchanged-pixel cells (including the accepted
-// retained-black re-drive), and all transitions toward white exactly intact.
+// retained-black re-drive). By default white transitions remain exact; the opt-in
+// full-quality experiment below only moves their exterior HOLD earlier.
 // This is a timing A/B experiment, not a claim of eliminating optical overshoot.
 static void ricky_reader_lock_text_finish(uint8_t* bank, int phases) {
+#if RICKYOS_PLUS_READER_EARLY_ERASE
+    // Full GL16 erases retained black before it erases departing text. Move
+    // only exterior HOLD of transitions to white so the departing glyph clears
+    // before writing the new black. Keep every pulse/order/internal HOLD and
+    // leave all black/gray targets byte-identical to the accepted quality bank.
+    // white->white remains HOLD, including the unchanged-chrome sentinel.
+    int black_start = 0;
+    while (black_start < phases && bank[black_start * 1024 + 15 * 4] != 1) ++black_start;
+    if (black_start > 0 && black_start < phases) {
+        for (int from = 0; from < 15; ++from) {
+            const int pair = 15 * 16 + from;
+            int first = 0, last = phases - 1;
+            while (first < phases && bank[first * 1024 + pair * 4] == 0) ++first;
+            while (last >= first && bank[last * 1024 + pair * 4] == 0) --last;
+            int shift = last - (black_start - 1);
+            if (shift > first) shift = first;
+            if (shift <= 0 || first == phases) continue;
+            for (int tick = 0; tick < phases; ++tick) {
+                uint32_t action = 0;
+                if (tick + shift < phases)
+                    memcpy(&action, bank + (tick + shift) * 1024 + pair * 4, sizeof(action));
+                memcpy(bank + tick * 1024 + pair * 4, &action, sizeof(action));
+            }
+        }
+    }
+#endif
     for (int pair = 0; pair < 256; ++pair) {
         const int to = pair >> 4, from = pair & 15;
         if (to == 15 || to == from) continue;
@@ -100,6 +152,35 @@ static void ricky_reader_lock_text_finish(uint8_t* bank, int phases) {
     }
 }
 
+#if defined(CONFIG_IDF_TARGET_ESP32S31) && RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES
+// Reader-motion optical experiment: keep departing text a little longer while
+// new ink starts landing. Delay only exterior HOLD of transitions to white;
+// never remove/reorder a pulse or internal HOLD, or touch black/gray targets.
+// This reduces the erase-before-write gap without deleting drive actions.
+// Actual drive duration still depends on phase cadence; verify optics on-panel.
+// The 48-phase bank and its existing allocation are reused before feeders start.
+static void ricky_reader_overlap_erase(uint8_t* bank, int phases) {
+    int black_start = 0;
+    while (black_start < phases && bank[black_start * 1024 + 15 * 4] != 1) ++black_start;
+    if (black_start == phases) return;
+    int finish = black_start - 1 + RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES;
+    if (finish > phases - 3) finish = phases - 3; // retain at least two final HOLDs
+    for (int from = 0; from < 15; ++from) {
+        const int pair = 15 * 16 + from;
+        int last = phases - 1;
+        while (last >= 0 && !bank[last * 1024 + pair * 4]) --last;
+        const int shift = finish - last;
+        if (last < 0 || shift <= 0) continue;
+        for (int tick = phases - 1; tick >= 0; --tick) {
+            uint32_t action = 0;
+            if (tick >= shift)
+                memcpy(&action, bank + (tick - shift) * 1024 + pair * 4, sizeof(action));
+            memcpy(bank + tick * 1024 + pair * 4, &action, sizeof(action));
+        }
+    }
+}
+#endif
+
 static void ricky_native_end(RenderContext_t* ctx) {
     heap_caps_free(ctx->turn_luts);
     heap_caps_free(ctx->turn_delays);
@@ -110,6 +191,7 @@ static void ricky_native_end(RenderContext_t* ctx) {
     ctx->turn_delays = NULL;
     ctx->turn_window = NULL;
     ctx->turn_phases = 0;
+    ctx->turn_window_tick = -1;
     ctx->turn_region = (RickyNativeTurnRegion){0};
     ctx->turn_producer_tick = 0;
     ctx->reader_text_finish = false;
@@ -121,6 +203,7 @@ static void ricky_native_begin(RenderContext_t* ctx, const EpdWaveformPhases* ph
     ctx->turn_delays = NULL;
     ctx->turn_window = NULL;
     ctx->turn_phases = 0;
+    ctx->turn_window_tick = -1;
     // Only differential full-screen native reader waves. Variable phase timing
     // cannot be staggered without changing each pixel's drive integral.
     const LutFunctionPair compact = find_lut_functions(ctx->mode, 1024);
@@ -146,7 +229,7 @@ static void ricky_native_begin(RenderContext_t* ctx, const EpdWaveformPhases* ph
     // Optional, turn-scoped scratch; no extra framebuffer. Reading multiple hot
     // phase LUTs from PSRAM on every UI row misses the feeder deadline. Cache
     // only the simultaneously active phase window internally, not the whole bank.
-    // S31 reserves 2304 B HP DRAM and depads to 256 B/phase (reader uses 2048 B).
+    // S31 depads to256 B/phase: default9 slots2304 B; fine ripple24 slots6144 B.
     // Other targets retain their existing 1 KiB/phase converter. C owns scratch until both
     // feeders join; OOM falls back before any drive, never to a half animation.
     ctx->turn_luts = heap_caps_aligned_alloc(16, (size_t)phases->phases * 1024, MALLOC_CAP_SPIRAM);
@@ -170,6 +253,9 @@ static void ricky_native_begin(RenderContext_t* ctx, const EpdWaveformPhases* ph
         nativePhases = ricky_ui_trim_idle_head(ctx->turn_luts, nativePhases);
     } else if (ctx->reader_text_finish) {
         ricky_reader_lock_text_finish(ctx->turn_luts, nativePhases);
+#if defined(CONFIG_IDF_TARGET_ESP32S31) && RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES
+        if (turn.style >= 1 && turn.style <= 3) ricky_reader_overlap_erase(ctx->turn_luts, nativePhases);
+#endif
     }
     const RickyRippleGeometry ripple = turn.style == 3 ? ricky_ripple_geometry(turn,ctx->display_width,ctx->display_height)
                                                        : (RickyRippleGeometry){0};
@@ -187,8 +273,9 @@ static void ricky_native_begin(RenderContext_t* ctx, const EpdWaveformPhases* ph
             } else if (!turn.style) {
                 delay = 0; // AA convergence is available with spatial motion OFF.
             } else {
-                delay = turn.style == 3 ? ricky_turn_ease(ricky_ripple_axis(ripple,px,py))
-                                        : ricky_turn_delay(turn, px, py, ctx->display_width, ctx->display_height);
+                delay = turn.style == 3 ? ricky_ripple_delay(ricky_ripple_axis(ripple,px,py), ricky_reader_turn_spread(turn))
+                                        : ricky_ripple_delay(ricky_turn_axis(turn, px, py, ctx->display_width, ctx->display_height),
+                                                             ricky_reader_turn_spread(turn));
             }
             ctx->turn_delays[y * cols + x] = delay;
         }
@@ -197,7 +284,7 @@ static void ricky_native_begin(RenderContext_t* ctx, const EpdWaveformPhases* ph
     ctx->turn_cols = cols;
     ctx->current_frame = 0;
     ctx->turn_producer_tick = 0;
-    ctx->cycle_frames = nativePhases + (region.spread ? region.spread : turn.style ? 7 : 0);
+    ctx->cycle_frames = nativePhases + (region.spread ? region.spread : ricky_reader_turn_spread(turn));
     ESP_LOGI("NativeTurn", "style=%u orientation=%u right=%d phases=%d ticks=%d scratch=%u",
              turn.style, turn.orientation, turn.from_right, ctx->turn_phases, ctx->cycle_frames,
              (unsigned)((size_t)phases->phases * 1024 + cols * rows));

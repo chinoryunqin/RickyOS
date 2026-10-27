@@ -7,6 +7,12 @@
 #include <string.h>
 #include <ricky_native_turn.h>
 #include <waveforms/my_waveform.h>
+#ifndef RICKYOS_PLUS_READER_QUALITY
+#define RICKYOS_PLUS_READER_QUALITY 0
+#endif
+#ifndef RICKYOS_PLUS_READER_EARLY_ERASE
+#define RICKYOS_PLUS_READER_EARLY_ERASE 0
+#endif
 
 #define MALLOC_CAP_SPIRAM 1
 #define MALLOC_CAP_INTERNAL 2
@@ -25,7 +31,7 @@ typedef struct {
     EpdRect area, crop_to;
     int display_width, display_height, mode, current_frame, cycle_frames;
     uint8_t *turn_luts, *turn_delays, *turn_window;
-    int turn_phases, turn_cols, turn_producer_tick;
+    int turn_phases, turn_cols, turn_producer_tick, turn_window_tick;
     bool reader_text_finish;
     RickyNativeTurnRegion turn_region;
     lut_func_t lut_lookup_func;
@@ -85,9 +91,17 @@ static void exercise(int w, int h, int phases) {
         allocations = fail_at = 0;
         ricky_native_begin(&c,&wave,(RickyNativeTurn){.style=style,.orientation=o,.from_right=right,
                             .has_origin=style==3,.origin_x=371,.origin_y=693});
-        assert(c.turn_phases == phases && c.cycle_frames == phases+7 && live == 2);
-        assert(c.turn_window == s_native_turn_window && sizeof(s_native_turn_window) == 2304);
+        assert(c.turn_phases == phases && c.cycle_frames == phases+ricky_reader_turn_spread((RickyNativeTurn){.style=style}) && live == 2);
+        assert(c.turn_window == s_native_turn_window && sizeof(s_native_turn_window) == RICKY_NATIVE_HOT_SLOTS * 256);
         assert(last_caps == MALLOC_CAP_SPIRAM); // no per-turn HP allocation
+        const RickyNativeTurn selected={.style=style,.orientation=o,.from_right=right,
+            .has_origin=style==3,.origin_x=371,.origin_y=693};
+        for(int row=0;row<(h+15)/16;row++)for(int col=0;col<c.turn_cols;col++) {
+            const int px=col*16+8<w?col*16+8:w-1;
+            const int py=row*16+8<h?row*16+8:h-1;
+            const int axis=ricky_turn_axis(selected,px,py,w,h);
+            assert(c.turn_delays[row*c.turn_cols+col]==ricky_ripple_delay(axis,ricky_reader_turn_spread(selected)));
+        }
         memset(count,0,(size_t)w*h*sizeof(int));
         for (int tick=0;tick<c.cycle_frames;tick++) {
             c.current_frame = tick - 1; // ISR may still be draining the preceding phase.
@@ -249,41 +263,59 @@ static void exercise_text_finish(void) {
     for(int i=0;i<MY_WAVEFORM.num_modes;i++)
         if(MY_WAVEFORM.mode_data[i]->type==MY_MODE_READER_TURN)
             wave=MY_WAVEFORM.mode_data[i]->range_data[0];
-    assert(wave && wave->phases==37);
+    assert(wave);
+    const int frames=wave->phases;
+    assert(frames==(RICKYOS_PLUS_READER_QUALITY?48:37));
     real_wave=true;
-    uint8_t original[37*1024];
-    for(int p=0;p<37;p++)build(original+p*1024,wave,p);
+    uint8_t original[frames*1024];
+    for(int p=0;p<frames;p++)build(original+p*1024,wave,p);
     uint32_t input[64];uint8_t output[64];
     for(int pair=0;pair<256;pair++)((uint8_t*)input)[pair]=pair;
     for(int style=0;style<=3;style++)for(int orientation=0;orientation<4;orientation++) {
-        RenderContext_t c=context(256,16);
+        RenderContext_t c=context(256,16);c.cycle_frames=frames;
         c.reader_text_finish=true;allocations=fail_at=0;
         ricky_native_begin(&c,wave,(RickyNativeTurn){.style=style,.orientation=orientation});
-        assert(c.turn_phases==37 && c.cycle_frames==(style?44:37) && c.reader_text_finish);
+        assert(c.turn_phases==frames && c.cycle_frames==(frames+ricky_reader_turn_spread((RickyNativeTurn){.style=style})) && c.reader_text_finish);
         int shifts[256];
         for(int pair=0;pair<256;pair++) {
             const int to=pair>>4,from=pair&15;
-            int last=36;while(last>=0&&!original[last*1024+pair*4])last--;
-            const int finish=to==0?29:33;
-            const int shift=to!=15 && to!=from && last>=0 && last<finish?finish-last:0;
+            int last=frames-1;while(last>=0&&!original[last*1024+pair*4])last--;
+            const int finish=frames-(to==0?8:4);
+            int shift=to!=15 && to!=from && last>=0 && last<finish?finish-last:0;
+#if RICKYOS_PLUS_READER_EARLY_ERASE
+            if(to==15 && from!=15 && last>=0) {
+                assert(frames==48);
+                int first=0;while(first<frames&&!original[first*1024+pair*4])first++;
+                int left=last-27;if(left>first)left=first;
+                if(left>0)shift=-left;
+#if defined(CONFIG_IDF_TARGET_ESP32S31) && RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES
+                if(style>=1 && style<=3) {
+                    int delay=27+RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES-(last+shift);
+                    if(delay>0)shift+=delay;
+                }
+#endif
+            }
+#endif
             shifts[pair]=shift;
-            for(int tick=0;tick<37;tick++) {
-                const int expected=tick<shift?0:original[(tick-shift)*1024+pair*4];
+            for(int tick=0;tick<frames;tick++) {
+                const int originalPhase=tick-shift;
+                const int expected=originalPhase<0||originalPhase>=frames?0:original[originalPhase*1024+pair*4];
                 assert(c.turn_luts[tick*1024+pair*4]==expected);
             }
             // Every active pulse AND internal HOLD retains its exact order.
             // Unchanged cells / clearing to white are byte-identical, not muted.
-            if(shift)assert(c.turn_luts[finish*1024+pair*4]!=0);
-            if(to==0 && from!=0)for(int tick=30;tick<37;tick++)assert(!c.turn_luts[tick*1024+pair*4]);
+            if(frames==37 && to==0 && from!=0)assert(last<=finish);
+            if(shift>0 && to!=15)assert(c.turn_luts[finish*1024+pair*4]!=0);
+            if(to==0 && from!=0 && last<=finish)for(int tick=finish+1;tick<frames;tick++)assert(!c.turn_luts[tick*1024+pair*4]);
         }
         for(int tick=0;tick<c.cycle_frames;tick++) {
             c.turn_producer_tick=tick;ricky_turn_prepare_window(&c);
             for(int y=0;y<16;y++) {
                 ricky_turn_line(&c,input,output,y);
                 for(int pair=0;pair<256;pair++) {
-                    int local=ricky_turn_phase(tick,c.turn_delays[(y/16)*c.turn_cols+pair/16],37);
+                    int local=ricky_turn_phase(tick,c.turn_delays[(y/16)*c.turn_cols+pair/16],frames);
                     const int originalPhase=local-shifts[pair];
-                    const int expected=local<0||originalPhase<0?0:original[originalPhase*1024+pair*4];
+                    const int expected=local<0||originalPhase<0||originalPhase>=frames?0:original[originalPhase*1024+pair*4];
                     assert(((output[pair/4]>>(6-2*(pair%4)))&3)==expected);
                 }
             }
@@ -291,9 +323,9 @@ static void exercise_text_finish(void) {
         ricky_native_end(&c);assert(!live&&!c.reader_text_finish);
     }
     for(int oom=1;oom<=2;oom++) {
-        RenderContext_t c=context(256,16);c.reader_text_finish=true;allocations=0;fail_at=oom;
+        RenderContext_t c=context(256,16);c.cycle_frames=frames;c.reader_text_finish=true;allocations=0;fail_at=oom;
         ricky_native_begin(&c,wave,(RickyNativeTurn){0});
-        assert(!live&&!c.turn_phases&&!c.reader_text_finish&&c.cycle_frames==37);
+        assert(!live&&!c.turn_phases&&!c.reader_text_finish&&c.cycle_frames==frames);
     }
     fail_at=0;real_wave=false;
     epd_set_native_reader_text_finish(true);assert(s_next_reader_text_finish);
@@ -306,16 +338,18 @@ static void exercise_paper_turn(void) {
     for(int i=0;i<MY_WAVEFORM.num_modes;i++)
         if(MY_WAVEFORM.mode_data[i]->type==MY_MODE_READER_PAPER_TURN)
             wave=MY_WAVEFORM.mode_data[i]->range_data[0];
-    assert(wave && wave->phases==37);
+    assert(wave);
+    const int frames=wave->phases;
+    assert(frames==(RICKYOS_PLUS_READER_QUALITY?48:37));
     real_wave=true;
-    uint8_t original[37*1024];
-    for(int p=0;p<37;p++)build(original+p*1024,wave,p);
+    uint8_t original[frames*1024];
+    for(int p=0;p<frames;p++)build(original+p*1024,wave,p);
     uint32_t input[64];uint8_t output[64];
     for(int pair=0;pair<256;pair++)((uint8_t*)input)[pair]=pair;
     for(int style=1;style<=3;style++)for(int orientation=0;orientation<4;orientation++) {
-        RenderContext_t c=context(256,16);allocations=fail_at=0;
+        RenderContext_t c=context(256,16);c.cycle_frames=frames;allocations=fail_at=0;
         ricky_native_begin(&c,wave,(RickyNativeTurn){.style=style,.orientation=orientation});
-        assert(c.turn_phases==37 && c.cycle_frames==44 && !c.reader_text_finish);
+        assert(c.turn_phases==frames && c.cycle_frames==frames+ricky_reader_turn_spread((RickyNativeTurn){.style=style}) && !c.reader_text_finish);
         // Paper must never get the white-text convergence transformation. All
         // leading erase, drive and internal HOLD pulses remain byte-identical.
         assert(memcmp(c.turn_luts,original,sizeof(original))==0);
@@ -324,7 +358,7 @@ static void exercise_paper_turn(void) {
             for(int y=0;y<16;y++) {
                 ricky_turn_line(&c,input,output,y);
                 for(int pair=0;pair<256;pair++) {
-                    int local=ricky_turn_phase(tick,c.turn_delays[pair/16],37);
+                    int local=ricky_turn_phase(tick,c.turn_delays[pair/16],frames);
                     int expected=local<0?0:original[local*1024+pair*4];
                     assert(((output[pair/4]>>(6-2*(pair%4)))&3)==expected);
                 }
@@ -332,9 +366,9 @@ static void exercise_paper_turn(void) {
         }
         ricky_native_end(&c);assert(!live);
     }
-    RenderContext_t ordinary=context(256,16);allocations=0;
+    RenderContext_t ordinary=context(256,16);ordinary.cycle_frames=frames;allocations=0;
     ricky_native_begin(&ordinary,wave,(RickyNativeTurn){0});
-    assert(allocations==0 && !ordinary.turn_phases && ordinary.cycle_frames==37);
+    assert(allocations==0 && !ordinary.turn_phases && ordinary.cycle_frames==frames);
     real_wave=false;
     puts("reading paper: real waveform x 256 pairs x 3 styles x 4 orientations; preserved erase and ordinary fallback PASS");
 }
@@ -359,7 +393,17 @@ static void exercise_ui_ink_finish(void) {
         }
         assert(a==b && memcmp(before,after,(size_t)a*sizeof(int))==0);
         if(b) assert(last==((pair>>4)==0?29:33));
-        if((pair>>4)==(pair&15))assert(!b); // retained cells remain HOLD
+        if((pair>>4)==(pair&15)) {
+#if RICKYOS_PLUS_UI_WHITE_MAINTENANCE
+            if(pair==255) {
+                assert(b==1 && after[0]==2 && last==33); // UI white maintenance only.
+            } else {
+                assert(!b);
+            }
+#else
+            assert(!b); // Default: retained cells remain HOLD.
+#endif
+        }
         // Full sequence, including internal HOLDs, shifts without pulse edits.
         int first=0,end=36;
         while(first<37 && !original[first*1024+pair*4])first++;
@@ -441,4 +485,5 @@ int main(void) {
     epd_set_native_turn(255,0,true);
     assert(s_next_native_turn.style==0);
     puts("native turn: phase coverage, HOLD, LUT output, rotations, edges, OOM and fallback PASS");
+    return 0;
 }

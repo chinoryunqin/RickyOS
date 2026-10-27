@@ -95,6 +95,42 @@ static inline uint8_t ricky_ui_turn_delay(RickyNativeTurn turn, int x, int y, in
     return (uint8_t)((ricky_turn_axis(turn, x, y, w, h) * spread + 512) / 1024);
 }
 
+#ifndef RICKYOS_PLUS_READER_FINE_RIPPLE
+#define RICKYOS_PLUS_READER_FINE_RIPPLE 0
+#endif
+#if RICKYOS_PLUS_READER_FINE_RIPPLE != 0 && RICKYOS_PLUS_READER_FINE_RIPPLE != 1
+#error "Fine reader ripple must be 0 or 1"
+#endif
+
+#ifndef RICKYOS_PLUS_READER_RIPPLE_SPREAD
+#define RICKYOS_PLUS_READER_RIPPLE_SPREAD 23
+#endif
+#if RICKYOS_PLUS_READER_RIPPLE_SPREAD < 9 || RICKYOS_PLUS_READER_RIPPLE_SPREAD > 23
+#error "Reader ripple spread must be 9..23"
+#endif
+#ifndef RICKYOS_PLUS_READER_SWEEP_SPREAD
+#define RICKYOS_PLUS_READER_SWEEP_SPREAD 7
+#endif
+#if RICKYOS_PLUS_READER_SWEEP_SPREAD < 3 || RICKYOS_PLUS_READER_SWEEP_SPREAD > 7
+#error "Reader sweep spread must be 3..7"
+#endif
+
+// Keep default/Pico/UI unchanged. Only opt-in S31 ripple uses10..24 launches.
+// Shorter spread removes stagger-only scans, never the per-pixel waveform.
+static inline int ricky_reader_turn_spread(RickyNativeTurn turn) {
+#if defined(CONFIG_IDF_TARGET_ESP32S31) && RICKYOS_PLUS_READER_FINE_RIPPLE
+    if (turn.style == 3) return RICKYOS_PLUS_READER_RIPPLE_SPREAD;
+#endif
+#if defined(CONFIG_IDF_TARGET_ESP32S31)
+    if (turn.style == 1 || turn.style == 2) return RICKYOS_PLUS_READER_SWEEP_SPREAD;
+#endif
+    return turn.style ? 7 : 0;
+}
+static inline uint8_t ricky_ripple_delay(int axis, int spread) {
+    const int64_t t = axis < 0 ? 0 : axis > 1024 ? 1024 : axis;
+    return (uint8_t)((spread * t * t * (3072 - 2 * t) + (1LL << 29)) >> 30);
+}
+
 static inline uint8_t ricky_turn_ease(int axis) {
     // Smoothstep launch schedule, rounded to eight wavefront positions.
     const int64_t t = axis;

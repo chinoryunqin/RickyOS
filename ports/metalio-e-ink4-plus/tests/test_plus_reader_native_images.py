@@ -100,8 +100,9 @@ for(int refresh:{0,1})for(bool panelTurn:{false,true})for(bool pageHasImages:{fa
 for(bool readerBackground:{false,true})for(bool aa:{false,true})for(int motion:{0,1,2,3}){
  SETTINGS.textAntiAliasing=aa;SETTINGS.nativePageTurn=motion;display.called=display.value=false;
 ''' + arming + r'''
+ assert(SETTINGS.textAntiAliasing==aa);
  assert(display.called==(refresh==HalDisplay::FAST_REFRESH&&!panelTurn));
- assert(display.value==(refresh==HalDisplay::FAST_REFRESH&&!panelTurn&&!pageHasImages&&!readerBackground&&aa));
+ assert(display.value==(refresh==HalDisplay::FAST_REFRESH&&!panelTurn&&!pageHasImages&&!readerBackground));
 }}
 ''')
 

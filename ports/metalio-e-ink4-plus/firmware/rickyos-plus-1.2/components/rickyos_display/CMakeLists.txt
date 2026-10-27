@@ -15,3 +15,8 @@ endif()
 if("$ENV{RICKYOS_PLUS_GRAY_CALIBRATION}" STREQUAL "1")
   target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_GRAY_CALIBRATION=1)
 endif()
+
+# Bounded optical/feeder exercise before application startup; never a release default.
+if("$ENV{RICKYOS_PLUS_TURN_SELFTEST}" STREQUAL "1")
+ target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_TURN_SELFTEST=1)
+endif()

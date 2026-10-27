@@ -107,6 +107,7 @@
   - 全集 = `cn_rickyos_chars`。
 - **禁止假粗**（`type::kAllowSyntheticBold = false`），不使用 `GfxRenderer::SyntheticBoldScope`。粗体只来自真正的 Medium 或 Bold 字库。
 - **动态文本缺字时整串退回：** 书名、作者、文件名、昵称这类动态文本，如果目标字重的子集里缺字，整串退回 body Regular（`type::kDynamicFallback`）。**绝不在一行里逐字混用不同字重。**
+- **Plus 书名实验：** 首页及书库的书名另用完整 BODY 字符范围的 12pt 真 Medium；首页较大 headline 缺字时先整串退到此书名字体，仍缺字才整串退 BODY。作者、进度保持原灰度角色，阅读正文独立。该实验尚待真机验收，见 Plus 的 `plus-book-title-weight-20261025.md`。
 - **用在哪里：**
 
   | 样式 | 用途 |
