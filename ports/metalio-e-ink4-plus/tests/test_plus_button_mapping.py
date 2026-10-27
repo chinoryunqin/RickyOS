@@ -32,7 +32,7 @@ struct CrossPointSettings {
  uint8_t frontButtonBack=0,frontButtonConfirm=1,frontButtonLeft=2,frontButtonRight=3,sideButtonLayout=0;
  uint8_t plusKeyActions[10]={0,1,0,1,0,1,0,1,0,1};
 } SETTINGS;
-enum class HomeButtonAction {Ignore,Home,ReaderMenu,Refresh,ToggleFrontlight,Confirm};
+enum class HomeButtonAction {Ignore,Home,ReaderMenu,Refresh,ToggleFrontlight,Confirm,Back};
 class MappedInputManager {
  public:
  enum class Button {Back,Confirm,Left,Right,Up,Down,Power,PageBack,PageForward,NavNext,NavPrevious,ScreenLeft,ScreenRight,ScreenUp,ScreenDown,Count};

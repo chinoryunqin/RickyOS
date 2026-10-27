@@ -80,7 +80,7 @@ struct {
  int getScreenWidth()const{return width;} int getScreenHeight()const{return height;}
 } renderer;
 namespace HeaderBackTapTarget {bool contains(int,int){return gpio.tap;}}
-enum class HomeButtonAction {Ignore,Confirm};
+enum class HomeButtonAction {Ignore,Confirm,Back};
 struct MappedInputManager {
  enum class Button {Back,Confirm}; enum class SwipeDir {None,Right,Left,Up,Down};
  uint16_t plusActions=0;
