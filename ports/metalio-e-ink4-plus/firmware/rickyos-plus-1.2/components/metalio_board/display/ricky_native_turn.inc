@@ -22,6 +22,12 @@ static bool s_next_reader_text_finish;
 #if RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES && (!RICKYOS_PLUS_READER_EARLY_ERASE || !RICKYOS_PLUS_READER_QUALITY)
 #error "Reader erase overlap requires early erase and the complete quality waveform"
 #endif
+#ifndef RICKYOS_PLUS_READER_EDGE_ERASE_WITH_CORE
+#define RICKYOS_PLUS_READER_EDGE_ERASE_WITH_CORE 0
+#endif
+#if RICKYOS_PLUS_READER_EDGE_ERASE_WITH_CORE && (!RICKYOS_PLUS_READER_EARLY_ERASE || !RICKYOS_PLUS_READER_QUALITY)
+#error "Edge erase alignment requires early erase and the complete quality waveform"
+#endif
 #if defined(CONFIG_IDF_TARGET_ESP32S31)
 // This renderer has one serialized context. Reserve its bounded hot working set
 // in HP DRAM at link time, not in the fragmented reading heap. S31's C feeder
@@ -179,6 +185,37 @@ static void ricky_reader_overlap_erase(uint8_t* bank, int phases) {
         }
     }
 }
+
+#if defined(CONFIG_IDF_TARGET_ESP32S31) && RICKYOS_PLUS_READER_EDGE_ERASE_WITH_CORE
+// Early erase ends every transition to white together, so the longer gray->white
+// sequences of old anti-aliased edges start before the black core: departing text
+// first thins, then vanishes, and the page reads blank for longer (a visible flash
+// with AA on). Start them with the core instead. Exterior HOLD moves only; every
+// pulse and internal HOLD, and all black/gray targets, stay as they are. A
+// sequence too long to start with the core moves as far as two final HOLDs allow.
+static void ricky_reader_align_edge_erase(uint8_t* bank, int phases) {
+    const int core = 15 * 16;  // black -> white
+    int core_first = 0;
+    while (core_first < phases && !bank[core_first * 1024 + core * 4]) ++core_first;
+    if (core_first == phases) return;
+    for (int from = 1; from < 15; ++from) {
+        const int pair = 15 * 16 + from;
+        int first = 0, last = phases - 1;
+        while (first < phases && !bank[first * 1024 + pair * 4]) ++first;
+        while (last >= first && !bank[last * 1024 + pair * 4]) --last;
+        if (first == phases) continue;
+        int shift = core_first - first;
+        if (shift > phases - 3 - last) shift = phases - 3 - last;
+        if (shift <= 0) continue;
+        for (int tick = phases - 1; tick >= 0; --tick) {
+            uint32_t action = 0;
+            if (tick >= shift)
+                memcpy(&action, bank + (tick - shift) * 1024 + pair * 4, sizeof(action));
+            memcpy(bank + tick * 1024 + pair * 4, &action, sizeof(action));
+        }
+    }
+}
+#endif
 #endif
 
 static void ricky_native_end(RenderContext_t* ctx) {
@@ -256,6 +293,9 @@ static void ricky_native_begin(RenderContext_t* ctx, const EpdWaveformPhases* ph
 #if defined(CONFIG_IDF_TARGET_ESP32S31) && RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES
         // Plain turns too: the white gap between erase and write reads as a flash.
         if (turn.style <= 3) ricky_reader_overlap_erase(ctx->turn_luts, nativePhases);
+#endif
+#if defined(CONFIG_IDF_TARGET_ESP32S31) && RICKYOS_PLUS_READER_EDGE_ERASE_WITH_CORE
+        if (turn.style <= 3) ricky_reader_align_edge_erase(ctx->turn_luts, nativePhases);
 #endif
     }
     const RickyRippleGeometry ripple = turn.style == 3 ? ricky_ripple_geometry(turn,ctx->display_width,ctx->display_height)

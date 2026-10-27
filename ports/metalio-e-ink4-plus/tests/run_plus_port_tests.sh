@@ -121,6 +121,7 @@ python3 tests/test_plus_reader_retained_ink.py
 python3 tests/test_plus_reader_quality.py
 python3 tests/test_plus_reader_early_erase.py
 python3 tests/test_plus_reader_erase_overlap.py
+python3 tests/test_plus_reader_edge_erase.py
 python3 tests/test_plus_reader_white_preimage.py
 python3 tests/test_plus_reader_fine_ripple.py
 python3 tests/test_plus_turn_selftest.py
