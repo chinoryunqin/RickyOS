@@ -429073,7 +429073,7 @@
  }
 -void progress(GfxRenderer& g,Rect r,int percent) {
 +void progress(GfxRenderer& g,Rect r,int percent,bool=false,bool lineTrack=false) {
-+  assert(lineTrack);  // the reader bar never uses the gray track
++  assert(!lineTrack);  // the gray track stays off the Plus
    assert(r.x>=5 && r.y>=5 && r.x+r.width<=g.w-5 && r.y+r.height<=g.h-8);
    runs.push_back({r,std::clamp(percent,0,100)});
  }
@@ -442922,7 +442922,7 @@
      }
    }
    if (sb.showsProgressBar()) {
-@@ -1210,14 +1241,14 @@
+@@ -1210,14 +1241,21 @@
                              ? static_cast<int>(bookProgress)
                          : pageCount > 0 ? currentPage * 100 / pageCount
                                          : 0;
@@ -442935,17 +442935,24 @@
 -         static_cast<int16_t>(right - left), static_cast<int16_t>(height)},
 -        percent);
 +    if (barRight > barLeft) {
++      // Only the Plus reader re-pulses unchanged gray toward black; elsewhere the gray
++      // track reads fine and stays.
++#if FREEINK_DEVICE_METALIO_PLUS
++      constexpr bool plusReaderLineTrack = true;
++#else
++      constexpr bool plusReaderLineTrack = false;
++#endif
 +      RickyDesignUi::progress(
 +          renderer,
 +          {static_cast<int16_t>(barLeft),
 +           static_cast<int16_t>(safe.y + safe.height - height - chrome.progressBottom),
 +           static_cast<int16_t>(barRight - barLeft), static_cast<int16_t>(height)},
-+          percent, false, true);
++          percent, false, plusReaderLineTrack);
 +    }
    }
  }
  
-@@ -1437,7 +1468,7 @@
+@@ -1437,7 +1475,7 @@
  }
  
  void BaseTheme::drawOptionPopup(const GfxRenderer& renderer, const char* title, const std::vector<std::string>& options,

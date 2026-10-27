@@ -595,7 +595,7 @@
     {
       "path": "scripts/tests/test_rickyos_reader_chrome.py",
       "baseline_sha256": "2fb005add96d52fde454774ab3c278ecfe792738a610c101b5e62bed67961da7",
-      "ported_sha256": "8d7804e575206b1fda1b7296dcdf2c2bcb1ea586bbcb38fe1d99ac626e6648d0"
+      "ported_sha256": "affb5f57c2fbd85964e28df61faa737eebfa1292330d5b6b9ff0ed84efc0d80e"
     },
     {
       "path": "scripts/tests/test_ui_chrome_icons.py",
@@ -1135,7 +1135,7 @@
     {
       "path": "src/components/themes/BaseTheme.cpp",
       "baseline_sha256": "e54b5b4ab7ec37346bf3d19929021e05a03408ff6cd347efc9fe74a317ae8f79",
-      "ported_sha256": "7f925356b4a890403d4356f02ce95a888fda908315a0d0d9fddd04302a217f5d"
+      "ported_sha256": "79f12de39b0f7a925d346ef397822b79ea43df1f421005e5f99b490591837d19"
     },
     {
       "path": "src/components/themes/BaseTheme.h",

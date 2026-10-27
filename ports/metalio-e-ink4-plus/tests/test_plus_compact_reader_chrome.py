@@ -17,6 +17,7 @@ class RickyReaderChromeTest(unittest.TestCase):
     def test_actual_chrome_is_bounded_in_portrait_landscape_and_respects_visibility(self):
         source = (ROOT / 'src/components/themes/BaseTheme.cpp').read_text()
         run_cpp(r'''
+#define FREEINK_DEVICE_METALIO_PLUS 1
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
@@ -80,7 +81,7 @@ void secondaryText(GfxRenderer& g,Rect r,const char* s,int f,bool inverted=false
   text<Rect>(g,r,s,f,inverted,a);
 }
 void progress(GfxRenderer& g,Rect r,int percent,bool=false,bool lineTrack=false) {
-  assert(lineTrack);  // the reader bar never uses the gray track
+  assert(lineTrack);  // the Plus reader bar never uses the gray track
   assert(r.x>=5 && r.y>=5 && r.x+r.width<=g.w-5 && r.y+r.height<=g.h-8);
   runs.push_back({r,std::clamp(percent,0,100)});
 }
