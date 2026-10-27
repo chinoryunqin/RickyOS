@@ -5,8 +5,14 @@
 #include "TxtChapterIndex.h"
 
 MarkdownFormatter::MarkdownFormatter(Sink sink, uint8_t* line, size_t capacity, uint8_t* pending,
-                                     size_t pendingCapacity, bool gbk)
-    : sink_(sink), line_(line), capacity_(capacity), pending_(pending), pendingCapacity_(pendingCapacity), gbk_(gbk) {}
+                                     size_t pendingCapacity, bool gbk, bool utf16)
+    : sink_(sink),
+      line_(line),
+      capacity_(capacity),
+      pending_(pending),
+      pendingCapacity_(pendingCapacity),
+      gbk_(gbk),
+      utf16_(utf16) {}
 
 void MarkdownFormatter::plainTextBounded(std::string_view text, char* output) {
   // Inline markup only removes source bytes, never expands the label. Validate
@@ -32,7 +38,7 @@ void MarkdownFormatter::consume(std::string_view text, const bool visible, const
     const uint8_t first = static_cast<uint8_t>(text[i]);
     uint8_t utf8Length = first < 0x80 ? 1 : first < 0xE0 ? 2 : first < 0xF0 ? 3 : 4;
     if (utf8Length > text.size() - i) utf8Length = 1;
-    const uint8_t width = gbk_ && first >= 0x80 ? 2 : utf8Length;
+    const uint8_t width = utf16_ ? (utf8Length == 4 ? 4 : 2) : gbk_ && first >= 0x80 ? 2 : utf8Length;
     sink_.consume(sink_.context, position_, reinterpret_cast<const uint8_t*>(text.data() + i), width, utf8Length,
                   visible && first != '\r', spaces);
     position_ += width;
@@ -120,7 +126,7 @@ void MarkdownFormatter::flushPending() {
   write("</p>");
   if (pendingHasNewline_) {
     const uint8_t newline = '\n';
-    sink_.consume(sink_.context, pendingNewline_, &newline, 1, 1, false, false);
+    sink_.consume(sink_.context, pendingNewline_, &newline, utf16_ ? 2 : 1, 1, false, false);
   }
   pendingLength_ = 0;
   position_ = current;
@@ -217,7 +223,7 @@ bool MarkdownFormatter::processLine() {
       tableRow(pending, cells, columns, true);
       if (pendingHasNewline_) {
         const uint8_t newline = '\n';
-        sink_.consume(sink_.context, pendingNewline_, &newline, 1, 1, false, false);
+        sink_.consume(sink_.context, pendingNewline_, &newline, utf16_ ? 2 : 1, 1, false, false);
       }
       pendingLength_ = 0;
       position_ = current;

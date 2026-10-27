@@ -539,10 +539,11 @@ records produced by still older firmware used only the low 16 bits. Legacy
 progress newer than the last partial-index checkpoint recalculates at most the
 next 31 pages before rendering resumes.
 
-`chapters.bin` version 1 is a little-endian, fixed-record chapter index. Its
+`chapters.bin` TXT semantic version 3 is a little-endian, fixed-record chapter index. Its
 16-byte header stores, in order: `uint32 magic` (`TXTC`, `0x43545854`), `uint32
 fileSize`, `uint32 chapterCount`, `uint16 recordSize` (`196`), `uint8 version`
-(`1`), and `uint8 encoding` (`0` unknown/ASCII, `1` UTF-8, `2` GBK). Each record
+(`3`), and `uint8 encoding` (`0` unknown/ASCII, `1` UTF-8, `2` GBK,
+`3` UTF-16 LE, `4` UTF-16 BE). Each record
 contains a `uint32` source-file byte offset followed by a NUL-terminated
 `char title[192]` in UTF-8. The file is built on first chapter-menu use through
 `chapters.bin.tmp`, flushed, and swapped into place with a recoverable `.bak`.
@@ -553,18 +554,20 @@ known page-index prefix opens it directly and keeps a fixed 32-page local
 navigation history, so jumping does not synchronously paginate the intervening
 text or grow RAM with book length.
 
-RickyOS Markdown uses semantic chapter-index version 2, without changing the
+RickyOS Markdown uses semantic chapter-index version 4, without changing the
 16-byte header / 196-byte record layout. Its title contains the original ATX
 line (including the `#` prefix), under 192 UTF-8 bytes. Metadata derives levels
 1–6 and plain labels from this prefix. Fenced code is excluded. Old MD version-1
-indexes are rebuilt on demand; TXT and non-product Markdown remain version 1.
+and version-2 indexes are rebuilt on demand; TXT and non-product Markdown
+use version 3. The version bump adds UTF-16 source-byte semantics; record sizes
+and existing UTF-8/GBK enum values do not change.
 
 ## Reflowed TXT/Markdown source map
 
-Reflowed TXT metadata and HTML use conversion marker 2; RickyOS 1.1.5 Markdown
-uses marker 5 for parsed reading-oriented Markdown including pipe tables and ATX
-TOC (initial non-table candidate: 3; table candidate: 4). Non-product builds retain
-Markdown marker 2. Marker mismatch rebuilds only that book's HTML/sections.
+Reflowed TXT metadata and HTML use conversion marker 3; RickyOS Markdown
+uses marker 6 for UTF-16-aware parsed Markdown including pipe tables and ATX
+TOC (1.1.5: 5; initial non-table candidate: 3; table candidate: 4).
+Non-product Markdown uses marker 3. Marker mismatch rebuilds only that book's HTML/sections.
 The metadata uses the EPUB
 book/section formats above. Generated chapter IDs are `txt-<source-byte-offset>`.
 Titles stay disk-backed; each chapter boundary is consumed during parsing without
@@ -572,7 +575,7 @@ retaining the full chapter list. Old source progress is never deleted or rewritt
 by migration. Old page-number progress resolves through version 4–8 legacy indexes.
 Failed conversion, invalid maps or unresolved target pages preserve old progress.
 
-`txt-map.bin` version 1 is little-endian. Its 16-byte header is:
+`txt-map.bin` version 2 is little-endian. Its 16-byte header is:
 
 | Offset | Field |
 |---:|---|
@@ -580,8 +583,8 @@ Failed conversion, invalid maps or unresolved target pages preserve old progress
 | 4 | `uint32 sourceSize` |
 | 8 | `uint32 recordCount` |
 | 12 | `uint16 recordSize = 12` |
-| 14 | `uint8 version = 1` |
-| 15 | `uint8 encoding` (0 unknown/ASCII, 1 UTF-8, 2 GBK) |
+| 14 | `uint8 version = 2` |
+| 15 | `uint8 encoding` (0 unknown/ASCII, 1 UTF-8, 2 GBK, 3 UTF-16 LE, 4 UTF-16 BE) |
 
 Each 12-byte run stores `uint32 sourceOffset`, `uint32 visibleOffset`, `uint8
 sourceCharacterWidth`, `uint8 visibleStep` and `uint16 reserved = 0`.
@@ -595,11 +598,31 @@ TOC title and chapter navigation, without retaining chapter tables.
 Maps publish from `.tmp` only after successful conversion and flush. Books at or
 above 4GiB and chapter counts exceeding the existing 16-bit TOC budget fail safely.
 
+### UTF-16 decoding and source coordinates
+
+UTF-16 LE/BE requires a BOM (`FF FE` / `FE FF`). BOM-less UTF-16 is not guessed;
+UTF-32 BOMs are rejected. A streaming decoder carries at most four input bytes,
+with six bytes of state in total; it reuses existing read/line/output workspaces.
+The device never loads or transcodes an entire book into RAM.
+
+Chapter titles and HTML are UTF-8. Chapter, progress and map source coordinates
+remain offsets into the original file, including the BOM. UTF-16 source widths
+are 2 bytes per BMP scalar or 4 per surrogate pair. A surrogate pair maps to one
+visible codepoint, and an offset inside it resolves to that same character.
+BOM/CR/LF suppression and hidden Markdown syntax retain their original byte widths.
+Raw `0A` bytes inside another UTF-16 code unit are not line breaks.
+
+Readers still accept map version 1 for ASCII/UTF-8/GBK (`encoding <= 2`), allowing
+old Markdown progress to migrate before conversion is replaced. A version-1 map
+claiming UTF-16 is rejected. Malformed/unpaired surrogates and truncated code
+units are invalid input (reader E2); actual storage failures remain I/O errors
+(E3). These changes do not alter the source-progress record layout.
+
 ### RickyOS Markdown upgrade checkpoint
 
 `md-resume-v1.bin` is a 12-byte little-endian checkpoint in the reflowed EPUB
 cache: `uint32 magic=0x3152444D` (`MDR1`), `uint32 sourceSize`, and `uint32 sourceOffset`.
-Before replacing a version-2, version-3 or version-4 Markdown map, a 10-byte reader progress record is
+Before replacing a version-2, version-3, version-4 or version-5 Markdown conversion, a 10-byte reader progress record is
 resolved through that old map and checkpointed atomically using `.tmp`/replace.
 The original progress file is not changed. The reader resolves the checkpoint
 through the new map, locates its containing page, then removes the checkpoint

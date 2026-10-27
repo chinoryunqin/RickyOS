@@ -15,9 +15,9 @@
 
 const char* TxtToHtml::cacheVersionTag(std::string_view filename) {
 #ifdef RICKYOS_PRODUCT
-  if (FsHelpers::hasMarkdownExtension(filename)) return "<!-- MD_CACHE_VERSION: 5 -->";
+  if (FsHelpers::hasMarkdownExtension(filename)) return "<!-- MD_CACHE_VERSION: 6 -->";
 #endif
-  return FsHelpers::hasMarkdownExtension(filename) ? "<!-- MD_CACHE_VERSION: 2 -->" : "<!-- TXT_CACHE_VERSION: 2 -->";
+  return FsHelpers::hasMarkdownExtension(filename) ? "<!-- MD_CACHE_VERSION: 3 -->" : "<!-- TXT_CACHE_VERSION: 3 -->";
 }
 
 bool TxtToHtml::stream(std::string_view filename, void* readerCtx, int (*readFn)(void*, uint8_t*, size_t), Print& out) {
@@ -26,11 +26,17 @@ bool TxtToHtml::stream(std::string_view filename, void* readerCtx, int (*readFn)
 
 bool TxtToHtml::stream(std::string_view filename, void* readerCtx, int (*readFn)(void*, uint8_t*, size_t), Print& out,
                        const Options& options) {
+  if (options.error) *options.error = txt_encoding::ReadError::Io;
+  if (!txt_encoding::isSupported(options.encoding)) {
+    if (options.error) *options.error = txt_encoding::ReadError::InvalidData;
+    return false;
+  }
   constexpr size_t BUFFER_SIZE = 8192;
   // Two fixed 8 KiB buffers, allocated once per conversion; task stacks cannot hold them.
   auto inBuf = makeUniqueNoThrow<uint8_t[]>(BUFFER_SIZE);
   auto outBuf = makeUniqueNoThrow<uint8_t[]>(BUFFER_SIZE);
   if (!inBuf || !outBuf) {
+    if (options.error) *options.error = txt_encoding::ReadError::OutOfMemory;
     LOG_ERR("TXT", "OOM: TXT/MD HTML streaming buffers (%zu bytes)", BUFFER_SIZE * 2);
     return false;
   }
@@ -87,12 +93,14 @@ bool TxtToHtml::stream(std::string_view filename, void* readerCtx, int (*readFn)
   uint32_t source = 0;
   uint32_t visible = 1;  // The body opens with one newline, counted by ChapterHtmlSlimParser.
   bool readError = false;
+  bool ioReadError = false;
   const auto readByte = [&]() -> int {
     if (inputPos == static_cast<size_t>(inputSize)) {
       inputSize = readFn(readerCtx, inBuf.get(), readCapacity);
       inputPos = 0;
       if (inputSize <= 0) {
         readError = inputSize < 0;
+        ioReadError = readError;
         inputSize = 0;
         return -1;
       }
@@ -136,15 +144,17 @@ bool TxtToHtml::stream(std::string_view filename, void* readerCtx, int (*readFn)
          else
            for (uint8_t i = 0; i < utf8Length; ++i) ctx.escape(character[i]);
        }},
-      inBuf.get() + 1024, 4096, inBuf.get() + 5120, 3072, options.encoding == txt_encoding::Encoding::Gbk);
+      inBuf.get() + 1024, 4096, inBuf.get() + 5120, 3072, options.encoding == txt_encoding::Encoding::Gbk,
+      txt_encoding::isUtf16(options.encoding));
 #endif
 
   bool atLineStart = true;
   uint32_t pendingSpaces = 0;
   uint32_t pendingStart = 0;
+  uint8_t pendingWidth = 1;
   const auto finishSpaces = [&](const bool keep) {
     if (!pendingSpaces) return;
-    map(pendingStart, 1, keep ? 1 : 0);
+    map(pendingStart, pendingWidth, keep ? 1 : 0);
     if (keep) {
       for (uint32_t i = 1; i < pendingSpaces; ++i) writeStr("&#160;");
       writeByte(' ');
@@ -155,12 +165,27 @@ bool TxtToHtml::stream(std::string_view filename, void* readerCtx, int (*readFn)
 
   while (outputOk) {
     const uint32_t begin = source;
-    const int first = readByte();
+    int first = readByte();
     if (first < 0) break;
     uint8_t character[8] = {static_cast<uint8_t>(first)};
     uint8_t width = 1;
     size_t utf8Length = 1;
-    if (first >= 0x80) {
+    if (txt_encoding::isUtf16(options.encoding)) {
+      txt_encoding::Utf16Decoder decoder(options.encoding);
+      uint32_t cp = 0;
+      for (;;) {
+        const auto status = decoder.push(static_cast<uint8_t>(first), cp);
+        if (status == txt_encoding::Utf16Decoder::Status::Ready) break;
+        if (status == txt_encoding::Utf16Decoder::Status::Invalid || (first = readByte()) < 0) {
+          readError = true;
+          break;
+        }
+      }
+      if (readError) break;
+      width = static_cast<uint8_t>(source - begin);
+      utf8Length = txt_encoding::encodeUtf8(cp, character);
+      first = character[0];  // Control handling below uses decoded ASCII, not a source byte.
+    } else if (first >= 0x80) {
       if (options.encoding == txt_encoding::Encoding::Gbk) {
         const int second = readByte();
         if (second < 0) {
@@ -223,18 +248,21 @@ bool TxtToHtml::stream(std::string_view filename, void* readerCtx, int (*readFn)
 #endif
     if (first == '\r') {
       finishSpaces(false);
-      map(begin, 1, 0);
+      map(begin, width, 0);
       continue;
     }
     if (first == '\n') {
       finishSpaces(false);
-      map(begin, 1, 0);
+      map(begin, width, 0);
       writeStr("<br />");
       atLineStart = true;
       continue;
     }
     if (first == ' ' && !atLineStart) {
-      if (!pendingSpaces) pendingStart = begin;
+      if (!pendingSpaces) {
+        pendingStart = begin;
+        pendingWidth = width;
+      }
       ++pendingSpaces;
       continue;
     }
@@ -255,12 +283,16 @@ bool TxtToHtml::stream(std::string_view filename, void* readerCtx, int (*readFn)
   finishSpaces(false);
   map(source, 0, 0);  // EOF sentinel; no footer whitespace belongs to the source file.
   if (readError || !outputOk) {
+    if (options.error)
+      *options.error = readError ? (ioReadError ? txt_encoding::ReadError::Io : txt_encoding::ReadError::InvalidData)
+                                 : txt_encoding::ReadError::Io;
     LOG_ERR("TXT", "Failed TXT/MD conversion (input, index or output): %.*s", static_cast<int>(filename.size()),
             filename.data());
     return false;
   }
   writeStr("\n</body>\n</html>\n");
   flushOut();
+  if (options.error) *options.error = outputOk ? txt_encoding::ReadError::None : txt_encoding::ReadError::Io;
   return outputOk;
 }
 

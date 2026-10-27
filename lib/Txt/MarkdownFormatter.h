@@ -13,7 +13,8 @@ class MarkdownFormatter {
     void (*write)(void*, std::string_view);
     void (*consume)(void*, uint32_t, const uint8_t*, uint8_t, uint8_t, bool, bool);
   };
-  MarkdownFormatter(Sink sink, uint8_t* line, size_t capacity, uint8_t* pending, size_t pendingCapacity, bool gbk);
+  MarkdownFormatter(Sink sink, uint8_t* line, size_t capacity, uint8_t* pending, size_t pendingCapacity, bool gbk,
+                    bool utf16 = false);
   void add(uint32_t source, const uint8_t* character, uint8_t width, uint8_t utf8Length);
   void finish();
   void beforeChapterAnchor() {
@@ -50,6 +51,7 @@ class MarkdownFormatter {
   char tableAlign_[MAX_TABLE_COLUMNS] = {};
   uint8_t tableColumns_ = 0;
   bool gbk_;
+  bool utf16_;
   bool overflow_ = false;
   char list_ = 0;
   char fence_ = 0;

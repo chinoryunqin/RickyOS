@@ -94,7 +94,40 @@ size_t appendUtf8(const uint32_t codepoint, uint8_t* output) {
 
 }  // namespace
 
-bool isSerializedValueValid(const uint8_t value) { return value <= static_cast<uint8_t>(Encoding::Gbk); }
+bool isSerializedValueValid(const uint8_t value) { return value <= static_cast<uint8_t>(Encoding::Utf16Be); }
+
+bool isUtf16(const Encoding encoding) { return encoding == Encoding::Utf16Le || encoding == Encoding::Utf16Be; }
+
+size_t encodeUtf8(const uint32_t cp, uint8_t* out) {
+  if (!out || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return 0;
+  if (cp < 0x10000) return appendUtf8(cp, out);
+  out[0] = 0xf0 | (cp >> 18);
+  out[1] = 0x80 | ((cp >> 12) & 63);
+  out[2] = 0x80 | ((cp >> 6) & 63);
+  out[3] = 0x80 | (cp & 63);
+  return 4;
+}
+
+Utf16Decoder::Status Utf16Decoder::push(const uint8_t byte, uint32_t& cp) {
+  if (length_ >= sizeof(bytes_)) return Status::Invalid;
+  bytes_[length_++] = byte;
+  if (length_ & 1) return Status::NeedMore;
+  const auto unit = [this](int i) -> uint16_t {
+    return bigEndian_ ? (uint16_t(bytes_[i]) << 8) | bytes_[i + 1] : bytes_[i] | (uint16_t(bytes_[i + 1]) << 8);
+  };
+  const uint16_t first = unit(0);
+  if (first >= 0xd800 && first <= 0xdbff) {
+    if (length_ == 2) return Status::NeedMore;
+    const uint16_t second = unit(2);
+    if (second < 0xdc00 || second > 0xdfff) return Status::Invalid;
+    cp = 0x10000 + ((uint32_t(first) - 0xd800) << 10) + second - 0xdc00;
+  } else {
+    if (first >= 0xdc00 && first <= 0xdfff) return Status::Invalid;
+    cp = first;
+  }
+  length_ = 0;
+  return Status::Ready;
+}
 
 bool isSupported(const Encoding encoding) {
   switch (encoding) {
@@ -102,12 +135,21 @@ bool isSupported(const Encoding encoding) {
     case Encoding::Utf8:
       return true;
     case Encoding::Gbk:
+    case Encoding::Utf16Le:
+    case Encoding::Utf16Be:
       return true;
+    case Encoding::Unsupported:
+      return false;
   }
   return false;
 }
 
 Encoding detect(const uint8_t* data, const size_t length, const bool finalChunk) {
+  if (length >= 4 && ((data[0] == 0xff && data[1] == 0xfe && data[2] == 0 && data[3] == 0) ||
+                      (data[0] == 0 && data[1] == 0 && data[2] == 0xfe && data[3] == 0xff)))
+    return Encoding::Unsupported;  // UTF-32 is not UTF-16.
+  if (length >= 2 && data[0] == 0xff && data[1] == 0xfe) return Encoding::Utf16Le;
+  if (length >= 2 && data[0] == 0xfe && data[1] == 0xff) return Encoding::Utf16Be;
   bool hasCompleteUtf8 = false;
   if (isStrictUtf8(data, length, finalChunk, hasCompleteUtf8)) {
     return hasCompleteUtf8 ? Encoding::Utf8 : Encoding::Unknown;

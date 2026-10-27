@@ -12,6 +12,9 @@
 #include "Epub/css/CssParser.h"
 
 class ZipFile;
+namespace txt_encoding {
+enum class ReadError : uint8_t;
+}
 
 class Epub {
   // the ncx file (EPUB 2)
@@ -73,7 +76,8 @@ class Epub {
   uint8_t* readItemContentsToBytes(const std::string& itemHref, size_t* size = nullptr,
                                    bool trailingNullByte = false) const;
   bool readItemContentsToStream(const std::string& itemHref, Print& out, size_t chunkSize, bool allowEarlyStop = false,
-                                size_t psramChunkSize = 0, CancelCheck cancellation = {}) const;
+                                size_t psramChunkSize = 0, CancelCheck cancellation = {},
+                                txt_encoding::ReadError* textError = nullptr) const;
   // Extract an item to a file on SD. On failure the partial file is removed.
   bool extractItemToFile(const std::string& itemHref, const std::string& destPath, CancelCheck cancellation = {}) const;
   bool getItemSize(const std::string& itemHref, size_t* size) const;

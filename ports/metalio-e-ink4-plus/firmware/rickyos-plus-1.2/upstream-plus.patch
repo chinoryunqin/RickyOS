@@ -421026,16 +421026,49 @@
  
    if (!zf.enumerateFilePaths([&](std::string_view filePath) {
          if (!opfDir.empty() && filePath.find(opfDir) != 0) {
-@@ -370,7 +373,7 @@
+@@ -370,23 +373,24 @@
      std::sort(dedupEntries.get(), dedupEntries.get() + cssFiles.size(),
                [](const CssDedupEntry& lhs, const CssDedupEntry& rhs) { return lhs.pathHash < rhs.pathHash; });
  
 -    ZipFile(filepath).enumerateFileEntries([&](std::string_view entryPath, uint32_t crc32, uint32_t compressedSize) {
-+    ZipFile(archiveFile()).enumerateFileEntries([&](std::string_view entryPath, uint32_t crc32, uint32_t compressedSize) {
-       if (!FsHelpers::hasCssExtension(entryPath)) {
-         return;
-       }
-@@ -463,7 +466,7 @@
+-      if (!FsHelpers::hasCssExtension(entryPath)) {
+-        return;
+-      }
+-
+-      const uint64_t pathHash = ZipFile::fnvHash64(entryPath.data(), entryPath.size());
+-      auto* match = std::lower_bound(
+-          dedupEntries.get(), dedupEntries.get() + cssFiles.size(), pathHash,
+-          [](const CssDedupEntry& candidate, const uint64_t hash) { return candidate.pathHash < hash; });
+-      for (const auto* end = dedupEntries.get() + cssFiles.size(); match != end && match->pathHash == pathHash;
+-           match++) {
+-        if (entryPath == cssFiles[match->cssIndex]) {
+-          match->contentKey = (static_cast<uint64_t>(crc32) << 32) | compressedSize;
+-          break;
+-        }
+-      }
+-    });
++    ZipFile(archiveFile())
++        .enumerateFileEntries([&](std::string_view entryPath, uint32_t crc32, uint32_t compressedSize) {
++          if (!FsHelpers::hasCssExtension(entryPath)) {
++            return;
++          }
++
++          const uint64_t pathHash = ZipFile::fnvHash64(entryPath.data(), entryPath.size());
++          auto* match = std::lower_bound(
++              dedupEntries.get(), dedupEntries.get() + cssFiles.size(), pathHash,
++              [](const CssDedupEntry& candidate, const uint64_t hash) { return candidate.pathHash < hash; });
++          for (const auto* end = dedupEntries.get() + cssFiles.size(); match != end && match->pathHash == pathHash;
++               match++) {
++            if (entryPath == cssFiles[match->cssIndex]) {
++              match->contentKey = (static_cast<uint64_t>(crc32) << 32) | compressedSize;
++              break;
++            }
++          }
++        });
+     std::sort(dedupEntries.get(), dedupEntries.get() + cssFiles.size(),
+               [](const CssDedupEntry& lhs, const CssDedupEntry& rhs) { return lhs.cssIndex < rhs.cssIndex; });
+   } else if (cssFiles.size() > 1) {
+@@ -463,7 +467,7 @@
        parseResult = CssParser::ParseResult::Error;
        continue;
      }
@@ -421044,17 +421077,17 @@
      // Explicitly close() file before calling Storage.remove()
      tempCssFile.close();
      Storage.remove(tmpCssPath.c_str());
-@@ -512,6 +515,9 @@
+@@ -512,6 +516,9 @@
  // means normal ZIP reads should be used. A hard error refuses the open with a
  // user-presentable reason.
  bool Epub::openProtection() {
 +#if defined(RICKYOS_KINDLE_IMPORT)
-+  if (kindle::supported(filepath)) return true; // Importer explicitly refuses DRM.
++  if (kindle::supported(filepath)) return true;  // Importer explicitly refuses DRM.
 +#endif
    std::string err;
    decryptor = freeink::content::openProtectedBook(filepath, err);
    if (!err.empty()) {
-@@ -525,9 +531,34 @@
+@@ -525,9 +532,37 @@
    return true;
  }
  
@@ -421064,9 +421097,10 @@
 +    bool rebuilt = false;
 +    kindle::Error error;
 +    if (!kindle::prepare(filepath, cachePath, archivePath, rebuilt, error)) {
-+      protectionError = error == kindle::Error::Encrypted ? "kindle encrypted" :
-+                        error == kindle::Error::OutOfMemory ? "kindle memory" :
-+                        error == kindle::Error::Unsupported ? "kindle unsupported" : "kindle invalid";
++      protectionError = error == kindle::Error::Encrypted     ? "kindle encrypted"
++                        : error == kindle::Error::OutOfMemory ? "kindle memory"
++                        : error == kindle::Error::Unsupported ? "kindle unsupported"
++                                                              : "kindle invalid";
 +      return false;
 +    }
 +    if (rebuilt) reportLoad(5);
@@ -421082,14 +421116,16 @@
 +  if (!buildIfMissing && kindle::supported(filepath)) {
 +    // Home/statistics may query progress. Never convert a book from that path.
 +    archivePath = cachePath + "/kindle.epub";
-+    if (!Storage.exists(archivePath.c_str()) || !Storage.exists((cachePath + kindle::kMarkerName).c_str())) return false;
++    if (!Storage.exists(archivePath.c_str()) || !Storage.exists((cachePath + kindle::kMarkerName).c_str()))
++      return false;
 +  } else
 +#endif
-+  if (!prepareArchive()) return false;
++      if (!prepareArchive())
++    return false;
    if (!openProtection()) return false;
  
    // Initialize spine/TOC cache
-@@ -692,7 +723,7 @@
+@@ -692,7 +727,7 @@
  
    // Build final book.bin
    const uint32_t buildStart = millis();
@@ -421098,7 +421134,7 @@
      LOG_ERR("EBP", "Could not update mappings and sizes");
      return false;
    }
-@@ -727,9 +758,15 @@
+@@ -727,9 +762,15 @@
    return true;
  }
  
@@ -421115,7 +421151,7 @@
  
    if (Txt::isTxtOrMd(filepath)) {
      title = utf8ComposeNfc(FsHelpers::getFileNameWithoutExtension(filepath));
-@@ -747,8 +784,9 @@
+@@ -747,8 +788,9 @@
    }
    metadataCache.reset();
  
@@ -421127,7 +421163,7 @@
      LOG_DBG("EBP", "Could not open ePub for package metadata: %s", filepath.c_str());
      return false;
    }
-@@ -760,6 +798,18 @@
+@@ -760,6 +802,18 @@
  
    title = std::move(metadata.title);
    author = std::move(metadata.author);
@@ -421146,7 +421182,7 @@
    return true;
  }
  
-@@ -886,9 +936,17 @@
+@@ -886,9 +940,17 @@
      setupCacheDir();
      return generateThumbBmpForCover(height, companionCover);
    }
@@ -421165,7 +421201,7 @@
    if (!metadata || !zip) {
      LOG_ERR("EBP", "OOM: cover metadata");
      return false;
-@@ -986,7 +1044,7 @@
+@@ -986,7 +1048,7 @@
      return content;
    }
  
@@ -421174,16 +421210,38 @@
    if (!content) {
      LOG_DBG("EBP", "Failed to read item %s", path.c_str());
      return nullptr;
-@@ -1033,7 +1091,7 @@
+@@ -996,8 +1058,9 @@
+ }
+ 
+ bool Epub::readItemContentsToStream(const std::string& itemHref, Print& out, const size_t chunkSize,
+-                                    const bool allowEarlyStop, const size_t psramChunkSize,
+-                                    CancelCheck cancellation) const {
++                                    const bool allowEarlyStop, const size_t psramChunkSize, CancelCheck cancellation,
++                                    txt_encoding::ReadError* textError) const {
++  if (textError) *textError = txt_encoding::ReadError::Io;
+   if (cancellation.isCancelled()) return false;
+   if (itemHref.empty()) {
+     LOG_DBG("EBP", "Failed to read item, empty href");
+@@ -1005,7 +1068,7 @@
+   }
+ 
+   if (Txt::isTxtOrMd(filepath)) {
+-    return Txt::streamTxtToHtml(filepath, out, cachePath);
++    return Txt::streamTxtToHtml(filepath, out, cachePath, textError);
+   }
+ 
+   const std::string path = FsHelpers::normalisePath(itemHref);
+@@ -1033,7 +1096,8 @@
      return true;
    }
  
 -  return ZipFile(filepath).readFileToStream(path.c_str(), out, chunkSize, allowEarlyStop, psramChunkSize, cancellation);
-+  return ZipFile(archiveFile()).readFileToStream(path.c_str(), out, chunkSize, allowEarlyStop, psramChunkSize, cancellation);
++  return ZipFile(archiveFile())
++      .readFileToStream(path.c_str(), out, chunkSize, allowEarlyStop, psramChunkSize, cancellation);
  }
  
  bool Epub::extractItemToFile(const std::string& itemHref, const std::string& destPath, CancelCheck cancellation) const {
-@@ -1065,7 +1123,7 @@
+@@ -1065,7 +1129,7 @@
      return false;
    }
    const std::string path = FsHelpers::normalisePath(itemHref);
@@ -421194,7 +421252,17 @@
  int Epub::getSpineItemsCount() const {
 --- a/lib/Epub/Epub.h
 +++ b/lib/Epub/Epub.h
-@@ -20,6 +20,14 @@
+@@ -12,6 +12,9 @@
+ #include "Epub/css/CssParser.h"
+ 
+ class ZipFile;
++namespace txt_encoding {
++enum class ReadError : uint8_t;
++}
+ 
+ class Epub {
+   // the ncx file (EPUB 2)
+@@ -20,6 +23,14 @@
    std::string tocNavItem;
    // where is the EPUBfile?
    std::string filepath;
@@ -421209,7 +421277,7 @@
    // the base path for items in the EPUB file
    std::string contentBasePath;
    // Uniq cache key based on filepath
-@@ -68,7 +76,13 @@
+@@ -68,7 +79,13 @@
    ~Epub() = default;
    std::string& getBasePath() { return contentBasePath; }
    bool load(bool buildIfMissing = true, bool skipLoadingCss = false);
@@ -421224,6 +421292,16 @@
    bool clearCache() const;
    void setupCacheDir() const;
    const std::string& getCachePath() const;
+@@ -90,7 +107,8 @@
+   uint8_t* readItemContentsToBytes(const std::string& itemHref, size_t* size = nullptr,
+                                    bool trailingNullByte = false) const;
+   bool readItemContentsToStream(const std::string& itemHref, Print& out, size_t chunkSize, bool allowEarlyStop = false,
+-                                size_t psramChunkSize = 0, CancelCheck cancellation = {}) const;
++                                size_t psramChunkSize = 0, CancelCheck cancellation = {},
++                                txt_encoding::ReadError* textError = nullptr) const;
+   // Extract an item to a file on SD. On failure the partial file is removed.
+   bool extractItemToFile(const std::string& itemHref, const std::string& destPath, CancelCheck cancellation = {}) const;
+   bool getItemSize(const std::string& itemHref, size_t* size) const;
 --- /dev/null
 +++ b/lib/Epub/Epub/BookFonts.cpp
 @@ -0,0 +1,11 @@
@@ -421603,7 +421681,15 @@
  };
 --- a/lib/Epub/Epub/Section.cpp
 +++ b/lib/Epub/Epub/Section.cpp
-@@ -51,7 +51,40 @@
+@@ -7,6 +7,7 @@
+ #include <Logging.h>
+ #include <Memory.h>
+ #include <Serialization.h>
++#include <TxtEncoding.h>
+ 
+ #include "Epub/css/CssParser.h"
+ #include "Page.h"
+@@ -51,7 +52,40 @@
  //   74 / 75 - character and word spacing in the render spec and cached text
  //   76 / 77 - independent Western paragraph indentation width
  //   78 / 79 - vertical text (columns, right to left) in the render spec
@@ -421645,7 +421731,7 @@
  // Written into the version field while a build is in progress; patched to
  // SECTION_FILE_VERSION only when the build is finalized. An abandoned /
  // crash-interrupted .bin therefore carries version 0, which loadSectionFile rejects
-@@ -73,7 +106,7 @@
+@@ -73,7 +107,7 @@
                                   sizeof(uint8_t) + sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint16_t) +
                                   sizeof(bool) + sizeof(bool) + sizeof(uint8_t) + sizeof(bool) + sizeof(bool) +
                                   sizeof(uint32_t) * 5 + sizeof(int8_t) + sizeof(uint8_t) + sizeof(uint8_t) +
@@ -421654,17 +421740,35 @@
  // Called only between layout/render operations; no borrowed glyph pointer is live.
  void reclaimLayoutCaches(GfxRenderer& renderer, const char* stage) {
  #ifndef BOARD_HAS_PSRAM
-@@ -139,7 +172,8 @@
-                          sizeof(spec.hyphenationEnabled) + sizeof(spec.embeddedStyle) + sizeof(spec.imageRendering) +
-                          sizeof(spec.focusReadingEnabled) + sizeof(spec.collectTouchLinks) + sizeof(uint32_t) +
-                          sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) +
+@@ -131,16 +165,17 @@
+     LOG_DBG("SCT", "File not open for writing header");
+     return;
+   }
+-  static_assert(
+-      HEADER_SIZE == sizeof(SECTION_FILE_VERSION) + sizeof(spec.fontId) + sizeof(spec.lineCompression) +
+-                         sizeof(spec.extraParagraphSpacing) + sizeof(spec.firstLineIndent) +
+-                         sizeof(spec.paragraphIndentSpaces) + sizeof(spec.paragraphAlignment) +
+-                         sizeof(spec.viewportWidth) + sizeof(spec.viewportHeight) + sizeof(pageCount) +
+-                         sizeof(spec.hyphenationEnabled) + sizeof(spec.embeddedStyle) + sizeof(spec.imageRendering) +
+-                         sizeof(spec.focusReadingEnabled) + sizeof(spec.collectTouchLinks) + sizeof(uint32_t) +
+-                         sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) +
 -                         sizeof(spec.characterSpacing) + sizeof(spec.wordSpacingPercent) + sizeof(spec.verticalText),
-+                         sizeof(spec.characterSpacing) + sizeof(spec.wordSpacingPercent) + sizeof(spec.verticalText) +
-+                         IMAGE_LAYOUT_HEADER_SIZE + sizeof(spec.bookFontsKey),
-       "Header size mismatch");
+-      "Header size mismatch");
++  static_assert(HEADER_SIZE == sizeof(SECTION_FILE_VERSION) + sizeof(spec.fontId) + sizeof(spec.lineCompression) +
++                                   sizeof(spec.extraParagraphSpacing) + sizeof(spec.firstLineIndent) +
++                                   sizeof(spec.paragraphIndentSpaces) + sizeof(spec.paragraphAlignment) +
++                                   sizeof(spec.viewportWidth) + sizeof(spec.viewportHeight) + sizeof(pageCount) +
++                                   sizeof(spec.hyphenationEnabled) + sizeof(spec.embeddedStyle) +
++                                   sizeof(spec.imageRendering) + sizeof(spec.focusReadingEnabled) +
++                                   sizeof(spec.collectTouchLinks) + sizeof(uint32_t) + sizeof(uint32_t) +
++                                   sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) +
++                                   sizeof(spec.characterSpacing) + sizeof(spec.wordSpacingPercent) +
++                                   sizeof(spec.verticalText) + IMAGE_LAYOUT_HEADER_SIZE + sizeof(spec.bookFontsKey),
++                "Header size mismatch");
    // Written as the incomplete sentinel; finalizeBuild() patches it to
    // SECTION_FILE_VERSION as the last step, committing the file.
-@@ -160,6 +194,10 @@
+   serialization::writePod(file, SECTION_FILE_INCOMPLETE_VERSION);
+@@ -160,6 +195,10 @@
    serialization::writePod(file, spec.characterSpacing);
    serialization::writePod(file, spec.wordSpacingPercent);
    serialization::writePod(file, spec.verticalText);
@@ -421675,7 +421779,7 @@
    serialization::writePod(file, pageCount);  // Placeholder for page count (will be initially 0, patched later)
    serialization::writePod(file, static_cast<uint32_t>(0));  // Placeholder for LUT offset (patched later)
    serialization::writePod(file, static_cast<uint32_t>(0));  // Placeholder for anchor map offset (patched later)
-@@ -206,7 +244,10 @@
+@@ -206,7 +245,10 @@
      int8_t fileCharacterSpacing = 0;
      uint8_t fileWordSpacingPercent = 100;
      bool fileVerticalText = false;
@@ -421687,7 +421791,7 @@
          serialization::readPod(file, fileFontId) && serialization::readPod(file, fileLineCompression) &&
          serialization::readPod(file, fileExtraParagraphSpacing) && serialization::readPod(file, fileFirstLineIndent) &&
          serialization::readPod(file, fileParagraphIndentSpaces) &&
-@@ -216,6 +257,14 @@
+@@ -216,6 +258,14 @@
          serialization::readPod(file, fileFocusReadingEnabled) && serialization::readPod(file, fileCollectTouchLinks) &&
          serialization::readPod(file, fileCharacterSpacing) && serialization::readPod(file, fileWordSpacingPercent) &&
          serialization::readPod(file, fileVerticalText);
@@ -421702,7 +421806,7 @@
  
      if (!headerValid || spec.fontId != fileFontId || spec.lineCompression != fileLineCompression ||
          spec.extraParagraphSpacing != fileExtraParagraphSpacing || spec.firstLineIndent != fileFirstLineIndent ||
-@@ -224,7 +273,8 @@
+@@ -224,7 +274,8 @@
          spec.hyphenationEnabled != fileHyphenationEnabled || spec.embeddedStyle != fileEmbeddedStyle ||
          spec.imageRendering != fileImageRendering || spec.focusReadingEnabled != fileFocusReadingEnabled ||
          spec.collectTouchLinks != fileCollectTouchLinks || spec.characterSpacing != fileCharacterSpacing ||
@@ -421712,7 +421816,27 @@
        file.close();
        LOG_ERR("SCT", "Deserialization failed: Parameters do not match");
        clearCache();
-@@ -504,6 +554,9 @@
+@@ -376,7 +427,10 @@
+       // Larger chunks mean far fewer SD writes inflating the HTML; a 1KB chunk turned a 584KB
+       // single-spine novel into ~570 tiny writes (multi-second). 8KB keeps the transient buffers
+       // small while cutting the write count 8x.
+-      streamed = epub->readItemContentsToStream(localPath, tmpHtml, 8192);
++      txt_encoding::ReadError textError = txt_encoding::ReadError::Io;
++      streamed = epub->readItemContentsToStream(localPath, tmpHtml, 8192, false, 0, {}, &textError);
++      if (!streamed && textError == txt_encoding::ReadError::InvalidData) buildError_ = BuildError::InvalidData;
++      if (!streamed && textError == txt_encoding::ReadError::OutOfMemory) buildError_ = BuildError::OutOfMemory;
+       fileSize = tmpHtml.size();
+       // Explicitly close() file before calling Storage.remove()
+       tmpHtml.close();
+@@ -386,6 +440,7 @@
+         Storage.remove(tmpHtmlPath.c_str());
+         LOG_DBG("SCT", "Removed incomplete temp file after failed attempt");
+       }
++      if (!streamed && textError != txt_encoding::ReadError::Io) break;
+     }
+ 
+     if (!streamed) {
+@@ -504,6 +559,9 @@
    ctx->parser->setTxtChapterBoundaries(txtChapterBoundaries);
    ctx->parser->setTextSpacing(spec.characterSpacing, spec.wordSpacingPercent);
    ctx->parser->setParagraphIndentSpaces(spec.paragraphIndentSpaces);
@@ -426178,6 +426302,601 @@
  }
  
  int64_t trustedNow() {
+--- a/lib/Txt/MarkdownFormatter.cpp
++++ b/lib/Txt/MarkdownFormatter.cpp
+@@ -5,8 +5,14 @@
+ #include "TxtChapterIndex.h"
+ 
+ MarkdownFormatter::MarkdownFormatter(Sink sink, uint8_t* line, size_t capacity, uint8_t* pending,
+-                                     size_t pendingCapacity, bool gbk)
+-    : sink_(sink), line_(line), capacity_(capacity), pending_(pending), pendingCapacity_(pendingCapacity), gbk_(gbk) {}
++                                     size_t pendingCapacity, bool gbk, bool utf16)
++    : sink_(sink),
++      line_(line),
++      capacity_(capacity),
++      pending_(pending),
++      pendingCapacity_(pendingCapacity),
++      gbk_(gbk),
++      utf16_(utf16) {}
+ 
+ void MarkdownFormatter::plainTextBounded(std::string_view text, char* output) {
+   // Inline markup only removes source bytes, never expands the label. Validate
+@@ -32,7 +38,7 @@
+     const uint8_t first = static_cast<uint8_t>(text[i]);
+     uint8_t utf8Length = first < 0x80 ? 1 : first < 0xE0 ? 2 : first < 0xF0 ? 3 : 4;
+     if (utf8Length > text.size() - i) utf8Length = 1;
+-    const uint8_t width = gbk_ && first >= 0x80 ? 2 : utf8Length;
++    const uint8_t width = utf16_ ? (utf8Length == 4 ? 4 : 2) : gbk_ && first >= 0x80 ? 2 : utf8Length;
+     sink_.consume(sink_.context, position_, reinterpret_cast<const uint8_t*>(text.data() + i), width, utf8Length,
+                   visible && first != '\r', spaces);
+     position_ += width;
+@@ -120,7 +126,7 @@
+   write("</p>");
+   if (pendingHasNewline_) {
+     const uint8_t newline = '\n';
+-    sink_.consume(sink_.context, pendingNewline_, &newline, 1, 1, false, false);
++    sink_.consume(sink_.context, pendingNewline_, &newline, utf16_ ? 2 : 1, 1, false, false);
+   }
+   pendingLength_ = 0;
+   position_ = current;
+@@ -217,7 +223,7 @@
+       tableRow(pending, cells, columns, true);
+       if (pendingHasNewline_) {
+         const uint8_t newline = '\n';
+-        sink_.consume(sink_.context, pendingNewline_, &newline, 1, 1, false, false);
++        sink_.consume(sink_.context, pendingNewline_, &newline, utf16_ ? 2 : 1, 1, false, false);
+       }
+       pendingLength_ = 0;
+       position_ = current;
+--- a/lib/Txt/MarkdownFormatter.h
++++ b/lib/Txt/MarkdownFormatter.h
+@@ -13,7 +13,8 @@
+     void (*write)(void*, std::string_view);
+     void (*consume)(void*, uint32_t, const uint8_t*, uint8_t, uint8_t, bool, bool);
+   };
+-  MarkdownFormatter(Sink sink, uint8_t* line, size_t capacity, uint8_t* pending, size_t pendingCapacity, bool gbk);
++  MarkdownFormatter(Sink sink, uint8_t* line, size_t capacity, uint8_t* pending, size_t pendingCapacity, bool gbk,
++                    bool utf16 = false);
+   void add(uint32_t source, const uint8_t* character, uint8_t width, uint8_t utf8Length);
+   void finish();
+   void beforeChapterAnchor() {
+@@ -50,6 +51,7 @@
+   char tableAlign_[MAX_TABLE_COLUMNS] = {};
+   uint8_t tableColumns_ = 0;
+   bool gbk_;
++  bool utf16_;
+   bool overflow_ = false;
+   char list_ = 0;
+   char fence_ = 0;
+--- a/lib/Txt/Txt.cpp
++++ b/lib/Txt/Txt.cpp
+@@ -13,7 +13,7 @@
+ 
+ namespace {
+ constexpr uint32_t CHAPTER_INDEX_MAGIC = 0x43545854;  // "TXTC"
+-constexpr uint8_t CHAPTER_INDEX_VERSION = 1;
++constexpr uint8_t CHAPTER_INDEX_VERSION = 3;
+ constexpr size_t INDEX_YIELD_BYTES = 64 * 1024;
+ 
+ struct ChapterIndexHeader {
+@@ -36,6 +36,10 @@
+     const size_t chunkSize = std::min(capacity, fileSize - sourceOffset);
+     const int bytesRead = source.read(buffer, chunkSize);
+     if (bytesRead <= 0) break;
++    if (sourceOffset == 0 && bytesRead >= 2 &&
++        ((buffer[0] == 0xff && buffer[1] == 0xfe) || (buffer[0] == 0xfe && buffer[1] == 0xff) ||
++         (bytesRead >= 4 && buffer[0] == 0 && buffer[1] == 0 && buffer[2] == 0xfe && buffer[3] == 0xff)))
++      return txt_encoding::detect(buffer, static_cast<size_t>(bytesRead), static_cast<size_t>(bytesRead) == fileSize);
+     for (int i = 0; i < bytesRead; ++i) {
+       if (buffer[i] < 0x80) continue;
+       const size_t nonAsciiOffset = sourceOffset + static_cast<size_t>(i);
+@@ -251,7 +255,7 @@
+ 
+   ChapterIndexHeader header;
+   if (file.read(&header, sizeof(header)) != static_cast<int>(sizeof(header)) || header.magic != CHAPTER_INDEX_MAGIC ||
+-      header.version != (markdown ? 2 : CHAPTER_INDEX_VERSION) ||
++      header.version != (markdown ? 4 : CHAPTER_INDEX_VERSION) ||
+       header.recordSize != sizeof(txt_chapter_index::Record) || header.fileSize != fileSize ||
+       !txt_encoding::isSerializedValueValid(static_cast<uint8_t>(header.encoding)) ||
+       !txt_encoding::isSupported(header.encoding) || !encodingMatches(encoding, header.encoding) ||
+@@ -283,7 +287,8 @@
+ }
+ 
+ bool Txt::buildChapterIndex(txt_encoding::Encoding& encoding, uint8_t* scratch, const size_t scratchSize,
+-                            uint32_t& count) const {
++                            uint32_t& count, txt_encoding::ReadError* error) const {
++  if (error) *error = txt_encoding::ReadError::Io;
+   count = 0;
+   if (!loaded || !scratch || scratchSize < 1024 || fileSize > std::numeric_limits<uint32_t>::max()) return false;
+ 
+@@ -303,7 +308,10 @@
+     encoding = detectEncoding(source, scratch, readCapacity, fileSize);
+     if (!source.seek(0)) return false;
+   }
+-  if (!txt_encoding::isSupported(encoding)) return false;
++  if (!txt_encoding::isSupported(encoding)) {
++    if (error) *error = txt_encoding::ReadError::InvalidData;
++    return false;
++  }
+ 
+   ChapterIndexHeader header;
+ #ifdef RICKYOS_PRODUCT
+@@ -311,7 +319,7 @@
+ #else
+   constexpr bool markdown = false;
+ #endif
+-  header.version = markdown ? 2 : CHAPTER_INDEX_VERSION;
++  header.version = markdown ? 4 : CHAPTER_INDEX_VERSION;
+   txt_chapter_index::MarkdownHeadings headings;
+   header.fileSize = static_cast<uint32_t>(fileSize);
+   header.encoding = encoding;
+@@ -327,6 +335,8 @@
+     size_t lineStartOffset = 0;
+     size_t sourceOffset = 0;
+     bool lineTooLong = false;
++    const bool utf16 = txt_encoding::isUtf16(encoding);
++    txt_encoding::Utf16Decoder decoder(encoding);
+ 
+     const auto appendChapter = [&]() {
+       if (lineLength == 0 || lineTooLong) return true;
+@@ -364,15 +374,32 @@
+       const int bytesRead = source.read(scratch, chunkSize);
+       if (bytesRead <= 0) break;
+       for (int i = 0; i < bytesRead; ++i) {
+-        const uint8_t value = scratch[i];
++        uint32_t value = scratch[i];
++        uint8_t encoded[4] = {scratch[i]};
++        size_t length = 1;
++        if (utf16) {
++          const auto status = decoder.push(scratch[i], value);
++          if (status == txt_encoding::Utf16Decoder::Status::Invalid) {
++            if (error) *error = txt_encoding::ReadError::InvalidData;
++            return false;
++          }
++          if (status == txt_encoding::Utf16Decoder::Status::NeedMore) continue;
++          if (sourceOffset + static_cast<size_t>(i) == 1 && value == 0xfeff) {
++            lineStartOffset = 2;
++            continue;
++          }
++          length = txt_encoding::encodeUtf8(value, encoded);
++        }
+         if (value == '\n') {
+           if (!appendChapter()) return false;
+           lineLength = 0;
+           lineTooLong = false;
+           lineStartOffset = sourceOffset + static_cast<size_t>(i) + 1;
+         } else if (!lineTooLong) {
+-          if (lineLength + 1 < (markdown ? lineCapacity : txt_chapter_index::TITLE_CAPACITY)) {
+-            lineBuffer[lineLength++] = value;
++          const size_t limit = markdown ? lineCapacity : txt_chapter_index::TITLE_CAPACITY;
++          if (lineLength + length < limit) {
++            memcpy(lineBuffer + lineLength, encoded, length);
++            lineLength += length;
+           } else {
+             lineTooLong = true;
+           }
+@@ -382,6 +409,10 @@
+       if (sourceOffset % INDEX_YIELD_BYTES < static_cast<size_t>(bytesRead)) vTaskDelay(1);
+     }
+ 
++    if (utf16 && decoder.pending()) {
++      if (error) *error = txt_encoding::ReadError::InvalidData;
++      return false;
++    }
+     if (sourceOffset != fileSize || !appendChapter()) return false;
+     if (!output.seek(0) || output.write(&header, sizeof(header)) != sizeof(header)) return false;
+     output.flush();
+@@ -405,6 +436,7 @@
+   }
+   if (hadFinal) Storage.remove(backupPath.c_str());
+   count = header.count;
++  if (error) *error = txt_encoding::ReadError::None;
+   LOG_DBG("TXT", "Built TXT chapter index: %u entries", static_cast<unsigned>(count));
+   return true;
+ }
+--- a/lib/Txt/Txt.h
++++ b/lib/Txt/Txt.h
+@@ -24,7 +24,8 @@
+   static bool isTxtOrMd(std::string_view path);
+   static bool validateCache(const std::string& filepath, const std::string& cachePath, size_t cachedSize);
+   static void invalidateCache(const std::string& cachePath);
+-  static bool streamTxtToHtml(const std::string& filepath, Print& out, const std::string& cachePath);
++  static bool streamTxtToHtml(const std::string& filepath, Print& out, const std::string& cachePath,
++                              txt_encoding::ReadError* error = nullptr);
+   static int tocIndexForPosition(const std::string& filepath, const std::string& cachePath, uint32_t visibleOffset,
+                                  uint8_t* chapterProgress = nullptr);
+   static bool resolveChapterPosition(const std::string& filepath, const std::string& cachePath, std::string_view anchor,
+@@ -61,7 +62,7 @@
+   // count does not affect steady-state RAM usage.
+   [[nodiscard]] bool openChapterIndex(HalFile& file, txt_encoding::Encoding& encoding, uint32_t& count) const;
+   [[nodiscard]] bool buildChapterIndex(txt_encoding::Encoding& encoding, uint8_t* scratch, size_t scratchSize,
+-                                       uint32_t& count) const;
++                                       uint32_t& count, txt_encoding::ReadError* error = nullptr) const;
+   [[nodiscard]] bool readChapter(HalFile& file, uint32_t count, uint32_t index,
+                                  txt_chapter_index::Record& chapter) const;
+   [[nodiscard]] bool findChapterForOffset(HalFile& file, uint32_t count, uint32_t sourceOffset,
+--- a/lib/Txt/TxtCache.cpp
++++ b/lib/Txt/TxtCache.cpp
+@@ -18,17 +18,27 @@
+ #endif
+ 
+ namespace {
+-bool openChapters(Txt& txt, HalFile& chapters, txt_encoding::Encoding& encoding, uint32_t& count) {
++bool openChapters(Txt& txt, HalFile& chapters, txt_encoding::Encoding& encoding, uint32_t& count,
++                  txt_encoding::ReadError* error = nullptr) {
++  if (error) *error = txt_encoding::ReadError::Io;
+   if (!txt.load()) return false;
+-  if (txt.openChapterIndex(chapters, encoding, count)) return true;
++  if (txt.openChapterIndex(chapters, encoding, count)) {
++    if (error) *error = txt_encoding::ReadError::None;
++    return true;
++  }
+   chapters.close();  // The invalid index must close before replacement/reopen.
+   // One 8 KiB indexing workspace, released before allocating conversion buffers.
+   auto scratch = makeUniqueNoThrow<uint8_t[]>(8192);
+   if (!scratch) {
++    if (error) *error = txt_encoding::ReadError::OutOfMemory;
+     LOG_ERR("TXT", "OOM: chapter-index workspace (8192 bytes)");
+     return false;
+   }
+-  return txt.buildChapterIndex(encoding, scratch.get(), 8192, count) && txt.openChapterIndex(chapters, encoding, count);
++  if (!txt.buildChapterIndex(encoding, scratch.get(), 8192, count, error)) return false;
++  if (error) *error = txt_encoding::ReadError::Io;
++  const bool ok = txt.openChapterIndex(chapters, encoding, count);
++  if (ok && error) *error = txt_encoding::ReadError::None;
++  return ok;
+ }
+ 
+ struct ConversionIndex {
+@@ -132,14 +142,17 @@
+   return success;
+ }
+ 
+-bool Txt::streamTxtToHtml(const std::string& filepath, Print& out, const std::string& cachePath) {
++bool Txt::streamTxtToHtml(const std::string& filepath, Print& out, const std::string& cachePath,
++                          txt_encoding::ReadError* error) {
++  if (error) *error = txt_encoding::ReadError::Io;
+   Txt txt(filepath, "/.crosspoint");
+   HalFile source, chapters;
+   txt_encoding::Encoding encoding = txt_encoding::Encoding::Unknown;
+   uint32_t chapterCount = 0;
+-  if (!openChapters(txt, chapters, encoding, chapterCount) || txt.getFileSize() >= UINT32_MAX ||
+-      !Storage.openFileForRead("TXT", filepath, source))
+-    return false;
++  if (!openChapters(txt, chapters, encoding, chapterCount, error)) return false;
++  if (error) *error = txt_encoding::ReadError::Io;
++  if (txt.getFileSize() >= UINT32_MAX || !Storage.openFileForRead("TXT", filepath, source)) return false;
++  if (error) *error = txt_encoding::ReadError::Io;
+   const std::string mapPath = cachePath + "/txt-map.bin";
+   const std::string temporary = mapPath + ".tmp";
+   bool converted = false;
+@@ -153,6 +166,7 @@
+     if (!index.advance() || mapping.write(&index.header, sizeof(index.header)) != sizeof(index.header)) return false;
+     TxtToHtml::Options options;
+     options.encoding = encoding;
++    options.error = error;
+     options.context = &index;
+     options.chapterOffset = [](void* context) { return static_cast<ConversionIndex*>(context)->chapter.sourceOffset; };
+     options.nextChapter = [](void* context) { return static_cast<ConversionIndex*>(context)->advance(); };
+@@ -173,6 +187,7 @@
+         filepath, &source,
+         [](void* ctx, uint8_t* buf, size_t size) { return static_cast<HalFile*>(ctx)->read(buf, size); }, out, options);
+     if (converted) {
++      if (error) *error = txt_encoding::ReadError::Io;
+       converted = mapping.seek(0) && mapping.write(&index.header, sizeof(index.header)) == sizeof(index.header);
+       mapping.flush();
+     }
+@@ -181,6 +196,7 @@
+     Storage.remove(temporary.c_str());
+     return false;
+   }
++  if (error) *error = txt_encoding::ReadError::None;
+   return true;
+ }
+ 
+@@ -264,9 +280,9 @@
+   bool valid = Storage.readFileToBuffer(marker.c_str(), metadataVersion, sizeof(metadataVersion)) == 1 &&
+                metadataVersion[0] ==
+ #ifdef RICKYOS_PRODUCT
+-                   (FsHelpers::hasMarkdownExtension(filepath) ? '5' : '2');
++                   (FsHelpers::hasMarkdownExtension(filepath) ? '6' : '3');
+ #else
+-                   '2';
++                   '3';
+ #endif
+ 
+   // 1. If html/0.html exists, check its embedded version comment
+@@ -320,7 +336,7 @@
+   if (FsHelpers::hasMarkdownExtension(filepath)) {
+     char version[4] = {};
+     if (Storage.readFileToBuffer((cachePath + "/txt-cache-version").c_str(), version, sizeof(version)) == 1 &&
+-        (version[0] == '2' || version[0] == '3' || version[0] == '4')) {
++        (version[0] == '2' || version[0] == '3' || version[0] == '4' || version[0] == '5')) {
+       Txt txt(filepath, "/.crosspoint");
+       if (!txt.load() || txt.getFileSize() >= UINT32_MAX ||
+           txt_progress::preserveReflowSource(cachePath.c_str(), txt.getFileSize()) ==
+@@ -420,9 +436,9 @@
+ 
+   if (!Storage.writeFile((cachePath + "/txt-cache-version").c_str(),
+ #ifdef RICKYOS_PRODUCT
+-                         FsHelpers::hasMarkdownExtension(filepath) ? "5" :
+-#endif
+-                                                                   "2"))
++                         FsHelpers::hasMarkdownExtension(filepath) ? "6" :
++#endif
++                                                                   "3"))
+     return false;
+   return true;
+ }
+--- a/lib/Txt/TxtEncoding.cpp
++++ b/lib/Txt/TxtEncoding.cpp
+@@ -94,7 +94,40 @@
+ 
+ }  // namespace
+ 
+-bool isSerializedValueValid(const uint8_t value) { return value <= static_cast<uint8_t>(Encoding::Gbk); }
++bool isSerializedValueValid(const uint8_t value) { return value <= static_cast<uint8_t>(Encoding::Utf16Be); }
++
++bool isUtf16(const Encoding encoding) { return encoding == Encoding::Utf16Le || encoding == Encoding::Utf16Be; }
++
++size_t encodeUtf8(const uint32_t cp, uint8_t* out) {
++  if (!out || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return 0;
++  if (cp < 0x10000) return appendUtf8(cp, out);
++  out[0] = 0xf0 | (cp >> 18);
++  out[1] = 0x80 | ((cp >> 12) & 63);
++  out[2] = 0x80 | ((cp >> 6) & 63);
++  out[3] = 0x80 | (cp & 63);
++  return 4;
++}
++
++Utf16Decoder::Status Utf16Decoder::push(const uint8_t byte, uint32_t& cp) {
++  if (length_ >= sizeof(bytes_)) return Status::Invalid;
++  bytes_[length_++] = byte;
++  if (length_ & 1) return Status::NeedMore;
++  const auto unit = [this](int i) -> uint16_t {
++    return bigEndian_ ? (uint16_t(bytes_[i]) << 8) | bytes_[i + 1] : bytes_[i] | (uint16_t(bytes_[i + 1]) << 8);
++  };
++  const uint16_t first = unit(0);
++  if (first >= 0xd800 && first <= 0xdbff) {
++    if (length_ == 2) return Status::NeedMore;
++    const uint16_t second = unit(2);
++    if (second < 0xdc00 || second > 0xdfff) return Status::Invalid;
++    cp = 0x10000 + ((uint32_t(first) - 0xd800) << 10) + second - 0xdc00;
++  } else {
++    if (first >= 0xdc00 && first <= 0xdfff) return Status::Invalid;
++    cp = first;
++  }
++  length_ = 0;
++  return Status::Ready;
++}
+ 
+ bool isSupported(const Encoding encoding) {
+   switch (encoding) {
+@@ -102,12 +135,21 @@
+     case Encoding::Utf8:
+       return true;
+     case Encoding::Gbk:
++    case Encoding::Utf16Le:
++    case Encoding::Utf16Be:
+       return true;
++    case Encoding::Unsupported:
++      return false;
+   }
+   return false;
+ }
+ 
+ Encoding detect(const uint8_t* data, const size_t length, const bool finalChunk) {
++  if (length >= 4 && ((data[0] == 0xff && data[1] == 0xfe && data[2] == 0 && data[3] == 0) ||
++                      (data[0] == 0 && data[1] == 0 && data[2] == 0xfe && data[3] == 0xff)))
++    return Encoding::Unsupported;  // UTF-32 is not UTF-16.
++  if (length >= 2 && data[0] == 0xff && data[1] == 0xfe) return Encoding::Utf16Le;
++  if (length >= 2 && data[0] == 0xfe && data[1] == 0xff) return Encoding::Utf16Be;
+   bool hasCompleteUtf8 = false;
+   if (isStrictUtf8(data, length, finalChunk, hasCompleteUtf8)) {
+     return hasCompleteUtf8 ? Encoding::Utf8 : Encoding::Unknown;
+--- a/lib/Txt/TxtEncoding.h
++++ b/lib/Txt/TxtEncoding.h
+@@ -5,7 +5,25 @@
+ 
+ namespace txt_encoding {
+ 
+-enum class Encoding : uint8_t { Unknown = 0, Utf8 = 1, Gbk = 2 };
++enum class Encoding : uint8_t { Unknown = 0, Utf8 = 1, Gbk = 2, Utf16Le = 3, Utf16Be = 4, Unsupported = 255 };
++enum class ReadError : uint8_t { None, InvalidData, Io, OutOfMemory };
++
++bool isUtf16(Encoding encoding);
++size_t encodeUtf8(uint32_t codepoint, uint8_t* output);
++
++// Four-byte carry only; original byte offsets remain the reader's coordinates.
++class Utf16Decoder {
++ public:
++  enum class Status { NeedMore, Ready, Invalid };
++  explicit Utf16Decoder(Encoding encoding) : bigEndian_(encoding == Encoding::Utf16Be) {}
++  Status push(uint8_t byte, uint32_t& codepoint);
++  bool pending() const { return length_ != 0; }
++
++ private:
++  uint8_t bytes_[4] = {};
++  uint8_t length_ = 0;
++  bool bigEndian_;
++};
+ 
+ struct TranscodeResult {
+   size_t rawLength;
+--- a/lib/Txt/TxtProgress.cpp
++++ b/lib/Txt/TxtProgress.cpp
+@@ -106,8 +106,9 @@
+ namespace {
+ bool readMapping(HalFile& mapping, uint32_t sourceSize, Header& header, Record& end) {
+   if (!mapping.seek(0) || mapping.read(&header, sizeof(header)) != sizeof(header) || header.magic != MAGIC ||
+-      header.version != VERSION || header.sourceSize != sourceSize || header.recordSize != sizeof(Record) ||
+-      !header.count || !txt_encoding::isSerializedValueValid(header.encoding) ||
++      (header.version != VERSION && !(header.version == 1 && header.encoding <= 2)) ||
++      header.sourceSize != sourceSize || header.recordSize != sizeof(Record) || !header.count ||
++      !txt_encoding::isSerializedValueValid(header.encoding) ||
+       mapping.fileSize64() != sizeof(Header) + uint64_t(header.count) * sizeof(Record))
+     return false;
+   return readRecord(mapping, header.count - 1, end) && end.source == sourceSize && end.width == 0;
+--- a/lib/Txt/TxtProgress.h
++++ b/lib/Txt/TxtProgress.h
+@@ -6,7 +6,7 @@
+ 
+ namespace txt_progress {
+ constexpr uint32_t MAGIC = 0x4D545854;  // "TXTM"
+-constexpr uint8_t VERSION = 1;
++constexpr uint8_t VERSION = 2;
+ struct Header {
+   uint32_t magic = MAGIC;
+   uint32_t sourceSize = 0;
+--- a/lib/Txt/TxtToHtml.cpp
++++ b/lib/Txt/TxtToHtml.cpp
+@@ -15,9 +15,9 @@
+ 
+ const char* TxtToHtml::cacheVersionTag(std::string_view filename) {
+ #ifdef RICKYOS_PRODUCT
+-  if (FsHelpers::hasMarkdownExtension(filename)) return "<!-- MD_CACHE_VERSION: 5 -->";
+-#endif
+-  return FsHelpers::hasMarkdownExtension(filename) ? "<!-- MD_CACHE_VERSION: 2 -->" : "<!-- TXT_CACHE_VERSION: 2 -->";
++  if (FsHelpers::hasMarkdownExtension(filename)) return "<!-- MD_CACHE_VERSION: 6 -->";
++#endif
++  return FsHelpers::hasMarkdownExtension(filename) ? "<!-- MD_CACHE_VERSION: 3 -->" : "<!-- TXT_CACHE_VERSION: 3 -->";
+ }
+ 
+ bool TxtToHtml::stream(std::string_view filename, void* readerCtx, int (*readFn)(void*, uint8_t*, size_t), Print& out) {
+@@ -26,11 +26,17 @@
+ 
+ bool TxtToHtml::stream(std::string_view filename, void* readerCtx, int (*readFn)(void*, uint8_t*, size_t), Print& out,
+                        const Options& options) {
++  if (options.error) *options.error = txt_encoding::ReadError::Io;
++  if (!txt_encoding::isSupported(options.encoding)) {
++    if (options.error) *options.error = txt_encoding::ReadError::InvalidData;
++    return false;
++  }
+   constexpr size_t BUFFER_SIZE = 8192;
+   // Two fixed 8 KiB buffers, allocated once per conversion; task stacks cannot hold them.
+   auto inBuf = makeUniqueNoThrow<uint8_t[]>(BUFFER_SIZE);
+   auto outBuf = makeUniqueNoThrow<uint8_t[]>(BUFFER_SIZE);
+   if (!inBuf || !outBuf) {
++    if (options.error) *options.error = txt_encoding::ReadError::OutOfMemory;
+     LOG_ERR("TXT", "OOM: TXT/MD HTML streaming buffers (%zu bytes)", BUFFER_SIZE * 2);
+     return false;
+   }
+@@ -87,12 +93,14 @@
+   uint32_t source = 0;
+   uint32_t visible = 1;  // The body opens with one newline, counted by ChapterHtmlSlimParser.
+   bool readError = false;
++  bool ioReadError = false;
+   const auto readByte = [&]() -> int {
+     if (inputPos == static_cast<size_t>(inputSize)) {
+       inputSize = readFn(readerCtx, inBuf.get(), readCapacity);
+       inputPos = 0;
+       if (inputSize <= 0) {
+         readError = inputSize < 0;
++        ioReadError = readError;
+         inputSize = 0;
+         return -1;
+       }
+@@ -136,15 +144,17 @@
+          else
+            for (uint8_t i = 0; i < utf8Length; ++i) ctx.escape(character[i]);
+        }},
+-      inBuf.get() + 1024, 4096, inBuf.get() + 5120, 3072, options.encoding == txt_encoding::Encoding::Gbk);
++      inBuf.get() + 1024, 4096, inBuf.get() + 5120, 3072, options.encoding == txt_encoding::Encoding::Gbk,
++      txt_encoding::isUtf16(options.encoding));
+ #endif
+ 
+   bool atLineStart = true;
+   uint32_t pendingSpaces = 0;
+   uint32_t pendingStart = 0;
++  uint8_t pendingWidth = 1;
+   const auto finishSpaces = [&](const bool keep) {
+     if (!pendingSpaces) return;
+-    map(pendingStart, 1, keep ? 1 : 0);
++    map(pendingStart, pendingWidth, keep ? 1 : 0);
+     if (keep) {
+       for (uint32_t i = 1; i < pendingSpaces; ++i) writeStr("&#160;");
+       writeByte(' ');
+@@ -155,12 +165,27 @@
+ 
+   while (outputOk) {
+     const uint32_t begin = source;
+-    const int first = readByte();
++    int first = readByte();
+     if (first < 0) break;
+     uint8_t character[8] = {static_cast<uint8_t>(first)};
+     uint8_t width = 1;
+     size_t utf8Length = 1;
+-    if (first >= 0x80) {
++    if (txt_encoding::isUtf16(options.encoding)) {
++      txt_encoding::Utf16Decoder decoder(options.encoding);
++      uint32_t cp = 0;
++      for (;;) {
++        const auto status = decoder.push(static_cast<uint8_t>(first), cp);
++        if (status == txt_encoding::Utf16Decoder::Status::Ready) break;
++        if (status == txt_encoding::Utf16Decoder::Status::Invalid || (first = readByte()) < 0) {
++          readError = true;
++          break;
++        }
++      }
++      if (readError) break;
++      width = static_cast<uint8_t>(source - begin);
++      utf8Length = txt_encoding::encodeUtf8(cp, character);
++      first = character[0];  // Control handling below uses decoded ASCII, not a source byte.
++    } else if (first >= 0x80) {
+       if (options.encoding == txt_encoding::Encoding::Gbk) {
+         const int second = readByte();
+         if (second < 0) {
+@@ -223,18 +248,21 @@
+ #endif
+     if (first == '\r') {
+       finishSpaces(false);
+-      map(begin, 1, 0);
++      map(begin, width, 0);
+       continue;
+     }
+     if (first == '\n') {
+       finishSpaces(false);
+-      map(begin, 1, 0);
++      map(begin, width, 0);
+       writeStr("<br />");
+       atLineStart = true;
+       continue;
+     }
+     if (first == ' ' && !atLineStart) {
+-      if (!pendingSpaces) pendingStart = begin;
++      if (!pendingSpaces) {
++        pendingStart = begin;
++        pendingWidth = width;
++      }
+       ++pendingSpaces;
+       continue;
+     }
+@@ -255,11 +283,15 @@
+   finishSpaces(false);
+   map(source, 0, 0);  // EOF sentinel; no footer whitespace belongs to the source file.
+   if (readError || !outputOk) {
++    if (options.error)
++      *options.error = readError ? (ioReadError ? txt_encoding::ReadError::Io : txt_encoding::ReadError::InvalidData)
++                                 : txt_encoding::ReadError::Io;
+     LOG_ERR("TXT", "TXT/MD conversion failed: %.*s", static_cast<int>(filename.size()), filename.data());
+     return false;
+   }
+   writeStr("\n</body>\n</html>\n");
+   flushOut();
++  if (options.error) *options.error = outputOk ? txt_encoding::ReadError::None : txt_encoding::ReadError::Io;
+   return outputOk;
+ }
+ 
+--- a/lib/Txt/TxtToHtml.h
++++ b/lib/Txt/TxtToHtml.h
+@@ -11,6 +11,7 @@
+  public:
+   struct Options {
+     txt_encoding::Encoding encoding = txt_encoding::Encoding::Utf8;
++    txt_encoding::ReadError* error = nullptr;
+     void* context = nullptr;
+     bool (*map)(void*, uint32_t source, uint32_t visible, uint8_t sourceWidth, uint8_t visibleStep) = nullptr;
+     uint32_t (*chapterOffset)(void*) = nullptr;
 --- a/lib/WeReadWebApi/src/WeReadClient.cpp
 +++ b/lib/WeReadWebApi/src/WeReadClient.cpp
 @@ -5,12 +5,14 @@
@@ -427955,6 +428674,58 @@
    ['row_timer', 'timer', 32], ['row_percent', 'percent', 32],
    ['row_bookmark', 'bookmark', 32], ['row_sync', 'refresh-cw', 32],
    ['row_more', 'list-tree', 32], ['row_light', 'sun', 32],
+--- /dev/null
++++ b/scripts/tests/run_txt_utf16_tests.py
+@@ -0,0 +1,49 @@
++#!/usr/bin/env python3
++"""Focused real TXT pipeline tests; reuse explicitly supplied host dependencies.
++
++No device access/downloads. Optional local sample paths are supplied through
++RICKYOS_UTF16_SAMPLE and RICKYOS_UTF8_REFERENCE, never stored in the repository.
++"""
++import argparse
++from pathlib import Path
++import shutil
++import subprocess
++
++p=argparse.ArgumentParser(description=__doc__)
++p.add_argument('--app-root',type=Path,default=Path(__file__).resolve().parents[2])
++p.add_argument('--gtest-source',type=Path,required=True)
++p.add_argument('--simulator-source',type=Path,required=True)
++p.add_argument('--build-dir',type=Path,required=True)
++p.add_argument('--cmake',default=shutil.which('cmake'))
++p.add_argument('--ctest',default=shutil.which('ctest'))
++a=p.parse_args()
++if not a.cmake or not a.ctest:p.error('cmake and ctest paths are required')
++for folder in [a.app_root,a.gtest_source,a.simulator_source]:
++ if not folder.is_dir():p.error(f'missing source folder: {folder}')
++def quote(path):return str(path.resolve()).replace('\\','/').replace('"','\\"')
++source=a.build_dir.resolve()/'driver';build=a.build_dir.resolve()/'build';source.mkdir(parents=True,exist_ok=True)
++(source/'CMakeLists.txt').write_text(f'''
++cmake_minimum_required(VERSION 3.16)
++project(txt_utf16_regressions C CXX)
++set(CMAKE_CXX_STANDARD 20)
++set(CMAKE_CXX_STANDARD_REQUIRED ON)
++set(REPO_ROOT "{quote(a.app_root)}")
++set(crosspoint_simulator_SOURCE_DIR "{quote(a.simulator_source)}")
++set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
++add_subdirectory("{quote(a.gtest_source)}" googletest)
++add_library(crosspoint_test_common INTERFACE)
++target_include_directories(crosspoint_test_common INTERFACE "${{REPO_ROOT}}" "${{REPO_ROOT}}/lib" "${{REPO_ROOT}}/lib/Memory")
++target_compile_definitions(crosspoint_test_common INTERFACE RICKYOS_PRODUCT=1 ENABLE_CHINESE_VERSION=1 CROSSPOINT_EMULATED=1)
++target_compile_options(crosspoint_test_common INTERFACE -Wall -Wextra -pedantic)
++enable_testing()
++include(GoogleTest)
++add_subdirectory("${{REPO_ROOT}}/test/txt_encoding" encoding)
++add_subdirectory("${{REPO_ROOT}}/test/txt_to_html" html)
++add_subdirectory("${{REPO_ROOT}}/test/txt_chapter_index" chapters)
++add_subdirectory("${{REPO_ROOT}}/test/txt_utf16_pipeline" pipeline)
++''')
++subprocess.run([a.cmake,'-S',str(source),'-B',str(build),'-DCMAKE_BUILD_TYPE=Debug',
++ '-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer',
++ '-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined'],check=True)
++subprocess.run([a.cmake,'--build',str(build),'-j','4'],check=True)
++subprocess.run([a.ctest,'--test-dir',str(build),'--output-on-failure'],check=True)
 --- a/scripts/tests/test_reader_page_cache.py
 +++ b/scripts/tests/test_reader_page_cache.py
 @@ -33,7 +33,16 @@
@@ -442893,6 +443664,14 @@
  // Called once after loading recents. An unreadable existing store is never an empty library.
  void prepare(bool recentsLoaded);
  // Called before routing home, after onboarding. At most one installation attempt per boot.
+--- a/test/CMakeLists.txt
++++ b/test/CMakeLists.txt
+@@ -240,3 +240,5 @@
+ 
+ add_test(NAME TextSettingsFontExit
+   COMMAND ${Python3_EXECUTABLE} ${REPO_ROOT}/scripts/tests/test_text_settings_font_exit.py)
++
++add_subdirectory(txt_utf16_pipeline)
 --- a/test/chapter_html_slim_parser/CMakeLists.txt
 +++ b/test/chapter_html_slim_parser/CMakeLists.txt
 @@ -4,6 +4,7 @@
@@ -443344,3 +444123,495 @@
 +  ASSERT_EQ(reader.loadFromCache(), CssParser::CacheLoadResult::Complete);
 +  EXPECT_EQ(reader.familyAt(reader.resolveStyle("p", "", inBt, 2).fontFamily), "mm");
 +}
+--- a/test/txt_chapter_index/TxtChapterCacheTest.cpp
++++ b/test/txt_chapter_index/TxtChapterCacheTest.cpp
+@@ -1,5 +1,6 @@
+ #include <HalStorage.h>
+ #include <gtest/gtest.h>
++#include <unistd.h>
+ 
+ #include <array>
+ #include <atomic>
+@@ -17,7 +18,8 @@
+  protected:
+   void SetUp() override {
+     static std::atomic<unsigned> serial{0};
+-    root_ = std::filesystem::temp_directory_path() / ("crossmux-txt-chapters-" + std::to_string(serial++));
++    root_ = std::filesystem::temp_directory_path() /
++            ("crossmux-txt-chapters-" + std::to_string(getpid()) + "-" + std::to_string(serial++));
+     std::error_code error;
+     std::filesystem::remove_all(root_, error);
+     ASSERT_TRUE(std::filesystem::create_directories(root_, error));
+@@ -184,3 +186,74 @@
+   EXPECT_EQ(count, 2U);
+ }
+ #endif
++
++TEST_F(TxtChapterCacheTest, Utf16EndianChapterOffsetsAndChunkCarry) {
++  for (bool big : {false, true}) {
++    std::u16string text = u"第一章 起点\r\n正文\u0a41\n";
++    text += std::u16string(244, u'x');
++    text += u"\U0001f431\n第二章 终点\n尾";
++    std::string bytes;
++    bytes.reserve(2 + text.size() * 2);
++    bytes += big ? std::string("\xfe\xff", 2) : std::string("\xff\xfe", 2);
++    for (char16_t c : text) {
++      bytes.push_back(big ? c >> 8 : c & 255);
++      bytes.push_back(big ? c & 255 : c >> 8);
++    }
++    writeBook(bytes);
++    Txt txt("/book.txt", "/.crosspoint");
++    ASSERT_TRUE(txt.load());
++    // Odd read capacity forces code units and surrogate pairs across reads.
++    std::array<uint8_t, 1027> scratch{};
++    uint32_t count = 0;
++    auto encoding = txt_encoding::Encoding::Unknown;
++    txt_encoding::ReadError error = txt_encoding::ReadError::Io;
++    ASSERT_TRUE(txt.buildChapterIndex(encoding, scratch.data(), scratch.size(), count, &error));
++    EXPECT_EQ(error, txt_encoding::ReadError::None);
++    EXPECT_EQ(count, 2U);
++    EXPECT_EQ(encoding, big ? txt_encoding::Encoding::Utf16Be : txt_encoding::Encoding::Utf16Le);
++    HalFile index;
++    ASSERT_TRUE(txt.openChapterIndex(index, encoding, count));
++    txt_chapter_index::Record record;
++    ASSERT_TRUE(txt.readChapter(index, count, 0, record));
++    EXPECT_STREQ(record.title, "第一章 起点");
++    EXPECT_EQ(record.sourceOffset, 2U);
++    ASSERT_TRUE(txt.readChapter(index, count, 1, record));
++    EXPECT_STREQ(record.title, "第二章 终点");
++    EXPECT_EQ(record.sourceOffset, 2 + text.find(u"第二章") * 2);
++  }
++}
++TEST_F(TxtChapterCacheTest, Utf16MalformedInputIsNotAnIoErrorOrCommittedIndex) {
++  for (const auto& bytes : {std::string("\xff\xfe\x00\xd8", 4), std::string("\xfe\xff\x41", 3),
++                            std::string("\xff\xfe\x00\x00", 4), std::string("\x00\x00\xfe\xff", 4)}) {
++    writeBook(bytes);
++    Txt txt("/book.txt", "/.crosspoint");
++    ASSERT_TRUE(txt.load());
++    std::array<uint8_t, 1027> scratch{};
++    uint32_t count = 0;
++    auto encoding = txt_encoding::Encoding::Unknown;
++    txt_encoding::ReadError error = txt_encoding::ReadError::None;
++    EXPECT_FALSE(txt.buildChapterIndex(encoding, scratch.data(), scratch.size(), count, &error));
++    EXPECT_EQ(error, txt_encoding::ReadError::InvalidData);
++    EXPECT_EQ(count, 0U);
++    EXPECT_FALSE(std::filesystem::exists(hostPath(txt.getCachePath() + "/chapters.bin")));
++  }
++}
++TEST_F(TxtChapterCacheTest, UserUtf16SampleBuildsDirectoryWithoutLoadingWholeBook) {
++  const char* sample = std::getenv("RICKYOS_UTF16_SAMPLE");
++  if (!sample) GTEST_SKIP() << "optional local sample";
++  std::filesystem::copy_file(sample, hostPath("/book.txt"), std::filesystem::copy_options::overwrite_existing);
++  Txt txt("/book.txt", "/.crosspoint");
++  ASSERT_TRUE(txt.load());
++  std::array<uint8_t, 8193> scratch{};
++  uint32_t count = 0;
++  auto encoding = txt_encoding::Encoding::Unknown;
++  ASSERT_TRUE(txt.buildChapterIndex(encoding, scratch.data(), scratch.size(), count));
++  EXPECT_EQ(encoding, txt_encoding::Encoding::Utf16Le);
++  EXPECT_GT(count, 0U);
++  HalFile index;
++  ASSERT_TRUE(txt.openChapterIndex(index, encoding, count));
++  txt_chapter_index::Record last;
++  ASSERT_TRUE(txt.readChapter(index, count, count - 1, last));
++  EXPECT_LT(last.sourceOffset, txt.getFileSize());
++  EXPECT_EQ(last.sourceOffset % 2, 0U);
++}
+--- a/test/txt_chapter_index/TxtProgressTest.cpp
++++ b/test/txt_chapter_index/TxtProgressTest.cpp
+@@ -1,5 +1,6 @@
+ #include <HalStorage.h>
+ #include <gtest/gtest.h>
++#include <unistd.h>
+ 
+ #include <array>
+ #include <cstdlib>
+@@ -14,7 +15,8 @@
+ namespace {
+ class TxtProgressTest : public ::testing::Test {
+  protected:
+-  std::filesystem::path root = std::filesystem::temp_directory_path() / "crossmux-txt-progress";
++  std::filesystem::path root =
++      std::filesystem::temp_directory_path() / ("crossmux-txt-progress-" + std::to_string(getpid()));
+   void SetUp() override {
+     std::filesystem::remove_all(root);
+     std::filesystem::create_directories(root / "old");
+@@ -196,3 +198,40 @@
+   EXPECT_FALSE(std::filesystem::exists(root / "old/md-resume-v1.bin"));
+ }
+ }  // namespace
++
++TEST_F(TxtProgressTest, Utf16RawByteMappingsAndLegacyMapCompatibility) {
++  for (uint8_t encoding : {3, 4}) {
++    std::vector<uint8_t> bytes;
++    txt_progress::Header h{txt_progress::MAGIC, 10, 5, 12, txt_progress::VERSION, encoding};
++    const txt_progress::Record records[] = {{0, 1, 2, 0}, {2, 1, 2, 1}, {4, 2, 4, 1}, {8, 3, 2, 0}, {10, 3, 0, 0}};
++    bytes.resize(sizeof(h) + sizeof(records));
++    memcpy(bytes.data(), &h, sizeof(h));
++    memcpy(bytes.data() + sizeof(h), records, sizeof(records));
++    write("map.bin", bytes);
++    HalFile file;
++    ASSERT_TRUE(Storage.openFileForRead("TEST", "/map.bin", file));
++    for (uint32_t offset = 4; offset < 8; offset++) {
++      uint32_t visible = 0;
++      ASSERT_TRUE(txt_progress::resolve(file, 10, offset, visible));
++      EXPECT_EQ(visible, 2U);
++    }
++    uint32_t source = 0;
++    ASSERT_TRUE(txt_progress::sourceForVisible(file, 10, 2, source));
++    EXPECT_EQ(source, 4U);
++    ASSERT_TRUE(txt_progress::sourceForVisible(file, 10, 1, source));
++    EXPECT_EQ(source, 2U);
++    uint32_t visible = 0;
++    ASSERT_TRUE(txt_progress::resolve(file, 10, 10, visible));
++    EXPECT_EQ(visible, 3U);
++    file.close();
++    bytes[14] = 1;
++    write("map.bin", bytes);
++    ASSERT_TRUE(Storage.openFileForRead("TEST", "/map.bin", file));
++    EXPECT_FALSE(txt_progress::resolve(file, 10, 0, visible));  // Old readers never wrote UTF-16 maps.
++    file.close();
++    bytes[15] = 1;
++    write("map.bin", bytes);
++    ASSERT_TRUE(Storage.openFileForRead("TEST", "/map.bin", file));
++    EXPECT_TRUE(txt_progress::resolve(file, 10, 0, visible));  // Existing UTF-8/GBK maps remain readable for resume.
++  }
++}
+--- a/test/txt_encoding/TxtEncodingTest.cpp
++++ b/test/txt_encoding/TxtEncodingTest.cpp
+@@ -86,3 +86,46 @@
+   EXPECT_EQ(result.utf8Length, rawLength / 2 * 3);
+   EXPECT_EQ(txt_encoding::gbkSourceLength(buffer.data(), result.utf8Length), rawLength);
+ }
++
++TEST(TxtEncoding, Utf16BomAndStreamingScalarBoundaries) {
++  using namespace txt_encoding;
++  const uint8_t le[] = {0xff, 0xfe, 0x41, 0}, be[] = {0xfe, 0xff, 0, 0x41};
++  const uint8_t utf32[] = {0xff, 0xfe, 0, 0};
++  EXPECT_EQ(detect(le, 4, true), Encoding::Utf16Le);
++  EXPECT_EQ(detect(be, 4, true), Encoding::Utf16Be);
++  EXPECT_EQ(detect(utf32, 4, true), Encoding::Unsupported);
++  EXPECT_FALSE(isSupported(Encoding::Unsupported));
++  for (bool big : {false, true}) {
++    for (uint32_t cp : {0U, 0x41U, 0x7ffU, 0x800U, 0xd7ffU, 0xe000U, 0xfeffU, 0xffffU, 0x10000U, 0x1f431U, 0x10ffffU}) {
++      Utf16Decoder decoder(big ? Encoding::Utf16Be : Encoding::Utf16Le);
++      uint16_t units[2] = {static_cast<uint16_t>(cp), 0};
++      int n = 1;
++      if (cp > 0xffff) {
++        units[0] = 0xd800 + ((cp - 0x10000) >> 10);
++        units[1] = 0xdc00 + ((cp - 0x10000) & 1023);
++        n = 2;
++      }
++      uint32_t result = 0;
++      for (int i = 0; i < n; i++) {
++        EXPECT_EQ(decoder.push(big ? units[i] >> 8 : units[i] & 255, result), Utf16Decoder::Status::NeedMore);
++        EXPECT_EQ(decoder.push(big ? units[i] & 255 : units[i] >> 8, result),
++                  i + 1 == n ? Utf16Decoder::Status::Ready : Utf16Decoder::Status::NeedMore);
++      }
++      EXPECT_EQ(result, cp);
++      EXPECT_FALSE(decoder.pending());
++      uint8_t out[4];
++      EXPECT_GE(encodeUtf8(cp, out), 1U);
++      EXPECT_LE(encodeUtf8(cp, out), 4U);
++    }
++  }
++  Utf16Decoder low(Encoding::Utf16Le);
++  uint32_t cp = 0;
++  EXPECT_EQ(low.push(0, cp), Utf16Decoder::Status::NeedMore);
++  EXPECT_EQ(low.push(0xdc, cp), Utf16Decoder::Status::Invalid);
++  Utf16Decoder high(Encoding::Utf16Be);
++  EXPECT_EQ(high.push(0xd8, cp), Utf16Decoder::Status::NeedMore);
++  EXPECT_EQ(high.push(0, cp), Utf16Decoder::Status::NeedMore);
++  EXPECT_TRUE(high.pending());
++  EXPECT_EQ(high.push(0, cp), Utf16Decoder::Status::NeedMore);
++  EXPECT_EQ(high.push(0x41, cp), Utf16Decoder::Status::Invalid);
++}
+--- a/test/txt_to_html/MarkdownToHtmlTest.cpp
++++ b/test/txt_to_html/MarkdownToHtmlTest.cpp
+@@ -46,7 +46,7 @@
+       "- 喝杯茶\n- 再读一页\n\n1. 清晨\n2. 夜晚\n\n> 慢一点。\n---\n";
+   for (size_t chunk : {1U, 7U, 4096U, 8192U}) {
+     const auto html = convert(source, chunk);
+-    EXPECT_NE(html.find("<!-- MD_CACHE_VERSION: 5 -->"), std::string::npos);
++    EXPECT_NE(html.find("<!-- MD_CACHE_VERSION: 6 -->"), std::string::npos);
+     EXPECT_NE(html.find("<h1>阅读与生活</h1>"), std::string::npos);
+     EXPECT_NE(html.find("<h2>安静的一页</h2>"), std::string::npos);
+     EXPECT_NE(html.find("<strong>粗体</strong>"), std::string::npos);
+@@ -80,7 +80,7 @@
+   Output plain;
+   ASSERT_TRUE(TxtToHtml::stream("plain.txt", "# 标题\n**普通文本**", plain));
+   EXPECT_NE(plain.text.find("# 标题<br />**普通文本**"), std::string::npos);
+-  EXPECT_NE(plain.text.find("<!-- TXT_CACHE_VERSION: 2 -->"), std::string::npos);
++  EXPECT_NE(plain.text.find("<!-- TXT_CACHE_VERSION: 3 -->"), std::string::npos);
+ }
+ 
+ TEST(Markdown, UnmatchedSyntaxAndLiteralHashtagsRemainReadable) {
+@@ -309,3 +309,34 @@
+   MarkdownFormatter::plainText(incomplete, title);
+   EXPECT_EQ(std::string(title), incomplete);
+ }
++
++TEST(Markdown, Utf16LeBeTablesInlineAndPendingNewlineCoordinates) {
++  const std::u16string text =
++      u"# 标题\r\n\n| 中文 | 猫\U0001f431 |\r\n| -- | -- |\n| **字** | [链接](x) |\n\n- 项目\n尾";
++  const std::string expected =
++      convert("# 标题\r\n\n| 中文 | 猫🐱 |\r\n| -- | -- |\n| **字** | [链接](x) |\n\n- 项目\n尾");
++  for (bool big : {false, true})
++    for (size_t chunk : {1U, 3U, 1023U}) {
++      std::string raw;
++      raw += big ? std::string("\xfe\xff", 2) : std::string("\xff\xfe", 2);
++      for (char16_t c : text) {
++        raw.push_back(big ? c >> 8 : c & 255);
++        raw.push_back(big ? c & 255 : c >> 8);
++      }
++      Reader reader{raw, 0, chunk};
++      Output out;
++      TxtToHtml::Options opts;
++      opts.encoding = big ? txt_encoding::Encoding::Utf16Be : txt_encoding::Encoding::Utf16Le;
++      uint32_t end = 0;
++      opts.context = &end;
++      opts.map = [](void* p, uint32_t source, uint32_t, uint8_t width, uint8_t) {
++        EXPECT_EQ(source % 2, 0U);
++        EXPECT_TRUE(width == 0 || width == 2 || width == 4);
++        if (!width) *static_cast<uint32_t*>(p) = source;
++        return true;
++      };
++      ASSERT_TRUE(TxtToHtml::stream("中文.MD", &reader, Reader::read, out, opts));
++      EXPECT_EQ(out.text, expected);
++      EXPECT_EQ(end, raw.size());
++    }
++}
+--- a/test/txt_to_html/TxtToHtmlTest.cpp
++++ b/test/txt_to_html/TxtToHtmlTest.cpp
+@@ -1,7 +1,10 @@
+ #include <gtest/gtest.h>
+ 
+ #include <algorithm>
++#include <cstdlib>
+ #include <cstring>
++#include <fstream>
++#include <iterator>
+ #include <string>
+ #include <string_view>
+ 
+@@ -25,7 +28,7 @@
+ 
+ const std::string kHeader =
+     "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
+-    "<!-- TXT_CACHE_VERSION: 2 -->\n"
++    "<!-- TXT_CACHE_VERSION: 3 -->\n"
+     "<!DOCTYPE html>\n<html>\n<head><title>test</title></head>\n<body>\n";
+ const std::string kFooter = "\n</body>\n</html>\n";
+ 
+@@ -52,7 +55,7 @@
+   StringPrint out;
+   ASSERT_TRUE(TxtToHtml::stream("test.MD", "text", out));
+   EXPECT_EQ(out.str,
+-            "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!-- MD_CACHE_VERSION: 5 -->\n"
++            "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!-- MD_CACHE_VERSION: 6 -->\n"
+             "<!DOCTYPE html>\n<html>\n<head><title>test</title></head>\n<body>\n<p>text</p>" +
+                 kFooter);
+   EXPECT_NE(out.str.find(TxtToHtml::cacheVersionTag("test.MD")), std::string::npos);
+@@ -171,3 +174,92 @@
+   EXPECT_EQ(context.lastVisible, 1U + 5U + 9U + 2U + 4U);
+ }
+ }  // namespace
++
++namespace {
++std::string utf16Bytes(std::u16string_view text, bool big) {
++  std::string out;
++  out.reserve(2 + text.size() * 2);
++  out += big ? std::string("\xfe\xff", 2) : std::string("\xff\xfe", 2);
++  for (auto c : text) {
++    out.push_back(big ? c >> 8 : c & 255);
++    out.push_back(big ? c & 255 : c >> 8);
++  }
++  return out;
++}
++}  // namespace
++TEST(TxtToHtmlUtf16, LeBeSingleByteChunksAndRawCoordinates) {
++  const auto text = u"第一章\r\n  中文\U0001f431\u0a41<&>  空 格\n结尾";
++  StringPrint expected;
++  // Build the expected UTF-8 from exact scalars rather than locale conversion.
++  const std::string utf8 = "第一章\r\n  中文\xf0\x9f\x90\xb1\xe0\xa9\x81<&>  空 格\n结尾";
++  expected.str.clear();
++  ASSERT_TRUE(TxtToHtml::stream("test.txt", utf8, expected));
++  for (bool big : {false, true})
++    for (size_t chunk : {1U, 3U, 7U, 8191U}) {
++      const auto bytes = utf16Bytes(text, big);
++      ChunkReader reader{bytes, 0, chunk};
++      StringPrint out;
++      txt_encoding::ReadError error = txt_encoding::ReadError::Io;
++      TxtToHtml::Options opts;
++      opts.encoding = big ? txt_encoding::Encoding::Utf16Be : txt_encoding::Encoding::Utf16Le;
++      opts.error = &error;
++      struct Mapping {
++        uint32_t last = 0, end = 0;
++        int surrogate = 0;
++      };
++      Mapping map;
++      opts.context = &map;
++      opts.map = [](void* opaque, uint32_t source, uint32_t, uint8_t width, uint8_t) {
++        auto& m = *static_cast<Mapping*>(opaque);
++        EXPECT_EQ(source % 2, 0U);
++        EXPECT_GE(source, m.last);
++        m.last = source;
++        EXPECT_TRUE(width == 0 || width == 2 || width == 4);
++        if (width == 4) m.surrogate++;
++        if (!width) m.end = source;
++        return true;
++      };
++      ASSERT_TRUE(TxtToHtml::stream("test.txt", &reader, ChunkReader::read, out, opts));
++      EXPECT_EQ(out.str, expected.str);
++      EXPECT_EQ(error, txt_encoding::ReadError::None);
++      EXPECT_EQ(map.end, bytes.size());
++      EXPECT_EQ(map.surrogate, 1);
++    }
++}
++TEST(TxtToHtmlUtf16, RejectsOddBytesAndBadSurrogatesAsDataNotIo) {
++  for (const auto& bytes : {std::string("\xff\xfe\x41", 3), std::string("\xff\xfe\x00\xd8", 4),
++                            std::string("\xff\xfe\x00\xdc", 4), std::string("\xff\xfe\x00\xd8\x41\x00", 6)}) {
++    ChunkReader reader{bytes, 0, 1};
++    StringPrint out;
++    TxtToHtml::Options opts;
++    txt_encoding::ReadError error = txt_encoding::ReadError::None;
++    opts.error = &error;
++    opts.encoding = txt_encoding::Encoding::Utf16Le;
++    EXPECT_FALSE(TxtToHtml::stream("test.txt", &reader, ChunkReader::read, out, opts));
++    EXPECT_EQ(error, txt_encoding::ReadError::InvalidData);
++  }
++  StringPrint out;
++  TxtToHtml::Options opts;
++  txt_encoding::ReadError error = txt_encoding::ReadError::None;
++  opts.error = &error;
++  opts.encoding = txt_encoding::Encoding::Utf16Le;
++  EXPECT_FALSE(TxtToHtml::stream("test.txt", nullptr, [](void*, uint8_t*, size_t) { return -1; }, out, opts));
++  EXPECT_EQ(error, txt_encoding::ReadError::Io);
++}
++
++TEST(TxtToHtmlUtf16, UserBookMatchesIndependentUtf8ReferenceInBoundedReads) {
++  const char* sample = std::getenv("RICKYOS_UTF16_SAMPLE");
++  const char* reference = std::getenv("RICKYOS_UTF8_REFERENCE");
++  if (!sample || !reference) GTEST_SKIP() << "optional local user book and independent UTF-8 reference";
++  std::ifstream a(sample, std::ios::binary), b(reference, std::ios::binary);
++  ASSERT_TRUE(a && b);
++  const std::string raw((std::istreambuf_iterator<char>(a)), {}), utf8((std::istreambuf_iterator<char>(b)), {});
++  ChunkReader reader{raw, 0, 4093};
++  StringPrint actual, expected;
++  TxtToHtml::Options opts;
++  opts.encoding = txt_encoding::Encoding::Utf16Le;
++  ASSERT_TRUE(TxtToHtml::stream("test.txt", &reader, ChunkReader::read, actual, opts));
++  ASSERT_TRUE(TxtToHtml::stream("test.txt", utf8, expected));
++  EXPECT_EQ(actual.str, expected.str);
++  EXPECT_EQ(reader.pos, raw.size());
++}
+--- /dev/null
++++ b/test/txt_utf16_pipeline/CMakeLists.txt
+@@ -0,0 +1,20 @@
++add_executable(TxtUtf16PipelineTest
++  "${REPO_ROOT}/test/txt_utf16_pipeline/TxtUtf16PipelineTest.cpp"
++  "${REPO_ROOT}/lib/Txt/Txt.cpp" "${REPO_ROOT}/lib/Txt/TxtCache.cpp"
++  "${REPO_ROOT}/lib/Txt/TxtToHtml.cpp" "${REPO_ROOT}/lib/Txt/MarkdownFormatter.cpp"
++  "${REPO_ROOT}/lib/Txt/TxtChapterIndex.cpp" "${REPO_ROOT}/lib/Txt/TxtEncoding.cpp"
++  "${REPO_ROOT}/lib/Txt/TxtProgress.cpp" "${REPO_ROOT}/lib/FsHelpers/FsHelpers.cpp"
++  "${REPO_ROOT}/lib/Utf8/Utf8.cpp" "${crosspoint_simulator_SOURCE_DIR}/src/HalStorage.cpp")
++target_include_directories(TxtUtf16PipelineTest BEFORE PRIVATE
++  "${crosspoint_simulator_SOURCE_DIR}/src" "${REPO_ROOT}/lib/Txt" "${REPO_ROOT}/lib/FsHelpers"
++  "${REPO_ROOT}/lib/Epub" "${REPO_ROOT}/lib/Serialization" "${REPO_ROOT}/lib/Utf8"
++  "${REPO_ROOT}/lib/JpegToBmpConverter" "${REPO_ROOT}/lib/PngToBmpConverter"
++  "${REPO_ROOT}/test/chapter_html_slim_parser/stubs")
++target_compile_options(TxtUtf16PipelineTest PRIVATE -ffunction-sections -fdata-sections)
++if(APPLE)
++ target_link_options(TxtUtf16PipelineTest PRIVATE -Wl,-dead_strip)
++else()
++ target_link_options(TxtUtf16PipelineTest PRIVATE -Wl,--gc-sections)
++endif()
++target_link_libraries(TxtUtf16PipelineTest PRIVATE crosspoint_test_common GTest::gtest_main)
++gtest_discover_tests(TxtUtf16PipelineTest PROPERTIES RUN_SERIAL TRUE)
+--- /dev/null
++++ b/test/txt_utf16_pipeline/TxtUtf16PipelineTest.cpp
+@@ -0,0 +1,84 @@
++#include <HalStorage.h>
++#include <gtest/gtest.h>
++#include <unistd.h>
++
++#include <cstdlib>
++#include <filesystem>
++#include <fstream>
++#include <string>
++
++#include "Txt.h"
++namespace {
++class Sink : public Print {
++ public:
++  std::string text;
++  size_t write(uint8_t b) override {
++    text.push_back(b);
++    return 1;
++  }
++  size_t write(const uint8_t* b, size_t n) override {
++    text.append(reinterpret_cast<const char*>(b), n);
++    return n;
++  }
++};
++class Pipeline : public ::testing::Test {
++ protected:
++  std::filesystem::path root =
++      std::filesystem::temp_directory_path() / ("rickyos-utf16-pipeline-" + std::to_string(getpid()));
++  void SetUp() override {
++    std::filesystem::remove_all(root);
++    std::filesystem::create_directories(root / "cache");
++    setenv("CROSSPOINT_SIM_SD", root.c_str(), 1);
++    ASSERT_TRUE(Storage.begin());
++  }
++  void TearDown() override {
++    unsetenv("CROSSPOINT_SIM_SD");
++    std::filesystem::remove_all(root);
++  }
++  void put(const std::string& b) {
++    std::ofstream f(root / "book.txt", std::ios::binary);
++    f.write(b.data(), b.size());
++  }
++};
++TEST_F(Pipeline, ConvertsIndexesMapsAndReopensTheSameOriginalBook) {
++  for (bool big : {false, true}) {
++    const std::u16string text = u"第一章 初见\r\n正文\U0001f431\n第二章 后续\n再读";
++    std::string raw;
++    raw += big ? std::string("\xfe\xff", 2) : std::string("\xff\xfe", 2);
++    for (char16_t c : text) {
++      raw.push_back(big ? c >> 8 : c & 255);
++      raw.push_back(big ? c & 255 : c >> 8);
++    }
++    put(raw);
++    // Separate caches for the two encodings; test direct warm reuse below.
++    std::filesystem::remove_all(root / ".crosspoint");
++    Sink out;
++    txt_encoding::ReadError error = txt_encoding::ReadError::Io;
++    ASSERT_TRUE(Txt::streamTxtToHtml("/book.txt", out, "/cache", &error));
++    EXPECT_EQ(error, txt_encoding::ReadError::None);
++    const auto offset = 2 + text.find(u"第二章") * 2;
++    EXPECT_NE(out.text.find("第二章 后续"), std::string::npos);
++    EXPECT_NE(out.text.find("id=\"txt-" + std::to_string(offset) + "\""), std::string::npos);
++    HalFile mapping;
++    ASSERT_TRUE(Storage.openFileForRead("TEST", "/cache/txt-map.bin", mapping));
++    uint32_t visible = 0, source = 0;
++    ASSERT_TRUE(txt_progress::resolve(mapping, raw.size(), offset, visible));
++    ASSERT_TRUE(txt_progress::sourceForVisible(mapping, raw.size(), visible, source));
++    EXPECT_EQ(source, offset);
++    mapping.close();
++    Sink warm;
++    ASSERT_TRUE(Txt::streamTxtToHtml("/book.txt", warm, "/cache", &error));
++    EXPECT_EQ(warm.text, out.text);
++  }
++}
++TEST_F(Pipeline, InvalidDataAndIoHaveDistinctErrors) {
++  put(std::string("\xff\xfe\x00\xd8", 4));
++  Sink out;
++  txt_encoding::ReadError e = txt_encoding::ReadError::None;
++  EXPECT_FALSE(Txt::streamTxtToHtml("/book.txt", out, "/cache", &e));
++  EXPECT_EQ(e, txt_encoding::ReadError::InvalidData);
++  EXPECT_FALSE(std::filesystem::exists(root / "cache/txt-map.bin"));
++  EXPECT_FALSE(Txt::streamTxtToHtml("/absent.txt", out, "/cache", &e));
++  EXPECT_EQ(e, txt_encoding::ReadError::Io);
++}
++}  // namespace

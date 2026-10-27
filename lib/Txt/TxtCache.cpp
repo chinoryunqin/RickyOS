@@ -18,17 +18,27 @@
 #endif
 
 namespace {
-bool openChapters(Txt& txt, HalFile& chapters, txt_encoding::Encoding& encoding, uint32_t& count) {
+bool openChapters(Txt& txt, HalFile& chapters, txt_encoding::Encoding& encoding, uint32_t& count,
+                  txt_encoding::ReadError* error = nullptr) {
+  if (error) *error = txt_encoding::ReadError::Io;
   if (!txt.load()) return false;
-  if (txt.openChapterIndex(chapters, encoding, count)) return true;
+  if (txt.openChapterIndex(chapters, encoding, count)) {
+    if (error) *error = txt_encoding::ReadError::None;
+    return true;
+  }
   chapters.close();  // The invalid index must close before replacement/reopen.
   // One 8 KiB indexing workspace, released before allocating conversion buffers.
   auto scratch = makeUniqueNoThrow<uint8_t[]>(8192);
   if (!scratch) {
+    if (error) *error = txt_encoding::ReadError::OutOfMemory;
     LOG_ERR("TXT", "OOM: chapter-index workspace (8192 bytes)");
     return false;
   }
-  return txt.buildChapterIndex(encoding, scratch.get(), 8192, count) && txt.openChapterIndex(chapters, encoding, count);
+  if (!txt.buildChapterIndex(encoding, scratch.get(), 8192, count, error)) return false;
+  if (error) *error = txt_encoding::ReadError::Io;
+  const bool ok = txt.openChapterIndex(chapters, encoding, count);
+  if (ok && error) *error = txt_encoding::ReadError::None;
+  return ok;
 }
 
 struct ConversionIndex {
@@ -132,14 +142,17 @@ bool Txt::convertCoverImageToBmp(const std::string& imagePath, const std::string
   return success;
 }
 
-bool Txt::streamTxtToHtml(const std::string& filepath, Print& out, const std::string& cachePath) {
+bool Txt::streamTxtToHtml(const std::string& filepath, Print& out, const std::string& cachePath,
+                          txt_encoding::ReadError* error) {
+  if (error) *error = txt_encoding::ReadError::Io;
   Txt txt(filepath, "/.crosspoint");
   HalFile source, chapters;
   txt_encoding::Encoding encoding = txt_encoding::Encoding::Unknown;
   uint32_t chapterCount = 0;
-  if (!openChapters(txt, chapters, encoding, chapterCount) || txt.getFileSize() >= UINT32_MAX ||
-      !Storage.openFileForRead("TXT", filepath, source))
-    return false;
+  if (!openChapters(txt, chapters, encoding, chapterCount, error)) return false;
+  if (error) *error = txt_encoding::ReadError::Io;
+  if (txt.getFileSize() >= UINT32_MAX || !Storage.openFileForRead("TXT", filepath, source)) return false;
+  if (error) *error = txt_encoding::ReadError::Io;
   const std::string mapPath = cachePath + "/txt-map.bin";
   const std::string temporary = mapPath + ".tmp";
   bool converted = false;
@@ -153,6 +166,7 @@ bool Txt::streamTxtToHtml(const std::string& filepath, Print& out, const std::st
     if (!index.advance() || mapping.write(&index.header, sizeof(index.header)) != sizeof(index.header)) return false;
     TxtToHtml::Options options;
     options.encoding = encoding;
+    options.error = error;
     options.context = &index;
     options.chapterOffset = [](void* context) { return static_cast<ConversionIndex*>(context)->chapter.sourceOffset; };
     options.nextChapter = [](void* context) { return static_cast<ConversionIndex*>(context)->advance(); };
@@ -173,6 +187,7 @@ bool Txt::streamTxtToHtml(const std::string& filepath, Print& out, const std::st
         filepath, &source,
         [](void* ctx, uint8_t* buf, size_t size) { return static_cast<HalFile*>(ctx)->read(buf, size); }, out, options);
     if (converted) {
+      if (error) *error = txt_encoding::ReadError::Io;
       converted = mapping.seek(0) && mapping.write(&index.header, sizeof(index.header)) == sizeof(index.header);
       mapping.flush();
     }
@@ -181,6 +196,7 @@ bool Txt::streamTxtToHtml(const std::string& filepath, Print& out, const std::st
     Storage.remove(temporary.c_str());
     return false;
   }
+  if (error) *error = txt_encoding::ReadError::None;
   return true;
 }
 
@@ -264,9 +280,9 @@ bool Txt::validateCache(const std::string& filepath, const std::string& cachePat
   bool valid = Storage.readFileToBuffer(marker.c_str(), metadataVersion, sizeof(metadataVersion)) == 1 &&
                metadataVersion[0] ==
 #ifdef RICKYOS_PRODUCT
-                   (FsHelpers::hasMarkdownExtension(filepath) ? '5' : '2');
+                   (FsHelpers::hasMarkdownExtension(filepath) ? '6' : '3');
 #else
-                   '2';
+                   '3';
 #endif
 
   // 1. If html/0.html exists, check its embedded version comment
@@ -320,7 +336,7 @@ bool Txt::buildTxtCache(const std::string& filepath, const std::string& cachePat
   if (FsHelpers::hasMarkdownExtension(filepath)) {
     char version[4] = {};
     if (Storage.readFileToBuffer((cachePath + "/txt-cache-version").c_str(), version, sizeof(version)) == 1 &&
-        (version[0] == '2' || version[0] == '3' || version[0] == '4')) {
+        (version[0] == '2' || version[0] == '3' || version[0] == '4' || version[0] == '5')) {
       Txt txt(filepath, "/.crosspoint");
       if (!txt.load() || txt.getFileSize() >= UINT32_MAX ||
           txt_progress::preserveReflowSource(cachePath.c_str(), txt.getFileSize()) ==
@@ -420,9 +436,9 @@ bool Txt::buildTxtCache(const std::string& filepath, const std::string& cachePat
 
   if (!Storage.writeFile((cachePath + "/txt-cache-version").c_str(),
 #ifdef RICKYOS_PRODUCT
-                         FsHelpers::hasMarkdownExtension(filepath) ? "5" :
+                         FsHelpers::hasMarkdownExtension(filepath) ? "6" :
 #endif
-                                                                   "2"))
+                                                                   "3"))
     return false;
   return true;
 }

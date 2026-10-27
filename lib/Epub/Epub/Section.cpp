@@ -7,6 +7,7 @@
 #include <Logging.h>
 #include <Memory.h>
 #include <Serialization.h>
+#include <TxtEncoding.h>
 
 #include "Epub/css/CssParser.h"
 #include "Page.h"
@@ -371,7 +372,10 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
       // Larger chunks mean far fewer SD writes inflating the HTML; a 1KB chunk turned a 584KB
       // single-spine novel into ~570 tiny writes (multi-second). 8KB keeps the transient buffers
       // small while cutting the write count 8x.
-      streamed = epub->readItemContentsToStream(localPath, tmpHtml, 8192);
+      txt_encoding::ReadError textError = txt_encoding::ReadError::Io;
+      streamed = epub->readItemContentsToStream(localPath, tmpHtml, 8192, false, 0, {}, &textError);
+      if (!streamed && textError == txt_encoding::ReadError::InvalidData) buildError_ = BuildError::InvalidData;
+      if (!streamed && textError == txt_encoding::ReadError::OutOfMemory) buildError_ = BuildError::OutOfMemory;
       fileSize = tmpHtml.size();
       // Explicitly close() file before calling Storage.remove()
       tmpHtml.close();
@@ -381,6 +385,7 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
         Storage.remove(tmpHtmlPath.c_str());
         LOG_DBG("SCT", "Removed incomplete temp file after failed attempt");
       }
+      if (!streamed && textError != txt_encoding::ReadError::Io) break;
     }
 
     if (!streamed) {

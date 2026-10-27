@@ -11,6 +11,7 @@ class TxtToHtml {
  public:
   struct Options {
     txt_encoding::Encoding encoding = txt_encoding::Encoding::Utf8;
+    txt_encoding::ReadError* error = nullptr;
     void* context = nullptr;
     bool (*map)(void*, uint32_t source, uint32_t visible, uint8_t sourceWidth, uint8_t visibleStep) = nullptr;
     uint32_t (*chapterOffset)(void*) = nullptr;

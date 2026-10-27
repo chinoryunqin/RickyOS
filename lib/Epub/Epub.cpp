@@ -990,8 +990,9 @@ uint8_t* Epub::readItemContentsToBytes(const std::string& itemHref, size_t* size
 }
 
 bool Epub::readItemContentsToStream(const std::string& itemHref, Print& out, const size_t chunkSize,
-                                    const bool allowEarlyStop, const size_t psramChunkSize,
-                                    CancelCheck cancellation) const {
+                                    const bool allowEarlyStop, const size_t psramChunkSize, CancelCheck cancellation,
+                                    txt_encoding::ReadError* textError) const {
+  if (textError) *textError = txt_encoding::ReadError::Io;
   if (cancellation.isCancelled()) return false;
   if (itemHref.empty()) {
     LOG_DBG("EBP", "Failed to read item, empty href");
@@ -999,7 +1000,7 @@ bool Epub::readItemContentsToStream(const std::string& itemHref, Print& out, con
   }
 
   if (Txt::isTxtOrMd(filepath)) {
-    return Txt::streamTxtToHtml(filepath, out, cachePath);
+    return Txt::streamTxtToHtml(filepath, out, cachePath, textError);
   }
 
   const std::string path = FsHelpers::normalisePath(itemHref);
