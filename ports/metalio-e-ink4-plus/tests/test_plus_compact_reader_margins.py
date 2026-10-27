@@ -113,6 +113,8 @@ struct CrossPointSettings {
    bool showsProgressBar() const {return progressBarMode!=0;}
    bool showsClock() const {return clockMode!=0;}
    bool textLaneVisible() const {return true;}
+   bool headerLaneVisible() const {return true;}
+   bool footerLaneVisible() const {return true;}
  } spec;
  Spec statusBarSpec() const {return spec;}
 } SETTINGS;
@@ -217,7 +219,7 @@ struct Metrics { int statusBarVerticalMargin=UiHighDpiProfile::enabled?48:19, pr
 using ThemeMetrics=Metrics;
 #include "activities/reader/ReaderChrome.h"
 #include "components/icons/rickyReaderDog.h"
-namespace RickyDesignUi {constexpr int CAPTION=10,BODY=11;}
+namespace RickyDesignUi {constexpr int CAPTION=10;}
 struct Settings {
  uint8_t screenMargin=25;
  uint8_t readingMode=0;
@@ -225,6 +227,8 @@ struct Settings {
    bool text=true, progress=false;
    int progressBarHeightPx=4;
    bool textLaneVisible() const {return text;}
+   bool headerLaneVisible() const {return text;}
+   bool footerLaneVisible() const {return text;}
    bool showsProgressBar() const {return progress;}
  } spec;
  Spec statusBarSpec() const {return spec;}
@@ -273,7 +277,7 @@ int main() {
    const int bottom=contentBottom(r,automatic);
    assert(bottom<=r.height-r.bottom-margin);
    const bool productChrome=UiHighDpiProfile::enabled && (!automatic||text);
-   const auto chrome=readerChrome::compactLayout(std::max(textHeight,numericHeight),text,progress,4);
+   const auto chrome=readerChrome::compactLayout(std::max(textHeight,numericHeight),text,text,progress,4);
    const int reserve=productChrome?chrome.footerReserve:oldReserve;
    assert(bottom==r.height-r.bottom-std::max<int>(margin,reserve));
    if(!productChrome) assert(bottom==oldBottom);

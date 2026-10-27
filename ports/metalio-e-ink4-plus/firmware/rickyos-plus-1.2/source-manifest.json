@@ -4,7 +4,7 @@
   "commit": "a42d939944c4495a8731b194171e365c85e5a000",
   "sdk_commit": "96de1be6ce08eb732909e6e8149af8f892b9a2c5",
   "sdk_changes": " M libs/display/EpdiyLcd/include/EpdiyLcd.h\n M libs/display/EpdiyLcd/src/EpdiyLcd.cpp\n M libs/display/EpdiyLcd/src/epdiy/src/output_common/render_context.c\n M libs/hardware/BoardConfig/include/MetalioEInk4Board.h\n M libs/hardware/BoardReadPico/include/BoardReadPico.h\n M libs/hardware/BoardReadPico/src/BoardReadPico.cpp\n M libs/hardware/SDCardManager/include/SDCardManager.h\n M libs/network/SecureNet/src/SecureClient.cpp\n M libs/ui/FreeInkUI/include/FreeInkUIGfxRenderer.h\n M libs/ui/FreeInkUI/src/FreeInkUI.cpp\n",
-  "file_count": 2844,
+  "file_count": 2842,
   "files": {
     ".agents/skills/README.md": "524d6d9c5f5f85cc197ae3cc80c864d4c89394ee85de0060e815ad26e543dd1e",
     ".agents/skills/control-flow-clarity/SKILL.md": "95dbbe6d942ba7e65d285df7b279b5c62a40adc9785cdb09e613228e9be5990d",
@@ -2087,8 +2087,6 @@
     "src/activities/settings/KOReaderAuthActivity.h": "3e8fc468a21f6138e072f56f28116c02d1f65b32a7c04aca999e38496bc0a221",
     "src/activities/settings/KOReaderSettingsActivity.cpp": "b9b434323d70ba58daff237dadaf8708b9140b0b868447fd22a01b07bdc8c8ba",
     "src/activities/settings/KOReaderSettingsActivity.h": "25a7f014c1c1a4964b2fa59a14a118c0647bc22b07c8eb6902433060c3fa2dd0",
-    "src/activities/settings/KeyboardLayoutsActivity.cpp": "4de94047f04848d636e7015c6d95118d284beb8fca2b8027411389d66c06e42c",
-    "src/activities/settings/KeyboardLayoutsActivity.h": "f8eff96ba0296c949b7a096736c3dfb2d14d9abea60a2b2080000448c76773d1",
     "src/activities/settings/LanguageSelectActivity.cpp": "62c330cb355ae5f73da236368e8a051a273b81f024110cf09b57002ab994595d",
     "src/activities/settings/LanguageSelectActivity.h": "76b32374f3b9006d054c2c0d59f8c5d6addc45e26ada3488fb9440672915d9ed",
     "src/activities/settings/OtaUpdateActivity.cpp": "5cd384771f036417a412976c7d2643fe1596975fd04e5e8ab35217ce28735595",

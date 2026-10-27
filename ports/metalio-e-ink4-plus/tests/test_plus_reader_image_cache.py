@@ -95,15 +95,15 @@ int main() {
    assert(!s.loadSectionFile(spec));
  }
 #if FREEINK_DEVICE_METALIO_PLUS
- assert(SECTION_FILE_VERSION==119 && SECTION_FILE_PARTIAL_VERSION==163);
+ assert(SECTION_FILE_VERSION==125 && SECTION_FILE_PARTIAL_VERSION==157);
  other=spec;other.imageOutset=0;
  assert(!(spec==other) && !s.loadSectionFile(other));
 #elif FREEINK_DEVICE_READPICO
- assert(SECTION_FILE_VERSION==117 && SECTION_FILE_PARTIAL_VERSION==165);
+ assert(SECTION_FILE_VERSION==123 && SECTION_FILE_PARTIAL_VERSION==159);
  other=spec;other.imageOutset=0;
  assert(!(spec==other) && !s.loadSectionFile(other));
 #else
- assert(SECTION_FILE_VERSION==115 && SECTION_FILE_PARTIAL_VERSION==167);
+ assert(SECTION_FILE_VERSION==121 && SECTION_FILE_PARTIAL_VERSION==161);
  assert(IMAGE_LAYOUT_HEADER_SIZE==0);
 #endif
 }
@@ -119,4 +119,4 @@ with tempfile.TemporaryDirectory(prefix='plus-image-cache-') as directory:
                         f'-DFREEINK_DEVICE_READPICO={pico}',
                         '-I', str(EPUB), str(work / 'test.cpp'), '-o', str(binary)], check=True)
         subprocess.run([str(binary)], check=True)
-print('Production section headers: Plus119/163, Pico117/165, generic115/167; legacy caches, font key, image-width key and truncated headers checked')
+print('Production section headers: Plus125/157, Pico123/159, generic121/161; legacy caches, font key, image-width key and truncated headers checked')

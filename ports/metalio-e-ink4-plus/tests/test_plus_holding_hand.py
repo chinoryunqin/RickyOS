@@ -23,11 +23,11 @@ struct CrossPointSettings {enum {TAP_AND_SWIPE,TAP_ONLY,SWIPE_ONLY,INVERTED_TAP,
 struct {bool touchReaderControls=true;int pageTurnDirection=0,showReaderMenu=CrossPointSettings::READER_MENU_TAP;
  int pageTurnGesture=CrossPointSettings::TAP_ONLY,previousPageGesture=CrossPointSettings::TAP_ONLY;} SETTINGS;
 struct GfxRenderer {int getScreenWidth()const{return 684;}int getScreenHeight()const{return 1216;}};
-struct MappedInputManager {enum class SwipeDir {None,Left,Right};int x=0,y=20;bool tapped=true,touch=true;
+struct MappedInputManager {enum class SwipeDir {None,Left,Right};int x=0,y=400;bool tapped=true,touch=true;
  SwipeDir swipe=SwipeDir::None;bool hasTouch()const{return touch;}SwipeDir wasSwipe()const{return swipe;}
  bool wasScreenTapped(int&px,int&py)const{px=x;py=y;return tapped;}};
 struct {unsigned long lastTouchHeldMs()const{return 123;}} gpio;
-''' + method('inline bool gestureAllowsSwipe(') + '\n' + method('inline bool gestureAllowsTap(') + '\n' + method('struct TouchPageTurn') + ';\n' + method('inline TouchPageTurn detectTouchPageTurn(') + r'''
+''' + method('inline bool isInMenuBand(') + '\n' + method('inline bool gestureAllowsSwipe(') + '\n' + method('inline bool gestureAllowsTap(') + '\n' + method('struct TouchPageTurn') + ';\n' + method('inline TouchPageTurn detectTouchPageTurn(') + r'''
 int main(){
  GfxRenderer renderer;MappedInputManager input;
  // Explicit expected left-edge next-page table: right/normal, right/inverted,
@@ -41,8 +41,9 @@ int main(){
   assert(left.next==expected&&left.prev!=expected&&left.heldMs==123);
   input.x=683;auto right=detectTouchPageTurn(renderer,input,rtl);
   assert(right.next!=expected&&right.prev==expected);
-  input.x=342;input.y=608;auto center=detectTouchPageTurn(renderer,input,rtl);
-  assert(!center.prev&&!center.next);input.y=20;
+  // The top band (height/8) belongs to the reader menu, so it never turns a page.
+  input.x=342;input.y=20;auto top=detectTouchPageTurn(renderer,input,rtl);
+  assert(!top.prev&&!top.next);input.y=400;
  }
  SETTINGS.pageTurnGesture=SETTINGS.previousPageGesture=CrossPointSettings::SWIPE_ONLY;
  for(int hand:{0,1})for(bool rtl:{false,true})for(auto swipe:{MappedInputManager::SwipeDir::Left,MappedInputManager::SwipeDir::Right}){
@@ -61,4 +62,4 @@ with tempfile.TemporaryDirectory(prefix='plus-holding-hand-') as directory:
     subprocess.run(['clang++', '-std=c++20', '-Wall', '-Wextra', '-Werror',
                     '-fsanitize=address,undefined', str(work / 'check.cpp'), '-o', str(work / 'check')], check=True)
     subprocess.run([str(work / 'check')], check=True)
-print('Merged actual touch policy: both hands, inverse taps, RTL, center-menu priority, swipes and no-touch passed')
+print('Merged actual touch policy: both hands, inverse taps, RTL, top-band menu priority, swipes and no-touch passed')

@@ -134,7 +134,8 @@ int main() {
   assert(RB::lighten(0, S::READING_BACKGROUND_OFF) == 15);
   assert(RB::lighten(0, S::READING_BACKGROUND_LIGHT) > RB::lighten(0, S::READING_BACKGROUND_MEDIUM));
   assert(RB::lighten(0, S::READING_BACKGROUND_MEDIUM) > RB::lighten(0, S::READING_BACKGROUND_DEEP));
-  assert(RB::lighten(0, S::READING_BACKGROUND_DEEP) >= 4);  // never near the text's black
+  // 原色 (the old 深): the picture in its own tones, unlightened.
+  for (int level = 0; level < 16; ++level) assert(RB::lighten(level, S::READING_BACKGROUND_DEEP) == level);
 
   GfxRenderer r;
   // A text box with 50 px rows whose rule falls 38 px below each row's top.

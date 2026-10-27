@@ -421603,7 +421603,7 @@
  };
 --- a/lib/Epub/Epub/Section.cpp
 +++ b/lib/Epub/Epub/Section.cpp
-@@ -51,7 +51,40 @@
+@@ -51,7 +51,43 @@
  //   74 / 75 - character and word spacing in the render spec and cached text
  //   76 / 77 - independent Western paragraph indentation width
  //   78 / 79 - vertical text (columns, right to left) in the render spec
@@ -421628,24 +421628,27 @@
 +//  114 /115 - a closed container's bottom spacing lands before the next block, not after it
 +//  116 /117 - the same on the Read Pico (imageOutset header)
 +//  118 /119 - the same on the Metalio Plus (imageOutset header)
++//  120 /121 - a page's last line needs only its glyph height, not the full line pitch
++//  122 /123 - the same on the Read Pico (imageOutset header)
++//  124 /125 - the same on the Metalio Plus (imageOutset header)
 +// Boards without the imageOutset field come first: host tests read the first declaration.
 +#if !FREEINK_DEVICE_METALIO_PLUS && !FREEINK_DEVICE_READPICO
-+constexpr uint8_t SECTION_FILE_VERSION = 115;
++constexpr uint8_t SECTION_FILE_VERSION = 121;
 +constexpr uint32_t IMAGE_LAYOUT_HEADER_SIZE = 0;
 +#elif FREEINK_DEVICE_READPICO
 +// A uint16 imageOutset follows verticalText, as on the Plus; its own number keeps a
 +// card moved between devices from reading another board's pagination as its own.
-+constexpr uint8_t SECTION_FILE_VERSION = 117;
++constexpr uint8_t SECTION_FILE_VERSION = 123;
 +constexpr uint32_t IMAGE_LAYOUT_HEADER_SIZE = sizeof(uint16_t);
 +#else
 +// Plus-only v81 adds a uint16 imageOutset after verticalText; v83 collapses margins.
-+constexpr uint8_t SECTION_FILE_VERSION = 119;
++constexpr uint8_t SECTION_FILE_VERSION = 125;
 +constexpr uint32_t IMAGE_LAYOUT_HEADER_SIZE = sizeof(uint16_t);
 +#endif
  // Written into the version field while a build is in progress; patched to
  // SECTION_FILE_VERSION only when the build is finalized. An abandoned /
  // crash-interrupted .bin therefore carries version 0, which loadSectionFile rejects
-@@ -73,7 +106,7 @@
+@@ -73,7 +109,7 @@
                                   sizeof(uint8_t) + sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint16_t) +
                                   sizeof(bool) + sizeof(bool) + sizeof(uint8_t) + sizeof(bool) + sizeof(bool) +
                                   sizeof(uint32_t) * 5 + sizeof(int8_t) + sizeof(uint8_t) + sizeof(uint8_t) +
@@ -421654,7 +421657,7 @@
  // Called only between layout/render operations; no borrowed glyph pointer is live.
  void reclaimLayoutCaches(GfxRenderer& renderer, const char* stage) {
  #ifndef BOARD_HAS_PSRAM
-@@ -139,7 +172,8 @@
+@@ -139,7 +175,8 @@
                           sizeof(spec.hyphenationEnabled) + sizeof(spec.embeddedStyle) + sizeof(spec.imageRendering) +
                           sizeof(spec.focusReadingEnabled) + sizeof(spec.collectTouchLinks) + sizeof(uint32_t) +
                           sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) +
@@ -421664,7 +421667,7 @@
        "Header size mismatch");
    // Written as the incomplete sentinel; finalizeBuild() patches it to
    // SECTION_FILE_VERSION as the last step, committing the file.
-@@ -160,6 +194,10 @@
+@@ -160,6 +197,10 @@
    serialization::writePod(file, spec.characterSpacing);
    serialization::writePod(file, spec.wordSpacingPercent);
    serialization::writePod(file, spec.verticalText);
@@ -421675,7 +421678,7 @@
    serialization::writePod(file, pageCount);  // Placeholder for page count (will be initially 0, patched later)
    serialization::writePod(file, static_cast<uint32_t>(0));  // Placeholder for LUT offset (patched later)
    serialization::writePod(file, static_cast<uint32_t>(0));  // Placeholder for anchor map offset (patched later)
-@@ -206,7 +244,10 @@
+@@ -206,7 +247,10 @@
      int8_t fileCharacterSpacing = 0;
      uint8_t fileWordSpacingPercent = 100;
      bool fileVerticalText = false;
@@ -421687,7 +421690,7 @@
          serialization::readPod(file, fileFontId) && serialization::readPod(file, fileLineCompression) &&
          serialization::readPod(file, fileExtraParagraphSpacing) && serialization::readPod(file, fileFirstLineIndent) &&
          serialization::readPod(file, fileParagraphIndentSpaces) &&
-@@ -216,6 +257,14 @@
+@@ -216,6 +260,14 @@
          serialization::readPod(file, fileFocusReadingEnabled) && serialization::readPod(file, fileCollectTouchLinks) &&
          serialization::readPod(file, fileCharacterSpacing) && serialization::readPod(file, fileWordSpacingPercent) &&
          serialization::readPod(file, fileVerticalText);
@@ -421702,7 +421705,7 @@
  
      if (!headerValid || spec.fontId != fileFontId || spec.lineCompression != fileLineCompression ||
          spec.extraParagraphSpacing != fileExtraParagraphSpacing || spec.firstLineIndent != fileFirstLineIndent ||
-@@ -224,7 +273,8 @@
+@@ -224,7 +276,8 @@
          spec.hyphenationEnabled != fileHyphenationEnabled || spec.embeddedStyle != fileEmbeddedStyle ||
          spec.imageRendering != fileImageRendering || spec.focusReadingEnabled != fileFocusReadingEnabled ||
          spec.collectTouchLinks != fileCollectTouchLinks || spec.characterSpacing != fileCharacterSpacing ||
@@ -421712,7 +421715,7 @@
        file.close();
        LOG_ERR("SCT", "Deserialization failed: Parameters do not match");
        clearCache();
-@@ -504,6 +554,9 @@
+@@ -504,6 +557,9 @@
    ctx->parser->setTxtChapterBoundaries(txtChapterBoundaries);
    ctx->parser->setTextSpacing(spec.characterSpacing, spec.wordSpacingPercent);
    ctx->parser->setParagraphIndentSpaces(spec.paragraphIndentSpaces);
@@ -423972,17 +423975,25 @@
          const auto style = self->currentTextBlock->getBlockStyle();
          self->currentTextBlock->setBlockStyle(style.addBottom(self->blockStyleStack.back()));
        }
-@@ -2353,6 +2474,9 @@
+@@ -2353,8 +2474,15 @@
    if (!currentPage) {
      if (!allocatePage()) return false;
    }
+-
+-  if (currentPageNextY + lineHeight > viewportHeight) {
 +  // A line outside the block flow (table rows, <br> lines) does not collapse.
 +  currentPageNextY = static_cast<int16_t>(currentPageNextY + pendingMarginBottom);
 +  pendingMarginBottom = 0;
- 
-   if (currentPageNextY + lineHeight > viewportHeight) {
++
++  // A line fits when its glyphs do: the line spacing below the page's last line is
++  // never seen, so it may hang past the text area instead of leaving a blank band.
++  const int glyphHeight = std::min(lineHeight, renderer.getLineHeight(fontId) + line->getRubyShift(
++                                                                                 renderer.getFontAscenderSize(fontId)));
++  if (currentPageNextY + glyphHeight > viewportHeight) {
      setCurrentPageVisibleOffset(visibleOffset);
-@@ -2416,9 +2540,7 @@
+     completePageFn(std::move(currentPage), xpathParagraphIndex, xpathListItemIndex, currentPageVisibleOffset);
+     if (hasFailed()) return false;
+@@ -2416,9 +2544,7 @@
  
    // Apply top spacing before the paragraph (stored in pixels)
    const BlockStyle& blockStyle = currentTextBlock->getBlockStyle();
@@ -423993,7 +424004,7 @@
    if (blockStyle.paddingTop > 0) {
      currentPageNextY += blockStyle.paddingTop;
    }
-@@ -2455,16 +2577,16 @@
+@@ -2455,16 +2581,16 @@
      pendingFootnotes.clear();
    }
  
@@ -424397,11 +424408,13 @@
  STR_RICKY_GESTURE_CONTROL: "顶部下滑打开控制中心"
  STR_RICKY_GESTURE_STATUS: "点状态栏打开控制中心"
  STR_RICKY_GESTURE_TOUCH_TURN: "触屏翻页"
-@@ -1589,7 +1638,7 @@
+@@ -1588,8 +1637,8 @@
+ STR_RICKY_HELP_WEBSITE: "RickyOS 官网"
  STR_RICKY_HELP_START_1: "在应用中打开文件传输，按照屏幕提示用手机或电脑传入书籍。"
  STR_RICKY_HELP_START_2: "书库中点选书籍开始阅读。全部、在读、未读可以切换筛选。文件夹在存储中浏览。"
- STR_RICKY_HELP_START_3: "阅读时点击屏幕中部打开菜单。目录、加书签、文字和查词位于顶部。返回键关闭菜单。"
+-STR_RICKY_HELP_START_3: "阅读时点击屏幕中部打开菜单。目录、加书签、文字和查词位于顶部。返回键关闭菜单。"
 -STR_RICKY_HELP_DISPLAY_1: "显示与待机中可以设置自动待机和电源键行为；屏保应用可以选择待机画面。"
++STR_RICKY_HELP_START_3: "阅读时点击屏幕顶部打开菜单。目录、加书签、文字和查词位于顶部。返回键关闭菜单。"
 +STR_RICKY_HELP_DISPLAY_1: "显示与待机中可以设置自动待机和电源键行为；壁纸应用可以选择待机画面。"
  STR_RICKY_HELP_DISPLAY_2: "出现残影时可在设置中执行屏幕修复。全刷间隔越短，残影越少，但闪屏更频繁。"
  STR_RICKY_HELP_DISPLAY_3: "阅读字体在文字设置中调整；头像、昵称和首页短句在设置顶部的资料卡中修改。"
@@ -424528,7 +424541,7 @@
 +STR_RICKY_READING_BG_OFF: "关闭"
 +STR_RICKY_READING_BG_LIGHT: "浅"
 +STR_RICKY_READING_BG_MEDIUM: "中"
-+STR_RICKY_READING_BG_DEEP: "深"
++STR_RICKY_READING_BG_DEEP: "原色"
 +STR_RICKY_READING_BG_SHADE: "深浅"
 +STR_RICKY_READING_PAPER: "纸样"
 +STR_RICKY_PAPER_PICTURE: "图片"
@@ -424642,6 +424655,15 @@
  STR_RICKY_GESTURE_CONTROL: "Swipe down from the top: Control center"
  STR_RICKY_GESTURE_STATUS: "Tap the status bar: Control center"
  STR_RICKY_GESTURE_TOUCH_TURN: "Touch page turns"
+@@ -1610,7 +1659,7 @@
+ STR_RICKY_HELP_WEBSITE: "RickyOS website"
+ STR_RICKY_HELP_START_1: "Open File Transfer in Apps and follow the on-screen instructions to send books from your phone or computer."
+ STR_RICKY_HELP_START_2: "Select a book in Library to read. Filter by All, Reading or Unread. Browse folders in Storage."
+-STR_RICKY_HELP_START_3: "Tap the centre of a reading page to open its menu. Contents, bookmark, text and lookup shortcuts are at the top. Back closes the menu."
++STR_RICKY_HELP_START_3: "Tap the top of a reading page to open its menu. Contents, bookmark, text and lookup shortcuts are at the top. Back closes the menu."
+ STR_RICKY_HELP_DISPLAY_1: "Display & Standby controls automatic sleep and power-button actions. Choose standby pictures in the Standby app."
+ STR_RICKY_HELP_DISPLAY_2: "Use Screen Repair in Settings for ghosting. More frequent full refreshes reduce ghosting but flash the screen more often."
+ STR_RICKY_HELP_DISPLAY_3: "Adjust reading fonts in Text Settings. Change your avatar, nickname and home phrase through the profile card at the top of Settings."
 @@ -1622,3 +1671,128 @@
  STR_RICKY_HELP_FEEDBACK_3: "Send feedback through your existing Ricky AI Studio contact channel. This page does not upload device information. Scan the website QR code to visit the site."
  STR_RICKY_MENU_AUTO_TURN: "Auto page turn"
@@ -424764,7 +424786,7 @@
 +STR_RICKY_READING_BG_OFF: "Off"
 +STR_RICKY_READING_BG_LIGHT: "Light"
 +STR_RICKY_READING_BG_MEDIUM: "Medium"
-+STR_RICKY_READING_BG_DEEP: "Deep"
++STR_RICKY_READING_BG_DEEP: "Original"
 +STR_RICKY_READING_BG_SHADE: "Shade"
 +STR_RICKY_READING_PAPER: "Paper"
 +STR_RICKY_PAPER_PICTURE: "Picture"
@@ -427955,6 +427977,98 @@
    ['row_timer', 'timer', 32], ['row_percent', 'percent', 32],
    ['row_bookmark', 'bookmark', 32], ['row_sync', 'refresh-cw', 32],
    ['row_more', 'list-tree', 32], ['row_light', 'sun', 32],
+--- /dev/null
++++ b/scripts/tests/test_battery_icon_alignment.py
+@@ -0,0 +1,61 @@
++"""Center the actual status-numeral digit ink (Read Pico and Plus share it), not the font line box."""
++from pathlib import Path
++import re
++import subprocess
++import tempfile
++
++ROOT = Path(__file__).resolve().parents[2]
++app = ROOT
++
++
++def rows(text, suffix):
++    body = re.search(r'\w+' + suffix + r'\[\d*\]\s*=\s*\{(.*?)\n\};', text, re.S)[1]
++    return [tuple(int(v.strip(), 0) for v in row.split(','))
++            for row in re.findall(r'\{\s*([^{}]+?)\s*\}', body)]
++
++
++faces = []
++for name in ('ricky_caption_10_regular', 'notosans_12_regular'):
++    text = (app / 'lib/EpdFont/builtinFonts' / (name + '.h')).read_text()
++    metadata = text.split('static const EpdFontData ' + name + ' = {')[1].split('};')[0].split(',')
++    advance, ascent = int(metadata[4]), int(metadata[5])
++    glyphs, intervals = rows(text, 'Glyphs'), rows(text, 'Intervals')
++    lookup = {cp: glyphs[offset + cp - first] for first, last, offset in intervals for cp in range(first, last + 1)}
++    selected = {cp: lookup[cp] for cp in map(ord, '0123456789%')}
++    top = min(ascent - g[4] for g in selected.values())
++    bottom = max(ascent - g[4] + g[1] for g in selected.values())
++    faces.append((name, advance, ascent, selected, top, bottom))
++
++with tempfile.TemporaryDirectory() as directory:
++    temp = Path(directory)
++    code = '''#include <map>
++#include <cassert>
++#include <cstdlib>
++#include "components/BatteryStatusLayout.h"
++struct Glyph {int width,height,top;}; struct Data {int ascender;};
++struct Face {Data data;std::map<int,Glyph> glyphs;
++ const Data* getData() const {return &data;}
++ const Glyph* getGlyph(int cp)const {auto i=glyphs.find(cp);return i==glyphs.end()?nullptr:&i->second;}};
++struct Renderer {std::map<int,Face> faces;int line=0;
++ const auto& getFontMap() const {return faces;} int getLineHeight(int)const{return line;}};
++int main(){
++'''
++    for index, (name, advance, ascent, glyphs, top, bottom) in enumerate(faces):
++        entries = ','.join('{%d,{%d,%d,%d}}' % (cp, g[0], g[1], g[4]) for cp, g in glyphs.items())
++        code += '{Renderer r;r.line=%d;r.faces.emplace(%d,Face{Data{%d},{%s}});\n' % (advance, index, ascent, entries)
++        code += '''for(int y:{0,7,32,100})for(int h:{12,20,24}) {
++ int icon=ricky::battery::iconTop(r,ID,y,h);
++ assert(std::abs((icon-y)*2+h-(TOP+BOTTOM))<=1);
++}
++int first=ricky::battery::iconTop(r,ID,0,20);
++r.line+=40;assert(ricky::battery::iconTop(r,ID,0,20)==first); // line leading is not ink
++r.faces.clear();assert(ricky::battery::iconTop(r,ID,3,20)==3+(r.line-20)/2);
++}
++'''.replace('ID', str(index)).replace('TOP', str(top)).replace('BOTTOM', str(bottom))
++        print(name, 'ink bounds', (top, bottom), 'old icon top 8 ->', (top + bottom - 20) // 2)
++    code += '}\n'
++    (temp / 'test.cpp').write_text(code)
++    subprocess.run(['clang++', '-std=c++20', '-Wall', '-Wextra', '-Werror', '-fsanitize=address,undefined',
++                    '-I' + str(app / 'src'), str(temp / 'test.cpp'), '-o', str(temp / 'test')], check=True)
++    subprocess.run([str(temp / 'test')], check=True)
++print('Actual status numeric fonts: icon/ink centers within half a pixel, stable leading and fallback passed')
+--- /dev/null
++++ b/scripts/tests/test_home_button_persistence.py
+@@ -0,0 +1,25 @@
++"""Home key gestures live outside the base settings list, so they need their own save/load."""
++from pathlib import Path
++import unittest
++
++ROOT = Path(__file__).resolve().parents[2]
++
++
++class HomeButtonPersistenceTest(unittest.TestCase):
++    def test_gestures_are_saved_and_loaded(self):
++        lists = (ROOT / "src/SettingsList.h").read_text()
++        base = lists.split("getBaseSettingsList()", 1)[1].split("getSettingsList(", 1)[0]
++        self.assertNotIn("home_button::", base)  # still menu-only, so persistence must be explicit
++        source = (ROOT / "src/CrossPointSettings.cpp").read_text()
++        save = source.split("void CrossPointSettings::toJson(", 1)[1].split("\n}\n", 1)[0]
++        self.assertIn("doc[home_button::KEYS[i]] = s.*home_button::FIELDS[i]", save)
++        load = source.split("void CrossPointSettings::toJson(", 1)[1].split("\n}\n", 1)[1]
++        self.assertIn("doc[home_button::KEYS[i]] | fallback", load)
++        # The explicit load must precede the legacy long-press migration, which only
++        # fires when the new key is absent.
++        self.assertLess(load.index("doc[home_button::KEYS[i]] | fallback"),
++                        load.index('doc["homeButtonLongPressAction"].isNull()'))
++
++
++if __name__ == "__main__":
++    unittest.main()
 --- a/scripts/tests/test_reader_page_cache.py
 +++ b/scripts/tests/test_reader_page_cache.py
 @@ -33,7 +33,16 @@
@@ -428145,6 +428259,203 @@
      // 字号 and 字重 are one tap from the page.
      bool size=false, weight=false;
      for(int i=root.quickCount; i<root.count; ++i) {
+--- a/scripts/tests/test_rickyos_reader_chrome.py
++++ b/scripts/tests/test_rickyos_reader_chrome.py
+@@ -17,12 +17,15 @@
+ #include <cstring>
+ #include <vector>
+ #include "components/RickyDesignTokens.h"
++#include "activities/reader/ReaderChrome.h"
+ struct Rect {int x,y,width,height;};
+ namespace freeink::ui {enum class TextAlign {Left,Center,Right};}
+-struct GfxRenderer {
+-  int w=684,h=1216;
++class GfxRenderer {
++ public:
++  int w=684,h=1216,lineHeight=34;
+   struct ClipScope {ClipScope(GfxRenderer&,int,int,int,int) {}};
+   int getTextWidth(int,const char* text) {return std::strlen(text)*12;}
++  int getLineHeight(int) const {return lineHeight;}
+   void drawText(int,int x,int y,const char*) {assert(x>=0 && x<w && y>=0 && y<h);}
+ };
+ struct Spec {
+@@ -31,6 +34,8 @@
+   int clockMode=0,progressBarHeightPx=6,progressBarMode=0;
+   bool clock12h=false;
+   bool textLaneVisible() const {return lane;}
++  bool headerLaneVisible() const {return lane;}
++  bool footerLaneVisible() const {return lane && (showChapterPageCount || showBookProgressPercent);}
+   bool showsClock() const {return clock;}
+   bool showsProgressBar() const {return bar;}
+ };
+@@ -52,6 +57,7 @@
+ };
+ namespace RickyDesignUi {
+ constexpr int CAPTION=1;
++inline int fontFor(const GfxRenderer&,int preferred,const char*) {return preferred;}
+ struct Run {Rect r; int percent=-1;};
+ std::vector<Run> runs;
+ template<class R>
+@@ -73,7 +79,7 @@
+ }
+ }
+ struct BaseTheme {
+-  static void drawRickyReaderChrome(GfxRenderer&,float,int,int,const char*,bool,bool,bool=true);
++  static void drawRickyReaderChrome(GfxRenderer&,float,int,int,const char*,bool,bool,bool=true,const Rect* =nullptr);
+   static void drawBluetoothStatusIcon(GfxRenderer&,int,int) {}
+   static void drawBookmarkStatusIcon(GfxRenderer&,int,int) {}
+   static void drawBatteryLeft(GfxRenderer&,Rect,bool) {}
+@@ -81,8 +87,9 @@
+ #define GUI gui
+ ''' + method(source, 'void BaseTheme::drawRickyReaderChrome(') + r'''
+ int main() {
+-  for (const auto size : {Rect{0,0,684,1216},Rect{0,0,1216,684}}) {
+-    GfxRenderer r{size.width,size.height};
++  for (const auto size : {Rect{0,0,684,1216},Rect{0,0,1216,684},Rect{0,0,600,1000},Rect{0,0,1000,600}})
++  for (const int rowHeight : {28,34,42,56}) {
++    GfxRenderer r{size.width,size.height,rowHeight};
+     settings.spec.progressBarMode=0;
+     for(int flags=0;flags<256;++flags) {
+       settings.spec.lane=flags&1;
+@@ -99,12 +106,20 @@
+       assert(static_cast<int>(RickyDesignUi::runs.size())==expected);
+       if(flags&8) {
+         const auto track=RickyDesignUi::runs.back();
++        const auto chrome=readerChrome::compactLayout(rowHeight,settings.spec.headerLaneVisible(),
++                                                      settings.spec.footerLaneVisible(),true,6);
+         assert(track.percent==42);
+-        if(settings.spec.lane) {
+-          const int textY=r.h-8-ricky::ds::space::kBlockGap-ricky::ds::type::kCaption.lineHeight;
+-          assert(track.r.y+track.r.height+ricky::ds::space::kInlineGap==textY);
+-          assert(track.r.y>=r.h-8-ricky::ds::layout::kReaderFooterHeight);
+-        } else assert(track.r.y+track.r.height==r.h-8);
++        if(settings.spec.footerLaneVisible()) {
++          // One footer row: the bar sits on it, between the page count and the percent.
++          const int textY=r.h-8-chrome.footerTextBottom;
++          assert(track.r.y>=textY && track.r.y+track.r.height<=textY+chrome.rowHeight);
++          for(size_t i=0;i+1<RickyDesignUi::runs.size();++i) {
++            const auto& run=RickyDesignUi::runs[i];
++            if(run.r.y!=textY) continue;  // header runs
++            assert(run.r.x>=track.r.x+track.r.width || run.r.x<track.r.x);
++          }
++        } else assert(track.r.y+track.r.height==r.h-8-4);
++        assert(track.r.y>=r.h-8-chrome.footerReserve+8);
+       }
+     }
+     // Footer only (the puppy reading mode): the header's title run is not drawn.
+@@ -112,7 +127,11 @@
+     RickyDesignUi::runs.clear();
+     BaseTheme::drawRickyReaderChrome(r,42.0f,3,11,"章节",false,false,false);
+     assert(static_cast<int>(RickyDesignUi::runs.size())==3);
+-    for(const auto& run : RickyDesignUi::runs) assert(run.r.y>=r.h-8-ricky::ds::layout::kReaderFooterHeight);
++    const auto chrome=readerChrome::compactLayout(rowHeight,true,true,true,6);
++    // A hidden footer (no page count, no percent, no bar) reserves nothing.
++    assert(readerChrome::compactLayout(rowHeight,true,false,false,6).footerReserve==0);
++    assert(readerChrome::compactLayout(rowHeight,false,true,false,6).headerReserve==0);
++    for(const auto& run : RickyDesignUi::runs) assert(run.r.y>=r.h-8-chrome.footerReserve+8);
+     settings.spec.lane=false;
+     settings.spec.bar=true;
+     settings.spec.progressBarMode=1;
+@@ -130,9 +149,11 @@
+         # One margin source: renderBook and the pickers take textMargins(), which
+         # reserves the header and footer bands the reading mode keeps.
+         margins = method(reader, 'readingMode::Margins EpubReaderActivity::textMargins(')
+-        self.assertIn('kReaderHeaderHeight + ricky::ds::layout::kReaderHeaderGap', margins)
+-        self.assertIn('kReaderFooterHeight', margins)
+-        self.assertIn('SETTINGS.statusBarSpec().textLaneVisible()', margins)
++        self.assertIn('readerChrome::compactLayout(', margins)
++        self.assertIn('std::max(screenMargin, chrome.headerReserve)', margins)
++        self.assertIn('bottomReserve = chrome.footerReserve', margins)
++        self.assertNotIn('kReaderFooterHeight', margins)
++        self.assertIn('sb.textLaneVisible()', margins)
+         self.assertIn('readingMode::showsHeader(mode)', margins)
+         self.assertIn('readingMode::showsFooter(mode)', margins)
+         book = method(reader, 'void EpubReaderActivity::renderBook(')
+--- a/scripts/tests/test_ui_chrome_icons.py
++++ b/scripts/tests/test_ui_chrome_icons.py
+@@ -105,13 +105,16 @@
+    bool showsProgressBar() const {return progressBarMode!=0;}
+    bool showsClock() const {return clockMode!=0;}
+    bool textLaneVisible() const {return true;}
++   bool headerLaneVisible() const {return true;}
++   bool footerLaneVisible() const {return true;}
+  } spec;
+  Spec statusBarSpec() const {return spec;}
+ } SETTINGS;
+ struct { uint16_t getBatteryPercentage() const {return 100;} } powerManager;
+ namespace bleinput { bool connected=false; bool isConnected() {return connected;} }
+ namespace TimeUtils { bool formatCurrentTime(char* text,size_t,bool) { std::strcpy(text,"23:59"); return true; } }
+-struct GfxRenderer {
++class GfxRenderer {
++ public:
+  int width=684,height=1216,top=5,right=5,bottom=8,left=5;
+  int footerLineHeight=34;
+  mutable std::vector<Rect> texts;
+@@ -160,6 +163,11 @@
+  assert(x>=r.left+14 && x+24<=r.width-r.right-14 && y+24<=r.height-r.bottom-5);
+ }
+ void drawBluetoothStatusIcon(const GfxRenderer& r,int x,int y) {drawBookmarkStatusIcon(r,x,y);}
++// Actual digit-ink alignment is exercised on the font tables (BatteryStatusLayout.h);
++// this fixture keeps the icon at its former offset to isolate what it checks.
++namespace ricky::battery {
++inline int iconTop(const GfxRenderer&,int,int textY,int) {return textY+8;}
++}
+ ''' + method(layout_source, 'int UITheme::getStatusBarTextTopPadding(')
+             + method(source, 'void BaseTheme::drawBatteryLeft(')
+             + method(source, 'void BaseTheme::drawStatusBar(') + r'''
+@@ -201,8 +209,9 @@
+ struct BaseTheme { static constexpr int STATUS_NUMERIC_FONT_ID=3; };
+ struct Metrics { int statusBarVerticalMargin=UiHighDpiProfile::enabled?48:19, progressBarMarginTop=1; };
+ using ThemeMetrics=Metrics;
+-#include "activities/reader/ReadingMode.h"
++#include "activities/reader/ReaderChrome.h"
+ #include "components/icons/rickyReaderDog.h"
++namespace RickyDesignUi {constexpr int CAPTION=10;}
+ struct Settings {
+  uint8_t screenMargin=25;
+  uint8_t readingMode=0;
+@@ -210,13 +219,16 @@
+    bool text=true, progress=false;
+    int progressBarHeightPx=4;
+    bool textLaneVisible() const {return text;}
++   bool headerLaneVisible() const {return text;}
++   bool footerLaneVisible() const {return text;}
+    bool showsProgressBar() const {return progress;}
+  } spec;
+  Spec statusBarSpec() const {return spec;}
+  int getReaderFontId() const {return 1;}
+  float getReaderLineCompression() const {return 1.0f;}
+ } SETTINGS;
+-struct GfxRenderer {
++class GfxRenderer {
++ public:
+  int width=684,height=1216,top=5,right=5,bottom=8,left=5;
+  int textHeight=34, numericHeight=34;
+  int getLineHeight(int font) const {return font==BaseTheme::STATUS_NUMERIC_FONT_ID?numericHeight:textHeight;}
+@@ -256,10 +268,21 @@
+    const int oldBottom=r.height-r.bottom-std::max<int>(margin,oldReserve);
+    const int bottom=contentBottom(r,automatic);
+    assert(bottom<=r.height-r.bottom-margin);
+-   const bool productChrome=UiHighDpiProfile::enabled && text;
+-   const int reserve=productChrome?std::max(oldReserve,static_cast<int>(ricky::ds::layout::kReaderFooterHeight)):oldReserve;
++   const bool productChrome=UiHighDpiProfile::enabled && (!automatic||text);
++   const auto chrome=readerChrome::compactLayout(std::max(textHeight,numericHeight),text,text,progress,4);
++   const int reserve=productChrome?chrome.footerReserve:oldReserve;
+    assert(bottom==r.height-r.bottom-std::max<int>(margin,reserve));
+    if(!productChrome) assert(bottom==oldBottom);
++   const auto m=textMargins(r,automatic);
++   assert(m.left==r.left+margin && m.right==r.right+margin);
++   const int topReserve=UiHighDpiProfile::enabled && text?chrome.headerReserve:0;
++   assert(m.top==r.top+std::max<int>(margin,topReserve));
++   if (productChrome && text) {
++     const int oldTop=r.top+margin+48+16;
++     const int oldProductBottom=r.height-r.bottom-std::max<int>(margin,std::max(oldReserve,96));
++     assert(r.height-m.top-m.bottom >= oldProductBottom-oldTop);
++     if(margin==25) assert(r.height-m.top-m.bottom > oldProductBottom-oldTop);
++   }
+  }
+ }
+ '''
 --- a/src/AppVisibility.h
 +++ b/src/AppVisibility.h
 @@ -23,7 +23,9 @@
@@ -428160,10 +428471,14 @@
  constexpr uint32_t appBit(const AppId id) { return uint32_t{1} << static_cast<uint8_t>(id); }
 --- a/src/CrossPointSettings.cpp
 +++ b/src/CrossPointSettings.cpp
-@@ -236,10 +236,16 @@
+@@ -236,10 +236,20 @@
      }
    }
  
++  // The Home key gestures are appended only to the menu list (getSettingsList), so the
++  // base-list loop above never saw them; without this they reset on every boot.
++  for (unsigned i = 0; i < 3; ++i) doc[home_button::KEYS[i]] = s.*home_button::FIELDS[i];
++
 +#if FREEINK_DEVICE_METALIO_PLUS
 +  doc["plusTouchFeedback"] = plusTouchFeedback;
 +  JsonArray plusKeys = doc["plusKeyActions"].to<JsonArray>();
@@ -428177,7 +428492,7 @@
    doc["rickyBadgesSeen"] = rickyBadgesSeen;
    doc["frontButtonConfirm"] = frontButtonConfirm;
    doc["frontButtonLeft"] = frontButtonLeft;
-@@ -277,13 +283,19 @@
+@@ -277,13 +287,19 @@
    doc["rickyHomePhrase"] = rickyHomePhrase;
    doc["rickyGestureBack"] = rickyGestureBack;
    doc["rickyGestureHome"] = rickyGestureHome;
@@ -428197,7 +428512,18 @@
    doc["rickyTapTurn"] = 1;       // the swipe-only default migration has run
    doc["rickyStandbyKeyOn"] = 1;  // the Back-key Standby shortcut was turned on once
    // Dictionary folder name — uses dynamic getter/setter in SettingsList, save manually
-@@ -311,6 +323,7 @@
+@@ -300,17 +316,12 @@
+   // Keep the legacy marker current so rollback to a split-SKU firmware retains
+   // the selected service region.
+   doc["langSku"] = contentProfile == ContentProfile::China ? "cn" : "global";
+-
+-  // A uint16_t mask, so it does not fit the uint8_t generic loop. Omitted while
+-  // unconfigured, so the default keeps following the UI language.
+-  if (keyboardLayouts != 0) {
+-    doc["keyboardLayouts"] = keyboardLayouts;
+-  }
+ }
+ 
  bool CrossPointSettings::fromJson(JsonVariantConst doc) {
    CrossPointSettings& s = *this;
    bool needsResave = false;
@@ -428205,7 +428531,7 @@
  
    auto clamp = [](uint8_t val, uint8_t maxVal, uint8_t def) -> uint8_t { return val < maxVal ? val : def; };
  
-@@ -401,6 +414,7 @@
+@@ -401,6 +412,7 @@
    // Reading mode lives in the reader menu, not in SettingsList, so it loads here.
    // The custom reading background became the puppy reading mode.
    rickyBadgesSeen = doc["rickyBadgesSeen"] | static_cast<uint32_t>(0);
@@ -428213,7 +428539,7 @@
    if (doc["readingMode"].isNull()) {
      readingMode = (doc["readingBackgroundEnabled"] | static_cast<uint8_t>(0)) != 0 ? 1 : 0;  // 1 = Puppy
      if (readingMode != 0) needsResave = true;
-@@ -445,6 +459,14 @@
+@@ -445,6 +457,14 @@
      needsResave = true;
    }
    // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
@@ -428228,7 +428554,19 @@
    frontButtonBack = clamp(doc["frontButtonBack"] | (uint8_t)FRONT_HW_BACK, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_BACK);
    frontButtonConfirm =
        clamp(doc["frontButtonConfirm"] | (uint8_t)FRONT_HW_CONFIRM, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_CONFIRM);
-@@ -513,11 +535,17 @@
+@@ -487,6 +507,11 @@
+   // Font family — uses dynamic getter/setter in SettingsList so the generic loop skips it.
+   const uint8_t storedFontFamily = doc["fontFamily"] | (uint8_t)0;
+   fontFamily = clamp(storedFontFamily, BUILTIN_FONT_COUNT, 0);
++  for (unsigned i = 0; i < 3; ++i) {
++    const uint8_t fallback = s.*home_button::FIELDS[i];
++    s.*home_button::FIELDS[i] =
++        clamp(doc[home_button::KEYS[i]] | fallback, static_cast<uint8_t>(HomeButtonAction::Count), fallback);
++  }
+   if (BoardConfig::hasHomeKey() && doc["homeButtonLongPressAction"].isNull() &&
+       !doc["longPressMenuFunction"].isNull()) {
+     static constexpr HomeButtonAction LEGACY[] = {HomeButtonAction::Sync, HomeButtonAction::Ignore,
+@@ -513,11 +538,17 @@
    // Missing keys take the defaults: Home swipe starts off for everyone, as agreed.
    rickyGestureBack = (doc["rickyGestureBack"] | 1) ? 1 : 0;
    rickyGestureHome = (doc["rickyGestureHome"] | 0) ? 1 : 0;
@@ -428246,7 +428584,7 @@
    rickyStandbyFace = doc["rickyStandbyFace"] | static_cast<uint8_t>(RICKY_STANDBY_PICTURE);
    if (rickyStandbyFace >= RICKY_STANDBY_FACE_COUNT) rickyStandbyFace = RICKY_STANDBY_PICTURE;
    rickyAutoOffIndex = doc["rickyAutoOffIndex"] | static_cast<uint8_t>(3);
-@@ -551,6 +579,10 @@
+@@ -551,6 +582,10 @@
      rickyPowerOffScreen = doc["rickyPowerOffScreen"] | static_cast<uint8_t>(RICKY_POWER_OFF_DEFAULT);
      if (rickyPowerOffScreen >= RICKY_POWER_OFF_SCREEN_COUNT) rickyPowerOffScreen = RICKY_POWER_OFF_DEFAULT;
    }
@@ -428257,7 +428595,19 @@
    // Old backups/direct JSON edits must not select a different product layout.
    struct FixedLayout {
      const char* key;
-@@ -876,6 +908,7 @@
+@@ -634,11 +669,6 @@
+     needsResave = true;
+   }
+   onboardingVersion = doc["onboardingVersion"].is<uint8_t>() ? doc["onboardingVersion"].as<uint8_t>() : 0;
+-
+-  // Absent means unconfigured, which is the default.
+-  if (doc["keyboardLayouts"].is<uint16_t>()) {
+-    keyboardLayouts = doc["keyboardLayouts"].as<uint16_t>();
+-  }
+ 
+   if (needsResave) {
+     LOG_DBG("CPS", "Resaving settings to update format");
+@@ -876,6 +906,7 @@
  
  uint8_t CrossPointSettings::rickySleepScreenMode() const {
    if (rickyPowerOffScreen == RICKY_POWER_OFF_BLANK) return BLANK;
@@ -428358,6 +428708,29 @@
    uint8_t frontlightBrightness = 60;
    uint8_t frontlightWarmth = 50;
    uint8_t frontlightOn = 0;
+@@ -581,11 +614,6 @@
+   // Exact version of the startup guide last completed. Zero/missing means never completed.
+   uint8_t onboardingVersion = 0;
+   // Keyboard layouts the user can reach, using keyboard_layouts::ALL table bits.
+-  // 0 means "not configured", resolved to the UI language's layout plus English.
+-  // Any other value is an explicit choice and is used as-is: the language of the
+-  // books someone reads is not necessarily the language of their UI.
+-  // See keyboard_layouts:: for the bit assignment and the defaulting rules.
+-  uint16_t keyboardLayouts = 0;
+   // Quick Resume: keep current content visible with moon icon instead of showing a static sleep screen.
+   uint8_t quickResumeSleepScreen = QUICK_RESUME_NEVER;
+   // OTA update channel preference (0 = stable, 1 = nightly).
+@@ -640,6 +668,10 @@
+     bool showsProgressBar() const { return progressBarMode != HIDE_PROGRESS; }
+     bool showsTitle() const { return titleMode != HIDE_TITLE; }
+     bool showsClock() const { return clockMode != STATUS_BAR_CLOCK_HIDE; }
++    // The reader's header row (title, clock, battery) and footer row (page count,
++    // percent) reserve their space separately: a hidden footer gives its row to the text.
++    bool headerLaneVisible() const { return showsTitle() || showBattery || showsClock(); }
++    bool footerLaneVisible() const { return showChapterPageCount || showBookProgressPercent; }
+     bool textLaneVisible() const {
+       return showChapterPageCount || showBookProgressPercent || showsTitle() || showBattery || showsClock();
+     }
 --- a/src/InxItemLayout.h
 +++ b/src/InxItemLayout.h
 @@ -98,6 +98,8 @@
@@ -438081,15 +438454,16 @@
 +  const bool textLane = sb.textLaneVisible();
 +  const auto chrome = UiHighDpiProfile::enabled
 +                          ? readerChrome::compactLayout(
-+                                std::max({renderer.getLineHeight(RickyDesignUi::CAPTION),
-+                                          renderer.getLineHeight(RickyDesignUi::BODY),
-+                                          renderer.getLineHeight(BaseTheme::STATUS_NUMERIC_FONT_ID)}),
-+                                textLane, sb.showsProgressBar(), sb.progressBarHeightPx)
++                                std::max(renderer.getLineHeight(RickyDesignUi::CAPTION),
++                                         renderer.getLineHeight(BaseTheme::STATUS_NUMERIC_FONT_ID)),
++                                sb.headerLaneVisible(), sb.footerLaneVisible(), sb.showsProgressBar(),
++                                sb.progressBarHeightPx)
 +                          : readerChrome::CompactLayout{};
  
    int top = viewable.top + screenMargin;
-   if (readingMode::showsHeader(mode) && UiHighDpiProfile::enabled && textLane) {
+-  if (readingMode::showsHeader(mode) && UiHighDpiProfile::enabled && textLane) {
 -    top += ricky::ds::layout::kReaderHeaderHeight + ricky::ds::layout::kReaderHeaderGap;
++  if (readingMode::showsHeader(mode) && UiHighDpiProfile::enabled && sb.headerLaneVisible()) {
 +    top = viewable.top + std::max(screenMargin, chrome.headerReserve);
    }
    int bottomReserve = 0;
@@ -438837,7 +439211,7 @@
    // shed them under pressure. Releasing them here made every reopened book rasterize
 --- a/src/activities/reader/ReaderChrome.h
 +++ b/src/activities/reader/ReaderChrome.h
-@@ -10,6 +10,34 @@
+@@ -10,6 +10,37 @@
  // (B/W base, 16-level page, gray planes), so it draws with the plain B/W API and
  // only adds gray where the 16-level frame is open. No heap; Flash art only.
  namespace readerChrome {
@@ -438855,18 +439229,21 @@
 +  int footerReserve;
 +};
 +
-+constexpr CompactLayout compactLayout(const int textHeight, const bool textLane, const bool progress,
-+                                      const int progressHeight) {
++// textHeight is the chrome's own small type (caption, status numerals), not body text.
++// The footer is one row close to the panel edge: page count left, percent right and
++// the progress bar between them, centred on the row. Without the text lane the bar
++// alone sits at the bottom. Every pixel the chrome does not take goes to the text.
++constexpr CompactLayout compactLayout(const int textHeight, const bool headerLane, const bool footerLane,
++                                      const bool progress, const int progressHeight) {
 +  constexpr int headerPadding = 4;
-+  constexpr int bottomPadding = 12;
++  constexpr int bottomPadding = 4;
 +  constexpr int contentGap = 8;
-+  constexpr int progressGap = 8;
 +  const int row = textHeight < 28 ? 28 : textHeight;  // 24 px icons + their 4 px inset
 +  const int textBottom = bottomPadding + row;
-+  const int barBottom = textLane ? textBottom + progressGap : bottomPadding;
 +  const int barHeight = progressHeight < 1 ? 1 : progressHeight;
-+  const int occupied = progress ? barBottom + barHeight : textLane ? textBottom : 0;
-+  return {row, headerPadding, textLane ? headerPadding * 2 + row + contentGap : 0,
++  const int barBottom = footerLane ? bottomPadding + (row - barHeight) / 2 : bottomPadding;
++  const int occupied = footerLane ? textBottom : progress ? barBottom + barHeight : 0;
++  return {row, headerPadding, headerLane ? headerPadding * 2 + row + contentGap : 0,
 +          textBottom, barBottom, occupied ? occupied + contentGap : 0};
 +}
  
@@ -438892,7 +439269,26 @@
      pagesUntilFullRefresh = 1;
 --- a/src/activities/reader/ReaderUtils.h
 +++ b/src/activities/reader/ReaderUtils.h
-@@ -136,10 +136,13 @@
+@@ -90,6 +90,11 @@
+   unsigned long heldMs;
+ };
+ 
++// The reader menu opens on a tap in the top band of the page (the header strip and a
++// little below), as on Kindle. It used to be the centre third, which sat inside the
++// next-page zone: a thumb aiming for the next page often opened the menu instead.
++inline bool isInMenuBand(const int height, const int y) { return y >= 0 && y < height / 8; }
++
+ inline TouchPageTurn detectTouchPageTurn(const GfxRenderer& renderer, const MappedInputManager& input,
+                                          const bool rtlBook = false) {
+   TouchPageTurn result{false, false, 0};
+@@ -130,16 +135,18 @@
+   const int height = renderer.getScreenHeight();
+   // The centered reader-menu tap target (isTouchMenuTap below) keeps priority
+   // over the page-turn zones.
+-  if (SETTINGS.showReaderMenu == CrossPointSettings::READER_MENU_TAP && x >= width / 3 && x < width - width / 3 &&
+-      y >= height / 3 && y < height - height / 3) {
++  if (SETTINGS.showReaderMenu == CrossPointSettings::READER_MENU_TAP && isInMenuBand(height, y)) {
+     return result;
    }
  
    // Give the whole page to the sole tap-enabled direction. When both accept
@@ -438910,6 +439306,37 @@
    const bool nextZone = inverted ? x < (width * 2) / 3 : x >= width / 3;
    result.next = nextTaps && (!prevTaps || nextZone);
    result.prev = prevTaps && (!nextTaps || !nextZone);
+@@ -147,9 +154,8 @@
+   return result;
+ }
+ 
+-// Tap in the center third of the screen: the tap path into the reader menu on
+-// every touch board. detectTouchPageTurn() excludes this centered rectangle,
+-// so it remains free in tap mode. The Off/Swipe Up
++// Tap in the top band (isInMenuBand): the tap path into the reader menu on every
++// touch board. detectTouchPageTurn() excludes that band, so it remains free in tap mode. The Off/Swipe Up
+ // alternatives are only surfaced on home-key boards (SettingsList), where the
+ // menu stays reachable through the key's long-press function.
+ inline bool isTouchMenuTap(const GfxRenderer& renderer, const MappedInputManager& input) {
+@@ -158,14 +164,10 @@
+   int x = 0;
+   int y = 0;
+   if (!input.wasScreenTapped(x, y)) return false;
+-  const int width = renderer.getScreenWidth();
+-  const int height = renderer.getScreenHeight();
+-  const int zoneWidth = width / 3;
+-  const int zoneHeight = height / 3;
+-  return x >= zoneWidth && x < width - zoneWidth && y >= zoneHeight && y < height - zoneHeight;
+-}
+-
+-// Reader menu opens on the menu edge-swipe or a center-third tap. Home-key
++  return isInMenuBand(renderer.getScreenHeight(), y);
++}
++
++// Reader menu opens on the menu edge-swipe or a top-band tap. Home-key
+ // actions are configured separately from screen gestures.
+ // Menu gestures honor showReaderMenu independently of touchReaderControls,
+ // which only gates page-turn touch zones in detectTouchPageTurn().
 --- a/src/activities/settings/ClockSyncActivity.cpp
 +++ b/src/activities/settings/ClockSyncActivity.cpp
 @@ -22,6 +22,7 @@
@@ -439489,7 +439916,15 @@
    return list;
 --- a/src/activities/settings/SettingsActivity.cpp
 +++ b/src/activities/settings/SettingsActivity.cpp
-@@ -473,10 +473,12 @@
+@@ -32,7 +32,6 @@
+ #include "HomeButtonSettingsActivity.h"
+ #include "InxItemLayout.h"
+ #include "KOReaderSettingsActivity.h"
+-#include "KeyboardLayoutsActivity.h"
+ #include "LanguageSelectActivity.h"
+ #include "MappedInputManager.h"
+ #include "OtaUpdateActivity.h"
+@@ -473,10 +472,12 @@
  #endif
    systemSettings.push_back(SettingInfo::Action(StrId::STR_APP_VISIBILITY, SettingAction::AppVisibility));
    systemSettings.push_back(SettingInfo::Action(StrId::STR_DATE_AND_TIME, SettingAction::ClockSettings));
@@ -439502,7 +439937,15 @@
    systemSettings.push_back(SettingInfo::Action(StrId::STR_WIFI_NETWORKS, SettingAction::Network));
    systemSettings.push_back(SettingInfo::Action(StrId::STR_KOREADER_SYNC, SettingAction::KOReaderSync));
    systemSettings.push_back(SettingInfo::Action(StrId::STR_CLEAR_READING_CACHE, SettingAction::ClearCache));
-@@ -894,7 +896,11 @@
+@@ -487,7 +488,6 @@
+   systemSettings.push_back(SettingInfo::Action(StrId::STR_RICKYOS_FIRMWARE_UPDATE, SettingAction::CheckForUpdates));
+   systemSettings.push_back(SettingInfo::Action(StrId::STR_RICKY_SCREEN_REPAIR, SettingAction::RickyScreenRepair));
+   systemSettings.push_back(SettingInfo::Action(StrId::STR_SD_FIRMWARE_UPDATE, SettingAction::SdFirmwareUpdate));
+-  systemSettings.push_back(SettingInfo::Action(StrId::STR_KEYBOARD_LAYOUTS, SettingAction::KeyboardLayouts));
+   if (usesAccordion()) {
+     systemSettings.push_back(SettingInfo::Action(StrId::STR_LANGUAGE, SettingAction::Language));
+     systemSettings.push_back(SettingInfo::Action(StrId::STR_ABOUT, SettingAction::About));
+@@ -894,7 +894,11 @@
      };
  
      switch (setting.action) {
@@ -439515,7 +439958,7 @@
          // Activities must outlive this call and are owned by the activity stack.
          auto activity = makeUniqueNoThrow<HomeButtonSettingsActivity>(renderer, mappedInput);
          if (!activity) {
-@@ -964,9 +970,11 @@
+@@ -964,9 +968,11 @@
        case SettingAction::RickyGestures:
          startActivityForResultWith<RickyOptionListActivity>(resultHandler, RickyOptionLists::gestures());
          break;
@@ -439527,7 +439970,21 @@
        case SettingAction::RickyScreenRepair: {
          // Residual charge in the film shows old screens through new ones. Full GC16
          // black/white pairs are DC-balanced and drive every pixel through both
-@@ -1305,10 +1313,13 @@
+@@ -1042,13 +1048,6 @@
+           startActivityForResultWith<InxAboutActivity>(resultHandler);
+         else
+           startActivityForResultWith<AboutActivity>(resultHandler);
+-        break;
+-      case SettingAction::KeyboardLayouts:
+-        if (auto activity = makeUniqueNoThrow<KeyboardLayoutsActivity>(renderer, mappedInput)) {
+-          startActivityForResult(std::move(activity), nullptr);
+-        } else {
+-          LOG_ERR("SETTINGS", "OOM: KeyboardLayoutsActivity");
+-        }
+         break;
+       case SettingAction::None:
+         // Do nothing
+@@ -1305,10 +1304,13 @@
    if (usesMainTabBar() && !showMainTabContentSelection()) productProps.selectedIndex = -1;
    GfxRenderer::SyntheticBoldScope productBold(renderer, CrossPointSettings::SYNTHETIC_BOLD_OFF);
    if (designRows) {
@@ -439544,6 +440001,101 @@
        return style;
      });
      return;
+--- a/src/activities/settings/SettingsActivity.h
++++ b/src/activities/settings/SettingsActivity.h
+@@ -32,7 +32,6 @@
+   ManageDictionaries,
+   TextSettings,
+   About,
+-  KeyboardLayouts,
+   HomeButton,
+   RickyProfile,
+   RickyScreenRepair,
+--- a/src/activities/settings/StatusBarSettingsActivity.cpp
++++ b/src/activities/settings/StatusBarSettingsActivity.cpp
+@@ -8,7 +8,10 @@
+ 
+ #include "CrossPointSettings.h"
+ #include "MappedInputManager.h"
++#include "activities/reader/ReaderChrome.h"
++#include "components/RickyDesignUi.h"
+ #include "components/UITheme.h"
++#include "components/themes/BaseTheme.h"
+ #include "fontIds.h"
+ 
+ namespace fui = freeink::ui;
+@@ -53,6 +56,17 @@
+ const StrId statusBarClockNames[STATUS_BAR_CLOCK_ITEMS] = {StrId::STR_HIDE, StrId::STR_DIR_RIGHT, StrId::STR_DIR_LEFT};
+ 
+ const int verticalPreviewTextPadding = 40;
++
++// The preview is a small reader page: the reader's own header and footer drawn into a
++// card, with gray bars for the text between them, so it shows exactly what reading shows.
++constexpr int kPreviewCardHeight = 220;
++constexpr int kPreviewSide = 24;
++constexpr int kPreviewLabelGap = 36;
++
++Rect previewCard(const GfxRenderer& renderer, const ThemeMetrics& metrics) {
++  const int y = renderer.getScreenHeight() - metrics.buttonHintsHeight - metrics.verticalSpacing - kPreviewCardHeight;
++  return Rect{kPreviewSide, y, renderer.getScreenWidth() - 2 * kPreviewSide, kPreviewCardHeight};
++}
+ }  // namespace
+ 
+ StatusBarSettingsActivity::StatusBarSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
+@@ -163,9 +177,8 @@
+   // bar) so the list never runs underneath it, plus the button-hints row below.
+   // The preview is pinned directly above the hints (see render()), so the band
+   // is just the bar + its label, not a floating gap.
+-  const int statusBarHeight = UITheme::getInstance().getStatusBarHeight();
+   const auto previewFooter =
+-      static_cast<int16_t>(statusBarHeight + verticalPreviewTextPadding + metrics.verticalSpacing);
++      static_cast<int16_t>(kPreviewCardHeight + kPreviewLabelGap + verticalPreviewTextPadding + metrics.verticalSpacing);
+   screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
+                                                 static_cast<int16_t>(metrics.buttonHintsHeight + previewFooter), 0});
+   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+@@ -216,16 +229,32 @@
+   if (SETTINGS.statusBarTitle == CrossPointSettings::STATUS_BAR_TITLE::BOOK_TITLE) {
+     title = tr(STR_EXAMPLE_BOOK);
+   } else if (SETTINGS.statusBarTitle == CrossPointSettings::STATUS_BAR_TITLE::CHAPTER_TITLE) {
+-    title = tr(STR_EXAMPLE_CHAPTER);
+-  }
+-
+-  // Anchor the preview as a footer directly above the button hints.
+-  GUI.drawStatusBar(renderer, 75, 8, 32, title, metrics.buttonHintsHeight, 0, false);
+-
+-  renderer.drawCenteredText(UI_10_FONT_ID,
+-                            renderer.getScreenHeight() - UITheme::getInstance().getStatusBarHeight() -
+-                                metrics.buttonHintsHeight - verticalPreviewTextPadding,
+-                            tr(STR_PREVIEW));
++    // The reader names both when the chapter has its own title.
++    title = std::string(tr(STR_EXAMPLE_BOOK)) + " · " + tr(STR_EXAMPLE_CHAPTER);
++  }
++
++  // A small reader page above the button hints: frame, text bars, then the chrome.
++  const Rect card = previewCard(renderer, metrics);
++  renderer.drawRoundedRect(card.x, card.y, card.width, card.height, ricky::ds::stroke::kHairline,
++                           ricky::ds::radius::kControl, true);
++  const Rect page{card.x + 4, card.y + 4, card.width - 8, card.height - 8};
++  const auto sb = SETTINGS.statusBarSpec();
++  const auto chrome = readerChrome::compactLayout(
++      std::max(renderer.getLineHeight(RickyDesignUi::CAPTION), renderer.getLineHeight(BaseTheme::STATUS_NUMERIC_FONT_ID)),
++      sb.headerLaneVisible(), sb.footerLaneVisible(), sb.showsProgressBar(), sb.progressBarHeightPx);
++  constexpr int kTextInset = 20, kBarPitch = 26, kBarHeight = 10;
++  const int textTop = page.y + std::max(kTextInset, chrome.headerReserve);
++  const int textBottom = page.y + page.height - std::max(kTextInset, chrome.footerReserve);
++  for (int y = textTop, row = 0; y + kBarHeight <= textBottom; y += kBarPitch, ++row) {
++    const int inset = row % 4 == 3 ? page.width / 3 : 0;  // a paragraph's short last line
++    RickyDesignUi::fill(renderer,
++                        {static_cast<int16_t>(page.x + kTextInset), static_cast<int16_t>(y),
++                         static_cast<int16_t>(page.width - 2 * kTextInset - inset), static_cast<int16_t>(kBarHeight)},
++                        ricky::ds::gray::kLine, kBarHeight / 2);
++  }
++  GUI.drawRickyReaderChrome(renderer, 75, 8, 32, title.c_str(), false, false, true, &page);
++
++  renderer.drawCenteredText(UI_10_FONT_ID, card.y - kPreviewLabelGap, tr(STR_PREVIEW));
+ 
+   renderer.displayBuffer();
+ }
 --- a/src/activities/util/FrontlightPanelActivity.cpp
 +++ b/src/activities/util/FrontlightPanelActivity.cpp
 @@ -2,7 +2,9 @@
@@ -440781,6 +441333,94 @@
    int currentImageIndex = -1;
    OptionPopup sleepCoverPopup;
  };
+--- a/src/activities/util/KeyboardLayoutSet.cpp
++++ b/src/activities/util/KeyboardLayoutSet.cpp
+@@ -1,66 +1,14 @@
+ #include "KeyboardLayoutSet.h"
+-
+-#include "CrossPointSettings.h"
+ 
+ namespace keyboard_layouts {
+ 
+-namespace {
++// RickyOS ships Chinese and English only: every keyboard is English QWERTY, and the
++// language key switches the Chinese input method, not the layout. The layout picker
++// (Settings -> Keyboard layouts) is gone; its other scripts drew as missing glyphs.
++uint16_t enabled() { return bitAt(0); }
+ 
+-uint8_t indexOf(const freeink::ui::KeyboardLayoutId id) {
+-  for (uint8_t i = 0; i < COUNT; ++i) {
+-    if (ALL[i].id == id) return i;
+-  }
+-  return COUNT;
+-}
++freeink::ui::KeyboardLayoutId startingLayout() { return freeink::ui::KeyboardLayoutId::QwertyEn; }
+ 
+-freeink::ui::KeyboardLayoutId forLanguage(const Language language) {
+-  for (uint8_t i = 0; i < COUNT; ++i) {
+-    if (ALL[i].language == language) return ALL[i].id;
+-  }
+-  return freeink::ui::KeyboardLayoutId::QwertyEn;
+-}
+-
+-constexpr uint16_t ALL_BITS = static_cast<uint16_t>((uint32_t{1} << COUNT) - 1);
+-
+-uint16_t layoutBit(const freeink::ui::KeyboardLayoutId id) {
+-  const uint8_t i = indexOf(id);
+-  return i < COUNT ? bitAt(i) : 0;
+-}
+-
+-}  // namespace
+-
+-uint16_t enabled() {
+-  // Drop bits naming no layout: the mask comes from a hand-editable file and
+-  // survives downgrades, so it can carry bits this build does not have. Left
+-  // in, such a mask would read as "configured" while enabling nothing.
+-  const uint16_t configured = static_cast<uint16_t>(SETTINGS.keyboardLayouts & ALL_BITS);
+-  if (configured != 0) {
+-    if (configured & LATIN_BITS) return configured;
+-    return static_cast<uint16_t>(configured | layoutBit(freeink::ui::KeyboardLayoutId::QwertyEn));
+-  }
+-  // Unconfigured: the UI language's layout plus English. An English UI collapses
+-  // to one layout and the language key disappears -- there is nowhere to go.
+-  return static_cast<uint16_t>(layoutBit(forLanguage(I18N.getLanguage())) |
+-                               layoutBit(freeink::ui::KeyboardLayoutId::QwertyEn));
+-}
+-
+-freeink::ui::KeyboardLayoutId startingLayout() {
+-  const freeink::ui::KeyboardLayoutId preferred = forLanguage(I18N.getLanguage());
+-  if (enabled() & layoutBit(preferred)) return preferred;
+-  // Switched off: opening on it anyway would ignore a deliberate choice.
+-  return next(preferred);
+-}
+-
+-freeink::ui::KeyboardLayoutId next(const freeink::ui::KeyboardLayoutId current) {
+-  const uint16_t mask = enabled();
+-  const uint8_t from = indexOf(current);
+-  // A current layout the table does not list still has to lead somewhere.
+-  const uint8_t start = from < COUNT ? from : 0;
+-  for (uint8_t step = 1; step <= COUNT; ++step) {
+-    const uint8_t i = static_cast<uint8_t>((start + step) % COUNT);
+-    if (mask & bitAt(i)) return ALL[i].id;
+-  }
+-  return current;
+-}
++freeink::ui::KeyboardLayoutId next(freeink::ui::KeyboardLayoutId) { return freeink::ui::KeyboardLayoutId::QwertyEn; }
+ 
+ }  // namespace keyboard_layouts
+--- a/src/activities/util/KeyboardLayoutSet.h
++++ b/src/activities/util/KeyboardLayoutSet.h
+@@ -12,8 +12,8 @@
+   Language language;
+ };
+ 
+-// Table position is the persisted bit assignment. Keep existing rows in place
+-// and append new layouts so SDK enum changes cannot reinterpret saved masks.
++// The SDK's built-in layouts. Only the first (English) is enabled in RickyOS; the
++// table stays so the keyboard tests can still exercise every layout's drawing.
+ inline constexpr LayoutInfo ALL[] = {
+     {freeink::ui::KeyboardLayoutId::QwertyEn, Language::EN},
+     {freeink::ui::KeyboardLayoutId::AzertyFr, Language::FR},
 --- /dev/null
 +++ b/src/components/BatteryStatusLayout.h
 @@ -0,0 +1,25 @@
@@ -441376,21 +442016,43 @@
      snprintf(percentText, sizeof(percentText), "%u%%", static_cast<unsigned>(percentage));
      status.battery.label = percentText;
    }
-@@ -1139,8 +1150,12 @@
+@@ -1131,17 +1142,31 @@
+ 
+ void BaseTheme::drawRickyReaderChrome(GfxRenderer& renderer, const float bookProgress, const int currentPage,
+                                       const int pageCount, const char* title, const bool bookmarked,
+-                                      const bool estimated, const bool header) {
++                                      const bool estimated, const bool header, const Rect* area) {
+   namespace ds = ricky::ds;
+   const auto sb = SETTINGS.statusBarSpec();
+-  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer);
++  const Rect safe = area ? *area : UITheme::getInstance().getScreenSafeArea(renderer);
+   const int left = safe.x + ds::layout::kReaderChromeInset;
    const int right = safe.x + safe.width - ds::layout::kReaderChromeInset;
    if (right <= left) return;
    const GfxRenderer::ClipScope clip(renderer, safe.x, safe.y, safe.width, safe.height);
-+  const auto chrome = readerChrome::compactLayout(
-+      std::max({renderer.getLineHeight(RickyDesignUi::CAPTION), renderer.getLineHeight(RickyDesignUi::BODY),
-+                renderer.getLineHeight(STATUS_NUMERIC_FONT_ID)}),
-+      sb.textLaneVisible(), sb.showsProgressBar(), sb.progressBarHeightPx);
-   if (sb.textLaneVisible() && header) {
+-  if (sb.textLaneVisible() && header) {
 -    const int y = safe.y + (ds::layout::kReaderHeaderHeight - ds::type::kCaption.lineHeight) / 2;
++  const auto chrome = readerChrome::compactLayout(
++      std::max(renderer.getLineHeight(RickyDesignUi::CAPTION), renderer.getLineHeight(STATUS_NUMERIC_FONT_ID)),
++      sb.headerLaneVisible(), sb.footerLaneVisible(), sb.showsProgressBar(), sb.progressBarHeightPx);
++  // Bookmark and Bluetooth marks lead the footer row; with the footer hidden they lead
++  // the header instead, since the text then runs down to where the footer was.
++  const bool marksInHeader = !sb.footerLaneVisible();
++  if (sb.headerLaneVisible() && header) {
 +    const int y = safe.y + chrome.headerTextY;
      int titleLeft = left, titleRight = right;
++    if (marksInHeader && bleinput::isConnected()) {
++      drawBluetoothStatusIcon(renderer, titleLeft, y + 4);
++      titleLeft += bluetoothStatusIconWidth + ds::space::k2;
++    }
++    if (marksInHeader && bookmarked) {
++      drawBookmarkStatusIcon(renderer, titleLeft, y + 4);
++      titleLeft += bookmarkStatusIconWidth + ds::space::k2;
++    }
      // Retain clock visibility/12-hour policy. Its old side setting remains
      // meaningful: a right clock precedes the battery, a left clock leads.
-@@ -1172,12 +1187,12 @@
+     if (sb.showBattery) {
+@@ -1172,12 +1197,14 @@
      if (title && *title && titleRight > titleLeft) {
        RickyDesignUi::secondaryText(renderer,
                                     {static_cast<int16_t>(titleLeft), static_cast<int16_t>(y),
@@ -441399,42 +442061,63 @@
                                     title, RickyDesignUi::CAPTION, false, freeink::ui::TextAlign::Center);
      }
    }
-   if (sb.textLaneVisible()) {
+-  if (sb.textLaneVisible()) {
 -    const int textY = safe.y + safe.height - ds::space::kBlockGap - ds::type::kCaption.lineHeight;
++  // The footer row's free span, between the page count and the percent: the bar's place.
++  int barLeft = left, barRight = right;
++  if (sb.footerLaneVisible()) {
 +    const int textY = safe.y + safe.height - chrome.footerTextBottom;
      int counterLeft = left;
      if (bleinput::isConnected()) {
        drawBluetoothStatusIcon(renderer, counterLeft, textY + 4);
-@@ -1192,7 +1207,7 @@
+@@ -1192,16 +1219,20 @@
        snprintf(pages, sizeof(pages), "%s%d / %d", estimated ? "~" : "", currentPage, pageCount);
        RickyDesignUi::secondaryText(renderer,
                                     {static_cast<int16_t>(counterLeft), static_cast<int16_t>(textY),
 -                                    static_cast<int16_t>((right - counterLeft) / 2), ds::type::kBody.lineHeight},
 +                                    static_cast<int16_t>((right - counterLeft) / 2), static_cast<int16_t>(chrome.rowHeight)},
                                     pages, RickyDesignUi::CAPTION);
-     }
+-    }
++      counterLeft += renderer.getTextWidth(RickyDesignUi::fontFor(renderer, RickyDesignUi::CAPTION, pages), pages);
++    }
++    barLeft = counterLeft == left ? left : counterLeft + ds::space::k4;
      if (sb.showBookProgressPercent) {
-@@ -1200,7 +1215,7 @@
+       char percent[12];
        snprintf(percent, sizeof(percent), "%.0f%%", std::clamp(bookProgress, 0.0f, 100.0f));
        RickyDesignUi::secondaryText(renderer,
                                     {static_cast<int16_t>(left), static_cast<int16_t>(textY),
 -                                    static_cast<int16_t>(right - left), ds::type::kBody.lineHeight},
 +                                    static_cast<int16_t>(right - left), static_cast<int16_t>(chrome.rowHeight)},
                                     percent, RickyDesignUi::CAPTION, false, freeink::ui::TextAlign::Right);
++      barRight = right - renderer.getTextWidth(RickyDesignUi::fontFor(renderer, RickyDesignUi::CAPTION, percent),
++                                               percent) - ds::space::k4;
      }
    }
-@@ -1213,9 +1228,7 @@
-     RickyDesignUi::progress(
-         renderer,
-         {static_cast<int16_t>(left),
+   if (sb.showsProgressBar()) {
+@@ -1210,14 +1241,14 @@
+                             ? static_cast<int>(bookProgress)
+                         : pageCount > 0 ? currentPage * 100 / pageCount
+                                         : 0;
+-    RickyDesignUi::progress(
+-        renderer,
+-        {static_cast<int16_t>(left),
 -         static_cast<int16_t>(
 -             safe.y + safe.height - height -
 -             (sb.textLaneVisible() ? ds::space::kBlockGap + ds::type::kCaption.lineHeight + ds::space::kInlineGap : 0)),
-+         static_cast<int16_t>(safe.y + safe.height - height - chrome.progressBottom),
-          static_cast<int16_t>(right - left), static_cast<int16_t>(height)},
-         percent);
+-         static_cast<int16_t>(right - left), static_cast<int16_t>(height)},
+-        percent);
++    if (barRight > barLeft) {
++      RickyDesignUi::progress(
++          renderer,
++          {static_cast<int16_t>(barLeft),
++           static_cast<int16_t>(safe.y + safe.height - height - chrome.progressBottom),
++           static_cast<int16_t>(barRight - barLeft), static_cast<int16_t>(height)},
++          percent);
++    }
    }
-@@ -1437,7 +1450,7 @@
+ }
+ 
+@@ -1437,7 +1468,7 @@
  }
  
  void BaseTheme::drawOptionPopup(const GfxRenderer& renderer, const char* title, const std::vector<std::string>& options,
@@ -441457,7 +442140,19 @@
  };
  
  // Default theme implementation (Classic Theme)
-@@ -415,8 +418,9 @@
+@@ -352,8 +355,10 @@
+   // ("Standby", or "Off" on the power-off screen); returns where it drew.
+   static Rect drawRickyStandbyIndicator(const GfxRenderer& renderer, bool poweredOff = false);
+   // `header` false draws only the footer (the puppy reading mode puts its dog where the header sits).
++  // `area` draws into a smaller page (the status-bar settings preview); null is the screen.
+   static void drawRickyReaderChrome(GfxRenderer& renderer, float bookProgress, int currentPage, int pageCount,
+-                                    const char* title, bool bookmarked, bool estimated, bool header = true);
++                                    const char* title, bool bookmarked, bool estimated, bool header = true,
++                                    const Rect* area = nullptr);
+   // Also draws the wall clock opposite the battery when the user enabled
+   // SETTINGS.clockShowInHeader and system time is valid. On touch boards a
+   // tappable back button leads the band (see HeaderBackTapTarget); root
+@@ -415,8 +420,9 @@
    // drawPopup() with room for fillPopupProgress() below the message and an empty track,
    // so a long task shows how far it has come.
    Rect drawProgressPopup(const GfxRenderer& renderer, const char* message) const;
@@ -442619,7 +443314,7 @@
 +}  // namespace plus_keys
 --- /dev/null
 +++ b/src/util/ReadingBackground.cpp
-@@ -0,0 +1,194 @@
+@@ -0,0 +1,195 @@
 +#include "ReadingBackground.h"
 +
 +#include <Bitmap.h>
@@ -442636,8 +443331,9 @@
 +
 +namespace ReadingBackground {
 +namespace {
-+// How much of the picture's darkness is kept: light, medium, deep.
-+constexpr uint8_t kInkPercent[] = {0, 25, 40, 55};
++// How much of the picture's darkness is kept: light, medium, original. The last is the
++// picture as it is (users found even the old deepest step, 55%, too pale to see).
++constexpr uint8_t kInkPercent[] = {0, 30, 60, 100};
 +static_assert(std::size(kInkPercent) == CrossPointSettings::READING_BACKGROUND_COUNT);
 +// Ruled paper is a few thin marks, not a picture: it needs a darker gray and a little
 +// more weight than a lightened picture to be seen at all (level, line, grid line, dot).
@@ -442647,7 +443343,7 @@
 +  uint8_t grid;
 +  uint8_t dot;
 +};
-+constexpr PaperInk kPaperInk[] = {{15, 0, 0, 0}, {10, 2, 2, 4}, {7, 2, 2, 5}, {4, 3, 2, 6}};
++constexpr PaperInk kPaperInk[] = {{15, 0, 0, 0}, {10, 2, 2, 4}, {7, 2, 2, 5}, {2, 3, 2, 6}};
 +static_assert(std::size(kPaperInk) == CrossPointSettings::READING_BACKGROUND_COUNT);
 +
 +int8_t present = -1;  // the file exists: -1 unknown
@@ -442824,7 +443520,7 @@
 +class GfxRenderer;
 +
 +// 阅读背景: what lies under the reading page, lightened so the text stays the darkest
-+// thing on it. Either a picture (/readingbg.bmp, converted like /sleep.bmp) or ruled
++// thing on it, or at 原色 drawn in its own tones. Either a picture (/readingbg.bmp, converted like /sleep.bmp) or ruled
 +// paper (lines, a grid or dots) drawn to the rows of the text. The setting chooses how
 +// light it is drawn, or turns it off. Only 16-level pages carry it (not Night mode).
 +namespace ReadingBackground {
@@ -442849,7 +443545,7 @@
 +void invalidate();
 +
 +// A 4-bit level as drawn at `strength` (READING_BACKGROUND_*): white stays white,
-+// black comes out as a light or mid gray.
++// black comes out as a light or mid gray, or stays black at the original strength.
 +uint8_t lighten(uint8_t level, uint8_t strength);
 +
 +// Ruled paper (READING_PAPER_*) into the active 16-level frame, at `strength`.
@@ -443344,3 +444040,36 @@
 +  ASSERT_EQ(reader.loadFromCache(), CssParser::CacheLoadResult::Complete);
 +  EXPECT_EQ(reader.familyAt(reader.resolveStyle("p", "", inBt, 2).fontFamily), "mm");
 +}
+--- a/test/inx_navigation/test_checkbox_rows.py
++++ b/test/inx_navigation/test_checkbox_rows.py
+@@ -64,9 +64,9 @@
+ # Compile the real viewport methods, including INX's separate tab-list path.
+ shared = (ROOT / 'src/activities/UiListActivity.cpp').read_text()
+ tabs = (ROOT / 'src/activities/UiTabListActivity.cpp').read_text()
+-keyboard = (ROOT / 'src/activities/settings/KeyboardLayoutsActivity.cpp').read_text()
+-keyboard_guard = keyboard[keyboard.index('  props.toggleCheckbox = true;'):
+-                          keyboard.index('  syncListViewport(screen, props);')]
++# An explicit checkbox list (the former keyboard-layouts page's rows): a caller that
++# asks for checkboxes keeps them in every theme.
++keyboard_guard = '  props.toggleCheckbox = true;\n  props.toggleWidth = 28;\n  props.toggleHeight = 28;\n'
+ trace = (ROOT / 'test/inx_navigation/InxStyleParity.cpp').read_text().split('#ifdef UPSTREAM_THEME_PARITY')[0]
+ controls = trace + r'''
+ #include <cassert>
+--- a/test/inx_navigation/test_unified_keyboard.py
++++ b/test/inx_navigation/test_unified_keyboard.py
+@@ -227,10 +227,13 @@
+   for (int theme=0; theme<7; ++theme) {
+     SETTINGS.uiTheme=static_cast<CrossPointSettings::UI_THEME>(theme);
+     KeyboardEntryActivity kb;
++    // English is the only enabled layout: the language key leads back to it, and on
++    // English itself there is nowhere to go (no repaint).
+     for (const auto& language : keyboard_layouts::ALL) {
+       kb.layoutId=language.id;
+-      assert(kb.activateValue(fui::QWERTY_KEY_LANG,false));
+-      assert(kb.layoutId==keyboard_layouts::next(language.id));
++      const bool english=language.id==fui::KeyboardLayoutId::QwertyEn;
++      assert(kb.activateValue(fui::QWERTY_KEY_LANG,false)==!english);
++      assert(kb.layoutId==fui::KeyboardLayoutId::QwertyEn);
+     }
+     kb.layoutId=fui::KeyboardLayoutId::SpanishEs;
+     assert(kb.syncSelectionToValue('a'));

@@ -343,7 +343,6 @@ idf_component_register(
   "${APP_ROOT}/src/activities/settings/RickyAvatarPickerActivity.cpp"
   "${APP_ROOT}/src/activities/settings/TextSettingsActivity.cpp"
   "${APP_ROOT}/src/activities/settings/ButtonRemapActivity.cpp"
-  "${APP_ROOT}/src/activities/settings/KeyboardLayoutsActivity.cpp"
   "${APP_ROOT}/src/activities/settings/BleButtonMapActivity.cpp"
   "${APP_ROOT}/src/activities/settings/BluetoothSettingsActivity.cpp"
   "${APP_ROOT}/src/activities/settings/AppVisibilitySettingsActivity.cpp"

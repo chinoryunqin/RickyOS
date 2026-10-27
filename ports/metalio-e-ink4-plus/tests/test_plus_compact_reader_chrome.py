@@ -40,6 +40,8 @@ struct Spec {
   int clockMode=0,progressBarHeightPx=6,progressBarMode=0;
   bool clock12h=false;
   bool textLaneVisible() const {return lane;}
+  bool headerLaneVisible() const {return lane;}
+  bool footerLaneVisible() const {return lane && (showChapterPageCount || showBookProgressPercent);}
   bool showsClock() const {return clock;}
   bool showsProgressBar() const {return bar;}
 };
@@ -60,7 +62,8 @@ struct UITheme {
   Rect getScreenSafeArea(GfxRenderer& r) {return {5,5,r.w-10,r.h-13};}
 };
 namespace RickyDesignUi {
-constexpr int CAPTION=1,BODY=2;
+constexpr int CAPTION=1;
+inline int fontFor(const GfxRenderer&,int preferred,const char*) {return preferred;}
 struct Run {Rect r; int percent=-1;};
 std::vector<Run> runs;
 template<class R>
@@ -82,7 +85,7 @@ void progress(GfxRenderer& g,Rect r,int percent) {
 }
 }
 struct BaseTheme {
-  static void drawRickyReaderChrome(GfxRenderer&,float,int,int,const char*,bool,bool,bool=true);
+  static void drawRickyReaderChrome(GfxRenderer&,float,int,int,const char*,bool,bool,bool=true,const Rect* =nullptr);
   static void drawBluetoothStatusIcon(GfxRenderer&,int,int) {}
   static void drawBookmarkStatusIcon(GfxRenderer&,int,int) {}
   static void drawBatteryLeft(GfxRenderer&,Rect,bool) {}
@@ -109,12 +112,19 @@ int main() {
       assert(static_cast<int>(RickyDesignUi::runs.size())==expected);
       if(flags&8) {
         const auto track=RickyDesignUi::runs.back();
-        const auto chrome=readerChrome::compactLayout(rowHeight,settings.spec.lane,true,6);
+        const auto chrome=readerChrome::compactLayout(rowHeight,settings.spec.headerLaneVisible(),
+                                                      settings.spec.footerLaneVisible(),true,6);
         assert(track.percent==42);
-        if(settings.spec.lane) {
+        if(settings.spec.footerLaneVisible()) {
+          // One footer row: the bar sits on it, between the page count and the percent.
           const int textY=r.h-8-chrome.footerTextBottom;
-          assert(track.r.y+track.r.height+8==textY);
-        } else assert(track.r.y+track.r.height==r.h-8-12);
+          assert(track.r.y>=textY && track.r.y+track.r.height<=textY+chrome.rowHeight);
+          for(size_t i=0;i+1<RickyDesignUi::runs.size();++i) {
+            const auto& run=RickyDesignUi::runs[i];
+            if(run.r.y!=textY) continue;  // header runs
+            assert(run.r.x>=track.r.x+track.r.width || run.r.x<track.r.x);
+          }
+        } else assert(track.r.y+track.r.height==r.h-8-4);
         assert(track.r.y>=r.h-8-chrome.footerReserve+8);
       }
     }
@@ -123,7 +133,10 @@ int main() {
     RickyDesignUi::runs.clear();
     BaseTheme::drawRickyReaderChrome(r,42.0f,3,11,"章节",false,false,false);
     assert(static_cast<int>(RickyDesignUi::runs.size())==3);
-    const auto chrome=readerChrome::compactLayout(rowHeight,true,true,6);
+    const auto chrome=readerChrome::compactLayout(rowHeight,true,true,true,6);
+    // A hidden footer (no page count, no percent, no bar) reserves nothing.
+    assert(readerChrome::compactLayout(rowHeight,true,false,false,6).footerReserve==0);
+    assert(readerChrome::compactLayout(rowHeight,false,true,false,6).headerReserve==0);
     for(const auto& run : RickyDesignUi::runs) assert(run.r.y>=r.h-8-chrome.footerReserve+8);
     settings.spec.lane=false;
     settings.spec.bar=true;

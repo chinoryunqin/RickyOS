@@ -96,8 +96,8 @@ def main():
     assert sizing < page_break < image_block < reservation
     assert '#if FREEINK_DEVICE_METALIO_PLUS' in parser[:sizing][-450:]
     section = SECTION.read_text()
-    assert 'SECTION_FILE_VERSION = 119;' in section and 'SECTION_FILE_VERSION = 115;' in section
-    assert 'SECTION_FILE_VERSION = 117;' in section
+    assert 'SECTION_FILE_VERSION = 125;' in section and 'SECTION_FILE_VERSION = 121;' in section
+    assert 'SECTION_FILE_VERSION = 123;' in section
     assert '0xFE - (SECTION_FILE_VERSION - 28)' in section
     assert 'setImageOutset(spec.imageOutset)' in section
     print('Plus chapter art: near edge-to-edge width, signed page offset, aspect, icons and page bounds passed')
