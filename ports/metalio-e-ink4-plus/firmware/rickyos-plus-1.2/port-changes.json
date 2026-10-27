@@ -1065,7 +1065,7 @@
     {
       "path": "src/components/RickyDesignUi.h",
       "baseline_sha256": "ae5acc8b93778f862a8de972123e1fda1490b603638396d33d220e49e99ce5ca",
-      "ported_sha256": "e2a6e8df8a351f23ce90334e2ce90d612e9037691ec6ef29c211dceb8f65dfe8"
+      "ported_sha256": "c0e639bb294d19e59fe8182f4f225454a84c623f08ebd024f142256edbec4f6e"
     },
     {
       "path": "src/components/RickyHomeUi.cpp",

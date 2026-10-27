@@ -442343,23 +442343,27 @@
  }
  
  // Exact native tones; B/W path uses the spec fallback, never Bayer dots.
-@@ -83,9 +92,13 @@
+@@ -83,9 +92,17 @@
    fill(renderer, {r.x, r.y, r.width, ds::stroke::kHairline}, ds::gray::kLine);
  }
  
 -inline void progress(const GfxRenderer& renderer, fui::Rect r, int percent, bool inverted = false) {
-+// `lineTrack` keeps the unread part a hairline even on a 16-level frame: the reader's
-+// unchanged non-white pixels are re-pulsed toward black on each page turn, so a gray
-+// track there darkens until read and unread look the same.
++// `lineTrack` draws the unread part as a 1 px dotted line, pure black and white: the
++// Plus reader re-pulses unchanged gray toward black on each page turn, so a gray track
++// there darkens until read and unread look the same, and a solid hairline is as thick
++// as the bar itself.
 +inline void progress(const GfxRenderer& renderer, fui::Rect r, int percent, bool inverted = false,
 +                     bool lineTrack = false) {
    const auto ink = inverted ? ds::gray::kPaper : ds::gray::kInk;
 -  if (renderer.isGrayscale16Active() && !inverted)
-+  if (renderer.isGrayscale16Active() && !inverted && !lineTrack)
++  if (lineTrack && !inverted) {
++    const auto y = static_cast<int16_t>(r.y + r.height / 2);
++    for (int x = r.x; x < r.x + r.width; x += 4) fill(renderer, {static_cast<int16_t>(x), y, 1, 1}, ink);
++  } else if (renderer.isGrayscale16Active() && !inverted)
      fill(renderer, r, ds::gray::kTint, r.height / 2);
    else
      fill(renderer,
-@@ -132,6 +145,11 @@
+@@ -132,6 +149,11 @@
    });
  }
  
@@ -442371,7 +442375,7 @@
  inline void secondaryText(const GfxRenderer& renderer, fui::Rect r, const char* value, int font = CAPTION,
                            bool inverted = false, fui::TextAlign align = fui::TextAlign::Left, int lines = 1) {
    text(renderer, r, value, font, inverted, align, lines, ds::gray::kInk2);
-@@ -143,16 +161,11 @@
+@@ -143,16 +165,11 @@
    const int style = ds::component::coverTemplateFor(title);
    const bool dark = style == 0 || style == 3;
    fill(renderer, r, dark ? ds::gray::kInk : style == 4 ? ds::gray::kTint : ds::gray::kPaper);
