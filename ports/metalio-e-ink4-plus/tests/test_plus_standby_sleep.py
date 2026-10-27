@@ -72,6 +72,10 @@ template<class... T> void logIgnore(T...){}
 inline bool metalio_i2c1_lock(int){assert(!locked);if(lockFails)return false;locked=true;return true;}
 inline void metalio_i2c1_unlock(){assert(locked);locked=false;}
 inline int plus_i2c_begin(){return ESP_OK;}
+// Boot-time charger configuration is not part of these sleep paths: the probe
+// reports no charger, and any configuration write would fail the test.
+inline int plus_i2c_probe(int){return -1;}
+inline int plus_i2c_write(int,int,const uint8_t*,size_t){assert(false);return -1;}
 inline int plus_i2c_read(int addr,int reg,uint8_t* out,size_t n){
  assert(locked);
  if(addr==0x38){

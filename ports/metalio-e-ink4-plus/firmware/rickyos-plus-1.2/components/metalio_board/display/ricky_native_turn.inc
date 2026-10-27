@@ -254,7 +254,8 @@ static void ricky_native_begin(RenderContext_t* ctx, const EpdWaveformPhases* ph
     } else if (ctx->reader_text_finish) {
         ricky_reader_lock_text_finish(ctx->turn_luts, nativePhases);
 #if defined(CONFIG_IDF_TARGET_ESP32S31) && RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES
-        if (turn.style >= 1 && turn.style <= 3) ricky_reader_overlap_erase(ctx->turn_luts, nativePhases);
+        // Plain turns too: the white gap between erase and write reads as a flash.
+        if (turn.style <= 3) ricky_reader_overlap_erase(ctx->turn_luts, nativePhases);
 #endif
     }
     const RickyRippleGeometry ripple = turn.style == 3 ? ricky_ripple_geometry(turn,ctx->display_width,ctx->display_height)

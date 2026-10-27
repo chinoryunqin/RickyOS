@@ -15,7 +15,7 @@
     {
       "path": "freeink-sdk/libs/hardware/BatteryMonitor/src/BatteryMonitor.cpp",
       "baseline_sha256": "f6a217520fd415968d75ac1b1e226283d397b28469ab3e44570c085d36d30eec",
-      "ported_sha256": "bbf2ce8435a86784c03b8436d43ea5cf83beb0af1eb0279214951cdb5d1f1439"
+      "ported_sha256": "b46d578f412cc2226b68242e035280eab1e0546d39a5d4637e222237314a4157"
     },
     {
       "path": "freeink-sdk/libs/hardware/FrontlightManager/include/FrontlightManager.h",

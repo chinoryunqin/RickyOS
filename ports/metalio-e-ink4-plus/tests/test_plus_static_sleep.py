@@ -143,6 +143,8 @@ int main(){
         tree = ast.parse((PORT/'tests/test_plus_standby_sleep.py').read_text())
         common = next(ast.literal_eval(node.value) for node in ast.walk(tree)
                       if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id=='common' for t in node.targets))
+        # This test brings its own IMU write fake in place of the charger-write guard.
+        common = common.replace('inline int plus_i2c_write(int,int,const uint8_t*,size_t){assert(false);return -1;}\n', '')
         common = common.replace('inline int plus_i2c_read(', r'''
 constexpr int SC7A20H_I2C_ADDR_DEFAULT=0x19,SC7A20H_I2C_ADDR_ALT=0x18;
 inline uint8_t imuRegs[256]{};

@@ -139,7 +139,7 @@
  #if FREEINK_BATTERY_I2C_GAUGE
    if (BoardConfig::ACTIVE.batteryGauge.gaugeAddr != 0) {
      uint16_t soc = 0;
-@@ -511,6 +551,69 @@
+@@ -511,6 +551,85 @@
  #if FREEINK_BATTERY_I2C_GAUGE
    if (BoardConfig::ACTIVE.batteryGauge.gaugeAddr != 0) {
      status.supported = true;
@@ -202,6 +202,22 @@
 +               mv, signedCurrent, currentKnown, soc, socOk, remaining, remainingOk,
 +               full, fullOk, design, designOk, operation, operationOk, estimate.percent, estimate.known,
 +               static_cast<unsigned>(estimate.source), static_cast<int16_t>(average), averageKnown, counter, counterKnown);
++#if RICKYOS_PLUS_CHARGER_DUMP
++      // Diagnostic only: the CX25601N charger's registers 0x00..0x2f, read-only,
++      // one register per transaction (never written by RickyOS).
++      char line[48 * 3 + 1];
++      int used = 0;
++      for (uint8_t reg = 0; reg < 0x30; ++reg) {
++        uint8_t value = 0;
++        bool ok = metalio_i2c1_lock(20);
++        if (ok) {
++          ok = plus_i2c_read(0x6b, reg, &value, 1) == ESP_OK;
++          metalio_i2c1_unlock();
++        }
++        used += snprintf(line + used, sizeof(line) - used, ok ? "%02x " : "-- ", value);
++      }
++      ESP_LOGI("PlusCharger", "regs00-2f: %s", line);
++#endif
 +    }
 +    return status;
 +    }
@@ -209,7 +225,7 @@
      uint16_t soc = 0;
      if (readGaugeSoc(soc)) {
        status.percentageKnown = true;
-@@ -752,3 +855,18 @@
+@@ -752,3 +871,18 @@
    const int32_t biased = std::clamp<int32_t>(static_cast<int32_t>(millivolts) + bias, 0, UINT16_MAX);
    return percentageFromMillivolts(static_cast<uint16_t>(biased)) == notch ? notch : previousNotch;
  }

@@ -289,7 +289,7 @@ static void exercise_text_finish(void) {
                 int left=last-27;if(left>first)left=first;
                 if(left>0)shift=-left;
 #if defined(CONFIG_IDF_TARGET_ESP32S31) && RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES
-                if(style>=1 && style<=3) {
+                if(style<=3) {  // plain turns overlap too
                     int delay=27+RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES-(last+shift);
                     if(delay>0)shift+=delay;
                 }

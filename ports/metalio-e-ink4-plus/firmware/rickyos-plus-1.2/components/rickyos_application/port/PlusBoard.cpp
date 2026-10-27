@@ -238,6 +238,67 @@ void shutdown() {
   }
 }
 }
+// CX25601N charger at 0x6B: the OEM firmware's boot configuration, ported from
+// CloudZao/Metalio-E-INK4-Plus main/boards/common/power/cx25601n.cc (hw_init_defaults,
+// set_vreg/ichg/iindpm; MIT, Copyright (c) 2025 Shenzhen Xinzhi Future Technology Co.,
+// Ltd. and Project Contributors). The chip keeps these while the battery stays
+// connected, so boards that came from the OEM firmware still have them; one that lost
+// battery power fell back to the chip defaults and charged slower. Each field is a
+// read-modify-write of exactly the OEM's bits; 960 mA charge and input limit, 4.4 V.
+bool configureCharger() {
+  constexpr uint8_t kAddr = 0x6b;
+  if (!metalio_i2c1_lock(50)) return false;
+  bool ok = plus_i2c_probe(kAddr) == ESP_OK;
+  const auto write = [&](uint8_t reg, uint8_t value) {
+    if (ok) ok = plus_i2c_write(kAddr, reg, &value, 1) == ESP_OK;
+  };
+  const auto field = [&](uint8_t reg, uint8_t mask, uint8_t shift, uint8_t value) {
+    uint8_t cur = 0;
+    if (ok) ok = plus_i2c_read(kAddr, reg, &cur, 1) == ESP_OK;
+    const uint8_t m = static_cast<uint8_t>(mask << shift);
+    write(reg, static_cast<uint8_t>((cur & ~m) | ((value << shift) & m)));
+  };
+  field(0x15, 0x01, 6, 0);     // D+/D- detection off: the input limit below applies
+  field(0x16, 0x01, 4, 0);     // HIZ off
+  field(0x16, 0x03, 0, 0);     // watchdog off, so the settings stay
+  field(0x10, 0x0f, 4, 0x0c);  // precharge current
+  field(0x11, 0x01, 0, 0);
+  field(0x12, 0x1f, 3, 0x06);  // termination current
+  field(0x13, 0x01, 0, 0);
+  field(0x04, 0x1f, 3, 440 & 0x1f);  // VREG 4400 mV (10 mV steps)
+  field(0x05, 0x0f, 0, 440 >> 5);
+  field(0x02, 0x03, 6, 12 & 0x03);   // ICHG 960 mA (80 mA steps)
+  field(0x03, 0x0f, 0, 12 >> 2);
+  field(0x06, 0x0f, 4, 48 & 0x0f);   // IINDPM 960 mA (20 mA steps)
+  field(0x07, 0x0f, 0, 48 >> 4);
+  if (ok) {
+    // OEM private registers, behind its unlock sequence (0x70 reads 0x03 when open).
+    bool unlocked = false;
+    for (int i = 0; i < 10 && ok && !unlocked; ++i) {
+      for (const uint8_t key : {0x00, 0x50, 0x57, 0x44}) write(0x70, key);
+      uint8_t v = 0;
+      unlocked = ok && plus_i2c_read(kAddr, 0x70, &v, 1) == ESP_OK && v == 0x03;
+    }
+    if (unlocked) {
+      write(0x86, 0x06);
+      write(0x3a, 0x10);
+      write(0x46, 0x20);
+    }
+    write(0x70, 0x00);
+    if (!unlocked) ESP_LOGW("PlusCharger", "private register unlock failed");
+  }
+  field(0x14, 0x01, 0, 1);
+  field(0x18, 0x01, 2, 0);
+  field(0x1a, 0x01, 7, 1);
+  field(0x23, 0x07, 2, 0x07);
+  field(0x24, 0x01, 3, 1);
+  field(0x16, 0x01, 5, 1);     // charging enabled
+  metalio_i2c1_unlock();
+  if (ok) ESP_LOGI("PlusCharger", "configured: 960 mA charge/input, 4400 mV, watchdog off");
+  else ESP_LOGW("PlusCharger", "configuration failed; chip settings unchanged or partial");
+  return ok;
+}
+
 bool begin() {
   reportSleepReset();
   if (plus_i2c_begin() != ESP_OK) return false;
@@ -248,6 +309,7 @@ bool begin() {
 #if defined(RICKYOS_PLUS_GAUGE_CONFIG)
   configureGauge();  // pack values into the gauge's RAM config; once per pack connection
 #endif
+  configureCharger();
   boardReady = true;
   return true;
 }

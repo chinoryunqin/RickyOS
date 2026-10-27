@@ -29,7 +29,7 @@ int main(void) {
   for(int tick=0;tick<firstBlack;tick++)
    differences+=c.turn_luts[tick*1024]!=c.turn_luts[tick*1024+240*4];
 #if RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES
-  assert(differences==(style?8:0));
+  assert(differences==8);  // plain turns overlap too
 #else
   assert(!differences);
   // q6 accepted order: both erase10..27, new black writes28..45.
@@ -57,5 +57,6 @@ int main(void) {
  for overlap in [8,0]:
   subprocess.run([*args,f'-DRICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES={overlap}'],check=True)
   output=subprocess.check_output([str(p/'test')],text=True);print(f'overlap={overlap}: {output}',end='')
-  assert f'old-black prefix action mismatches={96 if overlap else 0}\n' in output
+  # 4 styles (plain turns included) x 4 orientations x 8 overlapped phases.
+  assert f'old-black prefix action mismatches={128 if overlap else 0}\n' in output
 print('q10 order regression reproduced; q11 preserves q6 old-black erase order across all3 animations/4 orientations, compact spatial geometry and full native feed/OOM/UI/paper checks (ASan/UBSan). Optical acceptance pending.')
