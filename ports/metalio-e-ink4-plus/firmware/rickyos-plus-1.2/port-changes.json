@@ -595,7 +595,7 @@
     {
       "path": "scripts/tests/test_rickyos_reader_chrome.py",
       "baseline_sha256": "2fb005add96d52fde454774ab3c278ecfe792738a610c101b5e62bed67961da7",
-      "ported_sha256": "129b532e1a9f1a1b04829490facda358fa452ea3011d5f8557f4f3448fce59eb"
+      "ported_sha256": "8d7804e575206b1fda1b7296dcdf2c2bcb1ea586bbcb38fe1d99ac626e6648d0"
     },
     {
       "path": "scripts/tests/test_ui_chrome_icons.py",
@@ -618,6 +618,11 @@
       "ported_sha256": "ef4db06df32aab040b12951e454d19a2c6257d45ed2bd6904d191fc46304dc80"
     },
     {
+      "path": "src/HomeButtonSettings.h",
+      "baseline_sha256": "d42fe26bbf4bd1b6deb57c6848561acce4d998a44ec27418d405e3a0d4fb20a7",
+      "ported_sha256": "5cd8976eb93f8c6dca200e1ce0a413847357408356ce6f97a601a53d0d48e0f0"
+    },
+    {
       "path": "src/InxItemLayout.h",
       "baseline_sha256": "cebb8ad5ef97faada4b2858546a62f8c825f9e934cfa4b072f9b160a6cf5bc71",
       "ported_sha256": "f32c745f3e51fd3b576be4e9d7b0a338154dda865b73932bf12aeeba8a3c7faa"
@@ -625,7 +630,7 @@
     {
       "path": "src/MappedInputManager.cpp",
       "baseline_sha256": "6cb329fd1abfcff7b2537405b9cad92aa4c78e94fddefe3086d2fb6650ca60c7",
-      "ported_sha256": "9661774e6a3963e2e694c390394be07592dcbba8120345fdd466a379199bc42c"
+      "ported_sha256": "4b8c9cc9ce8660cc9df5e3c0c345a9c1df5ecd96c9b7e23779bb401b0f30e8bf"
     },
     {
       "path": "src/MappedInputManager.h",
@@ -1060,7 +1065,7 @@
     {
       "path": "src/components/RickyDesignUi.h",
       "baseline_sha256": "ae5acc8b93778f862a8de972123e1fda1490b603638396d33d220e49e99ce5ca",
-      "ported_sha256": "9cf7eb57ea6abd76bccb96ef26c7dd756ff74e785132a1258d075911a97cf9b3"
+      "ported_sha256": "e2a6e8df8a351f23ce90334e2ce90d612e9037691ec6ef29c211dceb8f65dfe8"
     },
     {
       "path": "src/components/RickyHomeUi.cpp",
@@ -1130,7 +1135,7 @@
     {
       "path": "src/components/themes/BaseTheme.cpp",
       "baseline_sha256": "e54b5b4ab7ec37346bf3d19929021e05a03408ff6cd347efc9fe74a317ae8f79",
-      "ported_sha256": "03f15245d77f9a844b29e8aa1883bf2f74d75ee7c0f6b67e682feb400f4b3812"
+      "ported_sha256": "7f925356b4a890403d4356f02ce95a888fda908315a0d0d9fddd04302a217f5d"
     },
     {
       "path": "src/components/themes/BaseTheme.h",
@@ -1211,6 +1216,11 @@
       "path": "src/util/BootPreparation.cpp",
       "baseline_sha256": "683c1e896659b54b7724a454bd82f2b3a33f55a8d12175f9ce535f38deba093c",
       "ported_sha256": "7201f26c66791289af74ccbd39eae4d65f57ab66c91eb005f452c076a6d629e6"
+    },
+    {
+      "path": "src/util/HomeButtonInput.h",
+      "baseline_sha256": "0b75e74eafdf5ba84b94c4cb179d41447e3f03430653ac7a2b6ee7ce0eec4fdc",
+      "ported_sha256": "3eba19c3e45434a2d487663db93f00781ab799d5a333e181f7610d343dbbf429"
     },
     {
       "path": "src/util/PlusButtonInput.h",

@@ -429067,7 +429067,15 @@
  struct Run {Rect r; int percent=-1;};
  std::vector<Run> runs;
  template<class R>
-@@ -73,7 +79,7 @@
+@@ -67,13 +73,14 @@
+ void secondaryText(GfxRenderer& g,Rect r,const char* s,int f,bool inverted=false,freeink::ui::TextAlign a=freeink::ui::TextAlign::Left) {
+   text<Rect>(g,r,s,f,inverted,a);
+ }
+-void progress(GfxRenderer& g,Rect r,int percent) {
++void progress(GfxRenderer& g,Rect r,int percent,bool=false,bool lineTrack=false) {
++  assert(lineTrack);  // the reader bar never uses the gray track
+   assert(r.x>=5 && r.y>=5 && r.x+r.width<=g.w-5 && r.y+r.height<=g.h-8);
+   runs.push_back({r,std::clamp(percent,0,100)});
  }
  }
  struct BaseTheme {
@@ -429076,7 +429084,7 @@
    static void drawBluetoothStatusIcon(GfxRenderer&,int,int) {}
    static void drawBookmarkStatusIcon(GfxRenderer&,int,int) {}
    static void drawBatteryLeft(GfxRenderer&,Rect,bool) {}
-@@ -81,8 +87,9 @@
+@@ -81,8 +88,9 @@
  #define GUI gui
  ''' + method(source, 'void BaseTheme::drawRickyReaderChrome(') + r'''
  int main() {
@@ -429088,7 +429096,7 @@
      settings.spec.progressBarMode=0;
      for(int flags=0;flags<256;++flags) {
        settings.spec.lane=flags&1;
-@@ -99,12 +106,20 @@
+@@ -99,12 +107,20 @@
        assert(static_cast<int>(RickyDesignUi::runs.size())==expected);
        if(flags&8) {
          const auto track=RickyDesignUi::runs.back();
@@ -429114,7 +429122,7 @@
        }
      }
      // Footer only (the puppy reading mode): the header's title run is not drawn.
-@@ -112,7 +127,11 @@
+@@ -112,7 +128,11 @@
      RickyDesignUi::runs.clear();
      BaseTheme::drawRickyReaderChrome(r,42.0f,3,11,"章节",false,false,false);
      assert(static_cast<int>(RickyDesignUi::runs.size())==3);
@@ -429127,7 +429135,7 @@
      settings.spec.lane=false;
      settings.spec.bar=true;
      settings.spec.progressBarMode=1;
-@@ -130,9 +149,11 @@
+@@ -130,9 +150,11 @@
          # One margin source: renderBook and the pickers take textMargins(), which
          # reserves the header and footer bands the reading mode keeps.
          margins = method(reader, 'readingMode::Margins EpubReaderActivity::textMargins(')
@@ -429502,6 +429510,17 @@
      bool textLaneVisible() const {
        return showChapterPageCount || showBookProgressPercent || showsTitle() || showBattery || showsClock();
      }
+--- a/src/HomeButtonSettings.h
++++ b/src/HomeButtonSettings.h
+@@ -8,7 +8,7 @@
+ inline constexpr StrId ACTION_LABELS[] = {StrId::STR_HOME_SHORTCUT, StrId::STR_IGNORE,           StrId::STR_PAGE_TURN,
+                                           StrId::STR_FORCE_REFRESH, StrId::STR_FOOTNOTES,        StrId::STR_CONFIRM,
+                                           StrId::STR_KOSYNC,        StrId::STR_BOOKMARK_OPTION,  StrId::STR_DICTIONARY,
+-                                          StrId::STR_READER_MENU,   StrId::STR_TOGGLE_FRONTLIGHT};
++                                          StrId::STR_READER_MENU,   StrId::STR_TOGGLE_FRONTLIGHT, StrId::STR_BACK};
+ static_assert(sizeof(ACTION_LABELS) / sizeof(ACTION_LABELS[0]) == static_cast<unsigned>(HomeButtonAction::Count));
+ inline constexpr StrId GESTURE_LABELS[] = {StrId::STR_HOME_BUTTON_TAP, StrId::STR_HOME_BUTTON_DOUBLE_TAP,
+                                            StrId::STR_HOME_BUTTON_LONG_PRESS};
 --- a/src/InxItemLayout.h
 +++ b/src/InxItemLayout.h
 @@ -98,6 +98,8 @@
@@ -429570,7 +429589,25 @@
    if (deferHomeButtonAction) {
      // Keep the first action observed during a synchronous transfer. Home must
      // still be visible now so the transfer can cancel and unwind promptly.
-@@ -85,39 +91,44 @@
+@@ -48,8 +54,16 @@
+   // Touch boards always follow the rendered orientation; button-only boards keep the user toggle.
+   // Home and settings render in portrait, so neither path swaps them.
+   const auto orientation = renderer.getOrientation();
++#if FREEINK_DEVICE_METALIO_PLUS
++  // The Plus panel is mounted the other way round from the upstream boards: its side
++  // page keys read right in clockwise landscape only when swapped, and in
++  // counter-clockwise landscape only when not.
++  constexpr auto swappedLandscape = GfxRenderer::LandscapeClockwise;
++#else
++  constexpr auto swappedLandscape = GfxRenderer::LandscapeCounterClockwise;
++#endif
+   return (gpio.hasTouch() || SETTINGS.frontButtonFollowOrientation) &&
+-         (orientation == GfxRenderer::PortraitInverted || orientation == GfxRenderer::LandscapeCounterClockwise);
++         (orientation == GfxRenderer::PortraitInverted || orientation == swappedLandscape);
+ }
+ 
+ MappedInputManager::Button MappedInputManager::mapScreenDirection(const Button button) const {
+@@ -85,39 +99,44 @@
  }
  
  bool MappedInputManager::mapButton(const Button button, bool (HalGPIO::*fn)(uint8_t) const) const {
@@ -429625,7 +429662,7 @@
          case CrossPointSettings::NEXT_NEXT:
          case CrossPointSettings::SIDE_BUTTONS_DISABLED:
          default:
-@@ -127,11 +138,11 @@
+@@ -127,11 +146,11 @@
        // Reader page navigation uses side buttons and can be swapped via settings.
        switch (sideLayout) {
          case CrossPointSettings::PREV_NEXT:
@@ -429640,7 +429677,7 @@
          case CrossPointSettings::PREV_PREV:
          case CrossPointSettings::SIDE_BUTTONS_DISABLED:
          default:
-@@ -461,6 +472,8 @@
+@@ -461,6 +480,8 @@
    return wasEdgeSwipe(fui::ScreenEdge::Left);
  }
  
@@ -429649,7 +429686,7 @@
  bool MappedInputManager::wasHeaderTapBack() const {
    return false;
  }
-@@ -483,6 +496,9 @@
+@@ -483,6 +504,9 @@
  }
  
  bool MappedInputManager::wasLightPanelGesture() const {
@@ -429659,7 +429696,7 @@
    // The control center also serves touch boards without a frontlight.
    if (!SETTINGS.rickyGestureControl) return false;
    return hasTouch() && wasTopEdgeDownSwipe();
-@@ -500,6 +516,9 @@
+@@ -500,7 +524,11 @@
  #endif
  
  bool MappedInputManager::wasPressed(const Button button) const {
@@ -429667,9 +429704,11 @@
 +  if (plusActions & (1u << static_cast<uint8_t>(button))) return true;
 +#endif
    if (button == Button::Confirm && homeAction == HomeButtonAction::Confirm) return true;
++  if (button == Button::Back && homeAction == HomeButtonAction::Back) return true;
    if (button == Button::Back && wasBackGesture()) return true;
  #if FREEINK_CAP_TOUCH
-@@ -509,6 +528,9 @@
+   if (button == Button::Confirm && wasPowerConfirmClick()) return true;
+@@ -509,7 +537,11 @@
  }
  
  bool MappedInputManager::wasReleased(const Button button) const {
@@ -429677,9 +429716,11 @@
 +  if (plusActions & (1u << static_cast<uint8_t>(button))) return true;
 +#endif
    if (button == Button::Confirm && homeAction == HomeButtonAction::Confirm) return true;
++  if (button == Button::Back && homeAction == HomeButtonAction::Back) return true;
    if (button == Button::Back && wasBackGesture()) return true;
  #if FREEINK_CAP_TOUCH
-@@ -651,3 +673,38 @@
+   if (button == Button::Confirm && wasPowerConfirmClick()) return true;
+@@ -651,3 +683,38 @@
    return -1;
  }
  bool MappedInputManager::isHeld(const Button button) const { return isPressed(button); }
@@ -442302,7 +442343,23 @@
  }
  
  // Exact native tones; B/W path uses the spec fallback, never Bayer dots.
-@@ -132,6 +141,11 @@
+@@ -83,9 +92,13 @@
+   fill(renderer, {r.x, r.y, r.width, ds::stroke::kHairline}, ds::gray::kLine);
+ }
+ 
+-inline void progress(const GfxRenderer& renderer, fui::Rect r, int percent, bool inverted = false) {
++// `lineTrack` keeps the unread part a hairline even on a 16-level frame: the reader's
++// unchanged non-white pixels are re-pulsed toward black on each page turn, so a gray
++// track there darkens until read and unread look the same.
++inline void progress(const GfxRenderer& renderer, fui::Rect r, int percent, bool inverted = false,
++                     bool lineTrack = false) {
+   const auto ink = inverted ? ds::gray::kPaper : ds::gray::kInk;
+-  if (renderer.isGrayscale16Active() && !inverted)
++  if (renderer.isGrayscale16Active() && !inverted && !lineTrack)
+     fill(renderer, r, ds::gray::kTint, r.height / 2);
+   else
+     fill(renderer,
+@@ -132,6 +145,11 @@
    });
  }
  
@@ -442314,7 +442371,7 @@
  inline void secondaryText(const GfxRenderer& renderer, fui::Rect r, const char* value, int font = CAPTION,
                            bool inverted = false, fui::TextAlign align = fui::TextAlign::Left, int lines = 1) {
    text(renderer, r, value, font, inverted, align, lines, ds::gray::kInk2);
-@@ -143,16 +157,11 @@
+@@ -143,16 +161,11 @@
    const int style = ds::component::coverTemplateFor(title);
    const bool dark = style == 0 || style == 3;
    fill(renderer, r, dark ? ds::gray::kInk : style == 4 ? ds::gray::kTint : ds::gray::kPaper);
@@ -442883,7 +442940,7 @@
 +          {static_cast<int16_t>(barLeft),
 +           static_cast<int16_t>(safe.y + safe.height - height - chrome.progressBottom),
 +           static_cast<int16_t>(barRight - barLeft), static_cast<int16_t>(height)},
-+          percent);
++          percent, false, true);
 +    }
    }
  }
@@ -444040,6 +444097,16 @@
    const bool newFirmware = !preparedForThisFirmware();
    const bool library = libraryNeedsBuild();
    if (!newFirmware && !library) return;
+--- a/src/util/HomeButtonInput.h
++++ b/src/util/HomeButtonInput.h
+@@ -15,6 +15,7 @@
+   Dictionary,
+   ReaderMenu,
+   ToggleFrontlight,
++  Back,
+   Count
+ };
+ 
 --- /dev/null
 +++ b/src/util/PlusButtonInput.h
 @@ -0,0 +1,40 @@

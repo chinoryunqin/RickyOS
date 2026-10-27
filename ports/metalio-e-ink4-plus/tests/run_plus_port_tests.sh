@@ -53,6 +53,7 @@ python3 tests/test_plus_p14_restore_audit.py
 python3 tests/test_plus_standby_home.py
 python3 tests/test_plus_standby_swipe_unlock.py
 python3 tests/test_plus_button_mapping.py
+python3 tests/test_plus_landscape_keys.py
 python3 tests/test_plus_button_settings.py
 python3 tests/test_plus_control_center_layout.py
 python3 tests/test_plus_haptic.py
