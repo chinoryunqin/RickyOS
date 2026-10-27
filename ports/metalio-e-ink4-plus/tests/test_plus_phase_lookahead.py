@@ -87,6 +87,11 @@ static _Atomic(void*) done_payload;
 static pthread_t scan_thread;
 static bool scan_joinable;
 static atomic_bool scanning,aborted;
+#ifndef RICKYOS_PLUS_LOOKAHEAD_AFTER_FRAME
+#define LOOKAHEAD_AFTER_FRAME 0
+#else
+#define LOOKAHEAD_AFTER_FRAME RICKYOS_PLUS_LOOKAHEAD_AFTER_FRAME
+#endif
 static atomic_int scan_count,expected_phase,overlapped,render_mode;
 static atomic_int active_feeders;
 static int fault,slow,animated,compact,completion_only;
@@ -282,7 +287,9 @@ int main(int argc,char** argv){
  if(fault==9)assert(first_fault==((65535u<<16)|(255u<<8)|LCD_FAULT_FRAME_TIMEOUT));
  if(fault){assert(ctx.error);}else{
    assert(!ctx.error&&ctx.current_frame==expected_scans&&atomic_load(&scan_count)==expected_scans);
-   if(!compact)assert(legacy?atomic_load(&overlapped)==0:atomic_load(&overlapped)>0);
+   // Default: the next phase overlaps the frame tail; the opt-in
+   // RICKYOS_PLUS_LOOKAHEAD_AFTER_FRAME=1 starts it only after the scan.
+   if(!compact)assert((legacy||LOOKAHEAD_AFTER_FRAME)?atomic_load(&overlapped)==0:atomic_load(&overlapped)>0);
  }
  if(!fault && (HOST_MOTION_PERIOD_EXPECTED > 0) && animated==1 && !completion_only)
    assert(esp_timer_get_time()-host_previous_start>=HOST_MOTION_PERIOD_EXPECTED); // Last phase settles too.
@@ -340,6 +347,11 @@ with tempfile.TemporaryDirectory(prefix='plus-phase-lookahead-') as folder:
         subprocess.run([str(binary), str(fault), str(slow), '0', '1'], check=True, timeout=20)
     for fault, slow in ((0, 0), (0, 1), (1, 0), (2, 0), (3, 0), (4, 0), (7, 0), (8, 0), (9, 0)):
         subprocess.run([str(binary), str(fault), str(slow)], check=True, timeout=20)
+    # The opt-in after-frame schedule stays buildable and correct for A/B.
+    subprocess.run([*compile_args, '-DRICKYOS_PLUS_LOOKAHEAD_AFTER_FRAME=1'], check=True)
+    for fault, slow in ((0, 0), (0, 1), (1, 0), (2, 0), (3, 0), (4, 0), (7, 0), (8, 0), (9, 0)):
+        subprocess.run([str(binary), str(fault), str(slow)], check=True, timeout=20)
+    subprocess.run(compile_args, check=True)
     # UI area updates (GL16) take the same pipeline, with the same exact order and cleanup.
     for fault, slow in ((0, 0), (0, 1), (2, 0)):
         subprocess.run([str(binary), str(fault), str(slow), '1'], check=True, timeout=20)
@@ -411,4 +423,11 @@ with tempfile.TemporaryDirectory(prefix='plus-phase-lookahead-') as folder:
                     '-DRICKYOS_PLUS_READER_MOTION_PERIOD_US=0'], check=True)
     for fault, slow in ((0, 0), (0, 1), (4, 0), (6, 0)):
         subprocess.run([str(binary), str(fault), str(slow), '1', '0', '3'], check=True, timeout=20)
+    # Short motion (ripple spread 5, skim/arc spread 2): the same feed and fault paths.
+    for spread, flags in ((5, ['-DRICKYOS_PLUS_READER_FINE_RIPPLE=1', '-DRICKYOS_PLUS_READER_RIPPLE_SPREAD=5']),
+                          (2, ['-DRICKYOS_PLUS_READER_SWEEP_SPREAD=2'])):
+        subprocess.run([*compile_args, '-DHOST_READER_PHASES=48', f'-DHOST_READER_SPREAD={spread}', *flags,
+                        '-DRICKYOS_PLUS_READER_MOTION_PERIOD_US=0'], check=True)
+        for fault, slow in ((0, 0), (0, 1), (4, 0), (6, 0)):
+            subprocess.run([str(binary), str(fault), str(slow), '1', '0', '3'], check=True, timeout=20)
 print('Actual LCD legacy GC and lookahead GL16_FAST/GL16: exact row/mask/crop order, delayed peer/ack, exclusive queue reset, frame/prefix/feed failure cleanup, recovery redraw, and production fatal quiesce guards passed (ASan/UBSan)')

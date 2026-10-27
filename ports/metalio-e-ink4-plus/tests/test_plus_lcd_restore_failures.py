@@ -40,7 +40,7 @@ constexpr int ESP_OK=0,ESP_ERR_NO_MEM=-2;
 const char* esp_err_to_name(int){return "injected";}
 using gdma_channel_handle_t=void*;
 using gdma_trigger_t=int;
-struct gdma_channel_alloc_config_t {};
+struct gdma_channel_alloc_config_t {int intr_priority;};
 struct gdma_strategy_config_t {bool eof_till_data_popped;};
 struct gdma_transfer_config_t {int max_data_burst_size;bool access_ext_mem;};
 struct gdma_tx_event_callbacks_t {bool(*on_trans_eof)(void*,void*,void*);};
@@ -94,6 +94,7 @@ int new_channel(gdma_channel_alloc_config_t*,void** out,void*){
 #define LCD_GDMA_NEW_CHANNEL new_channel
 int gdma_connect(void* p,int){assert(p);return ++dmaAt==failDma?-1:0;}
 int gdma_apply_strategy(void* p,gdma_strategy_config_t*){assert(p);return ++dmaAt==failDma?-1:0;}
+int gdma_set_priority(void* p,unsigned){assert(p);return ++dmaAt==failDma?-1:0;}
 int gdma_config_transfer(void* p,gdma_transfer_config_t*){assert(p);return ++dmaAt==failDma?-1:0;}
 int gdma_register_tx_event_callbacks(void* p,gdma_tx_event_callbacks_t*,void*){assert(p);return ++dmaAt==failDma?-1:0;}
 void gdma_stop(void* p){assert(p && !sourceCallback && !doneCallback);stopped=true;}

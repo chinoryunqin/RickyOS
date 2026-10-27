@@ -12,6 +12,7 @@
 #include <cstring>
 extern "C" {
 #include <ricky_native_turn.h>
+#include <lcd_fault.h>
 }
 
 namespace freeink {
@@ -357,6 +358,7 @@ class MetalioPlusDriver final : public PanelDriver {
   EpdDrawError refreshTurn(EpdiyHighlevelState* hl, const ricky::gray::Area& body, bool paper) {
     const int64_t startedUs = esp_timer_get_time();
     epd_poweron();
+    const int64_t poweredUs = esp_timer_get_time();
     auto result = EPD_DRAW_EMPTY_LINE_QUEUE;
     // The reader-turn table (MODE_GC16_FAST slot, my_waveform.c): the page lands at once
     // and black strokes that stay are briefly re-driven to keep their ink.
@@ -369,9 +371,18 @@ class MetalioPlusDriver final : public PanelDriver {
         result = epd_hl_update_screen_full(hl, MODE_GC16_FAST, 25);
       }
     }
+    const int64_t drawnUs = esp_timer_get_time();
     epd_poweroff();
-    ESP_LOGI("PlusDisplay", "turn GL16 body=%d/%d/%d/%d result=0x%x ms=%lld", body.x, body.y,
-             body.width, body.height, result, (esp_timer_get_time() - startedUs) / 1000);
+    ESP_LOGI("PlusDisplay", "turn GL16 body=%d/%d/%d/%d result=0x%x ms=%lld on=%lld draw=%lld off=%lld", body.x,
+             body.y, body.width, body.height, result, (esp_timer_get_time() - startedUs) / 1000,
+             (poweredUs - startedUs) / 1000, (drawnUs - poweredUs) / 1000, (esp_timer_get_time() - drawnUs) / 1000);
+    // A stale bounce refill shows as a faint copy of text 16 rows away; say so if it recurs.
+    const auto refill = epd_lcd_take_refill_stats();
+    if (refill.stale) {
+      ESP_LOGW("PlusDisplay", "refill stale=%lu/%lu max_dt=%ldus max_work=%ldus worst_row=%ld period=%ldus",
+               (unsigned long)refill.stale, (unsigned long)refill.refills, (long)refill.max_dt_us,
+               (long)refill.max_work_us, (long)refill.worst_line, (long)refill.period_us);
+    }
     return result;
   }
 #if RICKYOS_PLUS_TURN_SELFTEST

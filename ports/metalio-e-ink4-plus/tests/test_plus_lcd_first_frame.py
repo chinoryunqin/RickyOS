@@ -99,6 +99,8 @@ bool row_source(void*,uint8_t* row){
  memset(row,sourceRow<lcd.native_height?(sourceRow%251)+1:0,lcd.line_bytes);++sourceRow;return false;
 }
 void frame_done(void*){assert(!dmaRunning && !lcdRunning && !lcd.frame_active);++done;}
+struct EpdLcdRefillStats {uint32_t stale,refills;int32_t max_dt_us,max_work_us,worst_line,period_us;};
+static EpdLcdRefillStats s_refill;static int64_t s_refill_worst;
 '''
 for signature in (
     'static void ckv_rmt_build_signal()',

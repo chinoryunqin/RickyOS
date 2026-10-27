@@ -105,14 +105,14 @@ static inline uint8_t ricky_ui_turn_delay(RickyNativeTurn turn, int x, int y, in
 #ifndef RICKYOS_PLUS_READER_RIPPLE_SPREAD
 #define RICKYOS_PLUS_READER_RIPPLE_SPREAD 23
 #endif
-#if RICKYOS_PLUS_READER_RIPPLE_SPREAD < 9 || RICKYOS_PLUS_READER_RIPPLE_SPREAD > 23
-#error "Reader ripple spread must be 9..23"
+#if RICKYOS_PLUS_READER_RIPPLE_SPREAD < 4 || RICKYOS_PLUS_READER_RIPPLE_SPREAD > 23
+#error "Reader ripple spread must be 4..23"
 #endif
 #ifndef RICKYOS_PLUS_READER_SWEEP_SPREAD
 #define RICKYOS_PLUS_READER_SWEEP_SPREAD 7
 #endif
-#if RICKYOS_PLUS_READER_SWEEP_SPREAD < 3 || RICKYOS_PLUS_READER_SWEEP_SPREAD > 7
-#error "Reader sweep spread must be 3..7"
+#if RICKYOS_PLUS_READER_SWEEP_SPREAD < 2 || RICKYOS_PLUS_READER_SWEEP_SPREAD > 7
+#error "Reader sweep spread must be 2..7"
 #endif
 
 // Keep default/Pico/UI unchanged. Only opt-in S31 ripple uses10..24 launches.

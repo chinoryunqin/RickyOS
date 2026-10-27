@@ -38,6 +38,9 @@ extern "C" void epd_set_native_ui_turn(uint8_t o,bool right,int x,int y,int w,in
 }
 template <class... A> static void ESP_LOGI(const char*, const char*, A...) {}
 #define ESP_LOGE(...) ((void)0)
+#define ESP_LOGW(...) ((void)0)
+struct EpdLcdRefillStats {unsigned stale,refills; long max_dt_us,max_work_us,worst_line,period_us;};
+static EpdLcdRefillStats epd_lcd_take_refill_stats() {return {};}
 static int64_t esp_timer_get_time() { return 0; }
 constexpr int W=1216,H=684,N=W*H/2;
 struct EpdRect {int x,y,width,height;};

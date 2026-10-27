@@ -428860,7 +428860,15 @@
  int imageWarms=0;bool cancelImage=false;
  #define ENABLE_CHINESE_VERSION 1
  template<class... Args> void log(const char*,const char*,Args...) {}
-@@ -102,14 +111,15 @@
+@@ -44,6 +53,7 @@
+   bool cancelled=false, switching=false;
+   bool isSwitchPending() const {return switching;}
+   bool idleRenderCancelled(uint32_t) const {return cancelled || switching;}
++  void setTouchTolerantIdle(bool) {}
+ } activityManager;
+ uint8_t readerTextWeight() {return 2;}
+ const uint8_t* readerTextWeightCurve(uint8_t) {return nullptr;}
+@@ -102,14 +112,15 @@
    bool beginGrayscale16Offscreen(uint8_t*) {return false;}
    void endGrayscale16Offscreen() {}
  };
@@ -428879,7 +428887,7 @@
    const Block* getBlock() const {return &block;}
    void render(GfxRenderer& renderer,int,int,int) {
      renderer.frame[yPos]=static_cast<uint8_t>(renderer.mode+1);
-@@ -117,6 +127,11 @@
+@@ -117,6 +128,11 @@
      if (++renders == cancelAt) activityManager.cancelled=true;
    }
    void renderVertical(GfxRenderer& renderer,int fontId,int,int,int) {render(renderer,fontId,0,0);}
@@ -428891,7 +428899,7 @@
  };
  using PageElement=PageLine;
  namespace readingGuideLine {
-@@ -126,6 +141,7 @@
+@@ -126,6 +142,7 @@
  void draw(GfxRenderer& renderer,int,int,int,uint8_t) {renderer.frame[15]=0x55;}
  }
  struct Page {
@@ -428899,7 +428907,7 @@
    bool images=false;
    std::vector<std::unique_ptr<PageLine>> elements;
    Page() {for(int i=0;i<3;++i) {auto p=std::make_unique<PageLine>(); p->yPos=i; elements.push_back(std::move(p));}}
-@@ -304,8 +320,9 @@
+@@ -304,8 +321,9 @@
      def test_readpico_input_cancellation_on_hardware_and_simulator(self):
          source = (ROOT / 'src/main.cpp').read_text()
          begin = source.index('  // Cancel before any handler can wait for the framebuffer lock.')
@@ -428910,7 +428918,7 @@
          program = r'''
  #include <cassert>
  #include <cstdint>
-@@ -337,9 +354,15 @@
+@@ -337,9 +355,15 @@
    }
  }
  '''
@@ -428929,6 +428937,16 @@
  
      def test_render_task_priorities_and_waiter(self):
          source = (ROOT / 'src/activities/ActivityManager.cpp').read_text()
+@@ -388,6 +412,9 @@
+   std::atomic<uint32_t> idleRenderGeneration{0};
+   std::atomic<const char*> lastIdleCancel{"none"};
+   std::atomic<bool> lastIdleCancelRearms{false};
++  std::atomic<uint32_t> idleHardCancels{0};
++  std::atomic<bool> touchTolerantIdle{false};
++  std::atomic<uint32_t> touchTolerantHardBase{0};
+   std::unique_ptr<Activity> currentActivity=std::make_unique<Activity>();
+   TaskHandle_t waitingTaskHandle=0;
+   std::atomic<bool> requestedUpdate{false};
 --- a/scripts/tests/test_rickyos_app_profile.py
 +++ b/scripts/tests/test_rickyos_app_profile.py
 @@ -21,6 +21,7 @@
@@ -430530,7 +430548,15 @@
  #if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
 --- a/src/activities/ActivityManager.h
 +++ b/src/activities/ActivityManager.h
-@@ -15,6 +15,7 @@
+@@ -6,6 +6,7 @@
+ 
+ #include <atomic>
+ #include <cassert>
++#include <cstring>
+ #include <memory>
+ #include <string>
+ #include <vector>
+@@ -15,6 +16,7 @@
  #include "MappedInputManager.h"
  #include "Memory.h"
  #include "activities/MainTab.h"
@@ -430538,7 +430564,7 @@
  #include "util/ScreenshotInfo.h"
  
  class Activity;    // forward declaration
-@@ -38,6 +39,9 @@
+@@ -38,6 +40,9 @@
   */
  class ActivityManager {
    friend class RenderLock;
@@ -430548,7 +430574,7 @@
  
   protected:
    GfxRenderer& renderer;
-@@ -70,7 +74,8 @@
+@@ -70,7 +75,8 @@
    TaskHandle_t renderTaskHandle = nullptr;
    static void renderTaskTrampoline(void* param);
    [[noreturn]] virtual void renderTaskLoop();
@@ -430558,7 +430584,7 @@
    bool renderDirectGray(RenderLock&& lock);
    void settleToGray(RenderLock&& lock, uint32_t generation);
  #endif
-@@ -85,7 +90,7 @@
+@@ -85,7 +91,7 @@
    // Cross-task render request flag. requestUpdate() may set it from any task;
    // loop() consumes and clears it with exchange(false).
    std::atomic<bool> requestedUpdate{false};
@@ -430567,7 +430593,45 @@
    // Unlike requestedUpdate, this survives loop() consuming the notification.
    std::atomic<uint32_t> renderRequestGeneration{0};
  #endif
-@@ -160,6 +165,9 @@
+@@ -98,6 +104,11 @@
+   std::atomic<uint32_t> idleRenderGeneration{0};
+   std::atomic<const char*> lastIdleCancel{"none"};
+   std::atomic<bool> lastIdleCancelRearms{false};
++  // Cancels other than a bare touch. While touchTolerantIdle is set, an idle step
++  // survives touch cancels and stops only on one of these (see idleRenderCancelled).
++  std::atomic<uint32_t> idleHardCancels{0};
++  std::atomic<bool> touchTolerantIdle{false};
++  std::atomic<uint32_t> touchTolerantHardBase{0};
+ 
+  public:
+   explicit ActivityManager(GfxRenderer& renderer, MappedInputManager& mappedInput)
+@@ -115,11 +126,23 @@
+   void cancelIdleRender(const char* why = "other", const bool rearm = false) {
+     lastIdleCancel.store(why, std::memory_order_relaxed);
+     lastIdleCancelRearms.store(rearm, std::memory_order_relaxed);
++    if (std::strcmp(why, "touch") != 0) idleHardCancels.fetch_add(1, std::memory_order_relaxed);
+     idleRenderGeneration.fetch_add(1, std::memory_order_relaxed);
+   }
+   bool idleRenderCancelled(uint32_t generation) const {
+-    return generation != idleRenderGeneration.load(std::memory_order_relaxed) || isSwitchPending() ||
+-           requestedUpdate.load();
++    if (isSwitchPending() || requestedUpdate.load()) return true;
++    if (generation == idleRenderGeneration.load(std::memory_order_relaxed)) return false;
++    return !touchTolerantIdle.load(std::memory_order_relaxed) ||
++           idleHardCancels.load(std::memory_order_relaxed) != touchTolerantHardBase.load(std::memory_order_relaxed);
++  }
++  // An idle step the next input most likely needs (the reader's next page) finishes
++  // even if a finger lands meanwhile: a turn waits for the render lock anyway, and a
++  // finished page is ready at once where a dropped one is rendered again from scratch.
++  // Any other cancel (a key, an update, a switch) still stops it.
++  bool touchTolerantIdleActive() const { return touchTolerantIdle.load(std::memory_order_relaxed); }
++  void setTouchTolerantIdle(const bool tolerant) {
++    if (tolerant) touchTolerantHardBase.store(idleHardCancels.load(std::memory_order_relaxed), std::memory_order_relaxed);
++    touchTolerantIdle.store(tolerant, std::memory_order_relaxed);
+   }
+ 
+   // Will replace currentActivity and drop all activities on stack
+@@ -160,6 +183,9 @@
    void goToApps();
    void goToGomoku();
    void goToCalculator();
@@ -430577,7 +430641,7 @@
    void goToStandby();
    // Side key / inactivity: Standby over whatever is open, popping back to it on close.
    void openStandby();
-@@ -174,6 +182,7 @@
+@@ -174,6 +200,7 @@
    }
    // Apps → Standby: choose what the sleeping screen shows; full-screen Standby is a row there.
    void goToStandbySettings();
@@ -439171,7 +439235,7 @@
      notePageTurn(forward, succeeded);
      requestUpdate();
      return;
-@@ -1174,17 +1224,24 @@
+@@ -1174,17 +1224,26 @@
      return;
    }
  
@@ -439183,8 +439247,11 @@
 +    originY = nativePageTurn::normalize(touchY, renderer.getScreenHeight());
 +  }
    if (turnGuardActive) {
-     activityManager.cancelIdleRender("turn guard");
+-    activityManager.cancelIdleRender("turn guard");
 -    pendingManualTurn = prevTriggered ? -1 : 1;
++    // While the idle pass is building the next page, let that page finish (a soft,
++    // touch-class cancel stops everything after it): the deferred turn then uses it.
++    activityManager.cancelIdleRender(activityManager.touchTolerantIdleActive() ? "touch" : "turn guard");
 +    pendingManualTurn = nativePageTurn::pack(prevTriggered ? -1 : 1, originX, originY);
      return;
    }
@@ -439199,7 +439266,7 @@
      notePageTurn(true, succeeded);
    }
    requestUpdate();
-@@ -1562,6 +1619,8 @@
+@@ -1562,6 +1621,8 @@
    }
  
    RenderLock lock(*this);
@@ -439208,7 +439275,7 @@
    if (section) {
      rememberCurrentContentOffset();
      cachedSpineIndex = currentSpineIndex;
-@@ -1605,6 +1664,11 @@
+@@ -1605,15 +1666,28 @@
  }
  
  bool EpubReaderActivity::pageTurn(bool isForwardTurn) {
@@ -439219,8 +439286,17 @@
 +  pendingNativeTurn_ = 0;
    if (!section) return false;
    READING_STATS.noteActivity();
++#if RICKYOS_PLUS_READER_TIMING
++  const auto tTurnInput = millis();
++#endif
    {
-@@ -1614,6 +1678,7 @@
+     RenderLock lock;
+     clearDeferredReposition();
+   }
++#if RICKYOS_PLUS_READER_TIMING
++  LOG_INF("ReaderTiming", "turn input at=%lu lockwait=%lums", static_cast<unsigned long>(tTurnInput),
++          static_cast<unsigned long>(millis() - tTurnInput));
++#endif
    if (isForwardTurn) {
      if (section->currentPage < section->pageCount - 1 || section->isBuilding()) {
        section->currentPage++;
@@ -439228,7 +439304,7 @@
        lastPageTurnTime = millis();
        return true;
      } else if (currentSpineIndex + 1 < epub->getSpineItemsCount()) {
-@@ -1631,6 +1696,7 @@
+@@ -1631,6 +1705,7 @@
    } else {
      if (section->currentPage > 0) {
        section->currentPage--;
@@ -439236,7 +439312,7 @@
        lastPageTurnTime = millis();
        return true;
      } else if (currentSpineIndex > 0) {
-@@ -1647,6 +1713,7 @@
+@@ -1647,6 +1722,7 @@
  }
  
  bool EpubReaderActivity::skipPages(int amount) {
@@ -439244,7 +439320,7 @@
    if (!section) return false;
    READING_STATS.noteActivity();
    if (amount > 0) {
-@@ -1680,6 +1747,12 @@
+@@ -1680,6 +1756,12 @@
    bool offerSync = false;
    if (perr == "txt progress migration failed") {
      msg = StrId::STR_TXT_PROGRESS_MIGRATION_FAILED;
@@ -439257,7 +439333,7 @@
    } else if (perr == "access expired") {
      msg = StrId::STR_LOAN_EXPIRED;
    } else if (perr == "loan date unverified") {
-@@ -1780,11 +1853,19 @@
+@@ -1780,11 +1862,19 @@
    renderer.getOrientedViewableTRBL(&viewable.top, &viewable.right, &viewable.bottom, &viewable.left);
    const int screenMargin = SETTINGS.screenMargin;
    const auto mode = readingMode::modeFor(SETTINGS.readingMode);
@@ -439280,7 +439356,7 @@
    }
    int bottomReserve = 0;
    if (readingMode::showsFooter(mode)) {
-@@ -1794,8 +1875,8 @@
+@@ -1794,8 +1884,8 @@
          (statusBarHeight == 0 || statusBarHeight == UITheme::getInstance().getProgressBarHeight())) {
        bottomReserve += UITheme::getInstance().getMetrics().statusBarVerticalMargin;
      }
@@ -439291,7 +439367,7 @@
      }
    }
    const readingMode::Margins base{top, viewable.right + screenMargin,
-@@ -1891,7 +1972,7 @@
+@@ -1891,7 +1981,7 @@
        return;
      }
  
@@ -439300,7 +439376,7 @@
      ++sectionGeneration_;
  #endif
      const bool cacheLoaded = section->loadSectionFile(renderSpec);
-@@ -2307,14 +2388,23 @@
+@@ -2307,14 +2397,23 @@
    }
  }
  
@@ -439327,7 +439403,7 @@
  bool EpubReaderActivity::pageCacheEligible() const {
    // No !section->isBuilding() here, deliberately. The page cache renders ONE page --
    // the current one or the next -- and Section::loadPage() is written to serve exactly
-@@ -2328,7 +2418,13 @@
+@@ -2328,7 +2427,13 @@
    // engages at all -- every turn is a full render instead of the cached one.
    return !pageCacheFailed_ && section && renderer.hasFrameBuffer() && !activityManager.isSwitchPending() &&
           overlay == Overlay::None && fontPromptState == FontPromptState::Idle && !renderer.isInverted() &&
@@ -439342,7 +439418,7 @@
  }
  
  ReaderPageCacheKey EpubReaderActivity::pageCacheKey(const int page, const int top, const int right, const int bottom,
-@@ -2369,8 +2465,34 @@
+@@ -2369,8 +2474,34 @@
    }
  }
  
@@ -439377,7 +439453,7 @@
    // Every exit below names the condition it took. Without that, "the cache never hits"
    // is indistinguishable from "the build was cancelled", "the layout moved since the
    // last render" and "the next page has images" -- and each of those needs a different
-@@ -2400,6 +2522,9 @@
+@@ -2400,6 +2531,9 @@
    const auto& layout = renderedPageKey_;
    // A main-loop reflow/jump may have replaced the section since the last render.
    if (layout != pageCacheKey(section->currentPage, layout.top, layout.right, layout.bottom, layout.left)) {
@@ -439387,7 +439463,7 @@
      LOG_DBG("ERS", "Page cache: skip, layout moved since the last render");
      return;
    }
-@@ -2412,26 +2537,38 @@
+@@ -2412,26 +2546,40 @@
    // A build cut short by input stays retryable: the render task re-arms the idle pass
    // once input is quiet, and a Skipped slot would otherwise never be built again.
    const auto build = [&](const int slot, const ReaderPageCacheKey& key) {
@@ -439409,7 +439485,9 @@
    ++forward.page;
 -  if (forward.page < static_cast<int>(section->pageCount)) build(0, forward);
 +  if (forward.page < static_cast<int>(section->pageCount)) {
++    activityManager.setTouchTolerantIdle(true);
 +    build(0, forward);
++    activityManager.setTouchTolerantIdle(false);
 +  }
 +#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
 +  else {
@@ -439436,7 +439514,7 @@
  // On a chapter's last page the forward slot is free: build the next chapter and render
  // its first page into it. Comics put one picture in each chapter, so without this every
  // turn decoded a JPEG in the foreground (~3.5 s); now it happens while the page is read.
-@@ -2464,6 +2601,12 @@
+@@ -2464,6 +2612,12 @@
    }
    if (nextSection->pageCount == 0 || activityManager.idleRenderCancelled(generation)) return;
    const bool ready = buildPageCacheSlot(0, key, generation, nextSection.get());
@@ -439449,7 +439527,7 @@
    LOG_DBG("ERS", "Next chapter prefetch: spine %d ready=%d in %lums", next, ready, millis() - started);
  }
  #endif
-@@ -2527,13 +2670,18 @@
+@@ -2527,13 +2681,18 @@
    if (!pageCacheBase_[slot]) {
      constexpr size_t kContiguousReserve = 16 * 1024;
      // Reserve the slots still to allocate; the forward slot is already charged for slot 1.
@@ -439472,7 +439550,7 @@
        freePageCache();
        pageCacheFailed_ = true;
        LOG_ERR("ERS", "Page cache off: PSRAM allocation of %u B failed", static_cast<unsigned>(4 * bytes));
-@@ -2579,12 +2727,26 @@
+@@ -2579,12 +2738,26 @@
    const readingMode::Box textBox = readingMode::textBox(renderer.getScreenWidth(), renderer.getScreenHeight(),
                                                          {key.top, key.right, key.bottom, key.left});
    const int pitch = renderer.getLineHeight(key.spec.fontId, key.spec.lineCompression);
@@ -439499,7 +439577,7 @@
    };
  
    // Load glyphs on demand: a whole-page prewarm cannot be interrupted. Check
-@@ -2597,9 +2759,10 @@
+@@ -2597,9 +2770,10 @@
      GfxRenderer::SyntheticBoldScope syntheticBold(renderer, key.fakeBold);
      GfxRenderer::TextWeightScope textWeight(renderer, readerTextWeightCurve(key.textWeight),
                                              readerTextWeightSpread(key.textWeight));
@@ -439511,7 +439589,7 @@
      }
      if (vertical) readerChrome::drawColumnRules(renderer, *page, textBox, pitch);
      // Match foreground ordering: all text first, then the guide lines.
-@@ -2632,13 +2795,27 @@
+@@ -2632,13 +2806,27 @@
        GfxRenderer& renderer;
        ~EndOffscreen() { renderer.endGrayscale16Offscreen(); }
      } endOffscreen{renderer};
@@ -439540,7 +439618,7 @@
        }
        if (vertical) readerChrome::drawColumnRules(renderer, *page, textBox, pitch);
      }
-@@ -2671,6 +2848,10 @@
+@@ -2671,6 +2859,10 @@
    }
    pageCacheMissingCodepoint_[slot] = fcm ? fcm->consumeMissingChineseCodepoint() : 0;
    pageCache_[slot].state = ReaderPageCache::State::Ready;
@@ -439551,7 +439629,7 @@
    LOG_DBG("ERS", "Page cache: slot %d, page %d ready in %lums", slot, key.page, millis() - started);
    return true;
  }
-@@ -2679,6 +2860,9 @@
+@@ -2679,6 +2871,9 @@
  void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int orientedMarginTop,
                                          const int orientedMarginRight, const int orientedMarginBottom,
                                          const int orientedMarginLeft) {
@@ -439561,7 +439639,7 @@
    const auto t0 = millis();
    const int fontId = SETTINGS.getReaderFontId();
    const bool vertical = readingMode::setsVertically(readingMode::modeFor(SETTINGS.readingMode));
-@@ -2732,7 +2916,7 @@
+@@ -2732,7 +2927,7 @@
        if (manager) manager->clearCache();
      }
    } rawFontCacheGuard;
@@ -439570,7 +439648,7 @@
    const auto key = pageCacheKey(section ? section->currentPage : -1, orientedMarginTop, orientedMarginRight,
                                  orientedMarginBottom, orientedMarginLeft);
    // Either slot may hold this page: slot 0 was built for it as a forward turn, slot 1
-@@ -2779,8 +2963,14 @@
+@@ -2779,8 +2974,14 @@
    // RickyOS: every text face (2-bit downloaded fonts too) and synthetic bold draw straight
    // into the 16-level frame, and JPEG illustrations decode into it, so anti-aliased pages
    // take the single-render path.
@@ -439587,7 +439665,7 @@
    const bool needsAnyGrayscale = grayscaleEnabled && (SETTINGS.textAntiAliasing || pageHasImages);
    const bool absoluteImageGrayscale = grayscaleEnabled && pageHasImages && !gpio.deviceIsX3() &&
                                        display.getController() == HalDisplay::Controller::UC8279 &&
-@@ -2844,7 +3034,7 @@
+@@ -2844,7 +3045,7 @@
    };
  
    unsigned long cacheBaseMs = 0;
@@ -439596,7 +439674,7 @@
    if (use16LevelText) {
      // The 16-level pass below clears the frame and renders (or copies from the cache)
      // the page, writing the B/W proxy as it goes, so a B/W render here is thrown away.
-@@ -2859,7 +3049,7 @@
+@@ -2859,7 +3060,7 @@
    {
      renderPageWithGuideLines();
    }
@@ -439605,7 +439683,7 @@
    const uint32_t missingCodepoint =
        pageCacheHit ? pageCacheMissingCodepoint_[pageCacheLiveSlot_] : fcm->consumeMissingChineseCodepoint();
  #else
-@@ -2869,7 +3059,14 @@
+@@ -2869,7 +3070,14 @@
      uint32_t expected = 0;
      pendingMissingChineseCodepoint_.compare_exchange_strong(expected, missingCodepoint, std::memory_order_relaxed);
    }
@@ -439620,7 +439698,7 @@
    const auto tBwRender = millis();
  
    if (absoluteImageGrayscale) {
-@@ -2889,6 +3086,7 @@
+@@ -2889,6 +3097,7 @@
      // twice (more flash, more time), and the 16-level waveform is a full-screen one anyway,
      // so ghosting is still cleared.
    } else if (combinedGrayscaleBase) {
@@ -439628,7 +439706,7 @@
      ReaderUtils::displayBaseWithRefreshCycle(renderer, pagesUntilFullRefresh, manualRefreshPending);
    } else if (pageHasImages) {
      // Image pages use one base refresh before the grayscale pass. FAST leaves
-@@ -2903,6 +3101,7 @@
+@@ -2903,6 +3112,7 @@
        pagesUntilFullRefresh = 1;
      }
    } else {
@@ -439636,7 +439714,7 @@
      ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh, overlapRefresh);
    }
    const auto tDisplay = millis();
-@@ -2912,7 +3111,7 @@
+@@ -2912,7 +3122,7 @@
      const auto t16Begin = millis();
      if (renderer.beginGrayscale16()) {
        const auto t16Cleared = millis();
@@ -439645,7 +439723,7 @@
        if (pageCacheHit && pageCacheIs16_[pageCacheLiveSlot_] && pageCache16_[pageCacheLiveSlot_]) {
          memcpy(renderer.grayscale16Frame(), pageCache16_[pageCacheLiveSlot_].get(), renderer.grayscale16FrameBytes());
          memcpy(renderer.getFrameBuffer(), pageCacheBase_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
-@@ -2920,28 +3119,53 @@
+@@ -2920,28 +3130,54 @@
        } else
  #endif
        {
@@ -439670,9 +439748,10 @@
        LOG_DBG("ERS", "16-level timing: before=%lums begin=%lums page=%lums status=%lums", t16Begin - t0,
                t16Cleared - t16Begin, t16Page - t16Cleared, millis() - t16Page);
 +#if RICKYOS_PLUS_READER_TIMING
-+      LOG_INF("ReaderTiming", "spine=%d page=%d images=%d cached=%d prewarm=%lums before=%lums begin=%lums "
++      LOG_INF("ReaderTiming", "start=%lu spine=%d page=%d images=%d cached=%d prewarm=%lums before=%lums begin=%lums "
 +                              "paint=%lums status=%lums",
-+              currentSpineIndex, section ? section->currentPage : -1, pageHasImages ? 1 : 0, pageCacheHit ? 1 : 0,
++              static_cast<unsigned long>(t0), currentSpineIndex, section ? section->currentPage : -1,
++              pageHasImages ? 1 : 0, pageCacheHit ? 1 : 0,
 +              tPrewarm - t0, t16Begin - tPrewarm, t16Cleared - t16Begin, t16Page - t16Cleared,
 +              millis() - t16Page);
 +#endif
@@ -439702,7 +439781,7 @@
          ttf = {};
  #endif
        }
-@@ -2951,16 +3175,66 @@
+@@ -2951,16 +3187,71 @@
          return;
        }
  #if !defined(SIMULATOR)
@@ -439737,7 +439816,11 @@
 +                previousNativeOrientation_ == static_cast<uint8_t>(renderer.getOrientation()));
 +      }
 +#endif
-+      if (nativeTurnDirection != 0 && previousNativeText && !pageHasImages &&
++      // A turn queued while the previous page was still driving (it lands right after
++      // that drive ends) means the reader is ahead of the panel: skip the motion, which
++      // only adds stagger scans, so a run of quick taps turns each page faster.
++      const bool queuedTurn = lastNativeCommitEnd_ != 0 && lastPageTurnTime - lastNativeCommitEnd_ < kQueuedTurnMs;
++      if (nativeTurnDirection != 0 && previousNativeText && !pageHasImages && !queuedTurn &&
 +          refresh == HalDisplay::FAST_REFRESH && !panelTurn &&
 +          previousNativeSpine_ == currentSpineIndex &&
 +          previousNativePage_ + nativeTurnDirection == section->currentPage &&
@@ -439764,6 +439847,7 @@
 +        previousNativePage_ = section->currentPage;
 +        previousNativeOrientation_ = static_cast<uint8_t>(renderer.getOrientation());
          const auto tEnd = millis();
++        lastNativeCommitEnd_ = tEnd;
          LOG_DBG("ERS", "Page render: 16-level text total=%lums", tEnd - t0);
 +#if RICKYOS_PLUS_READER_TIMING
 +        LOG_INF("ReaderTiming", "commit=%lums total=%lums images=%d cached=%d", tEnd - tCommit, tEnd - t0,
@@ -439772,7 +439856,7 @@
  #if RICKYOS_PAINT_PROFILE
          LOG_INF("PERF", "reader commit=%lums total=%lums", tEnd - tCommit, tEnd - t0);
  #endif
-@@ -3137,7 +3411,7 @@
+@@ -3137,7 +3428,7 @@
        }
        const auto tBwStore = millis();
  
@@ -439781,7 +439865,7 @@
        if (pageCacheHit) {
          // Both planes were rendered at idle; putting them in place is one copy
          // each instead of a full page render each.
-@@ -3164,7 +3438,7 @@
+@@ -3164,7 +3455,7 @@
          return;
        }
  
@@ -439790,7 +439874,7 @@
        if (pageCacheHit) {
          memcpy(renderer.getFrameBuffer(), pageCacheMsb_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
          renderer.copyGrayscaleMsbBuffers();
-@@ -3212,9 +3486,12 @@
+@@ -3212,9 +3503,12 @@
  }
  
  void EpubReaderActivity::renderStatusBar() const {
@@ -439803,7 +439887,7 @@
      readerChrome::PageInfo info;
      info.bookTitle = epub ? epub->getTitle().c_str() : nullptr;
      // A chapter the table of contents names, not currentChapterTitle()'s "unnamed".
-@@ -3225,11 +3502,18 @@
+@@ -3225,11 +3519,18 @@
      }
      info.chapterTitle = chapter.c_str();
      info.pageInChapter = currentPage;
@@ -439824,7 +439908,7 @@
    const float pageCount = section ? section->estimatedTotalPages() : 1;
    const float sectionChapterProg = (pageCount > 0) ? (static_cast<float>(currentPage) / pageCount) : 0;
    const float bookProgress = epub ? (epub->calculateProgress(currentSpineIndex, sectionChapterProg) * 100) : 0;
-@@ -3266,8 +3550,12 @@
+@@ -3266,8 +3567,12 @@
        auto chapter = renderer.truncatedText(RickyDesignUi::BODY, title.c_str(), column);
        title = book + " · " + chapter;
      }
@@ -439856,19 +439940,23 @@
    std::shared_ptr<Epub> epub;
    std::unique_ptr<Section> section = nullptr;
    int currentSpineIndex = 0;
-@@ -29,6 +32,11 @@
+@@ -29,6 +32,15 @@
    std::optional<uint16_t> pendingPageJump;
    std::string pendingAnchor;
    int cachedSpineIndex = 0;
 +  bool lastPageHadPanelFill_ = false;  // the shown page has a gray CSS panel (clean the turn off it)
 +std::atomic<uint32_t> pendingNativeTurn_{0};
 +  bool previousNativeText_ = false;
++  // When the last 16-level page finished driving; a turn taken within kQueuedTurnMs of
++  // it was tapped during that drive.
++  unsigned long lastNativeCommitEnd_ = 0;
++  static constexpr unsigned long kQueuedTurnMs = 150;
 +  int previousNativeSpine_ = -1, previousNativePage_ = -1;
 +  uint8_t previousNativeOrientation_ = 255;
    int cachedChapterTotalPageCount = 0;
    std::optional<uint32_t> cachedVisibleTextOffset;
    std::optional<uint32_t> currentPageVisibleOffset;
-@@ -36,7 +44,7 @@
+@@ -36,7 +48,7 @@
    unsigned long lastPageTurnTime = 0UL;
    unsigned long pageTurnDuration = 0UL;
    uint8_t pageTurnRate = 15;
@@ -439877,7 +439965,7 @@
    bool pendingPercentJump = false;
    float pendingSpineProgress = 0.0f;
    bool pendingScreenshot = false;
-@@ -55,7 +63,9 @@
+@@ -55,7 +67,9 @@
    int idlePrewarmPage = -1;
    unsigned long lastRenderCompleteMs = 0;
  
@@ -439888,7 +439976,7 @@
    // Two slots of four reusable PSRAM frames each (~812 KiB total); too large for
    // the render task's stack. The activity owns them and releases them in onExit().
    //
-@@ -84,13 +94,15 @@
+@@ -84,13 +98,15 @@
    uint32_t pageCacheMissingCodepoint_[kPageCacheSlots] = {};
  
    bool pageCacheEligible() const;
@@ -439906,7 +439994,7 @@
    void prefetchNextChapter(const ReaderPageCacheKey& layout, uint32_t generation);
  #endif
    void freePageCache();
-@@ -318,7 +330,8 @@
+@@ -318,7 +334,8 @@
    void loop() override;
    void render(RenderLock&& lock) override;
  
@@ -443354,7 +443442,7 @@
  #endif
  
    if (activityManager.requiresExclusiveStorageLoop()) {
-@@ -1087,11 +1192,24 @@
+@@ -1087,11 +1192,30 @@
  
    renderer.setFadingFix(SETTINGS.fadingFix);
  
@@ -443366,8 +443454,14 @@
 +
 +  // Plus logs through IDF, not Arduino Serial (Logging.cpp). Its console and
 +  // the ROM console do not depend on Arduino USB CDC's connection state.
++  // Never while a page renders or drives the panel: the largest-free-block
++  // queries walk each heap under its lock, interrupts off, for hundreds of
++  // microseconds on the 16 MB PSRAM heap. On the Plus that stalled the panel's
++  // bounce-buffer refill, which then re-sent rows 16 back: a faint copy of the
++  // text beside it at the portrait left edge. The snapshot waits for the next
++  // idle loop instead.
 +  if ((FREEINK_DEVICE_METALIO_PLUS || Serial || FREEINK_LOG_TRANSPORT == FREEINK_LOG_TRANSPORT_ROM_PRINTF) &&
-+      millis() - lastMemPrint >= 10000) {
++      millis() - lastMemPrint >= 10000 && !RenderLock::peek()) {
      const auto heap = HalMemory::getInternalHeap();
      LOG_INF("MEM", "Free: %zu bytes, Total: %zu bytes, Min Free: %zu bytes, MaxAlloc: %zu bytes", heap.freeBytes,
              heap.totalBytes, heap.minFreeBytes, heap.largestBlockBytes);
@@ -443381,7 +443475,7 @@
  #ifdef BOARD_HAS_PSRAM
      const auto psram = HalMemory::getPsramHeap();
      LOG_INF("MEM", "PSRAM: Free: %zu bytes, Total: %zu bytes, Min Free: %zu bytes, MaxAlloc: %zu bytes",
-@@ -1208,6 +1326,10 @@
+@@ -1208,6 +1332,10 @@
      return;
    }
    const unsigned long sleepTimeoutMs = SETTINGS.getSleepTimeoutMs();
@@ -443392,7 +443486,7 @@
    if (sleepTimeoutMs > 0 && !activityManager.preventAutoSleep() && millis() - lastActivityTime >= sleepTimeoutMs) {
      LOG_DBG("SLP", "Auto-standby after %lu ms of inactivity", sleepTimeoutMs);
      STANDBY_DIAG("auto-standby after %lus idle", sleepTimeoutMs / 1000);
-@@ -1310,12 +1432,13 @@
+@@ -1310,12 +1438,13 @@
    // flash, the AA pass re-running, and a frontlight dip under the refresh
    // load); the reader's status bar picks the charging state up on the next
    // page turn instead.

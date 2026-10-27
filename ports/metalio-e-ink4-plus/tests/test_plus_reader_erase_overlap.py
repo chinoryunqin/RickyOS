@@ -84,13 +84,13 @@ int main(int argc,char** argv) {
               '-I', str(p), '-I', str(DISPLAY), str(PORT / 'tests/native_turn_host.c'),
               str(DISPLAY / 'waveforms/my_waveform.c'),
               str(DISPLAY / 'waveforms/my_waveform_trim.c'), '-o', str(p / 'native')]
-    for sweep in (3, 4, 7):
+    for sweep in (2, 3, 4, 7):
         subprocess.run([*native, f'-DRICKYOS_PLUS_READER_SWEEP_SPREAD={sweep}'], check=True)
         subprocess.run([str(p / 'native')], check=True)
     for flag, message in [('RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES=9', 'must be 0..8'),
                           ('RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES=-1', 'must be 0..8'),
-                          ('RICKYOS_PLUS_READER_SWEEP_SPREAD=2', 'must be 3..7'),
-                          ('RICKYOS_PLUS_READER_SWEEP_SPREAD=8', 'must be 3..7'),
+                          ('RICKYOS_PLUS_READER_SWEEP_SPREAD=1', 'must be 2..7'),
+                          ('RICKYOS_PLUS_READER_SWEEP_SPREAD=8', 'must be 2..7'),
                           ('RICKYOS_PLUS_READER_EARLY_ERASE=0', 'requires early erase')]:
         name = flag.split('=')[0]
         rejected = [arg for arg in native if not arg.startswith('-D' + name + '=')]

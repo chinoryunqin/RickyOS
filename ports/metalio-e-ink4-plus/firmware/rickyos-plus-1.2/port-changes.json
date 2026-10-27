@@ -580,7 +580,7 @@
     {
       "path": "scripts/tests/test_reader_page_cache.py",
       "baseline_sha256": "7153d307adee5a6960f252e680077353bb32ef22105d7cd5911554b492602b1e",
-      "ported_sha256": "201b519fd10ed1a669297456c10fc1cc8d15ff643c6a14121a983fe5f390cc20"
+      "ported_sha256": "2233c03ebb150856fb02ad97de5ed86c74d703cc315825305098d93057f6d656"
     },
     {
       "path": "scripts/tests/test_rickyos_app_profile.py",
@@ -670,7 +670,7 @@
     {
       "path": "src/activities/ActivityManager.h",
       "baseline_sha256": "01c40530f8ee1ae4a1cd07ba1c02d2a8c494992c72ed0bafd12c4924bf65ff80",
-      "ported_sha256": "586d507d6db28330db4924205b1d86a906fb3e884ad5cabc894109bc76b322de"
+      "ported_sha256": "2b181fae1a6c5503999115208c062143215ab8744c76bbf2e6597227001580a5"
     },
     {
       "path": "src/activities/MainTabMotion.h",
@@ -920,12 +920,12 @@
     {
       "path": "src/activities/reader/EpubReaderActivity.cpp",
       "baseline_sha256": "330723cad52ac629fa1451c9ca90cffff0a04b06e0266861e092ff93e8ffa1c9",
-      "ported_sha256": "a3bacaf832e2ced000959fc2097fd25b468339a380987624c2b46644dc4d054d"
+      "ported_sha256": "578128e98137c5046c4b2d0e6261679b2d9ad287e283916628e498bb29bb55d7"
     },
     {
       "path": "src/activities/reader/EpubReaderActivity.h",
       "baseline_sha256": "6fb5eb74b19af5cbfe08ae3974b70d49d6019dc888535f7091ceeb389f3dd650",
-      "ported_sha256": "ca0bdf69a731cab15a1fddcb8a86de2044e0ed5e565ddc4b8d5e026c6fe9429e"
+      "ported_sha256": "5aded696b4604f33782bb05630b27958eae27c7b213159c56b26cd0038cbf40c"
     },
     {
       "path": "src/activities/reader/EpubReaderMenuActivity.cpp",
@@ -1155,7 +1155,7 @@
     {
       "path": "src/main.cpp",
       "baseline_sha256": "a9593200335b30dace971723992905ac8ce0beb05159ecb6d17d837bdb73fdc5",
-      "ported_sha256": "5aef0a7582385dd6df7d82c9c25ebc93613b526aff4dd6f673b7458f831c0485"
+      "ported_sha256": "314aa0674b6ac1ae199ccfd1e7120a0821cdfd47b67717b62ab2337d4d3e1fd7"
     },
     {
       "path": "src/network/CrossPointWebServer.cpp",

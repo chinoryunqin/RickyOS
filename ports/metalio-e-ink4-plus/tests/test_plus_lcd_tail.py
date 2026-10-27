@@ -32,10 +32,13 @@ struct Context {
  size_t lines_fed=0,bb_eof_count=0,bb_size=40;
  bool bb_behind_cache=false;
  uint8_t* bounce_buffer[2]{};Node dma_nodes[2];
- int64_t eof_last_us=0,eof_dt_min_us=0,eof_dt_max_us=0,eof_dt_sum_us=0;
+ int64_t eof_last_us=0,eof_last_us_prev=0,eof_dt_min_us=0,eof_dt_max_us=0,eof_dt_sum_us=0;
+ int line_length_us=17;
  unsigned eof_dt_n=0,eof_work_n=0;
  int64_t eof_work_min_us=0,eof_work_max_us=0,eof_work_sum_us=0;
 }lcd;
+struct EpdLcdRefillStats {uint32_t stale,refills;int32_t max_dt_us,max_work_us,worst_line,period_us;};
+static EpdLcdRefillStats s_refill;static int64_t s_refill_worst;
 inline bool border_whitening=false;
 inline int64_t esp_timer_get_time(){static int64_t t=1;return ++t;}
 inline int stops=0,done=0,sourceRow=0;

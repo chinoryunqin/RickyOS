@@ -37,9 +37,22 @@ static void start_phase_feeders(RenderContext_t* ctx, unsigned* pending) {
     for (int i = 0; i < NUM_RENDER_THREADS; ++i) xTaskNotifyGive(ctx->feed_tasks[i]);
 }
 
+// Opt-in A/B: start the next phase's producers only after the current frame has
+// been scanned, with a smaller prefill. Measured ~2 ms slower per phase and it did
+// not remove the late bounce refills near row 552 (those came from the EOF ISR
+// waiting out cache-disabled flash access; see CONFIG_LCD_RGB_ISR_IRAM_SAFE).
+#ifndef RICKYOS_PLUS_LOOKAHEAD_AFTER_FRAME
+#define RICKYOS_PLUS_LOOKAHEAD_AFTER_FRAME 0
+#endif
+#define LOOKAHEAD_AFTER_FRAME_PREFILL 96
+
+static int lookahead_prefill_lines(void) {
+    return RICKYOS_PLUS_LOOKAHEAD_AFTER_FRAME ? LOOKAHEAD_AFTER_FRAME_PREFILL : s_prefill_lines;
+}
+
 static bool wait_phase_prefill(RenderContext_t* ctx) {
     const int64_t deadline = esp_timer_get_time() + 2000000;
-    for (int row = 0; row < s_prefill_lines; ++row) {
+    for (int row = 0; row < lookahead_prefill_lines(); ++row) {
         while (!__atomic_load_n(&ctx->line_ready[row], __ATOMIC_ACQUIRE)) {
             if (__atomic_load_n(&ctx->error, __ATOMIC_ACQUIRE) || esp_timer_get_time() >= deadline) {
                 if (!__atomic_load_n(&ctx->error, __ATOMIC_ACQUIRE))
@@ -98,6 +111,7 @@ static void lcd_do_update_lookahead(RenderContext_t* ctx) {
         // tail. Append the next phase behind that tail; ownership is row%2.
         if (!wait_phase_feeders(ctx, &pending)) break;
         if (__atomic_load_n(&ctx->error, __ATOMIC_ACQUIRE)) break;
+#if !RICKYOS_PLUS_LOOKAHEAD_AFTER_FRAME
         if (phase + 1 < ctx->cycle_frames) {
             uint8_t* next = ctx->line_ready == original_ready ? original_threads : original_ready;
             memset(next, 0, ctx->lines_total);
@@ -114,12 +128,32 @@ static void lcd_do_update_lookahead(RenderContext_t* ctx) {
             s_phase_producer_ready = next;
             start_phase_feeders(ctx, &pending);
         }
+#endif
         if (xSemaphoreTake(ctx->frame_done, pdMS_TO_TICKS(2000)) != pdTRUE) {
             lcd_note_first_fault(&s_first_fault, LCD_FAULT_FRAME_TIMEOUT, -1, -1);
             __atomic_fetch_or(&ctx->error, EPD_DRAW_EMPTY_LINE_QUEUE, __ATOMIC_RELEASE);
             break;
         }
         if (__atomic_load_n(&ctx->error, __ATOMIC_ACQUIRE)) break;
+#if RICKYOS_PLUS_LOOKAHEAD_AFTER_FRAME
+        // The frame is fully scanned: the ISR no longer reads either queue.
+        if (phase + 1 < ctx->cycle_frames) {
+            uint8_t* next = ctx->line_ready == original_ready ? original_threads : original_ready;
+            memset(next, 0, ctx->lines_total);
+            const EpdWaveformPhases* phases =
+                ctx->waveform->mode_data[ctx->waveform_index]->range_data[ctx->waveform_range];
+            if (ctx->turn_phases) {
+                // Current ISR consumes only committed internal rows. Both
+                // producers have joined, so changing their phase/window is safe.
+                ctx->turn_producer_tick = phase + 1;
+                ricky_turn_prepare_window(ctx);
+            } else {
+                ctx->lut_build_func(ctx->conversion_lut, phases, phase + 1);
+            }
+            s_phase_producer_ready = next;
+            start_phase_feeders(ctx, &pending);
+        }
+#endif
         // Keep the existing minimum settling cadence, timed from actual scan
         // start (not from before LUT build/prefill). No shortened waveforms.
         // Only the final phase needs its full hold here. Other fixed-cadence

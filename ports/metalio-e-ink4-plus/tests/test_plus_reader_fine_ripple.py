@@ -69,9 +69,9 @@ int main(void) {
              '-DRICKYOS_PLUS_READER_FINE_RIPPLE=1','-O1','-g','-Wall','-Wextra','-Werror',
              '-fsanitize=address,undefined','-I',str(p),'-I',str(DISPLAY),str(p/'test.c'),
              str(DISPLAY/'waveforms/my_waveform.c'),str(DISPLAY/'waveforms/my_waveform_trim.c'),'-o',str(p/'test')]
-    for spread in [9,15,23]:
+    for spread in [4,5,15,23]:
         subprocess.run([*command,f'-DRICKYOS_PLUS_READER_RIPPLE_SPREAD={spread}'],check=True)
         subprocess.run([str(p/'test')],check=True)
-    for spread in [8,24]:
+    for spread in [3,24]:
         result=subprocess.run([*command,f'-DRICKYOS_PLUS_READER_RIPPLE_SPREAD={spread}'],capture_output=True,text=True)
-        assert result.returncode and 'Reader ripple spread must be 9..23' in result.stderr
+        assert result.returncode and 'Reader ripple spread must be 4..23' in result.stderr

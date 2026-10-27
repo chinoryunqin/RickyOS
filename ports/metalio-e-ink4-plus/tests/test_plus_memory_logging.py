@@ -31,6 +31,8 @@ template<class... T> void record(const char* tag,const char*,T...){assert(!strcm
 #define LOG_INF(...) record(__VA_ARGS__)
 namespace bleinput {bool isRunning(){return false;}void logDiagnostics(const char*){assert(false);}}
 unsigned lastMemPrint=0;
+struct RenderLock {static bool held; static bool peek(){return held;}};
+bool RenderLock::held=false;
 void loop(){
 ''' + block + r'''
 }
@@ -43,6 +45,10 @@ int main(){
  assert(logs==2+FREEINK_DEVICE_METALIO_PLUS&&lastMemPrint==10000);
  tick=19999;loop();assert(internalReads==1);
  tick=20000;loop();assert(internalReads==2);
+ // A page rendering or driving the panel holds the render lock: the heap walk
+ // (interrupts off) waits for the next idle loop rather than stalling the panel feed.
+ tick=30000;RenderLock::held=true;loop();assert(internalReads==2&&lastMemPrint==20000);
+ RenderLock::held=false;loop();assert(internalReads==3&&lastMemPrint==30000);
 #else
  assert(logs==0&&lastMemPrint==0);
  Serial=true;loop();assert(internalReads==1&&psramReads==1&&dmaReads==0);
@@ -59,4 +65,4 @@ with tempfile.TemporaryDirectory(prefix='plus-memory-log-') as folder:
                         '-o', str(path / 'test')], check=True)
         subprocess.run([str(path / 'test')], check=True)
 print('Actual memory telemetry: Plus IDF console independent of Arduino, DMA subset, '
-      '10 s bound and other transport gates passed (ASan/UBSan)')
+      '10 s bound, deferral while rendering and other transport gates passed (ASan/UBSan)')

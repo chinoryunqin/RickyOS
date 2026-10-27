@@ -28,6 +28,18 @@ static inline __attribute__((always_inline)) void lcd_note_first_fault(
 extern "C" {
 #endif
 uint32_t epd_lcd_get_first_fault(void);
+// Bounce-buffer refill timing since the last take, across frames. A refill is
+// "stale" when the EOF handler's delay plus its own work exceeds one bounce
+// period: the DMA then re-sends that buffer's previous rows (16 rows back).
+typedef struct {
+    uint32_t stale;      // refills that finished after the DMA re-entered the buffer
+    uint32_t refills;
+    int32_t max_dt_us;   // longest interval between EOF handlers
+    int32_t max_work_us; // longest refill
+    int32_t worst_line;  // first row of the worst refill
+    int32_t period_us;   // one bounce period (line period x bounce lines)
+} EpdLcdRefillStats;
+EpdLcdRefillStats epd_lcd_take_refill_stats(void);
 #ifdef __cplusplus
 }
 #endif

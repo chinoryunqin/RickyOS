@@ -19,6 +19,7 @@
 #include <driver/i2c.h>
 #include <hal/i2c_ll.h>
 #include <esp_rom_sys.h>
+#include <esp_timer.h>
 #include <esp_log.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
@@ -834,52 +835,32 @@ static void epd_board_poweron(epd_ctrl_state_t* state) {
     config_reg.pwrup = false;
     config_reg.vcom_ctrl = false;
     epd_board_set_ctrl(state, &mask);
-    // 深睡后 TPS 从 SLEEP 醒：多等一会再碰寄存器
-    vTaskDelay(pdMS_TO_TICKS(50));
-
+    // 深睡后 TPS 从 SLEEP 醒，I2C 应答前探测会失败：逐毫秒探测到应答为止（上限约 60 ms），
+    // 应答后再留 2 ms 余量，不再每次翻页都固定等满 50 ms。
+    // / Waking from SLEEP: probe every millisecond until the TPS answers (about 60 ms at
+    // most), then allow 2 ms of margin, instead of a fixed 50 ms on every page turn.
+    const int64_t power_started_us = esp_timer_get_time();
     esp_err_t probe = ESP_FAIL;
-    for (int i = 0; i < 3 && probe != ESP_OK; ++i) {
+    for (int i = 0; i < 60 && probe != ESP_OK; ++i) {
+        vTaskDelay(pdMS_TO_TICKS(1));
         probe = tps_probe(config_reg.port);
-        if (probe != ESP_OK) {
-            vTaskDelay(pdMS_TO_TICKS(10));
-        }
     }
+    if (probe == ESP_OK) vTaskDelay(pdMS_TO_TICKS(2));
 
-    // 2) 先读版本号
-    uint8_t revid = 0;
-    esp_err_t revid_err = tps_read_register_ex(config_reg.port, TPS_REG_REVID, &revid);
-    ESP_LOGI(TAG, "STANDBY REVID(%s)=0x%02X probe=%s", esp_err_to_name(revid_err), revid,
-             esp_err_to_name(probe));
-
-    // 3) 再写 UPSEQ0、UPSEQ1（失败也继续）
+    // 写上电时序 UPSEQ0、UPSEQ1（失败也继续）。原先每次上电的寄存器回读和日志只用于排查，
+    // 已删去：PWR_GOOD 等待和失败分支仍记录完整寄存器。
     esp_err_t up0 = tps_write_register(config_reg.port, TPS_REG_UPSEQ0, 0xE4);
     esp_err_t up1 = tps_write_register(config_reg.port, TPS_REG_UPSEQ1, 0x55);
-    ESP_LOGI(TAG, "UPSEQ0 write %s read=0x%02X; UPSEQ1 write %s read=0x%02X", esp_err_to_name(up0),
-             tps_read_register(config_reg.port, TPS_REG_UPSEQ0), esp_err_to_name(up1),
-             tps_read_register(config_reg.port, TPS_REG_UPSEQ1));
+    if (up0 != ESP_OK || up1 != ESP_OK) {
+        ESP_LOGW(TAG, "UPSEQ write %s/%s probe=%s", esp_err_to_name(up0), esp_err_to_name(up1),
+                 esp_err_to_name(probe));
+    }
+    uint8_t revid = 0;  // read only on failure, below
 
-    // PWRUP 拉高前：读 INT2(0x08) / PG(0x0F)
-    uint8_t int2_pre = 0;
-    uint8_t pg_pre = 0;
-    esp_err_t e_int2_pre = tps_read_register_ex(config_reg.port, TPS_REG_INT2, &int2_pre);
-    esp_err_t e_pg_pre = tps_read_register_ex(config_reg.port, TPS_REG_PG, &pg_pre);
-    ESP_LOGI(TAG, "before PWRUP: INT2(%s)=0x%02X PG(%s)=0x%02X", esp_err_to_name(e_int2_pre),
-             int2_pre, esp_err_to_name(e_pg_pre), pg_pre);
-
-    // 4) 无论上面是否成功，拉高 PWRUP（上升沿）
+    // 拉高 PWRUP（上升沿）；电源就绪由下面逐毫秒查 PWR_GOOD 决定，不再先固定等 50 ms。
     config_reg.pwrup = true;
     config_reg.vcom_ctrl = true;
     epd_board_set_ctrl(state, &mask);
-    ESP_LOGI(TAG, "PWRUP high (after UPSEQ, ok or not)");
-    vTaskDelay(pdMS_TO_TICKS(50)); // 等升压启动片刻再采一次
-
-    // PWRUP 拉高后：再读 INT2 / PG
-    uint8_t int2_post = 0;
-    uint8_t pg_post = 0;
-    esp_err_t e_int2_post = tps_read_register_ex(config_reg.port, TPS_REG_INT2, &int2_post);
-    esp_err_t e_pg_post = tps_read_register_ex(config_reg.port, TPS_REG_PG, &pg_post);
-    ESP_LOGI(TAG, "after PWRUP+50ms: INT2(%s)=0x%02X PG(%s)=0x%02X", esp_err_to_name(e_int2_post),
-             int2_post, esp_err_to_name(e_pg_post), pg_post);
 
     bool success = false;
     for (int retry = 0; retry < 3 && !success; ++retry) {
@@ -898,7 +879,7 @@ static void epd_board_poweron(epd_ctrl_state_t* state) {
         for (int wait_ms = 0; wait_ms < 200; ++wait_ms) {
             uint8_t p0 = pca9555_read_input(config_reg.port, CFG_PORT_CTRL);
             if (p0 & CFG_PIN_PWRGOOD) {
-                ESP_LOGI(TAG, "PWR_GOOD ok p0=0x%02X @%dms", p0, wait_ms);
+                ESP_LOGD(TAG, "PWR_GOOD ok p0=0x%02X @%dms", p0, wait_ms);
                 success = true;
                 break;
             }
@@ -915,6 +896,7 @@ static void epd_board_poweron(epd_ctrl_state_t* state) {
     }
 
     if (!success) {
+        if (probe == ESP_OK) tps_read_register_ex(config_reg.port, TPS_REG_REVID, &revid);
         uint8_t p0 = pca9555_read_input(config_reg.port, CFG_PORT_CTRL);
         uint8_t en = (probe == ESP_OK) ? tps_read_register(config_reg.port, TPS_REG_ENABLE) : 0;
         uint8_t pg = (probe == ESP_OK) ? tps_read_register(config_reg.port, TPS_REG_PG) : 0;
@@ -962,7 +944,7 @@ static void epd_board_poweron(epd_ctrl_state_t* state) {
     epd_ctrl_state_t out_mask = {.ep_output_enable = true};
     epd_board_set_ctrl(state, &out_mask);
     s_tps_ok = true;
-    ESP_LOGI(TAG, "TPS PowerOn ok vcom=%d mV", vcom);
+    ESP_LOGI(TAG, "TPS PowerOn ok vcom=%d mV in %lld ms", vcom, (esp_timer_get_time() - power_started_us) / 1000);
 }
 
 static void epd_board_measure_vcom(epd_ctrl_state_t* state) {

@@ -1,5 +1,6 @@
 #include "lcd_driver.h"
 #include "line_timing.h"
+#include "lcd_fault.h"
 #include "epdiy.h"
 
 #ifndef __DECLARE_RCC_ATOMIC_ENV
@@ -173,6 +174,7 @@ typedef struct {
 
     // EOF 间隔实测（对示波器：应 ≈ line_length_us * BOUNCE）
     int64_t eof_last_us;
+    int64_t eof_last_us_prev;
     int64_t eof_dt_min_us;
     int64_t eof_dt_max_us;
     int64_t eof_dt_sum_us;
@@ -216,6 +218,14 @@ static bool border_whitening=false;
 static bool lcd_initialized=false;
 static bool dma_connected=false;
 void epd_lcd_prime_white_border(bool enable) { border_whitening=enable; }
+static EpdLcdRefillStats s_refill;
+static int64_t s_refill_worst;
+EpdLcdRefillStats epd_lcd_take_refill_stats(void) {
+    const EpdLcdRefillStats stats = s_refill;
+    s_refill = (EpdLcdRefillStats){0};
+    s_refill_worst = 0;
+    return stats;
+}
 int epd_lcd_white_border_pixels(void) { return lcd.config.white_border_pixels; }
 
 void IRAM_ATTR epd_lcd_line_source_cb(line_cb_func_t line_source, void* payload) {
@@ -543,6 +553,7 @@ static IRAM_ATTR bool lcd_rgb_panel_eof_handler(
         lcd.eof_dt_sum_us += dt;
         lcd.eof_dt_n += 1;
     }
+    lcd.eof_last_us_prev = lcd.eof_last_us;
     lcd.eof_last_us = t0;
 
     // 与 esp_lcd RGB 一致：用 EOF 计数选 buffer，AXI 下 desc 指针不可靠
@@ -559,6 +570,24 @@ static IRAM_ATTR bool lcd_rgb_panel_eof_handler(
     // AXI-GDMA：补数后交还 DMA，否则 check_owner 时描述符停在 CPU
     lcd.dma_nodes[bb].dw0.owner = DMA_DESCRIPTOR_BUFFER_OWNER_DMA;
     const int64_t work = esp_timer_get_time() - t0;
+    {
+        // Late handler + refill longer than one bounce period: the DMA has
+        // already restarted this buffer and sent its previous rows again.
+        const int64_t period = (int64_t)lcd.line_length_us * BOUNCE_BUF_LINES;
+        const int64_t dt = lcd.eof_dt_n ? t0 - (lcd.eof_last_us_prev) : period;
+        const int64_t late = (dt > period ? dt - period : 0) + work;
+        s_refill.refills += 1;
+        if (dt > s_refill.max_dt_us) s_refill.max_dt_us = (int32_t)dt;
+        if (work > s_refill.max_work_us) s_refill.max_work_us = (int32_t)work;
+        if (late > period) {
+            if (late > s_refill_worst) {
+                s_refill_worst = late;
+                s_refill.worst_line = (int32_t)(lcd.bb_eof_count * BOUNCE_BUF_LINES);
+            }
+            s_refill.stale += 1;
+        }
+        s_refill.period_us = (int32_t)period;
+    }
     if (lcd.eof_work_n == 0) {
         lcd.eof_work_min_us = work;
         lcd.eof_work_max_us = work;
@@ -594,6 +623,9 @@ static esp_err_t init_dma_trans_link() {
 
     // alloc DMA channel and connect to LCD peripheral
     gdma_channel_alloc_config_t dma_chan_config = {
+        // Highest maskable C-handler level: a bounce refill that waits behind
+        // another ISR past one bounce period re-sends rows 16 back.
+        .intr_priority = 3,
 #if CONFIG_LCD_RGB_ISR_IRAM_SAFE
         .flags.isr_cache_safe = true,
 #endif
@@ -611,6 +643,8 @@ static esp_err_t init_dma_trans_link() {
     gdma_trigger_t trigger = GDMA_MAKE_TRIGGER(GDMA_TRIG_PERIPH_LCD, 0);
     ESP_RETURN_ON_ERROR(gdma_connect(lcd.dma_chan, trigger), TAG, "dma connect error");
     dma_connected = true;
+    // The panel stream cannot pause: serve its bounce reads ahead of other DMA.
+    ESP_RETURN_ON_ERROR(gdma_set_priority(lcd.dma_chan, 5), TAG, "dma priority error");
 
     gdma_strategy_config_t dma_strategy = {
         .eof_till_data_popped = false,
