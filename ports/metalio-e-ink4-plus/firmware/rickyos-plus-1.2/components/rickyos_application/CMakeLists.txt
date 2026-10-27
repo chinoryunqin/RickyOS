@@ -382,6 +382,7 @@ idf_component_register(
   "${APP_ROOT}/src/activities/library/LibraryListActivity.cpp"
   "${APP_ROOT}/src/activities/library/LibrarySourcesActivity.cpp"
   "${APP_ROOT}/src/activities/library/LibraryCategoriesActivity.cpp"
+  "${APP_ROOT}/src/activities/library/LibraryFoldersActivity.cpp"
   "${APP_ROOT}/src/activities/library/LibrarySearchTable.cpp"
   "${APP_ROOT}/src/activities/boot_sleep/BootActivity.cpp"
   "${APP_ROOT}/src/activities/boot_sleep/SleepActivity.cpp"

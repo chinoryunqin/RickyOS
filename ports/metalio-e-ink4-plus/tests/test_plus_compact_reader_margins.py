@@ -221,7 +221,7 @@ using ThemeMetrics=Metrics;
 #include "components/icons/rickyReaderDog.h"
 namespace RickyDesignUi {constexpr int CAPTION=10;}
 struct Settings {
- uint8_t screenMargin=25;
+ uint8_t marginTop=25, marginBottom=25, marginLeft=25, marginRight=25;
  uint8_t readingMode=0;
  struct Spec {
    bool text=true, progress=false;
@@ -241,7 +241,7 @@ class GfxRenderer {
  int textHeight=34, numericHeight=34;
  int getLineHeight(int font) const {return font==BaseTheme::STATUS_NUMERIC_FONT_ID?numericHeight:textHeight;}
  int getLineHeight(int font,float) const {return getLineHeight(font);}
- int getScreenWidth() const {return width;}
+ int getScreenWidth() const {return width;} int getScreenHeight() const {return height;}
  void getOrientedViewableTRBL(int* t,int* r,int* b,int* l) const {*t=top;*r=right;*b=bottom;*l=left;}
 };
 struct UITheme {
@@ -269,7 +269,7 @@ int main() {
    if(orientation==2) {r.top=8;r.bottom=5;}
    if(orientation==3) {r.left=8;r.bottom=5;}
    r.textHeight=textHeight;r.numericHeight=numericHeight;
-   SETTINGS.screenMargin=margin;SETTINGS.spec.text=text;SETTINGS.spec.progress=progress;
+   SETTINGS.marginTop=SETTINGS.marginBottom=SETTINGS.marginLeft=SETTINGS.marginRight=margin;SETTINGS.spec.text=text;SETTINGS.spec.progress=progress;
    const int lane=UITheme::getInstance().getMetrics().statusBarVerticalMargin;
    const int bar=progress?5:0;
    const int oldReserve=(text||automatic?lane:0)+bar;

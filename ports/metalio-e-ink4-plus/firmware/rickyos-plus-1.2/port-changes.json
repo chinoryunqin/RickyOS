@@ -295,12 +295,12 @@
     {
       "path": "lib/I18n/translations/chinese.yaml",
       "baseline_sha256": "021ec5b9e5880155fea752af9c60ce83a259dd69131f9bd12ffe0ca59e3366bd",
-      "ported_sha256": "53e9e772c9fecc415b60d410fd757f435fbafe0741dc7653f6ffe1e4eb944f69"
+      "ported_sha256": "c7f7ec16decf2e1f5ec5b9a972ce4ce8752db48a45ac2e2a89256b9be07b7d44"
     },
     {
       "path": "lib/I18n/translations/english.yaml",
       "baseline_sha256": "85a4d226f1400f6a185759420c63ecff5f81eeb3722afd66c312d4aec6bcb315",
-      "ported_sha256": "7487f0c9b2bae9a9d9ae0b4a02fddbb742de4897654ab7924097a42e0978ff63"
+      "ported_sha256": "af7d1d5aca01d1459d33559b23028e8942a252c069e11dc9594f4a35dec29ed3"
     },
     {
       "path": "lib/JpegToBmpConverter/JpegToBmpConverter.cpp",
@@ -343,9 +343,14 @@
       "ported_sha256": "c1a15699111fa4f6b1bb6932dfe3d03e4f9a840ed8c907854616a6289d1d4929"
     },
     {
+      "path": "lib/LibraryIndex/LibraryIndexFile.cpp",
+      "baseline_sha256": "b84239ae4658fa53dc3071f71fec646f4c520d4579824bab769593efbe20256a",
+      "ported_sha256": "7f80ba388546abf7c6216bd6c8833ed270cd865bcc8b528081f94818206b8a74"
+    },
+    {
       "path": "lib/LibraryIndex/LibraryIndexFile.h",
       "baseline_sha256": "6f3b81030e47de9e388274baa112f71b7af747c0f21d5eb037e7a503e2958bd9",
-      "ported_sha256": "63b483943610de9b3b8aefae742ed9f93ea349c76fa1d4b0913dc1156bfadee1"
+      "ported_sha256": "eb4cd908bd6df00359424d21c1ec7769bff241576a97e003a02a075f1df10b84"
     },
     {
       "path": "lib/LibraryIndex/LibrarySources.cpp",
@@ -595,12 +600,12 @@
     {
       "path": "scripts/tests/test_rickyos_reader_chrome.py",
       "baseline_sha256": "2fb005add96d52fde454774ab3c278ecfe792738a610c101b5e62bed67961da7",
-      "ported_sha256": "affb5f57c2fbd85964e28df61faa737eebfa1292330d5b6b9ff0ed84efc0d80e"
+      "ported_sha256": "203766ff9e28f1825f82ab16f1c678952f1b8fa2d54d3acb8c5b8de2bfa31b9b"
     },
     {
       "path": "scripts/tests/test_ui_chrome_icons.py",
       "baseline_sha256": "962f9133e8c10016418d7d22df917a55dce38cac748a3955803e5c1da1a0ffcd",
-      "ported_sha256": "a1ee39e2fc6e836ededef4a93decf1a2cf79da38413359b3f48cb36a28a63670"
+      "ported_sha256": "31b165ee21aff7b68e9746014cf17d107b7063c15221408464fe9ba6b2b7e133"
     },
     {
       "path": "src/AppVisibility.h",
@@ -610,12 +615,12 @@
     {
       "path": "src/CrossPointSettings.cpp",
       "baseline_sha256": "549f275cd35b12b0479eadda063c5460e167d1156274e759bee34e2232b4dc37",
-      "ported_sha256": "de971fe7550f69afb742d5bc4fba4db045aef32d0097989864be3104297f3485"
+      "ported_sha256": "bfa853505302d47a8a1b28cd2d5b6aa57b674ad4ceb0b4da4778e07f5478829e"
     },
     {
       "path": "src/CrossPointSettings.h",
       "baseline_sha256": "c5a733423898aad83b2f932929b80d3de201da9aa0e181d82d0071a2ac576330",
-      "ported_sha256": "ef4db06df32aab040b12951e454d19a2c6257d45ed2bd6904d191fc46304dc80"
+      "ported_sha256": "420e7b9420c15d4ab2b29863556e95338af7028ca8629f8782831c91077d4603"
     },
     {
       "path": "src/HomeButtonSettings.h",
@@ -650,7 +655,7 @@
     {
       "path": "src/SettingsList.h",
       "baseline_sha256": "47ca912ff8e169d64ef58e3da86d57ccd581fe11f9f3cf283d75ed471398e583",
-      "ported_sha256": "c09dbea722bd8ca93df9f83938d628e5ab6022cbb9e0cb87697598d31365daaf"
+      "ported_sha256": "833f3262f10c9933c7a4f317d92ad216884ede784db619cf962960547b8630ae"
     },
     {
       "path": "src/activities/Activity.cpp",
@@ -858,14 +863,24 @@
       "ported_sha256": "a3d5544d56b7a19ef86c577c2091944312cf4151e7a94495c496948347dbd746"
     },
     {
+      "path": "src/activities/library/LibraryFoldersActivity.cpp",
+      "baseline_sha256": null,
+      "ported_sha256": "08664a3cbed77dfba1172682a94f3a1000c735f42b3f706b791e37a578443169"
+    },
+    {
+      "path": "src/activities/library/LibraryFoldersActivity.h",
+      "baseline_sha256": null,
+      "ported_sha256": "38b9e9cea1de6a83af4b90b6c2ceb45ff15095f580fb62ae98718c0c03ef77bb"
+    },
+    {
       "path": "src/activities/library/LibraryListActivity.cpp",
       "baseline_sha256": "390421f0e356311b536e8d9d3ec0f7805fbe83ca0ee641fec6303ce7a995c465",
-      "ported_sha256": "bdff0e1bb238e2905777853f97552c816ff068ce131042098f049eeb16741c49"
+      "ported_sha256": "a335a89ac600294e1d64dced68601f1b27ae5ed1b97630c2cea2c57e51397db8"
     },
     {
       "path": "src/activities/library/LibraryListActivity.h",
       "baseline_sha256": "60b38496e2531ec3078e6b74c2b148434e12a7a67cf88ed5be3ecb727c546728",
-      "ported_sha256": "e259cb18dad3e264e5fe04bf50dbd0ce0c6c4ccdfc534c55217800c7e01f1415"
+      "ported_sha256": "a7ed748e7128e7c0d15f16cb431495b1503a5cb34b251ff32f244534c88458fa"
     },
     {
       "path": "src/activities/library/LibrarySearchTable.cpp",
@@ -920,7 +935,7 @@
     {
       "path": "src/activities/reader/EpubReaderActivity.cpp",
       "baseline_sha256": "330723cad52ac629fa1451c9ca90cffff0a04b06e0266861e092ff93e8ffa1c9",
-      "ported_sha256": "578128e98137c5046c4b2d0e6261679b2d9ad287e283916628e498bb29bb55d7"
+      "ported_sha256": "14de78a4d29f079f4cdbe9f5186ea6bee1810c249395ba96a63d5bae7e49e542"
     },
     {
       "path": "src/activities/reader/EpubReaderActivity.h",
@@ -1016,6 +1031,26 @@
       "path": "src/activities/settings/StatusBarSettingsActivity.cpp",
       "baseline_sha256": "caecb4a9e9b738d40a4c1c203c41b71ea0de49185bcb021a6e948fca76b44537",
       "ported_sha256": "ac56665d6fb249727656c16e20817bd72d1788f140a617c11fae48062f6f980c"
+    },
+    {
+      "path": "src/activities/settings/TextSettingsActivity.cpp",
+      "baseline_sha256": "a550e9e011e6ca6e9e50aeabbe83235a62d90969a6f5423a7ef76ba4c0bf0c7e",
+      "ported_sha256": "c8a6c47be80ae5ac808e67bf7aa22d506f15fedeebb54c9e1387e4da24812370"
+    },
+    {
+      "path": "src/activities/settings/TextSettingsActivity.h",
+      "baseline_sha256": "3473441607e75f270a735835a1df8a3e3146ec171f646cb663fb2f44a76f548b",
+      "ported_sha256": "fafb9426c84a25923b3671fcdf53ef8462f497cbffa3a5999b5c70caafa7d160"
+    },
+    {
+      "path": "src/activities/settings/TextSettingsPreview.cpp",
+      "baseline_sha256": "6b2b42b31cec4516854d2a8549f88eb57d87c50452e1fe0e91ffba430aa59ecb",
+      "ported_sha256": "296dc021641c52f380880ab5a25d3865729868296604180b960254511711de21"
+    },
+    {
+      "path": "src/activities/settings/TextSettingsPreview.h",
+      "baseline_sha256": "d3bfa20d057d10c048d27d2f11d579b29ac3b13298e1a7e0565f6afe268dc600",
+      "ported_sha256": "69a797c45defeef2d8183526533ba302fe29b9fa8d034a66f2b5f980ddea07be"
     },
     {
       "path": "src/activities/util/FrontlightPanelActivity.cpp",

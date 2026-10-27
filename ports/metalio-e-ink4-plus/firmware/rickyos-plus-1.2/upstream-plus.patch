@@ -424476,7 +424476,18 @@
  STR_FAKE_BOLD: "伪粗体"
  STR_FAKE_BOLD_LIGHT: "轻度"
  STR_FAKE_BOLD_STANDARD: "标准"
-@@ -465,7 +471,25 @@
+@@ -446,6 +452,10 @@
+ STR_NOT_IN_PREVIEW: "预览中未显示"
+ STR_LINE_SPACING: "阅读行距"
+ STR_SCREEN_MARGIN: "阅读边距"
++STR_MARGIN_TOP: "上边距"
++STR_MARGIN_BOTTOM: "下边距"
++STR_MARGIN_LEFT: "左边距"
++STR_MARGIN_RIGHT: "右边距"
+ STR_PARA_ALIGNMENT: "段落对齐"
+ STR_HYPHENATION: "连字符断词"
+ STR_TIME_TO_SLEEP: "休眠时间"
+@@ -465,7 +475,25 @@
  STR_LIBRARY_TAB_TITLE: "书名"
  STR_LIBRARY_TAB_AUTHOR: "作者"
  STR_LIBRARY_SEARCH: "搜索书籍"
@@ -424503,7 +424514,7 @@
  STR_LIBRARY_REBUILDING: "正在整理书库"
  STR_LIBRARY_REBUILD_DONE: "书库已更新"
  STR_LIBRARY_REBUILD_FAILED: "书库更新失败，请检查 SD 卡"
-@@ -1464,11 +1488,35 @@
+@@ -1464,11 +1492,35 @@
  STR_RICKY_SELECT_TRANSPARENT: "选择透明图片"
  STR_RICKY_CLEAR_TRANSPARENT: "移除透明图片"
  STR_RICKY_SET_TRANSPARENT: "设为透明壁纸"
@@ -424540,7 +424551,7 @@
  STR_RICKY_POWERED_OFF: "已关机 · 长按开机"
  STR_RICKY_PICTURE_FIT: "显示方式"
  STR_RICKY_PICTURE_FIT_WHOLE: "完整显示"
-@@ -1552,6 +1600,7 @@
+@@ -1552,6 +1604,7 @@
  STR_RICKY_GESTURE_READING: "阅读手势"
  STR_RICKY_GESTURE_BACK: "左侧右滑返回"
  STR_RICKY_GESTURE_HOME: "底部上滑回首页"
@@ -424548,7 +424559,7 @@
  STR_RICKY_GESTURE_CONTROL: "顶部下滑打开控制中心"
  STR_RICKY_GESTURE_STATUS: "点状态栏打开控制中心"
  STR_RICKY_GESTURE_TOUCH_TURN: "触屏翻页"
-@@ -1588,8 +1637,8 @@
+@@ -1588,8 +1641,8 @@
  STR_RICKY_HELP_WEBSITE: "RickyOS 官网"
  STR_RICKY_HELP_START_1: "在应用中打开文件传输，按照屏幕提示用手机或电脑传入书籍。"
  STR_RICKY_HELP_START_2: "书库中点选书籍开始阅读。全部、在读、未读可以切换筛选。文件夹在存储中浏览。"
@@ -424559,13 +424570,15 @@
  STR_RICKY_HELP_DISPLAY_2: "出现残影时可在设置中执行屏幕修复。全刷间隔越短，残影越少，但闪屏更频繁。"
  STR_RICKY_HELP_DISPLAY_3: "阅读字体在文字设置中调整；头像、昵称和首页短句在设置顶部的资料卡中修改。"
  STR_RICKY_HELP_UPDATE_1: "设置中的更新固件会检查 RickyOS 更新。更新前请保证电量充足，勿在过程中断电。"
-@@ -1600,3 +1649,128 @@
+@@ -1600,3 +1653,130 @@
  STR_RICKY_HELP_FEEDBACK_3: "通过你现有的 Ricky AI Studio 联系渠道发送反馈。本页面不会自动上传设备信息。官网入口可扫码打开。"
  STR_RICKY_MENU_AUTO_TURN: "自动翻页"
  STR_RICKY_MENU_PROGRESS: "阅读进度"
 +STR_LIBRARY_CATEGORIES: "分类"
 +STR_LIBRARY_ALL_CATEGORIES: "全部分类"
 +STR_LIBRARY_UNCATEGORIZED: "未分类"
++STR_LIBRARY_FOLDERS: "文件夹"
++STR_LIBRARY_ALL_FOLDERS: "全部文件夹"
 +STR_LIBRARY_NEW_CATEGORY: "新建分类"
 +STR_LIBRARY_ASSIGN_CATEGORY: "设置分类"
 +STR_LIBRARY_CATEGORY_SELECTED: "已选"
@@ -424725,7 +424738,18 @@
  STR_FAKE_BOLD: "Synthetic Bold"
  STR_FAKE_BOLD_LIGHT: "Light"
  STR_FAKE_BOLD_STANDARD: "Standard"
-@@ -396,6 +402,24 @@
+@@ -374,6 +380,10 @@
+ STR_NOT_IN_PREVIEW: "Not shown in preview"
+ STR_LINE_SPACING: "Line Spacing"
+ STR_SCREEN_MARGIN: "Screen Margin"
++STR_MARGIN_TOP: "Top margin"
++STR_MARGIN_BOTTOM: "Bottom margin"
++STR_MARGIN_LEFT: "Left margin"
++STR_MARGIN_RIGHT: "Right margin"
+ STR_PARA_ALIGNMENT: "Paragraph Alignment"
+ STR_HYPHENATION: "Hyphenation"
+ STR_TIME_TO_SLEEP: "Time to Sleep"
+@@ -396,6 +406,24 @@
  STR_LIBRARY_GROUP_POSITION: "%d/%d groups"
  STR_LIBRARY_USE_METADATA: "Use Book Metadata"
  STR_LIBRARY_REBUILD: "Refresh library"
@@ -424750,7 +424774,7 @@
  STR_LIBRARY_REBUILDING: "Reading your books..."
  STR_LIBRARY_REBUILD_DONE: "Library index rebuilt"
  STR_LIBRARY_REBUILD_FAILED: "Could not rebuild the index"
-@@ -1486,11 +1510,35 @@
+@@ -1486,11 +1514,35 @@
  STR_RICKY_SELECT_TRANSPARENT: "Choose overlay PNG"
  STR_RICKY_CLEAR_TRANSPARENT: "Remove overlay PNG"
  STR_RICKY_SET_TRANSPARENT: "Set transparent wallpaper"
@@ -424787,7 +424811,7 @@
  STR_RICKY_POWERED_OFF: "Off · hold to turn on"
  STR_RICKY_PICTURE_FIT: "Picture fit"
  STR_RICKY_PICTURE_FIT_WHOLE: "Whole picture"
-@@ -1574,6 +1622,7 @@
+@@ -1574,6 +1626,7 @@
  STR_RICKY_GESTURE_READING: "Reading"
  STR_RICKY_GESTURE_BACK: "Swipe right from the left: Back"
  STR_RICKY_GESTURE_HOME: "Swipe up from the bottom: Home"
@@ -424795,7 +424819,7 @@
  STR_RICKY_GESTURE_CONTROL: "Swipe down from the top: Control center"
  STR_RICKY_GESTURE_STATUS: "Tap the status bar: Control center"
  STR_RICKY_GESTURE_TOUCH_TURN: "Touch page turns"
-@@ -1610,7 +1659,7 @@
+@@ -1610,7 +1663,7 @@
  STR_RICKY_HELP_WEBSITE: "RickyOS website"
  STR_RICKY_HELP_START_1: "Open File Transfer in Apps and follow the on-screen instructions to send books from your phone or computer."
  STR_RICKY_HELP_START_2: "Select a book in Library to read. Filter by All, Reading or Unread. Browse folders in Storage."
@@ -424804,13 +424828,15 @@
  STR_RICKY_HELP_DISPLAY_1: "Display & Standby controls automatic sleep and power-button actions. Choose standby pictures in the Standby app."
  STR_RICKY_HELP_DISPLAY_2: "Use Screen Repair in Settings for ghosting. More frequent full refreshes reduce ghosting but flash the screen more often."
  STR_RICKY_HELP_DISPLAY_3: "Adjust reading fonts in Text Settings. Change your avatar, nickname and home phrase through the profile card at the top of Settings."
-@@ -1622,3 +1671,128 @@
+@@ -1622,3 +1675,130 @@
  STR_RICKY_HELP_FEEDBACK_3: "Send feedback through your existing Ricky AI Studio contact channel. This page does not upload device information. Scan the website QR code to visit the site."
  STR_RICKY_MENU_AUTO_TURN: "Auto page turn"
  STR_RICKY_MENU_PROGRESS: "Reading progress"
 +STR_LIBRARY_CATEGORIES: "Categories"
 +STR_LIBRARY_ALL_CATEGORIES: "All categories"
 +STR_LIBRARY_UNCATEGORIZED: "Uncategorized"
++STR_LIBRARY_FOLDERS: "Folders"
++STR_LIBRARY_ALL_FOLDERS: "All folders"
 +STR_LIBRARY_NEW_CATEGORY: "New category"
 +STR_LIBRARY_ASSIGN_CATEGORY: "Set categories"
 +STR_LIBRARY_CATEGORY_SELECTED: "Selected"
@@ -425954,19 +425980,77 @@
 +};
 +
 +}  // namespace library
+--- a/lib/LibraryIndex/LibraryIndexFile.cpp
++++ b/lib/LibraryIndex/LibraryIndexFile.cpp
+@@ -259,4 +259,43 @@
+   return false;
+ }
+ 
++bool LibraryIndexFile::readFolderPaths(std::vector<std::string>& out) {
++  out.clear();
++  if (!opened) return false;
++  out.reserve(head.folderCount);
++  uint32_t offset = head.folderStart;
++  const uint32_t folderEnd = head.folderStart + head.folderLen;
++  for (uint16_t i = 0; i < head.folderCount; i++) {
++    uint8_t pathLen = 0;
++    if (offset >= folderEnd || !readAt(offset, &pathLen, sizeof(pathLen)) || pathLen == 0 ||
++        pathLen > folderEnd - offset - 1u) {
++      out.clear();
++      return false;
++    }
++    out.emplace_back(pathLen, '\0');
++    if (!readAt(offset + 1, out.back().data(), pathLen)) {
++      out.clear();
++      return false;
++    }
++    offset += 1u + pathLen;
++  }
++  return true;
++}
++
++bool LibraryIndexFile::countBooksPerFolder(std::vector<uint16_t>& out) {
++  out.assign(opened ? head.folderCount : 0, 0);
++  if (!opened) return false;
++  // 1 KiB of records per read: stays sector aligned and light on the caller's stack.
++  constexpr uint16_t kChunk = 8;
++  ClixRecord records[kChunk];
++  for (uint16_t first = 0; first < head.bookCount; first += kChunk) {
++    const uint16_t n = static_cast<uint16_t>(std::min<int>(kChunk, head.bookCount - first));
++    if (!readAt(head.recordStart + static_cast<uint32_t>(first) * sizeof(ClixRecord), records, n * sizeof(ClixRecord)))
++      return false;
++    for (uint16_t i = 0; i < n; i++)
++      if (records[i].folderId < out.size()) ++out[records[i].folderId];
++  }
++  return true;
++}
++
+ }  // namespace library
 --- a/lib/LibraryIndex/LibraryIndexFile.h
 +++ b/lib/LibraryIndex/LibraryIndexFile.h
-@@ -92,6 +92,10 @@
+@@ -11,6 +11,7 @@
+ 
+ #include <cstdint>
+ #include <string>
++#include <vector>
+ 
+ #include "LibraryFormat.h"
+ 
+@@ -91,6 +92,14 @@
+ 
    // Absolute path of the book, rebuilt from its folder record.
    bool readPath(const ClixRecord& record, std::string& out);
- 
++  // Every folder path, indexed by folder id, in one pass over the folder section.
++  bool readFolderPaths(std::vector<std::string>& out);
++  // Books per folder id (out sized to folderCount), in one chunked pass over the records.
++  bool countBooksPerFolder(std::vector<uint16_t>& out);
++
 +  // Raw bytes of the open index, for a caller that streams whole sections once
 +  // (the in-memory search table) instead of seeking per record.
 +  bool readRange(const uint32_t offset, void* dst, const size_t len) { return opened && readAt(offset, dst, len); }
-+
+ 
   private:
    bool openImpl(const char* path, bool acceptStaleFold);
-   bool readAt(uint32_t offset, void* dst, size_t len);
 --- /dev/null
 +++ b/lib/LibraryIndex/LibrarySources.cpp
 @@ -0,0 +1,204 @@
@@ -429169,7 +429253,7 @@
      settings.spec.lane=false;
      settings.spec.bar=true;
      settings.spec.progressBarMode=1;
-@@ -130,9 +150,11 @@
+@@ -130,9 +150,12 @@
          # One margin source: renderBook and the pickers take textMargins(), which
          # reserves the header and footer bands the reading mode keeps.
          margins = method(reader, 'readingMode::Margins EpubReaderActivity::textMargins(')
@@ -429177,7 +429261,8 @@
 -        self.assertIn('kReaderFooterHeight', margins)
 -        self.assertIn('SETTINGS.statusBarSpec().textLaneVisible()', margins)
 +        self.assertIn('readerChrome::compactLayout(', margins)
-+        self.assertIn('std::max(screenMargin, chrome.headerReserve)', margins)
++        self.assertIn('chrome.headerReserve', margins)
++        self.assertIn('std::max(viewable.top + marginTop, topFloor)', margins)
 +        self.assertIn('bottomReserve = chrome.footerReserve', margins)
 +        self.assertNotIn('kReaderFooterHeight', margins)
 +        self.assertIn('sb.textLaneVisible()', margins)
@@ -429216,7 +429301,14 @@
  ''' + method(layout_source, 'int UITheme::getStatusBarTextTopPadding(')
              + method(source, 'void BaseTheme::drawBatteryLeft(')
              + method(source, 'void BaseTheme::drawStatusBar(') + r'''
-@@ -201,8 +209,9 @@
+@@ -195,33 +203,39 @@
+ #include <algorithm>
+ #include <cassert>
+ #include <cstdint>
++#include <cstdlib>
+ #include <initializer_list>
+ [[maybe_unused]] constexpr int READER_STATUS_FONT_ID=1;
+ [[maybe_unused]] constexpr int SMALL_FONT_ID=2;
  struct BaseTheme { static constexpr int STATUS_NUMERIC_FONT_ID=3; };
  struct Metrics { int statusBarVerticalMargin=UiHighDpiProfile::enabled?48:19, progressBarMarginTop=1; };
  using ThemeMetrics=Metrics;
@@ -429225,9 +429317,10 @@
  #include "components/icons/rickyReaderDog.h"
 +namespace RickyDesignUi {constexpr int CAPTION=10;}
  struct Settings {
-  uint8_t screenMargin=25;
+- uint8_t screenMargin=25;
++ uint8_t marginTop=25, marginBottom=25, marginLeft=25, marginRight=25;
   uint8_t readingMode=0;
-@@ -210,13 +219,16 @@
+  struct Spec {
     bool text=true, progress=false;
     int progressBarHeightPx=4;
     bool textLaneVisible() const {return text;}
@@ -429245,7 +429338,21 @@
   int width=684,height=1216,top=5,right=5,bottom=8,left=5;
   int textHeight=34, numericHeight=34;
   int getLineHeight(int font) const {return font==BaseTheme::STATUS_NUMERIC_FONT_ID?numericHeight:textHeight;}
-@@ -256,10 +268,21 @@
+  int getLineHeight(int font,float) const {return getLineHeight(font);}
+  int getScreenWidth() const {return width;}
++ int getScreenHeight() const {return height;}
+  void getOrientedViewableTRBL(int* t,int* r,int* b,int* l) const {*t=top;*r=right;*b=bottom;*l=left;}
+ };
+ struct UITheme {
+@@ -249,17 +263,45 @@
+    if(orientation==2) {r.top=8;r.bottom=5;}
+    if(orientation==3) {r.left=8;r.bottom=5;}
+    r.textHeight=textHeight;r.numericHeight=numericHeight;
+-   SETTINGS.screenMargin=margin;SETTINGS.spec.text=text;SETTINGS.spec.progress=progress;
++   SETTINGS.marginTop=SETTINGS.marginBottom=SETTINGS.marginLeft=SETTINGS.marginRight=margin;SETTINGS.spec.text=text;SETTINGS.spec.progress=progress;
+    const int lane=UITheme::getInstance().getMetrics().statusBarVerticalMargin;
+    const int bar=progress?5:0;
+    const int oldReserve=(text||automatic?lane:0)+bar;
     const int oldBottom=r.height-r.bottom-std::max<int>(margin,oldReserve);
     const int bottom=contentBottom(r,automatic);
     assert(bottom<=r.height-r.bottom-margin);
@@ -429266,6 +429373,23 @@
 +     assert(r.height-m.top-m.bottom >= oldProductBottom-oldTop);
 +     if(margin==25) assert(r.height-m.top-m.bottom > oldProductBottom-oldTop);
 +   }
++ }
++ // Sides are independent, and never squeeze the text below half the page.
++ {
++   GfxRenderer r;
++   SETTINGS.spec.text=true;SETTINGS.spec.progress=false;
++   SETTINGS.marginLeft=120;SETTINGS.marginRight=0;SETTINGS.marginTop=150;SETTINGS.marginBottom=0;
++   auto m=textMargins(r,false);
++   assert(m.left==r.left+120 && m.right==r.right && m.top==r.top+150);
++   SETTINGS.marginLeft=SETTINGS.marginRight=200;
++   m=textMargins(r,false);
++   assert(std::abs((m.left-r.left)-(m.right-r.right))<=1 && (m.left-r.left)+(m.right-r.right)==(r.width-r.left-r.right)/2);
++   r.width=1216;r.height=684;
++   SETTINGS.marginTop=SETTINGS.marginBottom=200;
++   m=textMargins(r,false);
++   assert(r.height-m.top-m.bottom>0 && m.top-r.top<=200 && m.bottom-r.bottom<=200);
++   const int topFloor=r.top+(UiHighDpiProfile::enabled?readerChrome::compactLayout(34,true,true,false,4).headerReserve:0);
++   assert(m.top>=topFloor);
   }
  }
  '''
@@ -429344,7 +429468,17 @@
  
    auto clamp = [](uint8_t val, uint8_t maxVal, uint8_t def) -> uint8_t { return val < maxVal ? val : def; };
  
-@@ -401,6 +412,7 @@
+@@ -398,9 +409,17 @@
+     }
+   }
+ 
++  // 1.2.9 and earlier had one margin for all four sides: seed every side from it.
++  if (doc["marginLeft"].isNull()) {
++    const uint8_t legacy = clamp(doc["screenMargin"] | screenMargin, READER_MARGIN_MAX + 1, screenMargin);
++    marginTop = marginBottom = marginLeft = marginRight = legacy;
++    needsResave = true;
++  }
++
    // Reading mode lives in the reader menu, not in SettingsList, so it loads here.
    // The custom reading background became the puppy reading mode.
    rickyBadgesSeen = doc["rickyBadgesSeen"] | static_cast<uint32_t>(0);
@@ -429352,7 +429486,7 @@
    if (doc["readingMode"].isNull()) {
      readingMode = (doc["readingBackgroundEnabled"] | static_cast<uint8_t>(0)) != 0 ? 1 : 0;  // 1 = Puppy
      if (readingMode != 0) needsResave = true;
-@@ -445,6 +457,14 @@
+@@ -445,6 +464,14 @@
      needsResave = true;
    }
    // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
@@ -429367,7 +429501,7 @@
    frontButtonBack = clamp(doc["frontButtonBack"] | (uint8_t)FRONT_HW_BACK, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_BACK);
    frontButtonConfirm =
        clamp(doc["frontButtonConfirm"] | (uint8_t)FRONT_HW_CONFIRM, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_CONFIRM);
-@@ -487,6 +507,11 @@
+@@ -487,6 +514,11 @@
    // Font family — uses dynamic getter/setter in SettingsList so the generic loop skips it.
    const uint8_t storedFontFamily = doc["fontFamily"] | (uint8_t)0;
    fontFamily = clamp(storedFontFamily, BUILTIN_FONT_COUNT, 0);
@@ -429379,7 +429513,7 @@
    if (BoardConfig::hasHomeKey() && doc["homeButtonLongPressAction"].isNull() &&
        !doc["longPressMenuFunction"].isNull()) {
      static constexpr HomeButtonAction LEGACY[] = {HomeButtonAction::Sync, HomeButtonAction::Ignore,
-@@ -513,11 +538,17 @@
+@@ -513,11 +545,17 @@
    // Missing keys take the defaults: Home swipe starts off for everyone, as agreed.
    rickyGestureBack = (doc["rickyGestureBack"] | 1) ? 1 : 0;
    rickyGestureHome = (doc["rickyGestureHome"] | 0) ? 1 : 0;
@@ -429397,7 +429531,7 @@
    rickyStandbyFace = doc["rickyStandbyFace"] | static_cast<uint8_t>(RICKY_STANDBY_PICTURE);
    if (rickyStandbyFace >= RICKY_STANDBY_FACE_COUNT) rickyStandbyFace = RICKY_STANDBY_PICTURE;
    rickyAutoOffIndex = doc["rickyAutoOffIndex"] | static_cast<uint8_t>(3);
-@@ -551,6 +582,10 @@
+@@ -551,6 +589,10 @@
      rickyPowerOffScreen = doc["rickyPowerOffScreen"] | static_cast<uint8_t>(RICKY_POWER_OFF_DEFAULT);
      if (rickyPowerOffScreen >= RICKY_POWER_OFF_SCREEN_COUNT) rickyPowerOffScreen = RICKY_POWER_OFF_DEFAULT;
    }
@@ -429408,19 +429542,27 @@
    // Old backups/direct JSON edits must not select a different product layout.
    struct FixedLayout {
      const char* key;
-@@ -634,11 +669,6 @@
-     needsResave = true;
+@@ -635,11 +677,6 @@
    }
    onboardingVersion = doc["onboardingVersion"].is<uint8_t>() ? doc["onboardingVersion"].as<uint8_t>() : 0;
--
+ 
 -  // Absent means unconfigured, which is the default.
 -  if (doc["keyboardLayouts"].is<uint16_t>()) {
 -    keyboardLayouts = doc["keyboardLayouts"].as<uint16_t>();
 -  }
- 
+-
    if (needsResave) {
      LOG_DBG("CPS", "Resaving settings to update format");
-@@ -876,6 +906,7 @@
+     requestResave();
+@@ -756,6 +793,7 @@
+   }
+   refreshFrequency = validated(12, refreshFrequency, REFRESH_FREQUENCY_COUNT);
+   screenMargin = value(13, screenMargin);
++  marginTop = marginBottom = marginLeft = marginRight = screenMargin;
+   sleepScreenCoverMode = validated(14, sleepScreenCoverMode, SLEEP_SCREEN_COVER_MODE_COUNT);
+   textAntiAliasing = value(15, textAntiAliasing);
+   hideBatteryPercentage = validated(16, hideBatteryPercentage, HIDE_BATTERY_PERCENTAGE_COUNT);
+@@ -876,6 +914,7 @@
  
  uint8_t CrossPointSettings::rickySleepScreenMode() const {
    if (rickyPowerOffScreen == RICKY_POWER_OFF_BLANK) return BLANK;
@@ -429461,7 +429603,7 @@
    uint8_t homeButtonTapAction = static_cast<uint8_t>(HomeButtonAction::Home);
    uint8_t homeButtonDoubleTapAction = static_cast<uint8_t>(HomeButtonAction::ToggleFrontlight);
    uint8_t homeButtonLongPressAction = static_cast<uint8_t>(HomeButtonAction::ReaderMenu);
-@@ -408,6 +418,8 @@
+@@ -408,13 +418,25 @@
    uint8_t sleepTimeoutMinutes = 10;
    // E-ink refresh frequency (default 15 pages)
    uint8_t refreshFrequency = REFRESH_15;
@@ -429470,7 +429612,24 @@
    uint8_t hyphenationEnabled = 0;
  
    // Reader screen margin settings
-@@ -457,14 +469,33 @@
+   static constexpr uint8_t SCREEN_MARGIN_MIN = 5;
+   static constexpr uint8_t SCREEN_MARGIN_MAX = 40;
+   static constexpr uint8_t SCREEN_MARGIN_STEP = 5;
++  // Legacy single margin: read only to seed the four sides below on upgrade.
+   uint8_t screenMargin = UiHighDpiProfile::enabled ? 25 : SCREEN_MARGIN_MIN;
++  // Each side of the text box on its own, so text can clear a reading background's
++  // art. The header and footer keep their own reserve: top/bottom never go under it.
++  static constexpr uint8_t READER_MARGIN_MIN = 0;
++  static constexpr uint8_t READER_MARGIN_MAX = 200;
++  static constexpr uint8_t READER_MARGIN_STEP = 5;
++  uint8_t marginTop = UiHighDpiProfile::enabled ? 25 : SCREEN_MARGIN_MIN;
++  uint8_t marginBottom = UiHighDpiProfile::enabled ? 25 : SCREEN_MARGIN_MIN;
++  uint8_t marginLeft = UiHighDpiProfile::enabled ? 25 : SCREEN_MARGIN_MIN;
++  uint8_t marginRight = UiHighDpiProfile::enabled ? 25 : SCREEN_MARGIN_MIN;
+   // Hide battery percentage
+   uint8_t hideBatteryPercentage = HIDE_NEVER;
+   // Long-press page turn button behavior
+@@ -457,14 +479,33 @@
    };
    uint8_t rickyStandbyFace = RICKY_STANDBY_PICTURE;
    // What stays on the screen once the device is off: what Standby showed, the RickyOS
@@ -429505,7 +429664,7 @@
    // The sleepScreen mode the power-off screen draws with (SleepActivity).
    uint8_t rickySleepScreenMode() const;
    // Standby that has run this long powers off (index into RICKY_AUTO_OFF_HOURS; 0 = never).
-@@ -503,6 +534,7 @@
+@@ -503,6 +544,7 @@
    // last lines of a page and on the tab bar, so readers left books by accident.
    uint8_t rickyGestureBack = 1;     // swipe right from the left side: Back
    uint8_t rickyGestureHome = 0;     // swipe up from the bottom: Home
@@ -429513,7 +429672,7 @@
    uint8_t rickyGestureControl = 1;  // swipe down from the top: control center
    uint8_t rickyGestureStatus = 1;   // tap the status bar: control center
    // Body-text stroke weight in the reader: 0 thinnest .. 2 the font as drawn .. 4 boldest.
-@@ -567,6 +599,7 @@
+@@ -567,6 +609,7 @@
    uint8_t showReaderMenu = READER_MENU_TAP;
    // Frontlight quick-panel state. Brightness and warmth remain persisted even
    // when restore-on-wake is disabled.
@@ -429521,7 +429680,7 @@
    uint8_t frontlightBrightness = 60;
    uint8_t frontlightWarmth = 50;
    uint8_t frontlightOn = 0;
-@@ -581,11 +614,6 @@
+@@ -581,11 +624,6 @@
    // Exact version of the startup guide last completed. Zero/missing means never completed.
    uint8_t onboardingVersion = 0;
    // Keyboard layouts the user can reach, using keyboard_layouts::ALL table bits.
@@ -429533,7 +429692,7 @@
    // Quick Resume: keep current content visible with moon icon instead of showing a static sleep screen.
    uint8_t quickResumeSleepScreen = QUICK_RESUME_NEVER;
    // OTA update channel preference (0 = stable, 1 = nightly).
-@@ -640,6 +668,10 @@
+@@ -640,6 +678,10 @@
      bool showsProgressBar() const { return progressBarMode != HIDE_PROGRESS; }
      bool showsTitle() const { return titleMode != HIDE_TITLE; }
      bool showsClock() const { return clockMode != STATUS_BAR_CLOCK_HIDE; }
@@ -430153,6 +430312,36 @@
          SettingInfo::Toggle(StrId::STR_SUNLIGHT_FADING_FIX, &CrossPointSettings::fadingFix, "fadingFix",
                              StrId::STR_CAT_DISPLAY),
          SettingInfo::Toggle(StrId::STR_SHOW_BUTTON_HINTS, &CrossPointSettings::showButtonHints, "showButtonHints",
+@@ -270,10 +281,25 @@
+                            StrId::STR_SPACING_PLUS_1, StrId::STR_SPACING_PLUS_2},
+                           "characterSpacing", StrId::STR_CAT_READER)
+             .withTextSettings(),
+-        SettingInfo::Value(StrId::STR_SCREEN_MARGIN, &CrossPointSettings::screenMargin,
+-                           {CrossPointSettings::SCREEN_MARGIN_MIN, CrossPointSettings::SCREEN_MARGIN_MAX,
+-                            CrossPointSettings::SCREEN_MARGIN_STEP},
+-                           "screenMargin", StrId::STR_CAT_READER)
++        SettingInfo::Value(StrId::STR_MARGIN_TOP, &CrossPointSettings::marginTop,
++                           {CrossPointSettings::READER_MARGIN_MIN, CrossPointSettings::READER_MARGIN_MAX,
++                            CrossPointSettings::READER_MARGIN_STEP},
++                           "marginTop", StrId::STR_CAT_READER)
++            .withTextSettings(),
++        SettingInfo::Value(StrId::STR_MARGIN_BOTTOM, &CrossPointSettings::marginBottom,
++                           {CrossPointSettings::READER_MARGIN_MIN, CrossPointSettings::READER_MARGIN_MAX,
++                            CrossPointSettings::READER_MARGIN_STEP},
++                           "marginBottom", StrId::STR_CAT_READER)
++            .withTextSettings(),
++        SettingInfo::Value(StrId::STR_MARGIN_LEFT, &CrossPointSettings::marginLeft,
++                           {CrossPointSettings::READER_MARGIN_MIN, CrossPointSettings::READER_MARGIN_MAX,
++                            CrossPointSettings::READER_MARGIN_STEP},
++                           "marginLeft", StrId::STR_CAT_READER)
++            .withTextSettings(),
++        SettingInfo::Value(StrId::STR_MARGIN_RIGHT, &CrossPointSettings::marginRight,
++                           {CrossPointSettings::READER_MARGIN_MIN, CrossPointSettings::READER_MARGIN_MAX,
++                            CrossPointSettings::READER_MARGIN_STEP},
++                           "marginRight", StrId::STR_CAT_READER)
+             .withTextSettings(),
+         SettingInfo::Enum(StrId::STR_PARA_ALIGNMENT, &CrossPointSettings::paragraphAlignment,
+                           {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId::STR_CENTER, StrId::STR_ALIGN_RIGHT,
 --- a/src/activities/Activity.cpp
 +++ b/src/activities/Activity.cpp
 @@ -12,6 +12,12 @@
@@ -436460,9 +436649,127 @@
 +  void showError();
 +  static void provideRow(void* ctx, uint16_t index, freeink::ui::ListItem& item);
 +};
+--- /dev/null
++++ b/src/activities/library/LibraryFoldersActivity.cpp
+@@ -0,0 +1,73 @@
++#include "LibraryFoldersActivity.h"
++
++#include <I18n.h>
++
++#include <string>
++
++namespace fui = freeink::ui;
++
++const char* LibraryFoldersActivity::headerTitle() const { return tr(STR_LIBRARY_FOLDERS); }
++
++void LibraryFoldersActivity::onEnter() {
++  RenderLock lock(*this);
++  UiListActivity::onEnter();
++  waitForButtons = mappedInput.isPressed(MappedInputManager::Button::Confirm) ||
++                   mappedInput.isPressed(MappedInputManager::Button::Back);
++  total = 0;
++  for (const auto& folder : folders) total = static_cast<uint16_t>(total + folder.count);
++  counts.clear();
++  counts.reserve(folders.size() + 1);
++  counts.push_back(std::to_string(total));
++  for (const auto& folder : folders) counts.push_back(std::to_string(folder.count));
++  int row = 0;
++  for (size_t i = 0; i < folders.size(); ++i)
++    if (selected == folders[i].id + 1) row = static_cast<int>(i) + 1;
++  nav.reset(row);
++  requestUpdate();
++}
++
++void LibraryFoldersActivity::provideRow(void* ctx, uint16_t index, fui::ListItem& item) {
++  auto& self = *static_cast<LibraryFoldersActivity*>(ctx);
++  item.actionValue = index;
++  if (index >= self.counts.size()) return;
++  item.label = index == 0 ? tr(STR_LIBRARY_ALL_FOLDERS) : self.folders[index - 1].label.c_str();
++  const bool picked = index == 0 ? self.selected == 0 : self.selected == self.folders[index - 1].id + 1;
++  item.value = picked ? tr(STR_SELECTED) : self.counts[index].c_str();
++}
++
++void LibraryFoldersActivity::buildScreen(UiScreen& screen) {
++  const auto bounds = pageContentRect();
++  screen.setContentMarginFromScreen(
++      fui::Insets{static_cast<int16_t>(bounds.y), 0,
++                  static_cast<int16_t>(renderer.getScreenHeight() - bounds.y - bounds.height), 0});
++  fui::ListProps props;
++  props.rowProvider = &provideRow;
++  props.rowProviderCtx = this;
++  props.count = listCount();
++  props.action = ACTION_ROW;
++  props.inputMask = fui::InputTouch;
++  syncListViewport(screen, props);
++  screen.list(props);
++}
++
++void LibraryFoldersActivity::activateIndex(const int index) {
++  if (index < 0 || index >= listCount()) return;
++  setResult(ActivityResult{IntervalResult{index == 0 ? 0 : folders[index - 1].id + 1}});
++  app.clearTapFlash();
++  finish();
++}
++
++void LibraryFoldersActivity::onBackButton() {
++  ActivityResult result;
++  result.isCancelled = true;
++  setResult(std::move(result));
++  app.clearTapFlash();
++  finish();
++}
++
++bool LibraryFoldersActivity::handleCustomInput() {
++  if (!waitForButtons) return false;
++  waitForButtons = mappedInput.isPressed(MappedInputManager::Button::Confirm) ||
++                   mappedInput.isPressed(MappedInputManager::Button::Back);
++  return true;
++}
+--- /dev/null
++++ b/src/activities/library/LibraryFoldersActivity.h
+@@ -0,0 +1,39 @@
++#pragma once
++
++#include <cstdint>
++#include <string>
++#include <vector>
++
++#include "activities/UiListActivity.h"
++
++// Picks the folder the Library shelf shows. Rows are the folders that hold
++// indexed books, with their counts; the result is IntervalResult{0} for every
++// folder or {folderId + 1}. The caller builds the rows from the open index, so
++// this screen never touches the card.
++class LibraryFoldersActivity final : public UiListActivity {
++ public:
++  struct Folder {
++    std::string label;
++    uint16_t id = 0;
++    uint16_t count = 0;
++  };
++  LibraryFoldersActivity(GfxRenderer& renderer, MappedInputManager& input, std::vector<Folder> folders, int selected)
++      : UiListActivity("LibraryFolders", renderer, input, true), folders(std::move(folders)), selected(selected) {}
++  void onEnter() override;
++
++ protected:
++  int listCount() const override { return 1 + static_cast<int>(folders.size()); }
++  const char* headerTitle() const override;
++  void buildScreen(UiScreen& screen) override;
++  void activateIndex(int index) override;
++  void onBackButton() override;
++  bool handleCustomInput() override;
++
++ private:
++  std::vector<Folder> folders;
++  int selected;  // 0 every folder, otherwise folderId + 1
++  uint16_t total = 0;
++  bool waitForButtons = false;
++  std::vector<std::string> counts;  // one per row, alive while rows are laid out
++  static void provideRow(void* ctx, uint16_t index, freeink::ui::ListItem& item);
++};
 --- a/src/activities/library/LibraryListActivity.cpp
 +++ b/src/activities/library/LibraryListActivity.cpp
-@@ -7,15 +7,20 @@
+@@ -7,15 +7,21 @@
  #include <HalStorage.h>
  #include <I18n.h>
  #include <LibraryBuilder.h>
@@ -436479,11 +436786,12 @@
  
  #include "CrossPointSettings.h"
 +#include "LibraryCategoriesActivity.h"
++#include "LibraryFoldersActivity.h"
 +#include "LibrarySourcesActivity.h"
  #include "MappedInputManager.h"
  #include "ReadingStatsStore.h"
  #include "RecentBooksStore.h"
-@@ -39,6 +44,8 @@
+@@ -39,6 +45,8 @@
  namespace fui = freeink::ui;
  
  namespace {
@@ -436492,7 +436800,7 @@
  constexpr int SIDE_PADDING = 12;
  constexpr unsigned long LONG_PRESS_MS = 1000;
  
-@@ -83,20 +90,47 @@
+@@ -83,20 +91,49 @@
  }
  
  void LibraryListActivity::onEnter() {
@@ -436529,6 +436837,8 @@
 +        }
 +        else if (!self.batchMode && event.value == ManageSources)
 +          self.openSources();
++        else if (!self.batchMode && event.value == ManageFolders)
++          self.openFolders();
 +        else if (event.value == PageJump)
 +          self.promptPageJump();
 +      },
@@ -436545,7 +436855,7 @@
          RenderLock lock(self);
          self.readingFilter = event.value;
          self.applyFilter();
-@@ -105,83 +139,154 @@
+@@ -105,83 +142,154 @@
          self.requestUpdate();
        },
        this);
@@ -436759,12 +437069,12 @@
  }
  
  void LibraryListActivity::swallowHeldReleases() {
-@@ -199,15 +304,49 @@
+@@ -199,15 +307,49 @@
  // list the reader narrowed down on purpose, and the ascending toggle asks for
  // oldest-first, which pinned fresh reads would contradict.
  int LibraryListActivity::pinnedCount() const {
 -  if (readingFilter != 0) return 0;
-+  if (readingFilter != 0 || categoryFilter != 0) return 0;
++  if (readingFilter != 0 || categoryFilter != 0 || folderFilter != 0) return 0;
    if (activeTabIndex != RECENT_TAB || !query.empty() || !isDescending(sortOrder)) return 0;
    return pinnedTotal;
  }
@@ -436810,7 +437120,7 @@
    for (int i = 0; i < pinnedTotal; i++) pinnedAscRows[i] = 0xFFFF;
    if (pinnedTotal > 0 && index.isOpen()) {
      library::BookIdentity identities[RecentBooksStore::MAX_RECENT_BOOKS];
-@@ -229,6 +368,22 @@
+@@ -229,6 +371,22 @@
        pinnedTotal = 0;
      }
    }
@@ -436833,7 +437143,7 @@
    refreshOverlap();
  }
  
-@@ -249,7 +404,7 @@
+@@ -249,7 +407,7 @@
    if (selectedEntry() < pinnedCount()) {
      const auto& books = RECENT_BOOKS.getBooks();
      if (selectedEntry() >= static_cast<int>(books.size())) return;
@@ -436842,7 +437152,7 @@
    } else {
      if (!index.isOpen()) return;
      const uint16_t ordinal = index.ordinalForRow(sortOrder, static_cast<uint16_t>(rowFor(selectedEntry())));
-@@ -275,6 +430,17 @@
+@@ -275,6 +433,17 @@
  }
  
  void LibraryListActivity::activateIndex(const int index) {
@@ -436860,7 +437170,7 @@
    if (groupsCollapsed) {
      expandGroup(index);
    } else {
-@@ -289,7 +455,13 @@
+@@ -289,7 +458,13 @@
  bool LibraryListActivity::deleteEligible() const { return !groupsCollapsed && (!query.empty() || !groupable()); }
  
  void LibraryListActivity::onRowLongPress(const int index) {
@@ -436875,7 +437185,7 @@
      showRecentBookOptions(index);
    } else if (deleteEligible()) {
      promptDeleteBook(index);
-@@ -312,8 +484,8 @@
+@@ -312,8 +487,8 @@
    if (isStoreRow) {
      const auto& books = RECENT_BOOKS.getBooks();
      if (entry >= static_cast<int>(books.size())) return;
@@ -436886,7 +437196,7 @@
    } else {
      if (!index.isOpen()) return;
      const uint16_t ordinal = index.ordinalForRow(sortOrder, static_cast<uint16_t>(rowFor(entry)));
-@@ -326,10 +498,12 @@
+@@ -326,10 +501,12 @@
      }
    }
  
@@ -436902,7 +437212,7 @@
                     [this, path, title, isStoreRow](const int choice) {
                       swallowHeldReleases();
                       switch (choice) {
-@@ -337,20 +511,16 @@
+@@ -337,20 +514,16 @@
                           openBookByPath(path);
                           break;
                         case 1:
@@ -436929,7 +437239,7 @@
                           break;
                         default:
                           break;
-@@ -359,17 +529,209 @@
+@@ -359,21 +532,287 @@
    requestUpdate();
  }
  
@@ -437035,7 +437345,7 @@
 +                                      StrId::STR_RICKY_SORT_AUTHOR_ASC,  StrId::STR_RICKY_SORT_AUTHOR_DESC,
 +                                      StrId::STR_LIBRARY_REBUILD,        StrId::STR_LIBRARY_CATEGORIES,
 +                                      StrId::STR_LIBRARY_BATCH,          StrId::STR_LIBRARY_SOURCES,
-+                                      StrId::STR_LIBRARY_VIEW_TOGGLE};
++                                      StrId::STR_LIBRARY_VIEW_TOGGLE,    StrId::STR_LIBRARY_FOLDERS};
 +  const int selected = activeTabIndex * 2 + (isDescending(sortOrder) == (activeTabIndex == RECENT_TAB) ? 0 : 1);
 +  optionPopup.show(StrId::STR_RICKY_LIBRARY_TOOLS, options, std::size(options), selected, [this](int choice) {
 +    swallowHeldReleases();
@@ -437057,6 +437367,10 @@
 +    }
 +    if (choice == 10) {
 +      toggleListView();
++      return;
++    }
++    if (choice == 11) {
++      openFolders();
 +      return;
 +    }
 +    if (choice < 0 || choice >= 6 || degraded) return;
@@ -437096,6 +437410,75 @@
 +    requestUpdate();
 +  });
 +}
++namespace {
++// "/books/金庸/射雕" reads as "books/金庸/射雕": the full path keeps nested folders apart.
++std::string folderLabelFor(const std::string& path) {
++  if (path.size() > 1 && path[0] == '/') return path.substr(1);
++  return path.empty() ? std::string("/") : path;
++}
++}  // namespace
++
++void LibraryListActivity::openFolders() {
++  std::vector<LibraryFoldersActivity::Folder> rows;
++  {
++    RenderLock lock(*this);
++    app.clearTapFlash();
++    std::vector<std::string> paths;
++    std::vector<uint16_t> counts;
++    if (index.isOpen() && index.readFolderPaths(paths) && index.countBooksPerFolder(counts) &&
++        paths.size() == counts.size()) {
++      for (size_t id = 0; id < paths.size(); ++id) {
++        if (!counts[id]) continue;
++        rows.push_back({folderLabelFor(paths[id]), static_cast<uint16_t>(id), counts[id]});
++      }
++      std::sort(rows.begin(), rows.end(),
++                [](const auto& a, const auto& b) { return a.label < b.label; });
++    } else {
++      LOG_ERR("LIB", "cannot list library folders");
++    }
++  }
++  startActivityForResultWith<LibraryFoldersActivity>(
++      [this](const ActivityResult& result) {
++        RenderLock lock(*this);
++        if (!result.isCancelled && std::holds_alternative<IntervalResult>(result.data)) {
++          folderFilter = std::get<IntervalResult>(result.data).value;
++          folderPath.clear();
++          folderLabel.clear();
++          std::vector<std::string> paths;
++          if (folderFilter > 0 && index.readFolderPaths(paths) && folderFilter <= static_cast<int>(paths.size())) {
++            folderPath = paths[folderFilter - 1];
++            folderLabel = folderLabelFor(folderPath);
++          } else {
++            folderFilter = 0;
++          }
++        }
++        applyFilter();
++        activeNav().reset();
++        swallowHeldReleases();
++        requestUpdate();
++      },
++      std::move(rows), folderFilter);
++}
++
++void LibraryListActivity::resolveFolderFilter() {
++  if (folderFilter == 0) return;
++  folderFilter = 0;
++  std::vector<std::string> paths;
++  if (folderPath.empty() || !index.isOpen() || !index.readFolderPaths(paths)) {
++    folderPath.clear();
++    folderLabel.clear();
++    return;
++  }
++  for (size_t id = 0; id < paths.size(); ++id) {
++    if (paths[id] == folderPath) {
++      folderFilter = static_cast<int>(id) + 1;
++      return;
++    }
++  }
++  folderPath.clear();
++  folderLabel.clear();
++}
++
 +void LibraryListActivity::assignCategories(const std::string& path) {
 +  const size_t count = path.empty() ? batchCount : 1;
 +  if (!count) return;
@@ -437146,7 +437529,12 @@
  }
  
  void LibraryListActivity::resetAfterRebuild() {
-@@ -456,25 +818,33 @@
+   // Sort positions, group starts, and pinned rows all point into the old order.
++  resolveFolderFilter();
+   applyFilter();
+   resolvePinned();
+   auto& nav = activeNav();
+@@ -456,25 +895,33 @@
          if (!Storage.remove(path.c_str())) LOG_ERR("LIB", "cannot delete %s", path.c_str());
          RickyStorageActivity::invalidateScan();
          if (RECENT_BOOKS.removeByPath(path)) RECENT_BOOKS.saveToFile();
@@ -437190,7 +437578,7 @@
  }
  
  void LibraryListActivity::stepTab(const int direction) {
-@@ -488,6 +858,7 @@
+@@ -488,6 +935,7 @@
  }
  
  void LibraryListActivity::selectTab(const int index, const bool toggleIfActive) {
@@ -437198,25 +437586,25 @@
    if (index < 0 || index >= TAB_SLOTS) return;
    if (toggleIfActive && index == activeTab()) descendingTabs ^= static_cast<uint8_t>(1u << index);
    sortOrder = orderForTab(index, descendingTabs);
-@@ -518,7 +889,7 @@
+@@ -518,7 +966,7 @@
  }
  
  int LibraryListActivity::bookRowCount() const {
 -  if (readingFilter != 0) return filteredCount;
-+  if (readingFilter != 0 || categoryFilter != 0) return filteredCount;
++  if (readingFilter != 0 || categoryFilter != 0 || folderFilter != 0) return filteredCount;
    if (!query.empty()) return static_cast<int>(filteredCount);
    // Pinned books already in the index are skipped below the pins, not doubled;
    // pinned books the index missed still show, so the difference stays split.
-@@ -533,7 +904,7 @@
+@@ -533,7 +981,7 @@
  // With pins active, entries below pinnedCount() belong to the store and must
  // not reach this; the rest walk past the pinned books' own sort rows.
  int LibraryListActivity::rowFor(const int entry) const {
 -  if (!query.empty() || readingFilter != 0) {
-+  if (!query.empty() || readingFilter != 0 || categoryFilter != 0) {
++  if (!query.empty() || readingFilter != 0 || categoryFilter != 0 || folderFilter != 0) {
      if (entry < 0 || entry >= static_cast<int>(filteredCount) || !filtered) return 0;
      return filtered[entry];
    }
-@@ -631,8 +1002,8 @@
+@@ -631,8 +1079,8 @@
    requestUpdate();
  }
  
@@ -437227,12 +437615,12 @@
  // array is allocated once with the exact upper bound and fails back to an
  // explicit message rather than letting vector growth abort the firmware.
  void LibraryListActivity::applyFilter() {
-@@ -645,11 +1016,24 @@
+@@ -645,11 +1093,24 @@
    // The header shows the active query in place of the screen title, so the
    // reader can see what narrowed the list without reopening the keyboard.
    headerSearchTitle = query.empty() ? std::string() : "“" + query + "”";
 -  if (query.empty() && readingFilter == 0) return;
-+  if (query.empty() && readingFilter == 0 && categoryFilter == 0) return;
++  if (query.empty() && readingFilter == 0 && categoryFilter == 0 && folderFilter == 0) return;
 +
 +  std::unique_ptr<uint64_t[]> categoryHashes;
 +  size_t categoryHashCount = 0;
@@ -437253,7 +437641,7 @@
  
    auto matches = makeUniqueNoThrow<uint16_t[]>(static_cast<size_t>(total));
    if (!matches) {
-@@ -661,13 +1045,48 @@
+@@ -661,13 +1122,53 @@
    uint16_t matchCount = 0;
    std::string author;
    for (int row = 0; row < total; row++) {
@@ -437267,6 +437655,10 @@
 +                                                                     categoryHashes.get() + categoryHashCount,
 +                                                                     searchTable.pathHash(ordinal));
 +        if (categoryFilter == 1 ? present : !present) continue;
++      }
++      if (folderFilter != 0) {
++        library::ClixRecord record{};
++        if (!index.readRecord(ordinal, record) || record.folderId + 1 != folderFilter) continue;
 +      }
 +      if (readingFilter != 0) {
 +        library::ClixRecord record{};
@@ -437283,6 +437675,7 @@
      const uint16_t ordinal = index.ordinalForRow(sortOrder, static_cast<uint16_t>(row));
      library::ClixRecord record{};
      if (ordinal == 0xFFFF || !index.readRecord(ordinal, record)) continue;
++    if (folderFilter != 0 && record.folderId + 1 != folderFilter) continue;
 +    if (categoryFilter) {
 +      uint64_t hash = 0;
 +      if (!index.readPathHash(record, hash)) {
@@ -437303,12 +437696,12 @@
        const bool started = stats != nullptr;
        const bool reading = started && !stats->completed;
        if ((readingFilter == 1 && !reading) || (readingFilter == 2 && started)) continue;
-@@ -691,12 +1110,21 @@
+@@ -691,12 +1192,21 @@
    }
    filtered = std::move(matches);
    filteredCount = matchCount;
-+  LOG_INF("LIB", "filter \"%s\" reading=%u category=%d: %u of %d books in %lu ms (%s)", query.c_str(),
-+          static_cast<unsigned>(readingFilter), categoryFilter, static_cast<unsigned>(matchCount), total,
++  LOG_INF("LIB", "filter \"%s\" reading=%u category=%d folder=%d: %u of %d books in %lu ms (%s)", query.c_str(),
++          static_cast<unsigned>(readingFilter), categoryFilter, folderFilter, static_cast<unsigned>(matchCount), total,
 +          millis() - filterStarted, inMemory ? "memory" : "card");
  }
  
@@ -437325,7 +437718,7 @@
    auto& nav = activeNav();
    if (!query.empty()) {
      query.clear();
-@@ -737,7 +1165,7 @@
+@@ -737,7 +1247,7 @@
    if (entry < pinnedCount()) {
      const auto& books = RECENT_BOOKS.getBooks();
      if (entry < 0 || entry >= static_cast<int>(books.size())) return false;
@@ -437334,7 +437727,7 @@
      title = book.title;
      author = book.author;
      if (fileName) *fileName = book.path;
-@@ -779,7 +1207,7 @@
+@@ -779,7 +1289,7 @@
  // up to its page, so swiping back from there never left the last page. Scrolling stays
  // in UiListActivity::loop(), after the touch is routed: taking the swipe earlier left
  // the touched book pressed (drawn inverted) because its release never reached the UI.
@@ -437343,7 +437736,7 @@
  
  bool LibraryListActivity::handleButtons() {
    const int count = listCount();
-@@ -790,6 +1218,10 @@
+@@ -790,6 +1300,10 @@
    // ActivityManager::loop() before any activity runs, so it cannot land in
    // the freshly opened confirmation and select its default.
    if (mappedInput.wasLongPressed(MappedInputManager::Button::Confirm, LONG_PRESS_MS)) {
@@ -437354,7 +437747,7 @@
      if (tabsFocused()) {
        if (!degraded) toggleSortDirection();
      } else if (isRecentSort(sortOrder)) {
-@@ -811,7 +1243,10 @@
+@@ -811,7 +1325,10 @@
  
    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
      if (tabsFocused()) {
@@ -437366,7 +437759,7 @@
        return true;
      }
      if (count > 0) activateIndex(selectedEntry());
-@@ -838,7 +1273,7 @@
+@@ -838,7 +1355,7 @@
    });
    // Search is an activation: defer it so holding Previous can still step tabs.
    buttonNavigator.onPreviousRelease([this] {
@@ -437375,7 +437768,7 @@
    });
    // A held button steps tabs while the strip has focus (the base behaviour
    // Settings keeps) and page-jumps once the selection is down in the rows,
-@@ -1020,7 +1455,7 @@
+@@ -1020,7 +1537,7 @@
  bool LibraryListActivity::entryPath(int entry, std::string& path) {
    if (entry < 0 || entry >= bookRowCount()) return false;
    if (entry < pinnedCount()) {
@@ -437384,7 +437777,7 @@
      return true;
    }
    const auto ordinal = index.ordinalForRow(sortOrder, rowFor(entry));
-@@ -1043,17 +1478,38 @@
+@@ -1043,17 +1560,38 @@
    // The product caption can fall back to BODY for a title with uncommon glyphs.
    // Reserve the taller of the two actual font lines so title and progress never touch.
    const int cardTextLineHeight =
@@ -437427,7 +437820,7 @@
    auto pageTitle = theme.titleText;
    pageTitle.bold = true;
    screen.target().text(titleRect, headerTitle(), pageTitle);
-@@ -1071,7 +1527,7 @@
+@@ -1071,7 +1609,7 @@
    moreRect.width = moreWidth;
    RickyPageUi::pageIcon(screen.target(), renderer, moreRect.x + (moreRect.width - 40) / 2,
                          moreRect.y + moreRect.height / 2, icon_ricky_filter_40);
@@ -437436,7 +437829,7 @@
    const StrId filterLabels[] = {StrId::STR_RICKY_BOOKS_ALL, StrId::STR_RICKY_BOOKS_READING,
                                  StrId::STR_RICKY_BOOKS_UNREAD};
    int widestLabel = 0;
-@@ -1100,37 +1556,69 @@
+@@ -1100,37 +1638,83 @@
      label.align = fui::TextAlign::Center;
      screen.target().text(labelRect, I18N.get(filterLabels[i]), label);
    }
@@ -437444,9 +437837,12 @@
 +  // strip of chips; category and batch actions share the drawn/hit geometry.
 +  auto categoryRow = screen.takeTop(ricky::ds::layout::kTouchMin, gap);
 +  auto categoryRect = categoryRow;
-+  categoryRect.width = (categoryRow.width - gap) * 2 / 3;
++  categoryRect.width = (categoryRow.width - gap * 2) / 3;
++  auto folderRect = categoryRow;
++  folderRect.x = categoryRect.right() + gap;
++  folderRect.width = categoryRect.width;
 +  auto batchRect = categoryRow;
-+  batchRect.x = categoryRect.right() + gap;
++  batchRect.x = folderRect.right() + gap;
 +  batchRect.width = categoryRow.right() - batchRect.x;
 +  auto caption = theme.smallText;
 +  caption.color = fui::Color::DarkGray;
@@ -437455,7 +437851,18 @@
 +  const char* categoryName = categoryFilter == 0   ? tr(STR_LIBRARY_ALL_CATEGORIES)
 +                             : categoryFilter == 1 ? tr(STR_LIBRARY_UNCATEGORIZED)
 +                                                   : categories.name(categoryFilter - 2);
-+  screen.target().text(categoryRect, batchMode ? selectedText : categoryName, caption);
++  if (batchMode) {
++    // The selection count gets the whole left of the row; folders wait for batch to end.
++    auto selectedRect = categoryRect;
++    selectedRect.width = batchRect.x - gap - categoryRect.x;
++    screen.target().text(selectedRect, selectedText, caption);
++  } else {
++    screen.target().text(categoryRect, categoryName, caption);
++    auto folderCaption = caption;
++    folderCaption.align = fui::TextAlign::Center;
++    screen.target().text(folderRect, folderFilter ? folderLabel.c_str() : tr(STR_LIBRARY_ALL_FOLDERS), folderCaption);
++    screen.frame().hit(folderRect, ACTION_ADD, ManageFolders, fui::InputTouch);
++  }
 +  caption.align = fui::TextAlign::Right;
 +  screen.target().text(batchRect, batchMode ? tr(STR_LIBRARY_ASSIGN_CATEGORY) : tr(STR_LIBRARY_BATCH), caption);
 +  screen.frame().hit(categoryRect, ACTION_ADD, ManageCategories, fui::InputTouch);
@@ -437465,7 +437872,7 @@
 -        filterFailed ? tr(STR_LIBRARY_SEARCH_UNAVAILABLE)
 -                     : (query.empty() && readingFilter == 0 ? tr(STR_LIBRARY_EMPTY) : tr(STR_LIBRARY_NO_RESULTS)));
 +    screen.centeredText(filterFailed ? tr(STR_LIBRARY_SEARCH_UNAVAILABLE)
-+                                     : (query.empty() && readingFilter == 0 && categoryFilter == 0
++                                     : (query.empty() && readingFilter == 0 && categoryFilter == 0 && folderFilter == 0
 +                                            ? tr(STR_LIBRARY_NOT_ENROLLED)
 +                                            : tr(STR_LIBRARY_NO_RESULTS)));
      return;
@@ -437525,7 +437932,7 @@
      for (int i = 0; i < visible; ++i) {
        rowTextFor(start + i, shelfTitles[i], shelfAuthors[i]);
        RickyPageUi::stripBookExtension(shelfTitles[i]);
-@@ -1138,7 +1626,7 @@
+@@ -1138,7 +1722,7 @@
        const auto& path = shelfPaths[i];
        // Reading state only: "EPUB · 已读 12%" overflowed a three-column card, and the
        // format already shows on generated covers.
@@ -437534,7 +437941,7 @@
        if (stats && stats->lastProgressPercent >= 100)
          snprintf(shelfDetails[i].data(), shelfDetails[i].size(), "%s", tr(STR_RICKY_BOOK_FINISHED));
        else if (stats)
-@@ -1148,33 +1636,67 @@
+@@ -1148,33 +1732,67 @@
          snprintf(shelfDetails[i].data(), shelfDetails[i].size(), "%s", tr(STR_RICKY_BOOK_UNREAD));
        shelfCovers[i].clear();
      }
@@ -437620,7 +438027,7 @@
      if (picked) RickyDesignUi::fill(renderer, cell, ricky::ds::gray::kInk, ricky::ds::radius::kControl);
      const int coverWidth = coverHeight * 2 / 3;
      const fui::Rect rect{static_cast<int16_t>(cell.x + (cell.width - coverWidth) / 2),
-@@ -1196,9 +1718,14 @@
+@@ -1196,9 +1814,14 @@
                                       });
        if (painted) screen.target().stroke(rect, fui::Paint::solid(fui::Color::LightGray), ricky::ds::stroke::kHairline);
      }
@@ -437636,7 +438043,7 @@
        RickyDesignUi::cover(renderer, rect, shelfTitles[slot].c_str(), format);
      }
      const fui::Rect titleRect{static_cast<int16_t>(cell.x + cardSideInset),
-@@ -1207,22 +1734,28 @@
+@@ -1207,22 +1830,28 @@
                                static_cast<int16_t>(cardTextLineHeight)};
      const fui::Rect detailRect{titleRect.x, static_cast<int16_t>(titleRect.bottom() + cardTextGap), titleRect.width,
                                 titleRect.height};
@@ -437674,7 +438081,7 @@
  }
  
  // "12/69 books" at the bottom right: which book is selected, out of how many.
-@@ -1274,7 +1807,9 @@
+@@ -1274,7 +1903,9 @@
  void LibraryListActivity::render(RenderLock&& lock) {
    if (optionPopup.isActive()) renderPopupUnderlay();
    if (optionPopup.processRender(renderer, mappedInput)) return;
@@ -437709,7 +438116,7 @@
    MainTab mainTab() const override { return MainTab::Library; }
    void selectMainTabContentEdge(MainTabContentEdge edge) override {
      activeNav().requestSelection(MainTabs::contentEdgeIndex(edge, listCount()) + 1);
-@@ -71,11 +74,26 @@
+@@ -71,11 +74,33 @@
    static constexpr freeink::ui::ActionId ACTION_SEARCH = ACTION_TAB_USER;
    static constexpr freeink::ui::ActionId ACTION_REBUILD = ACTION_SEARCH + 1;
    static constexpr freeink::ui::ActionId ACTION_BACK = ACTION_REBUILD + 1;
@@ -437733,15 +438140,22 @@
 +  void clearBatch();
 +  library::LibraryCategories categories;
 +  int categoryFilter = 0;  // 0 all, 1 uncategorized, 2..17 stable category slot
++  // 0 every folder, otherwise folderId + 1. The path survives a rebuild that renumbers
++  // folders; resolveFolderFilter() maps it back (or clears the filter).
++  int folderFilter = 0;
++  std::string folderPath;
++  std::string folderLabel;
++  void openFolders();
++  void resolveFolderFilter();
 +  bool categoriesReady = true;
 +  bool batchMode = false;
 +  uint16_t batchCount = 0;
 +  std::array<uint8_t, library::CLIX_MAX_RECORDS / 8> batchSelected{};  // one bit per indexed book, no heap
-+  enum ToolAction { ManageSources, ManageCategories, BatchSelect, SortTools, PageJump };
++  enum ToolAction { ManageSources, ManageCategories, BatchSelect, SortTools, PageJump, ManageFolders };
  
    // Input
    void openSelectedBook();
-@@ -146,6 +164,9 @@
+@@ -146,6 +171,9 @@
    void refreshOverlap();
  
    library::LibraryIndexFile index;
@@ -437751,7 +438165,7 @@
    int activeTabIndex = 0;
    library::SortOrder sortOrder = library::SortOrder::RecentDesc;
    // One bit per tab; Recent starts descending (newest first).
-@@ -189,6 +210,7 @@
+@@ -189,6 +217,7 @@
    uint16_t pinnedAscRows[RecentBooksStore::MAX_RECENT_BOOKS] = {};
    uint16_t overlapRows[RecentBooksStore::MAX_RECENT_BOOKS] = {};
    uint8_t pinnedTotal = 0;
@@ -437759,7 +438173,7 @@
    uint8_t overlapCount = 0;
  
    bool lockNextConfirmRelease = false;
-@@ -197,15 +219,34 @@
+@@ -197,15 +226,34 @@
    // Row options modal (Recent long-press menu); owned here so it outlives the
    // touch event that opened it.
    OptionPopup optionPopup;
@@ -439349,11 +439763,30 @@
    } else if (perr == "access expired") {
      msg = StrId::STR_LOAN_EXPIRED;
    } else if (perr == "loan date unverified") {
-@@ -1780,11 +1862,19 @@
+@@ -1778,14 +1860,32 @@
+ readingMode::Margins EpubReaderActivity::textMargins() const {
+   readingMode::Margins viewable;
    renderer.getOrientedViewableTRBL(&viewable.top, &viewable.right, &viewable.bottom, &viewable.left);
-   const int screenMargin = SETTINGS.screenMargin;
+-  const int screenMargin = SETTINGS.screenMargin;
++  const int marginTop = SETTINGS.marginTop;
++  const int marginBottom = SETTINGS.marginBottom;
++  int marginLeft = SETTINGS.marginLeft;
++  int marginRight = SETTINGS.marginRight;
++  // Never squeeze the text column below half the page width, whatever the sides add up to.
++  const int usableWidth = renderer.getScreenWidth() - viewable.left - viewable.right;
++  const int sideLimit = std::max(0, usableWidth / 2);
++  if (marginLeft + marginRight > sideLimit) {
++    const int sum = marginLeft + marginRight;
++    marginLeft = marginLeft * sideLimit / sum;
++    marginRight = sideLimit - marginLeft;
++  }
    const auto mode = readingMode::modeFor(SETTINGS.readingMode);
 -  const bool textLane = SETTINGS.statusBarSpec().textLaneVisible();
+-
+-  int top = viewable.top + screenMargin;
+-  if (readingMode::showsHeader(mode) && UiHighDpiProfile::enabled && textLane) {
+-    top += ricky::ds::layout::kReaderHeaderHeight + ricky::ds::layout::kReaderHeaderGap;
+-  }
 +  const auto sb = SETTINGS.statusBarSpec();
 +  const bool textLane = sb.textLaneVisible();
 +  const auto chrome = UiHighDpiProfile::enabled
@@ -439363,27 +439796,44 @@
 +                                sb.headerLaneVisible(), sb.footerLaneVisible(), sb.showsProgressBar(),
 +                                sb.progressBarHeightPx)
 +                          : readerChrome::CompactLayout{};
- 
-   int top = viewable.top + screenMargin;
--  if (readingMode::showsHeader(mode) && UiHighDpiProfile::enabled && textLane) {
--    top += ricky::ds::layout::kReaderHeaderHeight + ricky::ds::layout::kReaderHeaderGap;
-+  if (readingMode::showsHeader(mode) && UiHighDpiProfile::enabled && sb.headerLaneVisible()) {
-+    top = viewable.top + std::max(screenMargin, chrome.headerReserve);
-   }
++
++  const bool headerLane = readingMode::showsHeader(mode) && UiHighDpiProfile::enabled && sb.headerLaneVisible();
++  const int topFloor = viewable.top + (headerLane ? chrome.headerReserve : 0);
++  int top = std::max(viewable.top + marginTop, topFloor);
    int bottomReserve = 0;
    if (readingMode::showsFooter(mode)) {
-@@ -1794,8 +1884,8 @@
+     const uint8_t statusBarHeight = UITheme::getInstance().getStatusBarHeight();
+@@ -1794,13 +1894,22 @@
          (statusBarHeight == 0 || statusBarHeight == UITheme::getInstance().getProgressBarHeight())) {
        bottomReserve += UITheme::getInstance().getMetrics().statusBarVerticalMargin;
      }
 -    if (UiHighDpiProfile::enabled && textLane) {
 -      bottomReserve = std::max(bottomReserve, static_cast<int>(ricky::ds::layout::kReaderFooterHeight));
+-    }
+-  }
+-  const readingMode::Margins base{top, viewable.right + screenMargin,
+-                                  viewable.bottom + std::max(screenMargin, bottomReserve),
+-                                  viewable.left + screenMargin};
 +    if (UiHighDpiProfile::enabled && (!automaticPageTurnActive || textLane)) {
 +      bottomReserve = chrome.footerReserve;
-     }
-   }
-   const readingMode::Margins base{top, viewable.right + screenMargin,
-@@ -1891,7 +1981,7 @@
++    }
++  }
++  const int bottomFloor = viewable.bottom + bottomReserve;
++  int bottom = std::max(viewable.bottom + marginBottom, bottomFloor);
++  // The same for height: what the sides add beyond the header/footer reserve may
++  // take at most half of the height left between them.
++  const int room = std::max(0, (renderer.getScreenHeight() - topFloor - bottomFloor) / 2);
++  const int extraTop = top - topFloor, extraBottom = bottom - bottomFloor;
++  if (extraTop + extraBottom > room) {
++    const int keptTop = extraTop * room / (extraTop + extraBottom);
++    top = topFloor + keptTop;
++    bottom = bottomFloor + room - keptTop;
++  }
++  const readingMode::Margins base{top, viewable.right + marginRight, bottom, viewable.left + marginLeft};
+   const readingMode::Margins margins = readingMode::textMargins(mode, base, viewable, RickyReaderDog::kEdgeRow);
+   if (!readingMode::setsVertically(mode)) return margins;
+   return readingMode::fitColumns(
+@@ -1891,7 +2000,7 @@
        return;
      }
  
@@ -439392,7 +439842,7 @@
      ++sectionGeneration_;
  #endif
      const bool cacheLoaded = section->loadSectionFile(renderSpec);
-@@ -2307,14 +2397,23 @@
+@@ -2307,14 +2416,23 @@
    }
  }
  
@@ -439419,7 +439869,7 @@
  bool EpubReaderActivity::pageCacheEligible() const {
    // No !section->isBuilding() here, deliberately. The page cache renders ONE page --
    // the current one or the next -- and Section::loadPage() is written to serve exactly
-@@ -2328,7 +2427,13 @@
+@@ -2328,7 +2446,13 @@
    // engages at all -- every turn is a full render instead of the cached one.
    return !pageCacheFailed_ && section && renderer.hasFrameBuffer() && !activityManager.isSwitchPending() &&
           overlay == Overlay::None && fontPromptState == FontPromptState::Idle && !renderer.isInverted() &&
@@ -439434,7 +439884,7 @@
  }
  
  ReaderPageCacheKey EpubReaderActivity::pageCacheKey(const int page, const int top, const int right, const int bottom,
-@@ -2369,8 +2474,34 @@
+@@ -2369,8 +2493,34 @@
    }
  }
  
@@ -439469,7 +439919,7 @@
    // Every exit below names the condition it took. Without that, "the cache never hits"
    // is indistinguishable from "the build was cancelled", "the layout moved since the
    // last render" and "the next page has images" -- and each of those needs a different
-@@ -2400,6 +2531,9 @@
+@@ -2400,6 +2550,9 @@
    const auto& layout = renderedPageKey_;
    // A main-loop reflow/jump may have replaced the section since the last render.
    if (layout != pageCacheKey(section->currentPage, layout.top, layout.right, layout.bottom, layout.left)) {
@@ -439479,7 +439929,7 @@
      LOG_DBG("ERS", "Page cache: skip, layout moved since the last render");
      return;
    }
-@@ -2412,26 +2546,40 @@
+@@ -2412,26 +2565,40 @@
    // A build cut short by input stays retryable: the render task re-arms the idle pass
    // once input is quiet, and a Skipped slot would otherwise never be built again.
    const auto build = [&](const int slot, const ReaderPageCacheKey& key) {
@@ -439530,7 +439980,7 @@
  // On a chapter's last page the forward slot is free: build the next chapter and render
  // its first page into it. Comics put one picture in each chapter, so without this every
  // turn decoded a JPEG in the foreground (~3.5 s); now it happens while the page is read.
-@@ -2464,6 +2612,12 @@
+@@ -2464,6 +2631,12 @@
    }
    if (nextSection->pageCount == 0 || activityManager.idleRenderCancelled(generation)) return;
    const bool ready = buildPageCacheSlot(0, key, generation, nextSection.get());
@@ -439543,7 +439993,7 @@
    LOG_DBG("ERS", "Next chapter prefetch: spine %d ready=%d in %lums", next, ready, millis() - started);
  }
  #endif
-@@ -2527,13 +2681,18 @@
+@@ -2527,13 +2700,18 @@
    if (!pageCacheBase_[slot]) {
      constexpr size_t kContiguousReserve = 16 * 1024;
      // Reserve the slots still to allocate; the forward slot is already charged for slot 1.
@@ -439566,7 +440016,7 @@
        freePageCache();
        pageCacheFailed_ = true;
        LOG_ERR("ERS", "Page cache off: PSRAM allocation of %u B failed", static_cast<unsigned>(4 * bytes));
-@@ -2579,12 +2738,26 @@
+@@ -2579,12 +2757,26 @@
    const readingMode::Box textBox = readingMode::textBox(renderer.getScreenWidth(), renderer.getScreenHeight(),
                                                          {key.top, key.right, key.bottom, key.left});
    const int pitch = renderer.getLineHeight(key.spec.fontId, key.spec.lineCompression);
@@ -439593,7 +440043,7 @@
    };
  
    // Load glyphs on demand: a whole-page prewarm cannot be interrupted. Check
-@@ -2597,9 +2770,10 @@
+@@ -2597,9 +2789,10 @@
      GfxRenderer::SyntheticBoldScope syntheticBold(renderer, key.fakeBold);
      GfxRenderer::TextWeightScope textWeight(renderer, readerTextWeightCurve(key.textWeight),
                                              readerTextWeightSpread(key.textWeight));
@@ -439605,7 +440055,7 @@
      }
      if (vertical) readerChrome::drawColumnRules(renderer, *page, textBox, pitch);
      // Match foreground ordering: all text first, then the guide lines.
-@@ -2632,13 +2806,27 @@
+@@ -2632,13 +2825,27 @@
        GfxRenderer& renderer;
        ~EndOffscreen() { renderer.endGrayscale16Offscreen(); }
      } endOffscreen{renderer};
@@ -439634,7 +440084,7 @@
        }
        if (vertical) readerChrome::drawColumnRules(renderer, *page, textBox, pitch);
      }
-@@ -2671,6 +2859,10 @@
+@@ -2671,6 +2878,10 @@
    }
    pageCacheMissingCodepoint_[slot] = fcm ? fcm->consumeMissingChineseCodepoint() : 0;
    pageCache_[slot].state = ReaderPageCache::State::Ready;
@@ -439645,7 +440095,7 @@
    LOG_DBG("ERS", "Page cache: slot %d, page %d ready in %lums", slot, key.page, millis() - started);
    return true;
  }
-@@ -2679,6 +2871,9 @@
+@@ -2679,6 +2890,9 @@
  void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int orientedMarginTop,
                                          const int orientedMarginRight, const int orientedMarginBottom,
                                          const int orientedMarginLeft) {
@@ -439655,7 +440105,7 @@
    const auto t0 = millis();
    const int fontId = SETTINGS.getReaderFontId();
    const bool vertical = readingMode::setsVertically(readingMode::modeFor(SETTINGS.readingMode));
-@@ -2732,7 +2927,7 @@
+@@ -2732,7 +2946,7 @@
        if (manager) manager->clearCache();
      }
    } rawFontCacheGuard;
@@ -439664,7 +440114,7 @@
    const auto key = pageCacheKey(section ? section->currentPage : -1, orientedMarginTop, orientedMarginRight,
                                  orientedMarginBottom, orientedMarginLeft);
    // Either slot may hold this page: slot 0 was built for it as a forward turn, slot 1
-@@ -2779,8 +2974,14 @@
+@@ -2779,8 +2993,14 @@
    // RickyOS: every text face (2-bit downloaded fonts too) and synthetic bold draw straight
    // into the 16-level frame, and JPEG illustrations decode into it, so anti-aliased pages
    // take the single-render path.
@@ -439681,7 +440131,7 @@
    const bool needsAnyGrayscale = grayscaleEnabled && (SETTINGS.textAntiAliasing || pageHasImages);
    const bool absoluteImageGrayscale = grayscaleEnabled && pageHasImages && !gpio.deviceIsX3() &&
                                        display.getController() == HalDisplay::Controller::UC8279 &&
-@@ -2844,7 +3045,7 @@
+@@ -2844,7 +3064,7 @@
    };
  
    unsigned long cacheBaseMs = 0;
@@ -439690,7 +440140,7 @@
    if (use16LevelText) {
      // The 16-level pass below clears the frame and renders (or copies from the cache)
      // the page, writing the B/W proxy as it goes, so a B/W render here is thrown away.
-@@ -2859,7 +3060,7 @@
+@@ -2859,7 +3079,7 @@
    {
      renderPageWithGuideLines();
    }
@@ -439699,7 +440149,7 @@
    const uint32_t missingCodepoint =
        pageCacheHit ? pageCacheMissingCodepoint_[pageCacheLiveSlot_] : fcm->consumeMissingChineseCodepoint();
  #else
-@@ -2869,7 +3070,14 @@
+@@ -2869,7 +3089,14 @@
      uint32_t expected = 0;
      pendingMissingChineseCodepoint_.compare_exchange_strong(expected, missingCodepoint, std::memory_order_relaxed);
    }
@@ -439714,7 +440164,7 @@
    const auto tBwRender = millis();
  
    if (absoluteImageGrayscale) {
-@@ -2889,6 +3097,7 @@
+@@ -2889,6 +3116,7 @@
      // twice (more flash, more time), and the 16-level waveform is a full-screen one anyway,
      // so ghosting is still cleared.
    } else if (combinedGrayscaleBase) {
@@ -439722,7 +440172,7 @@
      ReaderUtils::displayBaseWithRefreshCycle(renderer, pagesUntilFullRefresh, manualRefreshPending);
    } else if (pageHasImages) {
      // Image pages use one base refresh before the grayscale pass. FAST leaves
-@@ -2903,6 +3112,7 @@
+@@ -2903,6 +3131,7 @@
        pagesUntilFullRefresh = 1;
      }
    } else {
@@ -439730,7 +440180,7 @@
      ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh, overlapRefresh);
    }
    const auto tDisplay = millis();
-@@ -2912,7 +3122,7 @@
+@@ -2912,7 +3141,7 @@
      const auto t16Begin = millis();
      if (renderer.beginGrayscale16()) {
        const auto t16Cleared = millis();
@@ -439739,7 +440189,7 @@
        if (pageCacheHit && pageCacheIs16_[pageCacheLiveSlot_] && pageCache16_[pageCacheLiveSlot_]) {
          memcpy(renderer.grayscale16Frame(), pageCache16_[pageCacheLiveSlot_].get(), renderer.grayscale16FrameBytes());
          memcpy(renderer.getFrameBuffer(), pageCacheBase_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
-@@ -2920,28 +3130,54 @@
+@@ -2920,28 +3149,54 @@
        } else
  #endif
        {
@@ -439797,7 +440247,7 @@
          ttf = {};
  #endif
        }
-@@ -2951,16 +3187,71 @@
+@@ -2951,16 +3206,71 @@
          return;
        }
  #if !defined(SIMULATOR)
@@ -439872,7 +440322,7 @@
  #if RICKYOS_PAINT_PROFILE
          LOG_INF("PERF", "reader commit=%lums total=%lums", tEnd - tCommit, tEnd - t0);
  #endif
-@@ -3137,7 +3428,7 @@
+@@ -3137,7 +3447,7 @@
        }
        const auto tBwStore = millis();
  
@@ -439881,7 +440331,7 @@
        if (pageCacheHit) {
          // Both planes were rendered at idle; putting them in place is one copy
          // each instead of a full page render each.
-@@ -3164,7 +3455,7 @@
+@@ -3164,7 +3474,7 @@
          return;
        }
  
@@ -439890,7 +440340,7 @@
        if (pageCacheHit) {
          memcpy(renderer.getFrameBuffer(), pageCacheMsb_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
          renderer.copyGrayscaleMsbBuffers();
-@@ -3212,9 +3503,12 @@
+@@ -3212,9 +3522,12 @@
  }
  
  void EpubReaderActivity::renderStatusBar() const {
@@ -439903,7 +440353,7 @@
      readerChrome::PageInfo info;
      info.bookTitle = epub ? epub->getTitle().c_str() : nullptr;
      // A chapter the table of contents names, not currentChapterTitle()'s "unnamed".
-@@ -3225,11 +3519,18 @@
+@@ -3225,11 +3538,18 @@
      }
      info.chapterTitle = chapter.c_str();
      info.pageInChapter = currentPage;
@@ -439924,7 +440374,7 @@
    const float pageCount = section ? section->estimatedTotalPages() : 1;
    const float sectionChapterProg = (pageCount > 0) ? (static_cast<float>(currentPage) / pageCount) : 0;
    const float bookProgress = epub ? (epub->calculateProgress(currentSpineIndex, sectionChapterProg) * 100) : 0;
-@@ -3266,8 +3567,12 @@
+@@ -3266,8 +3586,12 @@
        auto chapter = renderer.truncatedText(RickyDesignUi::BODY, title.c_str(), column);
        title = book + " · " + chapter;
      }
@@ -441012,6 +441462,143 @@
  
    renderer.displayBuffer();
  }
+--- a/src/activities/settings/TextSettingsActivity.cpp
++++ b/src/activities/settings/TextSettingsActivity.cpp
+@@ -33,10 +33,13 @@
+ // Tab labels for Font | Size | Layout | Style.
+ constexpr StrId TAB_NAME_IDS[] = {StrId::STR_FONT, StrId::STR_SIZE, StrId::STR_LAYOUT, StrId::STR_STYLE};
+ 
+-constexpr StrId LAYOUT_ROW_NAME_IDS[] = {StrId::STR_LINE_SPACING,      StrId::STR_WORD_SPACING,
++// The four margins lead: they are what a reading background makes readers adjust.
++constexpr StrId LAYOUT_ROW_NAME_IDS[] = {StrId::STR_MARGIN_TOP,        StrId::STR_MARGIN_BOTTOM,
++                                         StrId::STR_MARGIN_LEFT,       StrId::STR_MARGIN_RIGHT,
++                                         StrId::STR_LINE_SPACING,      StrId::STR_WORD_SPACING,
+                                          StrId::STR_CHARACTER_SPACING, StrId::STR_EXTRA_SPACING,
+                                          StrId::STR_FIRST_LINE_INDENT, StrId::STR_PARAGRAPH_INDENTATION,
+-                                         StrId::STR_ALIGNMENT,         StrId::STR_SCREEN_MARGIN};
++                                         StrId::STR_ALIGNMENT};
+ constexpr StrId STYLE_ROW_NAME_IDS[] = {StrId::STR_RICKY_WEIGHT,    StrId::STR_FAKE_BOLD,
+                                         StrId::STR_FOCUS_READING,   StrId::STR_HYPHENATION,
+                                         StrId::STR_EMBEDDED_STYLE,  StrId::STR_TEXT_AA,
+@@ -82,9 +85,18 @@
+                                            StrId::STR_SPACING_PLUS_2};
+ constexpr StrId ALIGNMENT_IDS[] = {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId::STR_CENTER, StrId::STR_ALIGN_RIGHT,
+                                    StrId::STR_BOOK_S_STYLE};
+-constexpr int MARGIN_MIN = CrossPointSettings::SCREEN_MARGIN_MIN;
+-constexpr int MARGIN_MAX = CrossPointSettings::SCREEN_MARGIN_MAX;
+-constexpr int MARGIN_STEP = CrossPointSettings::SCREEN_MARGIN_STEP;
++constexpr int MARGIN_MIN = CrossPointSettings::READER_MARGIN_MIN;
++constexpr int MARGIN_MAX = CrossPointSettings::READER_MARGIN_MAX;
++constexpr int MARGIN_STEP = CrossPointSettings::READER_MARGIN_STEP;
++uint8_t* marginField(const int row) {
++  switch (row) {
++    case 0: return &SETTINGS.marginTop;
++    case 1: return &SETTINGS.marginBottom;
++    case 2: return &SETTINGS.marginLeft;
++    case 3: return &SETTINGS.marginRight;
++    default: return nullptr;
++  }
++}
+ constexpr StrId OK_OPTION[] = {StrId::STR_OK_BUTTON};
+ constexpr int WORD_SPACING_MIN = CrossPointSettings::WORD_SPACING_MIN;
+ constexpr int WORD_SPACING_MAX = CrossPointSettings::WORD_SPACING_MAX;
+@@ -589,13 +601,17 @@
+                         });
+       requestUpdate();
+       break;
+-    case LayoutRow::ScreenMargin: {
++    case LayoutRow::MarginTop:
++    case LayoutRow::MarginBottom:
++    case LayoutRow::MarginLeft:
++    case LayoutRow::MarginRight: {
++      uint8_t* field = marginField(row);
+       std::vector<std::string> options;
+       options.reserve((MARGIN_MAX - MARGIN_MIN) / MARGIN_STEP + 1);
+       for (int m = MARGIN_MIN; m <= MARGIN_MAX; m += MARGIN_STEP) options.push_back(std::to_string(m));
+-      const int cur = (std::clamp<int>(SETTINGS.screenMargin, MARGIN_MIN, MARGIN_MAX) - MARGIN_MIN) / MARGIN_STEP;
+-      optionPopup_.show(StrId::STR_SCREEN_MARGIN, options, cur, [](int idx) {
+-        SETTINGS.screenMargin = static_cast<uint8_t>(MARGIN_MIN + idx * MARGIN_STEP);
++      const int cur = (std::clamp<int>(*field, MARGIN_MIN, MARGIN_MAX) - MARGIN_MIN) / MARGIN_STEP;
++      optionPopup_.show(LAYOUT_ROW_NAME_IDS[row], options, cur, [field](int idx) {
++        *field = static_cast<uint8_t>(MARGIN_MIN + idx * MARGIN_STEP);
+         SETTINGS.saveToFile();
+       });
+       requestUpdate();
+@@ -635,8 +651,11 @@
+       return v < std::size(CHARACTER_SPACING_IDS) ? I18N.get(CHARACTER_SPACING_IDS[v])
+                                                   : I18N.get(StrId::STR_SPACING_ZERO);
+     }
+-    case LayoutRow::ScreenMargin:
+-      return std::to_string(SETTINGS.screenMargin);
++    case LayoutRow::MarginTop:
++    case LayoutRow::MarginBottom:
++    case LayoutRow::MarginLeft:
++    case LayoutRow::MarginRight:
++      return std::to_string(*marginField(row));
+ 
+     default:
+       return "";
+--- a/src/activities/settings/TextSettingsActivity.h
++++ b/src/activities/settings/TextSettingsActivity.h
+@@ -38,6 +38,10 @@
+   // Row indices per tab. enum class (not plain enum) so a LayoutRow can't be
+   // silently confused with a StyleRow of equal value.
+   enum class LayoutRow {
++    MarginTop,
++    MarginBottom,
++    MarginLeft,
++    MarginRight,
+     LineSpacing,
+     WordSpacing,
+     CharacterSpacing,
+@@ -45,7 +49,6 @@
+     FirstLineIndent,
+     ParaIndentation,
+     Alignment,
+-    ScreenMargin,
+     Count
+   };
+   // 字重 and 加粗 first: they are what readers come here for. The reading line itself is
+--- a/src/activities/settings/TextSettingsPreview.cpp
++++ b/src/activities/settings/TextSettingsPreview.cpp
+@@ -95,8 +95,15 @@
+   const int lineH = renderer.getTextHeight(fontId);
+   if (lineH <= 0) return;
+ 
+-  const int textLeft = left + SETTINGS.screenMargin;
+-  const int textWidth = width - 2 * SETTINGS.screenMargin;
++  // The sample column takes the reader's own side margins, held to at least half the pane.
++  int marginLeft = SETTINGS.marginLeft, marginRight = SETTINGS.marginRight;
++  if (marginLeft + marginRight > width / 2) {
++    const int sum = marginLeft + marginRight;
++    marginLeft = marginLeft * (width / 2) / sum;
++    marginRight = width / 2 - marginLeft;
++  }
++  const int textLeft = left + marginLeft;
++  const int textWidth = width - marginLeft - marginRight;
+   if (textWidth <= 0) return;
+ 
+   const float compression = SETTINGS.getReaderLineCompression();
+@@ -120,7 +127,7 @@
+   // FontCacheManager::PrewarmScope, used solely by the reader/dictionary activities.
+   const PreviewKey key{.fontId = fontId,
+                        .fontPointSize = SETTINGS.fontPointSize,
+-                       .screenMargin = SETTINGS.screenMargin,
++                       .marginLeft = marginLeft,
+                        .textWidth = textWidth,
+                        .maxLines = maxLines,
+                        .lineCompression = compression,
+--- a/src/activities/settings/TextSettingsPreview.h
++++ b/src/activities/settings/TextSettingsPreview.h
+@@ -13,7 +13,7 @@
+ struct PreviewKey {
+   int fontId = -1;
+   int fontPointSize = -1;
+-  int screenMargin = -1;
++  int marginLeft = -1;
+   int textWidth = -1;
+   int maxLines = -1;
+   float lineCompression = -1.0f;
 --- a/src/activities/util/FrontlightPanelActivity.cpp
 +++ b/src/activities/util/FrontlightPanelActivity.cpp
 @@ -2,7 +2,9 @@

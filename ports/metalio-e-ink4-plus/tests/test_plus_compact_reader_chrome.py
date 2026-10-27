@@ -158,7 +158,8 @@ int main() {
         # reserves the header and footer bands the reading mode keeps.
         margins = method(reader, 'readingMode::Margins EpubReaderActivity::textMargins(')
         self.assertIn('readerChrome::compactLayout(', margins)
-        self.assertIn('std::max(screenMargin, chrome.headerReserve)', margins)
+        self.assertIn('chrome.headerReserve', margins)
+        self.assertIn('std::max(viewable.top + marginTop, topFloor)', margins)
         self.assertIn('bottomReserve = chrome.footerReserve', margins)
         self.assertNotIn('kReaderFooterHeight', margins)
         self.assertIn('sb.textLaneVisible()', margins)

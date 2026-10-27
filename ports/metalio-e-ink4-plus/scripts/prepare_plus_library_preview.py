@@ -30,6 +30,7 @@ paths = (
     'lib/LibraryIndex/LibrarySources.h', 'lib/LibraryIndex/LibrarySources.cpp',
     'lib/LibraryIndex/LibraryCategories.h', 'lib/LibraryIndex/LibraryCategories.cpp',
     'src/activities/library/LibraryCategoriesActivity.h', 'src/activities/library/LibraryCategoriesActivity.cpp',
+    'src/activities/library/LibraryFoldersActivity.h', 'src/activities/library/LibraryFoldersActivity.cpp',
     'src/activities/library/LibrarySourcesActivity.h', 'src/activities/library/LibrarySourcesActivity.cpp',
     'src/activities/library/LibraryListActivity.h', 'src/activities/library/LibraryListActivity.cpp',
     'src/activities/home/FileBrowserActivity.h', 'src/activities/home/FileBrowserActivity.cpp',
