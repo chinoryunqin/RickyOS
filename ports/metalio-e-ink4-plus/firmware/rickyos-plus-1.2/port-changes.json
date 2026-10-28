@@ -35,12 +35,12 @@
     {
       "path": "freeink-sdk/libs/hardware/Imu/include/Imu.h",
       "baseline_sha256": "ece19fd3b6d2746bd852ef3e84864f087335cc83a440ebcee28aefc95b7664de",
-      "ported_sha256": "58cdd83464587a0a173bf37967637d1bc814536c43572dbe8c6a9808e929e349"
+      "ported_sha256": "775756304499cab37a3ef70b0b5e8342b22992220a1c6b6dd1975c3a204fee15"
     },
     {
       "path": "freeink-sdk/libs/hardware/Imu/src/Imu.cpp",
       "baseline_sha256": "38706e89c2277c4cb924cbd37705213ac31f63fb54ffe80b9abffc3eff9ebbd8",
-      "ported_sha256": "702adbcafedffd6bfeef41a35d51da0b4fd1a90192da65ca980e8ae1738ba933"
+      "ported_sha256": "3d95948541cb01b6294e4b63983f07aa6c0f64910ea31524c7c07b56c245dfaf"
     },
     {
       "path": "freeink-sdk/libs/hardware/InputManager/include/InputManager.h",
@@ -570,12 +570,12 @@
     {
       "path": "lib/hal/HalTiltSensor.cpp",
       "baseline_sha256": "5d44583454d27b9c022a83dc792d275bc706599432a47e9132b1154fbd21f20b",
-      "ported_sha256": "7c1cd9f39a36f843feaaa428dfc90646ee8dd0e961c097e293297fe340249604"
+      "ported_sha256": "71451d29b3a931066e98df59db53533eb9d1a94d9a741f8e0dfbee064e229d79"
     },
     {
       "path": "lib/hal/HalTiltSensor.h",
       "baseline_sha256": "1dca09c1c83fc0e34423317ef8e7d239efc246ce696b9e44b6e3142664414fce",
-      "ported_sha256": "e6b7c50449ee3465d38d86dd4222d7a3643a1af692623d6857ced25fa91092c4"
+      "ported_sha256": "2e3a3f9aaf8371a9e2ab9ab896cab3c658122f0ee90ac0725784c79d1a177023"
     },
     {
       "path": "lib/hal/NativeGrayRefreshPolicy.h",
@@ -615,7 +615,7 @@
     {
       "path": "scripts/tests/test_imu_double_tap.py",
       "baseline_sha256": null,
-      "ported_sha256": "746a415fa2130b429e48576620e69f010446f99c1f25827d0c8029c6352ca922"
+      "ported_sha256": "d9127a47ef25a3c5b17ce3260dbf8585b8f13eb7ba934e7e8f1590a0616f1c90"
     },
     {
       "path": "scripts/tests/test_reader_page_cache.py",

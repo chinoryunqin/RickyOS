@@ -321,14 +321,14 @@
  
 +  // SC7A20H only: the part's own double-tap (click) detector on the axis through the
 +  // screen, so a knock on the back is one gesture. Polled through its latched source
-+  // register, no interrupt line. Raises sampling to 400 Hz while on (sleep() still
++  // register, no interrupt line. Raises sampling to 200 Hz while on (sleep() still
 +  // powers it down; wake() restores it). sensitivity: 0 firm, 1 medium, 2 light.
 +  bool enableDoubleTap(uint8_t sensitivity);
 +  bool disableDoubleTap();
 +  // True once per detected double tap; reading clears the latch. `source`, when given,
 +  // receives the raw click source (single taps included) for tuning.
 +  bool takeDoubleTap(uint8_t* source = nullptr);
-+  // While double tap is on, the 400 Hz samples also queue in the part's 32-entry FIFO, so
++  // While double tap is on, the 200 Hz samples also queue in the part's 32-entry FIFO, so
 +  // a caller polling every few dozen ms sees every knock. Reads up to `max` queued
 +  // samples of the axis through the screen, in g; returns the count (-1 on I2C error).
 +  // `overflowed` reports samples lost since the last read.
@@ -357,7 +357,7 @@
  #include <soc/soc_caps.h>
  
  namespace freeink {
-@@ -88,6 +90,39 @@
+@@ -88,6 +90,42 @@
  // CTRL1 ODR = 0000 stops the sampling engine (sc7a20h_power_down), ≈0.5 µA; every
  // other config register is retained for the wake path.
  constexpr uint8_t SC7A20H_CTRL1_ODR_POWER_DOWN = 0x00;
@@ -375,13 +375,16 @@
 +constexpr uint8_t SC7A20H_REG_TIME_LIMIT = 0x3B;
 +constexpr uint8_t SC7A20H_REG_TIME_LATENCY = 0x3C;
 +constexpr uint8_t SC7A20H_REG_TIME_WINDOW = 0x3D;
-+constexpr uint8_t SC7A20H_CLICK_CFG_ZD = 0x20;
++// Bench (Plus): CLICK_CFG read back 0 after writing ZD alone; enable every axis, single
++// and double, and keep only DCLICK from the source.
++constexpr uint8_t SC7A20H_CLICK_CFG_ZD = 0x3F;
 +constexpr uint8_t SC7A20H_CLICK_SRC_DOUBLE = 0x60;  // IA | DCLICK
 +constexpr uint8_t SC7A20H_CLICK_THS_LATCH = 0x80;
 +constexpr uint8_t SC7A20H_TAP_THRESHOLDS[] = {0x28, 0x1C, 0x12};  // 640 / 450 / 290 mg
 +constexpr uint8_t SC7A20H_TAP_LIMIT = 16, SC7A20H_TAP_LATENCY = 32, SC7A20H_TAP_WINDOW = 128;
-+// 400 Hz, normal mode, XYZ: the click detector needs the rate to see a knock.
-+constexpr uint8_t SC7A20H_CTRL1_400HZ_XYZ = 0x77;
++// 200 Hz, normal mode, XYZ: fast enough to catch a knock (5 ms per sample), while each
++// FIFO sample is its own 6-byte read (the part does not wrap a burst back to OUT_X_L).
++constexpr uint8_t SC7A20H_CTRL1_TAP_XYZ = 0x67;
 +// CTRL2 HP_CLICK: the click detector sees high-pass data. Without it the ~1 g of gravity
 +// on the axis through the screen sits above the threshold, never "returns", and no tap
 +// is ever recognised.
@@ -397,7 +400,7 @@
  // The output registers are 16-bit left-justified. sc7a20h.c's fill_sample() drops
  // the low 4 bits, and its 1 mg/LSB at ±2 g (mg_lsb = 1 << fs) is the scale for
  // THAT normalized value — i.e. the LP mode 8-bit reading is left-justified, not
-@@ -220,6 +255,11 @@
+@@ -220,6 +258,11 @@
        if (!writeReg(configuredAddr, SC7A20H_REG_CTRL2, SC7A20H_CTRL2_IDLE)) return false;
        if (!writeReg(configuredAddr, SC7A20H_REG_CTRL4, SC7A20H_CTRL4_BDU_2G)) return false;
        if (!writeReg(configuredAddr, SC7A20H_REG_CTRL1, SC7A20H_CTRL1_12_5HZ_LP_XYZ)) return false;
@@ -409,7 +412,7 @@
        delay(20);  // sc7a20h_apply_config() settle before the first sample
        addr_ = configuredAddr;
        break;
-@@ -334,15 +374,89 @@
+@@ -334,15 +377,82 @@
        // CTRL0/CTRL2/CTRL4 values are rewritten for a defined state. The 20 ms
        // settle is sc7a20h_apply_config()'s.
        if (!writeReg(addr, SC7A20H_REG_CTRL0, SC7A20H_CTRL0_IDLE)) return false;
@@ -417,7 +420,7 @@
 +      if (!writeReg(addr, SC7A20H_REG_CTRL2, doubleTap_ ? SC7A20H_CTRL2_HP_CLICK : SC7A20H_CTRL2_IDLE)) return false;
        if (!writeReg(addr, SC7A20H_REG_CTRL4, SC7A20H_CTRL4_BDU_2G)) return false;
 -      if (!writeReg(addr, SC7A20H_REG_CTRL1, SC7A20H_CTRL1_12_5HZ_LP_XYZ)) return false;
-+      if (!writeReg(addr, SC7A20H_REG_CTRL1, doubleTap_ ? SC7A20H_CTRL1_400HZ_XYZ : SC7A20H_CTRL1_12_5HZ_LP_XYZ))
++      if (!writeReg(addr, SC7A20H_REG_CTRL1, doubleTap_ ? SC7A20H_CTRL1_TAP_XYZ : SC7A20H_CTRL1_12_5HZ_LP_XYZ))
 +        return false;
        delay(20);
        return true;
@@ -440,7 +443,7 @@
 +                  writeReg(addr, SC7A20H_REG_CTRL2, SC7A20H_CTRL2_HP_CLICK) &&
 +                  writeReg(addr, SC7A20H_REG_CTRL5, SC7A20H_CTRL5_FIFO_EN) &&
 +                  writeReg(addr, SC7A20H_REG_FIFO_CTRL, SC7A20H_FIFO_STREAM) &&
-+                  writeReg(addr, SC7A20H_REG_CTRL1, SC7A20H_CTRL1_400HZ_XYZ) &&
++                  writeReg(addr, SC7A20H_REG_CTRL1, SC7A20H_CTRL1_TAP_XYZ) &&
 +                  readRegs(addr, SC7A20H_REG_CLICK_SRC, &stale, 1);  // drop a latch from before
 +  doubleTap_ = ok;
 +  return ok;
@@ -464,22 +467,15 @@
 +  if (!readRegs(addr_, SC7A20H_REG_FIFO_SRC, &status, 1)) return -1;
 +  overflowed = (status & SC7A20H_FIFO_SRC_OVERRUN) != 0;
 +  int count = std::min<int>(status & SC7A20H_FIFO_SRC_COUNT, max);
-+  int read = 0;
-+  constexpr int kChunk = 20;  // 120 bytes: inside the 128-byte Wire buffer
-+  uint8_t raw[kChunk * 6];
-+  while (read < count) {
-+    const int n = std::min(kChunk, count - read);
-+    if (!readRegs(addr_, static_cast<uint8_t>(SC7A20H_REG_OUT_X_L | SC7A20H_REG_AUTO_INCREMENT), raw,
-+                  static_cast<uint8_t>(n * 6)))
-+      return -1;
-+    for (int i = 0; i < n; ++i) {
-+      const int16_t z = static_cast<int16_t>(static_cast<int16_t>(raw[i * 6 + 4] | raw[i * 6 + 5] << 8) >>
-+                                             SC7A20H_OUT_SHIFT);
-+      out[read + i] = z * SC7A20H_MG_PER_LSB / 1000.0f;
-+    }
-+    read += n;
++  // One sample per read: a longer burst runs on into the registers after OUT_Z_H
++  // instead of popping the next FIFO entry (bench: every burst read ~2 g of garbage).
++  uint8_t raw[6];
++  for (int i = 0; i < count; ++i) {
++    if (!readRegs(addr_, static_cast<uint8_t>(SC7A20H_REG_OUT_X_L | SC7A20H_REG_AUTO_INCREMENT), raw, 6)) return -1;
++    const int16_t z = static_cast<int16_t>(static_cast<int16_t>(raw[4] | raw[5] << 8) >> SC7A20H_OUT_SHIFT);
++    out[i] = z * SC7A20H_MG_PER_LSB / 1000.0f;
 +  }
-+  return read;
++  return count;
 +}
 +
 +bool Imu::readTapRegisters(uint8_t (&out)[8]) {
@@ -501,7 +497,7 @@
  }
  
  }  // namespace freeink
-@@ -354,6 +468,17 @@
+@@ -354,6 +464,17 @@
  bool Imu::read(Sample&) { return false; }
  bool Imu::sleep() { return false; }
  bool Imu::wake() { return false; }
@@ -429500,7 +429496,7 @@
 +    }
 +    const float level = fabsf(z[i] - _tapBase);
 +    if (!_tapSpike) {
-+      _tapBase += (z[i] - _tapBase) * 0.02f;  // ~125 ms: follows gravity as the hand moves
++      _tapBase += (z[i] - _tapBase) * 0.04f;  // ~125 ms: follows gravity as the hand moves
 +      if (level > threshold) {
 +        _tapSpike = true;
 +        _tapSpikeStart = _tapSample;
@@ -429518,7 +429514,7 @@
 +    }
 +    _tapSpike = false;
 +    const uint32_t duration = _tapSample - _tapSpikeStart;
-+    LOG_INF("GYR", "knock peak=%.2fg %ums", _tapSpikePeak, static_cast<unsigned>(duration * 5 / 2));
++    LOG_INF("GYR", "knock peak=%.2fg %ums", _tapSpikePeak, static_cast<unsigned>(duration * 5));
 +    if (duration > TAP_MAX_SAMPLES) {
 +      _lastKnock = 0;
 +      continue;
@@ -429625,12 +429621,12 @@
 +  unsigned long _touchMs = 0;
 +  unsigned long _lastTapMs = 0;
 +  unsigned long _lastTapPollMs = 0;
-+  // Software detector over the 400 Hz FIFO samples of the axis through the screen: a
++  // Software detector over the 200 Hz FIFO samples of the axis through the screen: a
 +  // slow baseline removes gravity, a knock is a short spike above the threshold, and two
-+  // knocks 60..450 ms apart are a double tap. Times count samples (2.5 ms each).
++  // knocks 60..450 ms apart are a double tap. Times count samples (200 Hz: 5 ms each).
 +  static constexpr float TAP_THRESHOLDS_G[3] = {0.50f, 0.30f, 0.18f};  // firm, medium, light
-+  static constexpr uint32_t TAP_MAX_SAMPLES = 20;                      // a knock ends within 50 ms
-+  static constexpr uint32_t TAP_GAP_MIN = 24, TAP_GAP_MAX = 180;      // 60..450 ms between knocks
++  static constexpr uint32_t TAP_MAX_SAMPLES = 10;                      // a knock ends within 50 ms
++  static constexpr uint32_t TAP_GAP_MIN = 12, TAP_GAP_MAX = 90;       // 60..450 ms between knocks
 +  float _tapBase = 0.0f;
 +  bool _tapBaseValid = false;
 +  bool _tapSpike = false;
@@ -429989,7 +429985,7 @@
 +  assert(imu.enableDoubleTap(1));
 +  auto& r = Wire.regs[0x19];
 +  assert(r[0x3A] == (0x80 | 0x1C) && r[0x3B] == 16 && r[0x3C] == 32 && r[0x3D] == 128);
-+  assert(r[0x38] == 0x20 && r[0x20] == 0x77);  // double click on Z, 400 Hz
++  assert(r[0x38] == 0x3F && r[0x20] == 0x67);  // click detector on, 200 Hz
 +  assert(r[0x21] == 0x04);  // the detector sees high-pass data, not gravity
 +  assert(r[0x24] == 0x40 && r[0x2E] == 0x80);  // FIFO in stream mode for the software detector
 +  // FIFO read: count from FIFO_SRC, Z from bytes 4..5 of each sample, >> 4, 1 mg/LSB.
@@ -430001,7 +429997,7 @@
 +  r[0x2F] = 31;
 +  assert(imu.readTapAxis(zs, 8, lost) == 8 && !lost);  // never more than asked
 +  uint8_t regs[8];
-+  assert(imu.readTapRegisters(regs) && regs[0] == 0x77 && regs[3] == 0x80 && regs[4] == 0x20);
++  assert(imu.readTapRegisters(regs) && regs[0] == 0x67 && regs[3] == 0x80 && regs[4] == 0x3F);
 +  r[0x39] = 0x60;
 +  assert(imu.takeDoubleTap());
 +  r[0x39] = 0x50;  // a single click is not a double tap
@@ -430009,7 +430005,7 @@
 +  r[0x39] = 0x20;  // DCLICK without IA
 +  assert(!imu.takeDoubleTap());
 +  assert(imu.sleep() && r[0x20] == 0x00);
-+  assert(imu.wake() && r[0x20] == 0x77 && r[0x21] == 0x04);  // wake keeps tap rate and filter
++  assert(imu.wake() && r[0x20] == 0x67 && r[0x21] == 0x04);  // wake keeps tap rate and filter
 +  uint8_t src = 0;
 +  r[0x39] = 0x50;
 +  assert(!imu.takeDoubleTap(&src) && src == 0x50);  // the raw source is reported for tuning
