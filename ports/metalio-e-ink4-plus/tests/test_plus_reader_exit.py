@@ -49,6 +49,7 @@ struct ReaderActivity:Activity {
 };
 struct {void endSession(){events.push_back("stats");}int getLastSessionSnapshot(){return 1;}} READING_STATS;
 struct {void recordSessionEnded(int){events.push_back("achievements");}} ACHIEVEMENTS;
+namespace reading_excerpt {void persist(){events.push_back("excerpt");}}
 void showPendingAchievementPopups(GfxRenderer& r){assert(!r.pending);events.push_back("popup");}
 namespace rickyBadgeNotice {void announceNew(GfxRenderer& r){assert(!r.pending);events.push_back("badge");}}
 struct ImageBlock {static void releaseRenderCache(){events.push_back("image-free");}};
