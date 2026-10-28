@@ -998,6 +998,16 @@
       "ported_sha256": "5aded696b4604f33782bb05630b27958eae27c7b213159c56b26cd0038cbf40c"
     },
     {
+      "path": "src/activities/reader/EpubReaderChapterSelectionActivity.cpp",
+      "baseline_sha256": "afeb5d800d47aa507ca1d8ecae1a5b109ee435c686c1fbb96ec09780da4670c7",
+      "ported_sha256": "191672916fab506a93dcee215092cd928b4bae9b1fe4c9808464a742962d8881"
+    },
+    {
+      "path": "src/activities/reader/EpubReaderChapterSelectionActivity.h",
+      "baseline_sha256": "101241f0b9b81e1f46f3223e336c978818ac036313a15c7e4b75ff9d740e1f74",
+      "ported_sha256": "6483792e9ae0e816aaf72c1ec297f73c94cf0a07bf4d795d9c71dfe24ae5aab5"
+    },
+    {
       "path": "src/activities/reader/EpubReaderMenuActivity.cpp",
       "baseline_sha256": "10f81dc59a4993bdc732321fa65bf70c86f26d6add5af9bd4c4d9c1b9ad30804",
       "ported_sha256": "f212348617b2416abec8cbf617b23b674d6c6c1d365500cd816db05c3774e2fb"

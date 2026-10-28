@@ -442205,6 +442205,50 @@
    bool skipPages(int amount) override;
    bool isAtEndOfBook() const override;
    void onReturnFromEndOfBook() override;
+--- a/src/activities/reader/EpubReaderChapterSelectionActivity.cpp
++++ b/src/activities/reader/EpubReaderChapterSelectionActivity.cpp
+@@ -12,6 +12,15 @@
+ #include "components/UIThemeTokens.h"
+ 
+ namespace fui = freeink::ui;
++
++namespace {
++// The current chapter's marker: a 10 px dot in a 16 px leading gutter. Every other row
++// carries a blank icon of the same size, so the titles stay aligned.
++constexpr uint8_t kCurrentDot[32] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0xC0, 0x0F, 0xF0, 0x1F,
++                                     0xF8, 0x1F, 0xF8, 0x1F, 0xF8, 0x1F, 0xF8, 0x1F, 0xF8, 0x1F, 0xF8,
++                                     0x0F, 0xF0, 0x03, 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
++constexpr uint8_t kNoDot[32] = {};
++}  // namespace
+ 
+ EpubReaderChapterSelectionActivity::EpubReaderChapterSelectionActivity(GfxRenderer& renderer,
+                                                                        MappedInputManager& mappedInput,
+@@ -46,6 +55,7 @@
+   int tocIndex = currentTocIndex >= 0 && currentTocIndex < listCount()
+                      ? currentTocIndex
+                      : epub->getTocIndexForSpineIndex(currentSpineIndex);
++  currentRow = tocIndex;
+   if (tocIndex == -1) {
+     tocIndex = 0;
+   }
+@@ -72,6 +82,7 @@
+     fui::ListItem item;
+     item.label = windowLabels[i].c_str();
+     item.actionValue = static_cast<int16_t>(clamped + i);
++    item.icon = fui::BitmapRef{clamped + i == currentRow ? kCurrentDot : kNoDot, 16, 16, fui::BitmapFormat::BW1, true};
+     windowItems[i] = item;
+   }
+   windowStart = clamped;
+--- a/src/activities/reader/EpubReaderChapterSelectionActivity.h
++++ b/src/activities/reader/EpubReaderChapterSelectionActivity.h
+@@ -10,6 +10,7 @@
+   std::shared_ptr<Epub> epub;
+   int currentSpineIndex = 0;
+   int currentTocIndex = -1;
++  int currentRow = -1;  // the TOC row the reader is in: marked with a dot
+ 
+   // Windowed row buffers: TOC entries are SD-backed (BookMetadataCache LUT
+   // reads), so only the rows around the viewport are materialized. A
 --- a/src/activities/reader/EpubReaderMenuActivity.cpp
 +++ b/src/activities/reader/EpubReaderMenuActivity.cpp
 @@ -30,6 +30,8 @@
