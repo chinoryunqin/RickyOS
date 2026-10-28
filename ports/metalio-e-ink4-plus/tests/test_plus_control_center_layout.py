@@ -61,7 +61,7 @@ struct { bool available = true; } audio;
 namespace HalAudioOutput { bool present() { return audio.available; } }
 struct { bool available = true, dual = true; bool present() const { return available; }
          bool hasColorTemperature() const { return dual; } } Frontlight;
-struct { int orientation = 0, refreshFrequency = 0, screenInverted = 0, clockFormat = 0; } SETTINGS;
+struct { int orientation = 0, refreshFrequency = 0, screenInverted = 0, clockFormat = 0, readerFastRefresh = 0; } SETTINGS;
 struct { bool localTime(std::tm& t) const { t = {}; t.tm_mon = 9; t.tm_mday = 14; return true; } } halClock;
 namespace TimeUtils { bool formatCurrentTime(char* out, size_t size, bool) { snprintf(out, size, "12:00"); return true; } }
 struct { unsigned long long getTodayReadingMs() const { return 0; } } READING_STATS;
@@ -100,11 +100,11 @@ uint8_t iconBits[200]{};
 const freeink::Icon icon_ricky_night_40{40, 40, 20, iconBits}, icon_ricky_refresh_40{40, 40, 20, iconBits},
     icon_ricky_standby_40{40, 40, 20, iconBits}, icon_ricky_transfer_40{40, 40, 20, iconBits},
     icon_ricky_portrait_40{40, 40, 20, iconBits}, icon_ricky_landscape_40{40, 40, 20, iconBits},
-    icon_ricky_clean_40{40, 40, 20, iconBits}, icon_sun_32{32, 32, 16, iconBits}, icon_moon_32{32, 32, 16, iconBits};
+    icon_ricky_clean_40{40, 40, 20, iconBits}, icon_ricky_fast_40{40, 40, 20, iconBits}, icon_sun_32{32, 32, 16, iconBits}, icon_moon_32{32, 32, 16, iconBits};
 @CONSTANTS@
 class FrontlightPanelActivity {
  public:
-  enum class Tile : uint8_t { Night, Refresh, Standby, Transfer, Orientation, Clean, Light, Preview = 200 };
+  enum class Tile : uint8_t { Night, Refresh, Standby, Transfer, Orientation, Clean, Light, FastRefresh, Preview = 200 };
   struct RoundAction { Tile tile; const freeink::Icon* icon; const char* label; bool on; };
   Renderer renderer;
   Target uiTarget;

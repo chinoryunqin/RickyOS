@@ -421744,6 +421744,60 @@
      if (isZip) {
        itemSize = spineSizes ? (*spineSizes)[i] : 0;
        if (itemSize == 0) {
+@@ -609,10 +623,14 @@
+   }
+ 
+   // Seek to spine LUT item, read from LUT and get out data
++  const std::lock_guard<std::mutex> guard(bookFileMutex);
++  if (!loaded) return {};  // another task found the cache corrupt meanwhile
+   uint32_t spineEntryPos = 0;
+   if (!bookFile.seek(lutOffset + sizeof(uint32_t) * index) || !serialization::readPod(bookFile, spineEntryPos) ||
+       spineEntryPos >= bookFile.size() || !bookFile.seek(spineEntryPos)) {
+-    LOG_ERR("BMC", "Invalid spine LUT entry %d", index);
++    LOG_ERR("BMC", "Invalid spine LUT entry %d (lut %u, pos %u, size %u, spine %u)", index,
++            static_cast<unsigned>(lutOffset), static_cast<unsigned>(spineEntryPos),
++            static_cast<unsigned>(bookFile.size()), static_cast<unsigned>(spineCount));
+     invalidateCorruptCache();
+     return {};
+   }
+@@ -637,10 +655,14 @@
+   }
+ 
+   // Seek to TOC LUT item, read from LUT and get out data
++  const std::lock_guard<std::mutex> guard(bookFileMutex);
++  if (!loaded) return {};  // another task found the cache corrupt meanwhile
+   uint32_t tocEntryPos = 0;
+   if (!bookFile.seek(lutOffset + sizeof(uint32_t) * spineCount + sizeof(uint32_t) * index) ||
+       !serialization::readPod(bookFile, tocEntryPos) || tocEntryPos >= bookFile.size() || !bookFile.seek(tocEntryPos)) {
+-    LOG_ERR("BMC", "Invalid TOC LUT entry %d", index);
++    LOG_ERR("BMC", "Invalid TOC LUT entry %d (lut %u, pos %u, size %u, toc %u)", index,
++            static_cast<unsigned>(lutOffset), static_cast<unsigned>(tocEntryPos),
++            static_cast<unsigned>(bookFile.size()), static_cast<unsigned>(tocCount));
+     invalidateCorruptCache();
+     return {};
+   }
+--- a/lib/Epub/Epub/BookMetadataCache.h
++++ b/lib/Epub/Epub/BookMetadataCache.h
+@@ -6,6 +6,7 @@
+ #include <algorithm>
+ #include <deque>
+ #include <memory>
++#include <mutex>
+ #include <string>
+ 
+ class BookMetadataCache {
+@@ -54,6 +55,11 @@
+   bool buildIoFailed = false;
+ 
+   HalFile bookFile;
++  // One seek + read sequence at a time on bookFile: the reader's main task (saving
++  // progress on exit, chapter titles) and its render task (laying out the next chapter)
++  // both read entries. Interleaved, one task's seek moved the other's read, the garbage
++  // offset was taken for a corrupt cache, and book.bin was deleted before progress saved.
++  std::mutex bookFileMutex;
+   // Temp file handles during build
+   HalFile spineFile;
+   HalFile tocFile;
 --- a/lib/Epub/Epub/Page.cpp
 +++ b/lib/Epub/Epub/Page.cpp
 @@ -1,6 +1,8 @@
@@ -424987,7 +425041,14 @@
  STR_RICKY_POWERED_OFF: "已关机 · 长按开机"
  STR_RICKY_PICTURE_FIT: "显示方式"
  STR_RICKY_PICTURE_FIT_WHOLE: "完整显示"
-@@ -1552,6 +1620,7 @@
+@@ -1546,12 +1614,14 @@
+ STR_RICKY_BOOK_FINISHED: "读完"
+ STR_RICKY_CC_FULL_REFRESH: "每%d页全刷"
+ STR_RICKY_CC_FULL_REFRESH_OFF: "不全刷"
++STR_RICKY_CC_FAST_REFRESH: "快刷"
+ STR_RICKY_CC_READING: "阅读"
+ STR_RICKY_GESTURES: "手势"
+ STR_RICKY_GESTURE_GLOBAL: "全局手势"
  STR_RICKY_GESTURE_READING: "阅读手势"
  STR_RICKY_GESTURE_BACK: "左侧右滑返回"
  STR_RICKY_GESTURE_HOME: "底部上滑回首页"
@@ -424995,7 +425056,7 @@
  STR_RICKY_GESTURE_CONTROL: "顶部下滑打开控制中心"
  STR_RICKY_GESTURE_STATUS: "点状态栏打开控制中心"
  STR_RICKY_GESTURE_TOUCH_TURN: "触屏翻页"
-@@ -1568,6 +1637,8 @@
+@@ -1568,6 +1638,8 @@
  STR_RICKY_KEYS_SIDE: "左右键翻页"
  STR_RICKY_KEYS_LONG_PRESS: "长按左右键"
  STR_RICKY_KEYS_STANDBY: "中间键待机与唤醒"
@@ -425004,7 +425065,7 @@
  STR_RICKY_SCREEN_REPAIR: "屏幕修复"
  STR_RICKY_SCREEN_REPAIRING: "正在修复屏幕，约 5 秒…"
  STR_RICKY_HELP_SCREEN_REPAIR: "出现残影、两个画面叠在一起时使用"
-@@ -1588,8 +1659,8 @@
+@@ -1588,8 +1660,8 @@
  STR_RICKY_HELP_WEBSITE: "RickyOS 官网"
  STR_RICKY_HELP_START_1: "在应用中打开文件传输，按照屏幕提示用手机或电脑传入书籍。"
  STR_RICKY_HELP_START_2: "书库中点选书籍开始阅读。全部、在读、未读可以切换筛选。文件夹在存储中浏览。"
@@ -425015,7 +425076,7 @@
  STR_RICKY_HELP_DISPLAY_2: "出现残影时可在设置中执行屏幕修复。全刷间隔越短，残影越少，但闪屏更频繁。"
  STR_RICKY_HELP_DISPLAY_3: "阅读字体在文字设置中调整；头像、昵称和首页短句在设置顶部的资料卡中修改。"
  STR_RICKY_HELP_UPDATE_1: "设置中的更新固件会检查 RickyOS 更新。更新前请保证电量充足，勿在过程中断电。"
-@@ -1600,3 +1671,131 @@
+@@ -1600,3 +1672,131 @@
  STR_RICKY_HELP_FEEDBACK_3: "通过你现有的 Ricky AI Studio 联系渠道发送反馈。本页面不会自动上传设备信息。官网入口可扫码打开。"
  STR_RICKY_MENU_AUTO_TURN: "自动翻页"
  STR_RICKY_MENU_PROGRESS: "阅读进度"
@@ -425287,7 +425348,14 @@
  STR_RICKY_POWERED_OFF: "Off · hold to turn on"
  STR_RICKY_PICTURE_FIT: "Picture fit"
  STR_RICKY_PICTURE_FIT_WHOLE: "Whole picture"
-@@ -1574,6 +1642,7 @@
+@@ -1568,12 +1636,14 @@
+ STR_RICKY_BOOK_FINISHED: "Finished"
+ STR_RICKY_CC_FULL_REFRESH: "Clean every %d"
+ STR_RICKY_CC_FULL_REFRESH_OFF: "No clean refresh"
++STR_RICKY_CC_FAST_REFRESH: "Fast refresh"
+ STR_RICKY_CC_READING: "Reading"
+ STR_RICKY_GESTURES: "Gestures"
+ STR_RICKY_GESTURE_GLOBAL: "Everywhere"
  STR_RICKY_GESTURE_READING: "Reading"
  STR_RICKY_GESTURE_BACK: "Swipe right from the left: Back"
  STR_RICKY_GESTURE_HOME: "Swipe up from the bottom: Home"
@@ -425295,7 +425363,7 @@
  STR_RICKY_GESTURE_CONTROL: "Swipe down from the top: Control center"
  STR_RICKY_GESTURE_STATUS: "Tap the status bar: Control center"
  STR_RICKY_GESTURE_TOUCH_TURN: "Touch page turns"
-@@ -1590,6 +1659,8 @@
+@@ -1590,6 +1660,8 @@
  STR_RICKY_KEYS_SIDE: "Left and right keys"
  STR_RICKY_KEYS_LONG_PRESS: "Hold left or right key"
  STR_RICKY_KEYS_STANDBY: "Middle key: Standby / Wake"
@@ -425304,7 +425372,7 @@
  STR_RICKY_SCREEN_REPAIR: "Screen repair"
  STR_RICKY_SCREEN_REPAIRING: "Repairing the screen, about 5 s…"
  STR_RICKY_HELP_SCREEN_REPAIR: "Use when old screens show through new ones"
-@@ -1610,7 +1681,7 @@
+@@ -1610,7 +1682,7 @@
  STR_RICKY_HELP_WEBSITE: "RickyOS website"
  STR_RICKY_HELP_START_1: "Open File Transfer in Apps and follow the on-screen instructions to send books from your phone or computer."
  STR_RICKY_HELP_START_2: "Select a book in Library to read. Filter by All, Reading or Unread. Browse folders in Storage."
@@ -425313,7 +425381,7 @@
  STR_RICKY_HELP_DISPLAY_1: "Display & Standby controls automatic sleep and power-button actions. Choose standby pictures in the Standby app."
  STR_RICKY_HELP_DISPLAY_2: "Use Screen Repair in Settings for ghosting. More frequent full refreshes reduce ghosting but flash the screen more often."
  STR_RICKY_HELP_DISPLAY_3: "Adjust reading fonts in Text Settings. Change your avatar, nickname and home phrase through the profile card at the top of Settings."
-@@ -1622,3 +1693,131 @@
+@@ -1622,3 +1694,131 @@
  STR_RICKY_HELP_FEEDBACK_3: "Send feedback through your existing Ricky AI Studio contact channel. This page does not upload device information. Scan the website QR code to visit the site."
  STR_RICKY_MENU_AUTO_TURN: "Auto page turn"
  STR_RICKY_MENU_PROGRESS: "Reading progress"
@@ -428466,7 +428534,7 @@
    uint8_t* frame = einkDisplay.beginGrayscale16();
    if (!frame) return nullptr;
    if (freeink::epdiyLcdRestoreGray16Baseline(einkDisplay.getFrameBuffer())) {
-@@ -236,14 +247,58 @@
+@@ -236,14 +247,65 @@
  bool HalDisplay::commitGrayscale16() { return einkDisplay.commitGrayscale16(); }
  
  void HalDisplay::setNextGray16Profile(const uint8_t profile) {
@@ -428502,6 +428570,13 @@
 +  (void)y;
 +  (void)width;
 +  (void)height;
++#endif
++}
++void HalDisplay::setReaderFastRefresh(const bool on) {
++#if FREEINK_DEVICE_METALIO_PLUS
++  freeink::metalioPlusSetReaderFastRefresh(on);
++#else
++  (void)on;
 +#endif
 +}
 +void HalDisplay::setNextMainTabTurn(uint8_t orientation, bool fromRight, int x, int y, int width, int height) {
@@ -428542,12 +428617,15 @@
    static constexpr uint16_t DISPLAY_WIDTH = BoardConfig::READ_PICO.displayWidth;
    static constexpr uint16_t DISPLAY_HEIGHT = BoardConfig::READ_PICO.displayHeight;
  #else
-@@ -162,9 +165,15 @@
+@@ -162,9 +165,18 @@
    // Read Pico: refresh profile for the next 16-level commit (0 = Half, 1 = text turn,
    // 2 = Full cleanup). One-shot; a no-op on other panels.
    void setNextGray16Profile(uint8_t profile);
 +  // Optional one-shot native wavefront; only supported on the raw parallel panels.
 +void setNextPageTurn(uint8_t style, uint8_t orientation, bool fromRight, int originX = -1, int originY = -1);
++// Plus: reading turns use the short text-turn table without motion (快刷) instead of
++// the full reader waveform (高清). Persistent until changed; a no-op on other panels.
++void setReaderFastRefresh(bool on);
 +  void setNextMainTabTurn(uint8_t orientation, bool fromRight, int x, int y, int width, int height);
 +  void setNextGray16ReaderRefresh(int x, int y, int width, int height);
 +  void setNextGray16ReaderTextFinish(bool enabled);
@@ -429950,6 +430028,15 @@
  const args = process.argv.slice(2);
 --- a/scripts/build_rickyos_page_icons.cjs
 +++ b/scripts/build_rickyos_page_icons.cjs
+@@ -24,7 +24,7 @@
+   ['filter', 'sliders-horizontal'],
+   // Control center actions.
+   ['night', 'contrast'], ['refresh', 'refresh-cw'], ['standby', 'moon'], ['transfer', 'arrow-up-down'],
+-  ['portrait', 'rectangle-vertical'], ['landscape', 'rectangle-horizontal'], ['clean', 'sparkles'],
++  ['portrait', 'rectangle-vertical'], ['landscape', 'rectangle-horizontal'], ['clean', 'sparkles'], ['fast', 'zap'],
+   // Pushed pages and reader shortcuts share the same optical stroke family.
+   ['back', 'arrow-left'], ['contents', 'list'], ['bookmark', 'bookmark'],
+   ['lookup', 'search'], ['home', 'house'],
 @@ -33,7 +33,7 @@
  ];
  // Row icons use the same sources but the approved 32 px optical tier.
@@ -430700,7 +430787,7 @@
    doc["rickyBadgesSeen"] = rickyBadgesSeen;
    doc["frontButtonConfirm"] = frontButtonConfirm;
    doc["frontButtonLeft"] = frontButtonLeft;
-@@ -277,13 +289,19 @@
+@@ -277,13 +289,20 @@
    doc["rickyHomePhrase"] = rickyHomePhrase;
    doc["rickyGestureBack"] = rickyGestureBack;
    doc["rickyGestureHome"] = rickyGestureHome;
@@ -430711,6 +430798,7 @@
 +  doc["speakerVolume"] = speakerVolume;
    doc["rickyTextWeight"] = rickyTextWeight;
 +  doc["nativePageTurn"] = nativePageTurn;
++  doc["readerFastRefresh"] = readerFastRefresh;
 +  doc["mainTabMotion"] = mainTabMotion;
    doc["rickyStandbyFace"] = rickyStandbyFace;
    doc["rickyAutoOffIndex"] = rickyAutoOffIndex;
@@ -430720,7 +430808,7 @@
    doc["rickyTapTurn"] = 1;       // the swipe-only default migration has run
    doc["rickyStandbyKeyOn"] = 1;  // the Back-key Standby shortcut was turned on once
    // Dictionary folder name — uses dynamic getter/setter in SettingsList, save manually
-@@ -300,17 +318,12 @@
+@@ -300,17 +319,12 @@
    // Keep the legacy marker current so rollback to a split-SKU firmware retains
    // the selected service region.
    doc["langSku"] = contentProfile == ContentProfile::China ? "cn" : "global";
@@ -430739,7 +430827,7 @@
  
    auto clamp = [](uint8_t val, uint8_t maxVal, uint8_t def) -> uint8_t { return val < maxVal ? val : def; };
  
-@@ -398,9 +411,20 @@
+@@ -398,9 +412,20 @@
      }
    }
  
@@ -430760,7 +430848,7 @@
    if (doc["readingMode"].isNull()) {
      readingMode = (doc["readingBackgroundEnabled"] | static_cast<uint8_t>(0)) != 0 ? 1 : 0;  // 1 = Puppy
      if (readingMode != 0) needsResave = true;
-@@ -445,6 +469,14 @@
+@@ -445,6 +470,14 @@
      needsResave = true;
    }
    // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
@@ -430775,7 +430863,7 @@
    frontButtonBack = clamp(doc["frontButtonBack"] | (uint8_t)FRONT_HW_BACK, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_BACK);
    frontButtonConfirm =
        clamp(doc["frontButtonConfirm"] | (uint8_t)FRONT_HW_CONFIRM, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_CONFIRM);
-@@ -487,6 +519,11 @@
+@@ -487,6 +520,11 @@
    // Font family — uses dynamic getter/setter in SettingsList so the generic loop skips it.
    const uint8_t storedFontFamily = doc["fontFamily"] | (uint8_t)0;
    fontFamily = clamp(storedFontFamily, BUILTIN_FONT_COUNT, 0);
@@ -430787,7 +430875,7 @@
    if (BoardConfig::hasHomeKey() && doc["homeButtonLongPressAction"].isNull() &&
        !doc["longPressMenuFunction"].isNull()) {
      static constexpr HomeButtonAction LEGACY[] = {HomeButtonAction::Sync, HomeButtonAction::Ignore,
-@@ -513,11 +550,17 @@
+@@ -513,11 +551,18 @@
    // Missing keys take the defaults: Home swipe starts off for everyone, as agreed.
    rickyGestureBack = (doc["rickyGestureBack"] | 1) ? 1 : 0;
    rickyGestureHome = (doc["rickyGestureHome"] | 0) ? 1 : 0;
@@ -430801,11 +430889,12 @@
 +  // the user saved (including off) is kept.
 +  nativePageTurn = doc["nativePageTurn"] | static_cast<uint8_t>(1);
 +  if (nativePageTurn > 3) nativePageTurn = 1;
++  readerFastRefresh = (doc["readerFastRefresh"] | static_cast<uint8_t>(0)) ? 1 : 0;
 +  mainTabMotion = (doc["mainTabMotion"] | 1) == 1 ? 1 : 0;
    rickyStandbyFace = doc["rickyStandbyFace"] | static_cast<uint8_t>(RICKY_STANDBY_PICTURE);
    if (rickyStandbyFace >= RICKY_STANDBY_FACE_COUNT) rickyStandbyFace = RICKY_STANDBY_PICTURE;
    rickyAutoOffIndex = doc["rickyAutoOffIndex"] | static_cast<uint8_t>(3);
-@@ -551,6 +594,10 @@
+@@ -551,6 +596,10 @@
      rickyPowerOffScreen = doc["rickyPowerOffScreen"] | static_cast<uint8_t>(RICKY_POWER_OFF_DEFAULT);
      if (rickyPowerOffScreen >= RICKY_POWER_OFF_SCREEN_COUNT) rickyPowerOffScreen = RICKY_POWER_OFF_DEFAULT;
    }
@@ -430816,7 +430905,7 @@
    // Old backups/direct JSON edits must not select a different product layout.
    struct FixedLayout {
      const char* key;
-@@ -635,11 +682,6 @@
+@@ -635,11 +684,6 @@
    }
    onboardingVersion = doc["onboardingVersion"].is<uint8_t>() ? doc["onboardingVersion"].as<uint8_t>() : 0;
  
@@ -430828,7 +430917,7 @@
    if (needsResave) {
      LOG_DBG("CPS", "Resaving settings to update format");
      requestResave();
-@@ -756,6 +798,7 @@
+@@ -756,6 +800,7 @@
    }
    refreshFrequency = validated(12, refreshFrequency, REFRESH_FREQUENCY_COUNT);
    screenMargin = value(13, screenMargin);
@@ -430836,7 +430925,7 @@
    sleepScreenCoverMode = validated(14, sleepScreenCoverMode, SLEEP_SCREEN_COVER_MODE_COUNT);
    textAntiAliasing = value(15, textAntiAliasing);
    hideBatteryPercentage = validated(16, hideBatteryPercentage, HIDE_BATTERY_PERCENTAGE_COUNT);
-@@ -876,6 +919,7 @@
+@@ -876,6 +921,7 @@
  
  uint8_t CrossPointSettings::rickySleepScreenMode() const {
    if (rickyPowerOffScreen == RICKY_POWER_OFF_BLANK) return BLANK;
@@ -430877,11 +430966,15 @@
    uint8_t homeButtonTapAction = static_cast<uint8_t>(HomeButtonAction::Home);
    uint8_t homeButtonDoubleTapAction = static_cast<uint8_t>(HomeButtonAction::ToggleFrontlight);
    uint8_t homeButtonLongPressAction = static_cast<uint8_t>(HomeButtonAction::ReaderMenu);
-@@ -408,13 +418,25 @@
+@@ -408,13 +418,29 @@
    uint8_t sleepTimeoutMinutes = 10;
    // E-ink refresh frequency (default 15 pages)
    uint8_t refreshFrequency = REFRESH_15;
 +uint8_t nativePageTurn = 1; // off / skim (default) / shallow arc / ripple. Saved IDs never reorder.
++// Plus reading refresh: 0 = 高清 (full reader waveform, ink restore, motion), 1 = 快刷
++// (the short text-turn table, unchanged pixels held, no motion). Switched in the
++// control center over a book; other panels ignore it.
++uint8_t readerFastRefresh = 0;
 +  uint8_t mainTabMotion = 1; // Native main-tab motion, on by default; independent of the page turn.
    uint8_t hyphenationEnabled = 0;
  
@@ -430903,7 +430996,7 @@
    // Hide battery percentage
    uint8_t hideBatteryPercentage = HIDE_NEVER;
    // Long-press page turn button behavior
-@@ -456,15 +478,44 @@
+@@ -456,15 +482,44 @@
      RICKY_STANDBY_FACE_COUNT
    };
    uint8_t rickyStandbyFace = RICKY_STANDBY_PICTURE;
@@ -430949,7 +431042,7 @@
    // The sleepScreen mode the power-off screen draws with (SleepActivity).
    uint8_t rickySleepScreenMode() const;
    // Standby that has run this long powers off (index into RICKY_AUTO_OFF_HOURS; 0 = never).
-@@ -503,6 +554,7 @@
+@@ -503,6 +558,7 @@
    // last lines of a page and on the tab bar, so readers left books by accident.
    uint8_t rickyGestureBack = 1;     // swipe right from the left side: Back
    uint8_t rickyGestureHome = 0;     // swipe up from the bottom: Home
@@ -430957,7 +431050,7 @@
    uint8_t rickyGestureControl = 1;  // swipe down from the top: control center
    uint8_t rickyGestureStatus = 1;   // tap the status bar: control center
    // Body-text stroke weight in the reader: 0 thinnest .. 2 the font as drawn .. 4 boldest.
-@@ -541,6 +593,18 @@
+@@ -541,6 +597,18 @@
    uint8_t imageRendering = IMAGES_DISPLAY;
    // Tilt-based page turning (X3 only — requires QMI8658 IMU)
    uint8_t tiltPageTurn = TILT_OFF;
@@ -430976,7 +431069,7 @@
    // Master reader-touch toggle on boards with a touch controller.
    uint8_t touchReaderControls = TOUCH_READER_ON;
    // Which gestures turn the page in each direction (PAGE_TURN_GESTURE).
-@@ -567,6 +631,7 @@
+@@ -567,6 +635,7 @@
    uint8_t showReaderMenu = READER_MENU_TAP;
    // Frontlight quick-panel state. Brightness and warmth remain persisted even
    // when restore-on-wake is disabled.
@@ -430984,7 +431077,7 @@
    uint8_t frontlightBrightness = 60;
    uint8_t frontlightWarmth = 50;
    uint8_t frontlightOn = 0;
-@@ -581,11 +646,6 @@
+@@ -581,11 +650,6 @@
    // Exact version of the startup guide last completed. Zero/missing means never completed.
    uint8_t onboardingVersion = 0;
    // Keyboard layouts the user can reach, using keyboard_layouts::ALL table bits.
@@ -430996,7 +431089,7 @@
    // Quick Resume: keep current content visible with moon icon instead of showing a static sleep screen.
    uint8_t quickResumeSleepScreen = QUICK_RESUME_NEVER;
    // OTA update channel preference (0 = stable, 1 = nightly).
-@@ -640,6 +700,10 @@
+@@ -640,6 +704,10 @@
      bool showsProgressBar() const { return progressBarMode != HIDE_PROGRESS; }
      bool showsTitle() const { return titleMode != HIDE_TITLE; }
      bool showsClock() const { return clockMode != STATUS_BAR_CLOCK_HIDE; }
@@ -442002,7 +442095,7 @@
          ttf = {};
  #endif
        }
-@@ -2951,16 +3244,71 @@
+@@ -2951,16 +3244,72 @@
          return;
        }
  #if !defined(SIMULATOR)
@@ -442027,6 +442120,7 @@
 +      display.setNextGray16Profile(refresh == HalDisplay::FAST_REFRESH && !panelTurn ? (readerBackground ? 5 : 1) : 2);
 +#else
 +      display.setNextGray16Profile(refresh == HalDisplay::FAST_REFRESH && !panelTurn ? 1 : 2);
++      display.setReaderFastRefresh(SETTINGS.readerFastRefresh != 0);
 +#endif
 +#if FREEINK_DEVICE_METALIO_PLUS
 +      if (SETTINGS.nativePageTurn && nativeTurnDirection) {
@@ -442077,7 +442171,7 @@
  #if RICKYOS_PAINT_PROFILE
          LOG_INF("PERF", "reader commit=%lums total=%lums", tEnd - tCommit, tEnd - t0);
  #endif
-@@ -3137,7 +3485,7 @@
+@@ -3137,7 +3486,7 @@
        }
        const auto tBwStore = millis();
  
@@ -442086,7 +442180,7 @@
        if (pageCacheHit) {
          // Both planes were rendered at idle; putting them in place is one copy
          // each instead of a full page render each.
-@@ -3164,7 +3512,7 @@
+@@ -3164,7 +3513,7 @@
          return;
        }
  
@@ -442095,7 +442189,7 @@
        if (pageCacheHit) {
          memcpy(renderer.getFrameBuffer(), pageCacheMsb_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
          renderer.copyGrayscaleMsbBuffers();
-@@ -3212,9 +3560,12 @@
+@@ -3212,9 +3561,12 @@
  }
  
  void EpubReaderActivity::renderStatusBar() const {
@@ -442108,7 +442202,7 @@
      readerChrome::PageInfo info;
      info.bookTitle = epub ? epub->getTitle().c_str() : nullptr;
      // A chapter the table of contents names, not currentChapterTitle()'s "unnamed".
-@@ -3225,11 +3576,18 @@
+@@ -3225,11 +3577,18 @@
      }
      info.chapterTitle = chapter.c_str();
      info.pageInChapter = currentPage;
@@ -442129,7 +442223,7 @@
    const float pageCount = section ? section->estimatedTotalPages() : 1;
    const float sectionChapterProg = (pageCount > 0) ? (static_cast<float>(currentPage) / pageCount) : 0;
    const float bookProgress = epub ? (epub->calculateProgress(currentSpineIndex, sectionChapterProg) * 100) : 0;
-@@ -3266,8 +3624,12 @@
+@@ -3266,8 +3625,12 @@
        auto chapter = renderer.truncatedText(RickyDesignUi::BODY, title.c_str(), column);
        title = book + " · " + chapter;
      }
@@ -443814,19 +443908,24 @@
    switch (tile) {
      case Tile::Night:
        SETTINGS.screenInverted = SETTINGS.screenInverted ? 0 : 1;
-@@ -356,6 +460,11 @@
+@@ -356,6 +460,16 @@
      case Tile::Clean:
        cycleCleanRefresh();
        break;
 +    case Tile::Light:
 +      toggleLight();
 +      break;
++    case Tile::FastRefresh:
++      SETTINGS.readerFastRefresh = SETTINGS.readerFastRefresh ? 0 : 1;
++      SETTINGS.saveToFile();
++      requestUpdate();
++      break;
 +    case Tile::Preview:
 +      break;  // ACTION_TILE dispatcher owns the audio preview command.
    }
  }
  
-@@ -372,12 +481,21 @@
+@@ -372,12 +486,21 @@
    const auto& metrics = uiThemeMetrics(true);
    const int small = uiTarget.lineHeight(tokens.smallText.font);
    const int title = uiTarget.lineHeight(tokens.titleText.font);
@@ -443853,7 +443952,7 @@
    }
    y += tokens.spaceLg + kGrabberHeight + tokens.spaceLg + tokens.spaceMd;  // grabber band
    return y;
-@@ -390,31 +508,28 @@
+@@ -390,31 +513,28 @@
    label.maxLines = 1;
    label.align = fui::TextAlign::Center;
    const int16_t labelHeight = target.lineHeight(theme.smallText.font);
@@ -443901,7 +444000,7 @@
    }
  }
  
-@@ -430,6 +545,7 @@
+@@ -430,6 +550,7 @@
    auto small = theme.smallText;
    small.maxLines = 1;
    const int16_t smallHeight = target.lineHeight(theme.smallText.font);
@@ -443909,7 +444008,7 @@
  
    // Clock on the left of the status band, battery on the right where Home draws it.
    const auto& metrics = uiThemeMetrics(true);
-@@ -463,33 +579,18 @@
+@@ -463,33 +584,18 @@
    snprintf(infoText, sizeof(infoText), haveTime ? "%s · %s" : "%s%s", date, today);
    target.text(screen.takeTop(smallHeight, 0), infoText, small);
  
@@ -443928,7 +444027,7 @@
 -  const RoundAction common[] = {
 -      {Tile::Night, &icon_ricky_night_40, tr(STR_NIGHT_MODE), night},
 +  screen.spacer(kGroupGap);
-+  RoundAction actions[6] = {
++  RoundAction actions[7] = {
 +      {Tile::Night, &icon_ricky_night_40, tr(STR_NIGHT_MODE), SETTINGS.screenInverted != 0},
        {Tile::Refresh, &icon_ricky_refresh_40, tr(STR_FORCE_REFRESH), false},
        {Tile::Standby, &icon_ricky_standby_40, tr(STR_RICKY_STANDBY_NOW), false},
@@ -443947,7 +444046,7 @@
    const int refreshIndex = std::min<int>(SETTINGS.refreshFrequency, static_cast<int>(std::size(kRefreshPages)) - 1);
    if (kRefreshPages[refreshIndex] == 0) {
      snprintf(refreshText, sizeof(refreshText), "%s", tr(STR_RICKY_CC_FULL_REFRESH_OFF));
-@@ -497,11 +598,92 @@
+@@ -497,11 +603,92 @@
      snprintf(refreshText, sizeof(refreshText), tr(STR_RICKY_CC_FULL_REFRESH), kRefreshPages[refreshIndex]);
    }
    const RoundAction reading[] = {
@@ -443955,14 +444054,14 @@
 +      {Tile::Orientation, orientation % 2 ? &icon_ricky_landscape_40 : &icon_ricky_portrait_40,
         I18N.get(kOrientNames[orientation]), false},
        {Tile::Clean, &icon_ricky_clean_40, refreshText, false},
++      // Reading refresh: 快刷 (on) or 高清.
++      {Tile::FastRefresh, &icon_ricky_fast_40, tr(STR_RICKY_CC_FAST_REFRESH), SETTINGS.readerFastRefresh != 0},
    };
 -  roundActionRow(screen, reading, static_cast<int>(std::size(reading)));
 +  int count = 4;
 +  // Landscape has room for the reading actions in the same row.
-+  if (landscape && overReader) {
-+    actions[count++] = reading[0];
-+    actions[count++] = reading[1];
-+  }
++  if (landscape && overReader)
++    for (const auto& action : reading) actions[count++] = action;
 +  roundActionRow(screen, actions, count);
 +  // Reading: only over a book, where each of these changes the page underneath.
 +  if (!landscape && overReader) {
@@ -444042,7 +444141,7 @@
  }
  
  void FrontlightPanelActivity::render(RenderLock&&) {
-@@ -518,4 +700,5 @@
+@@ -518,4 +705,5 @@
    // or the next scheduled clean refresh.
    renderer.displayBuffer(cleanRefreshPending ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH);
    cleanRefreshPending = false;
@@ -444093,7 +444192,7 @@
 -  enum class Tile : uint8_t { Night, Refresh, Standby, Transfer, Orientation, Clean };
 +  // RickyOS: the Pico's sheet (clock header, one row of actions, a reading row only
 +  // over a book) plus the Plus front light (switch, brightness, warmth) and volume.
-+  enum class Tile : uint8_t { Night, Refresh, Standby, Transfer, Orientation, Clean, Light, Preview = 200 };
++  enum class Tile : uint8_t { Night, Refresh, Standby, Transfer, Orientation, Clean, Light, FastRefresh, Preview = 200 };
    struct RoundAction {
      Tile tile;
      const freeink::Icon* icon;
@@ -445147,7 +445246,34 @@
        case UIIcon::Settings:
 --- a/src/components/icons/rickyAaIcons.h
 +++ b/src/components/icons/rickyAaIcons.h
-@@ -808,6 +808,27 @@
+@@ -630,6 +630,26 @@
+     0x1A, 0x0F, 0x09, 0xF0, 0x30, 0x04, 0x0E, 0x3F, 0x08, 0x60, 0x03, 0x0E, 0x1F, 0x0E, 0x03, 0xF0, 0x40, 0x01, 0x06, 0x09,
+     0x07, 0x03, 0x80, 0x03, 0x19, 0x03, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0x10,
+ };
++inline constexpr uint8_t k_icon_ricky_fast_40[] = {
++    0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0x40, 0x04, 0x09, 0x04, 0xF0, 0xF0, 0x30, 0x06, 0x2F, 0x02, 0xF0, 0xF0, 0x10, 0x06,
++    0x3F, 0x03, 0xF0, 0xF0, 0x00, 0x05, 0x1F, 0x09, 0x0F, 0x0E, 0x01, 0xF0, 0xF0, 0x05, 0x1F, 0x07, 0x06, 0x0F, 0x0A, 0xF0,
++    0xF0, 0x05, 0x1F, 0x07, 0x00, 0x0B, 0x0F, 0x05, 0xF0, 0xE0, 0x04, 0x1F, 0x08, 0x00, 0x01, 0x1F, 0x01, 0xF0, 0xD0, 0x04,
++    0x1F, 0x08, 0x10, 0x06, 0x0F, 0x0B, 0xF0, 0xD0, 0x03, 0x0E, 0x0F, 0x09, 0x20, 0x0B, 0x0F, 0x06, 0xF0, 0xC0, 0x03, 0x0E,
++    0x0F, 0x09, 0x20, 0x01, 0x1F, 0x01, 0xF0, 0xB0, 0x03, 0x0E, 0x0F, 0x09, 0x30, 0x05, 0x0F, 0x0B, 0xF0, 0xB0, 0x03, 0x0E,
++    0x0F, 0x0A, 0x40, 0x0A, 0x0F, 0x07, 0xF0, 0xA0, 0x03, 0x0E, 0x0F, 0x0A, 0x50, 0x0D, 0x0F, 0x02, 0xF0, 0x90, 0x02, 0x0E,
++    0x0F, 0x0B, 0x60, 0x0D, 0x0F, 0x07, 0xA5, 0x04, 0x01, 0xB0, 0x02, 0x0D, 0x0F, 0x0B, 0x70, 0x07, 0xDF, 0x0E, 0x03, 0x90,
++    0x02, 0x0D, 0x0F, 0x0B, 0x01, 0x80, 0x05, 0x09, 0xAA, 0x0B, 0x0F, 0x0C, 0x80, 0x02, 0x0D, 0x0F, 0x0C, 0x01, 0xF0, 0x60,
++    0x02, 0x0F, 0x0E, 0x70, 0x01, 0x0D, 0x0F, 0x0C, 0x01, 0xF0, 0x60, 0x01, 0x0C, 0x0F, 0x09, 0x70, 0x09, 0x0F, 0x0C, 0x01,
++    0xF0, 0x60, 0x01, 0x0C, 0x0F, 0x0D, 0x01, 0x70, 0x0E, 0x0F, 0x02, 0xF0, 0x60, 0x01, 0x0C, 0x0F, 0x0D, 0x02, 0x80, 0x0C,
++    0x0F, 0x0B, 0xAA, 0x09, 0x05, 0x80, 0x01, 0x0B, 0x0F, 0x0D, 0x02, 0x90, 0x03, 0x0E, 0xDF, 0x07, 0x70, 0x0B, 0x0F, 0x0D,
++    0x02, 0xB0, 0x01, 0x04, 0xA5, 0x07, 0x0F, 0x0D, 0x60, 0x0B, 0x0F, 0x0E, 0x02, 0xF0, 0x90, 0x02, 0x0F, 0x0D, 0x50, 0x0A,
++    0x0F, 0x0E, 0x03, 0xF0, 0xA0, 0x07, 0x0F, 0x0A, 0x40, 0x0A, 0x0F, 0x0E, 0x03, 0xF0, 0xB0, 0x0C, 0x0F, 0x05, 0x30, 0x09,
++    0x0F, 0x0E, 0x03, 0xF0, 0xB0, 0x01, 0x1F, 0x01, 0x20, 0x09, 0x0F, 0x0E, 0x04, 0xF0, 0xC0, 0x06, 0x0F, 0x0A, 0x20, 0x09,
++    0x0F, 0x0E, 0x04, 0xF0, 0xD0, 0x0B, 0x0F, 0x06, 0x10, 0x08, 0x1F, 0x04, 0xF0, 0xD0, 0x01, 0x1F, 0x01, 0x00, 0x08, 0x1F,
++    0x05, 0xF0, 0xE0, 0x05, 0x0F, 0x0B, 0x00, 0x07, 0x1F, 0x05, 0xF0, 0xF0, 0x0A, 0x0F, 0x06, 0x07, 0x1F, 0x05, 0xF0, 0xF0,
++    0x01, 0x0E, 0x0F, 0x08, 0x1F, 0x05, 0xF0, 0xF0, 0x00, 0x03, 0x3F, 0x06, 0xF0, 0xF0, 0x10, 0x02, 0x2F, 0x06, 0xF0, 0xF0,
++    0x30, 0x04, 0x09, 0x04, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0x40,
++};
+ inline constexpr uint8_t k_icon_ricky_back_40[] = {
+     0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xA0, 0x17,
+     0xF0, 0xF0, 0x40, 0x09, 0x0F, 0x0E, 0xF0, 0xF0, 0x30, 0x09, 0x1F, 0x04, 0xF0, 0xF0, 0x20, 0x09, 0x1F, 0x04, 0xF0, 0xF0,
+@@ -808,6 +828,27 @@
      0x0C, 0x0F, 0x0E, 0x05, 0xF0, 0x00, 0x01, 0x08, 0x0E, 0x1F, 0x0E, 0x1D, 0x0E, 0x1F, 0x0E, 0x08, 0x01, 0xF0, 0x40, 0x04,
      0x08, 0x0A, 0x1B, 0x0A, 0x08, 0x04, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xB0,
  };
@@ -445175,7 +445301,7 @@
  inline constexpr uint8_t k_icon_ricky_row_timer_32[] = {
      0xF0, 0xF0, 0xC0, 0x52, 0xF0, 0x80, 0x06, 0x5F, 0x06, 0xF0, 0x70, 0x01, 0x57, 0x01, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0,
      0xF0, 0x70, 0x03, 0x08, 0x0A, 0x1B, 0x0A, 0x08, 0x03, 0xF0, 0x50, 0x05, 0x0D, 0x1F, 0x0E, 0x1D, 0x0E, 0x1F, 0x0D, 0x05,
-@@ -987,6 +1008,16 @@
+@@ -987,6 +1028,16 @@
      0x0F, 0x09, 0xD0, 0x1C, 0x50, 0x0B, 0x0D, 0x30, 0x09, 0x0F, 0x09, 0xE0, 0x0D, 0x0B, 0x50, 0x08, 0x0F, 0x05, 0x10, 0x09,
      0x0F, 0x09, 0xE0, 0x05, 0x0F, 0x08, 0x50, 0x01, 0x0D, 0x0F, 0x0D, 0x0E, 0x0F, 0x0E, 0xEC, 0x0D, 0x0F, 0x0D, 0x01, 0x60,
      0x01, 0x08, 0x0B, 0x0D, 0x0E, 0xFC, 0x0B, 0x08, 0x01, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0x30,
@@ -445192,7 +445318,15 @@
  };
  
  inline constexpr Icon kIcons[] = {
-@@ -1033,6 +1064,7 @@
+@@ -1022,6 +1073,7 @@
+     {0x9C26B061u, 40, 40, k_icon_ricky_portrait_40, 246},  // icon_ricky_portrait_40_bits
+     {0x6EC4266Du, 40, 40, k_icon_ricky_landscape_40, 239},  // icon_ricky_landscape_40_bits
+     {0x6C849A46u, 40, 40, k_icon_ricky_clean_40, 493},  // icon_ricky_clean_40_bits
++    {0x4842A3FFu, 40, 40, k_icon_ricky_fast_40, 351},  // icon_ricky_fast_40_bits
+     {0xD605BE77u, 40, 40, k_icon_ricky_back_40, 185},  // icon_ricky_back_40_bits
+     {0x1FFD45CBu, 40, 40, k_icon_ricky_contents_40, 139},  // icon_ricky_contents_40_bits
+     {0xA8FDEB89u, 40, 40, k_icon_ricky_bookmark_40, 347},  // icon_ricky_bookmark_40_bits
+@@ -1033,6 +1085,7 @@
      {0x894F81F5u, 40, 40, k_icon_ricky_more_40, 178},  // icon_ricky_more_40_bits
      {0xBE83CA09u, 32, 32, k_icon_ricky_row_night_32, 268},  // icon_ricky_row_night_32_bits
      {0xDC0A3113u, 32, 32, k_icon_ricky_row_rotate_32, 253},  // icon_ricky_row_rotate_32_bits
@@ -445200,7 +445334,7 @@
      {0x58239B21u, 32, 32, k_icon_ricky_row_timer_32, 267},  // icon_ricky_row_timer_32_bits
      {0x3A6BFAE1u, 32, 32, k_icon_ricky_row_percent_32, 244},  // icon_ricky_row_percent_32_bits
      {0x5764B3F1u, 32, 32, k_icon_ricky_row_bookmark_32, 255},  // icon_ricky_row_bookmark_32_bits
-@@ -1045,6 +1077,7 @@
+@@ -1045,6 +1098,7 @@
      {0x324A1A9Au, 32, 32, k_icon_ricky_row_books_32, 280},  // icon_ricky_row_books_32_bits
      {0x4510C78Du, 32, 32, k_icon_ricky_row_text_32, 312},  // icon_ricky_row_text_32_bits
      {0xB143A8C4u, 32, 32, k_icon_ricky_row_image_32, 276},  // icon_ricky_row_image_32_bits
@@ -445261,7 +445395,30 @@
 +};
 --- a/src/components/icons/rickyPageIcons.h
 +++ b/src/components/icons/rickyPageIcons.h
-@@ -493,6 +493,18 @@
+@@ -325,6 +325,22 @@
+ };
+ inline constexpr freeink::Icon icon_ricky_clean_40 = {40, 40, 20, icon_ricky_clean_40_bits};
+ 
++// fast (lucide: zap)
++inline constexpr uint8_t icon_ricky_fast_40_bits[] = {
++    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFD, 0xFF, 0xFF, 0xFF, 0xFF, 0xF8, 0xFF,
++    0xFF, 0xFF, 0xFF, 0xF0, 0xFF, 0xFF, 0xFF, 0xFF, 0xE4, 0xFF, 0xFF, 0xFF, 0xFF, 0xCC, 0xFF, 0xFF, 0xFF, 0xFF, 0x99,
++    0xFF, 0xFF, 0xFF, 0xFF, 0x39, 0xFF, 0xFF, 0xFF, 0xFE, 0x79, 0xFF, 0xFF, 0xFF, 0xFC, 0x73, 0xFF, 0xFF, 0xFF, 0xF8,
++    0xF3, 0xFF, 0xFF, 0xFF, 0xF1, 0xF3, 0xFF, 0xFF, 0xFF, 0xE3, 0xE7, 0xFF, 0xFF, 0xFF, 0xC7, 0xE7, 0xFF, 0xFF, 0xFF,
++    0x8F, 0xE7, 0xFF, 0xFF, 0xFF, 0x1F, 0xF0, 0x00, 0x1F, 0xFE, 0x3F, 0xF8, 0x00, 0x0F, 0xFC, 0x7F, 0xFF, 0xFF, 0xCF,
++    0xF8, 0xFF, 0xFF, 0xFF, 0x8F, 0xF1, 0xFF, 0xFF, 0xFF, 0x1F, 0xF3, 0xFF, 0xFF, 0xFE, 0x3F, 0xF0, 0x00, 0x1F, 0xFC,
++    0x7F, 0xF8, 0x00, 0x0F, 0xF8, 0xFF, 0xFF, 0xFF, 0xE7, 0xF1, 0xFF, 0xFF, 0xFF, 0xE7, 0xE3, 0xFF, 0xFF, 0xFF, 0xE7,
++    0xC7, 0xFF, 0xFF, 0xFF, 0xCF, 0x8F, 0xFF, 0xFF, 0xFF, 0xCF, 0x1F, 0xFF, 0xFF, 0xFF, 0xCE, 0x3F, 0xFF, 0xFF, 0xFF,
++    0x9E, 0x7F, 0xFF, 0xFF, 0xFF, 0x9C, 0xFF, 0xFF, 0xFF, 0xFF, 0x99, 0xFF, 0xFF, 0xFF, 0xFF, 0x33, 0xFF, 0xFF, 0xFF,
++    0xFF, 0x27, 0xFF, 0xFF, 0xFF, 0xFF, 0x0F, 0xFF, 0xFF, 0xFF, 0xFF, 0x1F, 0xFF, 0xFF, 0xFF, 0xFF, 0xBF, 0xFF, 0xFF,
++    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
++};
++inline constexpr freeink::Icon icon_ricky_fast_40 = {40, 40, 20, icon_ricky_fast_40_bits};
++
+ // back (lucide: arrow-left)
+ inline constexpr uint8_t icon_ricky_back_40_bits[] = {
+     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+@@ -493,6 +509,18 @@
  };
  inline constexpr freeink::Icon icon_ricky_row_rotate_32 = {32, 32, 14, icon_ricky_row_rotate_32_bits};
  

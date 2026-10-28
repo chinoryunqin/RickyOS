@@ -190,7 +190,12 @@
     {
       "path": "lib/Epub/Epub/BookMetadataCache.cpp",
       "baseline_sha256": "0c565fb939b22ccb6817425b4e1a567e1836cfb6bb50c6d0eb659773e387163b",
-      "ported_sha256": "afa44e9a9ef65a47697a24f315d105a2f0f49798176a30e3bfa9a746ecc51d87"
+      "ported_sha256": "2a3e30c0a40b7d66c2d7915c117262726f1b8a98a20f216631cf93e999166588"
+    },
+    {
+      "path": "lib/Epub/Epub/BookMetadataCache.h",
+      "baseline_sha256": "e3f7276514d718db3cea23e5f51ab4912e722a1e30dad49cdf495569dab82f29",
+      "ported_sha256": "651541e93ac16843bfda3f18d4c3ad32a693012c6df41b439b7186ce212ac4ca"
     },
     {
       "path": "lib/Epub/Epub/Page.cpp",
@@ -315,12 +320,12 @@
     {
       "path": "lib/I18n/translations/chinese.yaml",
       "baseline_sha256": "021ec5b9e5880155fea752af9c60ce83a259dd69131f9bd12ffe0ca59e3366bd",
-      "ported_sha256": "feb28309186a2c381fbbb8288ecef8aa6be960c9fc7edf03197f24e7bb496f60"
+      "ported_sha256": "5d0cbffc76c9f50ff18dcb570bad54ee0c2e3d6e8ea30c0f68a7843bc09b73b0"
     },
     {
       "path": "lib/I18n/translations/english.yaml",
       "baseline_sha256": "85a4d226f1400f6a185759420c63ecff5f81eeb3722afd66c312d4aec6bcb315",
-      "ported_sha256": "44111a4822d8d46ac2a5c9525485bb2d961296e89455a545ce435551e5ab9aaf"
+      "ported_sha256": "1b91d76b845f0d11b3acb9a1cd23ea68b1f39245d93b230253898cd6d58a8e7f"
     },
     {
       "path": "lib/JpegToBmpConverter/JpegToBmpConverter.cpp",
@@ -520,12 +525,12 @@
     {
       "path": "lib/hal/HalDisplay.cpp",
       "baseline_sha256": "0b168b7f240f557d75a138ee6f9fc7073e2ecd2431b794bd0e8502977a831fcb",
-      "ported_sha256": "0afb29d5ef3b7dc14bcfb226245d94821a006286585ce70a433d5653adc0a580"
+      "ported_sha256": "b82a9007a4695c350ffaf7a17aea6d24ceb1b5bf4e83c869a1bb2f5ed832ab25"
     },
     {
       "path": "lib/hal/HalDisplay.h",
       "baseline_sha256": "a2eed517fa85335c0857981ae01bf05799d3bdeae36fcb2d767b6901d51fe58c",
-      "ported_sha256": "5f3a2fc61b2afebae11be5101bd85f2bee53f17ce4f7a8288b86a55c5d59a08c"
+      "ported_sha256": "f7c46e646c7711efa9dadc27acd75d4e7a402296d3c28ab4e2c4c9fcbce18516"
     },
     {
       "path": "lib/hal/HalGPIO.cpp",
@@ -605,7 +610,7 @@
     {
       "path": "scripts/build_rickyos_page_icons.cjs",
       "baseline_sha256": "ded0860bbebf3c65e2ed28a23515204e91f3bab5a6f2cd77a8353c7029aab1a0",
-      "ported_sha256": "4d112f65496592dd5751686bd3727834667d9e4a59a0a7fa027d4f68a0d85731"
+      "ported_sha256": "da79367d718e9a092b02b99637efba0a37f350b91724fb189585500c17fe7e7b"
     },
     {
       "path": "scripts/tests/run_txt_utf16_tests.py",
@@ -665,12 +670,12 @@
     {
       "path": "src/CrossPointSettings.cpp",
       "baseline_sha256": "549f275cd35b12b0479eadda063c5460e167d1156274e759bee34e2232b4dc37",
-      "ported_sha256": "e9f7ff9735bf254db44971dba511629d2749f324878939010bc8f9468520b264"
+      "ported_sha256": "0656b30461770ca2868cd8cce2f9b732622c228de44928f668e68f0951007e94"
     },
     {
       "path": "src/CrossPointSettings.h",
       "baseline_sha256": "c5a733423898aad83b2f932929b80d3de201da9aa0e181d82d0071a2ac576330",
-      "ported_sha256": "a18883b0d9c4e4e9d5a95a16f206ccbc86996a6265a52c2fa4ffa3cce6ac7c38"
+      "ported_sha256": "fc39ed7e4467369575e1dc70e15aee981b36c8129725333927fa11f93bc8b7d2"
     },
     {
       "path": "src/HomeButtonSettings.h",
@@ -990,7 +995,7 @@
     {
       "path": "src/activities/reader/EpubReaderActivity.cpp",
       "baseline_sha256": "330723cad52ac629fa1451c9ca90cffff0a04b06e0266861e092ff93e8ffa1c9",
-      "ported_sha256": "e91f391485f03500e744c4b5d0bc4bdd511839e22c2c721d33b608d16e7986f2"
+      "ported_sha256": "799fbaf2a329192c55ed7f2888c9a3456ff664ef88664893eeab1c8683bad6e9"
     },
     {
       "path": "src/activities/reader/EpubReaderActivity.h",
@@ -1120,12 +1125,12 @@
     {
       "path": "src/activities/util/FrontlightPanelActivity.cpp",
       "baseline_sha256": "3b032b72a9d4e568d587e0686816fa143775397cbb14f626a579eb4501c41115",
-      "ported_sha256": "15aedc65c3c702d6a48cb887ca41367d34e3ac3fba4c301d67899172369bb0a2"
+      "ported_sha256": "1c804e933337cfae37ee094f7b66124b122bb8b2612910039f4cfd9e95c46e1e"
     },
     {
       "path": "src/activities/util/FrontlightPanelActivity.h",
       "baseline_sha256": "28f273626ec6d605dd24764a8b99c856289cb7d8b27664e6e839d7689486f779",
-      "ported_sha256": "c0f6a3a1ff998410f1d0d094923e394bb11b4f309fd138e0bd0b3958aa65bddb"
+      "ported_sha256": "b7c3bcac1eb41fb1b85ec71b39353a7ae032958ffb8ad3e36c18d684f6d0e5d2"
     },
     {
       "path": "src/activities/util/ImageViewerActivity.cpp",
@@ -1205,7 +1210,7 @@
     {
       "path": "src/components/icons/rickyAaIcons.h",
       "baseline_sha256": "aca9684a0ba70f68288545d8d76373cd90ec68e11d8f90fd3d9f2445354a7d25",
-      "ported_sha256": "efa03de935d539e6eebfc830feac75ed8ada30db267b610156daf5a21cdfb16d"
+      "ported_sha256": "71c5888058571eceabbb119fb41dbe78aa1c34195172b23a3aea64befe389bca"
     },
     {
       "path": "src/components/icons/rickyAppIcons.h",
@@ -1215,7 +1220,7 @@
     {
       "path": "src/components/icons/rickyPageIcons.h",
       "baseline_sha256": "c27a38304b40c5616e51ed99286ca2dcd164bca3a0677389508ca5755f6cdbff",
-      "ported_sha256": "1d1b161daa7c7461b5ad5a0f00c123e0ced2add113b528089540feb53a920de1"
+      "ported_sha256": "c299963db21f281a8641296410adce1e782139a253d0a1828a7d9102fbdaa172"
     },
     {
       "path": "src/components/icons/sources/rickyos/apps/gallery.svg",

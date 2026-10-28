@@ -9,5 +9,9 @@ void metalioPlusSetGray16UiRefresh(int x, int y, int width, int height, uint8_t 
                                   bool adaptive = false);
 void metalioPlusSetGray16ReaderRefresh(int x, int y, int width, int height);
 void metalioPlusSetGray16ReaderTextFinish(bool enabled);
+// 快刷: white-page reading turns use the UI's short text-turn table (unchanged pixels
+// held, old and new cross-fade) with no motion, instead of the full reader waveform.
+// Persistent until changed.
+void metalioPlusSetReaderFastRefresh(bool on);
 bool metalioPlusRestoreGray16Baseline(uint8_t* proxy);
 }

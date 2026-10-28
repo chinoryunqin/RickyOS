@@ -68,6 +68,7 @@ bool nextAdaptiveUi = false;
 ricky::gray::Area nextNavigation;
 ricky::gray::Area nextReaderBody;
 bool nextReaderTextFinish = false;
+bool readerFastRefresh = false;  // 快刷, see metalioPlusSetReaderFastRefresh
 uint8_t contentEvery = 8, smallEvery = 32;
 // No additional framebuffer allocation: EPDiy owns its front/back buffers in
 // PSRAM; FreeInk's original native 1-bit buffer remains the application surface.
@@ -180,7 +181,11 @@ class MetalioPlusDriver final : public PanelDriver {
       // cleanups (users saw faint ink; refreshing it only every 4th turn still read faint).
       // Its black-to-black cell erases and rewrites: body ink stays full. A reader
       // layout hint holds only unchanged chrome outside the text box in this same scan.
-      if (!full && state_ != OpticalState::Unknown) {
+      if (!full && !paper && readerFastRefresh && state_ != OpticalState::Unknown) {
+        // 快刷: the Read Pico's text turn. Strokes that stay black are not re-driven, so
+        // ink can fade a little until the periodic clean (the 全刷 interval) restores it.
+        success = refreshFastTurn(MetalioEpd_Hl()) == EPD_DRAW_SUCCESS;
+      } else if (!full && state_ != OpticalState::Unknown) {
         epd_set_native_turn(turn.style, turn.orientation, turn.from_right);
         if (turn.has_origin) epd_set_native_ripple_origin(turn.origin_x, turn.origin_y);
         epd_set_native_reader_text_finish(readerTextFinish && !paper);
@@ -353,6 +358,16 @@ class MetalioPlusDriver final : public PanelDriver {
     ledger_ = candidate;
     return true;
   }
+  // 快刷 turn: the text-turn table (MODE_GL16_INV slot) over the whole page, one scan.
+  EpdDrawError refreshFastTurn(EpdiyHighlevelState* hl) {
+    const int64_t startedUs = esp_timer_get_time();
+    epd_poweron();
+    auto result = EPD_DRAW_EMPTY_LINE_QUEUE;
+    if (epd_board_metalio_eink4_plus_tps_ok()) result = epd_hl_update_screen(hl, MODE_GL16_INV, 25);
+    epd_poweroff();
+    ESP_LOGI("PlusDisplay", "turn fast result=0x%x ms=%lld", result, (esp_timer_get_time() - startedUs) / 1000);
+    return result;
+  }
   // Retained black in the body is erased and rewritten. With a layout hint,
   // equal chrome pixels are masked to no-drive without adding a second scan.
   EpdDrawError refreshTurn(EpdiyHighlevelState* hl, const ricky::gray::Area& body, bool paper) {
@@ -489,6 +504,7 @@ void metalioPlusSetPageTurn(uint8_t style, uint8_t orientation, bool fromRight, 
     nextTurn.origin_y = originY;
   }
 }
+void metalioPlusSetReaderFastRefresh(const bool on) { readerFastRefresh = on; }
 void metalioPlusSetMainTabTurn(uint8_t orientation, bool fromRight, int x, int y, int width, int height) {
   nextReaderTextFinish = false;
   nextTabTurn = {true, orientation, fromRight, {x, y, width, height}};
