@@ -315,7 +315,7 @@
  
 --- a/freeink-sdk/libs/hardware/Imu/include/Imu.h
 +++ b/freeink-sdk/libs/hardware/Imu/include/Imu.h
-@@ -44,12 +44,22 @@
+@@ -44,12 +44,23 @@
    // error; allow for a settling transient before trusting samples.
    bool wake();
  
@@ -325,8 +325,9 @@
 +  // powers it down; wake() restores it). sensitivity: 0 firm, 1 medium, 2 light.
 +  bool enableDoubleTap(uint8_t sensitivity);
 +  bool disableDoubleTap();
-+  // True once per detected double tap; reading clears the latch.
-+  bool takeDoubleTap();
++  // True once per detected double tap; reading clears the latch. `source`, when given,
++  // receives the raw click source (single taps included) for tuning.
++  bool takeDoubleTap(uint8_t* source = nullptr);
 +
   private:
    bool begun_ = false;
@@ -340,7 +341,7 @@
  }  // namespace freeink
 --- a/freeink-sdk/libs/hardware/Imu/src/Imu.cpp
 +++ b/freeink-sdk/libs/hardware/Imu/src/Imu.cpp
-@@ -88,6 +88,27 @@
+@@ -88,6 +88,31 @@
  // CTRL1 ODR = 0000 stops the sampling engine (sc7a20h_power_down), ≈0.5 µA; every
  // other config register is retained for the wake path.
  constexpr uint8_t SC7A20H_CTRL1_ODR_POWER_DOWN = 0x00;
@@ -365,10 +366,14 @@
 +constexpr uint8_t SC7A20H_TAP_LIMIT = 16, SC7A20H_TAP_LATENCY = 32, SC7A20H_TAP_WINDOW = 128;
 +// 400 Hz, normal mode, XYZ: the click detector needs the rate to see a knock.
 +constexpr uint8_t SC7A20H_CTRL1_400HZ_XYZ = 0x77;
++// CTRL2 HP_CLICK: the click detector sees high-pass data. Without it the ~1 g of gravity
++// on the axis through the screen sits above the threshold, never "returns", and no tap
++// is ever recognised.
++constexpr uint8_t SC7A20H_CTRL2_HP_CLICK = 0x04;
  // The output registers are 16-bit left-justified. sc7a20h.c's fill_sample() drops
  // the low 4 bits, and its 1 mg/LSB at ±2 g (mg_lsb = 1 << fs) is the scale for
  // THAT normalized value — i.e. the LP mode 8-bit reading is left-justified, not
-@@ -220,6 +241,11 @@
+@@ -220,6 +245,11 @@
        if (!writeReg(configuredAddr, SC7A20H_REG_CTRL2, SC7A20H_CTRL2_IDLE)) return false;
        if (!writeReg(configuredAddr, SC7A20H_REG_CTRL4, SC7A20H_CTRL4_BDU_2G)) return false;
        if (!writeReg(configuredAddr, SC7A20H_REG_CTRL1, SC7A20H_CTRL1_12_5HZ_LP_XYZ)) return false;
@@ -380,9 +385,12 @@
        delay(20);  // sc7a20h_apply_config() settle before the first sample
        addr_ = configuredAddr;
        break;
-@@ -336,13 +362,45 @@
+@@ -334,15 +364,51 @@
+       // CTRL0/CTRL2/CTRL4 values are rewritten for a defined state. The 20 ms
+       // settle is sc7a20h_apply_config()'s.
        if (!writeReg(addr, SC7A20H_REG_CTRL0, SC7A20H_CTRL0_IDLE)) return false;
-       if (!writeReg(addr, SC7A20H_REG_CTRL2, SC7A20H_CTRL2_IDLE)) return false;
+-      if (!writeReg(addr, SC7A20H_REG_CTRL2, SC7A20H_CTRL2_IDLE)) return false;
++      if (!writeReg(addr, SC7A20H_REG_CTRL2, doubleTap_ ? SC7A20H_CTRL2_HP_CLICK : SC7A20H_CTRL2_IDLE)) return false;
        if (!writeReg(addr, SC7A20H_REG_CTRL4, SC7A20H_CTRL4_BDU_2G)) return false;
 -      if (!writeReg(addr, SC7A20H_REG_CTRL1, SC7A20H_CTRL1_12_5HZ_LP_XYZ)) return false;
 +      if (!writeReg(addr, SC7A20H_REG_CTRL1, doubleTap_ ? SC7A20H_CTRL1_400HZ_XYZ : SC7A20H_CTRL1_12_5HZ_LP_XYZ))
@@ -405,6 +413,7 @@
 +                  writeReg(addr, SC7A20H_REG_TIME_LATENCY, SC7A20H_TAP_LATENCY) &&
 +                  writeReg(addr, SC7A20H_REG_TIME_WINDOW, SC7A20H_TAP_WINDOW) &&
 +                  writeReg(addr, SC7A20H_REG_CLICK_CFG, SC7A20H_CLICK_CFG_ZD) &&
++                  writeReg(addr, SC7A20H_REG_CTRL2, SC7A20H_CTRL2_HP_CLICK) &&
 +                  writeReg(addr, SC7A20H_REG_CTRL1, SC7A20H_CTRL1_400HZ_XYZ) &&
 +                  readRegs(addr, SC7A20H_REG_CLICK_SRC, &stale, 1);  // drop a latch from before
 +  doubleTap_ = ok;
@@ -417,23 +426,29 @@
 +  doubleTap_ = false;
 +  if (!was) return true;
 +  if (!begun_ || addr == 0) return false;
-+  return writeReg(addr, SC7A20H_REG_CLICK_CFG, 0) && writeReg(addr, SC7A20H_REG_CTRL1, SC7A20H_CTRL1_12_5HZ_LP_XYZ);
++  return writeReg(addr, SC7A20H_REG_CLICK_CFG, 0) && writeReg(addr, SC7A20H_REG_CTRL2, SC7A20H_CTRL2_IDLE) &&
++         writeReg(addr, SC7A20H_REG_CTRL1, SC7A20H_CTRL1_12_5HZ_LP_XYZ);
 +}
 +
-+bool Imu::takeDoubleTap() {
-+  uint8_t source = 0;
-+  return doubleTap_ && readRegs(addr_, SC7A20H_REG_CLICK_SRC, &source, 1) &&
-+         (source & SC7A20H_CLICK_SRC_DOUBLE) == SC7A20H_CLICK_SRC_DOUBLE;
++bool Imu::takeDoubleTap(uint8_t* source) {
++  uint8_t value = 0;
++  if (source) *source = 0;
++  if (!doubleTap_ || !readRegs(addr_, SC7A20H_REG_CLICK_SRC, &value, 1)) return false;
++  if (source) *source = value;
++  return (value & SC7A20H_CLICK_SRC_DOUBLE) == SC7A20H_CLICK_SRC_DOUBLE;
  }
  
  }  // namespace freeink
-@@ -354,6 +412,9 @@
+@@ -354,6 +420,12 @@
  bool Imu::read(Sample&) { return false; }
  bool Imu::sleep() { return false; }
  bool Imu::wake() { return false; }
 +bool Imu::enableDoubleTap(uint8_t) { return false; }
 +bool Imu::disableDoubleTap() { return true; }
-+bool Imu::takeDoubleTap() { return false; }
++bool Imu::takeDoubleTap(uint8_t* source) {
++  if (source) *source = 0;
++  return false;
++}
  }  // namespace freeink
  
  #endif  // FREEINK_CAP_IMU
@@ -429360,7 +429375,7 @@
  
    _initMs = millis();
    _lastPollMs = millis();
-@@ -111,15 +108,31 @@
+@@ -111,15 +108,32 @@
    clearPendingEvents();
    _inTilt = false;
    _isAwake = false;
@@ -429383,6 +429398,7 @@
 +  _tapOn = wanted ? _sdkImu.enableDoubleTap(_tapSensitivity) : !_sdkImu.disableDoubleTap();
 +  _tapNextEvent = _tapPrevEvent = false;
 +  if (wanted && !_tapOn) LOG_ERR("GYR", "double tap unavailable");
++  else LOG_INF("GYR", "double tap %s (strength %u)", _tapOn ? "on" : "off", static_cast<unsigned>(_tapSensitivity));
 +}
 +
 +void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const bool inReader,
@@ -429401,7 +429417,7 @@
    if (_accelOnly && (mode != _accelMode || orientation != _accelOrientation || shouldBeAwake != _accelReading)) {
      _accelMode = static_cast<CrossPointTiltPageTurn::Value>(mode);
      _accelOrientation = static_cast<CrossPointOrientation::Value>(orientation);
-@@ -144,6 +157,23 @@
+@@ -144,6 +158,25 @@
    const unsigned long now = millis();
    // Stabilization: discard readings during gyro startup transient
    if ((now - _wakeMs) < WAKE_STABILIZE_MS) {
@@ -429412,7 +429428,9 @@
 +  if (_tapOn && now - _lastTapPollMs >= TAP_POLL_INTERVAL_MS) {
 +    _lastTapPollMs = now;
 +    // Always read: it clears the chip's latch, so a tap during a touch is dropped, not queued.
-+    const bool tapped = _sdkImu.takeDoubleTap();
++    uint8_t source = 0;
++    const bool tapped = _sdkImu.takeDoubleTap(&source);
++    if (source && !tapped) LOG_INF("GYR", "click src=0x%02x (not a double tap)", source);
 +    if (tapped && now - _touchMs >= TAP_AFTER_TOUCH_MS && now - _lastTapMs >= TAP_COOLDOWN_MS) {
 +      _lastTapMs = now;
 +      _lastTiltMs = now;  // the knock must not also read as a tilt flick
@@ -429425,7 +429443,7 @@
      return;
    }
  
-@@ -233,6 +263,18 @@
+@@ -233,6 +266,18 @@
    return val;
  }
  
@@ -429444,7 +429462,7 @@
  bool HalTiltSensor::hadActivity() {
    const bool val = _hadActivity;
    _hadActivity = false;
-@@ -242,6 +284,8 @@
+@@ -242,6 +287,8 @@
  void HalTiltSensor::clearPendingEvents() {
    _tiltForwardEvent = false;
    _tiltBackEvent = false;
@@ -429807,7 +429825,7 @@
 +    unittest.main()
 --- /dev/null
 +++ b/scripts/tests/test_imu_double_tap.py
-@@ -0,0 +1,62 @@
+@@ -0,0 +1,66 @@
 +"""SC7A20H back double tap: register setup, latch polling, sleep/wake rate, INT drive.
 +
 +Compiles the real freeink Imu.cpp against the SDK's own Wire stub (the Read Pico
@@ -429836,6 +429854,7 @@
 +  auto& r = Wire.regs[0x19];
 +  assert(r[0x3A] == (0x80 | 0x1C) && r[0x3B] == 16 && r[0x3C] == 32 && r[0x3D] == 128);
 +  assert(r[0x38] == 0x20 && r[0x20] == 0x77);  // double click on Z, 400 Hz
++  assert(r[0x21] == 0x04);  // the detector sees high-pass data, not gravity
 +  r[0x39] = 0x60;
 +  assert(imu.takeDoubleTap());
 +  r[0x39] = 0x50;  // a single click is not a double tap
@@ -429843,8 +429862,11 @@
 +  r[0x39] = 0x20;  // DCLICK without IA
 +  assert(!imu.takeDoubleTap());
 +  assert(imu.sleep() && r[0x20] == 0x00);
-+  assert(imu.wake() && r[0x20] == 0x77);  // wake keeps the tap rate while it is on
-+  assert(imu.disableDoubleTap() && r[0x38] == 0 && r[0x20] == 0x2F);
++  assert(imu.wake() && r[0x20] == 0x77 && r[0x21] == 0x04);  // wake keeps tap rate and filter
++  uint8_t src = 0;
++  r[0x39] = 0x50;
++  assert(!imu.takeDoubleTap(&src) && src == 0x50);  // the raw source is reported for tuning
++  assert(imu.disableDoubleTap() && r[0x38] == 0 && r[0x20] == 0x2F && r[0x21] == 0);
 +  r[0x39] = 0x60;
 +  assert(!imu.takeDoubleTap());  // off: never reported
 +  assert(imu.wake() && r[0x20] == 0x2F);
