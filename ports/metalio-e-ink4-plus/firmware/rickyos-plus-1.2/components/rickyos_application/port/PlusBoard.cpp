@@ -301,8 +301,18 @@ bool configureCharger() {
 
 bool begin() {
   reportSleepReset();
-  if (plus_i2c_begin() != ESP_OK) return false;
-  if (!epd_board_metalio_eink4_plus_safe_io_init()) return false;
+  // The keys, rails and touch all sit behind the TCA on this bus. A reset that lands mid-
+  // transaction (esptool, a brown-out) has left it unanswering for one boot, and then no
+  // key worked until the next restart: try again before giving up. Both steps are
+  // idempotent (Wire1 starts once; the expander is probed, then configured).
+  bool bus = false, io = false;
+  for (int attempt = 0; attempt < 3 && !(bus && io); ++attempt) {
+    if (attempt) vTaskDelay(pdMS_TO_TICKS(20));
+    bus = plus_i2c_begin() == ESP_OK;
+    io = bus && epd_board_metalio_eink4_plus_safe_io_init();
+    if (!(bus && io)) ESP_LOGE("PlusBoard", "init attempt %d failed (bus=%d io=%d)", attempt + 1, bus, io);
+  }
+  if (!bus || !io) return false;
   epd_board_metalio_eink4_plus_tp_reset();
   InputManager::setButtonHook(buttons);
   freeink::PowerManager::setHostShutdownHook(shutdown);
