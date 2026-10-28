@@ -421141,7 +421141,17 @@
    if (!openProtection()) return false;
  
    // Initialize spine/TOC cache
-@@ -692,7 +727,7 @@
+@@ -542,7 +577,8 @@
+   // Try to load existing cache first
+   if (bookMetadataCache->load()) {
+     if (Txt::isTxtOrMd(filepath)) {
+-      if (!Txt::validateCache(filepath, cachePath, getCumulativeSpineItemSize(0))) {
++      // The whole book's size: a split TXT's parts add up to the file.
++      if (!Txt::validateCache(filepath, cachePath, getBookSize())) {
+         LOG_DBG("EBP", "TXT/MD cache invalid or outdated: %s", filepath.c_str());
+         if (!buildIfMissing) {
+           return false;
+@@ -692,7 +728,7 @@
  
    // Build final book.bin
    const uint32_t buildStart = millis();
@@ -421150,7 +421160,7 @@
      LOG_ERR("EBP", "Could not update mappings and sizes");
      return false;
    }
-@@ -727,9 +762,15 @@
+@@ -727,9 +763,15 @@
    return true;
  }
  
@@ -421167,7 +421177,7 @@
  
    if (Txt::isTxtOrMd(filepath)) {
      title = utf8ComposeNfc(FsHelpers::getFileNameWithoutExtension(filepath));
-@@ -747,8 +788,9 @@
+@@ -747,8 +789,9 @@
    }
    metadataCache.reset();
  
@@ -421179,7 +421189,7 @@
      LOG_DBG("EBP", "Could not open ePub for package metadata: %s", filepath.c_str());
      return false;
    }
-@@ -760,6 +802,18 @@
+@@ -760,6 +803,18 @@
  
    title = std::move(metadata.title);
    author = std::move(metadata.author);
@@ -421198,7 +421208,7 @@
    return true;
  }
  
-@@ -886,9 +940,17 @@
+@@ -886,9 +941,17 @@
      setupCacheDir();
      return generateThumbBmpForCover(height, companionCover);
    }
@@ -421217,7 +421227,7 @@
    if (!metadata || !zip) {
      LOG_ERR("EBP", "OOM: cover metadata");
      return false;
-@@ -986,7 +1048,7 @@
+@@ -986,7 +1049,7 @@
      return content;
    }
  
@@ -421226,7 +421236,7 @@
    if (!content) {
      LOG_DBG("EBP", "Failed to read item %s", path.c_str());
      return nullptr;
-@@ -996,8 +1058,9 @@
+@@ -996,8 +1059,9 @@
  }
  
  bool Epub::readItemContentsToStream(const std::string& itemHref, Print& out, const size_t chunkSize,
@@ -421238,16 +421248,34 @@
    if (cancellation.isCancelled()) return false;
    if (itemHref.empty()) {
      LOG_DBG("EBP", "Failed to read item, empty href");
-@@ -1005,7 +1068,7 @@
+@@ -1005,7 +1069,25 @@
    }
  
    if (Txt::isTxtOrMd(filepath)) {
 -    return Txt::streamTxtToHtml(filepath, out, cachePath);
-+    return Txt::streamTxtToHtml(filepath, out, cachePath, textError);
++    const int part = Txt::usesParts(filepath) ? Txt::partForHref(itemHref) : -1;
++    if (part < 0) return Txt::streamTxtToHtml(filepath, out, cachePath, textError);
++    // A split TXT converts all parts at once (offsets are global); a section whose part
++    // file went missing regenerates them, then streams its own.
++    const std::string partPath = cachePath + "/html/" + std::to_string(part) + ".html";
++    if (!Storage.exists(partPath.c_str()) && !Txt::convertTxtParts(filepath, cachePath, textError)) return false;
++    if (textError) *textError = txt_encoding::ReadError::Io;
++    HalFile in;
++    if (!Storage.openFileForRead("EBP", partPath, in)) return false;
++    uint8_t buffer[512];
++    for (;;) {
++      if (cancellation.isCancelled()) return false;
++      const int read = in.read(buffer, sizeof(buffer));
++      if (read < 0) return false;
++      if (read == 0) break;
++      if (out.write(buffer, static_cast<size_t>(read)) != static_cast<size_t>(read)) return false;
++    }
++    if (textError) *textError = txt_encoding::ReadError::None;
++    return true;
    }
  
    const std::string path = FsHelpers::normalisePath(itemHref);
-@@ -1033,7 +1096,8 @@
+@@ -1033,7 +1115,8 @@
      return true;
    }
  
@@ -421257,7 +421285,21 @@
  }
  
  bool Epub::extractItemToFile(const std::string& itemHref, const std::string& destPath, CancelCheck cancellation) const {
-@@ -1065,7 +1129,7 @@
+@@ -1056,6 +1139,13 @@
+ }
+ 
+ bool Epub::getItemSize(const std::string& itemHref, size_t* size) const {
++  if (Txt::isTxtOrMd(filepath) && Txt::usesParts(filepath) && Txt::partForHref(itemHref) >= 0) {
++    HalFile f;
++    if (!Storage.openFileForRead("EBP", cachePath + "/html/" + std::to_string(Txt::partForHref(itemHref)) + ".html", f))
++      return false;
++    if (size) *size = f.size();
++    return true;
++  }
+   if (Txt::isTxtOrMd(filepath)) {
+     HalFile f;
+     if (Storage.openFileForRead("EBP", filepath, f)) {
+@@ -1065,7 +1155,7 @@
      return false;
    }
    const std::string path = FsHelpers::normalisePath(itemHref);
@@ -421266,6 +421308,24 @@
  }
  
  int Epub::getSpineItemsCount() const {
+@@ -1142,6 +1232,17 @@
+ }
+ 
+ int Epub::getTocIndexForSpineIndex(const int spineIndex) const { return getSpineItem(spineIndex).tocIndex; }
++
++int Epub::txtPartForVisibleOffset(const uint32_t visibleOffset) const {
++  if (!Txt::usesParts(filepath)) return -1;
++  return Txt::partForVisibleOffset(cachePath, visibleOffset);
++}
++
++uint32_t Epub::txtVisibleBase(const int spineIndex) const {
++  Txt::Part part;
++  if (!Txt::usesParts(filepath) || !Txt::readPart(cachePath, spineIndex, part)) return 0;
++  return part.visibleBase;
++}
+ 
+ size_t Epub::getBookSize() const {
+   if (!bookMetadataCache || !bookMetadataCache->isLoaded() || bookMetadataCache->getSpineCount() == 0) {
 --- a/lib/Epub/Epub.h
 +++ b/lib/Epub/Epub.h
 @@ -12,6 +12,9 @@
@@ -421318,6 +421378,17 @@
    // Extract an item to a file on SD. On failure the partial file is removed.
    bool extractItemToFile(const std::string& itemHref, const std::string& destPath, CancelCheck cancellation = {}) const;
    bool getItemSize(const std::string& itemHref, size_t* size) const;
+@@ -104,6 +122,10 @@
+   int getSpineIndexForTextReference() const;
+ 
+   size_t getBookSize() const;
++  // A plain TXT is split into parts (see Txt::Part): the part holding a global visible
++  // offset (-1 when the book is not split), and the global offset where a part starts.
++  int txtPartForVisibleOffset(uint32_t visibleOffset) const;
++  uint32_t txtVisibleBase(int spineIndex) const;
+   float calculateProgress(int currentSpineIndex, float currentSpineRead) const;
+   CssParser* getCssParser() const { return cssParser.get(); }
+   int resolveHrefToSpineIndex(const std::string& href) const;
 --- /dev/null
 +++ b/lib/Epub/Epub/BookFonts.cpp
 @@ -0,0 +1,11 @@
@@ -421364,6 +421435,40 @@
 +}
 +
 +}  // namespace bookfonts
+--- a/lib/Epub/Epub/BookMetadataCache.cpp
++++ b/lib/Epub/Epub/BookMetadataCache.cpp
+@@ -4,6 +4,7 @@
+ #include <Logging.h>
+ #include <Memory.h>
+ #include <Serialization.h>
++#include <Txt.h>
+ #include <Utf8.h>
+ #include <ZipFile.h>
+ 
+@@ -347,6 +348,7 @@
+     }
+   }
+ 
++  const bool txtParts = !isZip && spineCount > 1 && Txt::usesParts(epubPath) && Txt::partCount(cachePath) == spineCount;
+   uint32_t cumSize = 0;
+   spineIn.seek(0);
+   int lastSpineTocIndex = -1;
+@@ -367,6 +369,15 @@
+     lastSpineTocIndex = spineEntry.tocIndex;
+ 
+     size_t itemSize = rawSize;
++    if (txtParts) {
++      // A split TXT: each part weighs its source bytes, so progress follows the text.
++      Txt::Part part, next;
++      const bool last = i + 1 == spineCount;
++      if (Txt::readPart(cachePath, i, part) && (last || Txt::readPart(cachePath, i + 1, next))) {
++        const size_t end = last ? rawSize : next.sourceStart;
++        itemSize = end > part.sourceStart ? end - part.sourceStart : 0;
++      }
++    }
+     if (isZip) {
+       itemSize = spineSizes ? (*spineSizes)[i] : 0;
+       if (itemSize == 0) {
 --- a/lib/Epub/Epub/Page.cpp
 +++ b/lib/Epub/Epub/Page.cpp
 @@ -1,6 +1,8 @@
@@ -421855,7 +421960,33 @@
      }
  
      if (!streamed) {
-@@ -504,6 +562,9 @@
+@@ -476,19 +534,22 @@
+   // captures the BuildContext pointer to append to its in-RAM LUT; build_ owns the
+   // context for the parser's whole lifetime.
+   BuildContext* ctxPtr = ctx.get();
++  // A split TXT part counts its visible text from its own start; pages record the book-wide
++  // offset (progress, bookmarks and chapter jumps all use it). 0 for everything else.
++  const uint32_t visibleBase = epub->txtVisibleBase(spineIndex);
+   ctx->parser = makeUniqueNoThrow<ChapterHtmlSlimParser>(
+       epub, ctxPtr->parsePath, renderer, spec.fontId, spec.lineCompression, spec.extraParagraphSpacing,
+       spec.firstLineIndent, spec.paragraphAlignment, spec.viewportWidth, spec.viewportHeight, spec.hyphenationEnabled,
+       spec.focusReadingEnabled,
+-      [this, ctxPtr](std::unique_ptr<Page> page, const uint16_t paragraphIndex, const uint16_t listItemIndex,
+-                     const uint32_t visibleTextOffset) {
++      [this, ctxPtr, visibleBase](std::unique_ptr<Page> page, const uint16_t paragraphIndex,
++                                  const uint16_t listItemIndex, const uint32_t visibleTextOffset) {
+         const uint32_t position = this->onPageComplete(std::move(page));
+         if (position == 0) {
+           buildError_ = BuildError::Io;
+           ctxPtr->parser->failIo();
+           return;
+         }
+-        ctxPtr->lut.push_back({position, paragraphIndex, listItemIndex, visibleTextOffset});
++        ctxPtr->lut.push_back({position, paragraphIndex, listItemIndex, visibleBase + visibleTextOffset});
+       },
+       spec.embeddedStyle, ctxPtr->contentBase, ctxPtr->imageBasePath, spec.imageRendering, std::move(tocAnchors),
+       popupFn, ctxPtr->cssParser, spec.collectTouchLinks);
+@@ -504,6 +565,9 @@
    ctx->parser->setTxtChapterBoundaries(txtChapterBoundaries);
    ctx->parser->setTextSpacing(spec.characterSpacing, spec.wordSpacingPercent);
    ctx->parser->setParagraphIndentSpaces(spec.paragraphIndentSpaces);
@@ -426634,17 +426765,35 @@
  }
 --- a/lib/Txt/Txt.h
 +++ b/lib/Txt/Txt.h
-@@ -24,7 +24,8 @@
+@@ -24,7 +24,26 @@
    static bool isTxtOrMd(std::string_view path);
    static bool validateCache(const std::string& filepath, const std::string& cachePath, size_t cachedSize);
    static void invalidateCache(const std::string& cachePath);
 -  static bool streamTxtToHtml(const std::string& filepath, Print& out, const std::string& cachePath);
 +  static bool streamTxtToHtml(const std::string& filepath, Print& out, const std::string& cachePath,
 +                              txt_encoding::ReadError* error = nullptr);
++
++  // Plain TXT is split into parts, each its own spine item and HTML file (html/<k>.html), so
++  // a jump lays out one part instead of the book from its start. Offsets stay global: part
++  // k's local visible offsets add visibleBase. txt-parts.bin: "TXP1", u32 count, then per
++  // part {u32 sourceStart, u32 visibleBase}; a part ends where the next starts.
++  struct Part {
++    uint32_t sourceStart = 0;
++    uint32_t visibleBase = 0;
++  };
++  static bool usesParts(std::string_view path);
++  static std::string partHref(int part);
++  static int partForHref(std::string_view href);  // -1 for anything but "content-<k>.html"
++  static bool convertTxtParts(const std::string& filepath, const std::string& cachePath,
++                              txt_encoding::ReadError* error = nullptr);
++  static int partCount(const std::string& cachePath);
++  static bool readPart(const std::string& cachePath, int index, Part& out);
++  // The part holding a global visible offset (last part whose base is <= offset), or -1.
++  static int partForVisibleOffset(const std::string& cachePath, uint32_t visibleOffset);
    static int tocIndexForPosition(const std::string& filepath, const std::string& cachePath, uint32_t visibleOffset,
                                   uint8_t* chapterProgress = nullptr);
    static bool resolveChapterPosition(const std::string& filepath, const std::string& cachePath, std::string_view anchor,
-@@ -61,7 +62,7 @@
+@@ -61,7 +80,7 @@
    // count does not affect steady-state RAM usage.
    [[nodiscard]] bool openChapterIndex(HalFile& file, txt_encoding::Encoding& encoding, uint32_t& count) const;
    [[nodiscard]] bool buildChapterIndex(txt_encoding::Encoding& encoding, uint8_t* scratch, size_t scratchSize,
@@ -426686,7 +426835,211 @@
  }
  
  struct ConversionIndex {
-@@ -132,14 +142,17 @@
+@@ -52,6 +62,203 @@
+ };
+ }  // namespace
+ 
++namespace {
++constexpr char kPartsMagic[4] = {'T', 'X', 'P', '1'};
++// Group short chapters until a part holds this much HTML; split a long chapter (or a book
++// without chapters) at the first line break past the larger size. ~16-64 KB of HTML is a
++// few dozen pages: one part lays out in about a second on the reader.
++constexpr size_t kPartChapterBytes = 16 * 1024;
++constexpr size_t kPartLineBytes = 64 * 1024;
++
++// The conversion's output: one HTML file per part, and the parts index beside them.
++struct PartWriter final : Print {
++  std::string dir;
++  HalFile file;
++  HalFile& index;
++  uint32_t count = 0;
++  size_t bytes = 0;
++  bool ok = true;
++  PartWriter(std::string dir, HalFile& index) : dir(std::move(dir)), index(index) {}
++  size_t write(uint8_t b) override { return write(&b, 1); }
++  size_t write(const uint8_t* buffer, size_t size) override {
++    if (!ok) return 0;
++    const size_t written = file.write(buffer, size);
++    bytes += written;
++    if (written != size) ok = false;
++    return written;
++  }
++  // The next document's own visible count restarts at 1 with its body newline, at global
++  // offset `visible`: local + (visible - 1) is global.
++  bool open(const uint32_t source, const uint32_t visible) {
++    if (file) {
++      file.flush();
++      ok = file.close() && ok;
++    }
++    const Txt::Part part{source, visible ? visible - 1 : 0};
++    if (!ok || index.write(reinterpret_cast<const uint8_t*>(&part), sizeof(part)) != sizeof(part)) return ok = false;
++    const std::string path = dir + "/" + std::to_string(count++) + ".html";
++    if (!Storage.openFileForWrite("TXT", path, file)) return ok = false;
++    bytes = 0;
++    return true;
++  }
++  bool close() {
++    if (file) {
++      file.flush();
++      ok = file.close() && ok;
++    }
++    return ok;
++  }
++};
++}  // namespace
++
++std::string Txt::partHref(const int part) { return "content-" + std::to_string(part) + ".html"; }
++
++int Txt::partForHref(std::string_view href) {
++  constexpr std::string_view prefix = "content-", suffix = ".html";
++  if (href.size() <= prefix.size() + suffix.size() || href.substr(0, prefix.size()) != prefix ||
++      href.substr(href.size() - suffix.size()) != suffix)
++    return -1;
++  int part = 0;
++  for (const char c : href.substr(prefix.size(), href.size() - prefix.size() - suffix.size())) {
++    if (c < '0' || c > '9' || part > 100000) return -1;
++    part = part * 10 + (c - '0');
++  }
++  return part;
++}
++
++bool Txt::usesParts(std::string_view path) {
++  return FsHelpers::hasTxtExtension(path) && !FsHelpers::hasMarkdownExtension(path);
++}
++
++int Txt::partCount(const std::string& cachePath) {
++  HalFile file;
++  char magic[4] = {};
++  uint32_t count = 0;
++  if (!Storage.openFileForRead("TXT", cachePath + "/txt-parts.bin", file) || file.read(magic, 4) != 4 ||
++      memcmp(magic, kPartsMagic, 4) != 0 || file.read(reinterpret_cast<uint8_t*>(&count), 4) != 4 || count == 0 ||
++      file.size() != 8 + static_cast<size_t>(count) * sizeof(Part))
++    return 0;
++  return static_cast<int>(count);
++}
++
++bool Txt::readPart(const std::string& cachePath, const int index, Part& out) {
++  HalFile file;
++  if (index < 0 || !Storage.openFileForRead("TXT", cachePath + "/txt-parts.bin", file)) return false;
++  const size_t at = 8 + static_cast<size_t>(index) * sizeof(Part);
++  return at + sizeof(Part) <= file.size() && file.seek(at) &&
++         file.read(reinterpret_cast<uint8_t*>(&out), sizeof(Part)) == sizeof(Part);
++}
++
++int Txt::partForVisibleOffset(const std::string& cachePath, const uint32_t visibleOffset) {
++  const int count = partCount(cachePath);
++  if (count <= 0) return -1;
++  // Bases rise with the parts: binary search, one 8-byte read per step.
++  int low = 0, high = count - 1;
++  while (low < high) {
++    const int mid = (low + high + 1) / 2;
++    Part part;
++    if (!readPart(cachePath, mid, part)) return -1;
++    if (part.visibleBase <= visibleOffset)
++      low = mid;
++    else
++      high = mid - 1;
++  }
++  return low;
++}
++
++bool Txt::convertTxtParts(const std::string& filepath, const std::string& cachePath, txt_encoding::ReadError* error) {
++  if (error) *error = txt_encoding::ReadError::Io;
++  Txt txt(filepath, "/.crosspoint");
++  HalFile source, chapters;
++  txt_encoding::Encoding encoding = txt_encoding::Encoding::Unknown;
++  uint32_t chapterCount = 0;
++  if (!openChapters(txt, chapters, encoding, chapterCount, error)) return false;
++  if (error) *error = txt_encoding::ReadError::Io;
++  const std::string htmlDir = cachePath + "/html";
++  if (txt.getFileSize() >= UINT32_MAX || !Storage.openFileForRead("TXT", filepath, source)) return false;
++  Storage.removeDir(htmlDir.c_str());  // stale parts of an earlier split must not survive
++  if (!Storage.ensureDirectoryExists(htmlDir.c_str())) return false;
++  const std::string mapPath = cachePath + "/txt-map.bin", mapTemporary = mapPath + ".tmp";
++  const std::string partsPath = cachePath + "/txt-parts.bin", partsTemporary = partsPath + ".tmp";
++  bool converted = false;
++  uint32_t parts = 0;
++  {
++    HalFile mapping, index;
++    if (!Storage.openFileForWrite("TXT", mapTemporary, mapping) ||
++        !Storage.openFileForWrite("TXT", partsTemporary, index))
++      return false;
++    const uint32_t placeholder = 0;
++    if (index.write(reinterpret_cast<const uint8_t*>(kPartsMagic), 4) != 4 ||
++        index.write(reinterpret_cast<const uint8_t*>(&placeholder), 4) != 4)
++      return false;
++    ConversionIndex conversion{txt, chapters, mapping};
++    conversion.chapterCount = chapterCount;
++    conversion.header.sourceSize = static_cast<uint32_t>(txt.getFileSize());
++    conversion.header.encoding = static_cast<uint8_t>(encoding);
++    if (!conversion.advance() ||
++        mapping.write(reinterpret_cast<const uint8_t*>(&conversion.header), sizeof(conversion.header)) !=
++            sizeof(conversion.header))
++      return false;
++    PartWriter writer(htmlDir, index);
++    if (!writer.open(0, 1)) return false;  // part 0: local and global offsets coincide
++    struct Context {
++      ConversionIndex& conversion;
++      PartWriter& writer;
++    } context{conversion, writer};
++    TxtToHtml::Options options;
++    options.encoding = encoding;
++    options.error = error;
++    options.context = &context;
++    options.chapterOffset = [](void* c) { return static_cast<Context*>(c)->conversion.chapter.sourceOffset; };
++    options.nextChapter = [](void* c) { return static_cast<Context*>(c)->conversion.advance(); };
++    options.map = [](void* c, const uint32_t sourceOffset, const uint32_t visible, const uint8_t width,
++                     const uint8_t step) {
++      auto& index = static_cast<Context*>(c)->conversion;
++      if (width == index.lastWidth && step == index.lastStep) return true;
++      if (index.mapping.position() > UINT32_MAX - sizeof(txt_progress::Record)) return false;
++      const txt_progress::Record record{sourceOffset, visible, width, step};
++      if (index.mapping.write(reinterpret_cast<const uint8_t*>(&record), sizeof(record)) != sizeof(record))
++        return false;
++      ++index.header.count;
++      index.lastWidth = width;
++      index.lastStep = step;
++      return true;
++    };
++    options.splitHere = [](void* c, const bool chapter, const size_t pending) {
++      const size_t bytes = static_cast<Context*>(c)->writer.bytes + pending;
++      return bytes >= (chapter ? kPartChapterBytes : kPartLineBytes);
++    };
++    options.beginPart = [](void* c, const uint32_t at, const uint32_t visible) {
++      return static_cast<Context*>(c)->writer.open(at, visible);
++    };
++    converted = TxtToHtml::stream(
++        filepath, &source,
++        [](void* ctx, uint8_t* buf, size_t size) { return static_cast<HalFile*>(ctx)->read(buf, size); }, writer,
++        options);
++    converted = writer.close() && converted;
++    parts = writer.count;
++    if (converted) {
++      if (error) *error = txt_encoding::ReadError::Io;
++      converted = mapping.seek(0) &&
++                  mapping.write(reinterpret_cast<const uint8_t*>(&conversion.header), sizeof(conversion.header)) ==
++                      sizeof(conversion.header) &&
++                  index.seek(4) && index.write(reinterpret_cast<const uint8_t*>(&parts), 4) == 4;
++      mapping.flush();
++      index.flush();
++    }
++  }
++  if (!converted || !Storage.replaceFile(mapTemporary.c_str(), mapPath.c_str()) ||
++      !Storage.replaceFile(partsTemporary.c_str(), partsPath.c_str())) {
++    Storage.remove(mapTemporary.c_str());
++    Storage.remove(partsTemporary.c_str());
++    Storage.removeDir(htmlDir.c_str());
++    return false;
++  }
++  LOG_INF("TXT", "Split into %u parts: %s", static_cast<unsigned>(parts), filepath.c_str());
++  if (error) *error = txt_encoding::ReadError::None;
++  return true;
++}
++
+ bool Txt::isTxtOrMd(std::string_view path) {
+   return FsHelpers::hasTxtExtension(path) || FsHelpers::hasMarkdownExtension(path);
+ }
+@@ -132,14 +339,17 @@
    return success;
  }
  
@@ -426708,7 +427061,7 @@
    const std::string mapPath = cachePath + "/txt-map.bin";
    const std::string temporary = mapPath + ".tmp";
    bool converted = false;
-@@ -153,6 +166,7 @@
+@@ -153,6 +363,7 @@
      if (!index.advance() || mapping.write(&index.header, sizeof(index.header)) != sizeof(index.header)) return false;
      TxtToHtml::Options options;
      options.encoding = encoding;
@@ -426716,7 +427069,7 @@
      options.context = &index;
      options.chapterOffset = [](void* context) { return static_cast<ConversionIndex*>(context)->chapter.sourceOffset; };
      options.nextChapter = [](void* context) { return static_cast<ConversionIndex*>(context)->advance(); };
-@@ -173,6 +187,7 @@
+@@ -173,6 +384,7 @@
          filepath, &source,
          [](void* ctx, uint8_t* buf, size_t size) { return static_cast<HalFile*>(ctx)->read(buf, size); }, out, options);
      if (converted) {
@@ -426724,7 +427077,7 @@
        converted = mapping.seek(0) && mapping.write(&index.header, sizeof(index.header)) == sizeof(index.header);
        mapping.flush();
      }
-@@ -181,6 +196,7 @@
+@@ -181,6 +393,7 @@
      Storage.remove(temporary.c_str());
      return false;
    }
@@ -426732,19 +427085,42 @@
    return true;
  }
  
-@@ -264,9 +280,9 @@
+@@ -199,6 +412,11 @@
+         return true;
+     }
+     if (attempt) break;
++    if (Txt::usesParts(filepath)) {
++      // The map is written with the parts (and is book-wide), so regenerate them together.
++      if (!Txt::convertTxtParts(filepath, cachePath)) break;
++      continue;
++    }
+     if (!Storage.ensureDirectoryExists((cachePath + "/html").c_str())) break;
+     const std::string temporary = htmlPath + ".tmp";
+     bool converted = false;
+@@ -254,6 +472,7 @@
+ }
+ 
+ void Txt::invalidateCache(const std::string& cachePath) {
++  Storage.remove((cachePath + "/txt-parts.bin").c_str());
+   Storage.removeDir((cachePath + "/html").c_str());
+   Storage.removeDir((cachePath + "/sections").c_str());
+ }
+@@ -264,10 +483,12 @@
    bool valid = Storage.readFileToBuffer(marker.c_str(), metadataVersion, sizeof(metadataVersion)) == 1 &&
                 metadataVersion[0] ==
  #ifdef RICKYOS_PRODUCT
 -                   (FsHelpers::hasMarkdownExtension(filepath) ? '5' : '2');
-+                   (FsHelpers::hasMarkdownExtension(filepath) ? '6' : '3');
++                   (FsHelpers::hasMarkdownExtension(filepath) ? '6' : '4');
  #else
 -                   '2';
-+                   '3';
++                   '4';
  #endif
++  // A split book also needs its parts index (version 4 writes it before the marker).
++  if (valid && usesParts(filepath) && partCount(cachePath) <= 0) valid = false;
  
    // 1. If html/0.html exists, check its embedded version comment
-@@ -320,7 +336,7 @@
+   const std::string htmlPath = cachePath + "/html/0.html";
+@@ -320,7 +541,7 @@
    if (FsHelpers::hasMarkdownExtension(filepath)) {
      char version[4] = {};
      if (Storage.readFileToBuffer((cachePath + "/txt-cache-version").c_str(), version, sizeof(version)) == 1 &&
@@ -426753,16 +427129,79 @@
        Txt txt(filepath, "/.crosspoint");
        if (!txt.load() || txt.getFileSize() >= UINT32_MAX ||
            txt_progress::preserveReflowSource(cachePath.c_str(), txt.getFileSize()) ==
-@@ -420,9 +436,9 @@
+@@ -338,6 +559,16 @@
+     invalidateCache(cachePath);
+   }
+ 
++  // Plain TXT converts up front: the spine is one item per part, so the count must be known
++  // before it is written. Markdown stays one document, converted when its section builds.
++  const bool split = usesParts(filepath);
++  int parts = 1;
++  if (split) {
++    if (!convertTxtParts(filepath, cachePath)) return false;
++    parts = partCount(cachePath);
++    if (parts <= 0 || parts >= UINT16_MAX) return false;
++  }
++
+   if (!bookMetadataCache->beginWrite()) {
+     LOG_ERR("TXT", "Metadata begin failed");
+     return false;
+@@ -348,7 +579,11 @@
+     return false;
+   }
+ 
+-  bookMetadataCache->createSpineEntry("content.html");
++  if (split) {
++    for (int part = 0; part < parts; ++part) bookMetadataCache->createSpineEntry(partHref(part));
++  } else {
++    bookMetadataCache->createSpineEntry("content.html");
++  }
+ 
+   if (!bookMetadataCache->endContentOpfPass()) {
+     LOG_ERR("TXT", "End content.opf failed");
+@@ -361,7 +596,7 @@
+   }
+ 
+   const std::string title = FsHelpers::getFileNameWithoutExtension(filepath);
+-  bookMetadataCache->createTocEntry(title, "content.html", "", 0);
++  bookMetadataCache->createTocEntry(title, split ? partHref(0) : std::string("content.html"), "", 0);
+   Txt txt(filepath, "/.crosspoint");
+   HalFile chapters;
+   txt_encoding::Encoding encoding = txt_encoding::Encoding::Unknown;
+@@ -370,6 +605,10 @@
+ #ifdef RICKYOS_PRODUCT
+   const bool markdown = FsHelpers::hasMarkdownExtension(filepath);
+ #endif
++  // Chapters and parts both run in source order: walk the parts alongside the chapters.
++  int chapterPart = 0;
++  Part nextPart;
++  bool haveNext = split && chapterPart + 1 < parts && readPart(cachePath, chapterPart + 1, nextPart);
+   for (uint32_t chapterIndex = 0; chapterIndex < count; ++chapterIndex) {
+     txt_chapter_index::Record chapter;
+     if (!txt.readChapter(chapters, count, chapterIndex, chapter)) return false;
+@@ -383,7 +622,12 @@
+       MarkdownFormatter::plainText(title, chapter.title);
+     }
+ #endif
+-    bookMetadataCache->createTocEntry(chapter.title, "content.html", anchor, level);
++    while (haveNext && nextPart.sourceStart <= chapter.sourceOffset) {
++      ++chapterPart;
++      haveNext = chapterPart + 1 < parts && readPart(cachePath, chapterPart + 1, nextPart);
++    }
++    bookMetadataCache->createTocEntry(chapter.title, split ? partHref(chapterPart) : std::string("content.html"),
++                                      anchor, level);
+   }
+ 
+   if (!bookMetadataCache->endTocPass()) {
+@@ -420,9 +664,9 @@
  
    if (!Storage.writeFile((cachePath + "/txt-cache-version").c_str(),
  #ifdef RICKYOS_PRODUCT
 -                         FsHelpers::hasMarkdownExtension(filepath) ? "5" :
--#endif
--                                                                   "2"))
 +                         FsHelpers::hasMarkdownExtension(filepath) ? "6" :
-+#endif
-+                                                                   "3"))
+ #endif
+-                                                                   "2"))
++                                                                   "4"))
      return false;
    return true;
  }
@@ -426919,7 +427358,27 @@
      LOG_ERR("TXT", "OOM: TXT/MD HTML streaming buffers (%zu bytes)", BUFFER_SIZE * 2);
      return false;
    }
-@@ -87,12 +93,14 @@
+@@ -75,24 +81,29 @@
+     }
+   };
+ 
+-  writeStr("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
+-  writeStr(cacheVersionTag(filename));
+-  writeStr("\n<!DOCTYPE html>\n<html>\n<head><title>");
+   const std::string title = FsHelpers::getFileNameWithoutExtension(filename);
+-  for (const char c : title) escaped(static_cast<uint8_t>(c));
+-  writeStr("</title></head>\n<body>\n");
++  const auto writeHead = [&] {
++    writeStr("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
++    writeStr(cacheVersionTag(filename));
++    writeStr("\n<!DOCTYPE html>\n<html>\n<head><title>");
++    for (const char c : title) escaped(static_cast<uint8_t>(c));
++    writeStr("</title></head>\n<body>\n");
++  };
++  writeHead();
+ 
+   size_t inputPos = 0;
+   int inputSize = 0;
    uint32_t source = 0;
    uint32_t visible = 1;  // The body opens with one newline, counted by ChapterHtmlSlimParser.
    bool readError = false;
@@ -426934,7 +427393,32 @@
          inputSize = 0;
          return -1;
        }
-@@ -136,15 +144,17 @@
+@@ -110,6 +121,24 @@
+   };
+   const auto map = [&](const uint32_t pos, const uint8_t width, const uint8_t step) {
+     if (options.map && !options.map(options.context, pos, visible, width, step)) outputOk = false;
++  };
++  // Close this document and open the next at `at`. The global visible count carries on;
++  // the new document's own count restarts with its body newline (see beginPart).
++  const auto startPart = [&](const uint32_t at) {
++    writeStr("\n</body>\n</html>\n");
++    flushOut();
++    if (!outputOk) return;
++    if (!options.beginPart(options.context, at, visible)) {
++      outputOk = false;
++      return;
++    }
++    writeHead();
++  };
++  const auto maySplit = [&](const bool chapter, const uint32_t at) {
++#ifdef RICKYOS_PRODUCT
++    if (markdown) return;
++#endif
++    if (options.splitHere && options.beginPart && options.splitHere(options.context, chapter, outPos)) startPart(at);
+   };
+ #ifdef RICKYOS_PRODUCT
+   struct MarkdownContext {
+@@ -136,15 +165,17 @@
           else
             for (uint8_t i = 0; i < utf8Length; ++i) ctx.escape(character[i]);
         }},
@@ -426954,7 +427438,7 @@
      if (keep) {
        for (uint32_t i = 1; i < pendingSpaces; ++i) writeStr("&#160;");
        writeByte(' ');
-@@ -155,12 +165,27 @@
+@@ -155,12 +186,27 @@
  
    while (outputOk) {
      const uint32_t begin = source;
@@ -426984,7 +427468,16 @@
        if (options.encoding == txt_encoding::Encoding::Gbk) {
          const int second = readByte();
          if (second < 0) {
-@@ -223,18 +248,21 @@
+@@ -203,6 +249,8 @@
+       if (markdown) formatter.beforeChapterAnchor();
+ #endif
+       finishSpaces(true);
++      maySplit(true, begin);
++      if (!outputOk) break;
+       char anchor[48];
+       snprintf(anchor, sizeof(anchor), "<div id=\"txt-%u\"></div>", static_cast<unsigned>(begin));
+       writeStr(anchor);
+@@ -223,18 +271,22 @@
  #endif
      if (first == '\r') {
        finishSpaces(false);
@@ -426998,6 +427491,7 @@
 +      map(begin, width, 0);
        writeStr("<br />");
        atLineStart = true;
++      maySplit(false, source);
        continue;
      }
      if (first == ' ' && !atLineStart) {
@@ -427009,7 +427503,7 @@
        ++pendingSpaces;
        continue;
      }
-@@ -255,11 +283,15 @@
+@@ -255,11 +307,15 @@
    finishSpaces(false);
    map(source, 0, 0);  // EOF sentinel; no footer whitespace belongs to the source file.
    if (readError || !outputOk) {
@@ -427027,7 +427521,7 @@
  
 --- a/lib/Txt/TxtToHtml.h
 +++ b/lib/Txt/TxtToHtml.h
-@@ -11,6 +11,7 @@
+@@ -11,10 +11,18 @@
   public:
    struct Options {
      txt_encoding::Encoding encoding = txt_encoding::Encoding::Utf8;
@@ -427035,6 +427529,17 @@
      void* context = nullptr;
      bool (*map)(void*, uint32_t source, uint32_t visible, uint8_t sourceWidth, uint8_t visibleStep) = nullptr;
      uint32_t (*chapterOffset)(void*) = nullptr;
+     bool (*nextChapter)(void*) = nullptr;
++    // Plain TXT only. Asked before a chapter anchor (chapter = true) and after each line
++    // break whether to start a new HTML document; pendingBytes is what is buffered but not
++    // yet written to `out`. On true the current document is closed, beginPart() switches
++    // `out` to the next one (source and global visible offset where it starts), and that
++    // document opens with the same head, so each part parses on its own.
++    bool (*splitHere)(void*, bool chapter, size_t pendingBytes) = nullptr;
++    bool (*beginPart)(void*, uint32_t source, uint32_t visible) = nullptr;
+   };
+ 
+   static const char* cacheVersionTag(std::string_view filename);
 --- a/lib/WeReadWebApi/src/WeReadClient.cpp
 +++ b/lib/WeReadWebApi/src/WeReadClient.cpp
 @@ -5,12 +5,14 @@
@@ -429063,6 +429568,30 @@
    std::unique_ptr<Activity> currentActivity=std::make_unique<Activity>();
    TaskHandle_t waitingTaskHandle=0;
    std::atomic<bool> requestedUpdate{false};
+--- a/scripts/tests/test_reading_ui_regressions.py
++++ b/scripts/tests/test_reading_ui_regressions.py
+@@ -309,6 +309,7 @@
+ enum { eIncrement };
+ void xTaskNotify(int,int,int) {}
+ struct { void clearTouchTapEvent() {} } gpio;
++namespace BoardConfig { inline bool homeKey = false; inline bool hasHomeKey() { return homeKey; } }
+ struct RenderLock {
+   enum class Mode { Block,Try };
+   static inline bool busy=false;
+@@ -435,6 +436,13 @@
+     ActivityManager stray(theme);
+     stray.tick({.released=true});assert(stray.standbyCalls==0);
+     freshBack(stray);
++
++    // A Home-key board (Plus): Back on Home stays Back, Standby belongs to the keys bound to it.
++    BoardConfig::homeKey=true;
++    ActivityManager plus(theme);
++    plus.tick({.pressed=true,.held=true});plus.tick({.released=true});plus.tick();
++    assert(plus.standbyCalls==0);
++    BoardConfig::homeKey=false;
+ 
+     // Both the queued request and actual activation cancel the old pair.
+     ActivityManager replace(theme);
 --- a/scripts/tests/test_rickyos_app_profile.py
 +++ b/scripts/tests/test_rickyos_app_profile.py
 @@ -21,6 +21,7 @@
@@ -439925,7 +440454,29 @@
    const readingMode::Margins margins = readingMode::textMargins(mode, base, viewable, RickyReaderDog::kEdgeRow);
    if (!readingMode::setsVertically(mode)) return margins;
    return readingMode::fitColumns(
-@@ -1891,7 +2000,7 @@
+@@ -1880,6 +1989,21 @@
+ 
+   const ReaderRenderSpec renderSpec = effectiveRenderSpec(viewportWidth, viewportHeight);
+ 
++  // A split TXT (Txt::Part): offsets are book-wide and name their part. Move there before the
++  // section loads, so progress, bookmarks and jumps saved against the whole book (or before
++  // the split) open only that part instead of laying the book out from its start.
++  {
++    std::optional<uint32_t> target = pendingOffsetJump;
++    if (!target && !section && cachedSpineIndex == currentSpineIndex) target = cachedVisibleTextOffset;
++    const int part = target ? epub->txtPartForVisibleOffset(*target) : -1;
++    if (part >= 0 && part != currentSpineIndex) {
++      if (cachedSpineIndex == currentSpineIndex) cachedSpineIndex = part;
++      currentSpineIndex = part;
++      nextPageNumber = 0;
++      section.reset();
++    }
++  }
++
+   if (!section) {
+     const auto filepath = epub->getSpineItem(currentSpineIndex).href;
+     LOG_DBG("ERS", "Loading file: %s, index: %d", filepath.c_str(), currentSpineIndex);
+@@ -1891,7 +2015,7 @@
        return;
      }
  
@@ -439934,7 +440485,7 @@
      ++sectionGeneration_;
  #endif
      const bool cacheLoaded = section->loadSectionFile(renderSpec);
-@@ -2307,14 +2416,23 @@
+@@ -2307,14 +2431,23 @@
    }
  }
  
@@ -439961,7 +440512,7 @@
  bool EpubReaderActivity::pageCacheEligible() const {
    // No !section->isBuilding() here, deliberately. The page cache renders ONE page --
    // the current one or the next -- and Section::loadPage() is written to serve exactly
-@@ -2328,7 +2446,13 @@
+@@ -2328,7 +2461,13 @@
    // engages at all -- every turn is a full render instead of the cached one.
    return !pageCacheFailed_ && section && renderer.hasFrameBuffer() && !activityManager.isSwitchPending() &&
           overlay == Overlay::None && fontPromptState == FontPromptState::Idle && !renderer.isInverted() &&
@@ -439976,7 +440527,7 @@
  }
  
  ReaderPageCacheKey EpubReaderActivity::pageCacheKey(const int page, const int top, const int right, const int bottom,
-@@ -2369,8 +2493,34 @@
+@@ -2369,8 +2508,34 @@
    }
  }
  
@@ -440011,7 +440562,7 @@
    // Every exit below names the condition it took. Without that, "the cache never hits"
    // is indistinguishable from "the build was cancelled", "the layout moved since the
    // last render" and "the next page has images" -- and each of those needs a different
-@@ -2400,6 +2550,9 @@
+@@ -2400,6 +2565,9 @@
    const auto& layout = renderedPageKey_;
    // A main-loop reflow/jump may have replaced the section since the last render.
    if (layout != pageCacheKey(section->currentPage, layout.top, layout.right, layout.bottom, layout.left)) {
@@ -440021,7 +440572,7 @@
      LOG_DBG("ERS", "Page cache: skip, layout moved since the last render");
      return;
    }
-@@ -2412,26 +2565,40 @@
+@@ -2412,26 +2580,40 @@
    // A build cut short by input stays retryable: the render task re-arms the idle pass
    // once input is quiet, and a Skipped slot would otherwise never be built again.
    const auto build = [&](const int slot, const ReaderPageCacheKey& key) {
@@ -440072,7 +440623,7 @@
  // On a chapter's last page the forward slot is free: build the next chapter and render
  // its first page into it. Comics put one picture in each chapter, so without this every
  // turn decoded a JPEG in the foreground (~3.5 s); now it happens while the page is read.
-@@ -2464,6 +2631,12 @@
+@@ -2464,6 +2646,12 @@
    }
    if (nextSection->pageCount == 0 || activityManager.idleRenderCancelled(generation)) return;
    const bool ready = buildPageCacheSlot(0, key, generation, nextSection.get());
@@ -440085,7 +440636,7 @@
    LOG_DBG("ERS", "Next chapter prefetch: spine %d ready=%d in %lums", next, ready, millis() - started);
  }
  #endif
-@@ -2527,13 +2700,18 @@
+@@ -2527,13 +2715,18 @@
    if (!pageCacheBase_[slot]) {
      constexpr size_t kContiguousReserve = 16 * 1024;
      // Reserve the slots still to allocate; the forward slot is already charged for slot 1.
@@ -440108,7 +440659,7 @@
        freePageCache();
        pageCacheFailed_ = true;
        LOG_ERR("ERS", "Page cache off: PSRAM allocation of %u B failed", static_cast<unsigned>(4 * bytes));
-@@ -2579,12 +2757,26 @@
+@@ -2579,12 +2772,26 @@
    const readingMode::Box textBox = readingMode::textBox(renderer.getScreenWidth(), renderer.getScreenHeight(),
                                                          {key.top, key.right, key.bottom, key.left});
    const int pitch = renderer.getLineHeight(key.spec.fontId, key.spec.lineCompression);
@@ -440135,7 +440686,7 @@
    };
  
    // Load glyphs on demand: a whole-page prewarm cannot be interrupted. Check
-@@ -2597,9 +2789,10 @@
+@@ -2597,9 +2804,10 @@
      GfxRenderer::SyntheticBoldScope syntheticBold(renderer, key.fakeBold);
      GfxRenderer::TextWeightScope textWeight(renderer, readerTextWeightCurve(key.textWeight),
                                              readerTextWeightSpread(key.textWeight));
@@ -440147,7 +440698,7 @@
      }
      if (vertical) readerChrome::drawColumnRules(renderer, *page, textBox, pitch);
      // Match foreground ordering: all text first, then the guide lines.
-@@ -2632,13 +2825,27 @@
+@@ -2632,13 +2840,27 @@
        GfxRenderer& renderer;
        ~EndOffscreen() { renderer.endGrayscale16Offscreen(); }
      } endOffscreen{renderer};
@@ -440176,7 +440727,7 @@
        }
        if (vertical) readerChrome::drawColumnRules(renderer, *page, textBox, pitch);
      }
-@@ -2671,6 +2878,10 @@
+@@ -2671,6 +2893,10 @@
    }
    pageCacheMissingCodepoint_[slot] = fcm ? fcm->consumeMissingChineseCodepoint() : 0;
    pageCache_[slot].state = ReaderPageCache::State::Ready;
@@ -440187,7 +440738,7 @@
    LOG_DBG("ERS", "Page cache: slot %d, page %d ready in %lums", slot, key.page, millis() - started);
    return true;
  }
-@@ -2679,6 +2890,9 @@
+@@ -2679,6 +2905,9 @@
  void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int orientedMarginTop,
                                          const int orientedMarginRight, const int orientedMarginBottom,
                                          const int orientedMarginLeft) {
@@ -440197,7 +440748,7 @@
    const auto t0 = millis();
    const int fontId = SETTINGS.getReaderFontId();
    const bool vertical = readingMode::setsVertically(readingMode::modeFor(SETTINGS.readingMode));
-@@ -2732,7 +2946,7 @@
+@@ -2732,7 +2961,7 @@
        if (manager) manager->clearCache();
      }
    } rawFontCacheGuard;
@@ -440206,7 +440757,7 @@
    const auto key = pageCacheKey(section ? section->currentPage : -1, orientedMarginTop, orientedMarginRight,
                                  orientedMarginBottom, orientedMarginLeft);
    // Either slot may hold this page: slot 0 was built for it as a forward turn, slot 1
-@@ -2779,8 +2993,14 @@
+@@ -2779,8 +3008,14 @@
    // RickyOS: every text face (2-bit downloaded fonts too) and synthetic bold draw straight
    // into the 16-level frame, and JPEG illustrations decode into it, so anti-aliased pages
    // take the single-render path.
@@ -440223,7 +440774,7 @@
    const bool needsAnyGrayscale = grayscaleEnabled && (SETTINGS.textAntiAliasing || pageHasImages);
    const bool absoluteImageGrayscale = grayscaleEnabled && pageHasImages && !gpio.deviceIsX3() &&
                                        display.getController() == HalDisplay::Controller::UC8279 &&
-@@ -2844,7 +3064,7 @@
+@@ -2844,7 +3079,7 @@
    };
  
    unsigned long cacheBaseMs = 0;
@@ -440232,7 +440783,7 @@
    if (use16LevelText) {
      // The 16-level pass below clears the frame and renders (or copies from the cache)
      // the page, writing the B/W proxy as it goes, so a B/W render here is thrown away.
-@@ -2859,7 +3079,7 @@
+@@ -2859,7 +3094,7 @@
    {
      renderPageWithGuideLines();
    }
@@ -440241,7 +440792,7 @@
    const uint32_t missingCodepoint =
        pageCacheHit ? pageCacheMissingCodepoint_[pageCacheLiveSlot_] : fcm->consumeMissingChineseCodepoint();
  #else
-@@ -2869,7 +3089,14 @@
+@@ -2869,7 +3104,14 @@
      uint32_t expected = 0;
      pendingMissingChineseCodepoint_.compare_exchange_strong(expected, missingCodepoint, std::memory_order_relaxed);
    }
@@ -440256,7 +440807,7 @@
    const auto tBwRender = millis();
  
    if (absoluteImageGrayscale) {
-@@ -2889,6 +3116,7 @@
+@@ -2889,6 +3131,7 @@
      // twice (more flash, more time), and the 16-level waveform is a full-screen one anyway,
      // so ghosting is still cleared.
    } else if (combinedGrayscaleBase) {
@@ -440264,7 +440815,7 @@
      ReaderUtils::displayBaseWithRefreshCycle(renderer, pagesUntilFullRefresh, manualRefreshPending);
    } else if (pageHasImages) {
      // Image pages use one base refresh before the grayscale pass. FAST leaves
-@@ -2903,6 +3131,7 @@
+@@ -2903,6 +3146,7 @@
        pagesUntilFullRefresh = 1;
      }
    } else {
@@ -440272,7 +440823,7 @@
      ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh, overlapRefresh);
    }
    const auto tDisplay = millis();
-@@ -2912,7 +3141,7 @@
+@@ -2912,7 +3156,7 @@
      const auto t16Begin = millis();
      if (renderer.beginGrayscale16()) {
        const auto t16Cleared = millis();
@@ -440281,7 +440832,7 @@
        if (pageCacheHit && pageCacheIs16_[pageCacheLiveSlot_] && pageCache16_[pageCacheLiveSlot_]) {
          memcpy(renderer.grayscale16Frame(), pageCache16_[pageCacheLiveSlot_].get(), renderer.grayscale16FrameBytes());
          memcpy(renderer.getFrameBuffer(), pageCacheBase_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
-@@ -2920,28 +3149,54 @@
+@@ -2920,28 +3164,54 @@
        } else
  #endif
        {
@@ -440339,7 +440890,7 @@
          ttf = {};
  #endif
        }
-@@ -2951,16 +3206,71 @@
+@@ -2951,16 +3221,71 @@
          return;
        }
  #if !defined(SIMULATOR)
@@ -440414,7 +440965,7 @@
  #if RICKYOS_PAINT_PROFILE
          LOG_INF("PERF", "reader commit=%lums total=%lums", tEnd - tCommit, tEnd - t0);
  #endif
-@@ -3137,7 +3447,7 @@
+@@ -3137,7 +3462,7 @@
        }
        const auto tBwStore = millis();
  
@@ -440423,7 +440974,7 @@
        if (pageCacheHit) {
          // Both planes were rendered at idle; putting them in place is one copy
          // each instead of a full page render each.
-@@ -3164,7 +3474,7 @@
+@@ -3164,7 +3489,7 @@
          return;
        }
  
@@ -440432,7 +440983,7 @@
        if (pageCacheHit) {
          memcpy(renderer.getFrameBuffer(), pageCacheMsb_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
          renderer.copyGrayscaleMsbBuffers();
-@@ -3212,9 +3522,12 @@
+@@ -3212,9 +3537,12 @@
  }
  
  void EpubReaderActivity::renderStatusBar() const {
@@ -440445,7 +440996,7 @@
      readerChrome::PageInfo info;
      info.bookTitle = epub ? epub->getTitle().c_str() : nullptr;
      // A chapter the table of contents names, not currentChapterTitle()'s "unnamed".
-@@ -3225,11 +3538,18 @@
+@@ -3225,11 +3553,18 @@
      }
      info.chapterTitle = chapter.c_str();
      info.pageInChapter = currentPage;
@@ -440466,7 +441017,7 @@
    const float pageCount = section ? section->estimatedTotalPages() : 1;
    const float sectionChapterProg = (pageCount > 0) ? (static_cast<float>(currentPage) / pageCount) : 0;
    const float bookProgress = epub ? (epub->calculateProgress(currentSpineIndex, sectionChapterProg) * 100) : 0;
-@@ -3266,8 +3586,12 @@
+@@ -3266,8 +3601,12 @@
        auto chapter = renderer.truncatedText(RickyDesignUi::BODY, title.c_str(), column);
        title = book + " · " + chapter;
      }

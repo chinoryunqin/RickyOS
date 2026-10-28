@@ -155,12 +155,12 @@
     {
       "path": "lib/Epub/Epub.cpp",
       "baseline_sha256": "a104a180f95744bcdd6ef4fede82fe33cc20e539cd8fb9e075f0f52002b6e95e",
-      "ported_sha256": "7ca64eef1a6dadf278a18dedcea0396153acf8d29e5e0ed723ca9b4f40a5e910"
+      "ported_sha256": "a142b9319f218216f469cdc65493dce95f17df4e135a1dbad741c2f73ba8622b"
     },
     {
       "path": "lib/Epub/Epub.h",
       "baseline_sha256": "0f47da662224f5dac3f3a37aae7bc0d3574abb1aad1424f2293bf30247a89671",
-      "ported_sha256": "c803f97f7a632d610fde01a2778f152bd3bb896faa63544f3449bd864d9abd5c"
+      "ported_sha256": "e6065dfa2d8fa3f7f3d9c027f721e6320428d59bbd4bca77a2d0e14f593ab691"
     },
     {
       "path": "lib/Epub/Epub/BookFonts.cpp",
@@ -171,6 +171,11 @@
       "path": "lib/Epub/Epub/BookFonts.h",
       "baseline_sha256": null,
       "ported_sha256": "a8c2c81a82c7d7b962f56e0e23349435659fa47bec8a87e95a9612652791d217"
+    },
+    {
+      "path": "lib/Epub/Epub/BookMetadataCache.cpp",
+      "baseline_sha256": "0c565fb939b22ccb6817425b4e1a567e1836cfb6bb50c6d0eb659773e387163b",
+      "ported_sha256": "af9265b1156c100d306e39ec9ad2229969c74dd8901d00d6c7a829039986f0f8"
     },
     {
       "path": "lib/Epub/Epub/Page.cpp",
@@ -200,7 +205,7 @@
     {
       "path": "lib/Epub/Epub/Section.cpp",
       "baseline_sha256": "01de5535d5106a94583eeeae5b1b59ad6878acbf75d2771f07d91e79a0bbde15",
-      "ported_sha256": "86b49e012c48b8e4eea188196f15bbe86e54dc847d0ba248e6f0785557742f72"
+      "ported_sha256": "77ed95048015f39b9696b61b93adaefaf8ea053df9691e933c8b82d0a530c3ff"
     },
     {
       "path": "lib/Epub/Epub/WordLook.h",
@@ -400,12 +405,12 @@
     {
       "path": "lib/Txt/Txt.h",
       "baseline_sha256": "768fddee05bb7b2574ef3ab9e9e2fab94333630a19902acdeadcc1e2d561fad0",
-      "ported_sha256": "0c4ba8b63f672ef8ac779a8c16f8af598aa477749051402e2b81808c49e20833"
+      "ported_sha256": "ab01e9ae062f9303c2a2f3141cc909a5c8cd7eff99c27981e21c33ef2ae3275f"
     },
     {
       "path": "lib/Txt/TxtCache.cpp",
       "baseline_sha256": "00c77a8ce05d4da6e94b23ae55530a5085809a669e30a52f6c2437c5d6813ade",
-      "ported_sha256": "13bcd2045cffd428df949614eaa86ee55fcbbb7c631a99a9e207b8ec526cfef4"
+      "ported_sha256": "ff57619cbe16fd1c8c7070abe0ac19d12bb175daa914c3cc451dcc836e91097e"
     },
     {
       "path": "lib/Txt/TxtEncoding.cpp",
@@ -430,12 +435,12 @@
     {
       "path": "lib/Txt/TxtToHtml.cpp",
       "baseline_sha256": "792c52965cef5e188045346f34425958e59cad260ecea6dd90fdb743f2b35a38",
-      "ported_sha256": "8a6e5cbffc77c663d0460aab42b772f54e8353f5745bd652e5123b020e076f2a"
+      "ported_sha256": "bbfb500c46eb3acbb5018cccdf24f44b8ff7420b1fbb250a11ff3b912cf7a551"
     },
     {
       "path": "lib/Txt/TxtToHtml.h",
       "baseline_sha256": "6ef5bb23899b3a8d87b59f2315474732856c08871772d99597c84a5437f656be",
-      "ported_sha256": "82cb2acb68ad7b5b5c1725c17e523ce310fd707c19908703a1b42f4719e2dd9c"
+      "ported_sha256": "8f1ae2d7b2a8148717797bb5e3068bdff731fd59d71d82f830b508f974aa8c64"
     },
     {
       "path": "lib/WeReadWebApi/src/WeReadClient.cpp",
@@ -586,6 +591,11 @@
       "path": "scripts/tests/test_reader_page_cache.py",
       "baseline_sha256": "7153d307adee5a6960f252e680077353bb32ef22105d7cd5911554b492602b1e",
       "ported_sha256": "2233c03ebb150856fb02ad97de5ed86c74d703cc315825305098d93057f6d656"
+    },
+    {
+      "path": "scripts/tests/test_reading_ui_regressions.py",
+      "baseline_sha256": "00be354017d99dd560fb3eb5ee7eef22ba17a27d2a5232003bb93ebe83c8436c",
+      "ported_sha256": "06814c53fec7990119ed232b373ed55e62f6c3934f48ff33f51af168e7f4510d"
     },
     {
       "path": "scripts/tests/test_rickyos_app_profile.py",
@@ -940,7 +950,7 @@
     {
       "path": "src/activities/reader/EpubReaderActivity.cpp",
       "baseline_sha256": "330723cad52ac629fa1451c9ca90cffff0a04b06e0266861e092ff93e8ffa1c9",
-      "ported_sha256": "14de78a4d29f079f4cdbe9f5186ea6bee1810c249395ba96a63d5bae7e49e542"
+      "ported_sha256": "c8ba48f8039d74da2c9011eaf914be60023584a01f3b9b03c5ff173efe5e2d64"
     },
     {
       "path": "src/activities/reader/EpubReaderActivity.h",
