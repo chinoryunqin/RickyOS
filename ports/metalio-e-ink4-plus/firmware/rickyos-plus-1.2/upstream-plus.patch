@@ -429438,7 +429438,7 @@
  
    _initMs = millis();
    _lastPollMs = millis();
-@@ -111,15 +108,105 @@
+@@ -111,15 +108,108 @@
    clearPendingEvents();
    _inTilt = false;
    _isAwake = false;
@@ -429507,8 +429507,11 @@
 +    if (level > _tapSpikePeak) _tapSpikePeak = level;
 +    if (level >= threshold * 0.5f) {
 +      if (_tapSample - _tapSpikeStart > TAP_MAX_SAMPLES * 3) {  // a sustained push or shake, not a knock
++        // Usually the device was turned: gravity moved. Restart the baseline here, or it
++        // would stay at the old angle and every later sample would read as this push.
 +        _tapSpike = false;
 +        _lastKnock = 0;
++        _tapBase = z[i];
 +      }
 +      continue;
 +    }
@@ -429546,7 +429549,7 @@
    if (_accelOnly && (mode != _accelMode || orientation != _accelOrientation || shouldBeAwake != _accelReading)) {
      _accelMode = static_cast<CrossPointTiltPageTurn::Value>(mode);
      _accelOrientation = static_cast<CrossPointOrientation::Value>(orientation);
-@@ -144,6 +231,15 @@
+@@ -144,6 +234,15 @@
    const unsigned long now = millis();
    // Stabilization: discard readings during gyro startup transient
    if ((now - _wakeMs) < WAKE_STABILIZE_MS) {
@@ -429562,7 +429565,7 @@
      return;
    }
  
-@@ -233,6 +329,18 @@
+@@ -233,6 +332,18 @@
    return val;
  }
  
@@ -429581,7 +429584,7 @@
  bool HalTiltSensor::hadActivity() {
    const bool val = _hadActivity;
    _hadActivity = false;
-@@ -242,6 +350,8 @@
+@@ -242,6 +353,8 @@
  void HalTiltSensor::clearPendingEvents() {
    _tiltForwardEvent = false;
    _tiltBackEvent = false;
@@ -429625,9 +429628,9 @@
 +  // slow baseline removes gravity, a knock is a short spike above the threshold, and two
 +  // knocks 40..500 ms apart are a double tap. Times count samples (200 Hz: 5 ms each).
 +  // Bench (Plus, knuckle on the back): first knocks 0.7..1.3 g, second ones often only
-+  // 0.2..0.3 g, some lasting 50..65 ms; nothing at rest above 0.13 g.
++  // 0.2..0.3 g, many lasting 35..95 ms; nothing at rest above 0.13 g.
 +  static constexpr float TAP_THRESHOLDS_G[3] = {0.35f, 0.20f, 0.13f};  // firm, medium, light
-+  static constexpr uint32_t TAP_MAX_SAMPLES = 16;                      // a knock ends within 80 ms
++  static constexpr uint32_t TAP_MAX_SAMPLES = 20;                      // a knock ends within 100 ms
 +  static constexpr uint32_t TAP_GAP_MIN = 8, TAP_GAP_MAX = 100;       // 40..500 ms between knocks
 +  float _tapBase = 0.0f;
 +  bool _tapBaseValid = false;

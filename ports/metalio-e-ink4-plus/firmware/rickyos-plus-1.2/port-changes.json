@@ -570,12 +570,12 @@
     {
       "path": "lib/hal/HalTiltSensor.cpp",
       "baseline_sha256": "5d44583454d27b9c022a83dc792d275bc706599432a47e9132b1154fbd21f20b",
-      "ported_sha256": "71451d29b3a931066e98df59db53533eb9d1a94d9a741f8e0dfbee064e229d79"
+      "ported_sha256": "814b3f41590d24acad73fa07b74c647a5e0be014b2439ce7502f2fe16008c019"
     },
     {
       "path": "lib/hal/HalTiltSensor.h",
       "baseline_sha256": "1dca09c1c83fc0e34423317ef8e7d239efc246ce696b9e44b6e3142664414fce",
-      "ported_sha256": "4c8803b8676de641e246541c1044f970f8cc3fd61bdc8a2f5156628b174c20c1"
+      "ported_sha256": "927dbe4ea7267b6c083b0d79e494abdbce2278c89bd52ac83a9504647bfdb190"
     },
     {
       "path": "lib/hal/NativeGrayRefreshPolicy.h",
