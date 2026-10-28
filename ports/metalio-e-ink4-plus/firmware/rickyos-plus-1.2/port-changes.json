@@ -18,6 +18,11 @@
       "ported_sha256": "b46d578f412cc2226b68242e035280eab1e0546d39a5d4637e222237314a4157"
     },
     {
+      "path": "freeink-sdk/libs/hardware/BoardConfig/include/BoardConfig.h",
+      "baseline_sha256": "65bb181509420675162eb6c06a1e17c4b66b1e0eca38ed0a767e2bdc196693a2",
+      "ported_sha256": "f1a2edf4dbd8c03daa88104258c4fea035435f62fa5780ee1b34cd845e80a7af"
+    },
+    {
       "path": "freeink-sdk/libs/hardware/FrontlightManager/include/FrontlightManager.h",
       "baseline_sha256": "981d6bf33786e861d16f573d014777560ed4f12893cbe5b24ecdd8c9eec9e13b",
       "ported_sha256": "4a4beb791a029a0fbc9ff168bb0af9c248b76a02a80415a9eec4fd2728b6e6d7"
@@ -26,6 +31,16 @@
       "path": "freeink-sdk/libs/hardware/FrontlightManager/src/FrontlightManager.cpp",
       "baseline_sha256": "e687a061e08c2b0387c7af27082ebc66a804d6f1e7d80f4f0e2b7c5305ffb298",
       "ported_sha256": "5de1bbd49a3492f1bd34a1886ca9c0416be84eac986fd9f6edd03e5ea4dcf9f7"
+    },
+    {
+      "path": "freeink-sdk/libs/hardware/Imu/include/Imu.h",
+      "baseline_sha256": "ece19fd3b6d2746bd852ef3e84864f087335cc83a440ebcee28aefc95b7664de",
+      "ported_sha256": "70c9b6a308bfaaa45f85a34a7b19d7bfe7a82b82877a3e9190cd2330891069eb"
+    },
+    {
+      "path": "freeink-sdk/libs/hardware/Imu/src/Imu.cpp",
+      "baseline_sha256": "38706e89c2277c4cb924cbd37705213ac31f63fb54ffe80b9abffc3eff9ebbd8",
+      "ported_sha256": "14a8a93fc4fbde61701048104d1f4c13ab720c829a165a5645819e389feb8ee3"
     },
     {
       "path": "freeink-sdk/libs/hardware/InputManager/include/InputManager.h",
@@ -300,12 +315,12 @@
     {
       "path": "lib/I18n/translations/chinese.yaml",
       "baseline_sha256": "021ec5b9e5880155fea752af9c60ce83a259dd69131f9bd12ffe0ca59e3366bd",
-      "ported_sha256": "34f04b4a4a7f2d844768b18c0b4d2df4ba0c2ac495be50f32cbbd087b865f226"
+      "ported_sha256": "4909127f61bc4498f424e68fd18358fd8766cf9f788fa9cdfef6980769911759"
     },
     {
       "path": "lib/I18n/translations/english.yaml",
       "baseline_sha256": "85a4d226f1400f6a185759420c63ecff5f81eeb3722afd66c312d4aec6bcb315",
-      "ported_sha256": "5c2201e15709576a549db55e17f9703a93cf19caf3ab0ab81100b447fdaa5c1a"
+      "ported_sha256": "23cae70a607a022453e950d19a0f514ba76d2649cbf055d9de60fc2c2d713ba2"
     },
     {
       "path": "lib/JpegToBmpConverter/JpegToBmpConverter.cpp",
@@ -553,6 +568,16 @@
       "ported_sha256": "0195b2b6a3fc2eaaaadb1586f0ddd1d1af5a04a6d36267d719384c8f51378464"
     },
     {
+      "path": "lib/hal/HalTiltSensor.cpp",
+      "baseline_sha256": "5d44583454d27b9c022a83dc792d275bc706599432a47e9132b1154fbd21f20b",
+      "ported_sha256": "b5ca614dabc16267740a82e8c3a836039e2db6fb97a790bfc10d02b00ac644aa"
+    },
+    {
+      "path": "lib/hal/HalTiltSensor.h",
+      "baseline_sha256": "1dca09c1c83fc0e34423317ef8e7d239efc246ce696b9e44b6e3142664414fce",
+      "ported_sha256": "8f0a7877e3b9475d20aec69fa4e59d0984a0bec00b71718f06631a755dca366c"
+    },
+    {
       "path": "lib/hal/NativeGrayRefreshPolicy.h",
       "baseline_sha256": "5d8e4550754003da8ef4d33c57cd343fd7020de3b94c3d7bacb9280c5d4c3f0a",
       "ported_sha256": "014c72a10c8af8f9838ba0826c6f66c66c69a76e2d8e1ba7e8a47db418a6b527"
@@ -586,6 +611,11 @@
       "path": "scripts/tests/test_home_button_persistence.py",
       "baseline_sha256": null,
       "ported_sha256": "875c3c29faeac5556030a4fd8edcdf5267356ca8801b6e29ff8601886804b6c1"
+    },
+    {
+      "path": "scripts/tests/test_imu_double_tap.py",
+      "baseline_sha256": null,
+      "ported_sha256": "187756147c40881eeded7cadb1c05d62cf5f776fa8c10109e5b52cec913424be"
     },
     {
       "path": "scripts/tests/test_reader_page_cache.py",
@@ -630,12 +660,12 @@
     {
       "path": "src/CrossPointSettings.h",
       "baseline_sha256": "c5a733423898aad83b2f932929b80d3de201da9aa0e181d82d0071a2ac576330",
-      "ported_sha256": "420e7b9420c15d4ab2b29863556e95338af7028ca8629f8782831c91077d4603"
+      "ported_sha256": "a4282efdd0dfc3ecc0565cd998d0ab506fb81558cac57752b53f09a06d7bfb03"
     },
     {
       "path": "src/HomeButtonSettings.h",
       "baseline_sha256": "d42fe26bbf4bd1b6deb57c6848561acce4d998a44ec27418d405e3a0d4fb20a7",
-      "ported_sha256": "4f2c9ecc994be703fe6d74e00ac75e580dc69aebfbdc235ba1003246ce01ceff"
+      "ported_sha256": "d54470a47f3ada5177232a1100935dd6520c9d922f9757b165133bc2e996e674"
     },
     {
       "path": "src/InxItemLayout.h",
@@ -665,7 +695,7 @@
     {
       "path": "src/SettingsList.h",
       "baseline_sha256": "47ca912ff8e169d64ef58e3da86d57ccd581fe11f9f3cf283d75ed471398e583",
-      "ported_sha256": "f97a5c660f5c0e149461be81216eea2f7226da0032101d8c3b3f76766316743b"
+      "ported_sha256": "79a167b4e360d8654b06bb77ff37c3b73ba3d3eb79adc4d6bbf6f5bd06e1be00"
     },
     {
       "path": "src/activities/Activity.cpp",
@@ -880,22 +910,22 @@
     {
       "path": "src/activities/library/LibraryFoldersActivity.cpp",
       "baseline_sha256": null,
-      "ported_sha256": "08664a3cbed77dfba1172682a94f3a1000c735f42b3f706b791e37a578443169"
+      "ported_sha256": "767fe78a955c41c5e40217f2176cdfe5c657754dc96902d849e361b233b18332"
     },
     {
       "path": "src/activities/library/LibraryFoldersActivity.h",
       "baseline_sha256": null,
-      "ported_sha256": "38b9e9cea1de6a83af4b90b6c2ceb45ff15095f580fb62ae98718c0c03ef77bb"
+      "ported_sha256": "ce831aa2f12f43b9010b987989c9a0b3ae8e4c05b28392881978ab971876d4e8"
     },
     {
       "path": "src/activities/library/LibraryListActivity.cpp",
       "baseline_sha256": "390421f0e356311b536e8d9d3ec0f7805fbe83ca0ee641fec6303ce7a995c465",
-      "ported_sha256": "a96ef21c4ee2ceca834b03952e6055606669aa594499f14b9550b66e3aa158d1"
+      "ported_sha256": "e12ecc78bacb5f2ab87abd88d7b6e064002bef14880a940c7fdd2847282d460d"
     },
     {
       "path": "src/activities/library/LibraryListActivity.h",
       "baseline_sha256": "60b38496e2531ec3078e6b74c2b148434e12a7a67cf88ed5be3ecb727c546728",
-      "ported_sha256": "a7ed748e7128e7c0d15f16cb431495b1503a5cb34b251ff32f244534c88458fa"
+      "ported_sha256": "7427010aa26c44cea5b769c63aff117ef4bac5a48c0a276b3f5e1e09a953e664"
     },
     {
       "path": "src/activities/library/LibrarySearchTable.cpp",
@@ -990,7 +1020,7 @@
     {
       "path": "src/activities/reader/ReaderUtils.h",
       "baseline_sha256": "efe1b606f9e3e1dd33a990130104a3831b94fa29cc4ae185840bd610f4595052",
-      "ported_sha256": "0c09e7c7f4cb96da9ae8c3a453fb6deccf0b8ac5cf5605cc9f7c993447c06cf7"
+      "ported_sha256": "c508cdf45837c817e77ba2d84aeb026b2081d6b5641b43d82209b1ef8dc57c64"
     },
     {
       "path": "src/activities/settings/ClockSyncActivity.cpp",
@@ -1205,7 +1235,7 @@
     {
       "path": "src/main.cpp",
       "baseline_sha256": "a9593200335b30dace971723992905ac8ce0beb05159ecb6d17d837bdb73fdc5",
-      "ported_sha256": "5e87f9f8f4a412ab1d76a981d46a795c1e02015ef9127a9eac535068cd8c748a"
+      "ported_sha256": "bf5a6ec1b09eef033caf9248795d21f2a85728ea70d7f9a1ec90fc26d34962f0"
     },
     {
       "path": "src/network/CrossPointWebServer.cpp",
@@ -1270,7 +1300,7 @@
     {
       "path": "src/util/HomeButtonInput.h",
       "baseline_sha256": "0b75e74eafdf5ba84b94c4cb179d41447e3f03430653ac7a2b6ee7ce0eec4fdc",
-      "ported_sha256": "ba0ca48f9075555d0d75dff53676b7f5fa951ac30e112d5d22284b07a4c95478"
+      "ported_sha256": "4f189bf06125fb05d2bd248e39ad2234964e34fc61a4d0c5ba9dce8711840940"
     },
     {
       "path": "src/util/PlusButtonInput.h",

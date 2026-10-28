@@ -753,6 +753,9 @@ struct SensorsConfig {
   bool imuSwapXY = false;
   bool imuFlipX = false;
   bool imuFlipY = false;
+  // INT1 shares an open-drain line (Plus: the IO expander's INT): drive it active low,
+  // open drain, so an idle IMU never holds the line asserted.
+  bool imuIntOpenDrainLow = false;
 };
 
 // How the panel is mounted relative to the driver's native scan. Any board injects
@@ -2140,7 +2143,10 @@ constexpr BoardProfile makeMetalioPlusProfile() {
   p.orientation = NO_FLIP;
   p.sdmmc = {24, 25, 20, 21, 22, 23, 4};
   p.batteryGauge = {0, 1, 100000, 0x55, 0, 1, GaugeType::Bq27220};
-  p.sensors = {0, 1, 100000, 0x51, 0, 0, 1, RtcType::Pcf8563, ImuType::None};
+  // SC7A20H at 0x19 on the same bus; its INT1 is wired-AND with the TCA expander's INT
+  // (GPIO2), so it must idle released (OEM sc7a20h WriteSilenceRegs).
+  p.sensors = {0, 1, 100000, 0x51, 0, 0x19, 1, RtcType::Pcf8563, ImuType::Sc7a20h};
+  p.sensors.imuIntOpenDrainLow = true;
   p.viewableInsets = {8, 8, 8, 8};
   return p;
 }

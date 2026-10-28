@@ -244,6 +244,18 @@
 +  return s;
 +}
 +#endif
+--- a/freeink-sdk/libs/hardware/BoardConfig/include/BoardConfig.h
++++ b/freeink-sdk/libs/hardware/BoardConfig/include/BoardConfig.h
+@@ -746,6 +746,9 @@
+   bool imuSwapXY = false;
+   bool imuFlipX = false;
+   bool imuFlipY = false;
++  // INT1 shares an open-drain line (Plus: the IO expander's INT): drive it active low,
++  // open drain, so an idle IMU never holds the line asserted.
++  bool imuIntOpenDrainLow = false;
+ };
+ 
+ // How the panel is mounted relative to the driver's native scan. Any board injects
 --- a/freeink-sdk/libs/hardware/FrontlightManager/include/FrontlightManager.h
 +++ b/freeink-sdk/libs/hardware/FrontlightManager/include/FrontlightManager.h
 @@ -122,6 +122,7 @@
@@ -301,6 +313,130 @@
  #endif
    writeChannel(fl.gpio, LEDC_CH_COOL, physicalDuty(coolDuty, full, fl.activeHigh));
  
+--- a/freeink-sdk/libs/hardware/Imu/include/Imu.h
++++ b/freeink-sdk/libs/hardware/Imu/include/Imu.h
+@@ -44,12 +44,22 @@
+   // error; allow for a settling transient before trusting samples.
+   bool wake();
+ 
++  // SC7A20H only: the part's own double-tap (click) detector on the axis through the
++  // screen, so a knock on the back is one gesture. Polled through its latched source
++  // register, no interrupt line. Raises sampling to 400 Hz while on (sleep() still
++  // powers it down; wake() restores it). sensitivity: 0 firm, 1 medium, 2 light.
++  bool enableDoubleTap(uint8_t sensitivity);
++  bool disableDoubleTap();
++  // True once per detected double tap; reading clears the latch.
++  bool takeDoubleTap();
++
+  private:
+   bool begun_ = false;
+   // The QMI8658 can legally appear at 0x6A or 0x6B depending on its SA0
+   // strap. Keep the address found by begin() instead of repeatedly using the
+   // board profile's preferred address.
+   uint8_t addr_ = 0;
++  bool doubleTap_ = false;
+ };
+ 
+ }  // namespace freeink
+--- a/freeink-sdk/libs/hardware/Imu/src/Imu.cpp
++++ b/freeink-sdk/libs/hardware/Imu/src/Imu.cpp
+@@ -88,6 +88,27 @@
+ // CTRL1 ODR = 0000 stops the sampling engine (sc7a20h_power_down), ≈0.5 µA; every
+ // other config register is retained for the wake path.
+ constexpr uint8_t SC7A20H_CTRL1_ODR_POWER_DOWN = 0x00;
++// Interrupt pin polarity/drive (LIS2DH CTRL_REG6 position). 0x03 = active low,
++// open drain: what a board sharing INT1 with another open-drain line needs.
++constexpr uint8_t SC7A20H_REG_CTRL6 = 0x25;
++constexpr uint8_t SC7A20H_CTRL6_INT_LOW_OPEN_DRAIN = 0x03;
++// Click (tap) detector, LIS2DH-compatible: CLICK_CFG 0x38 (ZD = double on Z), CLICK_SRC
++// 0x39 (IA | DCLICK when one fired), CLICK_THS 0x3A (bit7 latches the source until
++// read; 1 LSB = 16 mg at ±2 g), then TIME_LIMIT / TIME_LATENCY / TIME_WINDOW in ODR
++// ticks (2.5 ms at 400 Hz): each tap shorter than 40 ms, the second 80..400 ms after.
++constexpr uint8_t SC7A20H_REG_CLICK_CFG = 0x38;
++constexpr uint8_t SC7A20H_REG_CLICK_SRC = 0x39;
++constexpr uint8_t SC7A20H_REG_CLICK_THS = 0x3A;
++constexpr uint8_t SC7A20H_REG_TIME_LIMIT = 0x3B;
++constexpr uint8_t SC7A20H_REG_TIME_LATENCY = 0x3C;
++constexpr uint8_t SC7A20H_REG_TIME_WINDOW = 0x3D;
++constexpr uint8_t SC7A20H_CLICK_CFG_ZD = 0x20;
++constexpr uint8_t SC7A20H_CLICK_SRC_DOUBLE = 0x60;  // IA | DCLICK
++constexpr uint8_t SC7A20H_CLICK_THS_LATCH = 0x80;
++constexpr uint8_t SC7A20H_TAP_THRESHOLDS[] = {0x28, 0x1C, 0x12};  // 640 / 450 / 290 mg
++constexpr uint8_t SC7A20H_TAP_LIMIT = 16, SC7A20H_TAP_LATENCY = 32, SC7A20H_TAP_WINDOW = 128;
++// 400 Hz, normal mode, XYZ: the click detector needs the rate to see a knock.
++constexpr uint8_t SC7A20H_CTRL1_400HZ_XYZ = 0x77;
+ // The output registers are 16-bit left-justified. sc7a20h.c's fill_sample() drops
+ // the low 4 bits, and its 1 mg/LSB at ±2 g (mg_lsb = 1 << fs) is the scale for
+ // THAT normalized value — i.e. the LP mode 8-bit reading is left-justified, not
+@@ -220,6 +241,11 @@
+       if (!writeReg(configuredAddr, SC7A20H_REG_CTRL2, SC7A20H_CTRL2_IDLE)) return false;
+       if (!writeReg(configuredAddr, SC7A20H_REG_CTRL4, SC7A20H_CTRL4_BDU_2G)) return false;
+       if (!writeReg(configuredAddr, SC7A20H_REG_CTRL1, SC7A20H_CTRL1_12_5HZ_LP_XYZ)) return false;
++      // The soft reset left INT1 push-pull, active high, idling low: on a board that
++      // wires it to another open-drain line that would hold the line asserted.
++      if (s.imuIntOpenDrainLow &&
++          !writeReg(configuredAddr, SC7A20H_REG_CTRL6, SC7A20H_CTRL6_INT_LOW_OPEN_DRAIN))
++        return false;
+       delay(20);  // sc7a20h_apply_config() settle before the first sample
+       addr_ = configuredAddr;
+       break;
+@@ -336,13 +362,45 @@
+       if (!writeReg(addr, SC7A20H_REG_CTRL0, SC7A20H_CTRL0_IDLE)) return false;
+       if (!writeReg(addr, SC7A20H_REG_CTRL2, SC7A20H_CTRL2_IDLE)) return false;
+       if (!writeReg(addr, SC7A20H_REG_CTRL4, SC7A20H_CTRL4_BDU_2G)) return false;
+-      if (!writeReg(addr, SC7A20H_REG_CTRL1, SC7A20H_CTRL1_12_5HZ_LP_XYZ)) return false;
++      if (!writeReg(addr, SC7A20H_REG_CTRL1, doubleTap_ ? SC7A20H_CTRL1_400HZ_XYZ : SC7A20H_CTRL1_12_5HZ_LP_XYZ))
++        return false;
+       delay(20);
+       return true;
+     case BoardConfig::ImuType::None:
+       return false;
+   }
+   return false;
++}
++
++bool Imu::enableDoubleTap(const uint8_t sensitivity) {
++  const uint8_t addr = addr_;
++  if (!begun_ || addr == 0 || BoardConfig::ACTIVE.sensors.imuType != BoardConfig::ImuType::Sc7a20h) return false;
++  const uint8_t threshold = SC7A20H_TAP_THRESHOLDS[sensitivity < 3 ? sensitivity : 1];
++  uint8_t stale = 0;
++  const bool ok = writeReg(addr, SC7A20H_REG_CLICK_THS, SC7A20H_CLICK_THS_LATCH | threshold) &&
++                  writeReg(addr, SC7A20H_REG_TIME_LIMIT, SC7A20H_TAP_LIMIT) &&
++                  writeReg(addr, SC7A20H_REG_TIME_LATENCY, SC7A20H_TAP_LATENCY) &&
++                  writeReg(addr, SC7A20H_REG_TIME_WINDOW, SC7A20H_TAP_WINDOW) &&
++                  writeReg(addr, SC7A20H_REG_CLICK_CFG, SC7A20H_CLICK_CFG_ZD) &&
++                  writeReg(addr, SC7A20H_REG_CTRL1, SC7A20H_CTRL1_400HZ_XYZ) &&
++                  readRegs(addr, SC7A20H_REG_CLICK_SRC, &stale, 1);  // drop a latch from before
++  doubleTap_ = ok;
++  return ok;
++}
++
++bool Imu::disableDoubleTap() {
++  const uint8_t addr = addr_;
++  const bool was = doubleTap_;
++  doubleTap_ = false;
++  if (!was) return true;
++  if (!begun_ || addr == 0) return false;
++  return writeReg(addr, SC7A20H_REG_CLICK_CFG, 0) && writeReg(addr, SC7A20H_REG_CTRL1, SC7A20H_CTRL1_12_5HZ_LP_XYZ);
++}
++
++bool Imu::takeDoubleTap() {
++  uint8_t source = 0;
++  return doubleTap_ && readRegs(addr_, SC7A20H_REG_CLICK_SRC, &source, 1) &&
++         (source & SC7A20H_CLICK_SRC_DOUBLE) == SC7A20H_CLICK_SRC_DOUBLE;
+ }
+ 
+ }  // namespace freeink
+@@ -354,6 +412,9 @@
+ bool Imu::read(Sample&) { return false; }
+ bool Imu::sleep() { return false; }
+ bool Imu::wake() { return false; }
++bool Imu::enableDoubleTap(uint8_t) { return false; }
++bool Imu::disableDoubleTap() { return true; }
++bool Imu::takeDoubleTap() { return false; }
+ }  // namespace freeink
+ 
+ #endif  // FREEINK_CAP_IMU
 --- a/freeink-sdk/libs/hardware/InputManager/include/InputManager.h
 +++ b/freeink-sdk/libs/hardware/InputManager/include/InputManager.h
 @@ -365,6 +365,11 @@
@@ -424648,7 +424784,21 @@
  STR_LIBRARY_REBUILDING: "正在整理书库"
  STR_LIBRARY_REBUILD_DONE: "书库已更新"
  STR_LIBRARY_REBUILD_FAILED: "书库更新失败，请检查 SD 卡"
-@@ -1464,11 +1492,35 @@
+@@ -824,6 +852,13 @@
+ STR_CRASH_REASON: "崩溃原因:"
+ STR_CRASH_NO_REASON: "(未记录原因)"
+ STR_TILT_PAGE_TURN: "倾斜翻页"
++STR_BACK_TAP_PAGE_TURN: "背面敲两下翻页"
++STR_BACK_TAP_SENSITIVITY: "敲击力度"
++STR_BACK_TAP_FIRM: "用力"
++STR_BACK_TAP_MEDIUM: "适中"
++STR_BACK_TAP_LIGHT: "轻敲"
++STR_BACK_TAP_NEXT: "下一页"
++STR_BACK_TAP_PREVIOUS: "上一页"
+ STR_KB_HINT_MOVE_CURSOR: "按 左/右 移动光标"
+ STR_KB_HINT_RETURN_CURSOR: "按 左 返回光标位置"
+ STR_KB_HINT_HIDE_PASSWORD: "按住 右 并按 [***] 隐藏密码"
+@@ -1464,11 +1499,35 @@
  STR_RICKY_SELECT_TRANSPARENT: "选择透明图片"
  STR_RICKY_CLEAR_TRANSPARENT: "移除透明图片"
  STR_RICKY_SET_TRANSPARENT: "设为透明壁纸"
@@ -424685,7 +424835,7 @@
  STR_RICKY_POWERED_OFF: "已关机 · 长按开机"
  STR_RICKY_PICTURE_FIT: "显示方式"
  STR_RICKY_PICTURE_FIT_WHOLE: "完整显示"
-@@ -1552,6 +1604,7 @@
+@@ -1552,6 +1611,7 @@
  STR_RICKY_GESTURE_READING: "阅读手势"
  STR_RICKY_GESTURE_BACK: "左侧右滑返回"
  STR_RICKY_GESTURE_HOME: "底部上滑回首页"
@@ -424693,15 +424843,16 @@
  STR_RICKY_GESTURE_CONTROL: "顶部下滑打开控制中心"
  STR_RICKY_GESTURE_STATUS: "点状态栏打开控制中心"
  STR_RICKY_GESTURE_TOUCH_TURN: "触屏翻页"
-@@ -1568,6 +1621,7 @@
+@@ -1568,6 +1628,8 @@
  STR_RICKY_KEYS_SIDE: "左右键翻页"
  STR_RICKY_KEYS_LONG_PRESS: "长按左右键"
  STR_RICKY_KEYS_STANDBY: "中间键待机与唤醒"
 +STR_HOME_ACTION_STANDBY: "进入待机"
++STR_HOME_ACTION_HAND: "切换惯用手"
  STR_RICKY_SCREEN_REPAIR: "屏幕修复"
  STR_RICKY_SCREEN_REPAIRING: "正在修复屏幕，约 5 秒…"
  STR_RICKY_HELP_SCREEN_REPAIR: "出现残影、两个画面叠在一起时使用"
-@@ -1588,8 +1642,8 @@
+@@ -1588,8 +1650,8 @@
  STR_RICKY_HELP_WEBSITE: "RickyOS 官网"
  STR_RICKY_HELP_START_1: "在应用中打开文件传输，按照屏幕提示用手机或电脑传入书籍。"
  STR_RICKY_HELP_START_2: "书库中点选书籍开始阅读。全部、在读、未读可以切换筛选。文件夹在存储中浏览。"
@@ -424712,7 +424863,7 @@
  STR_RICKY_HELP_DISPLAY_2: "出现残影时可在设置中执行屏幕修复。全刷间隔越短，残影越少，但闪屏更频繁。"
  STR_RICKY_HELP_DISPLAY_3: "阅读字体在文字设置中调整；头像、昵称和首页短句在设置顶部的资料卡中修改。"
  STR_RICKY_HELP_UPDATE_1: "设置中的更新固件会检查 RickyOS 更新。更新前请保证电量充足，勿在过程中断电。"
-@@ -1600,3 +1654,130 @@
+@@ -1600,3 +1662,131 @@
  STR_RICKY_HELP_FEEDBACK_3: "通过你现有的 Ricky AI Studio 联系渠道发送反馈。本页面不会自动上传设备信息。官网入口可扫码打开。"
  STR_RICKY_MENU_AUTO_TURN: "自动翻页"
  STR_RICKY_MENU_PROGRESS: "阅读进度"
@@ -424721,6 +424872,7 @@
 +STR_LIBRARY_UNCATEGORIZED: "未分类"
 +STR_LIBRARY_FOLDERS: "文件夹"
 +STR_LIBRARY_ALL_FOLDERS: "全部文件夹"
++STR_LIBRARY_THIS_FOLDER: "选择此文件夹"
 +STR_LIBRARY_NEW_CATEGORY: "新建分类"
 +STR_LIBRARY_ASSIGN_CATEGORY: "设置分类"
 +STR_LIBRARY_CATEGORY_SELECTED: "已选"
@@ -424916,7 +425068,21 @@
  STR_LIBRARY_REBUILDING: "Reading your books..."
  STR_LIBRARY_REBUILD_DONE: "Library index rebuilt"
  STR_LIBRARY_REBUILD_FAILED: "Could not rebuild the index"
-@@ -1486,11 +1514,35 @@
+@@ -803,6 +831,13 @@
+ STR_CRASH_REASON: "Crash reason:"
+ STR_CRASH_NO_REASON: "(No reason was recorded)"
+ STR_TILT_PAGE_TURN: "Tilt Page Turn"
++STR_BACK_TAP_PAGE_TURN: "Double tap back"
++STR_BACK_TAP_SENSITIVITY: "Tap strength"
++STR_BACK_TAP_FIRM: "Firm"
++STR_BACK_TAP_MEDIUM: "Medium"
++STR_BACK_TAP_LIGHT: "Light"
++STR_BACK_TAP_NEXT: "Next page"
++STR_BACK_TAP_PREVIOUS: "Previous page"
+ STR_KB_HINT_MOVE_CURSOR: "Press LEFT or RIGHT to move cursor"
+ STR_KB_HINT_RETURN_CURSOR: "Press LEFT to return to cursor position"
+ STR_KB_HINT_HIDE_PASSWORD: "Hold RIGHT then press [***] to hide password"
+@@ -1486,11 +1521,35 @@
  STR_RICKY_SELECT_TRANSPARENT: "Choose overlay PNG"
  STR_RICKY_CLEAR_TRANSPARENT: "Remove overlay PNG"
  STR_RICKY_SET_TRANSPARENT: "Set transparent wallpaper"
@@ -424953,7 +425119,7 @@
  STR_RICKY_POWERED_OFF: "Off · hold to turn on"
  STR_RICKY_PICTURE_FIT: "Picture fit"
  STR_RICKY_PICTURE_FIT_WHOLE: "Whole picture"
-@@ -1574,6 +1626,7 @@
+@@ -1574,6 +1633,7 @@
  STR_RICKY_GESTURE_READING: "Reading"
  STR_RICKY_GESTURE_BACK: "Swipe right from the left: Back"
  STR_RICKY_GESTURE_HOME: "Swipe up from the bottom: Home"
@@ -424961,15 +425127,16 @@
  STR_RICKY_GESTURE_CONTROL: "Swipe down from the top: Control center"
  STR_RICKY_GESTURE_STATUS: "Tap the status bar: Control center"
  STR_RICKY_GESTURE_TOUCH_TURN: "Touch page turns"
-@@ -1590,6 +1643,7 @@
+@@ -1590,6 +1650,8 @@
  STR_RICKY_KEYS_SIDE: "Left and right keys"
  STR_RICKY_KEYS_LONG_PRESS: "Hold left or right key"
  STR_RICKY_KEYS_STANDBY: "Middle key: Standby / Wake"
 +STR_HOME_ACTION_STANDBY: "Standby"
++STR_HOME_ACTION_HAND: "Switch hand"
  STR_RICKY_SCREEN_REPAIR: "Screen repair"
  STR_RICKY_SCREEN_REPAIRING: "Repairing the screen, about 5 s…"
  STR_RICKY_HELP_SCREEN_REPAIR: "Use when old screens show through new ones"
-@@ -1610,7 +1664,7 @@
+@@ -1610,7 +1672,7 @@
  STR_RICKY_HELP_WEBSITE: "RickyOS website"
  STR_RICKY_HELP_START_1: "Open File Transfer in Apps and follow the on-screen instructions to send books from your phone or computer."
  STR_RICKY_HELP_START_2: "Select a book in Library to read. Filter by All, Reading or Unread. Browse folders in Storage."
@@ -424978,7 +425145,7 @@
  STR_RICKY_HELP_DISPLAY_1: "Display & Standby controls automatic sleep and power-button actions. Choose standby pictures in the Standby app."
  STR_RICKY_HELP_DISPLAY_2: "Use Screen Repair in Settings for ghosting. More frequent full refreshes reduce ghosting but flash the screen more often."
  STR_RICKY_HELP_DISPLAY_3: "Adjust reading fonts in Text Settings. Change your avatar, nickname and home phrase through the profile card at the top of Settings."
-@@ -1622,3 +1676,130 @@
+@@ -1622,3 +1684,131 @@
  STR_RICKY_HELP_FEEDBACK_3: "Send feedback through your existing Ricky AI Studio contact channel. This page does not upload device information. Scan the website QR code to visit the site."
  STR_RICKY_MENU_AUTO_TURN: "Auto page turn"
  STR_RICKY_MENU_PROGRESS: "Reading progress"
@@ -424987,6 +425154,7 @@
 +STR_LIBRARY_UNCATEGORIZED: "Uncategorized"
 +STR_LIBRARY_FOLDERS: "Folders"
 +STR_LIBRARY_ALL_FOLDERS: "All folders"
++STR_LIBRARY_THIS_FOLDER: "This folder"
 +STR_LIBRARY_NEW_CATEGORY: "New category"
 +STR_LIBRARY_ASSIGN_CATEGORY: "Set categories"
 +STR_LIBRARY_CATEGORY_SELECTED: "Selected"
@@ -429177,6 +429345,169 @@
  const char* getDeviceModel();
  const char* getChipModel();
  bool getDeviceId(DeviceId& out);
+--- a/lib/hal/HalTiltSensor.cpp
++++ b/lib/hal/HalTiltSensor.cpp
+@@ -60,11 +60,8 @@
+   // by differentiating the gravity component, so the part is brought up like any other
+   // and update() takes the accelerometer path. isAvailable() then reports true, which is
+   // the gate SettingsList uses to offer "Tilt page turn".
+-#if FREEINK_DEVICE_READPICO
++  // Read Pico and Metalio Plus both carry the SC7A20H.
+   _accelOnly = BoardConfig::ACTIVE.sensors.imuType == BoardConfig::ImuType::Sc7a20h;
+-#else
+-  _accelOnly = false;
+-#endif
+ 
+   _initMs = millis();
+   _lastPollMs = millis();
+@@ -111,15 +108,31 @@
+   clearPendingEvents();
+   _inTilt = false;
+   _isAwake = false;
+-  return true;
+-}
+-
+-void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const bool inReader) {
+-  if (!_available) {
+-    return;
+-  }
+-
+-  const bool shouldBeAwake = mode != CrossPointTiltPageTurn::TILT_OFF && inReader;
++  _tapOn = false;
++  _sdkImu.disableDoubleTap();  // off with the sensor; wake() comes back at the tilt rate
++  return true;
++}
++
++void HalTiltSensor::syncTap(const bool wanted) {
++  if (wanted == _tapOn) return;
++  _tapOn = wanted ? _sdkImu.enableDoubleTap(_tapSensitivity) : !_sdkImu.disableDoubleTap();
++  _tapNextEvent = _tapPrevEvent = false;
++  if (wanted && !_tapOn) LOG_ERR("GYR", "double tap unavailable");
++}
++
++void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const bool inReader,
++                           const uint8_t tapMode, const uint8_t tapSensitivity) {
++  if (!_available) {
++    return;
++  }
++
++  const bool tapWanted = tapMode != CrossPointBackTap::TAP_OFF && inReader;
++  if (tapSensitivity != _tapSensitivity && _tapOn) {
++    syncTap(false);  // re-armed below with the new threshold
++  }
++  _tapSensitivity = tapSensitivity;
++  _tapMode = tapMode;
++  const bool shouldBeAwake = (mode != CrossPointTiltPageTurn::TILT_OFF || tapWanted) && inReader;
+   if (_accelOnly && (mode != _accelMode || orientation != _accelOrientation || shouldBeAwake != _accelReading)) {
+     _accelMode = static_cast<CrossPointTiltPageTurn::Value>(mode);
+     _accelOrientation = static_cast<CrossPointOrientation::Value>(orientation);
+@@ -144,6 +157,23 @@
+   const unsigned long now = millis();
+   // Stabilization: discard readings during gyro startup transient
+   if ((now - _wakeMs) < WAKE_STABILIZE_MS) {
++    return;
++  }
++
++  syncTap(tapWanted);
++  if (_tapOn && now - _lastTapPollMs >= TAP_POLL_INTERVAL_MS) {
++    _lastTapPollMs = now;
++    // Always read: it clears the chip's latch, so a tap during a touch is dropped, not queued.
++    const bool tapped = _sdkImu.takeDoubleTap();
++    if (tapped && now - _touchMs >= TAP_AFTER_TOUCH_MS && now - _lastTapMs >= TAP_COOLDOWN_MS) {
++      _lastTapMs = now;
++      _lastTiltMs = now;  // the knock must not also read as a tilt flick
++      _hadActivity = true;
++      (_tapMode == CrossPointBackTap::TAP_PREVIOUS ? _tapPrevEvent : _tapNextEvent) = true;
++      LOG_INF("GYR", "Back double tap (%s)", _tapMode == CrossPointBackTap::TAP_PREVIOUS ? "previous" : "next");
++    }
++  }
++  if (mode == CrossPointTiltPageTurn::TILT_OFF) {
+     return;
+   }
+ 
+@@ -233,6 +263,18 @@
+   return val;
+ }
+ 
++bool HalTiltSensor::wasBackTappedNext() {
++  const bool val = _tapNextEvent;
++  _tapNextEvent = false;
++  return val;
++}
++
++bool HalTiltSensor::wasBackTappedPrevious() {
++  const bool val = _tapPrevEvent;
++  _tapPrevEvent = false;
++  return val;
++}
++
+ bool HalTiltSensor::hadActivity() {
+   const bool val = _hadActivity;
+   _hadActivity = false;
+@@ -242,6 +284,8 @@
+ void HalTiltSensor::clearPendingEvents() {
+   _tiltForwardEvent = false;
+   _tiltBackEvent = false;
++  _tapNextEvent = false;
++  _tapPrevEvent = false;
+   _hadActivity = false;
+   // Intentionally preserve _inTilt so a held tilt doesn't retrigger on next poll
+ }
+--- a/lib/hal/HalTiltSensor.h
++++ b/lib/hal/HalTiltSensor.h
+@@ -10,6 +10,11 @@
+ 
+ namespace CrossPointTiltPageTurn {
+ enum Value : uint8_t { TILT_OFF = 0, TILT_NORMAL = 1, TILT_INVERTED = 2 };
++}
++
++// Knock twice on the back to turn the page (SC7A20H click detector).
++namespace CrossPointBackTap {
++enum Value : uint8_t { TAP_OFF = 0, TAP_NEXT = 1, TAP_PREVIOUS = 2 };
+ }
+ 
+ class HalTiltSensor;
+@@ -47,6 +52,21 @@
+ 
+   mutable unsigned long _lastPollMs = 0;
+ 
++  // Back double tap: the IMU's own detector, polled with the tilt. A finger on the
++  // screen shakes the same axis, so taps shortly after a touch are dropped.
++  static constexpr unsigned long TAP_POLL_INTERVAL_MS = 60;
++  static constexpr unsigned long TAP_AFTER_TOUCH_MS = 600;
++  static constexpr unsigned long TAP_COOLDOWN_MS = 500;
++  uint8_t _tapMode = CrossPointBackTap::TAP_OFF;
++  uint8_t _tapSensitivity = 1;
++  bool _tapOn = false;  // detector running in the IMU
++  bool _tapNextEvent = false;
++  bool _tapPrevEvent = false;
++  unsigned long _touchMs = 0;
++  unsigned long _lastTapMs = 0;
++  unsigned long _lastTapPollMs = 0;
++  void syncTap(bool wanted);
++
+   // Set when the active IMU is an accelerometer with no gyroscope, so the tilt axis is
+   // differentiated from gravity instead of read as an angular rate.
+   bool _accelOnly = false;
+@@ -72,8 +92,16 @@
+   // True if an IMU is present on this device
+   bool isAvailable() const { return _available; }
+ 
+-  // Poll the accelerometer and update tilt gesture state.
+-  void update(const uint8_t mode, const uint8_t orientation, const bool inReader);
++  // Poll the accelerometer and update tilt and back-tap gesture state.
++  void update(const uint8_t mode, const uint8_t orientation, const bool inReader,
++              const uint8_t tapMode = CrossPointBackTap::TAP_OFF, const uint8_t tapSensitivity = 1);
++
++  // The screen was touched: hold back-tap detection for a moment (see TAP_AFTER_TOUCH_MS).
++  void noteTouch() { _touchMs = millis(); }
++
++  // Consumed once per back double tap, by the page direction it was set to.
++  bool wasBackTappedNext();
++  bool wasBackTappedPrevious();
+ 
+   // Returns true once per tilt-forward gesture (next page direction).
+   // Consumed on read — subsequent calls return false until next gesture.
 --- a/lib/hal/NativeGrayRefreshPolicy.h
 +++ b/lib/hal/NativeGrayRefreshPolicy.h
 @@ -45,11 +45,21 @@
@@ -429474,6 +429805,71 @@
 +
 +if __name__ == "__main__":
 +    unittest.main()
+--- /dev/null
++++ b/scripts/tests/test_imu_double_tap.py
+@@ -0,0 +1,62 @@
++"""SC7A20H back double tap: register setup, latch polling, sleep/wake rate, INT drive.
++
++Compiles the real freeink Imu.cpp against the SDK's own Wire stub (the Read Pico
++profile), next to its stale test_sc7a20h.cpp, which no longer builds."""
++from pathlib import Path
++import subprocess
++import tempfile
++
++ROOT = Path(__file__).resolve().parents[2]
++IMU = ROOT / 'freeink-sdk/libs/hardware/Imu'
++PROGRAM = r'''
++#include <BoardConfig.h>
++#include <Imu.h>
++#include <Wire.h>
++#include <cassert>
++int main() {
++  Imu imu;
++  Wire.devices[0x19] = true;
++  Wire.regs[0x19][0x0F] = 0x11;
++  Wire.regs[0x19][0x70] = 0x28;
++  assert(!imu.enableDoubleTap(1) && !imu.takeDoubleTap());  // not begun
++  assert(imu.begin());
++  assert(Wire.regs[0x19][0x20] == 0x2F && Wire.regs[0x19][0x25] == 0);  // Pico: INT left alone
++  Wire.regs[0x19][0x39] = 0x60;  // a latch from before is read away on enable
++  assert(imu.enableDoubleTap(1));
++  auto& r = Wire.regs[0x19];
++  assert(r[0x3A] == (0x80 | 0x1C) && r[0x3B] == 16 && r[0x3C] == 32 && r[0x3D] == 128);
++  assert(r[0x38] == 0x20 && r[0x20] == 0x77);  // double click on Z, 400 Hz
++  r[0x39] = 0x60;
++  assert(imu.takeDoubleTap());
++  r[0x39] = 0x50;  // a single click is not a double tap
++  assert(!imu.takeDoubleTap());
++  r[0x39] = 0x20;  // DCLICK without IA
++  assert(!imu.takeDoubleTap());
++  assert(imu.sleep() && r[0x20] == 0x00);
++  assert(imu.wake() && r[0x20] == 0x77);  // wake keeps the tap rate while it is on
++  assert(imu.disableDoubleTap() && r[0x38] == 0 && r[0x20] == 0x2F);
++  r[0x39] = 0x60;
++  assert(!imu.takeDoubleTap());  // off: never reported
++  assert(imu.wake() && r[0x20] == 0x2F);
++  assert(imu.disableDoubleTap());  // already off
++  assert(imu.enableDoubleTap(0) && r[0x3A] == (0x80 | 0x28));
++  assert(imu.enableDoubleTap(2) && r[0x3A] == (0x80 | 0x12));
++  assert(imu.enableDoubleTap(9) && r[0x3A] == (0x80 | 0x1C));  // out of range: medium
++  Wire.failWriteReg = 0x38;
++  assert(!imu.enableDoubleTap(1) && !imu.takeDoubleTap());
++  return 0;
++}
++'''
++with tempfile.TemporaryDirectory(prefix='imu-tap-') as d:
++    p = Path(d)
++    (p / 'test.cpp').write_text(PROGRAM)
++    stubs = IMU / 'test/host'
++    subprocess.run(['c++', '-std=c++17', '-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter',
++                    '-Wno-unused-variable', '-Wno-unused-function', '-Wno-unused-const-variable',
++                    '-DFREEINK_DEVICE_READPICO=1', '-I', str(stubs / 'stubs'),
++                    '-I', str(ROOT / 'freeink-sdk/libs/hardware/InputManager/test/host/metalio_stubs'),
++                    '-I', str(ROOT / 'freeink-sdk/libs/hardware/BoardConfig/include'), '-I', str(IMU / 'include'),
++                    str(p / 'test.cpp'), str(IMU / 'src/Imu.cpp'), '-o', str(p / 'test')], check=True)
++    subprocess.run([str(p / 'test')], check=True)
++print('Back double tap: click registers, latch read, single/IA filtering, sleep/wake rate, '
++      'disable restores 12.5 Hz, Pico INT untouched')
 --- a/scripts/tests/test_reader_page_cache.py
 +++ b/scripts/tests/test_reader_page_cache.py
 @@ -33,7 +33,16 @@
@@ -430230,7 +430626,18 @@
    uint8_t rickyGestureControl = 1;  // swipe down from the top: control center
    uint8_t rickyGestureStatus = 1;   // tap the status bar: control center
    // Body-text stroke weight in the reader: 0 thinnest .. 2 the font as drawn .. 4 boldest.
-@@ -567,6 +609,7 @@
+@@ -541,6 +583,10 @@
+   uint8_t imageRendering = IMAGES_DISPLAY;
+   // Tilt-based page turning (X3 only — requires QMI8658 IMU)
+   uint8_t tiltPageTurn = TILT_OFF;
++  // Knock twice on the back to turn the page (CrossPointBackTap: off / next / previous),
++  // and how hard a knock must be (0 firm, 1 medium, 2 light). Boards with the SC7A20H.
++  uint8_t backTapPageTurn = 0;
++  uint8_t backTapSensitivity = 1;
+   // Master reader-touch toggle on boards with a touch controller.
+   uint8_t touchReaderControls = TOUCH_READER_ON;
+   // Which gestures turn the page in each direction (PAGE_TURN_GESTURE).
+@@ -567,6 +613,7 @@
    uint8_t showReaderMenu = READER_MENU_TAP;
    // Frontlight quick-panel state. Brightness and warmth remain persisted even
    // when restore-on-wake is disabled.
@@ -430238,7 +430645,7 @@
    uint8_t frontlightBrightness = 60;
    uint8_t frontlightWarmth = 50;
    uint8_t frontlightOn = 0;
-@@ -581,11 +624,6 @@
+@@ -581,11 +628,6 @@
    // Exact version of the startup guide last completed. Zero/missing means never completed.
    uint8_t onboardingVersion = 0;
    // Keyboard layouts the user can reach, using keyboard_layouts::ALL table bits.
@@ -430250,7 +430657,7 @@
    // Quick Resume: keep current content visible with moon icon instead of showing a static sleep screen.
    uint8_t quickResumeSleepScreen = QUICK_RESUME_NEVER;
    // OTA update channel preference (0 = stable, 1 = nightly).
-@@ -640,6 +678,10 @@
+@@ -640,6 +682,10 @@
      bool showsProgressBar() const { return progressBarMode != HIDE_PROGRESS; }
      bool showsTitle() const { return titleMode != HIDE_TITLE; }
      bool showsClock() const { return clockMode != STATUS_BAR_CLOCK_HIDE; }
@@ -430269,7 +430676,7 @@
                                            StrId::STR_KOSYNC,        StrId::STR_BOOKMARK_OPTION,  StrId::STR_DICTIONARY,
 -                                          StrId::STR_READER_MENU,   StrId::STR_TOGGLE_FRONTLIGHT};
 +                                          StrId::STR_READER_MENU,   StrId::STR_TOGGLE_FRONTLIGHT, StrId::STR_BACK,
-+                                          StrId::STR_HOME_ACTION_STANDBY};
++                                          StrId::STR_HOME_ACTION_STANDBY, StrId::STR_HOME_ACTION_HAND};
  static_assert(sizeof(ACTION_LABELS) / sizeof(ACTION_LABELS[0]) == static_cast<unsigned>(HomeButtonAction::Count));
  inline constexpr StrId GESTURE_LABELS[] = {StrId::STR_HOME_BUTTON_TAP, StrId::STR_HOME_BUTTON_DOUBLE_TAP,
                                             StrId::STR_HOME_BUTTON_LONG_PRESS};
@@ -430901,7 +431308,33 @@
              .withTextSettings(),
          SettingInfo::Enum(StrId::STR_PARA_ALIGNMENT, &CrossPointSettings::paragraphAlignment,
                            {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId::STR_CENTER, StrId::STR_ALIGN_RIGHT,
-@@ -552,6 +578,7 @@
+@@ -396,6 +422,12 @@
+         SettingInfo::Enum(StrId::STR_TILT_PAGE_TURN, &CrossPointSettings::tiltPageTurn,
+                           {StrId::STR_STATE_OFF, StrId::STR_NORMAL, StrId::STR_INVERTED}, "tiltPageTurn",
+                           StrId::STR_CAT_CONTROLS),
++        SettingInfo::Enum(StrId::STR_BACK_TAP_PAGE_TURN, &CrossPointSettings::backTapPageTurn,
++                          {StrId::STR_STATE_OFF, StrId::STR_BACK_TAP_NEXT, StrId::STR_BACK_TAP_PREVIOUS}, "backTapPageTurn",
++                          StrId::STR_CAT_CONTROLS),
++        SettingInfo::Enum(StrId::STR_BACK_TAP_SENSITIVITY, &CrossPointSettings::backTapSensitivity,
++                          {StrId::STR_BACK_TAP_FIRM, StrId::STR_BACK_TAP_MEDIUM, StrId::STR_BACK_TAP_LIGHT},
++                          "backTapSensitivity", StrId::STR_CAT_CONTROLS),
+         SettingInfo::Toggle(StrId::STR_PWR_BTN_FOOTNOTE_BACK, &CrossPointSettings::pwrBtnFootnoteBack,
+                             "pwrBtnFootnoteBack", StrId::STR_CAT_CONTROLS),
+         SettingInfo::Toggle(StrId::STR_BACK_SHORT_TO_FILE_BROWSER, &CrossPointSettings::backShortToFileBrowser,
+@@ -542,7 +574,11 @@
+     // Double-click power frontlight shortcut only exists on the X4 Pro.
+     if (!BoardConfig::isX4Pro()) eraseEntry(StrId::STR_DBL_CLICK_PWR_LIGHT);
+     // Tilt page turn needs the QMI8658 IMU (X3).
+-    if (!halTiltSensor.isAvailable()) eraseEntry(StrId::STR_TILT_PAGE_TURN);
++    if (!halTiltSensor.isAvailable()) {
++      eraseEntry(StrId::STR_TILT_PAGE_TURN);
++      eraseEntry(StrId::STR_BACK_TAP_PAGE_TURN);
++      eraseEntry(StrId::STR_BACK_TAP_SENSITIVITY);
++    }
+     return v;
+   }();
+ 
+@@ -552,6 +588,7 @@
  inline bool isSettingAvailableOnBoard(const SettingInfo& setting) {
    if (!BoardConfig::hasTouch() && setting.nameId == StrId::STR_TOUCH_READER_CONTROLS) return false;
    if (!BoardConfig::hasHomeKey() && setting.nameId == StrId::STR_SHOW_READER_MENU) return false;
@@ -437264,42 +437697,122 @@
 +};
 --- /dev/null
 +++ b/src/activities/library/LibraryFoldersActivity.cpp
-@@ -0,0 +1,73 @@
+@@ -0,0 +1,170 @@
 +#include "LibraryFoldersActivity.h"
 +
 +#include <I18n.h>
 +
++#include <algorithm>
 +#include <string>
 +
 +namespace fui = freeink::ui;
 +
-+const char* LibraryFoldersActivity::headerTitle() const { return tr(STR_LIBRARY_FOLDERS); }
++namespace {
++// True when `path` is `folder` itself or lies under it ("" is above everything).
++bool within(const std::string& path, const std::string& folder) {
++  if (folder.empty()) return true;
++  return path.size() >= folder.size() && path.compare(0, folder.size(), folder) == 0 &&
++         (path.size() == folder.size() || path[folder.size()] == '/');
++}
++
++// The name of the child of `folder` that `path` lies in, or "" when `path` is `folder`.
++std::string childName(const std::string& path, const std::string& folder) {
++  size_t start = folder.size();
++  if (start < path.size() && path[start] == '/') ++start;
++  if (start >= path.size()) return {};
++  const size_t end = path.find('/', start);
++  return path.substr(start, end == std::string::npos ? std::string::npos : end - start);
++}
++
++std::string join(const std::string& folder, const std::string& name) {
++  return folder.empty() && !name.empty() && name[0] != '/' ? "/" + name : folder + "/" + name;
++}
++}  // namespace
++
++const char* LibraryFoldersActivity::headerTitle() const { return title.c_str(); }
 +
 +void LibraryFoldersActivity::onEnter() {
 +  RenderLock lock(*this);
 +  UiListActivity::onEnter();
 +  waitForButtons = mappedInput.isPressed(MappedInputManager::Button::Confirm) ||
 +                   mappedInput.isPressed(MappedInputManager::Button::Back);
-+  total = 0;
-+  for (const auto& folder : folders) total = static_cast<uint16_t>(total + folder.count);
-+  counts.clear();
-+  counts.reserve(folders.size() + 1);
-+  counts.push_back(std::to_string(total));
-+  for (const auto& folder : folders) counts.push_back(std::to_string(folder.count));
-+  int row = 0;
-+  for (size_t i = 0; i < folders.size(); ++i)
-+    if (selected == folders[i].id + 1) row = static_cast<int>(i) + 1;
-+  nav.reset(row);
++  // Skip levels that hold no books and a single subfolder ("/" -> "/books"), so the
++  // first screen is the one with a choice on it.
++  root.clear();
++  for (;;) {
++    std::string only;
++    bool books = false, several = false;
++    for (const auto& folder : folders) {
++      if (!within(folder.path, root)) continue;
++      const std::string name = childName(folder.path, root);
++      if (name.empty()) {
++        books = true;
++        break;
++      }
++      if (only.empty()) only = name;
++      else if (only != name) several = true;
++    }
++    if (books || several || only.empty()) break;
++    root = join(root, only);
++  }
++  // Open where the shelf's folder lives, so changing it is one step.
++  std::string start = root;
++  if (!selected.empty() && within(selected, root)) {
++    const size_t slash = selected.rfind('/');
++    start = slash != std::string::npos && slash > 0 ? selected.substr(0, slash) : root;
++    if (!within(start, root)) start = root;
++  }
++  show(start);
 +  requestUpdate();
++}
++
++void LibraryFoldersActivity::show(const std::string& path) {
++  level = path;
++  rows.clear();
++  uint32_t total = 0;
++  for (const auto& folder : folders)
++    if (within(folder.path, level)) total += folder.count;
++  const bool top = level == root;
++  const size_t slash = level.rfind('/');
++  title = top ? std::string(tr(STR_LIBRARY_FOLDERS))
++              : (slash == std::string::npos ? level : level.substr(slash + 1));
++  rows.push_back({top ? tr(STR_LIBRARY_ALL_FOLDERS) : tr(STR_LIBRARY_THIS_FOLDER), top ? std::string() : level,
++                  std::to_string(total), total, false});
++  // Children of this level, with their whole subtree's books.
++  std::vector<Row> children;
++  for (const auto& folder : folders) {
++    if (!within(folder.path, level)) continue;
++    const std::string name = childName(folder.path, level);
++    if (name.empty()) continue;
++    const std::string path = join(level, name);
++    auto it = std::find_if(children.begin(), children.end(), [&](const Row& row) { return row.path == path; });
++    if (it == children.end()) {
++      children.push_back({name, path, std::string(), 0, false});
++      it = children.end() - 1;
++    }
++    it->count += folder.count;
++    if (folder.path != path) it->opens = true;
++  }
++  std::sort(children.begin(), children.end(), [](const Row& a, const Row& b) { return a.label < b.label; });
++  for (auto& child : children) {
++    child.value = std::to_string(child.count) + (child.opens ? "  ›" : "");
++    rows.push_back(std::move(child));
++  }
++  int row = 0;
++  for (size_t i = 0; i < rows.size(); ++i)
++    if (!selected.empty() && rows[i].path == selected) row = static_cast<int>(i);
++  nav.reset(row);
 +}
 +
 +void LibraryFoldersActivity::provideRow(void* ctx, uint16_t index, fui::ListItem& item) {
 +  auto& self = *static_cast<LibraryFoldersActivity*>(ctx);
 +  item.actionValue = index;
-+  if (index >= self.counts.size()) return;
-+  item.label = index == 0 ? tr(STR_LIBRARY_ALL_FOLDERS) : self.folders[index - 1].label.c_str();
-+  const bool picked = index == 0 ? self.selected == 0 : self.selected == self.folders[index - 1].id + 1;
-+  item.value = picked ? tr(STR_SELECTED) : self.counts[index].c_str();
++  if (index >= self.rows.size()) return;
++  const Row& row = self.rows[index];
++  item.label = row.label.c_str();
++  item.value = (index == 0 ? row.path == self.selected : (!row.opens && row.path == self.selected))
++                   ? tr(STR_SELECTED)
++                   : row.value.c_str();
 +}
 +
 +void LibraryFoldersActivity::buildScreen(UiScreen& screen) {
@@ -437319,12 +437832,29 @@
 +
 +void LibraryFoldersActivity::activateIndex(const int index) {
 +  if (index < 0 || index >= listCount()) return;
-+  setResult(ActivityResult{IntervalResult{index == 0 ? 0 : folders[index - 1].id + 1}});
++  const Row& row = rows[index];
++  if (row.opens) {
++    RenderLock lock(*this);
++    show(row.path);
++    app.clearTapFlash();
++    requestUpdate();
++    return;
++  }
++  setResult(ActivityResult{FilePathResult{row.path}});
 +  app.clearTapFlash();
 +  finish();
 +}
 +
 +void LibraryFoldersActivity::onBackButton() {
++  if (level != root) {
++    RenderLock lock(*this);
++    const size_t slash = level.rfind('/');
++    std::string up = slash != std::string::npos && slash > 0 ? level.substr(0, slash) : root;
++    show(within(up, root) ? up : root);
++    app.clearTapFlash();
++    requestUpdate();
++    return;
++  }
 +  ActivityResult result;
 +  result.isCancelled = true;
 +  setResult(std::move(result));
@@ -437340,7 +437870,7 @@
 +}
 --- /dev/null
 +++ b/src/activities/library/LibraryFoldersActivity.h
-@@ -0,0 +1,39 @@
+@@ -0,0 +1,52 @@
 +#pragma once
 +
 +#include <cstdint>
@@ -437349,23 +437879,26 @@
 +
 +#include "activities/UiListActivity.h"
 +
-+// Picks the folder the Library shelf shows. Rows are the folders that hold
-+// indexed books, with their counts; the result is IntervalResult{0} for every
-+// folder or {folderId + 1}. The caller builds the rows from the open index, so
-+// this screen never touches the card.
++// Picks the folder the Library shelf shows, one level at a time: a folder with
++// subfolders opens, Back goes up, and the first row takes the folder being viewed
++// (with everything under it). Counts include subfolders. The result is
++// FilePathResult{path}, "" for every folder. The caller builds the folder list from
++// the open index, so this screen never touches the card.
 +class LibraryFoldersActivity final : public UiListActivity {
 + public:
 +  struct Folder {
-+    std::string label;
-+    uint16_t id = 0;
++    std::string path;  // as indexed, e.g. "/books/金庸"
 +    uint16_t count = 0;
 +  };
-+  LibraryFoldersActivity(GfxRenderer& renderer, MappedInputManager& input, std::vector<Folder> folders, int selected)
-+      : UiListActivity("LibraryFolders", renderer, input, true), folders(std::move(folders)), selected(selected) {}
++  LibraryFoldersActivity(GfxRenderer& renderer, MappedInputManager& input, std::vector<Folder> folders,
++                         std::string selected)
++      : UiListActivity("LibraryFolders", renderer, input, true),
++        folders(std::move(folders)),
++        selected(std::move(selected)) {}
 +  void onEnter() override;
 +
 + protected:
-+  int listCount() const override { return 1 + static_cast<int>(folders.size()); }
++  int listCount() const override { return static_cast<int>(rows.size()); }
 +  const char* headerTitle() const override;
 +  void buildScreen(UiScreen& screen) override;
 +  void activateIndex(int index) override;
@@ -437373,11 +437906,21 @@
 +  bool handleCustomInput() override;
 +
 + private:
++  struct Row {
++    std::string label;
++    std::string path;
++    std::string value;
++    uint32_t count = 0;
++    bool opens = false;  // has subfolders: activating goes one level down
++  };
 +  std::vector<Folder> folders;
-+  int selected;  // 0 every folder, otherwise folderId + 1
-+  uint16_t total = 0;
++  std::string selected;  // the shelf's current folder, "" for all
++  std::string root;      // the top level shown (single-child levels skipped)
++  std::string level;     // the folder being viewed
++  std::string title;
++  std::vector<Row> rows;
 +  bool waitForButtons = false;
-+  std::vector<std::string> counts;  // one per row, alive while rows are laid out
++  void show(const std::string& path);
 +  static void provideRow(void* ctx, uint16_t index, freeink::ui::ListItem& item);
 +};
 --- a/src/activities/library/LibraryListActivity.cpp
@@ -437687,7 +438230,7 @@
  // oldest-first, which pinned fresh reads would contradict.
  int LibraryListActivity::pinnedCount() const {
 -  if (readingFilter != 0) return 0;
-+  if (readingFilter != 0 || categoryFilter != 0 || folderFilter != 0) return 0;
++  if (readingFilter != 0 || categoryFilter != 0 || !folderPath.empty()) return 0;
    if (activeTabIndex != RECENT_TAB || !query.empty() || !isDescending(sortOrder)) return 0;
    return pinnedTotal;
  }
@@ -437852,7 +438395,7 @@
                           break;
                         default:
                           break;
-@@ -359,21 +532,287 @@
+@@ -359,17 +532,242 @@
    requestUpdate();
  }
  
@@ -438023,16 +438566,8 @@
 +    requestUpdate();
 +  });
 +}
-+namespace {
-+// "/books/金庸/射雕" reads as "books/金庸/射雕": the full path keeps nested folders apart.
-+std::string folderLabelFor(const std::string& path) {
-+  if (path.size() > 1 && path[0] == '/') return path.substr(1);
-+  return path.empty() ? std::string("/") : path;
-+}
-+}  // namespace
-+
 +void LibraryListActivity::openFolders() {
-+  std::vector<LibraryFoldersActivity::Folder> rows;
++  std::vector<LibraryFoldersActivity::Folder> folders;
 +  {
 +    RenderLock lock(*this);
 +    app.clearTapFlash();
@@ -438040,12 +438575,9 @@
 +    std::vector<uint16_t> counts;
 +    if (index.isOpen() && index.readFolderPaths(paths) && index.countBooksPerFolder(counts) &&
 +        paths.size() == counts.size()) {
-+      for (size_t id = 0; id < paths.size(); ++id) {
-+        if (!counts[id]) continue;
-+        rows.push_back({folderLabelFor(paths[id]), static_cast<uint16_t>(id), counts[id]});
-+      }
-+      std::sort(rows.begin(), rows.end(),
-+                [](const auto& a, const auto& b) { return a.label < b.label; });
++      folders.reserve(paths.size());
++      for (size_t id = 0; id < paths.size(); ++id)
++        if (counts[id]) folders.push_back({std::move(paths[id]), counts[id]});
 +    } else {
 +      LOG_ERR("LIB", "cannot list library folders");
 +    }
@@ -438053,43 +438585,14 @@
 +  startActivityForResultWith<LibraryFoldersActivity>(
 +      [this](const ActivityResult& result) {
 +        RenderLock lock(*this);
-+        if (!result.isCancelled && std::holds_alternative<IntervalResult>(result.data)) {
-+          folderFilter = std::get<IntervalResult>(result.data).value;
-+          folderPath.clear();
-+          folderLabel.clear();
-+          std::vector<std::string> paths;
-+          if (folderFilter > 0 && index.readFolderPaths(paths) && folderFilter <= static_cast<int>(paths.size())) {
-+            folderPath = paths[folderFilter - 1];
-+            folderLabel = folderLabelFor(folderPath);
-+          } else {
-+            folderFilter = 0;
-+          }
-+        }
++        if (!result.isCancelled && std::holds_alternative<FilePathResult>(result.data))
++          folderPath = std::get<FilePathResult>(result.data).path;
 +        applyFilter();
 +        activeNav().reset();
 +        swallowHeldReleases();
 +        requestUpdate();
 +      },
-+      std::move(rows), folderFilter);
-+}
-+
-+void LibraryListActivity::resolveFolderFilter() {
-+  if (folderFilter == 0) return;
-+  folderFilter = 0;
-+  std::vector<std::string> paths;
-+  if (folderPath.empty() || !index.isOpen() || !index.readFolderPaths(paths)) {
-+    folderPath.clear();
-+    folderLabel.clear();
-+    return;
-+  }
-+  for (size_t id = 0; id < paths.size(); ++id) {
-+    if (paths[id] == folderPath) {
-+      folderFilter = static_cast<int>(id) + 1;
-+      return;
-+    }
-+  }
-+  folderPath.clear();
-+  folderLabel.clear();
++      std::move(folders), folderPath);
 +}
 +
 +void LibraryListActivity::assignCategories(const std::string& path) {
@@ -438142,12 +438645,7 @@
  }
  
  void LibraryListActivity::resetAfterRebuild() {
-   // Sort positions, group starts, and pinned rows all point into the old order.
-+  resolveFolderFilter();
-   applyFilter();
-   resolvePinned();
-   auto& nav = activeNav();
-@@ -456,25 +895,33 @@
+@@ -456,25 +854,33 @@
          if (!Storage.remove(path.c_str())) LOG_ERR("LIB", "cannot delete %s", path.c_str());
          RickyStorageActivity::invalidateScan();
          if (RECENT_BOOKS.removeByPath(path)) RECENT_BOOKS.saveToFile();
@@ -438191,7 +438689,7 @@
  }
  
  void LibraryListActivity::stepTab(const int direction) {
-@@ -488,6 +935,7 @@
+@@ -488,6 +894,7 @@
  }
  
  void LibraryListActivity::selectTab(const int index, const bool toggleIfActive) {
@@ -438199,25 +438697,25 @@
    if (index < 0 || index >= TAB_SLOTS) return;
    if (toggleIfActive && index == activeTab()) descendingTabs ^= static_cast<uint8_t>(1u << index);
    sortOrder = orderForTab(index, descendingTabs);
-@@ -518,7 +966,7 @@
+@@ -518,7 +925,7 @@
  }
  
  int LibraryListActivity::bookRowCount() const {
 -  if (readingFilter != 0) return filteredCount;
-+  if (readingFilter != 0 || categoryFilter != 0 || folderFilter != 0) return filteredCount;
++  if (readingFilter != 0 || categoryFilter != 0 || !folderPath.empty()) return filteredCount;
    if (!query.empty()) return static_cast<int>(filteredCount);
    // Pinned books already in the index are skipped below the pins, not doubled;
    // pinned books the index missed still show, so the difference stays split.
-@@ -533,7 +981,7 @@
+@@ -533,7 +940,7 @@
  // With pins active, entries below pinnedCount() belong to the store and must
  // not reach this; the rest walk past the pinned books' own sort rows.
  int LibraryListActivity::rowFor(const int entry) const {
 -  if (!query.empty() || readingFilter != 0) {
-+  if (!query.empty() || readingFilter != 0 || categoryFilter != 0 || folderFilter != 0) {
++  if (!query.empty() || readingFilter != 0 || categoryFilter != 0 || !folderPath.empty()) {
      if (entry < 0 || entry >= static_cast<int>(filteredCount) || !filtered) return 0;
      return filtered[entry];
    }
-@@ -631,8 +1079,8 @@
+@@ -631,8 +1038,8 @@
    requestUpdate();
  }
  
@@ -438228,12 +438726,12 @@
  // array is allocated once with the exact upper bound and fails back to an
  // explicit message rather than letting vector growth abort the firmware.
  void LibraryListActivity::applyFilter() {
-@@ -645,11 +1093,24 @@
+@@ -645,11 +1052,42 @@
    // The header shows the active query in place of the screen title, so the
    // reader can see what narrowed the list without reopening the keyboard.
    headerSearchTitle = query.empty() ? std::string() : "“" + query + "”";
 -  if (query.empty() && readingFilter == 0) return;
-+  if (query.empty() && readingFilter == 0 && categoryFilter == 0 && folderFilter == 0) return;
++  if (query.empty() && readingFilter == 0 && categoryFilter == 0 && folderPath.empty()) return;
 +
 +  std::unique_ptr<uint64_t[]> categoryHashes;
 +  size_t categoryHashCount = 0;
@@ -438246,6 +438744,24 @@
    const std::string needle = library::fold(query);
    const int total = static_cast<int>(index.bookCount());
    if (total <= 0) return;
++  folderMatch.clear();
++  if (!folderPath.empty()) {
++    // One byte per folder: the folder itself and everything under it.
++    std::vector<std::string> paths;
++    if (!index.readFolderPaths(paths)) {
++      filterFailed = true;
++      return;
++    }
++    folderMatch.assign(paths.size(), 0);
++    for (size_t id = 0; id < paths.size(); ++id) {
++      const std::string& p = paths[id];
++      folderMatch[id] = p.size() >= folderPath.size() && p.compare(0, folderPath.size(), folderPath) == 0 &&
++                        (p.size() == folderPath.size() || p[folderPath.size()] == '/');
++    }
++  }
++  const auto inFolder = [this](const uint16_t folderId) {
++    return folderPath.empty() || (folderId < folderMatch.size() && folderMatch[folderId]);
++  };
 +  if ((!query.empty() || categoryFilter) && !searchTable.ready() && !searchTableFailed && index.isOpen())
 +    searchTableFailed = !searchTable.build(index);
 +  const bool inMemory = searchTable.ready() && searchTable.size() == total;
@@ -438254,7 +438770,7 @@
  
    auto matches = makeUniqueNoThrow<uint16_t[]>(static_cast<size_t>(total));
    if (!matches) {
-@@ -661,13 +1122,53 @@
+@@ -661,13 +1099,53 @@
    uint16_t matchCount = 0;
    std::string author;
    for (int row = 0; row < total; row++) {
@@ -438269,9 +438785,9 @@
 +                                                                     searchTable.pathHash(ordinal));
 +        if (categoryFilter == 1 ? present : !present) continue;
 +      }
-+      if (folderFilter != 0) {
++      if (!folderPath.empty()) {
 +        library::ClixRecord record{};
-+        if (!index.readRecord(ordinal, record) || record.folderId + 1 != folderFilter) continue;
++        if (!index.readRecord(ordinal, record) || !inFolder(record.folderId)) continue;
 +      }
 +      if (readingFilter != 0) {
 +        library::ClixRecord record{};
@@ -438288,7 +438804,7 @@
      const uint16_t ordinal = index.ordinalForRow(sortOrder, static_cast<uint16_t>(row));
      library::ClixRecord record{};
      if (ordinal == 0xFFFF || !index.readRecord(ordinal, record)) continue;
-+    if (folderFilter != 0 && record.folderId + 1 != folderFilter) continue;
++    if (!inFolder(record.folderId)) continue;
 +    if (categoryFilter) {
 +      uint64_t hash = 0;
 +      if (!index.readPathHash(record, hash)) {
@@ -438309,12 +438825,13 @@
        const bool started = stats != nullptr;
        const bool reading = started && !stats->completed;
        if ((readingFilter == 1 && !reading) || (readingFilter == 2 && started)) continue;
-@@ -691,12 +1192,21 @@
+@@ -691,12 +1169,22 @@
    }
    filtered = std::move(matches);
    filteredCount = matchCount;
-+  LOG_INF("LIB", "filter \"%s\" reading=%u category=%d folder=%d: %u of %d books in %lu ms (%s)", query.c_str(),
-+          static_cast<unsigned>(readingFilter), categoryFilter, folderFilter, static_cast<unsigned>(matchCount), total,
++  LOG_INF("LIB", "filter \"%s\" reading=%u category=%d folder=\"%s\": %u of %d books in %lu ms (%s)", query.c_str(),
++          static_cast<unsigned>(readingFilter), categoryFilter, folderPath.c_str(), static_cast<unsigned>(matchCount),
++          total,
 +          millis() - filterStarted, inMemory ? "memory" : "card");
  }
  
@@ -438331,7 +438848,7 @@
    auto& nav = activeNav();
    if (!query.empty()) {
      query.clear();
-@@ -737,7 +1247,7 @@
+@@ -737,7 +1225,7 @@
    if (entry < pinnedCount()) {
      const auto& books = RECENT_BOOKS.getBooks();
      if (entry < 0 || entry >= static_cast<int>(books.size())) return false;
@@ -438340,7 +438857,7 @@
      title = book.title;
      author = book.author;
      if (fileName) *fileName = book.path;
-@@ -779,7 +1289,7 @@
+@@ -779,7 +1267,7 @@
  // up to its page, so swiping back from there never left the last page. Scrolling stays
  // in UiListActivity::loop(), after the touch is routed: taking the swipe earlier left
  // the touched book pressed (drawn inverted) because its release never reached the UI.
@@ -438349,7 +438866,7 @@
  
  bool LibraryListActivity::handleButtons() {
    const int count = listCount();
-@@ -790,6 +1300,10 @@
+@@ -790,6 +1278,10 @@
    // ActivityManager::loop() before any activity runs, so it cannot land in
    // the freshly opened confirmation and select its default.
    if (mappedInput.wasLongPressed(MappedInputManager::Button::Confirm, LONG_PRESS_MS)) {
@@ -438360,7 +438877,7 @@
      if (tabsFocused()) {
        if (!degraded) toggleSortDirection();
      } else if (isRecentSort(sortOrder)) {
-@@ -811,7 +1325,10 @@
+@@ -811,7 +1303,10 @@
  
    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
      if (tabsFocused()) {
@@ -438372,7 +438889,7 @@
        return true;
      }
      if (count > 0) activateIndex(selectedEntry());
-@@ -838,7 +1355,7 @@
+@@ -838,7 +1333,7 @@
    });
    // Search is an activation: defer it so holding Previous can still step tabs.
    buttonNavigator.onPreviousRelease([this] {
@@ -438381,7 +438898,7 @@
    });
    // A held button steps tabs while the strip has focus (the base behaviour
    // Settings keeps) and page-jumps once the selection is down in the rows,
-@@ -1020,7 +1537,7 @@
+@@ -1020,7 +1515,7 @@
  bool LibraryListActivity::entryPath(int entry, std::string& path) {
    if (entry < 0 || entry >= bookRowCount()) return false;
    if (entry < pinnedCount()) {
@@ -438390,7 +438907,7 @@
      return true;
    }
    const auto ordinal = index.ordinalForRow(sortOrder, rowFor(entry));
-@@ -1043,17 +1560,38 @@
+@@ -1043,17 +1538,38 @@
    // The product caption can fall back to BODY for a title with uncommon glyphs.
    // Reserve the taller of the two actual font lines so title and progress never touch.
    const int cardTextLineHeight =
@@ -438433,7 +438950,7 @@
    auto pageTitle = theme.titleText;
    pageTitle.bold = true;
    screen.target().text(titleRect, headerTitle(), pageTitle);
-@@ -1071,7 +1609,7 @@
+@@ -1071,7 +1587,7 @@
    moreRect.width = moreWidth;
    RickyPageUi::pageIcon(screen.target(), renderer, moreRect.x + (moreRect.width - 40) / 2,
                          moreRect.y + moreRect.height / 2, icon_ricky_filter_40);
@@ -438442,7 +438959,7 @@
    const StrId filterLabels[] = {StrId::STR_RICKY_BOOKS_ALL, StrId::STR_RICKY_BOOKS_READING,
                                  StrId::STR_RICKY_BOOKS_UNREAD};
    int widestLabel = 0;
-@@ -1100,37 +1638,104 @@
+@@ -1100,37 +1616,104 @@
      label.align = fui::TextAlign::Center;
      screen.target().text(labelRect, I18N.get(filterLabels[i]), label);
    }
@@ -438468,10 +438985,10 @@
 +    screen.frame().hit(selectedRect, ACTION_ADD, ManageCategories, fui::InputTouch);
 +  } else {
 +    // The chip names the folder itself; the picker shows the full path.
-+    const size_t slash = folderLabel.rfind('/');
++    const size_t slash = folderPath.rfind('/');
 +    const std::string folderName =
-+        folderFilter == 0 ? std::string(tr(STR_LIBRARY_ALL_FOLDERS))
-+                          : (slash == std::string::npos ? folderLabel : folderLabel.substr(slash + 1));
++        folderPath.empty() ? std::string(tr(STR_LIBRARY_ALL_FOLDERS))
++                           : (slash == std::string::npos ? folderPath : folderPath.substr(slash + 1));
 +    const int chipsRight = batchRect.x - gap;
 +    int x = categoryRow.x;
 +    const auto chip = [&](const char* text, const bool active, const int maxWidth, const int action) {
@@ -438496,7 +439013,7 @@
 +      x = hit.right() + gap;
 +    };
 +    chip(categoryName, categoryFilter != 0, (chipsRight - categoryRow.x - gap) / 2, ManageCategories);
-+    chip(folderName.c_str(), folderFilter != 0, chipsRight - x, ManageFolders);
++    chip(folderName.c_str(), !folderPath.empty(), chipsRight - x, ManageFolders);
 +  }
 +  caption.align = fui::TextAlign::Right;
 +  screen.target().text(batchRect, batchMode ? tr(STR_LIBRARY_ASSIGN_CATEGORY) : tr(STR_LIBRARY_BATCH), caption);
@@ -438506,7 +439023,7 @@
 -        filterFailed ? tr(STR_LIBRARY_SEARCH_UNAVAILABLE)
 -                     : (query.empty() && readingFilter == 0 ? tr(STR_LIBRARY_EMPTY) : tr(STR_LIBRARY_NO_RESULTS)));
 +    screen.centeredText(filterFailed ? tr(STR_LIBRARY_SEARCH_UNAVAILABLE)
-+                                     : (query.empty() && readingFilter == 0 && categoryFilter == 0 && folderFilter == 0
++                                     : (query.empty() && readingFilter == 0 && categoryFilter == 0 && folderPath.empty()
 +                                            ? tr(STR_LIBRARY_NOT_ENROLLED)
 +                                            : tr(STR_LIBRARY_NO_RESULTS)));
      return;
@@ -438566,7 +439083,7 @@
      for (int i = 0; i < visible; ++i) {
        rowTextFor(start + i, shelfTitles[i], shelfAuthors[i]);
        RickyPageUi::stripBookExtension(shelfTitles[i]);
-@@ -1138,7 +1743,7 @@
+@@ -1138,7 +1721,7 @@
        const auto& path = shelfPaths[i];
        // Reading state only: "EPUB · 已读 12%" overflowed a three-column card, and the
        // format already shows on generated covers.
@@ -438575,7 +439092,7 @@
        if (stats && stats->lastProgressPercent >= 100)
          snprintf(shelfDetails[i].data(), shelfDetails[i].size(), "%s", tr(STR_RICKY_BOOK_FINISHED));
        else if (stats)
-@@ -1148,33 +1753,67 @@
+@@ -1148,33 +1731,67 @@
          snprintf(shelfDetails[i].data(), shelfDetails[i].size(), "%s", tr(STR_RICKY_BOOK_UNREAD));
        shelfCovers[i].clear();
      }
@@ -438661,7 +439178,7 @@
      if (picked) RickyDesignUi::fill(renderer, cell, ricky::ds::gray::kInk, ricky::ds::radius::kControl);
      const int coverWidth = coverHeight * 2 / 3;
      const fui::Rect rect{static_cast<int16_t>(cell.x + (cell.width - coverWidth) / 2),
-@@ -1196,9 +1835,14 @@
+@@ -1196,9 +1813,14 @@
                                       });
        if (painted) screen.target().stroke(rect, fui::Paint::solid(fui::Color::LightGray), ricky::ds::stroke::kHairline);
      }
@@ -438677,7 +439194,7 @@
        RickyDesignUi::cover(renderer, rect, shelfTitles[slot].c_str(), format);
      }
      const fui::Rect titleRect{static_cast<int16_t>(cell.x + cardSideInset),
-@@ -1207,22 +1851,28 @@
+@@ -1207,22 +1829,28 @@
                                static_cast<int16_t>(cardTextLineHeight)};
      const fui::Rect detailRect{titleRect.x, static_cast<int16_t>(titleRect.bottom() + cardTextGap), titleRect.width,
                                 titleRect.height};
@@ -438715,7 +439232,7 @@
  }
  
  // "12/69 books" at the bottom right: which book is selected, out of how many.
-@@ -1274,7 +1924,9 @@
+@@ -1274,7 +1902,9 @@
  void LibraryListActivity::render(RenderLock&& lock) {
    if (optionPopup.isActive()) renderPopupUnderlay();
    if (optionPopup.processRender(renderer, mappedInput)) return;
@@ -438750,7 +439267,7 @@
    MainTab mainTab() const override { return MainTab::Library; }
    void selectMainTabContentEdge(MainTabContentEdge edge) override {
      activeNav().requestSelection(MainTabs::contentEdgeIndex(edge, listCount()) + 1);
-@@ -71,11 +74,33 @@
+@@ -71,11 +74,32 @@
    static constexpr freeink::ui::ActionId ACTION_SEARCH = ACTION_TAB_USER;
    static constexpr freeink::ui::ActionId ACTION_REBUILD = ACTION_SEARCH + 1;
    static constexpr freeink::ui::ActionId ACTION_BACK = ACTION_REBUILD + 1;
@@ -438774,13 +439291,12 @@
 +  void clearBatch();
 +  library::LibraryCategories categories;
 +  int categoryFilter = 0;  // 0 all, 1 uncategorized, 2..17 stable category slot
-+  // 0 every folder, otherwise folderId + 1. The path survives a rebuild that renumbers
-+  // folders; resolveFolderFilter() maps it back (or clears the filter).
-+  int folderFilter = 0;
++  // The folder the shelf shows, with everything under it ("" = every folder). A path, so
++  // a rebuild that renumbers folders keeps it; folderMatch marks the matching folder ids
++  // for the current index (one byte per folder, built by applyFilter).
 +  std::string folderPath;
-+  std::string folderLabel;
++  std::vector<uint8_t> folderMatch;
 +  void openFolders();
-+  void resolveFolderFilter();
 +  bool categoriesReady = true;
 +  bool batchMode = false;
 +  uint16_t batchCount = 0;
@@ -438789,7 +439305,7 @@
  
    // Input
    void openSelectedBook();
-@@ -146,6 +171,9 @@
+@@ -146,6 +170,9 @@
    void refreshOverlap();
  
    library::LibraryIndexFile index;
@@ -438799,7 +439315,7 @@
    int activeTabIndex = 0;
    library::SortOrder sortOrder = library::SortOrder::RecentDesc;
    // One bit per tab; Recent starts descending (newest first).
-@@ -189,6 +217,7 @@
+@@ -189,6 +216,7 @@
    uint16_t pinnedAscRows[RecentBooksStore::MAX_RECENT_BOOKS] = {};
    uint16_t overlapRows[RecentBooksStore::MAX_RECENT_BOOKS] = {};
    uint8_t pinnedTotal = 0;
@@ -438807,7 +439323,7 @@
    uint8_t overlapCount = 0;
  
    bool lockNextConfirmRelease = false;
-@@ -197,15 +226,34 @@
+@@ -197,15 +225,34 @@
    // Row options modal (Recent long-press menu); owned here so it outlives the
    // touch event that opened it.
    OptionPopup optionPopup;
@@ -441332,7 +441848,20 @@
      pagesUntilFullRefresh = 1;
 --- a/src/activities/reader/ReaderUtils.h
 +++ b/src/activities/reader/ReaderUtils.h
-@@ -90,6 +90,11 @@
+@@ -65,8 +65,10 @@
+ 
+ inline PageTurnResult detectPageTurn(const MappedInputManager& input) {
+   const bool usePress = SETTINGS.longPressButtonBehavior == SETTINGS.OFF;
+-  const bool tiltNext = SETTINGS.tiltPageTurn && halTiltSensor.wasTiltedForward();
+-  const bool tiltPrev = SETTINGS.tiltPageTurn && halTiltSensor.wasTiltedBack();
++  const bool tiltNext =
++      (SETTINGS.tiltPageTurn && halTiltSensor.wasTiltedForward()) || halTiltSensor.wasBackTappedNext();
++  const bool tiltPrev =
++      (SETTINGS.tiltPageTurn && halTiltSensor.wasTiltedBack()) || halTiltSensor.wasBackTappedPrevious();
+   const bool swapFront = input.isNavDirectionSwapped();
+   const auto prevButton = swapFront ? MappedInputManager::Button::Right : MappedInputManager::Button::Left;
+   const auto nextButton = swapFront ? MappedInputManager::Button::Left : MappedInputManager::Button::Right;
+@@ -90,6 +92,11 @@
    unsigned long heldMs;
  };
  
@@ -441344,7 +441873,7 @@
  inline TouchPageTurn detectTouchPageTurn(const GfxRenderer& renderer, const MappedInputManager& input,
                                           const bool rtlBook = false) {
    TouchPageTurn result{false, false, 0};
-@@ -130,16 +135,18 @@
+@@ -130,16 +137,18 @@
    const int height = renderer.getScreenHeight();
    // The centered reader-menu tap target (isTouchMenuTap below) keeps priority
    // over the page-turn zones.
@@ -441369,7 +441898,7 @@
    const bool nextZone = inverted ? x < (width * 2) / 3 : x >= width / 3;
    result.next = nextTaps && (!prevTaps || nextZone);
    result.prev = prevTaps && (!nextTaps || !nextZone);
-@@ -147,9 +154,8 @@
+@@ -147,9 +156,8 @@
    return result;
  }
  
@@ -441381,7 +441910,7 @@
  // alternatives are only surfaced on home-key boards (SettingsList), where the
  // menu stays reachable through the key's long-press function.
  inline bool isTouchMenuTap(const GfxRenderer& renderer, const MappedInputManager& input) {
-@@ -158,14 +164,10 @@
+@@ -158,14 +166,10 @@
    int x = 0;
    int y = 0;
    if (!input.wasScreenTapped(x, y)) return false;
@@ -444775,7 +445304,19 @@
  #endif
  
    if (activityManager.requiresExclusiveStorageLoop()) {
-@@ -1087,11 +1192,30 @@
+@@ -1082,16 +1187,41 @@
+     return;
+   }
+ 
+-  halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, activityManager.isReaderActivity());
++  {
++    int touchX = 0, touchY = 0;
++    if (mappedInputManager.isScreenTouchHeld(touchX, touchY) || mappedInputManager.wasScreenTouchReleased())
++      halTiltSensor.noteTouch();
++  }
++  halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, activityManager.isReaderActivity(),
++                       SETTINGS.backTapPageTurn, SETTINGS.backTapSensitivity);
+   halClock.update();
  
    renderer.setFadingFix(SETTINGS.fadingFix);
  
@@ -444808,7 +445349,7 @@
  #ifdef BOARD_HAS_PSRAM
      const auto psram = HalMemory::getPsramHeap();
      LOG_INF("MEM", "PSRAM: Free: %zu bytes, Total: %zu bytes, Min Free: %zu bytes, MaxAlloc: %zu bytes",
-@@ -1208,6 +1332,10 @@
+@@ -1208,6 +1338,10 @@
      return;
    }
    const unsigned long sleepTimeoutMs = SETTINGS.getSleepTimeoutMs();
@@ -444819,15 +445360,20 @@
    if (sleepTimeoutMs > 0 && !activityManager.preventAutoSleep() && millis() - lastActivityTime >= sleepTimeoutMs) {
      LOG_DBG("SLP", "Auto-standby after %lu ms of inactivity", sleepTimeoutMs);
      STANDBY_DIAG("auto-standby after %lus idle", sleepTimeoutMs / 1000);
-@@ -1294,6 +1422,7 @@
+@@ -1294,6 +1428,12 @@
    if (mappedInputManager.homeButtonAction() == HomeButtonAction::ToggleFrontlight) {
      toggleFrontlight();
    }
 +  if (mappedInputManager.homeButtonAction() == HomeButtonAction::Standby) activityManager.openStandby();
++  if (mappedInputManager.homeButtonAction() == HomeButtonAction::HoldingHand) {
++    SETTINGS.pageTurnDirection = SETTINGS.pageTurnDirection == 0 ? 1 : 0;
++    SETTINGS.saveToFile();
++    activityManager.requestUpdate();  // touch zones and any hand-dependent chrome follow at once
++  }
    if (mappedInputManager.homeButtonAction() == HomeButtonAction::Refresh ||
        (SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::FORCE_REFRESH &&
         mappedInputManager.wasReleased(MappedInputManager::Button::Power))) {
-@@ -1310,12 +1439,13 @@
+@@ -1310,12 +1450,13 @@
    // flash, the AA pass re-running, and a frontlight dip under the refresh
    // load); the reader's status bar picks the charging state up on the next
    // page turn instead.
@@ -445545,12 +446091,13 @@
    if (!newFirmware && !library) return;
 --- a/src/util/HomeButtonInput.h
 +++ b/src/util/HomeButtonInput.h
-@@ -15,6 +15,8 @@
+@@ -15,6 +15,9 @@
    Dictionary,
    ReaderMenu,
    ToggleFrontlight,
 +  Back,
 +  Standby,
++  HoldingHand,  // switch the page-turn hand (the reader menu's 惯用手)
    Count
  };
  
