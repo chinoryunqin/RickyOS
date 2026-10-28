@@ -31,7 +31,7 @@ program = r'''
 #include <cstdint>
 constexpr uint8_t MIN_BRIGHTNESS = 1;
 constexpr int kVolumeStep=101, kVolumePreview=200;
-constexpr int kActionSize=112, kActionLabelGap=10, kTouch=88, kHeadHeight=64, kBareBandGap=20, kGrabberHeight=5;
+constexpr int kTilePad=16, kTileLabelGap=8, kTileSpacing=12, kGroupGap=20, kCardPad=16, kBandGap=8, kBareBandGap=20, kTouch=88, kHeadHeight=64, kGrabberHeight=5;
 namespace HalAudioOutput {
  bool available=false; int current=0, previews=0;
  bool present() { return available; }

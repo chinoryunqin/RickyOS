@@ -45,7 +45,7 @@ int main(int argc,char** argv) {
   before[tick*1024+pair*4]=(raw[(tick*16+to)*4+old/4]>>(6-2*(old%4)))&3;
  }
  ricky_reader_lock_text_finish(before,48);
- ricky_reader_overlap_erase(before,48);
+ ricky_reader_overlap_erase(before,48,RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES);
  memcpy(bank,before,sizeof(bank));
  ricky_reader_align_edge_erase(bank,48);
  memcpy(again,bank,sizeof(bank));ricky_reader_align_edge_erase(again,48);

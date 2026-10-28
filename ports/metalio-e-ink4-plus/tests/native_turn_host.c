@@ -288,10 +288,12 @@ static void exercise_text_finish(void) {
                 int first=0;while(first<frames&&!original[first*1024+pair*4])first++;
                 int left=last-27;if(left>first)left=first;
                 if(left>0)shift=-left;
-#if defined(CONFIG_IDF_TARGET_ESP32S31) && RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES
-                if(style<=3) {  // plain turns overlap too
-                    int delay=27+RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES-(last+shift);
-                    if(delay>0)shift+=delay;
+#if defined(CONFIG_IDF_TARGET_ESP32S31) && RICKY_READER_ANY_OVERLAP
+                if(style<=3) {  // plain turns overlap too; ripple by its own amount
+                    const int overlap=style==3?RICKYOS_PLUS_READER_RIPPLE_OVERLAP_PHASES:RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES;
+                    int finish=27+overlap;if(finish>45)finish=45;
+                    int delay=finish-(last+shift);
+                    if(overlap>0&&delay>0)shift+=delay;
                 }
 #endif
             }

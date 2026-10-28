@@ -27,7 +27,7 @@ def method(signature):
 constants = block('namespace {\nconstexpr fui::ActionId ACTION_BRIGHTNESS') + '\n' + block('namespace {\n// Actions:')
 methods = [method(sig) for sig in (
     'void FrontlightPanelActivity::sectionHead(',
-    'void FrontlightPanelActivity::sliderRow(',
+    'void FrontlightPanelActivity::pillSlider(',
     'int FrontlightPanelActivity::rickyPanelHeight() const',
     'void FrontlightPanelActivity::roundActionRow(',
     'void FrontlightPanelActivity::buildRickyPanel(',
@@ -47,13 +47,14 @@ code = r'''
 #include <iterator>
 namespace fui = freeink::ui;
 using UiScreen = fui::Screen<24>;
+struct UiAppHost { using UiScreen = ::UiScreen; };
 enum class StrId { @IDS@ };
 @IDCONSTS@
 const char* tr(StrId) { return "test"; }
 struct { const char* get(StrId) { return "test"; } } I18N;
 namespace ricky::ds {
 namespace layout { constexpr int16_t kTouchMin = 88, kAppTileSize = 112; }
-namespace radius { constexpr uint8_t kControl = 12; }
+namespace radius { constexpr uint8_t kControl = 12, kContainer = 24; }
 namespace stroke { constexpr uint8_t kHairline = 2; }
 }
 struct { bool available = true; } audio;
@@ -99,7 +100,7 @@ uint8_t iconBits[200]{};
 const freeink::Icon icon_ricky_night_40{40, 40, 20, iconBits}, icon_ricky_refresh_40{40, 40, 20, iconBits},
     icon_ricky_standby_40{40, 40, 20, iconBits}, icon_ricky_transfer_40{40, 40, 20, iconBits},
     icon_ricky_portrait_40{40, 40, 20, iconBits}, icon_ricky_landscape_40{40, 40, 20, iconBits},
-    icon_ricky_clean_40{40, 40, 20, iconBits};
+    icon_ricky_clean_40{40, 40, 20, iconBits}, icon_sun_32{32, 32, 16, iconBits}, icon_moon_32{32, 32, 16, iconBits};
 @CONSTANTS@
 class FrontlightPanelActivity {
  public:
@@ -114,7 +115,7 @@ class FrontlightPanelActivity {
   char refreshText[24] = {}, timeText[12] = {}, infoText[80] = {};
   int rickyPanelHeight() const;
   void sectionHead(UiScreen&, const char*, int, int = -1);
-  void sliderRow(UiScreen&, const char*, uint8_t, fui::ActionId, fui::ActionId, int);
+  void pillSlider(UiScreen&, fui::Rect, const freeink::Icon&, const char*, uint8_t, fui::ActionId, int16_t);
   void roundActionRow(UiScreen&, const RoundAction*, int);
   void buildRickyPanel(UiScreen&);
 };

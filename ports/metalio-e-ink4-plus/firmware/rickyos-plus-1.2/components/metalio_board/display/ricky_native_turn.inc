@@ -22,6 +22,18 @@ static bool s_next_reader_text_finish;
 #if RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES && (!RICKYOS_PLUS_READER_EARLY_ERASE || !RICKYOS_PLUS_READER_QUALITY)
 #error "Reader erase overlap requires early erase and the complete quality waveform"
 #endif
+// Ripple keeps the departing text longer still: its rings spread the erase across the
+// page, so the white between erase and write reads as a flash before the animation.
+#ifndef RICKYOS_PLUS_READER_RIPPLE_OVERLAP_PHASES
+#define RICKYOS_PLUS_READER_RIPPLE_OVERLAP_PHASES RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES
+#endif
+#if RICKYOS_PLUS_READER_RIPPLE_OVERLAP_PHASES < 0 || RICKYOS_PLUS_READER_RIPPLE_OVERLAP_PHASES > 16
+#error "Ripple erase overlap must be 0..16 phases"
+#endif
+#if RICKYOS_PLUS_READER_RIPPLE_OVERLAP_PHASES && (!RICKYOS_PLUS_READER_EARLY_ERASE || !RICKYOS_PLUS_READER_QUALITY)
+#error "Ripple erase overlap requires early erase and the complete quality waveform"
+#endif
+#define RICKY_READER_ANY_OVERLAP (RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES || RICKYOS_PLUS_READER_RIPPLE_OVERLAP_PHASES)
 #ifndef RICKYOS_PLUS_READER_EDGE_ERASE_WITH_CORE
 #define RICKYOS_PLUS_READER_EDGE_ERASE_WITH_CORE 0
 #endif
@@ -158,18 +170,19 @@ static void ricky_reader_lock_text_finish(uint8_t* bank, int phases) {
     }
 }
 
-#if defined(CONFIG_IDF_TARGET_ESP32S31) && RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES
+#if defined(CONFIG_IDF_TARGET_ESP32S31) && RICKY_READER_ANY_OVERLAP
 // Reader-motion optical experiment: keep departing text a little longer while
 // new ink starts landing. Delay only exterior HOLD of transitions to white;
 // never remove/reorder a pulse or internal HOLD, or touch black/gray targets.
 // This reduces the erase-before-write gap without deleting drive actions.
 // Actual drive duration still depends on phase cadence; verify optics on-panel.
 // The 48-phase bank and its existing allocation are reused before feeders start.
-static void ricky_reader_overlap_erase(uint8_t* bank, int phases) {
+static void ricky_reader_overlap_erase(uint8_t* bank, int phases, int overlap) {
+    if (overlap <= 0) return;
     int black_start = 0;
     while (black_start < phases && bank[black_start * 1024 + 15 * 4] != 1) ++black_start;
     if (black_start == phases) return;
-    int finish = black_start - 1 + RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES;
+    int finish = black_start - 1 + overlap;
     if (finish > phases - 3) finish = phases - 3; // retain at least two final HOLDs
     for (int from = 0; from < 15; ++from) {
         const int pair = 15 * 16 + from;
@@ -290,9 +303,12 @@ static void ricky_native_begin(RenderContext_t* ctx, const EpdWaveformPhases* ph
         nativePhases = ricky_ui_trim_idle_head(ctx->turn_luts, nativePhases);
     } else if (ctx->reader_text_finish) {
         ricky_reader_lock_text_finish(ctx->turn_luts, nativePhases);
-#if defined(CONFIG_IDF_TARGET_ESP32S31) && RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES
+#if defined(CONFIG_IDF_TARGET_ESP32S31) && RICKY_READER_ANY_OVERLAP
         // Plain turns too: the white gap between erase and write reads as a flash.
-        if (turn.style <= 3) ricky_reader_overlap_erase(ctx->turn_luts, nativePhases);
+        if (turn.style <= 3)
+            ricky_reader_overlap_erase(ctx->turn_luts, nativePhases,
+                                       turn.style == 3 ? RICKYOS_PLUS_READER_RIPPLE_OVERLAP_PHASES
+                                                       : RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES);
 #endif
 #if defined(CONFIG_IDF_TARGET_ESP32S31) && RICKYOS_PLUS_READER_EDGE_ERASE_WITH_CORE
         if (turn.style <= 3) ricky_reader_align_edge_erase(ctx->turn_luts, nativePhases);

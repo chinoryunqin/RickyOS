@@ -43,8 +43,8 @@ int main(int argc,char** argv) {
   bank[tick*1024+pair*4]=(raw[(tick*16+to)*4+old/4]>>(6-2*(old%4)))&3;
  }
  ricky_reader_lock_text_finish(bank,48);
- ricky_reader_overlap_erase(bank,48);memcpy(saved,bank,sizeof(bank));
- ricky_reader_overlap_erase(bank,48);assert(memcmp(saved,bank,sizeof(bank))==0);
+ ricky_reader_overlap_erase(bank,48,RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES);memcpy(saved,bank,sizeof(bank));
+ ricky_reader_overlap_erase(bank,48,RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES);assert(memcmp(saved,bank,sizeof(bank))==0);
  assert(fwrite(bank,1,sizeof(bank),stdout)==sizeof(bank));
 }
 ''')
@@ -87,10 +87,19 @@ int main(int argc,char** argv) {
     for sweep in (2, 3, 4, 7):
         subprocess.run([*native, f'-DRICKYOS_PLUS_READER_SWEEP_SPREAD={sweep}'], check=True)
         subprocess.run([str(p / 'native')], check=True)
+    # Ripple's own, longer overlap beside the plain turns' (the release pairs 6 with 12),
+    # and up to its 16-phase limit.
+    for erase, ripple in ((6, 12), (0, 16)):
+        args = [arg for arg in native if not arg.startswith('-DRICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES=')]
+        subprocess.run([*args, f'-DRICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES={erase}',
+                        f'-DRICKYOS_PLUS_READER_RIPPLE_OVERLAP_PHASES={ripple}',
+                        '-DRICKYOS_PLUS_READER_SWEEP_SPREAD=3'], check=True)
+        subprocess.run([str(p / 'native')], check=True)
     for flag, message in [('RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES=9', 'must be 0..8'),
                           ('RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES=-1', 'must be 0..8'),
                           ('RICKYOS_PLUS_READER_SWEEP_SPREAD=1', 'must be 2..7'),
                           ('RICKYOS_PLUS_READER_SWEEP_SPREAD=8', 'must be 2..7'),
+                          ('RICKYOS_PLUS_READER_RIPPLE_OVERLAP_PHASES=17', 'must be 0..16'),
                           ('RICKYOS_PLUS_READER_EARLY_ERASE=0', 'requires early erase')]:
         name = flag.split('=')[0]
         rejected = [arg for arg in native if not arg.startswith('-D' + name + '=')]
