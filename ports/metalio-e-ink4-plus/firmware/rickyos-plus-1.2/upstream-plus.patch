@@ -315,7 +315,7 @@
  
 --- a/freeink-sdk/libs/hardware/Imu/include/Imu.h
 +++ b/freeink-sdk/libs/hardware/Imu/include/Imu.h
-@@ -44,12 +44,23 @@
+@@ -44,12 +44,30 @@
    // error; allow for a settling transient before trusting samples.
    bool wake();
  
@@ -328,6 +328,13 @@
 +  // True once per detected double tap; reading clears the latch. `source`, when given,
 +  // receives the raw click source (single taps included) for tuning.
 +  bool takeDoubleTap(uint8_t* source = nullptr);
++  // While double tap is on, the 400 Hz samples also queue in the part's 32-entry FIFO, so
++  // a caller polling every few dozen ms sees every knock. Reads up to `max` queued
++  // samples of the axis through the screen, in g; returns the count (-1 on I2C error).
++  // `overflowed` reports samples lost since the last read.
++  int readTapAxis(float* out, int max, bool& overflowed);
++  // Diagnostic: CTRL1, CTRL2, CTRL5, FIFO_CTRL, CLICK_CFG, CLICK_THS, TIME_LIMIT, TIME_WINDOW.
++  bool readTapRegisters(uint8_t (&out)[8]);
 +
   private:
    bool begun_ = false;
@@ -341,7 +348,16 @@
  }  // namespace freeink
 --- a/freeink-sdk/libs/hardware/Imu/src/Imu.cpp
 +++ b/freeink-sdk/libs/hardware/Imu/src/Imu.cpp
-@@ -88,6 +88,31 @@
+@@ -5,6 +5,8 @@
+ #if FREEINK_CAP_IMU
+ 
+ #include <Wire.h>
++
++#include <algorithm>
+ #include <soc/soc_caps.h>
+ 
+ namespace freeink {
+@@ -88,6 +90,39 @@
  // CTRL1 ODR = 0000 stops the sampling engine (sc7a20h_power_down), ≈0.5 µA; every
  // other config register is retained for the wake path.
  constexpr uint8_t SC7A20H_CTRL1_ODR_POWER_DOWN = 0x00;
@@ -370,10 +386,18 @@
 +// on the axis through the screen sits above the threshold, never "returns", and no tap
 +// is ever recognised.
 +constexpr uint8_t SC7A20H_CTRL2_HP_CLICK = 0x04;
++// FIFO in stream mode (CTRL5 FIFO_EN, FIFO_CTRL mode 10b): the newest 32 samples wait for
++// the poll. FIFO_SRC: OVRN (bit 6), stored-sample count (bits 4..0).
++constexpr uint8_t SC7A20H_REG_FIFO_CTRL = 0x2E;
++constexpr uint8_t SC7A20H_REG_FIFO_SRC = 0x2F;
++constexpr uint8_t SC7A20H_CTRL5_FIFO_EN = 0x40;
++constexpr uint8_t SC7A20H_FIFO_STREAM = 0x80;
++constexpr uint8_t SC7A20H_FIFO_SRC_OVERRUN = 0x40;
++constexpr uint8_t SC7A20H_FIFO_SRC_COUNT = 0x1F;
  // The output registers are 16-bit left-justified. sc7a20h.c's fill_sample() drops
  // the low 4 bits, and its 1 mg/LSB at ±2 g (mg_lsb = 1 << fs) is the scale for
  // THAT normalized value — i.e. the LP mode 8-bit reading is left-justified, not
-@@ -220,6 +245,11 @@
+@@ -220,6 +255,11 @@
        if (!writeReg(configuredAddr, SC7A20H_REG_CTRL2, SC7A20H_CTRL2_IDLE)) return false;
        if (!writeReg(configuredAddr, SC7A20H_REG_CTRL4, SC7A20H_CTRL4_BDU_2G)) return false;
        if (!writeReg(configuredAddr, SC7A20H_REG_CTRL1, SC7A20H_CTRL1_12_5HZ_LP_XYZ)) return false;
@@ -385,7 +409,7 @@
        delay(20);  // sc7a20h_apply_config() settle before the first sample
        addr_ = configuredAddr;
        break;
-@@ -334,15 +364,51 @@
+@@ -334,15 +374,89 @@
        // CTRL0/CTRL2/CTRL4 values are rewritten for a defined state. The 20 ms
        // settle is sc7a20h_apply_config()'s.
        if (!writeReg(addr, SC7A20H_REG_CTRL0, SC7A20H_CTRL0_IDLE)) return false;
@@ -414,6 +438,8 @@
 +                  writeReg(addr, SC7A20H_REG_TIME_WINDOW, SC7A20H_TAP_WINDOW) &&
 +                  writeReg(addr, SC7A20H_REG_CLICK_CFG, SC7A20H_CLICK_CFG_ZD) &&
 +                  writeReg(addr, SC7A20H_REG_CTRL2, SC7A20H_CTRL2_HP_CLICK) &&
++                  writeReg(addr, SC7A20H_REG_CTRL5, SC7A20H_CTRL5_FIFO_EN) &&
++                  writeReg(addr, SC7A20H_REG_FIFO_CTRL, SC7A20H_FIFO_STREAM) &&
 +                  writeReg(addr, SC7A20H_REG_CTRL1, SC7A20H_CTRL1_400HZ_XYZ) &&
 +                  readRegs(addr, SC7A20H_REG_CLICK_SRC, &stale, 1);  // drop a latch from before
 +  doubleTap_ = ok;
@@ -427,7 +453,43 @@
 +  if (!was) return true;
 +  if (!begun_ || addr == 0) return false;
 +  return writeReg(addr, SC7A20H_REG_CLICK_CFG, 0) && writeReg(addr, SC7A20H_REG_CTRL2, SC7A20H_CTRL2_IDLE) &&
++         writeReg(addr, SC7A20H_REG_FIFO_CTRL, 0) && writeReg(addr, SC7A20H_REG_CTRL5, 0) &&
 +         writeReg(addr, SC7A20H_REG_CTRL1, SC7A20H_CTRL1_12_5HZ_LP_XYZ);
++}
++
++int Imu::readTapAxis(float* out, const int max, bool& overflowed) {
++  overflowed = false;
++  if (!doubleTap_ || !out || max <= 0) return 0;
++  uint8_t status = 0;
++  if (!readRegs(addr_, SC7A20H_REG_FIFO_SRC, &status, 1)) return -1;
++  overflowed = (status & SC7A20H_FIFO_SRC_OVERRUN) != 0;
++  int count = std::min<int>(status & SC7A20H_FIFO_SRC_COUNT, max);
++  int read = 0;
++  constexpr int kChunk = 20;  // 120 bytes: inside the 128-byte Wire buffer
++  uint8_t raw[kChunk * 6];
++  while (read < count) {
++    const int n = std::min(kChunk, count - read);
++    if (!readRegs(addr_, static_cast<uint8_t>(SC7A20H_REG_OUT_X_L | SC7A20H_REG_AUTO_INCREMENT), raw,
++                  static_cast<uint8_t>(n * 6)))
++      return -1;
++    for (int i = 0; i < n; ++i) {
++      const int16_t z = static_cast<int16_t>(static_cast<int16_t>(raw[i * 6 + 4] | raw[i * 6 + 5] << 8) >>
++                                             SC7A20H_OUT_SHIFT);
++      out[read + i] = z * SC7A20H_MG_PER_LSB / 1000.0f;
++    }
++    read += n;
++  }
++  return read;
++}
++
++bool Imu::readTapRegisters(uint8_t (&out)[8]) {
++  if (!begun_ || addr_ == 0) return false;
++  constexpr uint8_t regs[8] = {SC7A20H_REG_CTRL1,     SC7A20H_REG_CTRL2,     SC7A20H_REG_CTRL5,
++                               SC7A20H_REG_FIFO_CTRL, SC7A20H_REG_CLICK_CFG, SC7A20H_REG_CLICK_THS,
++                               SC7A20H_REG_TIME_LIMIT, SC7A20H_REG_TIME_WINDOW};
++  for (int i = 0; i < 8; ++i)
++    if (!readRegs(addr_, regs[i], &out[i], 1)) return false;
++  return true;
 +}
 +
 +bool Imu::takeDoubleTap(uint8_t* source) {
@@ -439,7 +501,7 @@
  }
  
  }  // namespace freeink
-@@ -354,6 +420,12 @@
+@@ -354,6 +468,17 @@
  bool Imu::read(Sample&) { return false; }
  bool Imu::sleep() { return false; }
  bool Imu::wake() { return false; }
@@ -449,6 +511,11 @@
 +  if (source) *source = 0;
 +  return false;
 +}
++int Imu::readTapAxis(float*, int, bool& overflowed) {
++  overflowed = false;
++  return 0;
++}
++bool Imu::readTapRegisters(uint8_t (&)[8]) { return false; }
  }  // namespace freeink
  
  #endif  // FREEINK_CAP_IMU
@@ -429375,38 +429442,104 @@
  
    _initMs = millis();
    _lastPollMs = millis();
-@@ -111,15 +108,32 @@
+@@ -111,15 +108,105 @@
    clearPendingEvents();
    _inTilt = false;
    _isAwake = false;
--  return true;
--}
--
--void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const bool inReader) {
--  if (!_available) {
--    return;
--  }
--
--  const bool shouldBeAwake = mode != CrossPointTiltPageTurn::TILT_OFF && inReader;
 +  _tapOn = false;
 +  _sdkImu.disableDoubleTap();  // off with the sensor; wake() comes back at the tilt rate
-+  return true;
-+}
-+
+   return true;
+ }
+ 
+-void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const bool inReader) {
 +void HalTiltSensor::syncTap(const bool wanted) {
 +  if (wanted == _tapOn) return;
 +  _tapOn = wanted ? _sdkImu.enableDoubleTap(_tapSensitivity) : !_sdkImu.disableDoubleTap();
 +  _tapNextEvent = _tapPrevEvent = false;
++  _tapBaseValid = _tapSpike = false;
++  _lastKnock = 0;
 +  if (wanted && !_tapOn) LOG_ERR("GYR", "double tap unavailable");
 +  else LOG_INF("GYR", "double tap %s (strength %u)", _tapOn ? "on" : "off", static_cast<unsigned>(_tapSensitivity));
++  uint8_t regs[8];
++  if (_tapOn && _sdkImu.readTapRegisters(regs))
++    LOG_INF("GYR", "tap regs ctrl1=%02x ctrl2=%02x ctrl5=%02x fifo=%02x cfg=%02x ths=%02x lim=%02x win=%02x", regs[0],
++            regs[1], regs[2], regs[3], regs[4], regs[5], regs[6], regs[7]);
++}
++
++void HalTiltSensor::onDoubleTap(const unsigned long now, const char* how) {
++  if (now - _touchMs < TAP_AFTER_TOUCH_MS || now - _lastTapMs < TAP_COOLDOWN_MS) {
++    LOG_INF("GYR", "double tap (%s) ignored: touch or cooldown", how);
++    return;
++  }
++  _lastTapMs = now;
++  _lastTiltMs = now;  // the knock must not also read as a tilt flick
++  _hadActivity = true;
++  (_tapMode == CrossPointBackTap::TAP_PREVIOUS ? _tapPrevEvent : _tapNextEvent) = true;
++  LOG_INF("GYR", "Back double tap (%s, %s)", how, _tapMode == CrossPointBackTap::TAP_PREVIOUS ? "previous" : "next");
++}
++
++void HalTiltSensor::pollTaps(const unsigned long now) {
++  uint8_t source = 0;
++  if (_sdkImu.takeDoubleTap(&source)) onDoubleTap(now, "chip");
++  else if (source) LOG_INF("GYR", "click src=0x%02x (not a double tap)", source);
++  float z[32];
++  bool lost = false;
++  const int n = _sdkImu.readTapAxis(z, 32, lost);
++  if (n < 0) return;
++  if (lost) {  // a stall (a long render) dropped samples: their timing is gone
++    _tapSpike = false;
++    _lastKnock = 0;
++  }
++  const float threshold = TAP_THRESHOLDS_G[_tapSensitivity < 3 ? _tapSensitivity : 1];
++  for (int i = 0; i < n; ++i) {
++    ++_tapSample;
++    if (!_tapBaseValid) {
++      _tapBase = z[i];
++      _tapBaseValid = true;
++      continue;
++    }
++    const float level = fabsf(z[i] - _tapBase);
++    if (!_tapSpike) {
++      _tapBase += (z[i] - _tapBase) * 0.02f;  // ~125 ms: follows gravity as the hand moves
++      if (level > threshold) {
++        _tapSpike = true;
++        _tapSpikeStart = _tapSample;
++        _tapSpikePeak = level;
++      }
++      continue;
++    }
++    if (level > _tapSpikePeak) _tapSpikePeak = level;
++    if (level >= threshold * 0.5f) {
++      if (_tapSample - _tapSpikeStart > TAP_MAX_SAMPLES * 3) {  // a sustained push or shake, not a knock
++        _tapSpike = false;
++        _lastKnock = 0;
++      }
++      continue;
++    }
++    _tapSpike = false;
++    const uint32_t duration = _tapSample - _tapSpikeStart;
++    LOG_INF("GYR", "knock peak=%.2fg %ums", _tapSpikePeak, static_cast<unsigned>(duration * 5 / 2));
++    if (duration > TAP_MAX_SAMPLES) {
++      _lastKnock = 0;
++      continue;
++    }
++    const uint32_t gap = _lastKnock ? _tapSpikeStart - _lastKnock : 0;
++    if (_lastKnock && gap >= TAP_GAP_MIN && gap <= TAP_GAP_MAX) {
++      _lastKnock = 0;
++      onDoubleTap(now, "knock");
++    } else {
++      _lastKnock = _tapSpikeStart;
++    }
++  }
 +}
 +
 +void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const bool inReader,
 +                           const uint8_t tapMode, const uint8_t tapSensitivity) {
-+  if (!_available) {
-+    return;
-+  }
-+
+   if (!_available) {
+     return;
+   }
+ 
+-  const bool shouldBeAwake = mode != CrossPointTiltPageTurn::TILT_OFF && inReader;
 +  const bool tapWanted = tapMode != CrossPointBackTap::TAP_OFF && inReader;
 +  if (tapSensitivity != _tapSensitivity && _tapOn) {
 +    syncTap(false);  // re-armed below with the new threshold
@@ -429417,7 +429550,7 @@
    if (_accelOnly && (mode != _accelMode || orientation != _accelOrientation || shouldBeAwake != _accelReading)) {
      _accelMode = static_cast<CrossPointTiltPageTurn::Value>(mode);
      _accelOrientation = static_cast<CrossPointOrientation::Value>(orientation);
-@@ -144,6 +158,25 @@
+@@ -144,6 +231,15 @@
    const unsigned long now = millis();
    // Stabilization: discard readings during gyro startup transient
    if ((now - _wakeMs) < WAKE_STABILIZE_MS) {
@@ -429427,23 +429560,13 @@
 +  syncTap(tapWanted);
 +  if (_tapOn && now - _lastTapPollMs >= TAP_POLL_INTERVAL_MS) {
 +    _lastTapPollMs = now;
-+    // Always read: it clears the chip's latch, so a tap during a touch is dropped, not queued.
-+    uint8_t source = 0;
-+    const bool tapped = _sdkImu.takeDoubleTap(&source);
-+    if (source && !tapped) LOG_INF("GYR", "click src=0x%02x (not a double tap)", source);
-+    if (tapped && now - _touchMs >= TAP_AFTER_TOUCH_MS && now - _lastTapMs >= TAP_COOLDOWN_MS) {
-+      _lastTapMs = now;
-+      _lastTiltMs = now;  // the knock must not also read as a tilt flick
-+      _hadActivity = true;
-+      (_tapMode == CrossPointBackTap::TAP_PREVIOUS ? _tapPrevEvent : _tapNextEvent) = true;
-+      LOG_INF("GYR", "Back double tap (%s)", _tapMode == CrossPointBackTap::TAP_PREVIOUS ? "previous" : "next");
-+    }
++    pollTaps(now);
 +  }
 +  if (mode == CrossPointTiltPageTurn::TILT_OFF) {
      return;
    }
  
-@@ -233,6 +266,18 @@
+@@ -233,6 +329,18 @@
    return val;
  }
  
@@ -429462,7 +429585,7 @@
  bool HalTiltSensor::hadActivity() {
    const bool val = _hadActivity;
    _hadActivity = false;
-@@ -242,6 +287,8 @@
+@@ -242,6 +350,8 @@
  void HalTiltSensor::clearPendingEvents() {
    _tiltForwardEvent = false;
    _tiltBackEvent = false;
@@ -429485,7 +429608,7 @@
  }
  
  class HalTiltSensor;
-@@ -47,6 +52,21 @@
+@@ -47,6 +52,34 @@
  
    mutable unsigned long _lastPollMs = 0;
  
@@ -429502,12 +429625,25 @@
 +  unsigned long _touchMs = 0;
 +  unsigned long _lastTapMs = 0;
 +  unsigned long _lastTapPollMs = 0;
++  // Software detector over the 400 Hz FIFO samples of the axis through the screen: a
++  // slow baseline removes gravity, a knock is a short spike above the threshold, and two
++  // knocks 60..450 ms apart are a double tap. Times count samples (2.5 ms each).
++  static constexpr float TAP_THRESHOLDS_G[3] = {0.50f, 0.30f, 0.18f};  // firm, medium, light
++  static constexpr uint32_t TAP_MAX_SAMPLES = 20;                      // a knock ends within 50 ms
++  static constexpr uint32_t TAP_GAP_MIN = 24, TAP_GAP_MAX = 180;      // 60..450 ms between knocks
++  float _tapBase = 0.0f;
++  bool _tapBaseValid = false;
++  bool _tapSpike = false;
++  float _tapSpikePeak = 0.0f;
++  uint32_t _tapSample = 0, _tapSpikeStart = 0, _lastKnock = 0;
 +  void syncTap(bool wanted);
++  void pollTaps(unsigned long now);
++  void onDoubleTap(unsigned long now, const char* how);
 +
    // Set when the active IMU is an accelerometer with no gyroscope, so the tilt axis is
    // differentiated from gravity instead of read as an angular rate.
    bool _accelOnly = false;
-@@ -72,8 +92,16 @@
+@@ -72,8 +105,16 @@
    // True if an IMU is present on this device
    bool isAvailable() const { return _available; }
  
@@ -429825,7 +429961,7 @@
 +    unittest.main()
 --- /dev/null
 +++ b/scripts/tests/test_imu_double_tap.py
-@@ -0,0 +1,66 @@
+@@ -0,0 +1,79 @@
 +"""SC7A20H back double tap: register setup, latch polling, sleep/wake rate, INT drive.
 +
 +Compiles the real freeink Imu.cpp against the SDK's own Wire stub (the Read Pico
@@ -429855,6 +429991,17 @@
 +  assert(r[0x3A] == (0x80 | 0x1C) && r[0x3B] == 16 && r[0x3C] == 32 && r[0x3D] == 128);
 +  assert(r[0x38] == 0x20 && r[0x20] == 0x77);  // double click on Z, 400 Hz
 +  assert(r[0x21] == 0x04);  // the detector sees high-pass data, not gravity
++  assert(r[0x24] == 0x40 && r[0x2E] == 0x80);  // FIFO in stream mode for the software detector
++  // FIFO read: count from FIFO_SRC, Z from bytes 4..5 of each sample, >> 4, 1 mg/LSB.
++  r[0x2F] = 0x40 | 3;
++  r[0x2C] = 0x00; r[0x2D] = 0x40;  // z = 0x4000 >> 4 = 1024 mg
++  float zs[8] = {};
++  bool lost = false;
++  assert(imu.readTapAxis(zs, 8, lost) == 3 && lost && zs[0] > 1.0f && zs[0] < 1.05f);  // the stub is no FIFO: later samples read other registers
++  r[0x2F] = 31;
++  assert(imu.readTapAxis(zs, 8, lost) == 8 && !lost);  // never more than asked
++  uint8_t regs[8];
++  assert(imu.readTapRegisters(regs) && regs[0] == 0x77 && regs[3] == 0x80 && regs[4] == 0x20);
 +  r[0x39] = 0x60;
 +  assert(imu.takeDoubleTap());
 +  r[0x39] = 0x50;  // a single click is not a double tap
@@ -429866,7 +430013,9 @@
 +  uint8_t src = 0;
 +  r[0x39] = 0x50;
 +  assert(!imu.takeDoubleTap(&src) && src == 0x50);  // the raw source is reported for tuning
-+  assert(imu.disableDoubleTap() && r[0x38] == 0 && r[0x20] == 0x2F && r[0x21] == 0);
++  assert(imu.disableDoubleTap() && r[0x38] == 0 && r[0x20] == 0x2F && r[0x21] == 0 && r[0x24] == 0 &&
++         r[0x2E] == 0);
++  assert(imu.readTapAxis(zs, 8, lost) == 0);  // off: no samples
 +  r[0x39] = 0x60;
 +  assert(!imu.takeDoubleTap());  // off: never reported
 +  assert(imu.wake() && r[0x20] == 0x2F);
