@@ -670,7 +670,7 @@
     {
       "path": "src/CrossPointSettings.h",
       "baseline_sha256": "c5a733423898aad83b2f932929b80d3de201da9aa0e181d82d0071a2ac576330",
-      "ported_sha256": "bc911e16ea8dfc8daddfb6f03eb7ce64d9e8254e89346da8e6c583e6a8f64b3e"
+      "ported_sha256": "a18883b0d9c4e4e9d5a95a16f206ccbc86996a6265a52c2fa4ffa3cce6ac7c38"
     },
     {
       "path": "src/HomeButtonSettings.h",
@@ -695,17 +695,17 @@
     {
       "path": "src/SdCardFontSystem.cpp",
       "baseline_sha256": "993fc2f5078336baac6d059867954ff11dbaf17fdc6452872b0a9a1f4063150e",
-      "ported_sha256": "bfe13120d3075153c173109e8ac3d782bfeafd5bc8de89d3c899cd00ebbd924e"
+      "ported_sha256": "61c1565e5beec87593daef6e3f390648da0c212bd8c19c854cf9c42f4fb9c810"
     },
     {
       "path": "src/SdCardFontSystem.h",
       "baseline_sha256": "af8139402245ebebd239697cd753b680fcbb46461019f2085d3590acf9b14f6a",
-      "ported_sha256": "50b8b5e4cae41bd50bc90f9ce557127049ec288d24c2e5f1be870823e2fb4f74"
+      "ported_sha256": "391d5880f9856bd09c8738b7fd4981d121a1625f87fed38f947fd45d86a8cb6a"
     },
     {
       "path": "src/SettingsList.h",
       "baseline_sha256": "47ca912ff8e169d64ef58e3da86d57ccd581fe11f9f3cf283d75ed471398e583",
-      "ported_sha256": "a6eb3155f07d8d870d251812330d549978e72076b1a850d23be212eb23ae4e17"
+      "ported_sha256": "4a2d0d025e67ec65a8b5a6d5bf5fe026e84fa7b51384c0e9f2afc2c14fb0ad34"
     },
     {
       "path": "src/activities/Activity.cpp",
@@ -870,7 +870,7 @@
     {
       "path": "src/activities/apps/standby/WallpaperFace.h",
       "baseline_sha256": "c50ff0d86623d105384a6a1009c372eb2e8da86347006d4113f33dade08adbae",
-      "ported_sha256": "ce1552504e2c6c749e849e0bb9f1d1e74726c151281ed0c45133b66685695e6e"
+      "ported_sha256": "efd87300f537983ca5c49b194277b3f3f86aa11df5c6496d10039ae36b8d71f0"
     },
     {
       "path": "src/activities/boot_sleep/SleepActivity.cpp",
@@ -1030,7 +1030,7 @@
     {
       "path": "src/activities/reader/ReaderUtils.h",
       "baseline_sha256": "efe1b606f9e3e1dd33a990130104a3831b94fa29cc4ae185840bd610f4595052",
-      "ported_sha256": "c508cdf45837c817e77ba2d84aeb026b2081d6b5641b43d82209b1ef8dc57c64"
+      "ported_sha256": "f4a7567af758873a3cb23b4f66a82b25b31b51b16b768b761130006eab7c9e7f"
     },
     {
       "path": "src/activities/settings/ClockSyncActivity.cpp",
@@ -1070,7 +1070,7 @@
     {
       "path": "src/activities/settings/RickyOptionListActivity.cpp",
       "baseline_sha256": "cb58d870dbd08af18396b7bd389c57a6b17511c43ffcd7224450914902057927",
-      "ported_sha256": "ec900a09d8a83ef8329d9fab07454d6b44652d87cffda74c09f7d02ff12cc584"
+      "ported_sha256": "2a70560423707ed0f0d3026ffa8ef18517487476cb0353b7614c8d7548d0fd42"
     },
     {
       "path": "src/activities/settings/SettingsActivity.cpp",
@@ -1245,7 +1245,7 @@
     {
       "path": "src/main.cpp",
       "baseline_sha256": "a9593200335b30dace971723992905ac8ce0beb05159ecb6d17d837bdb73fdc5",
-      "ported_sha256": "88193b4aeb7f6c7070a0ce090a236cbec37f64ab74262789366b5219c5246b0b"
+      "ported_sha256": "52689ed3803a9a4e660051e1e0cff589a88f57aa95d3b2abdd63fff4e8a63df3"
     },
     {
       "path": "src/network/CrossPointWebServer.cpp",
