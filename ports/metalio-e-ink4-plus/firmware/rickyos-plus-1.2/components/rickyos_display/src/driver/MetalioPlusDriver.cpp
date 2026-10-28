@@ -184,7 +184,12 @@ class MetalioPlusDriver final : public PanelDriver {
       if (!full && !paper && readerFastRefresh && state_ != OpticalState::Unknown) {
         // 快刷: the Read Pico's text turn. Strokes that stay black are not re-driven, so
         // ink can fade a little until the periodic clean (the 全刷 interval) restores it.
+        // The chosen motion staggers this table the same way it staggers the 高清 one; the
+        // reader-only finish (black restore, erase overlap) stays with 高清.
+        epd_set_native_turn(turn.style, turn.orientation, turn.from_right);
+        if (turn.has_origin) epd_set_native_ripple_origin(turn.origin_x, turn.origin_y);
         success = refreshFastTurn(MetalioEpd_Hl()) == EPD_DRAW_SUCCESS;
+        epd_set_native_turn(0, 0, false);
       } else if (!full && state_ != OpticalState::Unknown) {
         epd_set_native_turn(turn.style, turn.orientation, turn.from_right);
         if (turn.has_origin) epd_set_native_ripple_origin(turn.origin_x, turn.origin_y);
