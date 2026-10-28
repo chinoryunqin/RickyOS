@@ -330,7 +330,7 @@
     {
       "path": "lib/JpegToBmpConverter/JpegToBmpConverter.cpp",
       "baseline_sha256": "a7bcdaa84264b1f20301c5436baf3fc0d030cf16094ea6e29a14068bba7b506b",
-      "ported_sha256": "f6996e7a1256e011ff36845d250c439ed11ffe87e6e72363a253ae1137cbd126"
+      "ported_sha256": "4d39b96f2aec094e900147c9a7ac29ae67a2586154adcf038dad1ad82b772901"
     },
     {
       "path": "lib/JpegToBmpConverter/JpegToBmpConverter.h",
@@ -405,7 +405,7 @@
     {
       "path": "lib/PngToBmpConverter/PngToBmpConverter.cpp",
       "baseline_sha256": "e5b76fc6c5b3cf804430a359edc4a656c72b0f33fd98aef0d12d9004eb2d2f9f",
-      "ported_sha256": "8ce33148788bb8c5a0b97effae3567acb2dfc7d195a305b97f16bb361622c34c"
+      "ported_sha256": "90b7dd4b74ba3f348527401859f32b38fadf6ba56ce1b9a546725cb4cb31d278"
     },
     {
       "path": "lib/PngToBmpConverter/PngToBmpConverter.h",
