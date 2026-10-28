@@ -431493,16 +431493,14 @@
          SettingInfo::Toggle(StrId::STR_PWR_BTN_FOOTNOTE_BACK, &CrossPointSettings::pwrBtnFootnoteBack,
                              "pwrBtnFootnoteBack", StrId::STR_CAT_CONTROLS),
          SettingInfo::Toggle(StrId::STR_BACK_SHORT_TO_FILE_BROWSER, &CrossPointSettings::backShortToFileBrowser,
-@@ -542,7 +574,11 @@
-     // Double-click power frontlight shortcut only exists on the X4 Pro.
+@@ -543,6 +575,10 @@
      if (!BoardConfig::isX4Pro()) eraseEntry(StrId::STR_DBL_CLICK_PWR_LIGHT);
      // Tilt page turn needs the QMI8658 IMU (X3).
--    if (!halTiltSensor.isAvailable()) eraseEntry(StrId::STR_TILT_PAGE_TURN);
-+    if (!halTiltSensor.isAvailable()) {
-+      eraseEntry(StrId::STR_TILT_PAGE_TURN);
-+      eraseEntry(StrId::STR_BACK_TAP_PAGE_TURN);
-+      eraseEntry(StrId::STR_BACK_TAP_SENSITIVITY);
-+    }
+     if (!halTiltSensor.isAvailable()) eraseEntry(StrId::STR_TILT_PAGE_TURN);
++    // Back double tap still needs tuning on the device (thresholds, knocks lost while a
++    // page draws): kept out of the menu until then; a stored "off" keeps it idle.
++    eraseEntry(StrId::STR_BACK_TAP_PAGE_TURN);
++    eraseEntry(StrId::STR_BACK_TAP_SENSITIVITY);
      return v;
    }();
  
@@ -445476,7 +445474,7 @@
  #endif
  
    if (activityManager.requiresExclusiveStorageLoop()) {
-@@ -1082,16 +1187,41 @@
+@@ -1082,16 +1187,42 @@
      return;
    }
  
@@ -445486,8 +445484,9 @@
 +    if (mappedInputManager.isScreenTouchHeld(touchX, touchY) || mappedInputManager.wasScreenTouchReleased())
 +      halTiltSensor.noteTouch();
 +  }
++  // Back double tap waits for device tuning (see SettingsList): off whatever is stored.
 +  halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, activityManager.isReaderActivity(),
-+                       SETTINGS.backTapPageTurn, SETTINGS.backTapSensitivity);
++                       CrossPointBackTap::TAP_OFF, SETTINGS.backTapSensitivity);
    halClock.update();
  
    renderer.setFadingFix(SETTINGS.fadingFix);
@@ -445521,7 +445520,7 @@
  #ifdef BOARD_HAS_PSRAM
      const auto psram = HalMemory::getPsramHeap();
      LOG_INF("MEM", "PSRAM: Free: %zu bytes, Total: %zu bytes, Min Free: %zu bytes, MaxAlloc: %zu bytes",
-@@ -1208,6 +1338,10 @@
+@@ -1208,6 +1339,10 @@
      return;
    }
    const unsigned long sleepTimeoutMs = SETTINGS.getSleepTimeoutMs();
@@ -445532,7 +445531,7 @@
    if (sleepTimeoutMs > 0 && !activityManager.preventAutoSleep() && millis() - lastActivityTime >= sleepTimeoutMs) {
      LOG_DBG("SLP", "Auto-standby after %lu ms of inactivity", sleepTimeoutMs);
      STANDBY_DIAG("auto-standby after %lus idle", sleepTimeoutMs / 1000);
-@@ -1294,6 +1428,12 @@
+@@ -1294,6 +1429,12 @@
    if (mappedInputManager.homeButtonAction() == HomeButtonAction::ToggleFrontlight) {
      toggleFrontlight();
    }
@@ -445545,7 +445544,7 @@
    if (mappedInputManager.homeButtonAction() == HomeButtonAction::Refresh ||
        (SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::FORCE_REFRESH &&
         mappedInputManager.wasReleased(MappedInputManager::Button::Power))) {
-@@ -1310,12 +1450,13 @@
+@@ -1310,12 +1451,13 @@
    // flash, the AA pass re-running, and a frontlight dip under the refresh
    // load); the reader's status bar picks the charging state up on the next
    // page turn instead.

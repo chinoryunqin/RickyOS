@@ -695,7 +695,7 @@
     {
       "path": "src/SettingsList.h",
       "baseline_sha256": "47ca912ff8e169d64ef58e3da86d57ccd581fe11f9f3cf283d75ed471398e583",
-      "ported_sha256": "79a167b4e360d8654b06bb77ff37c3b73ba3d3eb79adc4d6bbf6f5bd06e1be00"
+      "ported_sha256": "a6eb3155f07d8d870d251812330d549978e72076b1a850d23be212eb23ae4e17"
     },
     {
       "path": "src/activities/Activity.cpp",
@@ -1235,7 +1235,7 @@
     {
       "path": "src/main.cpp",
       "baseline_sha256": "a9593200335b30dace971723992905ac8ce0beb05159ecb6d17d837bdb73fdc5",
-      "ported_sha256": "bf5a6ec1b09eef033caf9248795d21f2a85728ea70d7f9a1ec90fc26d34962f0"
+      "ported_sha256": "88193b4aeb7f6c7070a0ce090a236cbec37f64ab74262789366b5219c5246b0b"
     },
     {
       "path": "src/network/CrossPointWebServer.cpp",
