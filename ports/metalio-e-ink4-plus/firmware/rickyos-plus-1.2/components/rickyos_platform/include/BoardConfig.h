@@ -358,8 +358,9 @@
 #define FREEINK_CAP_TEMP_HUMIDITY (FREEINK_DEVICE_STICKY)
 #endif
 #ifndef FREEINK_CAP_IMU
-#define FREEINK_CAP_IMU \
-  (FREEINK_DEVICE_X3 || FREEINK_DEVICE_STICKY || FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_READPICO || FREEINK_DEVICE_WS397)
+#define FREEINK_CAP_IMU                                                                                         \
+  (FREEINK_DEVICE_X3 || FREEINK_DEVICE_STICKY || FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_READPICO || FREEINK_DEVICE_WS397 || \
+   FREEINK_DEVICE_METALIO_PLUS)
 #endif
 // LEDC PWM buzzer (tone beeper). The Buzzer lib drives the AudioConfig.buzzer
 // pin; on for boards that wire one (Sticky GPIO48, Murphy GPIO46, PaperS3
