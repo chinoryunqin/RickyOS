@@ -295,12 +295,12 @@
     {
       "path": "lib/I18n/translations/chinese.yaml",
       "baseline_sha256": "021ec5b9e5880155fea752af9c60ce83a259dd69131f9bd12ffe0ca59e3366bd",
-      "ported_sha256": "c7f7ec16decf2e1f5ec5b9a972ce4ce8752db48a45ac2e2a89256b9be07b7d44"
+      "ported_sha256": "34f04b4a4a7f2d844768b18c0b4d2df4ba0c2ac495be50f32cbbd087b865f226"
     },
     {
       "path": "lib/I18n/translations/english.yaml",
       "baseline_sha256": "85a4d226f1400f6a185759420c63ecff5f81eeb3722afd66c312d4aec6bcb315",
-      "ported_sha256": "af7d1d5aca01d1459d33559b23028e8942a252c069e11dc9594f4a35dec29ed3"
+      "ported_sha256": "5c2201e15709576a549db55e17f9703a93cf19caf3ab0ab81100b447fdaa5c1a"
     },
     {
       "path": "lib/JpegToBmpConverter/JpegToBmpConverter.cpp",
@@ -625,7 +625,7 @@
     {
       "path": "src/HomeButtonSettings.h",
       "baseline_sha256": "d42fe26bbf4bd1b6deb57c6848561acce4d998a44ec27418d405e3a0d4fb20a7",
-      "ported_sha256": "5cd8976eb93f8c6dca200e1ce0a413847357408356ce6f97a601a53d0d48e0f0"
+      "ported_sha256": "4f2c9ecc994be703fe6d74e00ac75e580dc69aebfbdc235ba1003246ce01ceff"
     },
     {
       "path": "src/InxItemLayout.h",
@@ -655,12 +655,12 @@
     {
       "path": "src/SettingsList.h",
       "baseline_sha256": "47ca912ff8e169d64ef58e3da86d57ccd581fe11f9f3cf283d75ed471398e583",
-      "ported_sha256": "833f3262f10c9933c7a4f317d92ad216884ede784db619cf962960547b8630ae"
+      "ported_sha256": "f97a5c660f5c0e149461be81216eea2f7226da0032101d8c3b3f76766316743b"
     },
     {
       "path": "src/activities/Activity.cpp",
       "baseline_sha256": "e7981a965a7468c6848d27c272501d1608fd23702a3eb00dfbab74c701062a73",
-      "ported_sha256": "7c6343d94b569da668167bd6023cd688f95a7988c32dcc1ccc221322c5ef82e9"
+      "ported_sha256": "ff0ab70e16d99bddbe6d6fccb4759a174288f2480bac30a9966afc3a2c59e4f6"
     },
     {
       "path": "src/activities/Activity.h",
@@ -670,7 +670,7 @@
     {
       "path": "src/activities/ActivityManager.cpp",
       "baseline_sha256": "e97372dc858385e6ac21bac9d545abadd7bcd9ca036feb7c3dc8ed8bf8cb9ada",
-      "ported_sha256": "aa34934b1fb10ec11debf60519ac9ed42934ab7b6eea8ab485b8452994fbf2eb"
+      "ported_sha256": "384268efa36b8a0f61343f53557596b00f8332f03c6d07c65ee65e437efc5431"
     },
     {
       "path": "src/activities/ActivityManager.h",
@@ -838,6 +838,11 @@
       "ported_sha256": "18c5e6647e9d29552a26ca2a2ce8d5614d64825c254c78d14abf4adc25124b7f"
     },
     {
+      "path": "src/activities/home/InxRecentActivity.cpp",
+      "baseline_sha256": "24297a6dc2464bf423c17dbb23de2bf758875fdaf027fdb8bc63689619b52d42",
+      "ported_sha256": "62a19e00583b436b4f74ecfe19b27ddfb779fbecb73bb09a5183b8c8eaaf4a9d"
+    },
+    {
       "path": "src/activities/home/InxRecentActivity.h",
       "baseline_sha256": "ec56f474c57f95ba1bc7d3fc64b3e87a67d9d3598a89b7c89d6550b6607336f1",
       "ported_sha256": "d7578f4916c036540d1429eb5b52ad99ad2b3b19c02f030b5078dc6c7d3d4e09"
@@ -875,7 +880,7 @@
     {
       "path": "src/activities/library/LibraryListActivity.cpp",
       "baseline_sha256": "390421f0e356311b536e8d9d3ec0f7805fbe83ca0ee641fec6303ce7a995c465",
-      "ported_sha256": "a335a89ac600294e1d64dced68601f1b27ae5ed1b97630c2cea2c57e51397db8"
+      "ported_sha256": "a96ef21c4ee2ceca834b03952e6055606669aa594499f14b9550b66e3aa158d1"
     },
     {
       "path": "src/activities/library/LibraryListActivity.h",
@@ -1015,7 +1020,7 @@
     {
       "path": "src/activities/settings/RickyOptionListActivity.cpp",
       "baseline_sha256": "cb58d870dbd08af18396b7bd389c57a6b17511c43ffcd7224450914902057927",
-      "ported_sha256": "018af0bd48bceccc078a304926b241dfdb4f5b1d48aea91a1cb87b68f2f76857"
+      "ported_sha256": "ec900a09d8a83ef8329d9fab07454d6b44652d87cffda74c09f7d02ff12cc584"
     },
     {
       "path": "src/activities/settings/SettingsActivity.cpp",
@@ -1190,7 +1195,7 @@
     {
       "path": "src/main.cpp",
       "baseline_sha256": "a9593200335b30dace971723992905ac8ce0beb05159ecb6d17d837bdb73fdc5",
-      "ported_sha256": "314aa0674b6ac1ae199ccfd1e7120a0821cdfd47b67717b62ab2337d4d3e1fd7"
+      "ported_sha256": "5e87f9f8f4a412ab1d76a981d46a795c1e02015ef9127a9eac535068cd8c748a"
     },
     {
       "path": "src/network/CrossPointWebServer.cpp",
@@ -1255,7 +1260,7 @@
     {
       "path": "src/util/HomeButtonInput.h",
       "baseline_sha256": "0b75e74eafdf5ba84b94c4cb179d41447e3f03430653ac7a2b6ee7ce0eec4fdc",
-      "ported_sha256": "3eba19c3e45434a2d487663db93f00781ab799d5a333e181f7610d343dbbf429"
+      "ported_sha256": "ba0ca48f9075555d0d75dff53676b7f5fa951ac30e112d5d22284b07a4c95478"
     },
     {
       "path": "src/util/PlusButtonInput.h",

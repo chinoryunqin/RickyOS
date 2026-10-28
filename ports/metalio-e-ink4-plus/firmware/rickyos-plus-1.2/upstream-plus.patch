@@ -424559,7 +424559,15 @@
  STR_RICKY_GESTURE_CONTROL: "顶部下滑打开控制中心"
  STR_RICKY_GESTURE_STATUS: "点状态栏打开控制中心"
  STR_RICKY_GESTURE_TOUCH_TURN: "触屏翻页"
-@@ -1588,8 +1641,8 @@
+@@ -1568,6 +1621,7 @@
+ STR_RICKY_KEYS_SIDE: "左右键翻页"
+ STR_RICKY_KEYS_LONG_PRESS: "长按左右键"
+ STR_RICKY_KEYS_STANDBY: "中间键待机与唤醒"
++STR_HOME_ACTION_STANDBY: "进入待机"
+ STR_RICKY_SCREEN_REPAIR: "屏幕修复"
+ STR_RICKY_SCREEN_REPAIRING: "正在修复屏幕，约 5 秒…"
+ STR_RICKY_HELP_SCREEN_REPAIR: "出现残影、两个画面叠在一起时使用"
+@@ -1588,8 +1642,8 @@
  STR_RICKY_HELP_WEBSITE: "RickyOS 官网"
  STR_RICKY_HELP_START_1: "在应用中打开文件传输，按照屏幕提示用手机或电脑传入书籍。"
  STR_RICKY_HELP_START_2: "书库中点选书籍开始阅读。全部、在读、未读可以切换筛选。文件夹在存储中浏览。"
@@ -424570,7 +424578,7 @@
  STR_RICKY_HELP_DISPLAY_2: "出现残影时可在设置中执行屏幕修复。全刷间隔越短，残影越少，但闪屏更频繁。"
  STR_RICKY_HELP_DISPLAY_3: "阅读字体在文字设置中调整；头像、昵称和首页短句在设置顶部的资料卡中修改。"
  STR_RICKY_HELP_UPDATE_1: "设置中的更新固件会检查 RickyOS 更新。更新前请保证电量充足，勿在过程中断电。"
-@@ -1600,3 +1653,130 @@
+@@ -1600,3 +1654,130 @@
  STR_RICKY_HELP_FEEDBACK_3: "通过你现有的 Ricky AI Studio 联系渠道发送反馈。本页面不会自动上传设备信息。官网入口可扫码打开。"
  STR_RICKY_MENU_AUTO_TURN: "自动翻页"
  STR_RICKY_MENU_PROGRESS: "阅读进度"
@@ -424819,7 +424827,15 @@
  STR_RICKY_GESTURE_CONTROL: "Swipe down from the top: Control center"
  STR_RICKY_GESTURE_STATUS: "Tap the status bar: Control center"
  STR_RICKY_GESTURE_TOUCH_TURN: "Touch page turns"
-@@ -1610,7 +1663,7 @@
+@@ -1590,6 +1643,7 @@
+ STR_RICKY_KEYS_SIDE: "Left and right keys"
+ STR_RICKY_KEYS_LONG_PRESS: "Hold left or right key"
+ STR_RICKY_KEYS_STANDBY: "Middle key: Standby / Wake"
++STR_HOME_ACTION_STANDBY: "Standby"
+ STR_RICKY_SCREEN_REPAIR: "Screen repair"
+ STR_RICKY_SCREEN_REPAIRING: "Repairing the screen, about 5 s…"
+ STR_RICKY_HELP_SCREEN_REPAIR: "Use when old screens show through new ones"
+@@ -1610,7 +1664,7 @@
  STR_RICKY_HELP_WEBSITE: "RickyOS website"
  STR_RICKY_HELP_START_1: "Open File Transfer in Apps and follow the on-screen instructions to send books from your phone or computer."
  STR_RICKY_HELP_START_2: "Select a book in Library to read. Filter by All, Reading or Unread. Browse folders in Storage."
@@ -424828,7 +424844,7 @@
  STR_RICKY_HELP_DISPLAY_1: "Display & Standby controls automatic sleep and power-button actions. Choose standby pictures in the Standby app."
  STR_RICKY_HELP_DISPLAY_2: "Use Screen Repair in Settings for ghosting. More frequent full refreshes reduce ghosting but flash the screen more often."
  STR_RICKY_HELP_DISPLAY_3: "Adjust reading fonts in Text Settings. Change your avatar, nickname and home phrase through the profile card at the top of Settings."
-@@ -1622,3 +1675,130 @@
+@@ -1622,3 +1676,130 @@
  STR_RICKY_HELP_FEEDBACK_3: "Send feedback through your existing Ricky AI Studio contact channel. This page does not upload device information. Scan the website QR code to visit the site."
  STR_RICKY_MENU_AUTO_TURN: "Auto page turn"
  STR_RICKY_MENU_PROGRESS: "Reading progress"
@@ -429705,12 +429721,13 @@
      }
 --- a/src/HomeButtonSettings.h
 +++ b/src/HomeButtonSettings.h
-@@ -8,7 +8,7 @@
+@@ -8,7 +8,8 @@
  inline constexpr StrId ACTION_LABELS[] = {StrId::STR_HOME_SHORTCUT, StrId::STR_IGNORE,           StrId::STR_PAGE_TURN,
                                            StrId::STR_FORCE_REFRESH, StrId::STR_FOOTNOTES,        StrId::STR_CONFIRM,
                                            StrId::STR_KOSYNC,        StrId::STR_BOOKMARK_OPTION,  StrId::STR_DICTIONARY,
 -                                          StrId::STR_READER_MENU,   StrId::STR_TOGGLE_FRONTLIGHT};
-+                                          StrId::STR_READER_MENU,   StrId::STR_TOGGLE_FRONTLIGHT, StrId::STR_BACK};
++                                          StrId::STR_READER_MENU,   StrId::STR_TOGGLE_FRONTLIGHT, StrId::STR_BACK,
++                                          StrId::STR_HOME_ACTION_STANDBY};
  static_assert(sizeof(ACTION_LABELS) / sizeof(ACTION_LABELS[0]) == static_cast<unsigned>(HomeButtonAction::Count));
  inline constexpr StrId GESTURE_LABELS[] = {StrId::STR_HOME_BUTTON_TAP, StrId::STR_HOME_BUTTON_DOUBLE_TAP,
                                             StrId::STR_HOME_BUTTON_LONG_PRESS};
@@ -430342,9 +430359,24 @@
              .withTextSettings(),
          SettingInfo::Enum(StrId::STR_PARA_ALIGNMENT, &CrossPointSettings::paragraphAlignment,
                            {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId::STR_CENTER, StrId::STR_ALIGN_RIGHT,
+@@ -552,6 +578,7 @@
+ inline bool isSettingAvailableOnBoard(const SettingInfo& setting) {
+   if (!BoardConfig::hasTouch() && setting.nameId == StrId::STR_TOUCH_READER_CONTROLS) return false;
+   if (!BoardConfig::hasHomeKey() && setting.nameId == StrId::STR_SHOW_READER_MENU) return false;
++  if (BoardConfig::hasHomeKey() && setting.valuePtr == &CrossPointSettings::standbyShortcutEnabled) return false;
+   const bool frontlightSetting = setting.valuePtr == &CrossPointSettings::frontlightBrightness ||
+                                  setting.valuePtr == &CrossPointSettings::frontlightOn ||
+                                  setting.valuePtr == &CrossPointSettings::frontlightRestoreOnWake
 --- a/src/activities/Activity.cpp
 +++ b/src/activities/Activity.cpp
-@@ -12,6 +12,12 @@
+@@ -1,5 +1,6 @@
+ #include "Activity.h"
+ 
++#include <BoardConfig.h>
+ #include <algorithm>
+ 
+ #include "ActivityManager.h"
+@@ -12,6 +13,12 @@
  void Activity::onEnter() {
  #ifdef RICKYOS_PRODUCT
    LOG_INF("ACT", "Entering activity: %s", name.c_str());
@@ -430357,6 +430389,17 @@
  #else
    LOG_DBG("ACT", "Entering activity: %s", name.c_str());
  #endif
+@@ -29,7 +36,9 @@
+ 
+   if (activityManager.getMainTabFocus() == MainTabFocus::Tabs) {
+     const char* tabBack =
+-        mainTab() == MainTab::Recent ? (SETTINGS.standbyShortcutEnabled ? tr(STR_STANDBY_TITLE) : "") : tr(STR_BACK);
++        mainTab() == MainTab::Recent
++            ? (SETTINGS.standbyShortcutEnabled && !BoardConfig::hasHomeKey() ? tr(STR_STANDBY_TITLE) : "")
++            : tr(STR_BACK);
+     return mappedInput.mapLabels(tabBack, tr(STR_SELECT), showTabDirections ? tr(STR_DIR_LEFT) : "",
+                                  showTabDirections ? tr(STR_DIR_RIGHT) : "");
+   }
 --- a/src/activities/Activity.h
 +++ b/src/activities/Activity.h
 @@ -41,6 +41,9 @@
@@ -430700,7 +430743,17 @@
  
    if (currentActivity && currentActivity->requiresExclusiveStorageLoop()) {
      currentActivity->loop();
-@@ -817,9 +1013,12 @@
+@@ -532,7 +728,8 @@
+       currentActivity && (currentActivity->isHomeActivity() ||
+                           (currentActivity->usesMainTabBar() && currentActivity->mainTab() == MainTab::Recent &&
+                            mainTabFocus == MainTabFocus::Tabs));
+-  if (!eligible || !SETTINGS.standbyShortcutEnabled) {
++  // With a Home key (Plus), Back on Home stays Back: the power key owns Standby there.
++  if (!eligible || !SETTINGS.standbyShortcutEnabled || BoardConfig::hasHomeKey()) {
+     resetHomeStandbyInput();
+     return false;
+   }
+@@ -817,9 +1014,12 @@
  
  void ActivityManager::goToReadingStats() { goToRickyReadingStats(); }
  
@@ -430714,7 +430767,7 @@
  
  void ActivityManager::goToStandby() { replaceActivityWith<StandbyActivity>(); }
  
-@@ -840,6 +1039,9 @@
+@@ -840,6 +1040,9 @@
    popActivity();  // back to the page under it; Home when Standby was the only one
  }
  void ActivityManager::goToStandbySettings() { replaceActivityWith<RickyStandbySettingsActivity>(); }
@@ -430724,7 +430777,7 @@
  
  void ActivityManager::goToWeRead() { replaceActivityWith<WeReadActivity>(); }
  
-@@ -896,7 +1098,7 @@
+@@ -896,7 +1099,7 @@
    cancelIdleRender();
    if (!currentActivity) return false;
    if (currentActivity->handleForcedRefresh()) return true;
@@ -430733,7 +430786,7 @@
    if (ricky::ds::refresh::kDirectGrayUi && currentActivity->wantsGraySettle() &&
        currentActivity->idleRenderDelayMs() == 0) {
      // Refresh the real gray UI, not its approximate 1-bit proxy.
-@@ -931,7 +1133,7 @@
+@@ -931,7 +1134,7 @@
  #endif
  
  void ActivityManager::requestUpdate(bool immediate) {
@@ -430742,7 +430795,7 @@
    renderRequestGeneration.fetch_add(1, std::memory_order_relaxed);
  #endif
  #if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
-@@ -949,7 +1151,7 @@
+@@ -949,7 +1152,7 @@
    }
  }
  void ActivityManager::requestUpdateAndWait() {
@@ -435842,6 +435895,24 @@
    char metadataPath_[UiHighDpiProfile::enabled ? 1024 : 1]{};
    bool metadataRepaint_ = false;
    unsigned long metadataRepaintAt_ = 0;
+--- a/src/activities/home/InxRecentActivity.cpp
++++ b/src/activities/home/InxRecentActivity.cpp
+@@ -1,5 +1,6 @@
+ #include "InxRecentActivity.h"
+ 
++#include <BoardConfig.h>
+ #include <Bitmap.h>
+ #include <GfxRenderer.h>
+ #include <HalStorage.h>
+@@ -697,7 +698,7 @@
+     }
+   }
+ 
+-  const auto labels = mainTabButtonLabels(SETTINGS.standbyShortcutEnabled ? tr(STR_STANDBY_TITLE) : "", tr(STR_OPEN),
++  const auto labels = mainTabButtonLabels(SETTINGS.standbyShortcutEnabled && !BoardConfig::hasHomeKey() ? tr(STR_STANDBY_TITLE) : "", tr(STR_OPEN),
+                                           books && books->size() > 1, false);
+   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+   if (usesMainTabBar() && mappedInput.hasTouch() && !mainTabsAtBottom()) {
 --- a/src/activities/home/InxRecentActivity.h
 +++ b/src/activities/home/InxRecentActivity.h
 @@ -84,7 +84,7 @@
@@ -437829,21 +437900,17 @@
    const StrId filterLabels[] = {StrId::STR_RICKY_BOOKS_ALL, StrId::STR_RICKY_BOOKS_READING,
                                  StrId::STR_RICKY_BOOKS_UNREAD};
    int widestLabel = 0;
-@@ -1100,37 +1638,83 @@
+@@ -1100,37 +1638,104 @@
      label.align = fui::TextAlign::Center;
      screen.target().text(labelRect, I18N.get(filterLabels[i]), label);
    }
-+  // Category is independent of reading status. One quiet line, not another
-+  // strip of chips; category and batch actions share the drawn/hit geometry.
++  // Category and folder are independent of reading status: two outline chips sized
++  // to their names, the same pill as the reading filters above. A chip that narrows
++  // the shelf is filled, so a filtered shelf is visible at a glance.
 +  auto categoryRow = screen.takeTop(ricky::ds::layout::kTouchMin, gap);
-+  auto categoryRect = categoryRow;
-+  categoryRect.width = (categoryRow.width - gap * 2) / 3;
-+  auto folderRect = categoryRow;
-+  folderRect.x = categoryRect.right() + gap;
-+  folderRect.width = categoryRect.width;
 +  auto batchRect = categoryRow;
-+  batchRect.x = folderRect.right() + gap;
-+  batchRect.width = categoryRow.right() - batchRect.x;
++  batchRect.width = std::max(44, categoryRow.width / 5);
++  batchRect.x = categoryRow.right() - batchRect.width;
 +  auto caption = theme.smallText;
 +  caption.color = fui::Color::DarkGray;
 +  char selectedText[64];
@@ -437852,20 +437919,45 @@
 +                             : categoryFilter == 1 ? tr(STR_LIBRARY_UNCATEGORIZED)
 +                                                   : categories.name(categoryFilter - 2);
 +  if (batchMode) {
-+    // The selection count gets the whole left of the row; folders wait for batch to end.
-+    auto selectedRect = categoryRect;
-+    selectedRect.width = batchRect.x - gap - categoryRect.x;
++    // In batch mode this line reads "N selected"; tapping it cancels the batch.
++    auto selectedRect = categoryRow;
++    selectedRect.width = batchRect.x - gap - categoryRow.x;
 +    screen.target().text(selectedRect, selectedText, caption);
++    screen.frame().hit(selectedRect, ACTION_ADD, ManageCategories, fui::InputTouch);
 +  } else {
-+    screen.target().text(categoryRect, categoryName, caption);
-+    auto folderCaption = caption;
-+    folderCaption.align = fui::TextAlign::Center;
-+    screen.target().text(folderRect, folderFilter ? folderLabel.c_str() : tr(STR_LIBRARY_ALL_FOLDERS), folderCaption);
-+    screen.frame().hit(folderRect, ACTION_ADD, ManageFolders, fui::InputTouch);
++    // The chip names the folder itself; the picker shows the full path.
++    const size_t slash = folderLabel.rfind('/');
++    const std::string folderName =
++        folderFilter == 0 ? std::string(tr(STR_LIBRARY_ALL_FOLDERS))
++                          : (slash == std::string::npos ? folderLabel : folderLabel.substr(slash + 1));
++    const int chipsRight = batchRect.x - gap;
++    int x = categoryRow.x;
++    const auto chip = [&](const char* text, const bool active, const int maxWidth, const int action) {
++      auto label = theme.smallText;
++      label.bold = false;
++      label.align = fui::TextAlign::Center;
++      label.color = active ? fui::Color::White : fui::Color::Black;
++      const int natural = screen.target().measureText(label.font, text, label).width + gap * 3;
++      auto hit = categoryRow;
++      hit.x = x;
++      hit.width = std::max(44, std::min(natural, maxWidth));
++      auto pill = hit;
++      pill.height = ricky::ds::layout::kTabPillHeight;
++      pill.y += (categoryRow.height - pill.height) / 2;
++      if (active)
++        screen.target().fill(pill, fui::Paint::solid(fui::Color::Black), pill.height / 2);
++      else
++        screen.target().stroke(pill, fui::Paint::solid(fui::Color::LightGray), ricky::ds::stroke::kHairline,
++                               pill.height / 2);
++      screen.target().text(pill, text, label);
++      screen.frame().hit(hit, ACTION_ADD, action, fui::InputTouch);
++      x = hit.right() + gap;
++    };
++    chip(categoryName, categoryFilter != 0, (chipsRight - categoryRow.x - gap) / 2, ManageCategories);
++    chip(folderName.c_str(), folderFilter != 0, chipsRight - x, ManageFolders);
 +  }
 +  caption.align = fui::TextAlign::Right;
 +  screen.target().text(batchRect, batchMode ? tr(STR_LIBRARY_ASSIGN_CATEGORY) : tr(STR_LIBRARY_BATCH), caption);
-+  screen.frame().hit(categoryRect, ACTION_ADD, ManageCategories, fui::InputTouch);
 +  screen.frame().hit(batchRect, ACTION_ADD, BatchSelect, fui::InputTouch);
    if (count == 0) {
 -    screen.centeredText(
@@ -437932,7 +438024,7 @@
      for (int i = 0; i < visible; ++i) {
        rowTextFor(start + i, shelfTitles[i], shelfAuthors[i]);
        RickyPageUi::stripBookExtension(shelfTitles[i]);
-@@ -1138,7 +1722,7 @@
+@@ -1138,7 +1743,7 @@
        const auto& path = shelfPaths[i];
        // Reading state only: "EPUB · 已读 12%" overflowed a three-column card, and the
        // format already shows on generated covers.
@@ -437941,7 +438033,7 @@
        if (stats && stats->lastProgressPercent >= 100)
          snprintf(shelfDetails[i].data(), shelfDetails[i].size(), "%s", tr(STR_RICKY_BOOK_FINISHED));
        else if (stats)
-@@ -1148,33 +1732,67 @@
+@@ -1148,33 +1753,67 @@
          snprintf(shelfDetails[i].data(), shelfDetails[i].size(), "%s", tr(STR_RICKY_BOOK_UNREAD));
        shelfCovers[i].clear();
      }
@@ -438027,7 +438119,7 @@
      if (picked) RickyDesignUi::fill(renderer, cell, ricky::ds::gray::kInk, ricky::ds::radius::kControl);
      const int coverWidth = coverHeight * 2 / 3;
      const fui::Rect rect{static_cast<int16_t>(cell.x + (cell.width - coverWidth) / 2),
-@@ -1196,9 +1814,14 @@
+@@ -1196,9 +1835,14 @@
                                       });
        if (painted) screen.target().stroke(rect, fui::Paint::solid(fui::Color::LightGray), ricky::ds::stroke::kHairline);
      }
@@ -438043,7 +438135,7 @@
        RickyDesignUi::cover(renderer, rect, shelfTitles[slot].c_str(), format);
      }
      const fui::Rect titleRect{static_cast<int16_t>(cell.x + cardSideInset),
-@@ -1207,22 +1830,28 @@
+@@ -1207,22 +1851,28 @@
                                static_cast<int16_t>(cardTextLineHeight)};
      const fui::Rect detailRect{titleRect.x, static_cast<int16_t>(titleRect.bottom() + cardTextGap), titleRect.width,
                                 titleRect.height};
@@ -438081,7 +438173,7 @@
  }
  
  // "12/69 books" at the bottom right: which book is selected, out of how many.
-@@ -1274,7 +1903,9 @@
+@@ -1274,7 +1924,9 @@
  void LibraryListActivity::render(RenderLock&& lock) {
    if (optionPopup.isActive()) renderPopupUnderlay();
    if (optionPopup.processRender(renderer, mappedInput)) return;
@@ -441255,7 +441347,14 @@
    bool handleCustomInput() override;
 --- a/src/activities/settings/RickyOptionListActivity.cpp
 +++ b/src/activities/settings/RickyOptionListActivity.cpp
-@@ -34,6 +34,7 @@
+@@ -1,5 +1,6 @@
+ #include "RickyOptionListActivity.h"
+ 
++#include <BoardConfig.h>
+ #include <GfxRenderer.h>
+ 
+ #include <algorithm>
+@@ -34,6 +35,7 @@
    static const RickyOptionRow rows[] = {
        {StrId::STR_RICKY_GESTURE_BACK, &SETTINGS.rickyGestureBack, nullptr, 0, StrId::STR_RICKY_GESTURE_GLOBAL},
        {StrId::STR_RICKY_GESTURE_HOME, &SETTINGS.rickyGestureHome},
@@ -441263,7 +441362,7 @@
        {StrId::STR_RICKY_GESTURE_CONTROL, &SETTINGS.rickyGestureControl},
        {StrId::STR_RICKY_GESTURE_STATUS, &SETTINGS.rickyGestureStatus},
        {StrId::STR_RICKY_GESTURE_TOUCH_TURN, &SETTINGS.touchReaderControls, nullptr, 0,
-@@ -50,10 +51,16 @@
+@@ -50,12 +52,23 @@
  const RickyOptionList& keys() {
    // The strip under the screen is left / middle / right; the middle key is Back.
    static const RickyOptionRow rows[] = {
@@ -441279,7 +441378,14 @@
 +#endif
    };
    static const RickyOptionList list{StrId::STR_RICKY_KEYS, rows, static_cast<int>(std::size(rows))};
++#if !((defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4))
++  // A Home key device (Plus) has no Back-to-Standby shortcut on Home: drop its row.
++  static const RickyOptionList homeKeyList{StrId::STR_RICKY_KEYS, rows + 1, static_cast<int>(std::size(rows)) - 1};
++  if (BoardConfig::hasHomeKey()) return homeKeyList;
++#endif
    return list;
+ }
+ }  // namespace RickyOptionLists
 --- a/src/activities/settings/SettingsActivity.cpp
 +++ b/src/activities/settings/SettingsActivity.cpp
 @@ -32,7 +32,6 @@
@@ -444089,7 +444195,15 @@
    if (sleepTimeoutMs > 0 && !activityManager.preventAutoSleep() && millis() - lastActivityTime >= sleepTimeoutMs) {
      LOG_DBG("SLP", "Auto-standby after %lu ms of inactivity", sleepTimeoutMs);
      STANDBY_DIAG("auto-standby after %lus idle", sleepTimeoutMs / 1000);
-@@ -1310,12 +1438,13 @@
+@@ -1294,6 +1422,7 @@
+   if (mappedInputManager.homeButtonAction() == HomeButtonAction::ToggleFrontlight) {
+     toggleFrontlight();
+   }
++  if (mappedInputManager.homeButtonAction() == HomeButtonAction::Standby) activityManager.openStandby();
+   if (mappedInputManager.homeButtonAction() == HomeButtonAction::Refresh ||
+       (SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::FORCE_REFRESH &&
+        mappedInputManager.wasReleased(MappedInputManager::Button::Power))) {
+@@ -1310,12 +1439,13 @@
    // flash, the AA pass re-running, and a frontlight dip under the refresh
    // load); the reader's status bar picks the charging state up on the next
    // page turn instead.
@@ -444807,11 +444921,12 @@
    if (!newFirmware && !library) return;
 --- a/src/util/HomeButtonInput.h
 +++ b/src/util/HomeButtonInput.h
-@@ -15,6 +15,7 @@
+@@ -15,6 +15,8 @@
    Dictionary,
    ReaderMenu,
    ToggleFrontlight,
 +  Back,
++  Standby,
    Count
  };
  
