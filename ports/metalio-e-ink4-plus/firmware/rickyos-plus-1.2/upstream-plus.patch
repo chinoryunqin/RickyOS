@@ -421445,15 +421445,18 @@
  #include <Utf8.h>
  #include <ZipFile.h>
  
-@@ -347,6 +348,7 @@
+@@ -347,6 +348,10 @@
      }
    }
  
-+  const bool txtParts = !isZip && spineCount > 1 && Txt::usesParts(epubPath) && Txt::partCount(cachePath) == spineCount;
++  HalFile partsFile;
++  const bool txtParts = !isZip && spineCount > 1 && Txt::usesParts(epubPath) &&
++                        Txt::partCount(cachePath) == spineCount &&
++                        Storage.openFileForRead("BMC", cachePath + "/txt-parts.bin", partsFile);
    uint32_t cumSize = 0;
    spineIn.seek(0);
    int lastSpineTocIndex = -1;
-@@ -367,6 +369,15 @@
+@@ -367,6 +372,15 @@
      lastSpineTocIndex = spineEntry.tocIndex;
  
      size_t itemSize = rawSize;
@@ -421461,7 +421464,7 @@
 +      // A split TXT: each part weighs its source bytes, so progress follows the text.
 +      Txt::Part part, next;
 +      const bool last = i + 1 == spineCount;
-+      if (Txt::readPart(cachePath, i, part) && (last || Txt::readPart(cachePath, i + 1, next))) {
++      if (Txt::readPart(partsFile, i, part) && (last || Txt::readPart(partsFile, i + 1, next))) {
 +        const size_t end = last ? rawSize : next.sourceStart;
 +        itemSize = end > part.sourceStart ? end - part.sourceStart : 0;
 +      }
@@ -426765,7 +426768,7 @@
  }
 --- a/lib/Txt/Txt.h
 +++ b/lib/Txt/Txt.h
-@@ -24,7 +24,26 @@
+@@ -24,7 +24,27 @@
    static bool isTxtOrMd(std::string_view path);
    static bool validateCache(const std::string& filepath, const std::string& cachePath, size_t cachedSize);
    static void invalidateCache(const std::string& cachePath);
@@ -426788,12 +426791,13 @@
 +                              txt_encoding::ReadError* error = nullptr);
 +  static int partCount(const std::string& cachePath);
 +  static bool readPart(const std::string& cachePath, int index, Part& out);
++  static bool readPart(HalFile& parts, int index, Part& out);  // an open txt-parts.bin
 +  // The part holding a global visible offset (last part whose base is <= offset), or -1.
 +  static int partForVisibleOffset(const std::string& cachePath, uint32_t visibleOffset);
    static int tocIndexForPosition(const std::string& filepath, const std::string& cachePath, uint32_t visibleOffset,
                                   uint8_t* chapterProgress = nullptr);
    static bool resolveChapterPosition(const std::string& filepath, const std::string& cachePath, std::string_view anchor,
-@@ -61,7 +80,7 @@
+@@ -61,7 +81,7 @@
    // count does not affect steady-state RAM usage.
    [[nodiscard]] bool openChapterIndex(HalFile& file, txt_encoding::Encoding& encoding, uint32_t& count) const;
    [[nodiscard]] bool buildChapterIndex(txt_encoding::Encoding& encoding, uint8_t* scratch, size_t scratchSize,
@@ -426835,17 +426839,18 @@
  }
  
  struct ConversionIndex {
-@@ -52,6 +62,203 @@
+@@ -52,6 +62,209 @@
  };
  }  // namespace
  
 +namespace {
 +constexpr char kPartsMagic[4] = {'T', 'X', 'P', '1'};
 +// Group short chapters until a part holds this much HTML; split a long chapter (or a book
-+// without chapters) at the first line break past the larger size. ~16-64 KB of HTML is a
-+// few dozen pages: one part lays out in about a second on the reader.
-+constexpr size_t kPartChapterBytes = 16 * 1024;
-+constexpr size_t kPartLineBytes = 64 * 1024;
++// without chapters) at the first line break past the larger size. A part is a few dozen
++// pages and lays out in about two seconds; every part is a file, and creating 800 of them
++// for one 20 MB novel took most of its first open, so parts are not made smaller.
++constexpr size_t kPartChapterBytes = 48 * 1024;
++constexpr size_t kPartLineBytes = 96 * 1024;
 +
 +// The conversion's output: one HTML file per part, and the parts index beside them.
 +struct PartWriter final : Print {
@@ -426920,7 +426925,11 @@
 +
 +bool Txt::readPart(const std::string& cachePath, const int index, Part& out) {
 +  HalFile file;
-+  if (index < 0 || !Storage.openFileForRead("TXT", cachePath + "/txt-parts.bin", file)) return false;
++  return index >= 0 && Storage.openFileForRead("TXT", cachePath + "/txt-parts.bin", file) && readPart(file, index, out);
++}
++
++bool Txt::readPart(HalFile& file, const int index, Part& out) {
++  if (index < 0) return false;
 +  const size_t at = 8 + static_cast<size_t>(index) * sizeof(Part);
 +  return at + sizeof(Part) <= file.size() && file.seek(at) &&
 +         file.read(reinterpret_cast<uint8_t*>(&out), sizeof(Part)) == sizeof(Part);
@@ -426928,13 +426937,14 @@
 +
 +int Txt::partForVisibleOffset(const std::string& cachePath, const uint32_t visibleOffset) {
 +  const int count = partCount(cachePath);
-+  if (count <= 0) return -1;
++  HalFile file;
++  if (count <= 0 || !Storage.openFileForRead("TXT", cachePath + "/txt-parts.bin", file)) return -1;
 +  // Bases rise with the parts: binary search, one 8-byte read per step.
 +  int low = 0, high = count - 1;
 +  while (low < high) {
 +    const int mid = (low + high + 1) / 2;
 +    Part part;
-+    if (!readPart(cachePath, mid, part)) return -1;
++    if (!readPart(file, mid, part)) return -1;
 +    if (part.visibleBase <= visibleOffset)
 +      low = mid;
 +    else
@@ -427039,7 +427049,7 @@
  bool Txt::isTxtOrMd(std::string_view path) {
    return FsHelpers::hasTxtExtension(path) || FsHelpers::hasMarkdownExtension(path);
  }
-@@ -132,14 +339,17 @@
+@@ -132,14 +345,17 @@
    return success;
  }
  
@@ -427061,7 +427071,7 @@
    const std::string mapPath = cachePath + "/txt-map.bin";
    const std::string temporary = mapPath + ".tmp";
    bool converted = false;
-@@ -153,6 +363,7 @@
+@@ -153,6 +369,7 @@
      if (!index.advance() || mapping.write(&index.header, sizeof(index.header)) != sizeof(index.header)) return false;
      TxtToHtml::Options options;
      options.encoding = encoding;
@@ -427069,7 +427079,7 @@
      options.context = &index;
      options.chapterOffset = [](void* context) { return static_cast<ConversionIndex*>(context)->chapter.sourceOffset; };
      options.nextChapter = [](void* context) { return static_cast<ConversionIndex*>(context)->advance(); };
-@@ -173,6 +384,7 @@
+@@ -173,6 +390,7 @@
          filepath, &source,
          [](void* ctx, uint8_t* buf, size_t size) { return static_cast<HalFile*>(ctx)->read(buf, size); }, out, options);
      if (converted) {
@@ -427077,7 +427087,7 @@
        converted = mapping.seek(0) && mapping.write(&index.header, sizeof(index.header)) == sizeof(index.header);
        mapping.flush();
      }
-@@ -181,6 +393,7 @@
+@@ -181,6 +399,7 @@
      Storage.remove(temporary.c_str());
      return false;
    }
@@ -427085,7 +427095,7 @@
    return true;
  }
  
-@@ -199,6 +412,11 @@
+@@ -199,6 +418,11 @@
          return true;
      }
      if (attempt) break;
@@ -427097,7 +427107,7 @@
      if (!Storage.ensureDirectoryExists((cachePath + "/html").c_str())) break;
      const std::string temporary = htmlPath + ".tmp";
      bool converted = false;
-@@ -254,6 +472,7 @@
+@@ -254,6 +478,7 @@
  }
  
  void Txt::invalidateCache(const std::string& cachePath) {
@@ -427105,7 +427115,7 @@
    Storage.removeDir((cachePath + "/html").c_str());
    Storage.removeDir((cachePath + "/sections").c_str());
  }
-@@ -264,10 +483,12 @@
+@@ -264,10 +489,12 @@
    bool valid = Storage.readFileToBuffer(marker.c_str(), metadataVersion, sizeof(metadataVersion)) == 1 &&
                 metadataVersion[0] ==
  #ifdef RICKYOS_PRODUCT
@@ -427120,7 +427130,7 @@
  
    // 1. If html/0.html exists, check its embedded version comment
    const std::string htmlPath = cachePath + "/html/0.html";
-@@ -320,7 +541,7 @@
+@@ -320,7 +547,7 @@
    if (FsHelpers::hasMarkdownExtension(filepath)) {
      char version[4] = {};
      if (Storage.readFileToBuffer((cachePath + "/txt-cache-version").c_str(), version, sizeof(version)) == 1 &&
@@ -427129,7 +427139,7 @@
        Txt txt(filepath, "/.crosspoint");
        if (!txt.load() || txt.getFileSize() >= UINT32_MAX ||
            txt_progress::preserveReflowSource(cachePath.c_str(), txt.getFileSize()) ==
-@@ -338,6 +559,16 @@
+@@ -338,6 +565,16 @@
      invalidateCache(cachePath);
    }
  
@@ -427146,7 +427156,7 @@
    if (!bookMetadataCache->beginWrite()) {
      LOG_ERR("TXT", "Metadata begin failed");
      return false;
-@@ -348,7 +579,11 @@
+@@ -348,7 +585,11 @@
      return false;
    }
  
@@ -427159,7 +427169,7 @@
  
    if (!bookMetadataCache->endContentOpfPass()) {
      LOG_ERR("TXT", "End content.opf failed");
-@@ -361,7 +596,7 @@
+@@ -361,7 +602,7 @@
    }
  
    const std::string title = FsHelpers::getFileNameWithoutExtension(filepath);
@@ -427168,32 +427178,35 @@
    Txt txt(filepath, "/.crosspoint");
    HalFile chapters;
    txt_encoding::Encoding encoding = txt_encoding::Encoding::Unknown;
-@@ -370,6 +605,10 @@
+@@ -370,6 +611,13 @@
  #ifdef RICKYOS_PRODUCT
    const bool markdown = FsHelpers::hasMarkdownExtension(filepath);
  #endif
 +  // Chapters and parts both run in source order: walk the parts alongside the chapters.
 +  int chapterPart = 0;
 +  Part nextPart;
-+  bool haveNext = split && chapterPart + 1 < parts && readPart(cachePath, chapterPart + 1, nextPart);
++  HalFile partsFile;
++  bool haveNext = split && chapterPart + 1 < parts &&
++                  Storage.openFileForRead("TXT", cachePath + "/txt-parts.bin", partsFile) &&
++                  readPart(partsFile, chapterPart + 1, nextPart);
    for (uint32_t chapterIndex = 0; chapterIndex < count; ++chapterIndex) {
      txt_chapter_index::Record chapter;
      if (!txt.readChapter(chapters, count, chapterIndex, chapter)) return false;
-@@ -383,7 +622,12 @@
+@@ -383,7 +631,12 @@
        MarkdownFormatter::plainText(title, chapter.title);
      }
  #endif
 -    bookMetadataCache->createTocEntry(chapter.title, "content.html", anchor, level);
 +    while (haveNext && nextPart.sourceStart <= chapter.sourceOffset) {
 +      ++chapterPart;
-+      haveNext = chapterPart + 1 < parts && readPart(cachePath, chapterPart + 1, nextPart);
++      haveNext = chapterPart + 1 < parts && readPart(partsFile, chapterPart + 1, nextPart);
 +    }
 +    bookMetadataCache->createTocEntry(chapter.title, split ? partHref(chapterPart) : std::string("content.html"),
 +                                      anchor, level);
    }
  
    if (!bookMetadataCache->endTocPass()) {
-@@ -420,9 +664,9 @@
+@@ -420,9 +673,9 @@
  
    if (!Storage.writeFile((cachePath + "/txt-cache-version").c_str(),
  #ifdef RICKYOS_PRODUCT

@@ -175,7 +175,7 @@
     {
       "path": "lib/Epub/Epub/BookMetadataCache.cpp",
       "baseline_sha256": "0c565fb939b22ccb6817425b4e1a567e1836cfb6bb50c6d0eb659773e387163b",
-      "ported_sha256": "af9265b1156c100d306e39ec9ad2229969c74dd8901d00d6c7a829039986f0f8"
+      "ported_sha256": "afa44e9a9ef65a47697a24f315d105a2f0f49798176a30e3bfa9a746ecc51d87"
     },
     {
       "path": "lib/Epub/Epub/Page.cpp",
@@ -405,12 +405,12 @@
     {
       "path": "lib/Txt/Txt.h",
       "baseline_sha256": "768fddee05bb7b2574ef3ab9e9e2fab94333630a19902acdeadcc1e2d561fad0",
-      "ported_sha256": "ab01e9ae062f9303c2a2f3141cc909a5c8cd7eff99c27981e21c33ef2ae3275f"
+      "ported_sha256": "6ff2d8850886daaa5a963b7915a2c01ff5900102826f969ecded272b98003924"
     },
     {
       "path": "lib/Txt/TxtCache.cpp",
       "baseline_sha256": "00c77a8ce05d4da6e94b23ae55530a5085809a669e30a52f6c2437c5d6813ade",
-      "ported_sha256": "ff57619cbe16fd1c8c7070abe0ac19d12bb175daa914c3cc451dcc836e91097e"
+      "ported_sha256": "798345b1d7d81067495e9fbd09fc1c19d9d4986540b5ccf4531186f78387c035"
     },
     {
       "path": "lib/Txt/TxtEncoding.cpp",
