@@ -170,12 +170,12 @@
     {
       "path": "lib/Epub/Epub.cpp",
       "baseline_sha256": "a104a180f95744bcdd6ef4fede82fe33cc20e539cd8fb9e075f0f52002b6e95e",
-      "ported_sha256": "dddff1e6f1c27783f6d61a4d27db55d5ee8ae7859d36357f0456f5f36dc62916"
+      "ported_sha256": "c99b06d1d4201f73b64528c85602496a7e0923951889dde56bfd01cc5d2878a4"
     },
     {
       "path": "lib/Epub/Epub.h",
       "baseline_sha256": "0f47da662224f5dac3f3a37aae7bc0d3574abb1aad1424f2293bf30247a89671",
-      "ported_sha256": "e6065dfa2d8fa3f7f3d9c027f721e6320428d59bbd4bca77a2d0e14f593ab691"
+      "ported_sha256": "4f557762bd9ce5563ba0029e55bd964634f48d47697cdb226ad21d2c3a7d20b3"
     },
     {
       "path": "lib/Epub/Epub/BookFonts.cpp",
