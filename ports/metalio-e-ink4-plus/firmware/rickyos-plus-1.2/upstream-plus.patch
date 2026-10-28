@@ -440242,11 +440242,10 @@
    // Drawn into the retained 16-level frame: the screen keeps its grays and only the
    // popup's area is driven, instead of a B/W refresh of the whole screen.
    if (renderer.beginRetainedGrayscale16()) {
-@@ -449,6 +477,17 @@
-     return false;
+@@ -450,6 +478,17 @@
    }
    epub = std::move(loadedEpub);
-+
+ 
 +  bookFonts_.reset();
 +  if (SETTINGS.embeddedStyle) {
 +    bookFonts_ = makeUniqueNoThrow<BookFontSet>(renderer);
@@ -440257,10 +440256,32 @@
 +      LOG_ERR("BOOKFONT", "Cannot allocate book font set; using reader font");
 +    }
 +  }
- 
++
    ImageBlock::clearSessionRenderFailures();
    ImageBlock::setExtractor(epub.get(), [](void* ctx, const char* src, const char* dest, CancelCheck cancellation) {
-@@ -648,6 +687,16 @@
+     return static_cast<Epub*>(ctx)->extractItemToFile(src, dest, cancellation);
+@@ -533,6 +572,20 @@
+         legacyProgressPending = true;
+         loadProtectionError = "txt progress migration failed";
+         return false;
++    }
++  }
++
++  // A split TXT: the saved offset names the part (its parts may differ from when it was
++  // saved); without one, an out-of-range part starts the book rather than its end.
++  if (Txt::usesParts(bookPath)) {
++    const int part = cachedVisibleTextOffset ? epub->txtPartForVisibleOffset(*cachedVisibleTextOffset) : -1;
++    if (part >= 0) {
++      if (part != currentSpineIndex) nextPageNumber = 0;
++      currentSpineIndex = cachedSpineIndex = part;
++    } else if (currentSpineIndex >= epub->getSpineItemsCount()) {
++      currentSpineIndex = cachedSpineIndex = 0;
++      nextPageNumber = 0;
++      cachedChapterTotalPageCount = 0;
+     }
+   }
+ 
+@@ -648,6 +701,16 @@
    auto spec = vertical ? SETTINGS.readerRenderSpec(height, width) : SETTINGS.readerRenderSpec(width, height);
    spec.collectTouchLinks = mappedInput.hasTouch() && !vertical;
    if (stylesDisabledForSession_) spec.embeddedStyle = false;
@@ -440277,7 +440298,7 @@
    if (vertical) {
      spec.verticalText = true;
      // Columns keep one pitch so the 界行 stay on their grid; images have no column
-@@ -883,7 +932,7 @@
+@@ -883,7 +946,7 @@
      return;
    }
  
@@ -440286,7 +440307,7 @@
    constexpr unsigned long IDLE_PREWARM_DEBOUNCE_MS = 400;
    auto* fcm = renderer.getFontCacheManager();
    {
-@@ -1127,9 +1176,10 @@
+@@ -1127,9 +1190,10 @@
        pendingManualTurn = 0;
        return;
      }
@@ -440299,7 +440320,7 @@
      notePageTurn(forward, succeeded);
      requestUpdate();
      return;
-@@ -1174,17 +1224,26 @@
+@@ -1174,17 +1238,26 @@
      return;
    }
  
@@ -440330,7 +440351,18 @@
      notePageTurn(true, succeeded);
    }
    requestUpdate();
-@@ -1562,6 +1621,8 @@
+@@ -1407,6 +1480,10 @@
+           uint16_t backupSpine = currentSpineIndex;
+           uint16_t backupPage = section->currentPage;
+           uint16_t backupPageCount = section->pageCount;
++          // Keep the exact position: the save below runs after the section is gone, and a
++          // split TXT may come back with different parts, so its page number alone is lost.
++          rememberCurrentContentOffset();
++          cachedSpineIndex = currentSpineIndex;
+           section.reset();
+           epub->clearCache();
+           epub->setupCacheDir();
+@@ -1562,6 +1639,8 @@
    }
  
    RenderLock lock(*this);
@@ -440339,7 +440371,7 @@
    if (section) {
      rememberCurrentContentOffset();
      cachedSpineIndex = currentSpineIndex;
-@@ -1605,15 +1666,28 @@
+@@ -1605,15 +1684,28 @@
  }
  
  bool EpubReaderActivity::pageTurn(bool isForwardTurn) {
@@ -440368,7 +440400,7 @@
        lastPageTurnTime = millis();
        return true;
      } else if (currentSpineIndex + 1 < epub->getSpineItemsCount()) {
-@@ -1631,6 +1705,7 @@
+@@ -1631,6 +1723,7 @@
    } else {
      if (section->currentPage > 0) {
        section->currentPage--;
@@ -440376,7 +440408,7 @@
        lastPageTurnTime = millis();
        return true;
      } else if (currentSpineIndex > 0) {
-@@ -1647,6 +1722,7 @@
+@@ -1647,6 +1740,7 @@
  }
  
  bool EpubReaderActivity::skipPages(int amount) {
@@ -440384,7 +440416,7 @@
    if (!section) return false;
    READING_STATS.noteActivity();
    if (amount > 0) {
-@@ -1680,6 +1756,12 @@
+@@ -1680,6 +1774,12 @@
    bool offerSync = false;
    if (perr == "txt progress migration failed") {
      msg = StrId::STR_TXT_PROGRESS_MIGRATION_FAILED;
@@ -440397,7 +440429,7 @@
    } else if (perr == "access expired") {
      msg = StrId::STR_LOAN_EXPIRED;
    } else if (perr == "loan date unverified") {
-@@ -1778,14 +1860,32 @@
+@@ -1778,14 +1878,32 @@
  readingMode::Margins EpubReaderActivity::textMargins() const {
    readingMode::Margins viewable;
    renderer.getOrientedViewableTRBL(&viewable.top, &viewable.right, &viewable.bottom, &viewable.left);
@@ -440437,7 +440469,7 @@
    int bottomReserve = 0;
    if (readingMode::showsFooter(mode)) {
      const uint8_t statusBarHeight = UITheme::getInstance().getStatusBarHeight();
-@@ -1794,13 +1894,22 @@
+@@ -1794,13 +1912,22 @@
          (statusBarHeight == 0 || statusBarHeight == UITheme::getInstance().getProgressBarHeight())) {
        bottomReserve += UITheme::getInstance().getMetrics().statusBarVerticalMargin;
      }
@@ -440467,7 +440499,7 @@
    const readingMode::Margins margins = readingMode::textMargins(mode, base, viewable, RickyReaderDog::kEdgeRow);
    if (!readingMode::setsVertically(mode)) return margins;
    return readingMode::fitColumns(
-@@ -1880,6 +1989,21 @@
+@@ -1880,6 +2007,21 @@
  
    const ReaderRenderSpec renderSpec = effectiveRenderSpec(viewportWidth, viewportHeight);
  
@@ -440489,7 +440521,7 @@
    if (!section) {
      const auto filepath = epub->getSpineItem(currentSpineIndex).href;
      LOG_DBG("ERS", "Loading file: %s, index: %d", filepath.c_str(), currentSpineIndex);
-@@ -1891,7 +2015,7 @@
+@@ -1891,7 +2033,7 @@
        return;
      }
  
@@ -440498,7 +440530,16 @@
      ++sectionGeneration_;
  #endif
      const bool cacheLoaded = section->loadSectionFile(renderSpec);
-@@ -2307,14 +2431,23 @@
+@@ -2284,6 +2426,8 @@
+     offset = (currentPage == section->currentPage && currentPageVisibleOffset.has_value())
+                  ? currentPageVisibleOffset
+                  : section->getVisibleTextOffsetForPage(static_cast<uint16_t>(currentPage));
++  } else if (!section && spineIndex == currentSpineIndex && cachedSpineIndex == currentSpineIndex) {
++    offset = cachedVisibleTextOffset;  // remembered before the section went away
+   }
+   uint8_t chapterProgress = getStatsChapterProgressPercent(currentPage, pageCount);
+   const std::string chapterTitle = getStatsChapterTitle(*epub, spineIndex, offset, &chapterProgress);
+@@ -2307,14 +2451,23 @@
    }
  }
  
@@ -440525,7 +440566,7 @@
  bool EpubReaderActivity::pageCacheEligible() const {
    // No !section->isBuilding() here, deliberately. The page cache renders ONE page --
    // the current one or the next -- and Section::loadPage() is written to serve exactly
-@@ -2328,7 +2461,13 @@
+@@ -2328,7 +2481,13 @@
    // engages at all -- every turn is a full render instead of the cached one.
    return !pageCacheFailed_ && section && renderer.hasFrameBuffer() && !activityManager.isSwitchPending() &&
           overlay == Overlay::None && fontPromptState == FontPromptState::Idle && !renderer.isInverted() &&
@@ -440540,7 +440581,7 @@
  }
  
  ReaderPageCacheKey EpubReaderActivity::pageCacheKey(const int page, const int top, const int right, const int bottom,
-@@ -2369,8 +2508,34 @@
+@@ -2369,8 +2528,34 @@
    }
  }
  
@@ -440575,7 +440616,7 @@
    // Every exit below names the condition it took. Without that, "the cache never hits"
    // is indistinguishable from "the build was cancelled", "the layout moved since the
    // last render" and "the next page has images" -- and each of those needs a different
-@@ -2400,6 +2565,9 @@
+@@ -2400,6 +2585,9 @@
    const auto& layout = renderedPageKey_;
    // A main-loop reflow/jump may have replaced the section since the last render.
    if (layout != pageCacheKey(section->currentPage, layout.top, layout.right, layout.bottom, layout.left)) {
@@ -440585,7 +440626,7 @@
      LOG_DBG("ERS", "Page cache: skip, layout moved since the last render");
      return;
    }
-@@ -2412,26 +2580,40 @@
+@@ -2412,26 +2600,40 @@
    // A build cut short by input stays retryable: the render task re-arms the idle pass
    // once input is quiet, and a Skipped slot would otherwise never be built again.
    const auto build = [&](const int slot, const ReaderPageCacheKey& key) {
@@ -440636,7 +440677,7 @@
  // On a chapter's last page the forward slot is free: build the next chapter and render
  // its first page into it. Comics put one picture in each chapter, so without this every
  // turn decoded a JPEG in the foreground (~3.5 s); now it happens while the page is read.
-@@ -2464,6 +2646,12 @@
+@@ -2464,6 +2666,12 @@
    }
    if (nextSection->pageCount == 0 || activityManager.idleRenderCancelled(generation)) return;
    const bool ready = buildPageCacheSlot(0, key, generation, nextSection.get());
@@ -440649,7 +440690,7 @@
    LOG_DBG("ERS", "Next chapter prefetch: spine %d ready=%d in %lums", next, ready, millis() - started);
  }
  #endif
-@@ -2527,13 +2715,18 @@
+@@ -2527,13 +2735,18 @@
    if (!pageCacheBase_[slot]) {
      constexpr size_t kContiguousReserve = 16 * 1024;
      // Reserve the slots still to allocate; the forward slot is already charged for slot 1.
@@ -440672,7 +440713,7 @@
        freePageCache();
        pageCacheFailed_ = true;
        LOG_ERR("ERS", "Page cache off: PSRAM allocation of %u B failed", static_cast<unsigned>(4 * bytes));
-@@ -2579,12 +2772,26 @@
+@@ -2579,12 +2792,26 @@
    const readingMode::Box textBox = readingMode::textBox(renderer.getScreenWidth(), renderer.getScreenHeight(),
                                                          {key.top, key.right, key.bottom, key.left});
    const int pitch = renderer.getLineHeight(key.spec.fontId, key.spec.lineCompression);
@@ -440699,7 +440740,7 @@
    };
  
    // Load glyphs on demand: a whole-page prewarm cannot be interrupted. Check
-@@ -2597,9 +2804,10 @@
+@@ -2597,9 +2824,10 @@
      GfxRenderer::SyntheticBoldScope syntheticBold(renderer, key.fakeBold);
      GfxRenderer::TextWeightScope textWeight(renderer, readerTextWeightCurve(key.textWeight),
                                              readerTextWeightSpread(key.textWeight));
@@ -440711,7 +440752,7 @@
      }
      if (vertical) readerChrome::drawColumnRules(renderer, *page, textBox, pitch);
      // Match foreground ordering: all text first, then the guide lines.
-@@ -2632,13 +2840,27 @@
+@@ -2632,13 +2860,27 @@
        GfxRenderer& renderer;
        ~EndOffscreen() { renderer.endGrayscale16Offscreen(); }
      } endOffscreen{renderer};
@@ -440740,7 +440781,7 @@
        }
        if (vertical) readerChrome::drawColumnRules(renderer, *page, textBox, pitch);
      }
-@@ -2671,6 +2893,10 @@
+@@ -2671,6 +2913,10 @@
    }
    pageCacheMissingCodepoint_[slot] = fcm ? fcm->consumeMissingChineseCodepoint() : 0;
    pageCache_[slot].state = ReaderPageCache::State::Ready;
@@ -440751,7 +440792,7 @@
    LOG_DBG("ERS", "Page cache: slot %d, page %d ready in %lums", slot, key.page, millis() - started);
    return true;
  }
-@@ -2679,6 +2905,9 @@
+@@ -2679,6 +2925,9 @@
  void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int orientedMarginTop,
                                          const int orientedMarginRight, const int orientedMarginBottom,
                                          const int orientedMarginLeft) {
@@ -440761,7 +440802,7 @@
    const auto t0 = millis();
    const int fontId = SETTINGS.getReaderFontId();
    const bool vertical = readingMode::setsVertically(readingMode::modeFor(SETTINGS.readingMode));
-@@ -2732,7 +2961,7 @@
+@@ -2732,7 +2981,7 @@
        if (manager) manager->clearCache();
      }
    } rawFontCacheGuard;
@@ -440770,7 +440811,7 @@
    const auto key = pageCacheKey(section ? section->currentPage : -1, orientedMarginTop, orientedMarginRight,
                                  orientedMarginBottom, orientedMarginLeft);
    // Either slot may hold this page: slot 0 was built for it as a forward turn, slot 1
-@@ -2779,8 +3008,14 @@
+@@ -2779,8 +3028,14 @@
    // RickyOS: every text face (2-bit downloaded fonts too) and synthetic bold draw straight
    // into the 16-level frame, and JPEG illustrations decode into it, so anti-aliased pages
    // take the single-render path.
@@ -440787,7 +440828,7 @@
    const bool needsAnyGrayscale = grayscaleEnabled && (SETTINGS.textAntiAliasing || pageHasImages);
    const bool absoluteImageGrayscale = grayscaleEnabled && pageHasImages && !gpio.deviceIsX3() &&
                                        display.getController() == HalDisplay::Controller::UC8279 &&
-@@ -2844,7 +3079,7 @@
+@@ -2844,7 +3099,7 @@
    };
  
    unsigned long cacheBaseMs = 0;
@@ -440796,7 +440837,7 @@
    if (use16LevelText) {
      // The 16-level pass below clears the frame and renders (or copies from the cache)
      // the page, writing the B/W proxy as it goes, so a B/W render here is thrown away.
-@@ -2859,7 +3094,7 @@
+@@ -2859,7 +3114,7 @@
    {
      renderPageWithGuideLines();
    }
@@ -440805,7 +440846,7 @@
    const uint32_t missingCodepoint =
        pageCacheHit ? pageCacheMissingCodepoint_[pageCacheLiveSlot_] : fcm->consumeMissingChineseCodepoint();
  #else
-@@ -2869,7 +3104,14 @@
+@@ -2869,7 +3124,14 @@
      uint32_t expected = 0;
      pendingMissingChineseCodepoint_.compare_exchange_strong(expected, missingCodepoint, std::memory_order_relaxed);
    }
@@ -440820,7 +440861,7 @@
    const auto tBwRender = millis();
  
    if (absoluteImageGrayscale) {
-@@ -2889,6 +3131,7 @@
+@@ -2889,6 +3151,7 @@
      // twice (more flash, more time), and the 16-level waveform is a full-screen one anyway,
      // so ghosting is still cleared.
    } else if (combinedGrayscaleBase) {
@@ -440828,7 +440869,7 @@
      ReaderUtils::displayBaseWithRefreshCycle(renderer, pagesUntilFullRefresh, manualRefreshPending);
    } else if (pageHasImages) {
      // Image pages use one base refresh before the grayscale pass. FAST leaves
-@@ -2903,6 +3146,7 @@
+@@ -2903,6 +3166,7 @@
        pagesUntilFullRefresh = 1;
      }
    } else {
@@ -440836,7 +440877,7 @@
      ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh, overlapRefresh);
    }
    const auto tDisplay = millis();
-@@ -2912,7 +3156,7 @@
+@@ -2912,7 +3176,7 @@
      const auto t16Begin = millis();
      if (renderer.beginGrayscale16()) {
        const auto t16Cleared = millis();
@@ -440845,7 +440886,7 @@
        if (pageCacheHit && pageCacheIs16_[pageCacheLiveSlot_] && pageCache16_[pageCacheLiveSlot_]) {
          memcpy(renderer.grayscale16Frame(), pageCache16_[pageCacheLiveSlot_].get(), renderer.grayscale16FrameBytes());
          memcpy(renderer.getFrameBuffer(), pageCacheBase_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
-@@ -2920,28 +3164,54 @@
+@@ -2920,28 +3184,54 @@
        } else
  #endif
        {
@@ -440903,7 +440944,7 @@
          ttf = {};
  #endif
        }
-@@ -2951,16 +3221,71 @@
+@@ -2951,16 +3241,71 @@
          return;
        }
  #if !defined(SIMULATOR)
@@ -440978,7 +441019,7 @@
  #if RICKYOS_PAINT_PROFILE
          LOG_INF("PERF", "reader commit=%lums total=%lums", tEnd - tCommit, tEnd - t0);
  #endif
-@@ -3137,7 +3462,7 @@
+@@ -3137,7 +3482,7 @@
        }
        const auto tBwStore = millis();
  
@@ -440987,7 +441028,7 @@
        if (pageCacheHit) {
          // Both planes were rendered at idle; putting them in place is one copy
          // each instead of a full page render each.
-@@ -3164,7 +3489,7 @@
+@@ -3164,7 +3509,7 @@
          return;
        }
  
@@ -440996,7 +441037,7 @@
        if (pageCacheHit) {
          memcpy(renderer.getFrameBuffer(), pageCacheMsb_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
          renderer.copyGrayscaleMsbBuffers();
-@@ -3212,9 +3537,12 @@
+@@ -3212,9 +3557,12 @@
  }
  
  void EpubReaderActivity::renderStatusBar() const {
@@ -441009,7 +441050,7 @@
      readerChrome::PageInfo info;
      info.bookTitle = epub ? epub->getTitle().c_str() : nullptr;
      // A chapter the table of contents names, not currentChapterTitle()'s "unnamed".
-@@ -3225,11 +3553,18 @@
+@@ -3225,11 +3573,18 @@
      }
      info.chapterTitle = chapter.c_str();
      info.pageInChapter = currentPage;
@@ -441030,7 +441071,7 @@
    const float pageCount = section ? section->estimatedTotalPages() : 1;
    const float sectionChapterProg = (pageCount > 0) ? (static_cast<float>(currentPage) / pageCount) : 0;
    const float bookProgress = epub ? (epub->calculateProgress(currentSpineIndex, sectionChapterProg) * 100) : 0;
-@@ -3266,8 +3601,12 @@
+@@ -3266,8 +3621,12 @@
        auto chapter = renderer.truncatedText(RickyDesignUi::BODY, title.c_str(), column);
        title = book + " · " + chapter;
      }
