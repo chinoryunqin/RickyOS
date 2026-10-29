@@ -349,6 +349,7 @@ idf_component_register(
   "${APP_ROOT}/src/activities/settings/AppVisibilitySettingsActivity.cpp"
   "${APP_ROOT}/src/activities/settings/TextSettingsPreview.cpp"
   "${APP_ROOT}/src/activities/settings/HomeButtonSettingsActivity.cpp"
+  "${APP_ROOT}/src/activities/settings/ReaderTouchZonesActivity.cpp"
   "${APP_ROOT}/src/activities/settings/RickyOptionListActivity.cpp"
   "${APP_ROOT}/src/activities/settings/ClearCacheActivity.cpp"
   "${APP_ROOT}/src/activities/settings/OtaUpdateActivity.cpp"

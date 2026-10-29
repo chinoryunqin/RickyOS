@@ -56,6 +56,11 @@ python3 tests/test_plus_button_mapping.py
 python3 tests/test_plus_landscape_keys.py
 python3 tests/test_plus_touch_tolerant_idle.py
 python3 tests/test_plus_button_settings.py
+python3 tests/test_plus_feedback_rows.py
+python3 tests/test_plus_calendar_direction.py
+python3 tests/test_plus_display_profile.py
+python3 tests/test_reader_tap_zones.py
+python3 tests/test_reader_tap_grid_layout.py
 python3 tests/test_plus_control_center_layout.py
 python3 tests/test_plus_haptic.py
 python3 tests/test_plus_haptic_input.py

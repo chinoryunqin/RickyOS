@@ -63,6 +63,8 @@ bash scripts/build_rickyos_plus.sh
 bash tests/run_plus_port_tests.sh
 ```
 
+产品构建（含功能体验包）默认沿用[已验收的显示参数](docs/plus-1.2.9-candidate-20261027.md)：完整高清阅读波形、黑笔画补偿，以及既有动效节奏。`build_rickyos_plus.sh` 会导出整组参数，并检查波形和原生供数代码的实际编译定义；结果保存在构建目录 `display-profile.json`。需要历史对照时可显式覆盖对应环境变量，不要通过漏传参数切回源文件的旧默认值。
+
 2026-10-20 热点／加入网络传书排查：已存在的 `sdkconfig` 不会自动采用新默认值；
 网络内存试验须用独立配置并通过生成头检查，见[网页响应排查与配置迁移](docs/plus-web-response-20261020.md)。
 不手改生成配置，也不要把第一轮“顺序访问恢复”当作并发验收通过。

@@ -19,9 +19,11 @@ program = r'''
 #include <cassert>
 #include <cstdint>
 #include <initializer_list>
+#include "ReaderTapZones.h"
 struct CrossPointSettings {enum {TAP_AND_SWIPE,TAP_ONLY,SWIPE_ONLY,INVERTED_TAP,OFF,READER_MENU_TAP};};
 struct {bool touchReaderControls=true;int pageTurnDirection=0,showReaderMenu=CrossPointSettings::READER_MENU_TAP;
- int pageTurnGesture=CrossPointSettings::TAP_ONLY,previousPageGesture=CrossPointSettings::TAP_ONLY;} SETTINGS;
+ int pageTurnGesture=CrossPointSettings::TAP_ONLY,previousPageGesture=CrossPointSettings::TAP_ONLY;
+ readerTapZones::Config readerTapZones;} SETTINGS;
 struct GfxRenderer {int getScreenWidth()const{return 684;}int getScreenHeight()const{return 1216;}};
 struct MappedInputManager {enum class SwipeDir {None,Left,Right};int x=0,y=400;bool tapped=true,touch=true;
  SwipeDir swipe=SwipeDir::None;bool hasTouch()const{return touch;}SwipeDir wasSwipe()const{return swipe;}
@@ -60,6 +62,6 @@ with tempfile.TemporaryDirectory(prefix='plus-holding-hand-') as directory:
     work = Path(directory)
     (work / 'check.cpp').write_text(program)
     subprocess.run(['clang++', '-std=c++20', '-Wall', '-Wextra', '-Werror',
-                    '-fsanitize=address,undefined', str(work / 'check.cpp'), '-o', str(work / 'check')], check=True)
+                    '-fsanitize=address,undefined', '-I'+str(APP/'src'), str(work / 'check.cpp'), '-o', str(work / 'check')], check=True)
     subprocess.run([str(work / 'check')], check=True)
 print('Merged actual touch policy: both hands, inverse taps, RTL, top-band menu priority, swipes and no-touch passed')

@@ -9,10 +9,12 @@ start=s.index('#if FREEINK_DEVICE_METALIO_PLUS',s.index('bool CrossPointSettings
 load=s[start:s.index('#endif',start)+6]
 program='''#include <ArduinoJson.h>
 #include <cassert>
+#include <string>
 #include "PlusButtonInput.h"
 #define FREEINK_DEVICE_METALIO_PLUS 1
 struct Settings {
  uint8_t plusTouchFeedback=1;
+ uint8_t plusSideKeyFeedback=0;
  static uint8_t clamp(uint8_t v,uint8_t max,uint8_t def){return v<max?v:def;}
  uint8_t plusKeyActions[10]={0,1,0,1,0,1,0,1,0,1};
  void save(JsonVariant doc){
@@ -27,16 +29,30 @@ int main(){
  Settings a,b;
  for(int i=0;i<10;i++)a.plusKeyActions[i]=i%plus_keys::Count;
  a.plusTouchFeedback=0;
+ a.plusSideKeyFeedback=1;
  a.save(doc.to<JsonObject>());b.load(doc.as<JsonVariantConst>());
  assert(b.plusTouchFeedback==0);
+ assert(b.plusSideKeyFeedback==1);
  for(int i=0;i<10;i++)assert(a.plusKeyActions[i]==b.plusKeyActions[i]);
  deserializeJson(doc,"{}");b.load(doc.as<JsonVariantConst>());
  assert(b.plusTouchFeedback==1);
+ assert(b.plusSideKeyFeedback==0);
  for(int i=0;i<10;i++)assert(b.plusKeyActions[i]==(i%2?1:0));
  deserializeJson(doc,R"({"plusKeyActions":[255,255,-1,"Home",null,true,3]})");b.load(doc.as<JsonVariantConst>());
  for(int i=0;i<10;i++)assert(b.plusKeyActions[i]==(i==6?3:(i%2?1:0)));
  deserializeJson(doc,R"({"plusKeyActions":"invalid"})");b.load(doc.as<JsonVariantConst>());
  for(int i=0;i<10;i++)assert(b.plusKeyActions[i]==(i%2?1:0));
+for(const char* invalid:{R"({"plusSideKeyFeedback":255})",R"({"plusSideKeyFeedback":-1})",
+                         R"({"plusSideKeyFeedback":"invalid"})",R"({"plusSideKeyFeedback":null})"}){
+ deserializeJson(doc,invalid);b.load(doc.as<JsonVariantConst>());assert(b.plusSideKeyFeedback==0);
+}
+for(int touch=0;touch<2;++touch)for(int key=0;key<2;++key){
+ a.plusTouchFeedback=touch;a.plusSideKeyFeedback=key;
+ doc.clear();a.save(doc.to<JsonObject>());
+ std::string encoded;serializeJson(doc,encoded);doc.clear();assert(!deserializeJson(doc,encoded));
+ b.load(doc.as<JsonVariantConst>());
+ assert(b.plusTouchFeedback==touch&&b.plusSideKeyFeedback==key);
+}
 }
 '''
 with tempfile.TemporaryDirectory() as tmp:

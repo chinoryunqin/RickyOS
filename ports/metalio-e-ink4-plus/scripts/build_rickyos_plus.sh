@@ -5,6 +5,21 @@ PLUS_IDF_ROOT="${RICKYOS_IDF_PATH:-$TASK_ROOT/tools/esp-idf-v6.1}"
 # Stop before preparing dependencies or producing a misleading binary.
 python3 "$TASK_ROOT/scripts/verify_plus_release_idf.py" --idf "$PLUS_IDF_ROOT"
 python3 "$TASK_ROOT/scripts/check_rickyos_plus_sources.py"
+# The accepted display profile is part of the product, including trial builds.
+# Historical waveform source defaults are kept for isolated A/B tests; do not
+# silently use those defaults when rebuilding an unrelated application feature.
+# Explicit environment overrides still allow a controlled display experiment.
+export RICKYOS_PLUS_UI_WHITE_MAINTENANCE="${RICKYOS_PLUS_UI_WHITE_MAINTENANCE:-1}"
+export RICKYOS_PLUS_READER_BLACK_RESTORE_PHASES="${RICKYOS_PLUS_READER_BLACK_RESTORE_PHASES:-4}"
+export RICKYOS_PLUS_READER_RETAINED_BLACK_PULSE="${RICKYOS_PLUS_READER_RETAINED_BLACK_PULSE:-17}"
+export RICKYOS_PLUS_READER_QUALITY="${RICKYOS_PLUS_READER_QUALITY:-1}"
+export RICKYOS_PLUS_READER_EARLY_ERASE="${RICKYOS_PLUS_READER_EARLY_ERASE:-1}"
+export RICKYOS_PLUS_READER_FINE_RIPPLE="${RICKYOS_PLUS_READER_FINE_RIPPLE:-1}"
+export RICKYOS_PLUS_READER_MOTION_PERIOD_US="${RICKYOS_PLUS_READER_MOTION_PERIOD_US:-0}"
+export RICKYOS_PLUS_READER_RIPPLE_SPREAD="${RICKYOS_PLUS_READER_RIPPLE_SPREAD:-7}"
+export RICKYOS_PLUS_READER_SWEEP_SPREAD="${RICKYOS_PLUS_READER_SWEEP_SPREAD:-3}"
+export RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES="${RICKYOS_PLUS_READER_ERASE_OVERLAP_PHASES:-0}"
+export RICKYOS_PLUS_READER_RIPPLE_OVERLAP_PHASES="${RICKYOS_PLUS_READER_RIPPLE_OVERLAP_PHASES:-12}"
 python3 "$TASK_ROOT/scripts/check_plus_font_resources.py"
 python3 "$TASK_ROOT/scripts/prepare_plus_jpeg.py"
 "$TASK_ROOT/.local/espressif/python_env/idf6.1_py3.14_env/bin/python" "$TASK_ROOT/scripts/prepare_plus_usb.py"
@@ -33,6 +48,7 @@ if [[ -n "${RICKYOS_SDKCONFIG_DEFAULTS:-}" ]]; then
   PLUS_IDF_COMMAND+=(-D "SDKCONFIG_DEFAULTS=$RICKYOS_SDKCONFIG_DEFAULTS")
 fi
 IDF_TARGET=esp32s31 "${PLUS_IDF_COMMAND[@]}" reconfigure
+python3 "$TASK_ROOT/scripts/check_plus_display_profile.py" "$BUILD_DIR/compile_commands.json"
 python3 "$TASK_ROOT/scripts/check_plus_wifi_security.py" "$BUILD_DIR/config/sdkconfig.h"
 python3 "$TASK_ROOT/scripts/check_plus_private_network_profile.py" "$BUILD_DIR/compile_commands.json"
 IDF_TARGET=esp32s31 "${PLUS_IDF_COMMAND[@]}" build
