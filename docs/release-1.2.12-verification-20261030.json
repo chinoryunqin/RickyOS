@@ -1,0 +1,58 @@
+{
+  "version": "1.2.12",
+  "status": "awaiting_user_notice",
+  "published": false,
+  "activation_authorized": false,
+  "targets": {
+    "plus": {
+      "file": "RickyOS-Plus-1.2.12.bin",
+      "board": "metalio-plus-s31",
+      "chip_id": 32,
+      "bytes": 5766448,
+      "sha256": "7a3e3c8e182cfa37c930de0341f079268df1186e7dcf544043980a30071b894b",
+      "elf_sha256": "2fdbddb0bd3ae0eca147816053b793661150bddb6e4012e30661ca1481ee6156",
+      "base_tag": "plus-v1.2.11",
+      "base_commit": "9302f06e8a82f66063b7c5c226f6087b61750902",
+      "host_regressions_passed": true,
+      "firmware_build_passed": true,
+      "this_exact_image_hardware_verified": false,
+      "image_checksum_valid": true,
+      "image_validation_hash_valid": true,
+      "device_installation": {
+        "version": "1.2.12",
+        "sha256": "7a3e3c8e182cfa37c930de0341f079268df1186e7dcf544043980a30071b894b",
+        "write_verified": true,
+        "outside_app_unchanged": true,
+        "boot_and_home_verified": true,
+        "startup_observation_seconds": 35,
+        "crash_seen": false,
+        "interaction_and_power_acceptance": "pending_user_validation"
+      }
+    },
+    "pico": {
+      "base_tag": "pico-v1.2.11",
+      "base_commit": "66ef26e67e9be2406341ec413ecc1b6c898a6b61",
+      "host_regressions_passed": true,
+      "file": "RickyOS-Pico-1.2.12.bin",
+      "board": "readpico",
+      "chip_id": 9,
+      "bytes": 6010336,
+      "sha256": "86b57b42f04f10396c7e18bf81371989a52d50577cc8e4d36c78e84c128cf98e",
+      "firmware_build_passed": true,
+      "this_exact_image_hardware_verified": false,
+      "elf_sha256": "db9915a6da1afaeb30babcb8645cb0b09e6d1c0f29db5f58d89ea6d6548adb70",
+      "image_checksum_valid": true,
+      "image_validation_hash_valid": true
+    }
+  },
+  "candidate_image_checks_passed": true,
+  "publication_note": "Waiting for explicit user notice; exact 1.2.12 images still require hardware acceptance.",
+  "format_check": {
+    "tool": "clang-format 23.1.3",
+    "passed": false,
+    "pico_baseline_failing_files": 12,
+    "pico_current_failing_files": 12,
+    "new_failing_files": [],
+    "note": "Existing whole-file formatting debt was left outside this release change."
+  }
+}

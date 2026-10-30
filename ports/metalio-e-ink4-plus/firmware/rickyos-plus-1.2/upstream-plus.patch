@@ -425076,7 +425076,7 @@
  STR_RICKY_HELP_DISPLAY_2: "出现残影时可在设置中执行屏幕修复。全刷间隔越短，残影越少，但闪屏更频繁。"
  STR_RICKY_HELP_DISPLAY_3: "阅读字体在文字设置中调整；头像、昵称和首页短句在设置顶部的资料卡中修改。"
  STR_RICKY_HELP_UPDATE_1: "设置中的更新固件会检查 RickyOS 更新。更新前请保证电量充足，勿在过程中断电。"
-@@ -1600,3 +1672,150 @@
+@@ -1600,3 +1672,153 @@
  STR_RICKY_HELP_FEEDBACK_3: "通过你现有的 Ricky AI Studio 联系渠道发送反馈。本页面不会自动上传设备信息。官网入口可扫码打开。"
  STR_RICKY_MENU_AUTO_TURN: "自动翻页"
  STR_RICKY_MENU_PROGRESS: "阅读进度"
@@ -425227,6 +425227,9 @@
 +STR_TOUCH_GRID_LANDSCAPE_PAGE: "横屏触摸区"
 +STR_PLUS_SIDE_KEY_FEEDBACK: "侧边键震动"
 +STR_RICKY_CALENDAR_DIRECTION: "日历时钟方向"
++
++STR_TOUCH_GRID_CONTENTS: "查看目录"
++STR_KEY_ADD_BOOKMARK: "加入书签"
 --- a/lib/I18n/translations/english.yaml
 +++ b/lib/I18n/translations/english.yaml
 @@ -2,6 +2,11 @@
@@ -425400,7 +425403,7 @@
  STR_RICKY_HELP_DISPLAY_1: "Display & Standby controls automatic sleep and power-button actions. Choose standby pictures in the Standby app."
  STR_RICKY_HELP_DISPLAY_2: "Use Screen Repair in Settings for ghosting. More frequent full refreshes reduce ghosting but flash the screen more often."
  STR_RICKY_HELP_DISPLAY_3: "Adjust reading fonts in Text Settings. Change your avatar, nickname and home phrase through the profile card at the top of Settings."
-@@ -1622,3 +1694,150 @@
+@@ -1622,3 +1694,153 @@
  STR_RICKY_HELP_FEEDBACK_3: "Send feedback through your existing Ricky AI Studio contact channel. This page does not upload device information. Scan the website QR code to visit the site."
  STR_RICKY_MENU_AUTO_TURN: "Auto page turn"
  STR_RICKY_MENU_PROGRESS: "Reading progress"
@@ -425551,6 +425554,9 @@
 +STR_TOUCH_GRID_LANDSCAPE_PAGE: "Landscape tap zones"
 +STR_PLUS_SIDE_KEY_FEEDBACK: "Side key vibration"
 +STR_RICKY_CALENDAR_DIRECTION: "Calendar clock orientation"
++
++STR_TOUCH_GRID_CONTENTS: "View contents"
++STR_KEY_ADD_BOOKMARK: "Add bookmark"
 --- a/lib/JpegToBmpConverter/JpegToBmpConverter.cpp
 +++ b/lib/JpegToBmpConverter/JpegToBmpConverter.cpp
 @@ -606,10 +606,11 @@
@@ -430949,7 +430955,15 @@
  
  #include <BoardConfig.h>
  #include <HalStorage.h>
-@@ -236,10 +237,24 @@
+@@ -204,6 +205,7 @@
+ }
+ 
+ void CrossPointSettings::enforceProductLayout() {
++  standbySwipeUnlock = 0;
+   uiTheme = INX;
+   inxRecentLayout = static_cast<uint8_t>(InxRecentLayout::Flow);
+   inxLibraryLayout = static_cast<uint8_t>(InxItemLayout::Icons);
+@@ -236,10 +238,24 @@
      }
    }
  
@@ -430974,7 +430988,7 @@
    doc["rickyBadgesSeen"] = rickyBadgesSeen;
    doc["frontButtonConfirm"] = frontButtonConfirm;
    doc["frontButtonLeft"] = frontButtonLeft;
-@@ -254,6 +269,7 @@
+@@ -254,6 +270,7 @@
      object["b"] = entry.button;
    }
    // Apps use stable IDs beyond the uint8_t-only SettingsList, so persist the mask manually.
@@ -430982,11 +430996,11 @@
    doc["hiddenAppsMask"] = hiddenAppsMask;
    doc["appsCatalogVersion"] = appsCatalogVersion;
    doc["buddyClaimed"] = buddyClaimed;
-@@ -277,13 +293,20 @@
+@@ -277,13 +294,20 @@
    doc["rickyHomePhrase"] = rickyHomePhrase;
    doc["rickyGestureBack"] = rickyGestureBack;
    doc["rickyGestureHome"] = rickyGestureHome;
-+  doc["standbySwipeUnlock"] = standbySwipeUnlock;
++  doc["standbySwipeUnlock"] = 0;
    doc["rickyCompanion"] = rickyCompanion;
    doc["rickyGestureControl"] = rickyGestureControl;
    doc["rickyGestureStatus"] = rickyGestureStatus;
@@ -431003,7 +431017,7 @@
    doc["rickyTapTurn"] = 1;       // the swipe-only default migration has run
    doc["rickyStandbyKeyOn"] = 1;  // the Back-key Standby shortcut was turned on once
    // Dictionary folder name — uses dynamic getter/setter in SettingsList, save manually
-@@ -300,17 +323,12 @@
+@@ -300,17 +324,12 @@
    // Keep the legacy marker current so rollback to a split-SKU firmware retains
    // the selected service region.
    doc["langSku"] = contentProfile == ContentProfile::China ? "cn" : "global";
@@ -431022,7 +431036,7 @@
  
    auto clamp = [](uint8_t val, uint8_t maxVal, uint8_t def) -> uint8_t { return val < maxVal ? val : def; };
  
-@@ -398,9 +416,21 @@
+@@ -398,9 +417,21 @@
      }
    }
  
@@ -431044,7 +431058,7 @@
    if (doc["readingMode"].isNull()) {
      readingMode = (doc["readingBackgroundEnabled"] | static_cast<uint8_t>(0)) != 0 ? 1 : 0;  // 1 = Puppy
      if (readingMode != 0) needsResave = true;
-@@ -445,6 +475,15 @@
+@@ -445,6 +476,15 @@
      needsResave = true;
    }
    // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
@@ -431060,7 +431074,7 @@
    frontButtonBack = clamp(doc["frontButtonBack"] | (uint8_t)FRONT_HW_BACK, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_BACK);
    frontButtonConfirm =
        clamp(doc["frontButtonConfirm"] | (uint8_t)FRONT_HW_CONFIRM, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_CONFIRM);
-@@ -452,6 +491,7 @@
+@@ -452,6 +492,7 @@
    frontButtonRight =
        clamp(doc["frontButtonRight"] | (uint8_t)FRONT_HW_RIGHT, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_RIGHT);
    validateFrontButtonMapping(s);
@@ -431068,7 +431082,7 @@
    bluetoothEnabled = clamp(doc["bluetoothEnabled"] | static_cast<uint8_t>(0), static_cast<uint8_t>(2), 0);
    bleKeyMap = {};
    const JsonArrayConst storedBleMap = doc["bleKeyMap"];
-@@ -487,6 +527,11 @@
+@@ -487,6 +528,11 @@
    // Font family — uses dynamic getter/setter in SettingsList so the generic loop skips it.
    const uint8_t storedFontFamily = doc["fontFamily"] | (uint8_t)0;
    fontFamily = clamp(storedFontFamily, BUILTIN_FONT_COUNT, 0);
@@ -431080,11 +431094,15 @@
    if (BoardConfig::hasHomeKey() && doc["homeButtonLongPressAction"].isNull() &&
        !doc["longPressMenuFunction"].isNull()) {
      static constexpr HomeButtonAction LEGACY[] = {HomeButtonAction::Sync, HomeButtonAction::Ignore,
-@@ -513,11 +558,18 @@
+@@ -513,11 +559,22 @@
    // Missing keys take the defaults: Home swipe starts off for everyone, as agreed.
    rickyGestureBack = (doc["rickyGestureBack"] | 1) ? 1 : 0;
    rickyGestureHome = (doc["rickyGestureHome"] | 0) ? 1 : 0;
-+  standbySwipeUnlock = (doc["standbySwipeUnlock"] | 0) ? 1 : 0;
++  // Swipe unlock is retired: migrate enabled/invalid old values and persist Off.
++  const auto savedSwipeUnlock = doc["standbySwipeUnlock"];
++  if (!savedSwipeUnlock.isNull() &&
++      (!savedSwipeUnlock.is<uint8_t>() || savedSwipeUnlock.as<uint8_t>() != 0)) needsResave = true;
++  standbySwipeUnlock = 0;
    rickyCompanion = (doc["rickyCompanion"] | 0) == RICKY_COMPANION_CAT ? RICKY_COMPANION_CAT : RICKY_COMPANION_DOG;
    rickyGestureControl = (doc["rickyGestureControl"] | 1) ? 1 : 0;
    rickyGestureStatus = (doc["rickyGestureStatus"] | 1) ? 1 : 0;
@@ -431099,7 +431117,7 @@
    rickyStandbyFace = doc["rickyStandbyFace"] | static_cast<uint8_t>(RICKY_STANDBY_PICTURE);
    if (rickyStandbyFace >= RICKY_STANDBY_FACE_COUNT) rickyStandbyFace = RICKY_STANDBY_PICTURE;
    rickyAutoOffIndex = doc["rickyAutoOffIndex"] | static_cast<uint8_t>(3);
-@@ -551,6 +603,10 @@
+@@ -551,6 +608,10 @@
      rickyPowerOffScreen = doc["rickyPowerOffScreen"] | static_cast<uint8_t>(RICKY_POWER_OFF_DEFAULT);
      if (rickyPowerOffScreen >= RICKY_POWER_OFF_SCREEN_COUNT) rickyPowerOffScreen = RICKY_POWER_OFF_DEFAULT;
    }
@@ -431110,7 +431128,7 @@
    // Old backups/direct JSON edits must not select a different product layout.
    struct FixedLayout {
      const char* key;
-@@ -635,11 +691,6 @@
+@@ -635,11 +696,6 @@
    }
    onboardingVersion = doc["onboardingVersion"].is<uint8_t>() ? doc["onboardingVersion"].as<uint8_t>() : 0;
  
@@ -431122,7 +431140,7 @@
    if (needsResave) {
      LOG_DBG("CPS", "Resaving settings to update format");
      requestResave();
-@@ -756,6 +807,7 @@
+@@ -756,6 +812,7 @@
    }
    refreshFrequency = validated(12, refreshFrequency, REFRESH_FREQUENCY_COUNT);
    screenMargin = value(13, screenMargin);
@@ -431130,7 +431148,7 @@
    sleepScreenCoverMode = validated(14, sleepScreenCoverMode, SLEEP_SCREEN_COVER_MODE_COUNT);
    textAntiAliasing = value(15, textAntiAliasing);
    hideBatteryPercentage = validated(16, hideBatteryPercentage, HIDE_BATTERY_PERCENTAGE_COUNT);
-@@ -876,6 +928,7 @@
+@@ -876,6 +933,7 @@
  
  uint8_t CrossPointSettings::rickySleepScreenMode() const {
    if (rickyPowerOffScreen == RICKY_POWER_OFF_BLANK) return BLANK;
@@ -431260,7 +431278,7 @@
    // last lines of a page and on the tab bar, so readers left books by accident.
    uint8_t rickyGestureBack = 1;     // swipe right from the left side: Back
    uint8_t rickyGestureHome = 0;     // swipe up from the bottom: Home
-+  uint8_t standbySwipeUnlock = 0;  // opt-in left-edge right swipe; independent of global Back/Home
++  uint8_t standbySwipeUnlock = 0;  // retired; always disabled, retained only for settings compatibility
    uint8_t rickyGestureControl = 1;  // swipe down from the top: control center
    uint8_t rickyGestureStatus = 1;   // tap the status bar: control center
    // Body-text stroke weight in the reader: 0 thinnest .. 2 the font as drawn .. 4 boldest.
@@ -431325,7 +431343,7 @@
                                            StrId::STR_KOSYNC,        StrId::STR_BOOKMARK_OPTION,  StrId::STR_DICTIONARY,
 -                                          StrId::STR_READER_MENU,   StrId::STR_TOGGLE_FRONTLIGHT};
 +                                          StrId::STR_READER_MENU,   StrId::STR_TOGGLE_FRONTLIGHT, StrId::STR_BACK,
-+                                          StrId::STR_HOME_ACTION_STANDBY, StrId::STR_HOME_ACTION_HAND};
++                                          StrId::STR_HOME_ACTION_STANDBY, StrId::STR_HOME_ACTION_HAND, StrId::STR_KEY_ADD_BOOKMARK};
  static_assert(sizeof(ACTION_LABELS) / sizeof(ACTION_LABELS[0]) == static_cast<unsigned>(HomeButtonAction::Count));
  inline constexpr StrId GESTURE_LABELS[] = {StrId::STR_HOME_BUTTON_TAP, StrId::STR_HOME_BUTTON_DOUBLE_TAP,
                                             StrId::STR_HOME_BUTTON_LONG_PRESS};
@@ -431485,16 +431503,7 @@
          case CrossPointSettings::PREV_PREV:
          case CrossPointSettings::SIDE_BUTTONS_DISABLED:
          default:
-@@ -461,6 +480,8 @@
-   return wasEdgeSwipe(fui::ScreenEdge::Left);
- }
- 
-+bool MappedInputManager::wasStandbyUnlockGesture() const { return wasEdgeSwipe(fui::ScreenEdge::Left); }
-+
- bool MappedInputManager::wasHeaderTapBack() const {
-   return false;
- }
-@@ -483,6 +504,9 @@
+@@ -483,6 +502,9 @@
  }
  
  bool MappedInputManager::wasLightPanelGesture() const {
@@ -431504,7 +431513,7 @@
    // The control center also serves touch boards without a frontlight.
    if (!SETTINGS.rickyGestureControl) return false;
    return hasTouch() && wasTopEdgeDownSwipe();
-@@ -500,7 +524,11 @@
+@@ -500,7 +522,11 @@
  #endif
  
  bool MappedInputManager::wasPressed(const Button button) const {
@@ -431516,7 +431525,7 @@
    if (button == Button::Back && wasBackGesture()) return true;
  #if FREEINK_CAP_TOUCH
    if (button == Button::Confirm && wasPowerConfirmClick()) return true;
-@@ -509,7 +537,11 @@
+@@ -509,7 +535,11 @@
  }
  
  bool MappedInputManager::wasReleased(const Button button) const {
@@ -431528,7 +431537,7 @@
    if (button == Button::Back && wasBackGesture()) return true;
  #if FREEINK_CAP_TOUCH
    if (button == Button::Confirm && wasPowerConfirmClick()) return true;
-@@ -651,3 +683,38 @@
+@@ -651,3 +681,39 @@
    return -1;
  }
  bool MappedInputManager::isHeld(const Button button) const { return isPressed(button); }
@@ -431562,6 +431571,7 @@
 +      case plus_keys::Refresh: homeAction = HomeButtonAction::Refresh; break;
 +      case plus_keys::Light: homeAction = HomeButtonAction::ToggleFrontlight; break;
 +      case plus_keys::Control: plusControl = true; break;
++      case plus_keys::Bookmark: homeAction = HomeButtonAction::AddBookmark; break;
 +      default: break;
 +    }
 +  }
@@ -431579,15 +431589,7 @@
  
  class GfxRenderer;
  namespace freeink {
-@@ -99,14 +102,28 @@
-   // Back = left-to-right swipe anchored at the left edge. Public so swipe-mode
-   // page turns (reader) can exclude it from a plain SwipeDir::Right.
-   bool wasBackGesture() const;
-+  // Direction/edge only: Standby owns its opt-in switch, not global Back/Home.
-+  bool wasStandbyUnlockGesture() const;
-   // Home-key boards use a short Home-key tap to exit; their bottom-edge swipe
-   // is intentionally unused. Other boards retain the bottom-edge Home gesture.
-   // The reader menu remains on its existing top-edge gesture and middle tap.
+@@ -105,8 +108,20 @@
    bool wasHomeGesture() const;
    // Configured one-frame action, independent of the gesture that triggered it.
    HomeButtonAction homeButtonAction() const { return homeAction; }
@@ -431608,7 +431610,7 @@
      deferredHomeAction = HomeButtonAction::Ignore;
    }
    bool wasMenuGesture() const;
-@@ -131,6 +148,10 @@
+@@ -131,6 +146,10 @@
    // Returns the raw front button index that was pressed this frame (or -1 if none).
    int getPressedFrontButton() const;
  
@@ -431619,7 +431621,7 @@
    void setBleCaptureMode(bool enabled);
    bool takeCapturedBleKey(uint8_t& kind, uint8_t& value);
  
-@@ -168,7 +189,16 @@
+@@ -168,7 +187,16 @@
    void rememberTouchHeldTime() const;
    void suppressNextRelease(Button button) const;
  
@@ -431646,7 +431648,7 @@
 +// Logical screen coordinates: rotation is handled by MappedInputManager before
 +// this mapping. Explicit assignments never change with hand/RTL preferences.
 +namespace readerTapZones {
-+enum class Action : uint8_t { Ignore, Previous, Next, Menu, Refresh, Count };
++enum class Action : uint8_t { Ignore, Previous, Next, Menu, Refresh, Contents, Count };
 +using Layout = std::array<uint8_t, 9>;
 +constexpr uint8_t value(Action a) { return static_cast<uint8_t>(a); }
 +constexpr Layout standard() {
@@ -432088,7 +432090,20 @@
  #include "components/UITheme.h"
  #include "components/UiHighDpiProfile.h"
  #include "util/DictionaryRegistry.h"
-@@ -233,6 +234,16 @@
+@@ -185,6 +186,12 @@
+   const size_t count = BoardConfig::hasHomeKey() ? std::size(VALUES) : std::size(VALUES) - 1;
+   return {VALUES, VALUES + count};
+ }
++
++// Static labels keep this enum out of the heap-backed label vectors.
++inline constexpr StrId AUTO_POWER_OFF_LABELS[] = {
++    StrId::STR_RICKY_NEVER, StrId::STR_RICKY_HOURS_1, StrId::STR_RICKY_HOURS_3,
++    StrId::STR_RICKY_HOURS_6, StrId::STR_RICKY_HOURS_12, StrId::STR_RICKY_HOURS_24};
++static_assert(std::size(AUTO_POWER_OFF_LABELS) == CrossPointSettings::RICKY_AUTO_OFF_COUNT);
+ 
+ // Shared settings list used by both the device settings UI and the web settings API.
+ // Each entry has a key (for JSON API) and category (for grouping).
+@@ -233,6 +240,16 @@
                            {StrId::STR_PAGES_1, StrId::STR_PAGES_5, StrId::STR_PAGES_10, StrId::STR_PAGES_15,
                             StrId::STR_PAGES_30, StrId::STR_NEVER},
                            "refreshFrequency", StrId::STR_CAT_DISPLAY),
@@ -432105,7 +432120,7 @@
          SettingInfo::Toggle(StrId::STR_SUNLIGHT_FADING_FIX, &CrossPointSettings::fadingFix, "fadingFix",
                              StrId::STR_CAT_DISPLAY),
          SettingInfo::Toggle(StrId::STR_SHOW_BUTTON_HINTS, &CrossPointSettings::showButtonHints, "showButtonHints",
-@@ -270,10 +281,25 @@
+@@ -270,10 +287,25 @@
                             StrId::STR_SPACING_PLUS_1, StrId::STR_SPACING_PLUS_2},
                            "characterSpacing", StrId::STR_CAT_READER)
              .withTextSettings(),
@@ -432135,7 +432150,7 @@
              .withTextSettings(),
          SettingInfo::Enum(StrId::STR_PARA_ALIGNMENT, &CrossPointSettings::paragraphAlignment,
                            {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId::STR_CENTER, StrId::STR_ALIGN_RIGHT,
-@@ -396,6 +422,12 @@
+@@ -396,16 +428,25 @@
          SettingInfo::Enum(StrId::STR_TILT_PAGE_TURN, &CrossPointSettings::tiltPageTurn,
                            {StrId::STR_STATE_OFF, StrId::STR_NORMAL, StrId::STR_INVERTED}, "tiltPageTurn",
                            StrId::STR_CAT_CONTROLS),
@@ -432148,7 +432163,24 @@
          SettingInfo::Toggle(StrId::STR_PWR_BTN_FOOTNOTE_BACK, &CrossPointSettings::pwrBtnFootnoteBack,
                              "pwrBtnFootnoteBack", StrId::STR_CAT_CONTROLS),
          SettingInfo::Toggle(StrId::STR_BACK_SHORT_TO_FILE_BROWSER, &CrossPointSettings::backShortToFileBrowser,
-@@ -542,7 +574,12 @@
+                             "backShortToFileBrowser", StrId::STR_CAT_CONTROLS),
+ 
++        SettingInfo::Value(
++            StrId::STR_RICKY_AUTO_STANDBY, &CrossPointSettings::sleepTimeoutMinutes,
++            {CrossPointSettings::MIN_SLEEP_TIMEOUT_MINUTES, CrossPointSettings::MAX_SLEEP_TIMEOUT_MINUTES, 1},
++            "sleepTimeoutMinutes", StrId::STR_CAT_DISPLAY),
++        SettingInfo::StaticEnum(StrId::STR_RICKY_AUTO_OFF, &CrossPointSettings::rickyAutoOffIndex,
++                               AUTO_POWER_OFF_LABELS, "rickyAutoOffIndex", StrId::STR_CAT_DISPLAY),
++
+         // --- System ---
+-        SettingInfo::Value(
+-            StrId::STR_TIME_TO_SLEEP, &CrossPointSettings::sleepTimeoutMinutes,
+-            {CrossPointSettings::MIN_SLEEP_TIMEOUT_MINUTES, CrossPointSettings::MAX_SLEEP_TIMEOUT_MINUTES, 1},
+-            "sleepTimeoutMinutes", StrId::STR_CAT_SYSTEM),
+         SettingInfo::Toggle(StrId::STR_SHOW_HIDDEN_FILES, &CrossPointSettings::showHiddenFiles, "showHiddenFiles",
+                             StrId::STR_CAT_SYSTEM),
+ #if CROSSPOINT_CAP_SOUND_FEEDBACK
+@@ -542,7 +583,12 @@
      // Double-click power frontlight shortcut only exists on the X4 Pro.
      if (!BoardConfig::isX4Pro()) eraseEntry(StrId::STR_DBL_CLICK_PWR_LIGHT);
      // Tilt page turn needs the QMI8658 IMU (X3).
@@ -432162,7 +432194,7 @@
      return v;
    }();
  
-@@ -552,6 +589,7 @@
+@@ -552,6 +598,7 @@
  inline bool isSettingAvailableOnBoard(const SettingInfo& setting) {
    if (!BoardConfig::hasTouch() && setting.nameId == StrId::STR_TOUCH_READER_CONTROLS) return false;
    if (!BoardConfig::hasHomeKey() && setting.nameId == StrId::STR_SHOW_READER_MENU) return false;
@@ -435446,7 +435478,7 @@
  #include <HalStorage.h>
  #include <I18n.h>
  #include <Logging.h>
-@@ -15,37 +15,47 @@
+@@ -15,56 +15,61 @@
  
  #include "CrossPointSettings.h"
  #include "KeepPageFace.h"
@@ -435492,6 +435524,15 @@
 -constexpr StrId kInfoLabels[] = {StrId::STR_RICKY_STANDBY_INFO_NONE, StrId::STR_RICKY_STANDBY_INFO_DATE,
 -                                 StrId::STR_RICKY_STANDBY_INFO_TIME};
 -static_assert(std::size(kInfoLabels) == Settings::STANDBY_OVERLAY_COUNT);
+-// Minutes before Standby; SLEEP_TIMEOUT_NEVER_MINUTES means never.
+-constexpr uint8_t kStandbyMinutes[] = {1, 3, 5, 10, 15, 30, Settings::SLEEP_TIMEOUT_NEVER_MINUTES};
+-constexpr StrId kStandbyMinuteLabels[] = {
+-    StrId::STR_RICKY_MINUTES_1,  StrId::STR_RICKY_MINUTES_3,  StrId::STR_RICKY_MINUTES_5, StrId::STR_RICKY_MINUTES_10,
+-    StrId::STR_RICKY_MINUTES_15, StrId::STR_RICKY_MINUTES_30, StrId::STR_RICKY_NEVER};
+-static_assert(std::size(kStandbyMinuteLabels) == std::size(kStandbyMinutes));
+-constexpr StrId kAutoOffLabels[] = {StrId::STR_RICKY_NEVER,   StrId::STR_RICKY_HOURS_1,  StrId::STR_RICKY_HOURS_3,
+-                                    StrId::STR_RICKY_HOURS_6, StrId::STR_RICKY_HOURS_12, StrId::STR_RICKY_HOURS_24};
+-static_assert(std::size(kAutoOffLabels) == Settings::RICKY_AUTO_OFF_COUNT);
 +static_assert(std::size(kStyleCards) == std::size(kStyles));
 +constexpr StrId kInfoChips[] = {StrId::STR_RICKY_STANDBY_INFO_NONE, StrId::STR_RICKY_STANDBY_INFO_DATE,
 +                                StrId::STR_RICKY_CHIP_TIME};
@@ -435506,12 +435547,6 @@
 +constexpr StrId kExcerptChips[] = {StrId::STR_RICKY_CHIP_HIDE, StrId::STR_RICKY_CHIP_SHOW};
 +constexpr StrId kCalendarDirections[] = {StrId::STR_LANDSCAPE_CW, StrId::STR_LANDSCAPE_CCW};
 +static_assert(std::size(kFilterChips) == Settings::SLEEP_SCREEN_COVER_FILTER_COUNT);
- // Minutes before Standby; SLEEP_TIMEOUT_NEVER_MINUTES means never.
- constexpr uint8_t kStandbyMinutes[] = {1, 3, 5, 10, 15, 30, Settings::SLEEP_TIMEOUT_NEVER_MINUTES};
- constexpr StrId kStandbyMinuteLabels[] = {
-@@ -56,15 +66,19 @@
-                                     StrId::STR_RICKY_HOURS_6, StrId::STR_RICKY_HOURS_12, StrId::STR_RICKY_HOURS_24};
- static_assert(std::size(kAutoOffLabels) == Settings::RICKY_AUTO_OFF_COUNT);
  constexpr StrId kPowerOffLabels[] = {StrId::STR_RICKY_POWER_OFF_SAME, StrId::STR_RICKY_SLEEP_LIGHT,
 -                                     StrId::STR_RICKY_SLEEP_BLANK};
 +                                     StrId::STR_RICKY_SLEEP_BLANK, StrId::STR_RICKY_POWER_OFF_CUSTOM};
@@ -435537,7 +435572,18 @@
  
  int styleIndex() {
    for (size_t i = 0; i < std::size(kStyles); ++i)
-@@ -83,6 +97,9 @@
+@@ -72,17 +77,14 @@
+   return 0;
+ }
+ 
+-int standbyMinutesIndex() {
+-  for (size_t i = 0; i < std::size(kStandbyMinutes); ++i)
+-    if (kStandbyMinutes[i] == SETTINGS.sleepTimeoutMinutes) return static_cast<int>(i);
+-  return -1;
+-}
+-
+ // The picture and the cover sit on the screen with the same fit, filter and corner.
+ bool showsPicture() {
    return SETTINGS.rickyStandbyFace == Settings::RICKY_STANDBY_PICTURE ||
           SETTINGS.rickyStandbyFace == Settings::RICKY_STANDBY_COVER;
  }
@@ -435547,7 +435593,7 @@
  
  template <size_t N>
  void showOption(OptionPopup& popup, const StrId title, const StrId (&labels)[N], const int current,
-@@ -92,45 +109,206 @@
+@@ -92,45 +94,204 @@
      SETTINGS.saveToFile();
    });
  }
@@ -435723,9 +435769,9 @@
 +  }
    if (tab_ == PowerOffTab) {
 -    add(PowerOffScreen);
+-    add(AutoPowerOff);
 +    for (int i = 0; i < 4; ++i) add(static_cast<Item>(PowerOff0 + i));
 +    if (SETTINGS.rickyPowerOffScreen == Settings::RICKY_POWER_OFF_CUSTOM) add(ChangePowerOffPicture);
-     add(AutoPowerOff);
      return;
    }
 -  add(Style);
@@ -435763,13 +435809,14 @@
      add(ChooseSticker);
      if (Storage.exists(KeepPageFace::kStickerPath)) add(ClearSticker);
 -    add(PictureFit);
-   }
-   add(AutoStandby);
+-  }
+-  add(AutoStandby);
 -  add(StandbyNow);
++  }
  }
  
  void RickyStandbySettingsActivity::onTabAction(const int index) {
-@@ -152,7 +330,7 @@
+@@ -152,7 +313,7 @@
  
  bool RickyStandbySettingsActivity::handleCustomInput() {
    return optionPopup.handleInput(mappedInput, [this] {
@@ -435778,7 +435825,7 @@
      requestUpdate();
    });
  }
-@@ -179,63 +357,137 @@
+@@ -179,63 +340,137 @@
    UiTabListActivity::render(std::move(lock));
  }
  
@@ -435970,7 +436017,7 @@
  }
  
  void RickyStandbySettingsActivity::buildScreen(UiScreen& screen) {
-@@ -247,129 +499,420 @@
+@@ -247,129 +482,381 @@
    const auto& theme = screen.theme();
    auto& target = screen.target();
    screen.insetContent(fui::Insets{static_cast<int16_t>(theme.spaceLg), theme.spaceLg, theme.spaceSm, theme.spaceLg});
@@ -436095,36 +436142,6 @@
 +                                                          std::max(1, renderer.getScreenHeight()));
 +    drawReadingPreview(rect(top.x + (top.width - previewWidth) / 2, top.y, previewWidth, previewHeight));
 +    return;
-+  }
-+
-+  // The bottom row: when Standby starts, or when it powers off.
-+  const auto bottom = screen.takeBottom(static_cast<int16_t>(ds::layout::kRowHeight), static_cast<int16_t>(gap / 2));
-+  {
-+    const Item item = tab_ == PowerOffTab ? AutoPowerOff : AutoStandby;
-+    const bool picked = hit(bottom, item);
-+    RickyPageUi::card(target, bottom, picked);
-+    const char* labelText = tab_ == PowerOffTab ? tr(STR_RICKY_AUTO_OFF) : tr(STR_RICKY_AUTO_STANDBY);
-+    const char* value = nullptr;
-+    if (tab_ == PowerOffTab) {
-+      value = I18N.get(kAutoOffLabels[std::min<int>(SETTINGS.rickyAutoOffIndex, std::size(kAutoOffLabels) - 1)]);
-+    } else if (const int preset = standbyMinutesIndex(); preset >= 0) {
-+      value = I18N.get(kStandbyMinuteLabels[preset]);
-+    } else {
-+      // A value set before the presets (any minute from 1 to 30).
-+      snprintf(minutes_, sizeof(minutes_), tr(STR_RICKY_MINUTES_N),
-+               static_cast<unsigned>(SETTINGS.sleepTimeoutMinutes));
-+      value = minutes_;
-+    }
-+    const int bodyHeight = renderer.getLineHeight(RickyDesignUi::BODY);
-+    const int middle = bottom.y + bottom.height / 2;
-+    RickyDesignUi::text(renderer, rect(bottom.x + gap, middle - bodyHeight / 2, bottom.width / 2, bodyHeight),
-+                        labelText, RickyDesignUi::BODY, picked);
-+    const int chevronX = bottom.right() - 24 - gap;
-+    RickyDesignUi::text(renderer,
-+                        rect(bottom.x + bottom.width / 2, middle - captionHeight / 2,
-+                             chevronX - gap - bottom.x - bottom.width / 2, captionHeight),
-+                        value, RickyDesignUi::CAPTION, picked, fui::TextAlign::Right, 1, ds::gray::kInk2);
-+    RickyPageUi::chevron(target, rect(chevronX, bottom.y, 24, bottom.height), picked);
 +  }
 +
 +  // Cards: the styles, or the power-off screens, each a small drawing over its name.
@@ -436484,19 +436501,10 @@
 +      case StandbyNow:
 +        startActivityForResultWith<StandbyActivity>([this](const ActivityResult&) { requestUpdate(); });
 +        return;
-+      case AutoStandby:
-+        showOption(optionPopup, StrId::STR_RICKY_AUTO_STANDBY, kStandbyMinuteLabels,
-+                   std::max(0, standbyMinutesIndex()),
-+                   [](const int chosen) { SETTINGS.sleepTimeoutMinutes = kStandbyMinutes[chosen]; });
-+        break;
 +      case CalendarDirection:
 +        showOption(optionPopup, StrId::STR_RICKY_CALENDAR_DIRECTION, kCalendarDirections,
 +                   SETTINGS.standbyCalendarReversed ? 1 : 0,
 +                   [](const int chosen) { SETTINGS.standbyCalendarReversed = static_cast<uint8_t>(chosen); });
-+        break;
-+      case AutoPowerOff:
-+        showOption(optionPopup, StrId::STR_RICKY_AUTO_OFF, kAutoOffLabels, SETTINGS.rickyAutoOffIndex,
-+                   [](const int chosen) { SETTINGS.rickyAutoOffIndex = static_cast<uint8_t>(chosen); });
 +        break;
 +      default:
 +        return;
@@ -436506,7 +436514,7 @@
  }
 --- a/src/activities/apps/standby/RickyStandbySettingsActivity.h
 +++ b/src/activities/apps/standby/RickyStandbySettingsActivity.h
-@@ -1,41 +1,80 @@
+@@ -1,41 +1,77 @@
  #pragma once
  
  #include <string>
@@ -436525,9 +436533,8 @@
 +// 壁纸: what the screen shows in Standby, once powered off and under the reading page,
 +// as one page with a live preview. Standby tab: the preview with the corner, fit and
 +// filter choices beside it, the five styles as cards, the picture strip (or the
-+// transparent overlay's controls), and when Standby starts. Power-off tab: the
-+// preview, the four power-off screens as cards, and when Standby powers off by
-+// itself. Reading tab: a sample page on the background, the paper (a picture or ruled
++// transparent overlay's controls). Power-off tab: the preview and four power-off
++// screens as cards. Reading tab: a sample page on the background, the paper (a picture or ruled
 +// lines, grid or dots), its shade, and the picture.
 +// Every control is one stop on the tab ring, in reading order.
  class RickyStandbySettingsActivity final : public UiTabListActivity {
@@ -436576,13 +436583,11 @@
      ChooseSticker,
      ClearSticker,
 -    RowKinds
-+    AutoStandby,
 +    PowerOff0,
 +    PowerOff1,
 +    PowerOff2,
 +    PowerOff3,
 +    ChangePowerOffPicture,
-+    AutoPowerOff,
 +    ReadingPaper0,
 +    ReadingPaper1,
 +    ReadingPaper2,
@@ -436606,7 +436611,7 @@
    const char* headerTitle() const override;
    void buildScreen(UiScreen& screen) override;
    void activateIndex(int index) override;
-@@ -50,15 +89,27 @@
+@@ -50,15 +86,26 @@
    void stepTab(int direction) override;
  
   private:
@@ -436625,9 +436630,9 @@
    int tab_ = StandbyTab;
 -  Row rows_[RowKinds] = {};
 -  int rowCount_ = 0;
+-  char minutes_[24] = {};  // the auto-standby value when it is not one of the presets
 +  Item items_[ItemKinds] = {};
 +  int itemCount_ = 0;
-   char minutes_[24] = {};  // the auto-standby value when it is not one of the presets
 +  char allPictures_[24] = {};
 +
 +  // The picture strip: the gallery's first pictures, thumbnails made in the background.
@@ -436825,7 +436830,7 @@
    requestUpdate();
  }
  
-@@ -430,9 +446,29 @@
+@@ -430,9 +446,28 @@
  
  bool StandbyActivity::tryLightSleep(const uint32_t idleMs) {
  #if CROSSPOINT_EMULATED == 0
@@ -436848,14 +436853,13 @@
 +  if (!drewFrame_) return false;
 +#endif
 +#if FREEINK_DEVICE_METALIO_PLUS
-+  // Side-key/timer candidate only. Preserve first-swipe semantics until touch
-+  // wake and gesture replay have been independently validated on Plus.
-+  if (SETTINGS.standbySwipeUnlock || bleinput::isRunning() || HalRecorder::active() || Frontlight.isOn()) return false;
++  // Swipe unlock is disabled; only active peripherals block side-key/timer sleep.
++  if (bleinput::isRunning() || HalRecorder::active() || Frontlight.isOn()) return false;
 +#endif
  
    const bool syncActive = syncState_ != SyncState::Idle;
    const bool wifiActive = WiFi.getMode() != WIFI_MODE_NULL;
-@@ -446,16 +482,44 @@
+@@ -446,16 +481,44 @@
      return false;
    }
  
@@ -436900,7 +436904,7 @@
        return true;
      case HalPowerManager::LightSleepWakeReason::PowerButton:
        // A short press, already over before main.cpp's key poll could see it: leave
-@@ -468,13 +532,21 @@
+@@ -468,13 +531,21 @@
        // Still down: main.cpp finishes it (release = leave Standby, hold = power off).
        STANDBY_DIAG("wake: key still down");
        lastInputMs_ = millis();
@@ -436922,23 +436926,18 @@
        return true;
    }
  #else
-@@ -484,7 +556,14 @@
+@@ -484,7 +555,9 @@
  }
  
  void StandbyActivity::loop() {
 -  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-+  if (SETTINGS.standbySwipeUnlock && mappedInput.wasStandbyUnlockGesture()) {
-+    STANDBY_DIAG("close: swipe unlock");
-+    finish();
-+    return;
-+  }
 +  // Back includes touch gestures and a header target from the prior page. Neither
-+  // may bypass the independent unlock switch; physical Back keeps its preference.
++  // may unlock standby; physical Back keeps its preference.
 +  if (!mappedInput.wasBackGesture() && mappedInput.wasReleased(MappedInputManager::Button::Back)) {
      // One shortcut switch owns both entry and exit; the side power key stays independent.
      if (SETTINGS.standbyShortcutEnabled) {
        STANDBY_DIAG("close: Back released");
-@@ -507,6 +586,7 @@
+@@ -507,6 +580,7 @@
        if (action == StandbyFace::PictureAction::Download &&
            !startActivityForResultWith<RickyWallpaperDownloadActivity>([this](const ActivityResult&) {
              if (currentFace_) currentFace_->onEnter();
@@ -436946,7 +436945,7 @@
              requestUpdate();
            })) {
          LOG_ERR("STANDBY", "Cannot open the picture downloader");
-@@ -531,11 +611,17 @@
+@@ -531,11 +605,17 @@
  
  void StandbyActivity::render(RenderLock&&) {
    if (!currentFace_) return;
@@ -436965,7 +436964,7 @@
      renderer.clearScreen();
      {
        const GfxRenderer::ClipScope clip(renderer, viewport.x, viewport.y, viewport.width, viewport.height);
-@@ -638,28 +724,16 @@
+@@ -638,28 +718,16 @@
    renderer.restoreBwBuffer();
  }
  
@@ -442270,10 +442269,47 @@
    constexpr unsigned long IDLE_PREWARM_DEBOUNCE_MS = 400;
    auto* fcm = renderer.getFontCacheManager();
    {
-@@ -1087,6 +1153,11 @@
+@@ -965,6 +1031,7 @@
+   switch (mappedInput.homeButtonAction()) {
+     case HomeButtonAction::ReaderMenu:
+     case HomeButtonAction::Bookmark:
++    case HomeButtonAction::AddBookmark:
+     case HomeButtonAction::Sync:
+     case HomeButtonAction::Dictionary:
+     case HomeButtonAction::Footnotes:
+@@ -973,6 +1040,9 @@
+     default:
+       break;
+   }
++
++  const bool contentsTapped = ReaderUtils::isTouchContentsTap(renderer, mappedInput);
++  if (contentsTapped) automaticPageTurnActive = false;
+ 
+   if (automaticPageTurnActive) {
+     if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) ||
+@@ -1044,6 +1114,13 @@
+ 
+   if (!endOfBookMenuOpen) {
+     switch (mappedInput.homeButtonAction()) {
++      case HomeButtonAction::AddBookmark:
++        if (!section || !epub) return;
++        addBookmark(true);
++        showBookmarkMessage = true;
++        bookmarkMessageTime = millis();
++        requestUpdate();
++        return;
+       case HomeButtonAction::Bookmark:
+         if (!showBookmarkMessage) {
+           addBookmark();
+@@ -1087,6 +1164,16 @@
      }
    }
  
++  if (!endOfBookMenuOpen && contentsTapped) {
++    openChapterSelection(false);
++    return;
++  }
++
 +  if (ReaderUtils::isTouchRefreshTap(renderer, mappedInput)) {
 +    handleForcedRefresh();
 +    return;
@@ -442282,7 +442318,7 @@
    if (confirmReleased || ReaderUtils::isTouchMenuGesture(renderer, mappedInput)) {
      // Toolbar style: the page is on screen and in the framebuffer, so paint the
      // toolbar over it (one refresh) instead of pushing a full-screen menu.
-@@ -1127,9 +1198,10 @@
+@@ -1127,9 +1214,10 @@
        pendingManualTurn = 0;
        return;
      }
@@ -442295,7 +442331,7 @@
      notePageTurn(forward, succeeded);
      requestUpdate();
      return;
-@@ -1174,17 +1246,26 @@
+@@ -1174,17 +1262,26 @@
      return;
    }
  
@@ -442326,7 +442362,98 @@
      notePageTurn(true, succeeded);
    }
    requestUpdate();
-@@ -1376,6 +1457,11 @@
+@@ -1286,6 +1383,47 @@
+   requestUpdate();
+ }
+ 
++void EpubReaderActivity::openChapterSelection(const bool returnToMenu) {
++  pendingManualTurn = 0;
++  const int spineIdx = currentSpineIndex;
++  const int tocIdx = currentTocIndex();
++  // Release the section while the chapter list is up (mirrors the
++  // TEXT_SETTINGS path): picking a chapter resets it anyway, and its
++  // tens-of-KB footprint is the difference between the chapter list
++  // holding its CJK glyph arena (RAM-only repaints) and re-reading
++  // glyphs from SD on every row step. Cancel restores via the same
++  // cached-position rebuild TEXT_SETTINGS uses.
++  {
++    RenderLock lock;
++    if (section) {
++      rememberCurrentContentOffset();
++      cachedSpineIndex = currentSpineIndex;
++      cachedChapterTotalPageCount = section->pageCount;
++      nextPageNumber = section->currentPage;
++    }
++    section.reset();
++  }
++  if (!startActivityForResultWith<EpubReaderChapterSelectionActivity>(
++      [this, returnToMenu](const ActivityResult& result) {
++        READING_STATS.resumeSession();
++        if (result.isCancelled) {
++          if (returnToMenu) openReaderMenu();
++          return;
++        }
++        const auto& chapterResult = std::get<ChapterResult>(result.data);
++        RenderLock lock;
++        clearDeferredReposition();
++        currentSpineIndex = chapterResult.spineIndex;
++        pendingAnchor = chapterResult.anchor;
++        nextPageNumber = 0;
++        section.reset();
++        requestUpdate();
++      },
++      epub, spineIdx, tocIdx)) {
++    requestUpdate();
++  }
++}
++
+ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action) {
+   auto progressChangeResultHandler = [this](const ActivityResult& result) {
+     READING_STATS.resumeSession();
+@@ -1299,41 +1437,7 @@
+ 
+   switch (action) {
+     case EpubReaderMenuActivity::MenuAction::SELECT_CHAPTER: {
+-      const int spineIdx = currentSpineIndex;
+-      const int tocIdx = currentTocIndex();
+-      // Release the section while the chapter list is up (mirrors the
+-      // TEXT_SETTINGS path): picking a chapter resets it anyway, and its
+-      // tens-of-KB footprint is the difference between the chapter list
+-      // holding its CJK glyph arena (RAM-only repaints) and re-reading
+-      // glyphs from SD on every row step. Cancel restores via the same
+-      // cached-position rebuild TEXT_SETTINGS uses.
+-      {
+-        RenderLock lock;
+-        if (section) {
+-          rememberCurrentContentOffset();
+-          cachedSpineIndex = currentSpineIndex;
+-          cachedChapterTotalPageCount = section->pageCount;
+-          nextPageNumber = section->currentPage;
+-        }
+-        section.reset();
+-      }
+-      startActivityForResultWith<EpubReaderChapterSelectionActivity>(
+-          [this](const ActivityResult& result) {
+-            READING_STATS.resumeSession();
+-            if (result.isCancelled) {
+-              openReaderMenu();
+-              return;
+-            }
+-            const auto& chapterResult = std::get<ChapterResult>(result.data);
+-            RenderLock lock;
+-            clearDeferredReposition();
+-            currentSpineIndex = chapterResult.spineIndex;
+-            pendingAnchor = chapterResult.anchor;
+-            nextPageNumber = 0;
+-            section.reset();
+-            requestUpdate();
+-          },
+-          epub, spineIdx, tocIdx);
++      openChapterSelection(true);
+       break;
+     }
+     case EpubReaderMenuActivity::MenuAction::FOOTNOTES: {
+@@ -1376,6 +1480,11 @@
            initialPercent);
        break;
      }
@@ -442338,7 +442465,7 @@
      case EpubReaderMenuActivity::MenuAction::DICTIONARY: {
        openDictionaryWordSelect();
        break;
-@@ -1407,6 +1493,10 @@
+@@ -1407,6 +1516,10 @@
            uint16_t backupSpine = currentSpineIndex;
            uint16_t backupPage = section->currentPage;
            uint16_t backupPageCount = section->pageCount;
@@ -442349,7 +442476,7 @@
            section.reset();
            epub->clearCache();
            epub->setupCacheDir();
-@@ -1562,6 +1652,8 @@
+@@ -1562,6 +1675,8 @@
    }
  
    RenderLock lock(*this);
@@ -442358,7 +442485,7 @@
    if (section) {
      rememberCurrentContentOffset();
      cachedSpineIndex = currentSpineIndex;
-@@ -1605,15 +1697,28 @@
+@@ -1605,15 +1720,28 @@
  }
  
  bool EpubReaderActivity::pageTurn(bool isForwardTurn) {
@@ -442387,7 +442514,7 @@
        lastPageTurnTime = millis();
        return true;
      } else if (currentSpineIndex + 1 < epub->getSpineItemsCount()) {
-@@ -1631,6 +1736,7 @@
+@@ -1631,6 +1759,7 @@
    } else {
      if (section->currentPage > 0) {
        section->currentPage--;
@@ -442395,7 +442522,7 @@
        lastPageTurnTime = millis();
        return true;
      } else if (currentSpineIndex > 0) {
-@@ -1647,6 +1753,7 @@
+@@ -1647,6 +1776,7 @@
  }
  
  bool EpubReaderActivity::skipPages(int amount) {
@@ -442403,7 +442530,7 @@
    if (!section) return false;
    READING_STATS.noteActivity();
    if (amount > 0) {
-@@ -1680,6 +1787,12 @@
+@@ -1680,6 +1810,12 @@
    bool offerSync = false;
    if (perr == "txt progress migration failed") {
      msg = StrId::STR_TXT_PROGRESS_MIGRATION_FAILED;
@@ -442416,7 +442543,7 @@
    } else if (perr == "access expired") {
      msg = StrId::STR_LOAN_EXPIRED;
    } else if (perr == "loan date unverified") {
-@@ -1778,14 +1891,32 @@
+@@ -1778,14 +1914,32 @@
  readingMode::Margins EpubReaderActivity::textMargins() const {
    readingMode::Margins viewable;
    renderer.getOrientedViewableTRBL(&viewable.top, &viewable.right, &viewable.bottom, &viewable.left);
@@ -442456,7 +442583,7 @@
    int bottomReserve = 0;
    if (readingMode::showsFooter(mode)) {
      const uint8_t statusBarHeight = UITheme::getInstance().getStatusBarHeight();
-@@ -1794,13 +1925,22 @@
+@@ -1794,13 +1948,22 @@
          (statusBarHeight == 0 || statusBarHeight == UITheme::getInstance().getProgressBarHeight())) {
        bottomReserve += UITheme::getInstance().getMetrics().statusBarVerticalMargin;
      }
@@ -442486,7 +442613,7 @@
    const readingMode::Margins margins = readingMode::textMargins(mode, base, viewable, RickyReaderDog::kEdgeRow);
    if (!readingMode::setsVertically(mode)) return margins;
    return readingMode::fitColumns(
-@@ -1880,6 +2020,21 @@
+@@ -1880,6 +2043,21 @@
  
    const ReaderRenderSpec renderSpec = effectiveRenderSpec(viewportWidth, viewportHeight);
  
@@ -442508,7 +442635,7 @@
    if (!section) {
      const auto filepath = epub->getSpineItem(currentSpineIndex).href;
      LOG_DBG("ERS", "Loading file: %s, index: %d", filepath.c_str(), currentSpineIndex);
-@@ -1891,7 +2046,7 @@
+@@ -1891,7 +2069,7 @@
        return;
      }
  
@@ -442517,7 +442644,7 @@
      ++sectionGeneration_;
  #endif
      const bool cacheLoaded = section->loadSectionFile(renderSpec);
-@@ -2158,6 +2313,7 @@
+@@ -2158,6 +2336,7 @@
      pageLoadRetryCount = 0;
  
      currentPageVisibleOffset = p->visibleTextOffset;
@@ -442525,7 +442652,7 @@
      renderedSpineIndex_ = currentSpineIndex;
      currentPageFootnotes = std::move(p->footnotes);
      currentPageLinks = std::move(p->links);
-@@ -2284,6 +2440,8 @@
+@@ -2284,6 +2463,8 @@
      offset = (currentPage == section->currentPage && currentPageVisibleOffset.has_value())
                   ? currentPageVisibleOffset
                   : section->getVisibleTextOffsetForPage(static_cast<uint16_t>(currentPage));
@@ -442534,7 +442661,7 @@
    }
    uint8_t chapterProgress = getStatsChapterProgressPercent(currentPage, pageCount);
    const std::string chapterTitle = getStatsChapterTitle(*epub, spineIndex, offset, &chapterProgress);
-@@ -2307,14 +2465,23 @@
+@@ -2307,14 +2488,23 @@
    }
  }
  
@@ -442561,7 +442688,7 @@
  bool EpubReaderActivity::pageCacheEligible() const {
    // No !section->isBuilding() here, deliberately. The page cache renders ONE page --
    // the current one or the next -- and Section::loadPage() is written to serve exactly
-@@ -2328,7 +2495,13 @@
+@@ -2328,7 +2518,13 @@
    // engages at all -- every turn is a full render instead of the cached one.
    return !pageCacheFailed_ && section && renderer.hasFrameBuffer() && !activityManager.isSwitchPending() &&
           overlay == Overlay::None && fontPromptState == FontPromptState::Idle && !renderer.isInverted() &&
@@ -442576,7 +442703,7 @@
  }
  
  ReaderPageCacheKey EpubReaderActivity::pageCacheKey(const int page, const int top, const int right, const int bottom,
-@@ -2369,8 +2542,34 @@
+@@ -2369,8 +2565,34 @@
    }
  }
  
@@ -442611,7 +442738,7 @@
    // Every exit below names the condition it took. Without that, "the cache never hits"
    // is indistinguishable from "the build was cancelled", "the layout moved since the
    // last render" and "the next page has images" -- and each of those needs a different
-@@ -2400,6 +2599,9 @@
+@@ -2400,6 +2622,9 @@
    const auto& layout = renderedPageKey_;
    // A main-loop reflow/jump may have replaced the section since the last render.
    if (layout != pageCacheKey(section->currentPage, layout.top, layout.right, layout.bottom, layout.left)) {
@@ -442621,7 +442748,7 @@
      LOG_DBG("ERS", "Page cache: skip, layout moved since the last render");
      return;
    }
-@@ -2412,26 +2614,40 @@
+@@ -2412,26 +2637,40 @@
    // A build cut short by input stays retryable: the render task re-arms the idle pass
    // once input is quiet, and a Skipped slot would otherwise never be built again.
    const auto build = [&](const int slot, const ReaderPageCacheKey& key) {
@@ -442672,7 +442799,7 @@
  // On a chapter's last page the forward slot is free: build the next chapter and render
  // its first page into it. Comics put one picture in each chapter, so without this every
  // turn decoded a JPEG in the foreground (~3.5 s); now it happens while the page is read.
-@@ -2464,6 +2680,12 @@
+@@ -2464,6 +2703,12 @@
    }
    if (nextSection->pageCount == 0 || activityManager.idleRenderCancelled(generation)) return;
    const bool ready = buildPageCacheSlot(0, key, generation, nextSection.get());
@@ -442685,7 +442812,7 @@
    LOG_DBG("ERS", "Next chapter prefetch: spine %d ready=%d in %lums", next, ready, millis() - started);
  }
  #endif
-@@ -2527,13 +2749,18 @@
+@@ -2527,13 +2772,18 @@
    if (!pageCacheBase_[slot]) {
      constexpr size_t kContiguousReserve = 16 * 1024;
      // Reserve the slots still to allocate; the forward slot is already charged for slot 1.
@@ -442708,7 +442835,7 @@
        freePageCache();
        pageCacheFailed_ = true;
        LOG_ERR("ERS", "Page cache off: PSRAM allocation of %u B failed", static_cast<unsigned>(4 * bytes));
-@@ -2579,12 +2806,26 @@
+@@ -2579,12 +2829,26 @@
    const readingMode::Box textBox = readingMode::textBox(renderer.getScreenWidth(), renderer.getScreenHeight(),
                                                          {key.top, key.right, key.bottom, key.left});
    const int pitch = renderer.getLineHeight(key.spec.fontId, key.spec.lineCompression);
@@ -442735,7 +442862,7 @@
    };
  
    // Load glyphs on demand: a whole-page prewarm cannot be interrupted. Check
-@@ -2597,9 +2838,10 @@
+@@ -2597,9 +2861,10 @@
      GfxRenderer::SyntheticBoldScope syntheticBold(renderer, key.fakeBold);
      GfxRenderer::TextWeightScope textWeight(renderer, readerTextWeightCurve(key.textWeight),
                                              readerTextWeightSpread(key.textWeight));
@@ -442747,7 +442874,7 @@
      }
      if (vertical) readerChrome::drawColumnRules(renderer, *page, textBox, pitch);
      // Match foreground ordering: all text first, then the guide lines.
-@@ -2632,13 +2874,27 @@
+@@ -2632,13 +2897,27 @@
        GfxRenderer& renderer;
        ~EndOffscreen() { renderer.endGrayscale16Offscreen(); }
      } endOffscreen{renderer};
@@ -442776,7 +442903,7 @@
        }
        if (vertical) readerChrome::drawColumnRules(renderer, *page, textBox, pitch);
      }
-@@ -2671,6 +2927,10 @@
+@@ -2671,6 +2950,10 @@
    }
    pageCacheMissingCodepoint_[slot] = fcm ? fcm->consumeMissingChineseCodepoint() : 0;
    pageCache_[slot].state = ReaderPageCache::State::Ready;
@@ -442787,7 +442914,7 @@
    LOG_DBG("ERS", "Page cache: slot %d, page %d ready in %lums", slot, key.page, millis() - started);
    return true;
  }
-@@ -2679,6 +2939,9 @@
+@@ -2679,6 +2962,9 @@
  void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int orientedMarginTop,
                                          const int orientedMarginRight, const int orientedMarginBottom,
                                          const int orientedMarginLeft) {
@@ -442797,7 +442924,7 @@
    const auto t0 = millis();
    const int fontId = SETTINGS.getReaderFontId();
    const bool vertical = readingMode::setsVertically(readingMode::modeFor(SETTINGS.readingMode));
-@@ -2732,7 +2995,7 @@
+@@ -2732,7 +3018,7 @@
        if (manager) manager->clearCache();
      }
    } rawFontCacheGuard;
@@ -442806,7 +442933,7 @@
    const auto key = pageCacheKey(section ? section->currentPage : -1, orientedMarginTop, orientedMarginRight,
                                  orientedMarginBottom, orientedMarginLeft);
    // Either slot may hold this page: slot 0 was built for it as a forward turn, slot 1
-@@ -2779,8 +3042,14 @@
+@@ -2779,8 +3065,14 @@
    // RickyOS: every text face (2-bit downloaded fonts too) and synthetic bold draw straight
    // into the 16-level frame, and JPEG illustrations decode into it, so anti-aliased pages
    // take the single-render path.
@@ -442823,7 +442950,7 @@
    const bool needsAnyGrayscale = grayscaleEnabled && (SETTINGS.textAntiAliasing || pageHasImages);
    const bool absoluteImageGrayscale = grayscaleEnabled && pageHasImages && !gpio.deviceIsX3() &&
                                        display.getController() == HalDisplay::Controller::UC8279 &&
-@@ -2844,7 +3113,7 @@
+@@ -2844,7 +3136,7 @@
    };
  
    unsigned long cacheBaseMs = 0;
@@ -442832,7 +442959,7 @@
    if (use16LevelText) {
      // The 16-level pass below clears the frame and renders (or copies from the cache)
      // the page, writing the B/W proxy as it goes, so a B/W render here is thrown away.
-@@ -2859,7 +3128,7 @@
+@@ -2859,7 +3151,7 @@
    {
      renderPageWithGuideLines();
    }
@@ -442841,7 +442968,7 @@
    const uint32_t missingCodepoint =
        pageCacheHit ? pageCacheMissingCodepoint_[pageCacheLiveSlot_] : fcm->consumeMissingChineseCodepoint();
  #else
-@@ -2869,7 +3138,14 @@
+@@ -2869,7 +3161,14 @@
      uint32_t expected = 0;
      pendingMissingChineseCodepoint_.compare_exchange_strong(expected, missingCodepoint, std::memory_order_relaxed);
    }
@@ -442856,7 +442983,7 @@
    const auto tBwRender = millis();
  
    if (absoluteImageGrayscale) {
-@@ -2889,6 +3165,7 @@
+@@ -2889,6 +3188,7 @@
      // twice (more flash, more time), and the 16-level waveform is a full-screen one anyway,
      // so ghosting is still cleared.
    } else if (combinedGrayscaleBase) {
@@ -442864,7 +442991,7 @@
      ReaderUtils::displayBaseWithRefreshCycle(renderer, pagesUntilFullRefresh, manualRefreshPending);
    } else if (pageHasImages) {
      // Image pages use one base refresh before the grayscale pass. FAST leaves
-@@ -2903,6 +3180,7 @@
+@@ -2903,6 +3203,7 @@
        pagesUntilFullRefresh = 1;
      }
    } else {
@@ -442872,7 +442999,7 @@
      ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh, overlapRefresh);
    }
    const auto tDisplay = millis();
-@@ -2912,7 +3190,7 @@
+@@ -2912,7 +3213,7 @@
      const auto t16Begin = millis();
      if (renderer.beginGrayscale16()) {
        const auto t16Cleared = millis();
@@ -442881,7 +443008,7 @@
        if (pageCacheHit && pageCacheIs16_[pageCacheLiveSlot_] && pageCache16_[pageCacheLiveSlot_]) {
          memcpy(renderer.grayscale16Frame(), pageCache16_[pageCacheLiveSlot_].get(), renderer.grayscale16FrameBytes());
          memcpy(renderer.getFrameBuffer(), pageCacheBase_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
-@@ -2920,28 +3198,54 @@
+@@ -2920,28 +3221,54 @@
        } else
  #endif
        {
@@ -442939,7 +443066,7 @@
          ttf = {};
  #endif
        }
-@@ -2951,16 +3255,73 @@
+@@ -2951,16 +3278,73 @@
          return;
        }
  #if !defined(SIMULATOR)
@@ -443016,7 +443143,7 @@
  #if RICKYOS_PAINT_PROFILE
          LOG_INF("PERF", "reader commit=%lums total=%lums", tEnd - tCommit, tEnd - t0);
  #endif
-@@ -3137,7 +3498,7 @@
+@@ -3137,7 +3521,7 @@
        }
        const auto tBwStore = millis();
  
@@ -443025,7 +443152,7 @@
        if (pageCacheHit) {
          // Both planes were rendered at idle; putting them in place is one copy
          // each instead of a full page render each.
-@@ -3164,7 +3525,7 @@
+@@ -3164,7 +3548,7 @@
          return;
        }
  
@@ -443034,7 +443161,7 @@
        if (pageCacheHit) {
          memcpy(renderer.getFrameBuffer(), pageCacheMsb_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
          renderer.copyGrayscaleMsbBuffers();
-@@ -3212,9 +3573,12 @@
+@@ -3212,9 +3596,12 @@
  }
  
  void EpubReaderActivity::renderStatusBar() const {
@@ -443047,7 +443174,7 @@
      readerChrome::PageInfo info;
      info.bookTitle = epub ? epub->getTitle().c_str() : nullptr;
      // A chapter the table of contents names, not currentChapterTitle()'s "unnamed".
-@@ -3225,11 +3589,18 @@
+@@ -3225,11 +3612,18 @@
      }
      info.chapterTitle = chapter.c_str();
      info.pageInChapter = currentPage;
@@ -443068,7 +443195,7 @@
    const float pageCount = section ? section->estimatedTotalPages() : 1;
    const float sectionChapterProg = (pageCount > 0) ? (static_cast<float>(currentPage) / pageCount) : 0;
    const float bookProgress = epub ? (epub->calculateProgress(currentSpineIndex, sectionChapterProg) * 100) : 0;
-@@ -3266,8 +3637,12 @@
+@@ -3266,8 +3660,12 @@
        auto chapter = renderer.truncatedText(RickyDesignUi::BODY, title.c_str(), column);
        title = book + " · " + chapter;
      }
@@ -443081,6 +443208,37 @@
      return;
    }
    GUI.drawStatusBar(renderer, bookProgress, currentPage, pageCount, title, 0, textYOffset, true, currentPageBookmarked,
+@@ -4524,7 +4922,7 @@
+   updateBookmarkFlag();
+ }
+ 
+-void EpubReaderActivity::addBookmark() {
++void EpubReaderActivity::addBookmark(const bool addOnly) {
+   if (!section || !epub) return;
+   LOG_DBG("ERS", "Toggle bookmark at spine %d, page %d", currentSpineIndex, section ? section->currentPage : -1);
+   int currentPage;
+@@ -4538,12 +4936,16 @@
+   SavedProgressPosition progress = ProgressMapper::toSavedProgress(epub, getCurrentPosition());
+   const ProgressRange pageRange = getPageProgressRange(epub, currentSpineIndex, currentPage, pageCount);
+ 
++  const auto matchesProgress = [&](const BookmarkEntry& b) {
++    return bookmarkMatchesProgress(b, currentSpineIndex, currentPage, pageCount, pageRange);
++  };
++  if (addOnly && std::any_of(cachedBookmarks.begin(), cachedBookmarks.end(), matchesProgress)) {
++    bookmarkRemoved = false;
++    currentPageBookmarked = true;
++    return;
++  }
+   const size_t bookmarkCountBeforeToggle = cachedBookmarks.size();
+-  cachedBookmarks.erase(std::remove_if(cachedBookmarks.begin(), cachedBookmarks.end(),
+-                                       [&](const BookmarkEntry& b) {
+-                                         return bookmarkMatchesProgress(b, currentSpineIndex, currentPage, pageCount,
+-                                                                        pageRange);
+-                                       }),
++  cachedBookmarks.erase(std::remove_if(cachedBookmarks.begin(), cachedBookmarks.end(), matchesProgress),
+                         cachedBookmarks.end());
+   if (cachedBookmarks.size() != bookmarkCountBeforeToggle) {
+     bookmarkRemoved = true;
 --- a/src/activities/reader/EpubReaderActivity.h
 +++ b/src/activities/reader/EpubReaderActivity.h
 @@ -15,13 +15,16 @@
@@ -443154,7 +443312,24 @@
    void prefetchNextChapter(const ReaderPageCacheKey& layout, uint32_t generation);
  #endif
    void freePageCache();
-@@ -318,7 +334,8 @@
+@@ -218,6 +234,7 @@
+   ChapterPosition chapterPosition() const;
+   int bookPercentFor(const ChapterPosition& position) const;
+   void openReaderMenu();
++  void openChapterSelection(bool returnToMenu);
+   // Toolbar reader menu (see Overlay above).
+   bool usesToolbarMenu() const;
+   void openOverlay(Overlay target);
+@@ -252,7 +269,7 @@
+   unsigned long confirmLongPressThreshold() const;
+   void toggleAutoPageTurn(uint8_t requestedPageTurnRate);
+   void loadCachedBookmarks();
+-  void addBookmark();
++  void addBookmark(bool addOnly = false);
+   void updateBookmarkFlag();
+   void applyProgressChange(const ProgressChangeResult& sync);
+   // Bookmarks panel rows: [add/remove this page] [each bookmark] [manage...].
+@@ -318,7 +335,8 @@
    void loop() override;
    void render(RenderLock&& lock) override;
  
@@ -443452,7 +443627,7 @@
    const bool nextZone = inverted ? x < (width * 2) / 3 : x >= width / 3;
    result.next = nextTaps && (!prevTaps || nextZone);
    result.prev = prevTaps && (!nextTaps || !nextZone);
-@@ -147,25 +168,34 @@
+@@ -147,25 +168,42 @@
    return result;
  }
  
@@ -443492,6 +443667,14 @@
 +  return input.wasScreenTapped(x, y) &&
 +         readerTapZones::actionAt(SETTINGS.readerTapZones, x, y, renderer.getScreenWidth(),
 +                                 renderer.getScreenHeight()) == readerTapZones::Action::Refresh;
++}
++
++inline bool isTouchContentsTap(const GfxRenderer& renderer, const MappedInputManager& input) {
++  if (!SETTINGS.readerTapZones.enabled || !SETTINGS.touchReaderControls || !input.hasTouch()) return false;
++  int x = 0, y = 0;
++  return input.wasScreenTapped(x, y) &&
++         readerTapZones::actionAt(SETTINGS.readerTapZones, x, y, renderer.getScreenWidth(),
++                                 renderer.getScreenHeight()) == readerTapZones::Action::Contents;
 +}
 +
 +// Reader menu opens on the menu edge-swipe or a top-band tap. Home-key
@@ -443914,7 +444097,7 @@
 +                                StrId::STR_PLUS_KEY_UP, StrId::STR_PLUS_KEY_DOWN};
 +constexpr StrId KEY_ACTIONS[] = {StrId::STR_PLUS_KEY_DEFAULT, StrId::STR_IGNORE, StrId::STR_BACK, StrId::STR_CONFIRM, StrId::STR_PREV_PAGE,
 +                                StrId::STR_NEXT_PAGE, StrId::STR_HOME_SHORTCUT, StrId::STR_READER_MENU, StrId::STR_FORCE_REFRESH,
-+                                StrId::STR_TOGGLE_FRONTLIGHT, StrId::STR_RICKY_CC_TITLE};
++                                StrId::STR_TOGGLE_FRONTLIGHT, StrId::STR_RICKY_CC_TITLE, StrId::STR_KEY_ADD_BOOKMARK};
 +static_assert(sizeof(KEY_ACTIONS)/sizeof(KEY_ACTIONS[0]) == plus_keys::Count);
 +}
 +#endif
@@ -444052,7 +444235,7 @@
    bool handleCustomInput() override;
 --- /dev/null
 +++ b/src/activities/settings/ReaderTouchZonesActivity.cpp
-@@ -0,0 +1,221 @@
+@@ -0,0 +1,222 @@
 +#include "ReaderTouchZonesActivity.h"
 +#include <algorithm>
 +#include <cstdio>
@@ -444063,7 +444246,8 @@
 +
 +namespace {
 +constexpr StrId kActions[] = {StrId::STR_TOUCH_GRID_IGNORE, StrId::STR_TOUCH_GRID_PREVIOUS,
-+  StrId::STR_TOUCH_GRID_NEXT, StrId::STR_TOUCH_GRID_MENU, StrId::STR_TOUCH_GRID_REFRESH};
++  StrId::STR_TOUCH_GRID_NEXT, StrId::STR_TOUCH_GRID_MENU, StrId::STR_TOUCH_GRID_REFRESH, StrId::STR_TOUCH_GRID_CONTENTS};
++static_assert(std::size(kActions) == readerTapZones::value(readerTapZones::Action::Count));
 +freeink::ui::Rect ui(Rect r) {
 +  return {static_cast<int16_t>(r.x), static_cast<int16_t>(r.y), static_cast<int16_t>(r.width), static_cast<int16_t>(r.height)};
 +}
@@ -444307,6 +444491,16 @@
 +  bool waitTouchRelease_ = false;
 +  bool warning_ = false;
 +};
+--- a/src/activities/settings/ReadingStatsSettingsActivity.cpp
++++ b/src/activities/settings/ReadingStatsSettingsActivity.cpp
+@@ -106,6 +106,7 @@
+     props.valueText = screen.theme().bodyText;
+   }
+   props.rowProvider = [](void*, uint16_t index, fui::ListItem& item) {
++    item.actionValue = static_cast<int16_t>(index);
+     item.label = I18N.get(MENU_NAMES[index]);
+     switch (static_cast<MenuItem>(index)) {
+       case MenuItem::DailyGoal: {
 --- a/src/activities/settings/RickyOptionListActivity.cpp
 +++ b/src/activities/settings/RickyOptionListActivity.cpp
 @@ -1,5 +1,6 @@
@@ -444316,15 +444510,7 @@
  #include <GfxRenderer.h>
  
  #include <algorithm>
-@@ -34,6 +35,7 @@
-   static const RickyOptionRow rows[] = {
-       {StrId::STR_RICKY_GESTURE_BACK, &SETTINGS.rickyGestureBack, nullptr, 0, StrId::STR_RICKY_GESTURE_GLOBAL},
-       {StrId::STR_RICKY_GESTURE_HOME, &SETTINGS.rickyGestureHome},
-+      {StrId::STR_RICKY_STANDBY_SWIPE_UNLOCK, &SETTINGS.standbySwipeUnlock},
-       {StrId::STR_RICKY_GESTURE_CONTROL, &SETTINGS.rickyGestureControl},
-       {StrId::STR_RICKY_GESTURE_STATUS, &SETTINGS.rickyGestureStatus},
-       {StrId::STR_RICKY_GESTURE_TOUCH_TURN, &SETTINGS.touchReaderControls, nullptr, 0,
-@@ -50,12 +52,26 @@
+@@ -50,12 +51,26 @@
  const RickyOptionList& keys() {
    // The strip under the screen is left / middle / right; the middle key is Back.
    static const RickyOptionRow rows[] = {
@@ -444364,6 +444550,24 @@
  #include "LanguageSelectActivity.h"
  #include "MappedInputManager.h"
  #include "OtaUpdateActivity.h"
+@@ -307,7 +307,7 @@
+ 
+   // Rows that live on their own pages or do nothing on this device leave the lists:
+   // - the Standby & power-off page has what Standby and power-off show, the picture's
+-  //   fit and filter, when Standby starts and when it powers off;
++  //   fit and filter; timing stays in Display & Standby;
+   // - every touch gesture is on the Gestures page, every key on the Keys page;
+   // - Read Pico has no Confirm key for the long-press function, and plugins / SD
+   //   firmware update are not part of RickyOS (Profile is the card on top of Settings).
+@@ -315,7 +315,7 @@
+     const auto field = setting.valuePtr;
+     if (field == &CrossPointSettings::sleepScreen || field == &CrossPointSettings::standbyOverlay ||
+         field == &CrossPointSettings::quickResumeSleepScreen || field == &CrossPointSettings::sleepScreenCoverMode ||
+-        field == &CrossPointSettings::sleepScreenCoverFilter || field == &CrossPointSettings::sleepTimeoutMinutes) {
++        field == &CrossPointSettings::sleepScreenCoverFilter) {
+       return true;
+     }
+     return field == &CrossPointSettings::touchReaderControls || field == &CrossPointSettings::pageTurnGesture ||
 @@ -473,10 +473,12 @@
  #endif
    systemSettings.push_back(SettingInfo::Action(StrId::STR_APP_VISIBILITY, SettingAction::AppVisibility));
@@ -444393,6 +444597,15 @@
  
    reorganizeRickySettings();
    currentSettings = &settingsForCategory(selectedCategoryIndex);
+@@ -806,7 +808,7 @@
+   const bool sleepScreenChanged = setting.valuePtr == &CrossPointSettings::sleepScreen;
+   const bool quickResumeTimeoutChanged = setting.valuePtr == &CrossPointSettings::quickResumeSleepScreen;
+ 
+-  if (setting.nameId == StrId::STR_TIME_TO_SLEEP) {
++  if (setting.valuePtr == &CrossPointSettings::sleepTimeoutMinutes) {
+     openSleepTimeoutPicker();
+     return;
+   }
 @@ -894,7 +896,14 @@
      };
  
@@ -444421,20 +444634,38 @@
        case SettingAction::RickyScreenRepair: {
          // Residual charge in the film shows old screens through new ones. Full GC16
          // black/white pairs are DC-balanced and drive every pixel through both
-@@ -1042,13 +1053,6 @@
-           startActivityForResultWith<InxAboutActivity>(resultHandler);
+@@ -1043,13 +1054,6 @@
          else
            startActivityForResultWith<AboutActivity>(resultHandler);
--        break;
+         break;
 -      case SettingAction::KeyboardLayouts:
 -        if (auto activity = makeUniqueNoThrow<KeyboardLayoutsActivity>(renderer, mappedInput)) {
 -          startActivityForResult(std::move(activity), nullptr);
 -        } else {
 -          LOG_ERR("SETTINGS", "OOM: KeyboardLayoutsActivity");
 -        }
-         break;
+-        break;
        case SettingAction::None:
          // Do nothing
+         break;
+@@ -1160,7 +1164,7 @@
+         }
+         requestUpdate();
+       },
+-      "SleepTimeoutInterval", StrId::STR_TIME_TO_SLEEP, SETTINGS.sleepTimeoutMinutes,
++      "SleepTimeoutInterval", StrId::STR_RICKY_AUTO_STANDBY, SETTINGS.sleepTimeoutMinutes,
+       CrossPointSettings::MIN_SLEEP_TIMEOUT_MINUTES, CrossPointSettings::MAX_SLEEP_TIMEOUT_MINUTES, 1, 5,
+       StrId::STR_SLEEP_TIMER_VALUE_FORMAT, false, StrId::STR_SLEEP_NEVER);
+ }
+@@ -1190,7 +1194,7 @@
+     return "";
+   }
+   if (setting.type == SettingType::VALUE && setting.valuePtr != nullptr) {
+-    if (setting.nameId == StrId::STR_TIME_TO_SLEEP) {
++    if (setting.valuePtr == &CrossPointSettings::sleepTimeoutMinutes) {
+       if (SETTINGS.sleepTimeoutMinutes >= CrossPointSettings::SLEEP_TIMEOUT_NEVER_MINUTES) {
+         return tr(STR_SLEEP_NEVER);
+       }
 @@ -1305,10 +1309,13 @@
    if (usesMainTabBar() && !showMainTabContentSelection()) productProps.selectedIndex = -1;
    GfxRenderer::SyntheticBoldScope productBold(renderer, CrossPointSettings::SYNTHETIC_BOLD_OFF);
@@ -448010,13 +448241,14 @@
    if (!newFirmware && !library) return;
 --- a/src/util/HomeButtonInput.h
 +++ b/src/util/HomeButtonInput.h
-@@ -15,6 +15,9 @@
+@@ -15,6 +15,10 @@
    Dictionary,
    ReaderMenu,
    ToggleFrontlight,
 +  Back,
 +  Standby,
 +  HoldingHand,  // switch the page-turn hand (the reader menu's 惯用手)
++  AddBookmark,
    Count
  };
  
@@ -448028,7 +448260,7 @@
 +
 +namespace plus_keys {
 +// Stable persisted values. Default retains the board/navigation mapping.
-+enum Action : uint8_t { Default, Ignore, Back, Confirm, Previous, Next, Home, Menu, Refresh, Light, Control, Count };
++enum Action : uint8_t { Default, Ignore, Back, Confirm, Previous, Next, Home, Menu, Refresh, Light, Control, Bookmark, Count };
 +constexpr unsigned KEY_COUNT = 5;
 +constexpr unsigned FIELD_COUNT = KEY_COUNT * 2;
 +constexpr uint32_t HOLD_MS = 600;

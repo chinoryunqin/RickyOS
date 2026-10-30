@@ -32,7 +32,7 @@ struct CrossPointSettings {
  uint8_t frontButtonBack=0,frontButtonConfirm=1,frontButtonLeft=2,frontButtonRight=3,sideButtonLayout=0;
  uint8_t plusKeyActions[10]={0,1,0,1,0,1,0,1,0,1};
 } SETTINGS;
-enum class HomeButtonAction {Ignore,Home,ReaderMenu,Refresh,ToggleFrontlight,Confirm,Back};
+enum class HomeButtonAction {Ignore,Home,ReaderMenu,Refresh,ToggleFrontlight,Confirm,Back,AddBookmark};
 class MappedInputManager {
  public:
  enum class Button {Back,Confirm,Left,Right,Up,Down,Power,PageBack,PageForward,NavNext,NavPrevious,ScreenLeft,ScreenRight,ScreenUp,ScreenDown,Count};
@@ -110,12 +110,25 @@ int main(){
  assert(!m.wasPressed(B::Confirm)&&!m.wasReleased(B::Confirm)&&m.plusActions==0);
  for (auto pair : {std::pair<uint8_t,HomeButtonAction>{Home,HomeButtonAction::Home},
                    {Menu,HomeButtonAction::ReaderMenu},{Refresh,HomeButtonAction::Refresh},
-                   {Light,HomeButtonAction::ToggleFrontlight}}) {
+                   {Light,HomeButtonAction::ToggleFrontlight},{Bookmark,HomeButtonAction::AddBookmark}}) {
   SETTINGS.plusKeyActions[0]=pair.first;m.frame(3020,2);m.frame(3030,0);
   assert(m.homeAction==pair.second);m.frame(3040,0);assert(m.homeAction==HomeButtonAction::Ignore);
  }
+ // New bookmark binding: every physical key, short/long exclusivity, and consumed release.
+ for(unsigned i=0;i<KEY_COUNT;++i){
+  for(auto& v:SETTINGS.plusKeyActions)v=Ignore;
+  SETTINGS.plusKeyActions[2*i]=Bookmark;
+  m.frame(4000,0);m.frame(4010,1<<keys[i]);assert(m.homeAction==HomeButtonAction::Ignore);
+  m.frame(4020,0);assert(m.homeAction==HomeButtonAction::AddBookmark&&m.plusActions==0);
+  m.frame(4030,0);assert(m.homeAction==HomeButtonAction::Ignore);
+  SETTINGS.plusKeyActions[2*i]=Next;SETTINGS.plusKeyActions[2*i+1]=Bookmark;
+  m.frame(4100,1<<keys[i]);m.frame(4700,1<<keys[i]);
+  assert(m.homeAction==HomeButtonAction::AddBookmark&&m.plusActions==0);
+  m.frame(4800,1<<keys[i]);assert(m.homeAction==HomeButtonAction::Ignore);
+  m.frame(4900,0);assert(m.homeAction==HomeButtonAction::Ignore&&m.plusActions==0);
+ }
  // Side default keeps the user's existing reversed page layout.
- SETTINGS.plusKeyActions[6]=Default;SETTINGS.sideButtonLayout=CrossPointSettings::NEXT_PREV;
+ SETTINGS.plusKeyActions[6]=Default;SETTINGS.plusKeyActions[7]=Ignore;SETTINGS.sideButtonLayout=CrossPointSettings::NEXT_PREV;
  m.frame(3100,16);m.frame(3110,0);assert(m.wasReleased(B::PageForward));
 }
 '''

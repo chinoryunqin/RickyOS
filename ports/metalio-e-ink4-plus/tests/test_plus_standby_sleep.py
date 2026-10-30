@@ -417,7 +417,7 @@ struct StandbyActivity {
 };
 ''' + method(activity, 'bool StandbyActivity::tryLightSleep(') + r'''
 int main(){
- for(int guard=0;guard<10;++guard){
+ for(int guard=1;guard<10;++guard){
   StandbyActivity a;face={};SETTINGS={};Frontlight={};bleinput::running=false;
   HalRecorder::running=false;WiFi.mode=0;gpio.usb=false;powerManager={};
   unsigned idle=35000;
@@ -427,7 +427,7 @@ int main(){
    case 8:powerManager.allowed=false;break;default:a.syncState_=StandbyActivity::SyncState::Syncing;}
   assert(!a.tryLightSleep(idle)&&powerManager.sleeps==0);
  }
- SETTINGS={};Frontlight={};bleinput::running=false;HalRecorder::running=false;WiFi.mode=0;gpio.usb=false;face={};
+ SETTINGS={};SETTINGS.standbySwipeUnlock=true;Frontlight={};bleinput::running=false;HalRecorder::running=false;WiFi.mode=0;gpio.usb=false;face={};
  for(auto reason:{HalPowerManager::LightSleepWakeReason::Timer,HalPowerManager::LightSleepWakeReason::PowerButton,
                  HalPowerManager::LightSleepWakeReason::PowerButtonHeld,HalPowerManager::LightSleepWakeReason::Failed}){
   StandbyActivity a;powerManager={};activityManager={};powerManager.reason=reason;

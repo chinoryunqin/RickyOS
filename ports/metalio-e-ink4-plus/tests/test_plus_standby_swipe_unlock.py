@@ -24,9 +24,12 @@ settings = (SOURCE / 'src/CrossPointSettings.cpp').read_text()
 header = (SOURCE / 'src/CrossPointSettings.h').read_text()
 options = (SOURCE / 'src/activities/settings/RickyOptionListActivity.cpp').read_text()
 default = re.search(r'uint8_t standbySwipeUnlock = \d+;', header).group()
-save = re.search(r'  doc\["standbySwipeUnlock"\] = standbySwipeUnlock;', settings).group()
-load = re.search(r'  standbySwipeUnlock = .*?;', settings[settings.index('bool CrossPointSettings::fromJson('):]).group()
-assert '{StrId::STR_RICKY_STANDBY_SWIPE_UNLOCK, &SETTINGS.standbySwipeUnlock}' in options
+save = re.search(r'  doc\["standbySwipeUnlock"\] = 0;', settings).group()
+start = settings.index('  // Swipe unlock is retired:')
+load = settings[start:settings.index('  rickyCompanion =', start)]
+assert '&SETTINGS.standbySwipeUnlock' not in options
+assert 'standbySwipeUnlock ||' not in standby
+assert 'wasStandbyUnlockGesture' not in mapped
 for language in ('chinese', 'english'):
     assert 'STR_RICKY_STANDBY_SWIPE_UNLOCK:' in (SOURCE / f'lib/I18n/translations/{language}.yaml').read_text()
 
@@ -40,6 +43,7 @@ for name in ('notosans_cjk_12_rickyos', 'notosans_cjk_14', 'notosans_cjk_16',
     assert all(any(a <= ord(char) <= b for a, b in spans) for char in '锁屏右滑解锁'), name
 
 program = r'''
+#include <ArduinoJson.h>
 #include <cassert>
 #include <cstdint>
 #include <initializer_list>
@@ -52,20 +56,18 @@ namespace fui = freeink::ui;
 #define STANDBY_DIAG(...) ((void)0)
 uint32_t now = 100;
 uint32_t millis() { return now; }
-struct JsonValue {
- int value=0; bool present=false;
- int operator|(int fallback)const { return present ? value : fallback; }
- JsonValue& operator=(int n){value=n;present=true;return *this;}
-};
-using Json = std::map<std::string,JsonValue>;
+using Json = JsonDocument;
 struct Settings {
 ''' + default + r'''
+ bool resave=false;
  uint8_t standbyShortcutEnabled=1, rickyGestureBack=1, rickyGestureHome=1;
  void save(Json& doc){
 ''' + save + r'''
  }
  void load(Json& doc){
+ bool needsResave=false;
 ''' + load + r'''
+ resave=needsResave;
  }
  unsigned long getStandbyPowerOffMs()const{return 0;}
 } SETTINGS;
@@ -94,7 +96,6 @@ struct MappedInputManager {
  void rememberTouchHeldTime()const{}
  bool wasEdgeSwipe(fui::ScreenEdge)const;
  bool wasBackGesture()const;
- bool wasStandbyUnlockGesture()const;
  bool wasReleased(Button)const;
  bool mapButton(Button b,bool(HalGPIO::*)(uint8_t)const)const{
   return b==Button::Back ? physicalBack : physicalConfirm;
@@ -127,7 +128,6 @@ struct StandbyActivity {
 ''' + '\n'.join(method(mapped, signature) for signature in (
     'bool MappedInputManager::wasEdgeSwipe(',
     'bool MappedInputManager::wasBackGesture()',
-    'bool MappedInputManager::wasStandbyUnlockGesture()',
     'bool MappedInputManager::wasReleased(')) + '\n' + method(standby, 'void StandbyActivity::loop()') + r'''
 int main(){
  // Old settings and defaults do not opt users into touch unlock.
@@ -137,7 +137,7 @@ int main(){
  for(int value : {0,1}){
   SETTINGS.standbySwipeUnlock=value;SETTINGS.save(doc);
   SETTINGS.standbySwipeUnlock=!value;SETTINGS.load(doc);
-  assert(SETTINGS.standbySwipeUnlock==value);
+  assert(SETTINGS.standbySwipeUnlock==0);
  }
  for(int back : {0,1})for(int home : {0,1})for(int shortcut : {0,1}){
   SETTINGS.rickyGestureBack=back;SETTINGS.rickyGestureHome=home;
@@ -145,7 +145,7 @@ int main(){
   for(int enabled : {0,1}){
    SETTINGS.standbySwipeUnlock=enabled;
    mappedInput=MappedInputManager{};mappedInput.swipe=true;
-   StandbyActivity a;a.loop();assert(a.finishes==enabled);
+   StandbyActivity a;a.loop();assert(a.finishes==0);
    // Other edges, wrong direction and a central swipe are not unlock gestures.
    for(int direction : {0,1,2,3}){
     mappedInput.sx=direction==0 ? 400 : 200;
@@ -165,14 +165,15 @@ int main(){
    StandbyActivity remapped;remapped.loop();assert(remapped.finishes==shortcut);
   }
  }
- // Real SDK geometry respects portrait/landscape logical dimensions.
- for(bool landscape : {false,true}){
-  renderer.width=landscape ? 1216 : 684;renderer.height=landscape ? 684 : 1216;
-  mappedInput=MappedInputManager{};mappedInput.swipe=true;
-  mappedInput.sx=0;mappedInput.sy=renderer.height/2;
-  mappedInput.ex=renderer.width/2;mappedInput.ey=mappedInput.sy;
-  assert(mappedInput.wasStandbyUnlockGesture());
+ // Enabled and malformed old values are forced Off and scheduled for persistence.
+ for(const char* old:{R"({"standbySwipeUnlock":1})",R"({"standbySwipeUnlock":true})",
+   R"({"standbySwipeUnlock":255})",R"({"standbySwipeUnlock":-1})",R"({"standbySwipeUnlock":"on"})"}){
+  deserializeJson(doc,old);SETTINGS.standbySwipeUnlock=1;SETTINGS.load(doc);
+  assert(SETTINGS.standbySwipeUnlock==0&&SETTINGS.resave);
+  SETTINGS.save(doc);assert(doc["standbySwipeUnlock"].as<int>()==0);
+  SETTINGS.load(doc);assert(!SETTINGS.resave&&SETTINGS.standbySwipeUnlock==0);
  }
+
 }
 '''
 with tempfile.TemporaryDirectory(prefix='plus-standby-swipe-') as temporary:
@@ -181,6 +182,7 @@ with tempfile.TemporaryDirectory(prefix='plus-standby-swipe-') as temporary:
     subprocess.run(['clang++', '-std=c++20', '-Wall', '-Wextra', '-Werror',
                     '-fsanitize=address,undefined',
                     '-I' + str(SOURCE / 'freeink-sdk/libs/ui/FreeInkUI/include'),
+                    '-I' + str(PORT / '.local/dependencies/ArduinoJson/src'),
                     str(folder / 'test.cpp'), '-o', str(folder / 'test')], check=True)
     subprocess.run([str(folder / 'test')], check=True)
-print('Standby swipe: opt-in, JSON round-trip/missing key, global gesture independence, real SDK edge geometry, physical Back and stale header tap isolation passed (ASan/UBSan)')
+print('Retired swipe unlock: forced-Off JSON migration/resave, no swipe exit even with stale RAM flags, physical Back and touch isolation passed (ASan/UBSan)')

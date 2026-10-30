@@ -32,7 +32,7 @@ int main(){
  }
  assert(cellAt(INT_MAX-1,INT_MAX-1,INT_MAX,INT_MAX)==8);
  JsonDocument old;assert(!load(old.as<JsonVariantConst>()).enabled);
- c.enabled=true;c.layouts[0]=standard();c.layouts[1]=standard();c.layouts[0][0]=value(Action::Ignore);c.layouts[1][8]=value(Action::Refresh);
+ c.enabled=true;c.layouts[0]=standard();c.layouts[1]=standard();c.layouts[0][0]=value(Action::Contents);c.layouts[1][8]=value(Action::Contents);
  JsonDocument doc;save(doc,c);auto d=load(doc.as<JsonVariantConst>());
  assert(d.enabled&&d.layouts==c.layouts);
  std::string json;serializeJson(doc,json);JsonDocument reboot;assert(!deserializeJson(reboot,json));
@@ -42,7 +42,7 @@ int main(){
   R"({"readerTapZones":{"version":1,"enabled":true,"portrait":[1,2]}})"}){
   JsonDocument b;deserializeJson(b,bad);assert(!load(b.as<JsonVariantConst>()).enabled);
  }
- for(int wrong:{-1,5,1000}){deserializeJson(doc,good);doc["readerTapZones"]["portrait"][2]=wrong;assert(!load(doc.as<JsonVariantConst>()).enabled);}
+ for(int wrong:{-1,static_cast<int>(Action::Count),1000}){deserializeJson(doc,good);doc["readerTapZones"]["portrait"][2]=wrong;assert(!load(doc.as<JsonVariantConst>()).enabled);}
  deserializeJson(doc,good);doc["readerTapZones"]["landscape"][4]=1.5;assert(!load(doc.as<JsonVariantConst>()).enabled);
  deserializeJson(doc,good);doc["readerTapZones"]["landscape"][4]=true;assert(!load(doc.as<JsonVariantConst>()).enabled);
  deserializeJson(doc,good);doc["readerTapZones"]["portrait"].as<JsonArray>().add(1);assert(!load(doc.as<JsonVariantConst>()).enabled);
@@ -95,7 +95,7 @@ int main(){
  SETTINGS.readerTapZones.enabled=true;
  for(auto size:{std::pair{684,1216},std::pair{1216,684},std::pair{1000,1768},std::pair{1768,1000}}){r.w=size.first;r.h=size.second;
   auto& layout=SETTINGS.readerTapZones.layouts[readerTapZones::bank(r.w,r.h)];
-  for(int cell=0;cell<9;++cell)for(int action=0;action<5;++action){
+  for(int cell=0;cell<9;++cell)for(int action=0;action<readerTapZones::value(readerTapZones::Action::Count);++action){
    layout[cell]=action;input.x=(2*(cell%3)+1)*r.w/6;input.y=(2*(cell/3)+1)*r.h/6;
    for(int hand=0;hand<2;++hand)for(bool rtl:{false,true}){
     SETTINGS.pageTurnDirection=hand;SETTINGS.pageTurnGesture=CrossPointSettings::SWIPE_ONLY;
@@ -104,6 +104,7 @@ int main(){
     assert(a.prev==(action==1)&&a.next==(action==2)&&a.heldMs==0);
     assert(ReaderUtils::isTouchMenuTap(r,input)==(action==3));
     assert(ReaderUtils::isTouchRefreshTap(r,input)==(action==4));
+    assert(ReaderUtils::isTouchContentsTap(r,input)==(action==5));
    }
   }
  }
@@ -115,6 +116,7 @@ int main(){
  a=ReaderUtils::detectTouchPageTurn(r,input);assert(!a.next&&!a.prev&&!ReaderUtils::isTouchMenuTap(r,input));
  input.tap=true;SETTINGS.touchReaderControls=0;
  a=ReaderUtils::detectTouchPageTurn(r,input);assert(!a.next&&!a.prev&&!ReaderUtils::isTouchRefreshTap(r,input));
+ assert(!ReaderUtils::isTouchContentsTap(r,input));
  input.edge=true;assert(ReaderUtils::isTouchMenuGesture(r,input));input.edge=false;
  input.touch=false;assert(!ReaderUtils::isTouchMenuGesture(r,input));
 }

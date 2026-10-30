@@ -1,0 +1,22 @@
+{
+  "version": "1.2.11-standby-fix",
+  "base_tag": "plus-v1.2.11",
+  "base_commit": "9302f06e8a82f66063b7c5c226f6087b61750902",
+  "branch": "codex/plus-reader-bindings-20261030",
+  "bytes": 5766544,
+  "sha256": "4934d9e4d9c88b284c3b3801f2f2cd48f3f5ade64917d859fe0cb562d194b643",
+  "elf_sha256": "95978997cc24bba0bf471bcccffc1934f9b6649ceef4932a4470bb2b70d48846",
+  "artifact": "/Volumes/Seagate/RickyOS-build-output/plus-standby-fix-20261030/RickyOS-Plus-1.2.11-standby-fix.bin",
+  "targeted_regressions_passed": true,
+  "firmware_build_passed": true,
+  "flashed": true,
+  "published": false,
+  "hardware_validated": false,
+  "clean_source_reconstruction_passed": true,
+  "write_verified": true,
+  "boot_verified": true,
+  "outside_app_unchanged": true,
+  "flash_offset": 65536,
+  "flash_slot": "app0",
+  "device_backup": "/Volumes/Seagate/RickyOS-device-backups/plus-standby-fix-20261030"
+}
