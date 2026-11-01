@@ -51,7 +51,8 @@ EpdiyHighlevelState epd_hl_init(const EpdWaveform* waveform) {
     assert(state.front_fb != NULL);
     state.difference_fb = heap_caps_aligned_alloc(fb_align, 2 * fb_size, MALLOC_CAP_SPIRAM);
     assert(state.difference_fb != NULL);
-    state.dirty_lines = malloc(epd_height() * sizeof(bool));
+    // Scan hot flags from internal RAM, independent of ordinary UI malloc policy.
+    state.dirty_lines = heap_caps_malloc(epd_height() * sizeof(bool), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     assert(state.dirty_lines != NULL);
     state.dirty_columns
         = heap_caps_aligned_alloc(16, epd_width() / 2, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);

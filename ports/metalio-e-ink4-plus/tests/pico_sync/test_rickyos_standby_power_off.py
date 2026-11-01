@@ -69,7 +69,11 @@ int main() {
         self.assertIn('add(ChangeReadingPicture);', reading)
         self.assertIn('add(static_cast<Item>(PowerOff0 + i));', off)
         self.assertIn('add(ChangePowerOffPicture);', off)
-        self.assertIn('add(AutoPowerOff);', off)
+        # Released 1.2.12 moved both timers to Display & Standby. Keep the
+        # wallpaper page dedicated to appearance; the production ownership
+        # and persistence catalog is exercised by test_power_settings_location.
+        self.assertNotIn('add(AutoPowerOff);', off)
+        self.assertIn('&CrossPointSettings::rickyAutoOffIndex', read('src/SettingsList.h'))
         self.assertNotIn('Style0', off)
         # The picture strip only for the picture; corner and filter for picture and cover.
         self.assertIn('if (SETTINGS.rickyStandbyFace == Settings::RICKY_STANDBY_PICTURE) {', rows)

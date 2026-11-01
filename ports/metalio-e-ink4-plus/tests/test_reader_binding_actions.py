@@ -1,10 +1,11 @@
 """Run production bookmark and chapter-picker behavior with lightweight collaborators."""
 from pathlib import Path
+import os
 import subprocess
 import tempfile
 import unittest
 
-ROOT = Path(__file__).resolve().parents[1] / 'firmware/rickyos-plus-1.2/upstream'
+ROOT = Path(os.environ.get('RICKYOS_READER_SOURCE_ROOT', Path(__file__).resolve().parents[1] / 'firmware/rickyos-plus-1.2/upstream'))
 SOURCE = (ROOT / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
 
 

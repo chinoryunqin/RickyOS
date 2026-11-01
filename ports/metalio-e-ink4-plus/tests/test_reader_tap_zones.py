@@ -1,10 +1,12 @@
 """Execute production tap mapping, persistence and the existing gesture helpers."""
 from pathlib import Path
+import os
 import subprocess
 import tempfile
 import unittest
 
-ROOT=Path(__file__).resolve().parents[1]/'firmware/rickyos-plus-1.2/upstream'
+ROOT=Path(os.environ.get('RICKYOS_READER_SOURCE_ROOT', Path(__file__).resolve().parents[1]/'firmware/rickyos-plus-1.2/upstream'))
+JSON=Path(__file__).resolve().parents[1]/'.local/dependencies/ArduinoJson/src'
 class ReaderTapZonesTest(unittest.TestCase):
  def compile(self,code, extra=()):
   with tempfile.TemporaryDirectory(prefix='ricky-tap-grid-') as directory:
@@ -19,6 +21,7 @@ class ReaderTapZonesTest(unittest.TestCase):
 #include <string>
 int main(){
  using namespace readerTapZones;
+ static_assert(value(Action::Contents)==5 && value(Action::AddBookmark)==6);
  Config c;assert(!c.enabled);assert(hasMenu(c.layouts[0])&&hasMenu(c.layouts[1]));
  for(auto size: {std::pair{684,1216},std::pair{1216,684},std::pair{1000,1768},std::pair{1768,1000}}){
   auto [w,h]=size;
@@ -32,7 +35,7 @@ int main(){
  }
  assert(cellAt(INT_MAX-1,INT_MAX-1,INT_MAX,INT_MAX)==8);
  JsonDocument old;assert(!load(old.as<JsonVariantConst>()).enabled);
- c.enabled=true;c.layouts[0]=standard();c.layouts[1]=standard();c.layouts[0][0]=value(Action::Contents);c.layouts[1][8]=value(Action::Contents);
+ c.enabled=true;c.layouts[0]=standard();c.layouts[1]=standard();c.layouts[0][0]=value(Action::AddBookmark);c.layouts[1][8]=value(Action::AddBookmark);
  JsonDocument doc;save(doc,c);auto d=load(doc.as<JsonVariantConst>());
  assert(d.enabled&&d.layouts==c.layouts);
  std::string json;serializeJson(doc,json);JsonDocument reboot;assert(!deserializeJson(reboot,json));
@@ -49,7 +52,7 @@ int main(){
  // Edited valid arrays with no menu recover a reachable centre cell.
  c.layouts[0].fill(0);normalize(c);assert(c.layouts[0][4]==value(Action::Menu));
 }
-''', ['-I'+str(ROOT/'.pio/libdeps/simulator_rickyos/ArduinoJson/src')])
+''', ['-I'+str(JSON)])
  def test_real_reader_gesture_routing(self):
   s=(ROOT/'src/activities/reader/ReaderUtils.h').read_text()
   start=s.index('inline bool gestureAllowsSwipe');end=s.index('// Grayscale anti-aliasing pass.')
@@ -105,6 +108,7 @@ int main(){
     assert(ReaderUtils::isTouchMenuTap(r,input)==(action==3));
     assert(ReaderUtils::isTouchRefreshTap(r,input)==(action==4));
     assert(ReaderUtils::isTouchContentsTap(r,input)==(action==5));
+    assert(ReaderUtils::isTouchAddBookmarkTap(r,input)==(action==6));
    }
   }
  }
@@ -116,7 +120,7 @@ int main(){
  a=ReaderUtils::detectTouchPageTurn(r,input);assert(!a.next&&!a.prev&&!ReaderUtils::isTouchMenuTap(r,input));
  input.tap=true;SETTINGS.touchReaderControls=0;
  a=ReaderUtils::detectTouchPageTurn(r,input);assert(!a.next&&!a.prev&&!ReaderUtils::isTouchRefreshTap(r,input));
- assert(!ReaderUtils::isTouchContentsTap(r,input));
+ assert(!ReaderUtils::isTouchContentsTap(r,input)&&!ReaderUtils::isTouchAddBookmarkTap(r,input));
  input.edge=true;assert(ReaderUtils::isTouchMenuGesture(r,input));input.edge=false;
  input.touch=false;assert(!ReaderUtils::isTouchMenuGesture(r,input));
 }

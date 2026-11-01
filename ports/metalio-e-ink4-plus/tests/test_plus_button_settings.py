@@ -29,7 +29,7 @@ int main(){
  Settings a,b;
  for(int i=0;i<10;i++)a.plusKeyActions[i]=i%plus_keys::Count;
  // Round-trip the newly appended action on all short/long fields.
- for(auto& value:a.plusKeyActions)value=plus_keys::Bookmark;
+ for(auto& value:a.plusKeyActions)value=plus_keys::HoldingHand;
  a.plusTouchFeedback=0;
  a.plusSideKeyFeedback=1;
  a.save(doc.to<JsonObject>());b.load(doc.as<JsonVariantConst>());

@@ -1,10 +1,11 @@
 """Run production section-header writer/validation with a bounded in-memory file."""
 from pathlib import Path
+import os
 import subprocess
 import tempfile
 
 PORT = Path(__file__).resolve().parents[1]
-EPUB = PORT / 'firmware/rickyos-plus-1.2/upstream/lib/Epub/Epub'
+EPUB = Path(os.environ.get('RICKYOS_READER_SOURCE_ROOT', PORT / 'firmware/rickyos-plus-1.2/upstream')) / 'lib/Epub/Epub'
 source = (EPUB / 'Section.cpp').read_text()
 constants = source[source.index('// Keep separate cache-version'):source.index('// Called only between layout')]
 
@@ -95,11 +96,23 @@ int main() {
    assert(!s.loadSectionFile(spec));
  }
 #if FREEINK_DEVICE_METALIO_PLUS
+#if RICKYOS_WEBP
+ assert(SECTION_FILE_VERSION==129 && SECTION_FILE_PARTIAL_VERSION==153);
+ Storage.bytes=complete;Storage.bytes[0]=125;assert(!s.loadSectionFile(spec));
+ Storage.bytes=complete;Storage.bytes[0]=157;assert(!s.loadSectionFile(spec));
+#else
  assert(SECTION_FILE_VERSION==125 && SECTION_FILE_PARTIAL_VERSION==157);
+#endif
  other=spec;other.imageOutset=0;
  assert(!(spec==other) && !s.loadSectionFile(other));
 #elif FREEINK_DEVICE_READPICO
+#if RICKYOS_WEBP
+ assert(SECTION_FILE_VERSION==131 && SECTION_FILE_PARTIAL_VERSION==151);
+ Storage.bytes=complete;Storage.bytes[0]=123;assert(!s.loadSectionFile(spec));
+ Storage.bytes=complete;Storage.bytes[0]=159;assert(!s.loadSectionFile(spec));
+#else
  assert(SECTION_FILE_VERSION==123 && SECTION_FILE_PARTIAL_VERSION==159);
+#endif
  other=spec;other.imageOutset=0;
  assert(!(spec==other) && !s.loadSectionFile(other));
 #else
@@ -112,11 +125,12 @@ int main() {
 with tempfile.TemporaryDirectory(prefix='plus-image-cache-') as directory:
     work = Path(directory)
     (work / 'test.cpp').write_text(PROGRAM)
-    for plus, pico in ((0, 0), (0, 1), (1, 0)):
+    cases = ((0,0,0),(0,1,0),(0,1,1),(1,0,0)) if os.environ.get('RICKYOS_READER_TEST_DEVICE') == 'pico' else ((0,0,0),(0,1,0),(1,0,0),(1,0,1))
+    for plus, pico, webp in cases:
         binary = work / f'test-{plus}-{pico}'
         subprocess.run(['clang++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
                         '-fsanitize=address,undefined', f'-DFREEINK_DEVICE_METALIO_PLUS={plus}',
-                        f'-DFREEINK_DEVICE_READPICO={pico}',
+                        f'-DFREEINK_DEVICE_READPICO={pico}', f'-DRICKYOS_WEBP={webp}',
                         '-I', str(EPUB), str(work / 'test.cpp'), '-o', str(binary)], check=True)
         subprocess.run([str(binary)], check=True)
-print('Production section headers: Plus125/157, Pico123/159, generic121/161; legacy caches, font key, image-width key and truncated headers checked')
+print('Production section headers: Plus129/153 (WebP/background) and125/157, Pico123/159, generic121/161; legacy caches, font key, image-width key and truncated headers checked')

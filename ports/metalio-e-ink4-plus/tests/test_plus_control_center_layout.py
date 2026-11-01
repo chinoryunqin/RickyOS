@@ -61,7 +61,7 @@ struct { bool available = true; } audio;
 namespace HalAudioOutput { bool present() { return audio.available; } }
 struct { bool available = true, dual = true; bool present() const { return available; }
          bool hasColorTemperature() const { return dual; } } Frontlight;
-struct { int orientation = 0, refreshFrequency = 0, screenInverted = 0, clockFormat = 0, readerFastRefresh = 0; } SETTINGS;
+struct { int orientation = 0, refreshFrequency = 0, screenInverted = 0, clockFormat = 0, readerFastRefresh = 0; bool bluetoothEnabled = false; } SETTINGS;
 struct { bool localTime(std::tm& t) const { t = {}; t.tm_mon = 9; t.tm_mday = 14; return true; } } halClock;
 namespace TimeUtils { bool formatCurrentTime(char* out, size_t size, bool) { snprintf(out, size, "12:00"); return true; } }
 struct { unsigned long long getTodayReadingMs() const { return 0; } } READING_STATS;
@@ -96,6 +96,7 @@ struct Renderer { int width = 684, height = 1216; int getScreenWidth() const { r
 struct Rect { int x, y, width, height; };
 struct { void drawHeaderWithStyle(Renderer&, Rect, void*, void*, bool, bool) {} } GUI;
 namespace RickyPageUi { struct Bold { Bold(Renderer&, int) {} }; }
+inline constexpr uint8_t icon_reader_bluetooth_24_bits[72] = {};
 uint8_t iconBits[200]{};
 const freeink::Icon icon_ricky_night_40{40, 40, 20, iconBits}, icon_ricky_refresh_40{40, 40, 20, iconBits},
     icon_ricky_standby_40{40, 40, 20, iconBits}, icon_ricky_transfer_40{40, 40, 20, iconBits},
@@ -104,7 +105,7 @@ const freeink::Icon icon_ricky_night_40{40, 40, 20, iconBits}, icon_ricky_refres
 @CONSTANTS@
 class FrontlightPanelActivity {
  public:
-  enum class Tile : uint8_t { Night, Refresh, Standby, Transfer, Orientation, Clean, Light, FastRefresh, Preview = 200 };
+  enum class Tile : uint8_t { Night, Refresh, Standby, Transfer, Orientation, Clean, Light, FastRefresh, Bluetooth, Preview = 200 };
   struct RoundAction { Tile tile; const freeink::Icon* icon; const char* label; bool on; };
   Renderer renderer;
   Target uiTarget;
@@ -112,6 +113,9 @@ class FrontlightPanelActivity {
   uint8_t brightness = 60, warmth = 50, volume = 35;
   bool lightOn = false, overReader = false;
   int panelBottom = 0;
+  uint8_t renderedBluetoothState=0; unsigned long bluetoothBannerUntil=0; char bluetoothBanner[80]={};
+  uint8_t bluetoothState() const { return testBluetoothState; }
+  inline static uint8_t testBluetoothState=0;
   char refreshText[24] = {}, timeText[12] = {}, infoText[80] = {};
   int rickyPanelHeight() const;
   void sectionHead(UiScreen&, const char*, int, int = -1);
@@ -121,11 +125,13 @@ class FrontlightPanelActivity {
 };
 @METHODS@
 int main() {
-  for (bool portrait : {true, false}) for (bool reader : {true, false}) for (bool light : {true, false})
+  for (int btState : {0,1,2,3}) for (int baseWidth : {540,684}) for (bool portrait : {true, false}) for (bool reader : {true, false}) for (bool light : {true, false})
   for (bool sound : {true, false}) for (bool dual : {true, false}) {
     Frontlight.available = light; Frontlight.dual = dual; audio.available = sound;
     FrontlightPanelActivity p;
-    p.renderer = portrait ? Renderer{684, 1216} : Renderer{1216, 684};
+    const int baseHeight = baseWidth == 540 ? 960 : 1216;
+    p.renderer = portrait ? Renderer{baseWidth, baseHeight} : Renderer{baseHeight, baseWidth};
+    p.testBluetoothState=btState; SETTINGS.bluetoothEnabled=btState!=0;
     p.overReader = reader;
     p.lightOn = true;
     p.panelBottom = p.rickyPanelHeight();
@@ -144,11 +150,14 @@ int main() {
     // content starts below the safe area, which rickyPanelHeight() does not count).
     const auto rest = screen.contentRect();
     assert(rest.y - device.safeArea.top + theme.spaceLg + 5 + theme.spaceLg + theme.spaceMd == p.panelBottom);
-    int sliders = 0, switches = 0, previews = 0;
+    int sliders = 0, switches = 0, previews = 0, bluetoothTiles = 0;
     for (size_t i = 0; i < hits.count(); ++i) {
       const auto a = hits.data()[i];
       assert(a.rect.width >= 88 && a.rect.height >= 88);
       assert(a.rect.y >= 0 && a.rect.bottom() <= p.panelBottom);
+      if (a.action == ACTION_TILE && a.value == static_cast<int16_t>(FrontlightPanelActivity::Tile::Bluetooth)) {
+        ++bluetoothTiles; assert(a.inputMask & fui::InputLongPress);
+      }
       if (a.inputMask & fui::InputDrag) ++sliders;
       if (a.action == ACTION_TOGGLE) ++switches;
       if (a.action == ACTION_TILE && a.value == kVolumePreview) ++previews;
@@ -158,6 +167,7 @@ int main() {
                a.rect.bottom() + 8 <= b.rect.y || b.rect.bottom() + 8 <= a.rect.y);
       }
     }
+    assert(bluetoothTiles == 1);
     assert(sliders == (light ? (dual ? 2 : 1) : 0) + (sound ? 1 : 0));
     assert(switches == (light ? 1 : 0));
     assert(previews == (sound ? 1 : 0));
@@ -172,11 +182,11 @@ with tempfile.TemporaryDirectory(prefix='plus-cc-layout-') as folder:
     p = Path(folder)
     (p / 'test.cpp').write_text(code)
     sdk = u / 'freeink-sdk/libs'
-    subprocess.run(['clang++', '-std=c++20', '-Wall', '-Wextra', '-Werror', '-Wno-unused-const-variable',
+    subprocess.run(['clang++', '-std=c++20', '-DFREEINK_CAP_BLE_HID_HOST=1', '-Wall', '-Wextra', '-Werror', '-Wno-unused-const-variable',
                     '-Wno-unused-function', '-Wno-comment', '-fsanitize=address,undefined',
                     '-I', str(sdk / 'ui/FreeInkUI/include'), '-I', str(sdk / 'assets/Icons/include'),
                     str(p / 'test.cpp'), str(sdk / 'ui/FreeInkUI/src/FreeInkUI.cpp'), '-o', str(p / 'test')],
                    check=True)
     subprocess.run([str(p / 'test')], check=True)
-print('Actual CC/FUI layout passed: 32 orientation/reader/light/warmth/audio combinations, sliders, switch and '
+print('Actual CC/FUI layout passed: 256 Bluetooth-state/viewport/orientation/reader/light/warmth/audio combinations, sliders, switch and '
       'sound test present, measured height matches, 88px targets, 8px gaps, no overflow')

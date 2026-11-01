@@ -1,5 +1,41 @@
 set(APP_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../upstream")
 set(DEPENDENCY_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../../../.local/dependencies")
+# Bluetooth page turners: NimBLE-Arduino's C++ API over IDF's own NimBLE host (the
+# esp-nimble-cpp arrangement), so the S31 controller and host come from the pinned IDF.
+set(PLUS_BLE_HOST_SOURCE "${APP_ROOT}/freeink-sdk/libs/network/BleKeyboardHost/src/BleKeyboardHost.cpp")
+set(PLUS_BLE_SOURCES "")
+set(NIMBLE_ARDUINO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../../../.local/NimBLE-Arduino")
+set(PLUS_BLE_INCLUDE_DIRS "")
+if(CONFIG_BT_NIMBLE_ENABLED)
+  set(PLUS_BLE_INCLUDE_DIRS "${CMAKE_CURRENT_LIST_DIR}/port/ble" "${NIMBLE_ARDUINO_ROOT}/src")
+  if(NOT EXISTS "${NIMBLE_ARDUINO_ROOT}/src/NimBLEDevice.cpp")
+    message(FATAL_ERROR "Bluetooth needs NimBLE-Arduino 2.3.8 in ${NIMBLE_ARDUINO_ROOT}")
+  endif()
+  file(READ "${NIMBLE_ARDUINO_ROOT}/library.properties" PLUS_NIMBLE_PROPERTIES)
+  if(NOT PLUS_NIMBLE_PROPERTIES MATCHES "version=2\\.3\\.8[\n\r]")
+    message(FATAL_ERROR "Plus page turners require the pinned NimBLE-Arduino 2.3.8")
+  endif()
+  file(GLOB PLUS_BLE_SOURCES "${NIMBLE_ARDUINO_ROOT}/src/*.cpp")
+  list(SORT PLUS_BLE_SOURCES)
+  # NimBLE-Arduino 2.3.8 has no onPassKeyDisplay client callback (the same edit as
+  # the Pico's scripts/patch_ble_keyboard_host.py).
+  file(READ "${PLUS_BLE_HOST_SOURCE}" PLUS_BLE_HOST_TEXT)
+  # The method body has semicolons, so match it as one string rather than a list.
+  string(REGEX MATCH "uint32_t onPassKeyDisplay\\(NimBLEConnInfo&\\) override {[^}]*}\n"
+         PLUS_BLE_PASSKEY "${PLUS_BLE_HOST_TEXT}")
+  if(PLUS_BLE_PASSKEY STREQUAL "")
+    message(FATAL_ERROR "Unsupported BleKeyboardHost passkey callback; check the SDK/NimBLE pins")
+  endif()
+  string(REPLACE "${PLUS_BLE_PASSKEY}" "" PLUS_BLE_HOST_TEXT "${PLUS_BLE_HOST_TEXT}")
+  string(FIND "${PLUS_BLE_HOST_TEXT}" "onPassKeyDisplay(" PLUS_BLE_PASSKEY_LEFT)
+  if(NOT PLUS_BLE_PASSKEY_LEFT EQUAL -1)
+    message(FATAL_ERROR "Unsupported BleKeyboardHost passkey callback; check the SDK/NimBLE pins")
+  endif()
+  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/ble-compat/BleKeyboardHost.cpp.new" "${PLUS_BLE_HOST_TEXT}")
+  configure_file("${CMAKE_CURRENT_BINARY_DIR}/ble-compat/BleKeyboardHost.cpp.new"
+                 "${CMAKE_CURRENT_BINARY_DIR}/ble-compat/BleKeyboardHost.cpp" COPYONLY)
+  set(PLUS_BLE_HOST_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/ble-compat/BleKeyboardHost.cpp")
+endif()
 # Full original RickyOS 1.2 application and its pinned dependencies.
 idf_component_register(
  SRCS
@@ -186,6 +222,7 @@ idf_component_register(
   "port/PlusScreenTour2.cpp"
   "port/PlusOtaSelfTest.cpp"
   "port/PlusBoard.cpp"
+  "port/PlusBluetooth.cpp"
   "port/PlusAudio.cpp"
   "port/PlusGaugeConfig.cpp"
   "${APP_ROOT}/lib/hal/HalRecorder.cpp"
@@ -216,6 +253,9 @@ idf_component_register(
   "${APP_ROOT}/freeink-sdk/libs/font/FreeInkFont/src/freetype/ft_sfnt.c"
   "${APP_ROOT}/freeink-sdk/libs/font/FreeInkFont/src/freetype/ft_smooth.c"
   "${APP_ROOT}/freeink-sdk/libs/font/FreeInkFont/src/freetype/ft_truetype.c"
+  "${CMAKE_CURRENT_LIST_DIR}/port/freetype-cff/ft_cff.c"
+  "${CMAKE_CURRENT_LIST_DIR}/port/freetype-cff/ft_psaux.c"
+  "${CMAKE_CURRENT_LIST_DIR}/port/freetype-cff/ft_pshinter.c"
   "${APP_ROOT}/freeink-sdk/libs/hardware/BatteryMonitor/src/BatteryMonitor.cpp"
   "${APP_ROOT}/freeink-sdk/libs/hardware/Buzzer/src/Buzzer.cpp"
   "${APP_ROOT}/freeink-sdk/libs/hardware/EnvironmentSensor/src/EnvironmentSensor.cpp"
@@ -228,7 +268,8 @@ idf_component_register(
   "${APP_ROOT}/freeink-sdk/libs/hardware/PowerManager/src/PowerManager.cpp"
   "${APP_ROOT}/freeink-sdk/libs/hardware/Rtc/src/Rtc.cpp"
   "${APP_ROOT}/freeink-sdk/libs/hardware/XteinkDetect/src/XteinkDetect.cpp"
-  "${APP_ROOT}/freeink-sdk/libs/network/BleKeyboardHost/src/BleKeyboardHost.cpp"
+  "${PLUS_BLE_HOST_SOURCE}"
+  ${PLUS_BLE_SOURCES}
   "${APP_ROOT}/freeink-sdk/libs/network/BleKeyboardHost/src/HidKeymap.cpp"
   "${APP_ROOT}/freeink-sdk/libs/network/CatalogList/src/JsonListParser.cpp"
   "${APP_ROOT}/freeink-sdk/libs/network/CatalogList/src/XmlListParser.cpp"
@@ -461,6 +502,7 @@ idf_component_register(
   "${APP_ROOT}/lib/TrustedTime/TrustedTime.cpp"
   "${APP_ROOT}/lib/InflateReader/InflateReader.cpp"
   "${APP_ROOT}/lib/EpdFont/FontDecompressor.cpp"
+  "${APP_ROOT}/lib/EpdFont/BuiltinFontMetadata.cpp"
   "${APP_ROOT}/lib/EpdFont/SdCardFontManager.cpp"
   "${APP_ROOT}/lib/EpdFont/EpdFont.cpp"
   "${APP_ROOT}/lib/EpdFont/SdCardFontRegistry.cpp"
@@ -502,12 +544,15 @@ idf_component_register(
   "${APP_ROOT}/lib/Epub/Epub/parsers/ContentOpfParser.cpp"
   "${APP_ROOT}/lib/Epub/Epub/parsers/TocNcxParser.cpp"
   "${APP_ROOT}/lib/Epub/Epub/parsers/ChapterHtmlSlimParser.cpp"
+  "${APP_ROOT}/lib/Epub/Epub/parsers/RecoveringHtmlStream.cpp"
   "${APP_ROOT}/lib/Epub/Epub/css/CssParser.cpp"
   "${APP_ROOT}/lib/Epub/Epub/converters/ImageDecoderFactory.cpp"
   "${APP_ROOT}/lib/Epub/Epub/converters/JpegToFramebufferConverter.cpp"
   "${APP_ROOT}/lib/Epub/Epub/converters/ImageDimsProbe.cpp"
   "${APP_ROOT}/lib/Epub/Epub/converters/ImageToFramebufferDecoder.cpp"
   "${APP_ROOT}/lib/Epub/Epub/converters/PngToFramebufferConverter.cpp"
+  "${APP_ROOT}/lib/Epub/Epub/converters/WebpRaster.cpp"
+  "${APP_ROOT}/lib/Epub/Epub/converters/WebpToFramebufferConverter.cpp"
   "${APP_ROOT}/lib/Epub/Epub/hyphenation/Hyphenator.cpp"
   "${APP_ROOT}/lib/Epub/Epub/hyphenation/LanguageRegistry.cpp"
   "${APP_ROOT}/lib/Epub/Epub/hyphenation/LiangHyphenation.cpp"
@@ -524,6 +569,7 @@ idf_component_register(
   "port"
   "../rickyos_storage/include"
   "${APP_ROOT}/src/network"
+  "../../generated/font-metadata"
   "../../generated"
   "${APP_ROOT}/src"
   "${APP_ROOT}/lib/PngToBmpConverter"
@@ -606,6 +652,7 @@ idf_component_register(
   "${APP_ROOT}/freeink-sdk/libs/network/Opds/src"
   "${APP_ROOT}/freeink-sdk/libs/network/BleKeyboardHost/include"
   "${APP_ROOT}/freeink-sdk/libs/network/BleKeyboardHost/src"
+  ${PLUS_BLE_INCLUDE_DIRS}
   "${APP_ROOT}/freeink-sdk/libs/network/NearbyTransfer/include"
   "${APP_ROOT}/freeink-sdk/libs/network/NearbyTransfer/src"
   "${APP_ROOT}/freeink-sdk/libs/network/JsonSax/include"
@@ -633,10 +680,19 @@ idf_component_register(
   "${DEPENDENCY_ROOT}/JPEGDEC/src"
   "${APP_ROOT}/freeink-sdk/libs/font/FreeInkFont/third_party/freetype/include"
   "${APP_ROOT}/freeink-sdk/libs/font/FreeInkFont/third_party/stb"
- REQUIRES rickyos_storage rickyos_display rickyos_platform arduino-esp32-4.0.0-RC1
+ REQUIRES rickyos_webp rickyos_storage rickyos_display rickyos_platform arduino-esp32-4.0.0-RC1 bt
     metalio_board mdns esp_driver_usb_serial_jtag esp_timer esp_pm esp_app_format app_update esp_http_server nvs_flash esp-tls
 )
 target_compile_features(${COMPONENT_LIB} PUBLIC cxx_std_20)
+if(CONFIG_BT_NIMBLE_ENABLED)
+  # Host memory lives in PSRAM (BleInput verifies it before every start).
+  target_compile_definitions(${COMPONENT_LIB} PUBLIC FREEINK_CAP_BLE_HID_HOST=1
+                             FREEINK_BLE_HID_SHOW_UNNAMED_DEVICES=0 CROSSPOINT_BLE_HOST_PSRAM=1)
+  # NimBLE-Arduino turns the peripheral and broadcaster roles on unless told otherwise;
+  # the IDF host here is central/observer only.
+  target_compile_definitions(${COMPONENT_LIB} PRIVATE CONFIG_NIMBLE_CPP_IDF=1
+                             CONFIG_BT_NIMBLE_ROLE_PERIPHERAL_DISABLED=1 CONFIG_BT_NIMBLE_ROLE_BROADCASTER_DISABLED=1)
+endif()
 # Enable the validated Plus network-owner power cap in ordinary firmware.
 # Controlled radio diagnostics keep the original power unless explicitly opted in.
 if("$ENV{RICKYOS_PLUS_TX_POWER_COMPAT}" STREQUAL "1" OR
@@ -658,6 +714,10 @@ if("$ENV{RICKYOS_PLUS_NETWORK_ACCEPTANCE}" STREQUAL "1")
 endif()
 # Unattended OTA self-test (diagnostic builds only): joins the saved Wi-Fi, updates from
 # the COS test folder only, and may be built as an older version to have something to do.
+if("$ENV{RICKYOS_PLUS_BLE_DIAG}" STREQUAL "1")
+  target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_BLE_DIAG=1 FREEINK_BLE_HID_REPORT_DEBUG=1)
+endif()
+
 if("$ENV{RICKYOS_PLUS_OTA_SELFTEST}" STREQUAL "1")
   target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_OTA_SELFTEST=1 RICKYOS_PLUS_RADIO_AUTOSTART=1
                              RICKYOS_OTA_COS_DIR="/ota-test/" RICKYOS_OTA_SITE_ROUTE=0)
@@ -737,7 +797,7 @@ target_compile_definitions(${COMPONENT_LIB} PUBLIC
     CROSSMUX_UI_PROFILE_HIGH_DPI=1 HYPHENATION_ENGLISH_ONLY=1
     XML_GE=0 XML_CONTEXT_BYTES=1024 MINIZ_NO_ZLIB_COMPATIBLE_NAMES=1
     PNG_MAX_BUFFERED_PIXELS=16416
-    FREEINK_FONT_ENABLE_AUTOHINT=1 FREEINK_NET_WOLFSSL=1 FREEINK_CONTENT_WOLFSSL=1
+    FREEINK_FONT_ENABLE_AUTOHINT=1 RICKYOS_WEBP=1 FREEINK_FONT_ENABLE_CFF=1 FREEINK_FONT_ENABLE_PSNAMES=1 FREEINK_NET_WOLFSSL=1 FREEINK_CONTENT_WOLFSSL=1
     CONTENT_EXTERNAL_MINIZ=1 WOLFSSL_KEY_GEN=1 WC_RC2=1
     NO_WOLFSSL_ESP32_CRYPT_RSA_PRI=1 WOLFSSL_USER_SETTINGS=1 WOLFSSL_OPTIONS_H=1
     WOLFSSL_CLIENT_EXAMPLE=1 WOLFSSL_TLS13=1 WOLFSSL_HAVE_SP_ECC=1
@@ -775,3 +835,6 @@ if("$ENV{RICKYOS_PLUS_NETTEST_CONNECTED}" STREQUAL "1")
     message(FATAL_ERROR "Connected comparison requires NETTEST=1 and normal application UI")
   endif()
 endif()
+
+# Lossless font metadata, in bounded external BSS; bitmap pixels are unchanged.
+target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_BUILTIN_METADATA=1)

@@ -44,6 +44,13 @@ clang++ -std=c++17 -Wall -Wextra -Werror tests/test_plus_http_date.cpp -o .local
 .local/test_plus_http_date
 
 # Plus peripherals, shared input, display and recorder regression suites.
+python3 tests/test_plus_bluetooth.py
+python3 tests/test_plus_book_font_compat.py
+python3 tests/test_plus_webp.py
+python3 tests/test_plus_css_background.py
+python3 tests/test_plus_cff_stack.py
+python3 tests/test_plus_page_turner.py
+python3 tests/test_plus_ble_memory.py
 python3 tests/test_plus_audio.py
 python3 tests/test_plus_frontlight_panel.py
 python3 tests/test_plus_standby_frontlight.py

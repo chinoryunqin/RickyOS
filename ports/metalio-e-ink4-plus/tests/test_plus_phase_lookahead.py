@@ -21,6 +21,8 @@ STUBS = {
     'esp_heap_caps.h': r'''#pragma once
 #include <stdlib.h>
 #define MALLOC_CAP_INTERNAL 1
+#define MALLOC_CAP_8BIT 2
+static inline void* heap_caps_calloc(size_t n,size_t s,int caps){(void)caps;return calloc(n,s);}
 static inline void* heap_caps_aligned_alloc(size_t a,size_t n,int caps){
  (void)caps;void* p=NULL;return posix_memalign(&p,a,n)==0?p:NULL;
 }

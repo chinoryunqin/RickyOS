@@ -23,7 +23,8 @@ LineQueue_t lq_init(int queue_len, int element_size) {
 
     int elem_buf_size = ceil_div(element_size, 16) * 16;
 
-    queue.bufs = calloc(queue.size, sizeof(uint8_t*));
+    // The LCD refill ISR dereferences this table as well as its row buffers.
+    queue.bufs = heap_caps_calloc(queue.size, sizeof(*queue.bufs), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     assert(queue.bufs != NULL);
 
     // 短队列（流式预填）只放 INTERNAL，不够直接 assert

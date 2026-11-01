@@ -36,6 +36,10 @@ source "$PLUS_IDF_ROOT/export.sh"
   "$TASK_ROOT/firmware/rickyos-plus-1.2/generated" \
   --src-dirs "$TASK_ROOT/firmware/rickyos-plus-1.2/upstream/src" "$TASK_ROOT/firmware/rickyos-plus-1.2/upstream/lib" \
   --strip-unused --builtin-langs en,zh_cn
+python3 "$TASK_ROOT/firmware/rickyos-plus-1.2/upstream/scripts/pack_builtin_metadata.py" \
+  --app-root "$TASK_ROOT/firmware/rickyos-plus-1.2/upstream" \
+  --plus-fonts "$TASK_ROOT/firmware/rickyos-plus-1.2/generated/fonts" \
+  --output "$TASK_ROOT/firmware/rickyos-plus-1.2/generated/font-metadata"
 BUILD_DIR="${RICKYOS_BUILD_DIR:-$TASK_ROOT/.local/build-rickyos-plus-1.2}"
 cd "$TASK_ROOT/firmware/rickyos-plus-1.2"
 # Diagnostic compile definitions come from environment variables in CMake.

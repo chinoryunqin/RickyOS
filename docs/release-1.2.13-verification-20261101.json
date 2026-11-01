@@ -1,0 +1,56 @@
+{
+  "version": "1.2.13",
+  "date": "2026-11-01",
+  "status": "hardware_accepted_and_publication_authorized",
+  "publication_authorization": "没有什么其他问题，就可以先发布了。",
+  "live_status": "Check the official OTA manifests and release publication archive; this file is source/build acceptance, not a live deployment status.",
+  "ota_installation_tested": false,
+  "targets": {
+    "pico": {
+      "bytes": 5960144,
+      "sha256": "69b0aa82fb6ab55f738edbb12aa789620c0400f0f75c09cfc20019f90235df7e",
+      "version": "1.2.13",
+      "serial_write_verified": true,
+      "startup_verified": true,
+      "user_interaction_accepted": true,
+      "user_acceptance": "现在正常了，可以了，刚才我整错了",
+      "ota_aligned_margin": 65536,
+      "ota_real_installation_tested": false,
+      "flash_scope": "application only; outside-app bootloader/partitions/NVS/otaselect unchanged; SD not touched by flasher",
+      "build_source_base": "824224eefedcc664e1081006440dac672db8473e",
+      "build_source_note": "Built and tested before committing these source changes; artifact hash above is authoritative. Release default version now matches the effective 1.2.13 build override. No app rebuild for publication.",
+      "idf": "5.5.5",
+      "memory_policy": {
+        "always_internal": 0,
+        "reserve_internal": 32768,
+        "ble_gates_changed": false,
+        "home_internal_free_bytes": 103315,
+        "home_internal_largest_bytes": 61428
+      }
+    },
+    "plus": {
+      "bytes": 5980496,
+      "sha256": "4798876585687e2d61335dfa5a2c8e4f69d1753b7a793aff2d8c30926b9cb947",
+      "version": "1.2.13",
+      "serial_write_verified": true,
+      "startup_verified": true,
+      "user_interaction_accepted": true,
+      "user_acceptance": "阅读、蓝牙翻页和字体列表均正常",
+      "ota_aligned_margin": 45056,
+      "ota_real_installation_tested": false,
+      "flash_scope": "application only; outside-app bootloader/partitions/NVS/otaselect unchanged; SD not touched by flasher",
+      "build_source_base": "9b3e96c0ab4ac2e8d79b5507604f67f2eb58293a",
+      "build_source_note": "Built and tested before committing these source changes; artifact hash above is authoritative. Release default version now matches the effective 1.2.13 build override. No app rebuild for publication.",
+      "idf": "9a97f6c54ec638111ce55cd36581b3c192f15207"
+    }
+  },
+  "verification": {
+    "host": "Both native parser/recovery suites and original Fanfan33/103 pagination/cache reopening; WebP decoder/render/fault/cleanup and CSS background paths; CFF3549-glyph/31923-render checks and regular-TTF pixel equivalence; grid/bookmark bindings and cache migration; Pico control-center real-FUI geometry/long-press/actions and BLE chapter lifecycle passed.",
+    "device": "Final application hashes flashed, verified, booted and user tested; exact malformed chapter not separately tested on hardware; no fresh full-flash/real OTA installation claim.",
+    "exclusions": [
+      "USB Finder drag-copy root cause unresolved; no USB firmware fix advertised",
+      "Plus SDMMC 0x109 reset observation retained as separate investigation",
+      "Reading-background formats unchanged; WebP enabled for books, not the wallpaper picker"
+    ]
+  }
+}
