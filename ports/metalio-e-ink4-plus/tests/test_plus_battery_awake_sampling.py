@@ -29,7 +29,10 @@ template<class... T> void ignoreLog(T...) {}
 uint32_t now=0;
 uint32_t millis() { return now; }
 using namespace plus_board;
-unsigned reads=0;
+unsigned reads=0,summaryReplays=0;
+bool g_haveStandbySummary=false;
+constexpr unsigned g_lastStandbySummary=42;
+void logStandbySnapshot(unsigned saved){assert(saved==42);++summaryReplays;}
 BatteryEstimator estimator;
 BatteryEstimate estimate;
 BatteryTelemetry telemetry;
@@ -72,7 +75,7 @@ struct HalPowerManager {
             '\nvoid loopTick(HalPowerManager& powerManager) {\n' + hook + r'''
 }
 void reset() {
-  now=0; reads=0; estimator=BatteryEstimator{}; estimate={};
+  now=0; reads=0;summaryReplays=0;g_haveStandbySummary=false; estimator=BatteryEstimator{}; estimate={};
   telemetry={4300,12,12,100,true,true,true,true};
 }
 bool anchored() { return estimator.checkpoint().version==1; }
@@ -121,6 +124,10 @@ int main() {
   assert(reads==6 && !anchored());
   now=start+180000; loopTick(wrap);
   assert(reads==7 && anchored());
+  reset();g_haveStandbySummary=true;HalPowerManager replay;
+  for(now=0;now<60000;++now)loopTick(replay);
+  assert(reads==2&&summaryReplays==2);
+  loopTick(replay);assert(reads==3&&summaryReplays==3);
   puts("PASS Plus awake-only sampling: no-paint full anchor, cadence, shared cache, discharge rejection, errors, gaps, contention and wrap");
 }
 ''', SDK / 'include', ROOT / 'lib/hal',

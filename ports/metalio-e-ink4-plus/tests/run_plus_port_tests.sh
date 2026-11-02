@@ -11,6 +11,7 @@ clang++ -std=c++20 -Wall -Wextra -Werror tests/test_plus_framebuffer.cpp -o .loc
 python3 tests/test_battery_stability.py
 python3 tests/test_plus_battery_curve.py
 python3 tests/test_plus_battery_awake_sampling.py
+python3 tests/test_plus_power_capture.py
 python3 tests/test_plus_idle_power.py
 clang -Ifirmware/rickyos-plus-1.2/upstream/freeink-sdk/libs/font/FreeInkFont/include -c firmware/rickyos-plus-1.2/upstream/freeink-sdk/libs/font/FreeInkFont/src/FontAlloc.c -o .local/plus-font-alloc.o
 clang -c firmware/rickyos-plus-1.2/upstream/lib/uzlib/src/tinflate.c -o .local/plus-font-inflate.o
@@ -55,6 +56,8 @@ python3 tests/test_plus_audio.py
 python3 tests/test_plus_frontlight_panel.py
 python3 tests/test_plus_standby_frontlight.py
 python3 tests/test_plus_standby_sleep.py
+python3 tests/test_plus_standby_wifi.py
+python3 tests/test_plus_standby_passive_input.py
 python3 tests/test_plus_static_sleep.py
 python3 tests/test_plus_p14_restore_audit.py
 python3 tests/test_plus_standby_home.py

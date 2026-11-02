@@ -1,0 +1,82 @@
+{
+  "device_mac": "1c:29:04:d0:2a:50",
+  "optimized_version": "1.2.13-power1",
+  "baseline_version": "1.2.13-baseline1",
+  "image_sha256": "6ff24c56efdff8369a76bf1e3977820af96ca86d58d16002d73ab3325c61f2e2",
+  "wifi_connected_before_standby_user_confirmed": true,
+  "wifi_association_after_last_restart_log_confirmed": true,
+  "wifi_station_disconnected_and_driver_deinitialized_at_standby_entry_log_confirmed": true,
+  "standby_frame_log_confirmed": true,
+  "standby_snapshot_stable_across_reads": true,
+  "baseline": {
+    "standby_last_current_ma": -83,
+    "standby_last_filtered_current_ma": -82,
+    "sleep_summary": {
+      "sleep_us": 0,
+      "duration_ms": 459335,
+      "entered": 0,
+      "rejected": 0,
+      "sd_retained": 0
+    },
+    "awake_reference": {
+      "at_ms": 579114,
+      "instantaneous_current_ma": -65,
+      "filtered_current_ma": -65,
+      "mv": 4336,
+      "observed_window_ms": 60068,
+      "kind": "point_and_filtered_readings_only",
+      "negative_means": "discharge"
+    },
+    "wifi_precondition_independently_confirmed": false
+  },
+  "optimized": {
+    "standby_counter_window_ms": 340447,
+    "standby_discharged_mah": 2,
+    "coarse_counter_indication_ma": 21.148666312230684,
+    "counter_step_equivalent_ma": 10.574333156115342,
+    "counter_quantization_interval_ma": [
+      10.574333156115342,
+      31.722999468346025
+    ],
+    "long_average_valid": false,
+    "standby_last_current_ma": -15,
+    "standby_last_filtered_current_ma": -13,
+    "standby_endpoint_mv": [
+      4350,
+      4356
+    ],
+    "sleep_summary": {
+      "sleep_us": 316700786,
+      "duration_ms": 352324,
+      "entered": 1,
+      "rejected": 0,
+      "sd_retained": 0
+    },
+    "sleep_fraction": 0.8988907539651003,
+    "non_sleep_overhead_ms": 35623.21399999998,
+    "awake_reference": {
+      "at_ms": 469187,
+      "instantaneous_current_ma": -64,
+      "filtered_current_ma": -64,
+      "mv": 4342,
+      "observed_window_ms": 90084,
+      "kind": "point_and_filtered_readings_only",
+      "negative_means": "discharge"
+    },
+    "faults": 0
+  },
+  "reset_context": {
+    "software_restart_before_test": true,
+    "observed_after": "WeRead package/job complete and Wi-Fi shutdown",
+    "source_reference": "upstream/src/activities/apps/weread/webapi/WeReadActivity.cpp:1419",
+    "wifi_reconnected_after_restart_and_before_standby": true,
+    "standby_measurement_survived_reconnect": true
+  },
+  "conclusion": "Optimized connected-Wi-Fi entry shuts down the radio and enters sustained sleep; low standby current indication restored in this physical run. Baseline high-drain run had no sleep entry. Do not infer precise average savings or universal root-cause resolution.",
+  "limitations": [
+    "Onboard uncalibrated gauge readings, not external-meter validation",
+    "Short and unequal windows; do not report precise average current or savings percentage",
+    "Baseline radio state was not directly captured",
+    "Single device/path; other entry methods, SD retained fallback and peripheral states remain separate acceptance cases"
+  ]
+}

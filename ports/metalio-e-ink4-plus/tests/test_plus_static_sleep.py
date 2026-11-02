@@ -158,7 +158,8 @@ inline int plus_i2c_read(''')
   *out=reg==0x0f?0x11:imuRegs[reg];return ESP_OK;}
  assert(addr==0x6b''')
         common = common.replace('assert(lcdParked && lcdLatched && !locked', 'assert(!storageOff && !sdHeld && !keysMasked && (!railsOff || keysRestoreFail) && lcdParked && !locked')
-        common = common.replace(' rtcHeld=true; // Actual', ''' assert(storageOff && sdHeld && keysMasked && railsOff);
+        common = common.replace(' rtcHeld=true; // Actual', ''' assert((storageOff && sdHeld && keysMasked && railsOff) ||
+ (!storageOff && !sdHeld && !keysMasked && !railsOff));
  rtcHeld=true; // Actual''')
         common += r'''
 inline bool MetalioSd_ParkBusChecked(){assert(storageOff && !lcdParked);sdHeld=true;calls.emplace_back("sd_park");return !sdFail;}
@@ -187,7 +188,7 @@ void reset(){
  clean();calls.clear();fault.clear();sleeps=lcdParks=lcdRestores=usbRevives=readAt=0;now=0;
  sdFail=suspendFail=remountFail=parkCheckFail=restoreCheckFail=imuFail=keysRestoreFail=false;railsOff=false;
  initialP1=0xff;keyAfterWake=false;hold=false;cause=ESP_SLEEP_WAKEUP_TIMER;irqLowAfterWake=false;irqLow=false;
- plus_board::sleepFault=false;imuRegs[0x20]=0x57;imuRegs[0x22]=0x40;imuRegs[0x24]=8;imuRegs[0x25]=2;imuRegs[0x30]=0x11;
+ plus_board::sleepFault=false;plus_board::sleepAccounting={};imuRegs[0x20]=0x57;imuRegs[0x22]=0x40;imuRegs[0x24]=8;imuRegs[0x25]=2;imuRegs[0x30]=0x11;
 }
 int main(){
  assert(plus_board::begin());
@@ -215,9 +216,20 @@ int main(){
    case 3:parkCheckFail=true;break;case 4:remountFail=true;break;case 5:restoreCheckFail=true;break;case 6:fault="sleep";break;default:keysRestoreFail=true;}
   // A card that does not remount is HalStorage's to recover (next storage use);
   // the wake itself, and later sleeps, still go ahead.
-  const auto wanted=failure==4?StandbyWake::Timer:StandbyWake::Failed;
+  const auto wanted=(failure==0 || failure==4)?StandbyWake::Timer:StandbyWake::Failed;
   assert(plus_board::standbyStaticSleep(60,lease)==wanted);clean();
-  assert(sleeps==(failure>=4));
+  assert(sleeps==(failure==0 || failure>=4));
+  if(failure==0){
+   assert(plus_board::sleepAccounting.entered==1 && plus_board::sleepAccounting.sdRetained==1);
+   assert(plus_board::sleepAccounting.elapsedUs==1000000 && !plus_board::sleepAccounting.rejected);
+   const auto sample=plus_board::standbyPowerSnapshot();
+   assert(sample.sleepUs==1000000 && sample.entered==1 && sample.sdRetained==1 && !sample.rejected);
+   assert(sample.elapsedMs>=sample.sleepUs/1000);
+   assert(lcdParks==1 && lcdRestores==1 && usbRevives==1);
+   for(const char* forbidden:{"sd_park","sd_remount","keys_mask","rails_cut","tps_sleep"})
+    assert(std::find(calls.begin(),calls.end(),forbidden)==calls.end());
+  }
+  if(failure==6)assert(plus_board::sleepAccounting.rejected==1 && !plus_board::sleepAccounting.entered && !plus_board::sleepAccounting.elapsedUs);
   if(failure==4)assert(plus_board::standbySleepReady() && std::count(calls.begin(),calls.end(),std::string("sd_remount"))==1);
   if(failure==7){
    assert(railsOff && !plus_board::standbySleepReady());
@@ -226,6 +238,22 @@ int main(){
   }
   if(failure==2 || failure==5)assert(!plus_board::standbySleepReady());
  }
+ // Retaining a card (slow remount, live directory/writer) must still sleep the CPU.
+ // Reuse the established shallow profile without changing SD pads, rails or files.
+ for(unsigned requested:{1u,2u,59u,60u,61u,3600u,86400u}){
+  reset();suspendFail=true;
+  assert(plus_board::standbyStaticSleep(requested,lease)==StandbyWake::Timer);
+  assert(sleeps==1 && timerUs==uint64_t(std::min(requested,60u))*1000000);clean();
+ }
+ reset();suspendFail=true;cause=ESP_SLEEP_WAKEUP_EXT1;keyAfterWake=true;
+ assert(plus_board::standbyStaticSleep(86400,lease)==StandbyWake::PowerButton);clean();
+ // A cleanup error is still fatal: never arm a second sleep over owned RTC state.
+ reset();suspendFail=true;fault="disable_source";
+ assert(plus_board::standbyStaticSleep(86400,lease)==StandbyWake::Failed && sleeps==0);
+ assert(!plus_board::standbySleepReady());fault.clear();clean();
+ plus_board::beginStandbyPowerTrace();now+=1000;
+ const auto fresh=plus_board::standbyPowerSnapshot();
+ assert(fresh.elapsedMs==1000 && !fresh.sleepUs && !fresh.entered && !fresh.rejected && !fresh.sdRetained);
 }
 '''.replace('PRODUCTION', str(PORT/'firmware/rickyos-plus-1.2/components/rickyos_application/port/PlusBoard.cpp'))
         with tempfile.TemporaryDirectory() as tmp:
@@ -233,7 +261,7 @@ int main(){
             for name in ['InputManager.h','PowerManager.h','plus_i2c_wire.h','metalio_i2c1.h',
                          'epd_board_metalio_eink4_plus.h','config.h','esp_log.h','Arduino.h','lcd_fault.h',
                          'driver/gpio.h','driver/rtc_io.h','driver/usb_serial_jtag.h','hal/usb_serial_jtag_ll.h',
-                         'esp_sleep.h','metalio_touch.h','HalAudioOutput.h','StandbyDiag.h','metalio_sd.h','esp_private/mspi_timing_tuning.h']:
+                         'esp_sleep.h','esp_timer.h','metalio_touch.h','HalAudioOutput.h','StandbyDiag.h','metalio_sd.h','esp_private/mspi_timing_tuning.h']:
                 f=root/name;f.parent.mkdir(parents=True,exist_ok=True);f.write_text('#include "fake.h"\n')
             (root/'test.cpp').write_text(code)
             subprocess.run(['clang++','-std=c++17','-Wall','-Wextra','-Werror','-fsanitize=address,undefined',
@@ -251,6 +279,7 @@ int main(){
 #define RICKYOS_PLUS_STATIC_STANDBY 1
 #define CROSSPOINT_EMULATED 0
 #define STANDBY_DIAG(...) ((void)0)
+#define LOG_INF(...) ((void)0)
 uint32_t millis(){return 40000;}
 struct {bool standbySwipeUnlock=false;unsigned long powerOffMs=6UL*3600UL*1000UL;unsigned long getStandbyPowerOffMs(){return powerOffMs;}} SETTINGS;
 namespace bleinput{bool isRunning(){return false;}}
@@ -262,6 +291,7 @@ struct {bool isUsbConnected(){return false;}} gpio;
 namespace standby_time{constexpr uint32_t kLightSleepIdleMs=35000;bool shouldLightSleep(uint32_t,bool,bool,bool,bool){return true;}}
 struct RenderLock{~RenderLock(){}};
 struct HalPowerManager {
+ static bool sideKeyBusy(){return false;}
  enum class LightSleepWakeReason {Timer,PowerButton,PowerButtonHeld,Failed};
  LightSleepWakeReason reason=LightSleepWakeReason::Timer;int sleeps=0;
  bool canStandbyLightSleep(decltype(gpio)&){return true;}
@@ -271,7 +301,7 @@ struct HalPowerManager {
 } powerManager;
 struct {int closes=0;void closeStandby(){++closes;}} activityManager;
 [[maybe_unused]] constexpr uint32_t kMaxLightSleepSeconds=60;
-struct Face {bool clock=false;bool needsPicture(){return false;}bool wantsClock(){return clock;}uint32_t secondsUntilNextWake(){return 3600;}} face;
+struct Face {bool clock=false,missing=false;bool needsPicture(){return missing;}bool wantsClock(){return clock;}uint32_t secondsUntilNextWake(){return 3600;}} face;
 struct StandbyActivity {
  enum class DisplayMode{Immersive};enum class SyncState{Idle};
  DisplayMode mode_=DisplayMode::Immersive;SyncState syncState_=SyncState::Idle;
@@ -294,6 +324,8 @@ int main(){
  SETTINGS.powerOffMs=0;powerManager.expect=86400;assert(activity.tryLightSleep(35000));
  SETTINGS.powerOffMs=30000;powerManager.expect=1;assert(activity.tryLightSleep(35000));
  assert(!activity.ticks);
+ // A missing image must not keep the prompt awake for hours.
+ face.missing=true;assert(activity.tryLightSleep(35000));face.missing=false;
  // A clock/date face sleeps one second past its next change, then redraws once.
  face.clock=true;powerManager.reason=HalPowerManager::LightSleepWakeReason::Timer;
  SETTINGS.powerOffMs=6UL*3600UL*1000UL;powerManager.expect=3601;

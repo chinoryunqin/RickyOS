@@ -30,12 +30,12 @@
     {
       "path": "freeink-sdk/libs/hardware/BatteryMonitor/include/BatteryMonitor.h",
       "baseline_sha256": "e9cb6848a141ab3adf8e43587ac2fd63bae74cd25faa3da2310df8495e79b0d4",
-      "ported_sha256": "f18b240909e17bb18f70260ad9f3cab0d20876deb87e01880735c78ff71642aa"
+      "ported_sha256": "a7cc1e7a73d075daf51310832e19ada6979633ade437651699672cbfacef91f2"
     },
     {
       "path": "freeink-sdk/libs/hardware/BatteryMonitor/src/BatteryMonitor.cpp",
       "baseline_sha256": "f6a217520fd415968d75ac1b1e226283d397b28469ab3e44570c085d36d30eec",
-      "ported_sha256": "b46d578f412cc2226b68242e035280eab1e0546d39a5d4637e222237314a4157"
+      "ported_sha256": "aa9db1d50284f3e024ca85b1aa067ec614c69c3d786e11210febb51bca5dfbd6"
     },
     {
       "path": "freeink-sdk/libs/hardware/BoardConfig/include/BoardConfig.h",
@@ -630,12 +630,12 @@
     {
       "path": "lib/hal/HalPowerManager.cpp",
       "baseline_sha256": "c8021acd737310ddd402aad3bd9f953db5bcbef2064ff4736540302e3c2fb5ad",
-      "ported_sha256": "7620be77048a09490df419f72f67f1df7a5003bb2652a64567e955839ab7fba2"
+      "ported_sha256": "04b494e33967da1c5830b38b310828f4f8b8fd6977820e025531cc51b85682c9"
     },
     {
       "path": "lib/hal/HalPowerManager.h",
       "baseline_sha256": "28f6f38e9a7b15f434f7b6576412df60b5e64969e5ccdc25b5d386ea4fe03fb2",
-      "ported_sha256": "c559ee92d3845e0450429eb79941048318bc2fc6936c181269677f9994deb80b"
+      "ported_sha256": "05d1aa870b4d4793c1400aa5aca1a3652a47ea22231e0c58f97957803745e972"
     },
     {
       "path": "lib/hal/HalRecorder.cpp",
@@ -655,7 +655,7 @@
     {
       "path": "lib/hal/HalStorage.h",
       "baseline_sha256": "77fef824405ef1faf3f96612d9590073fd37c7eafaa425172b8dd009e45d2c9e",
-      "ported_sha256": "347de3d49bcfe7e38a68d2c2922d48c99d31e0be3066a6fec4aa24229e0703ea"
+      "ported_sha256": "85e60328528e6c51ec399d30986a64b4722667014512f004d367fe4b994ca8ca"
     },
     {
       "path": "lib/hal/HalSystem.cpp",
@@ -990,7 +990,7 @@
     {
       "path": "src/activities/apps/standby/StandbyActivity.cpp",
       "baseline_sha256": "29dde67945a5e69415ed2f40ca0d287d364f1ff7bf74cc241dd3ead386105696",
-      "ported_sha256": "505810f37a844a681326489d05644c4abb38f7c20fbd72d619cdb57f257cc289"
+      "ported_sha256": "c3616facf9c84fddc25a3b28bd2530e30b586e29775e791a5cc285311704f3d2"
     },
     {
       "path": "src/activities/apps/standby/StandbyActivity.h",

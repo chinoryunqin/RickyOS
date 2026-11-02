@@ -68,6 +68,24 @@ The About page paints its loading state before this synchronous query; input
 waits for the scan to finish. Host simulator capacity comes from `statvfs`, so
 use `python3 scripts/tests/test_sd_space.py` for FAT calculation regressions.
 
+### Plus standby storage retention
+
+An SD card that needed a retry after waking remains mounted in later standbys.
+This disables SD parking, not CPU sleep: under the same HAL storage lease, the
+board falls back to its existing shallow sleep in at most 60-second slices,
+without changing live SD pads, rails or file positions. RTC cleanup failure still
+blocks the fallback. Plus standby also releases inherited idle Wi-Fi and lets a
+painted missing-image prompt sleep. See the
+[candidate and hardware verification procedure](../../ports/metalio-e-ink4-plus/docs/plus-standby-power-20261102.md).
+
+Opt-in `RICKYOS_PLUS_POWER_CAPTURE=1` records two fixed-size battery-only charge
+windows in 108 bytes of static RAM. HAL samples through the existing awake poll
+and standby boundaries; it adds no sleep wakeups or SD/NVS logging. Frozen
+endpoints survive USB reconnect, with register failures, charge/reset/jump and
+incomplete standby intervals rejected. CPU sleep time and gauge-indicated charge
+are separate evidence; low-current deadbands and calibration still limit the
+result. See the [measurement procedure](../../ports/metalio-e-ink4-plus/docs/plus-power-capture-20261102.md).
+
 ---
 
 ## Common Patterns

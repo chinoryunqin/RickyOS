@@ -19,6 +19,7 @@
 #include <driver/usb_serial_jtag.h>
 #include <hal/usb_serial_jtag_ll.h>
 #include <esp_sleep.h>
+#include <esp_timer.h>
 #include <esp_private/mspi_timing_tuning.h>
 #include <metalio_touch.h>
 #include <StandbyDiag.h>
@@ -68,6 +69,14 @@ constexpr bool kStandbySleepEnabled = false;
 #endif
 bool boardReady = false;
 bool sleepFault = false;
+struct SleepAccounting {
+  uint64_t elapsedUs = 0;
+  uint32_t entered = 0;
+  uint32_t rejected = 0;
+  uint32_t sdRetained = 0;
+  uint32_t startedMs = 0;
+};
+SleepAccounting sleepAccounting;
 // Static standby: one park lasts up to a day (the caller passes the time left
 // to auto power-off); at most this many shared-IRQ wakes re-sleep in place.
 constexpr uint32_t kStaticSleepMaxSeconds = 24u * 60u * 60u;
@@ -326,6 +335,8 @@ bool begin() {
 
 bool idleCpuFrequencyAllowed() { return !plus_audio::busy(); }
 
+bool batteryPowerOnly() { return standbyPowerIdle(); }
+
 void traceIdlePower() {
 #if defined(RICKYOS_PLUS_IDLE_FREQ_MHZ) && defined(RICKYOS_STANDBY_DIAG)
   STANDBY_DIAG("idle cfg: face=%u off=%u off_s=%lu sleep=%u", SETTINGS.rickyStandbyFace,
@@ -358,6 +369,16 @@ void traceIdlePower() {
 #endif
 }
 
+void beginStandbyPowerTrace() {
+  sleepAccounting = {};
+  sleepAccounting.startedMs = millis();
+}
+
+StandbyPowerSnapshot standbyPowerSnapshot() {
+  return {sleepAccounting.elapsedUs, uint32_t(millis() - sleepAccounting.startedMs), sleepAccounting.entered,
+          sleepAccounting.rejected, sleepAccounting.sdRetained};
+}
+
 bool standbySleepReady() {
   // A restored allocation can succeed while the first real frame underruns.
   // Preserve that first fault and remain awake instead of repeating the same
@@ -367,31 +388,28 @@ bool standbySleepReady() {
     ESP_LOGE("PlusSleep", "display first fault=0x%08lx; sleep disabled until restart",
              static_cast<unsigned long>(epd_lcd_get_first_fault()));
   }
-#ifdef RICKYOS_STANDBY_DIAG
   static uint32_t lastReadyNote = 0;
   if (uint32_t(millis() - lastReadyNote) >= 30000) {
     lastReadyNote = millis();
-    STANDBY_DIAG("board ready=%u fault=%u audio=%u touch_pending=%u", boardReady, sleepFault,
-                 plus_audio::busy(), metalio_touch_has_pending_edges());
+    ESP_LOGI("PlusSleep", "enabled=%u ready=%u fault=%u audio=%u touch_pending=%u sleep_ms=%llu entered=%lu rejected=%lu sd_retained=%lu",
+             kStandbySleepEnabled, boardReady, sleepFault, plus_audio::busy(), metalio_touch_has_pending_edges(),
+             static_cast<unsigned long long>(sleepAccounting.elapsedUs / 1000),
+             static_cast<unsigned long>(sleepAccounting.entered), static_cast<unsigned long>(sleepAccounting.rejected),
+             static_cast<unsigned long>(sleepAccounting.sdRetained));
   }
-#endif
   return kStandbySleepEnabled && boardReady && !sleepFault && !plus_audio::busy() && !metalio_touch_has_pending_edges();
 }
 
 static StandbyWake standbySleepOnce(const uint32_t seconds, StandbyStorage* storage) {
   const bool staticPark = storage != nullptr;
   const auto skip = [](const char* reason) {
-#ifdef RICKYOS_STANDBY_DIAG
     static const char* previousReason = nullptr;
     static uint32_t lastNote = 0;
     if (reason != previousReason || uint32_t(millis() - lastNote) >= 30000) {
       previousReason = reason;
       lastNote = millis();
-      STANDBY_DIAG("board skip: %s", reason);
+      ESP_LOGW("PlusSleep", "sleep blocked: %s", reason);
     }
-#else
-    (void)reason;
-#endif
     return StandbyWake::Failed;
   };
   if (!standbySleepReady()) return skip("not ready/audio/touch pending");
@@ -539,7 +557,14 @@ static StandbyWake standbySleepOnce(const uint32_t seconds, StandbyStorage* stor
   };
   if (staticPark) {
     sleepCheckpoint(SleepStage::SdStop);
-    if (!storage->suspend(storage->context)) { cleanup(); return skip("storage busy/unsupported"); }
+    if (!storage->suspend(storage->context)) {
+      if (!cleanup()) return StandbyWake::Failed;
+      // The caller still owns its storage lease. Keep mounted files and SD pads
+      // intact, but do not let a card's park policy disable CPU sleep as well.
+      ++sleepAccounting.sdRetained;
+      ESP_LOGW("PlusSleep", "SD retained; using shallow sleep (max 60s)");
+      return standbySleepOnce(seconds < 60u ? seconds : 60u, nullptr);
+    }
     storageStopped = true;
     sdPadsTouched = true;
     sleepCheckpoint(SleepStage::SdPads);
@@ -630,7 +655,15 @@ static StandbyWake standbySleepOnce(const uint32_t seconds, StandbyStorage* stor
   unsigned otherWakes = 0;
   for (;;) {
     sleepCheckpoint(SleepStage::SleepEnter);
+    const int64_t startedUs = esp_timer_get_time();
     error = esp_light_sleep_start();
+    const int64_t elapsedUs = esp_timer_get_time() - startedUs;
+    if (error == ESP_OK) {
+      ++sleepAccounting.entered;
+      if (elapsedUs > 0) sleepAccounting.elapsedUs += static_cast<uint64_t>(elapsedUs);
+    } else {
+      ++sleepAccounting.rejected;
+    }
     // IDF drops MSPI (PSRAM) to its low-speed timing before sleep and restores
     // it on wake only when the CPU clock is >= 150 MHz on S31 (clk_utils.c,
     // BELOW_FREQ_THRESHOLD). Standby runs at 80 MHz, so PSRAM came back at a

@@ -251,7 +251,7 @@
          bool supported = false;
          bool percentageKnown = false;
          bool millivoltsKnown = false;
-@@ -59,6 +61,17 @@
+@@ -59,6 +61,18 @@
      // when the board profile has no battery telemetry path. Per-field `Known`
      // flags distinguish a valid false/zero value from unsupported or failed I/O.
      Status readStatus() const;
@@ -260,9 +260,10 @@
 +    // average current (mA, negative = discharge), raw coulomb counter (mAh, rises on
 +    // discharge) and temperature (0.1 C). Each flag says whether its register read.
 +    struct PowerSnapshot {
-+        uint16_t mv = 0, counter = 0, soc = 0;
++        uint16_t mv = 0, counter = 0, soc = 0, operation = 0;
 +        int16_t current = 0, average = 0, deciCelsius = 0;
-+        bool mvOk = false, currentOk = false, averageOk = false, counterOk = false, temperatureOk = false, socOk = false;
++        bool mvOk = false, currentOk = false, averageOk = false, counterOk = false, temperatureOk = false, socOk = false,
++             operationOk = false;
 +    };
 +    PowerSnapshot readPowerSnapshot() const;
 +#endif
@@ -439,7 +440,7 @@
      uint16_t soc = 0;
      if (readGaugeSoc(soc)) {
        status.percentageKnown = true;
-@@ -752,3 +871,18 @@
+@@ -752,3 +871,19 @@
    const int32_t biased = std::clamp<int32_t>(static_cast<int32_t>(millivolts) + bias, 0, UINT16_MAX);
    return percentageFromMillivolts(static_cast<uint16_t>(biased)) == notch ? notch : previousNotch;
  }
@@ -453,6 +454,7 @@
 +  if ((s.currentOk = readReg16(addr, BQ27220_CURRENT, value))) s.current = static_cast<int16_t>(value);
 +  if ((s.averageOk = readReg16(addr, 0x14, value))) s.average = static_cast<int16_t>(value);
 +  s.counterOk = readReg16(addr, 0x22, s.counter);
++  s.operationOk = readReg16(addr, 0x3a, s.operation);
 +  s.socOk = readReg16(addr, BQ27220_STATE_OF_CHARGE, s.soc);
 +  if ((s.temperatureOk = readReg16(addr, 0x06, value))) s.deciCelsius = static_cast<int16_t>(value - 2732);  // 0.1 K
 +  return s;
@@ -430684,12 +430686,15 @@
    bool wasReleased(uint8_t buttonIndex) const;
 --- a/lib/hal/HalPowerManager.cpp
 +++ b/lib/hal/HalPowerManager.cpp
-@@ -1,6 +1,12 @@
+@@ -1,6 +1,15 @@
  #include "HalPowerManager.h"
  
  #include <BoardConfig.h>
 +#if FREEINK_DEVICE_METALIO_PLUS
 +#include <PlusBoard.h>
++#if defined(RICKYOS_PLUS_POWER_CAPTURE)
++#include <PlusPowerCapture.h>
++#endif
 +#if defined(RICKYOS_PLUS_STATIC_STANDBY)
 +#include "HalStorage.h"
 +#endif
@@ -430697,17 +430702,70 @@
  #if FREEINK_DEVICE_READPICO
  #include <BoardReadPico.h>
  #endif
-@@ -31,6 +37,9 @@
+@@ -31,6 +40,62 @@
  static constexpr gpio_num_t XTEINK_C3_GPIO13 = GPIO_NUM_13;
  
  namespace {
++#if FREEINK_DEVICE_METALIO_PLUS
++plus_board::StandbyPowerSnapshot g_lastStandbySummary{};
++bool g_haveStandbySummary = false;
++
++#if defined(RICKYOS_PLUS_POWER_CAPTURE)
++// 108 bytes of fixed-size RAM; preserved after wake/USB reconnect for JTAG.
++// No heap, SD/NVS writes, extra wake source, charger or gauge configuration.
++plus_board::PowerCapture g_plusPowerCapture;
++
++void logPowerCaptureWindow(const char* name, const plus_board::PowerCaptureWindow& window) {
++  const auto& first = window.first;
++  const auto& last = window.last;
++  LOG_INF("POWER", "%s state=%lu n=%lu faults=%lu first_ms=%lu q=%u mv=%u i=%d avg=%d op=%u valid=%u "
++                  "last_ms=%lu q=%u mv=%u i=%d avg=%d op=%u valid=%u",
++          name, static_cast<unsigned long>(window.state), static_cast<unsigned long>(window.samples),
++          static_cast<unsigned long>(window.faults), static_cast<unsigned long>(first.atMs), first.counter, first.mv,
++          first.current, first.average, first.operation, first.valid, static_cast<unsigned long>(last.atMs),
++          last.counter, last.mv, last.current, last.average, last.operation, last.valid);
++}
++
++plus_board::PowerCaptureSample readPowerCaptureSample(bool& batteryOnly) {
++  batteryOnly = plus_board::batteryPowerOnly();
++  if (!batteryOnly) return {};
++  static const BatteryMonitor battery;
++  const auto raw = battery.readPowerSnapshot();
++  batteryOnly = plus_board::batteryPowerOnly();
++  const bool valid = raw.mvOk && raw.currentOk && raw.averageOk && raw.counterOk && raw.operationOk &&
++                     raw.mv >= 2500 && raw.mv <= 5000 && (raw.operation & 0x0020) && !(raw.operation & 0x0400);
++  return {millis(), raw.counter, raw.mv, raw.current, raw.average, raw.operation, uint16_t(valid)};
++}
++
++void observePowerCapture() {
++  bool batteryOnly = false;
++  const auto sample = readPowerCaptureSample(batteryOnly);
++  g_plusPowerCapture.observe(sample, batteryOnly);
++  if (!batteryOnly) {
++    LOG_INF("POWER", "capture magic=%lu version=%lu cycle=%lu mode=%lu rearm=%lu",
++            static_cast<unsigned long>(g_plusPowerCapture.magic), static_cast<unsigned long>(g_plusPowerCapture.version),
++            static_cast<unsigned long>(g_plusPowerCapture.cycle), static_cast<unsigned long>(g_plusPowerCapture.mode),
++            static_cast<unsigned long>(g_plusPowerCapture.rearmOnBattery));
++    logPowerCaptureWindow("awake", g_plusPowerCapture.awake);
++    logPowerCaptureWindow("standby", g_plusPowerCapture.standby);
++  }
++}
++#endif
++
++void logStandbySnapshot(const plus_board::StandbyPowerSnapshot& state) {
++  LOG_INF("STANDBY", "summary duration_ms=%lu sleep_ms=%llu entered=%lu rejected=%lu sd_retained=%lu",
++          static_cast<unsigned long>(state.elapsedMs), static_cast<unsigned long long>(state.sleepUs / 1000),
++          static_cast<unsigned long>(state.entered), static_cast<unsigned long>(state.rejected),
++          static_cast<unsigned long>(state.sdRetained));
++}
++#endif
 +#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
 +std::atomic<bool> g_sideKeyBusy{false};
 +#endif
  #if !FREEINK_DEVICE_READPICO
  struct StandbyRetention {
    int8_t pin;
-@@ -93,7 +102,6 @@
+@@ -93,7 +158,6 @@
  // next sleep starts are presses nobody saw: the clock redraw holds the main loop for
  // about 3 s each minute, and a tap in that window used to be dropped by the drain.
  uint16_t g_standbyKeyBoundary = 0;
@@ -430715,7 +430773,7 @@
  
  HalPowerManager::LightSleepWakeReason lightSleepReadPico(const uint32_t seconds) {
    using LightSleepWakeReason = HalPowerManager::LightSleepWakeReason;
-@@ -235,6 +243,9 @@
+@@ -235,6 +299,9 @@
    // Protect the entire host lifetime, including scans and reconnect attempts.
    if (BleHid.isRunning()) enabled = false;
  #endif
@@ -430725,7 +430783,7 @@
  
    // Serialize the entire clock transition: Arduino's APB callbacks retain SPI
    // locks between BEFORE/AFTER, so concurrent frequency changes can deadlock.
-@@ -245,8 +256,18 @@
+@@ -245,8 +312,18 @@
      if (setCpuFrequencyMhz(targetFrequency)) {
        isLowPower = targetLowPower;
        LOG_DBG("PWR", "CPU frequency now %u MHz", getCpuFrequencyMhz());
@@ -430744,7 +430802,32 @@
      }
    }
  
-@@ -324,7 +345,7 @@
+@@ -320,11 +397,32 @@
+ void HalPowerManager::beginStandbyKeyWatch() {
+ #if FREEINK_DEVICE_READPICO
+   g_standbyKeyBoundary = 0;
++#elif FREEINK_DEVICE_METALIO_PLUS
++  g_haveStandbySummary = false;
++  plus_board::beginStandbyPowerTrace();
++#if defined(RICKYOS_PLUS_POWER_CAPTURE)
++  bool batteryOnly = false;
++  const auto sample = readPowerCaptureSample(batteryOnly);
++  g_plusPowerCapture.enterStandby(sample, batteryOnly);
++#endif
++#endif
++}
++
++void HalPowerManager::logStandbySleepSummary() {
++#if FREEINK_DEVICE_METALIO_PLUS
++#if defined(RICKYOS_PLUS_POWER_CAPTURE)
++  bool batteryOnly = false;
++  const auto sample = readPowerCaptureSample(batteryOnly);
++  g_plusPowerCapture.exitStandby(sample, batteryOnly);
++#endif
++  g_lastStandbySummary = plus_board::standbyPowerSnapshot();
++  g_haveStandbySummary = true;
++  logStandbySnapshot(g_lastStandbySummary);
+ #endif
  }
  
  void HalPowerManager::setSideKeyBusy(const bool busy) {
@@ -430753,7 +430836,7 @@
    g_sideKeyBusy.store(busy, std::memory_order_relaxed);
  #else
    (void)busy;
-@@ -332,7 +353,7 @@
+@@ -332,7 +430,7 @@
  }
  
  bool HalPowerManager::sideKeyBusy() {
@@ -430762,7 +430845,7 @@
    return g_sideKeyBusy.load(std::memory_order_relaxed);
  #else
    return false;
-@@ -340,7 +361,10 @@
+@@ -340,7 +438,10 @@
  }
  
  bool HalPowerManager::canStandbyLightSleep(const HalGPIO& gpio) const {
@@ -430774,13 +430857,18 @@
    // The power key is PMU-owned and has no GPIO, so the generic
    // powerPin/retention test below can never pass here. What this board has is a
    // LEVEL wake on the FCA9555 INT# (GPIO41) plus the sleep timer, and the
-@@ -356,7 +380,24 @@
+@@ -356,7 +457,29 @@
  }
  
  HalPowerManager::LightSleepWakeReason HalPowerManager::lightSleepFor(const uint32_t seconds) const {
 -#if FREEINK_DEVICE_READPICO
 +#if FREEINK_DEVICE_METALIO_PLUS
 +  if (sideKeyBusy()) return LightSleepWakeReason::Failed;
++#if defined(RICKYOS_PLUS_POWER_CAPTURE)
++  // A cable unplugged just before the 35 s idle deadline may have missed the
++  // last awake poll. Capture once here, before SD/rails park, not on a timer.
++  if (g_plusPowerCapture.needsStandbyStart()) observePowerCapture();
++#endif
 +#if defined(RICKYOS_PLUS_STATIC_STANDBY)
 +  HalStorage::StandbySession session;
 +  plus_board::StandbyStorage storage{
@@ -430800,7 +430888,7 @@
    // Read Pico: no GPIO power key, no standby retention rail. The wake set is the
    // FCA9555 INT# (GPIO41) on the LOW level plus the timer, wired through the new
    // freeink::PowerManager light-sleep primitives. GPIO41 is NOT RTC-capable on
-@@ -438,8 +479,51 @@
+@@ -438,8 +561,57 @@
  #endif  // FREEINK_DEVICE_READPICO
  }
  
@@ -430813,6 +430901,12 @@
 +  // Reuse the UI's single sampler/cache, including its I2C failure handling.
 +  // Long blocked/sleeping intervals earn no synthetic observations or catch-up.
 +  getBatteryPercentage();
++#if defined(RICKYOS_PLUS_POWER_CAPTURE)
++  observePowerCapture();
++#endif
++  // The USB console is absent during battery sleep. Replay the frozen result
++  // through the existing awake poll so a reconnected host can collect it.
++  if (g_haveStandbySummary) logStandbySnapshot(g_lastStandbySummary);
 +#if defined(RICKYOS_PLUS_IDLE_FREQ_MHZ)
 +  plus_board::traceIdlePower();
 +#endif
@@ -430909,7 +431003,7 @@
    // FCA9555 came up, and its wake set is armed in HalPowerManager.cpp (IOE INT#
    // GPIO41, low level) rather than from a GPIO power pin.
    bool canStandbyLightSleep(const HalGPIO& gpio) const;
-@@ -56,15 +78,20 @@
+@@ -56,15 +78,21 @@
    // Enter one light-sleep cycle. GPIO and timer wake sources are removed before returning.
    LightSleepWakeReason lightSleepFor(uint32_t seconds) const;
  
@@ -430918,6 +431012,7 @@
    // the key events seen so far; main.cpp reports while it is judging a press, and
    // Standby does not light-sleep in the middle of one.
    static void beginStandbyKeyWatch();
++  static void logStandbySleepSummary();
    static void setSideKeyBusy(bool busy);
    static bool sideKeyBusy();
  
@@ -431532,13 +431627,14 @@
  HalFile::operator bool() const { return isOpen(); }
 --- a/lib/hal/HalStorage.h
 +++ b/lib/hal/HalStorage.h
-@@ -112,8 +112,38 @@
+@@ -112,8 +112,39 @@
      StorageLock& operator=(const StorageLock&) = delete;
    };
  
 +#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
 +  // Stack-owned lease: serialize every SD user until rails/remount/file positions
-+  // are restored. Unsupported live handles block sleep instead of being invalidated.
++  // are restored. Unsupported live handles retain SD and use shallow CPU sleep
++  // instead of being invalidated by the static park.
 +  class StandbySession {
 +   public:
 +    bool suspend();
@@ -439125,7 +439221,27 @@
    }
    LOG_DBG("STANDBY", "onEnter free heap=%u", static_cast<unsigned>(ESP.getFreeHeap()));
    // Always default to face 0 (Sloppy Clock). If face 0 is somehow unavailable
-@@ -191,6 +203,9 @@
+@@ -165,11 +177,19 @@
+     syncState_ = SyncState::Delayed;
+     syncStartMs_ = millis();
+   }
++#if FREEINK_DEVICE_METALIO_PLUS
++  // A valid clock or a static face skips NTP, but an inherited station/AP still
++  // blocks light sleep. Only a pending clock sync may keep that radio alive.
++  if (syncState_ == SyncState::Idle && WiFi.getMode() != WIFI_MODE_NULL) stopTimeSyncWifi();
++#endif
+   requestUpdate();
+ }
+ 
+ void StandbyActivity::onExit() {
+   STANDBY_DIAG("standby exit (up %lus)", (millis() - enteredMs_) / 1000);
++#if FREEINK_DEVICE_METALIO_PLUS
++  HalPowerManager::logStandbySleepSummary();
++#endif
+   switch (syncState_) {
+     case SyncState::Idle:
+     case SyncState::Delayed:
+@@ -191,6 +211,9 @@
    renderer.setOrientation(savedOrientation_);
    // Time in Standby is not reading time: the book under it starts its gap afresh.
    READING_STATS.resumeSession();
@@ -439135,7 +439251,7 @@
    LOG_DBG("STANDBY", "onExit free heap=%u", static_cast<unsigned>(ESP.getFreeHeap()));
    Activity::onExit();
  }
-@@ -216,6 +231,7 @@
+@@ -216,6 +239,7 @@
      return;
    }
    currentFace_->onEnter();
@@ -439143,26 +439259,29 @@
    requestUpdate();
  }
  
-@@ -430,9 +446,28 @@
+@@ -430,9 +454,31 @@
  
  bool StandbyActivity::tryLightSleep(const uint32_t idleMs) {
  #if CROSSPOINT_EMULATED == 0
-+#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_STANDBY_DIAG)
++#if FREEINK_DEVICE_METALIO_PLUS
 +  static uint32_t lastGateNote = 0;
 +  if (uint32_t(millis() - lastGateNote) >= 30000) {
 +    lastGateNote = millis();
-+    STANDBY_DIAG("gate idle=%lu pic=%u swipe=%u ble=%u rec=%u light=%u sync=%u wifi=%d ready=%u key=%u",
++    LOG_INF("STANDBY", "gate idle=%lu pic=%u swipe=%u ble=%u rec=%u light=%u sync=%u wifi=%d ready=%u key=%u usb=%u",
 +                 static_cast<unsigned long>(idleMs), currentFace_ && currentFace_->needsPicture(),
 +                 SETTINGS.standbySwipeUnlock, bleinput::isRunning(), HalRecorder::active(), Frontlight.isOn(),
 +                 syncState_ != SyncState::Idle, static_cast<int>(WiFi.getMode()),
-+                 powerManager.canStandbyLightSleep(gpio), HalPowerManager::sideKeyBusy());
++                 powerManager.canStandbyLightSleep(gpio), HalPowerManager::sideKeyBusy(), gpio.isUsbConnected());
 +  }
 +#endif
    if (mode_ != DisplayMode::Immersive || !currentFace_) return false;
++#if !FREEINK_DEVICE_METALIO_PLUS
    // Touch does not wake light sleep: stay awake while waiting for a picture to be picked.
    if (currentFace_->needsPicture()) return false;
++#endif
 +#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
-+  // Any face must have completed its first paint before any bus/rail park.
++  // The missing-picture prompt also sleeps after the idle window. It retains
++  // its first frame just like a wallpaper; the physical power key still wakes.
 +  if (!drewFrame_) return false;
 +#endif
 +#if FREEINK_DEVICE_METALIO_PLUS
@@ -439172,7 +439291,7 @@
  
    const bool syncActive = syncState_ != SyncState::Idle;
    const bool wifiActive = WiFi.getMode() != WIFI_MODE_NULL;
-@@ -446,16 +481,44 @@
+@@ -446,16 +492,44 @@
      return false;
    }
  
@@ -439217,7 +439336,7 @@
        return true;
      case HalPowerManager::LightSleepWakeReason::PowerButton:
        // A short press, already over before main.cpp's key poll could see it: leave
-@@ -468,13 +531,21 @@
+@@ -468,13 +542,21 @@
        // Still down: main.cpp finishes it (release = leave Standby, hold = power off).
        STANDBY_DIAG("wake: key still down");
        lastInputMs_ = millis();
@@ -439239,7 +439358,7 @@
        return true;
    }
  #else
-@@ -484,7 +555,9 @@
+@@ -484,7 +566,9 @@
  }
  
  void StandbyActivity::loop() {
@@ -439250,7 +439369,18 @@
      // One shortcut switch owns both entry and exit; the side power key stays independent.
      if (SETTINGS.standbyShortcutEnabled) {
        STANDBY_DIAG("close: Back released");
-@@ -507,6 +580,7 @@
+@@ -499,24 +583,33 @@
+   int tapY = 0;
+   const bool tapped = mappedInput.wasScreenTapped(tapX, tapY);
+   if (tapped || mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
++#if !FREEINK_DEVICE_METALIO_PLUS
+     lastInputMs_ = millis();
++#endif
+     if (currentFace_ && currentFace_->needsPicture()) {
++      lastInputMs_ = millis();
+       const auto action = tapped ? currentFace_->pictureActionAt(tapX, tapY) : StandbyFace::PictureAction::Choose;
+       if (action == StandbyFace::PictureAction::Choose) openPicturePicker();
+       // The downloader restarts to Home when it is done, like the font downloader.
        if (action == StandbyFace::PictureAction::Download &&
            !startActivityForResultWith<RickyWallpaperDownloadActivity>([this](const ActivityResult&) {
              if (currentFace_) currentFace_->onEnter();
@@ -439258,7 +439388,24 @@
              requestUpdate();
            })) {
          LOG_ERR("STANDBY", "Cannot open the picture downloader");
-@@ -531,11 +605,17 @@
+       }
++      return;
+     }
+-    return;
+-  }
++#if !FREEINK_DEVICE_METALIO_PLUS
++    return;
++#endif
++  }
++#if !FREEINK_DEVICE_METALIO_PLUS
+   if (mappedInput.wasAnyReleased() || mappedInput.wasSwipe() != MappedInputManager::SwipeDir::None) {
+     lastInputMs_ = millis();
+   }
++#endif
+   pumpTimeSync();
+   // Standby left alone long enough powers off (Settings -> Display & Standby).
+   const unsigned long powerOffMs = SETTINGS.getStandbyPowerOffMs();
+@@ -531,11 +624,17 @@
  
  void StandbyActivity::render(RenderLock&&) {
    if (!currentFace_) return;
@@ -439277,7 +439424,7 @@
      renderer.clearScreen();
      {
        const GfxRenderer::ClipScope clip(renderer, viewport.x, viewport.y, viewport.width, viewport.height);
-@@ -638,28 +718,16 @@
+@@ -638,28 +737,16 @@
    renderer.restoreBwBuffer();
  }
  

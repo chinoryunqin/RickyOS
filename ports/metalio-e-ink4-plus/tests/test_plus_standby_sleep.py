@@ -275,7 +275,7 @@ int main(){
             (root / 'fake.h').write_text(common)
             for name in ['InputManager.h', 'PowerManager.h', 'plus_i2c_wire.h', 'metalio_i2c1.h',
                          'epd_board_metalio_eink4_plus.h', 'config.h', 'esp_log.h', 'Arduino.h', 'lcd_fault.h',
-                         'driver/gpio.h', 'driver/rtc_io.h', 'driver/usb_serial_jtag.h', 'hal/usb_serial_jtag_ll.h', 'esp_sleep.h', 'metalio_touch.h', 'HalAudioOutput.h', 'StandbyDiag.h', 'esp_heap_caps.h', 'esp_timer.h', 'esp_private/esp_clk.h', 'esp_private/mspi_timing_tuning.h']:
+                         'driver/gpio.h', 'driver/rtc_io.h', 'driver/usb_serial_jtag.h', 'hal/usb_serial_jtag_ll.h', 'esp_sleep.h','esp_timer.h', 'metalio_touch.h', 'HalAudioOutput.h', 'StandbyDiag.h', 'esp_heap_caps.h', 'esp_timer.h', 'esp_private/esp_clk.h', 'esp_private/mspi_timing_tuning.h']:
                 target = root / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text('#include "fake.h"\n')
@@ -372,6 +372,43 @@ int main(){
 }
 ''')
 
+    def test_hal_reports_measured_sleep_without_sd_writes(self):
+        source = (UP / 'lib/hal/HalPowerManager.cpp').read_text()
+        run_cpp(r'''
+#include <cassert>
+#include <cstdint>
+#include <cstdio>
+#include <string>
+#define FREEINK_DEVICE_METALIO_PLUS 1
+#define FREEINK_DEVICE_READPICO 0
+std::string line;
+template<class... T>void log(const char* origin,const char* fmt,T... args){
+ assert(std::string(origin)=="STANDBY");char text[256];
+ const int n=snprintf(text,sizeof(text),fmt,args...);assert(n>0&&n<int(sizeof(text)));line=text;
+}
+#define LOG_INF(...) log(__VA_ARGS__)
+namespace plus_board {
+struct StandbyPowerSnapshot {uint64_t sleepUs=1765000000;uint32_t elapsedMs=1800000,entered=30,rejected=2,sdRetained=30;};
+StandbyPowerSnapshot sample;
+unsigned begins=0;
+void beginStandbyPowerTrace(){++begins;}
+StandbyPowerSnapshot standbyPowerSnapshot(){return sample;}
+}
+plus_board::StandbyPowerSnapshot g_lastStandbySummary;
+bool g_haveStandbySummary=false;
+struct HalPowerManager {static void beginStandbyKeyWatch();static void logStandbySleepSummary();};
+''' + method(source, 'void logStandbySnapshot(') + method(source, 'void HalPowerManager::beginStandbyKeyWatch()') +
+            method(source, 'void HalPowerManager::logStandbySleepSummary()') + r'''
+int main(){
+ g_haveStandbySummary=true;
+ HalPowerManager::beginStandbyKeyWatch();assert(plus_board::begins==1&&!g_haveStandbySummary);
+ HalPowerManager::logStandbySleepSummary();
+ assert(line=="summary duration_ms=1800000 sleep_ms=1765000 entered=30 rejected=2 sd_retained=30");
+ assert(g_haveStandbySummary);const auto saved=line;plus_board::sample.elapsedMs+=60000;
+ line.clear();logStandbySnapshot(g_lastStandbySummary);assert(line==saved);
+}
+''')
+
     def test_activity_guards_timer_key_ownership_and_retry(self):
         activity = (UP / 'src/activities/apps/standby/StandbyActivity.cpp').read_text()
         time = (UP / 'src/activities/apps/standby/StandbyTime.cpp').read_text()
@@ -382,6 +419,7 @@ int main(){
 #define FREEINK_DEVICE_METALIO_PLUS 1
 #define CROSSPOINT_EMULATED 0
 #define STANDBY_DIAG(...) ((void)0)
+#define LOG_INF(...) ((void)0)
 uint32_t now=40000;uint32_t millis(){return now;}
 struct Settings {bool standbySwipeUnlock=false;} SETTINGS;
 struct Light {bool on=false;bool isOn()const{return on;}} Frontlight;
@@ -392,6 +430,7 @@ constexpr int WIFI_MODE_NULL=0;
 struct Gpio {bool usb=false;bool isUsbConnected(){return usb;}} gpio;
 struct RenderLock {~RenderLock(){}};
 struct HalPowerManager {
+ static bool sideKeyBusy(){return false;}
  enum class LightSleepWakeReason {Timer,PowerButton,PowerButtonHeld,Failed};
  bool allowed=true;int sleeps=0;uint32_t seconds=0;LightSleepWakeReason reason=LightSleepWakeReason::Timer;
  bool canStandbyLightSleep(const Gpio&)const{return allowed;}
@@ -418,6 +457,7 @@ struct StandbyActivity {
 ''' + method(activity, 'bool StandbyActivity::tryLightSleep(') + r'''
 int main(){
  for(int guard=1;guard<10;++guard){
+  if(guard==6)continue; // Plus missing-picture prompts now sleep after the first frame.
   StandbyActivity a;face={};SETTINGS={};Frontlight={};bleinput::running=false;
   HalRecorder::running=false;WiFi.mode=0;gpio.usb=false;powerManager={};
   unsigned idle=35000;

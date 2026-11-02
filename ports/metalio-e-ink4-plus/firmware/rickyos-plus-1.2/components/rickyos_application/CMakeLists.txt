@@ -775,6 +775,10 @@ if("$ENV{RICKYOS_PLUS_STANDBY_LAZY_BT}" STREQUAL "1")
   target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_STANDBY_LAZY_BT=1)
 endif()
 # Standby trace logging (diagnostic builds only; never enables sleep by itself).
+if("$ENV{RICKYOS_PLUS_POWER_CAPTURE}" STREQUAL "1")
+  # Read-only RAM snapshots; does not enable STANDBY_DIAG or bypass USB gates.
+  target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_POWER_CAPTURE=1)
+endif()
 if("$ENV{RICKYOS_PLUS_SD_FAULT_TEST}" STREQUAL "1")
   target_compile_definitions(${COMPONENT_LIB} PRIVATE RICKYOS_PLUS_SD_FAULT_TEST=1)
 endif()

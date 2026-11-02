@@ -4,6 +4,17 @@ namespace plus_board {
 bool begin();
 enum class StandbyWake : uint8_t { Timer, PowerButton, PowerButtonHeld, Failed };
 bool standbySleepReady();
+// Same read-only native-USB and charger checks used by the sleep gate.
+bool batteryPowerOnly();
+struct StandbyPowerSnapshot {
+  uint64_t sleepUs;
+  uint32_t elapsedMs;
+  uint32_t entered;
+  uint32_t rejected;
+  uint32_t sdRetained;
+};
+void beginStandbyPowerTrace();
+StandbyPowerSnapshot standbyPowerSnapshot();
 // Awake-idle comparison must not slow an active playback/recording worker.
 bool idleCpuFrequencyAllowed();
 // Called only by the existing awake poll; diagnostics keep unplugged samples
