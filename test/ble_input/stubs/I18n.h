@@ -34,7 +34,10 @@ enum class StrId {
   STR_CONFIRM,
   STR_BACK,
   STR_BT_PRESS_REMOTE,
-  STR_BT_NOT_MAPPED
+  STR_BT_NOT_MAPPED,
+  STR_CANCEL,
+  STR_BT_RESET_BINDINGS,
+  STR_BT_RESET_BINDINGS_WARNING
 };
 using enum StrId;
 inline const char* tr(StrId key) {

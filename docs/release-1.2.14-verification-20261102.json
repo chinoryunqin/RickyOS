@@ -1,0 +1,69 @@
+{
+  "version": "1.2.14",
+  "date": "2026-11-02",
+  "status": "publication_authorized_plus_device_accepted_pico_new_hardware_run_not_performed",
+  "published": false,
+  "scope": {
+    "common": [
+      "reset all Bluetooth remote button bindings with confirmation; paired devices retained"
+    ],
+    "plus": [
+      "standby Wi-Fi teardown",
+      "SD-retained shallow CPU sleep",
+      "missing-picture sleep",
+      "ignored standby inputs preserve idle deadline"
+    ]
+  },
+  "targets": {
+    "pico": {
+      "version": "1.2.14",
+      "file": "RickyOS-1.2.14.bin",
+      "bytes": 5961488,
+      "sha256": "be084fa7a8d8b914b26082bde2eded56583385350313a6cc193264ce3fdcb5a9",
+      "elf": "/Volumes/Seagate/RickyOS-build-output/release-1.2.14-20261102/RickyOS-Pico-1.2.14.elf",
+      "elf_sha256": "cf7018f7f686efa932ac60c1d3658d292ec89660e0bf932a2e138f297c82fc87",
+      "board": "readpico",
+      "chip_id": 9,
+      "branch": "codex/pico-release-1.2.14-20261102",
+      "base_tag": "pico-v1.2.13",
+      "base_commit": "a084ee41d2c7d6d8bd823e4a138574b499a36a7e",
+      "build_passed": true,
+      "host_regressions_passed": 15,
+      "published": false,
+      "flashed": false,
+      "hardware_accepted": true,
+      "ota_aligned_margin": 65536,
+      "hardware_interaction_tested": false,
+      "acceptance_basis": "Maintainer explicitly authorized both-target release after being told Pico was not connected for its candidate installation. Accepted for publication without a new Pico hardware run; build, actual-Pico host regressions and artifact checks passed. No serial/OTA/device functional test is claimed for this image."
+    },
+    "plus": {
+      "version": "1.2.14",
+      "file": "RickyOS-Plus-1.2.14.bin",
+      "bytes": 5984336,
+      "sha256": "c806b7f3fa05682b8ac770aa035f5bcac67dc679f8524f82ab1fb3db043edd41",
+      "elf": "/Volumes/Seagate/RickyOS-build-output/release-1.2.14-20261102/RickyOS-Plus-1.2.elf",
+      "elf_sha256": "cd0ff2c308159110025730fde938341870c8b0ecaafb7b25025564263fedf433",
+      "map": "/Volumes/Seagate/RickyOS-build-output/release-1.2.14-20261102/RickyOS-Plus-1.2.map",
+      "map_sha256": "b6ca8262fe2b72fa9b9d9ea0d289679006c9a36be9b6f13dd5b0558af43b3608",
+      "board": "metalio-plus-s31",
+      "chip_id": 32,
+      "branch": "codex/plus-bluetooth-map-reset-20261102",
+      "base_tag": "plus-v1.2.13",
+      "standby_fix_commit": "b8acf8c6",
+      "build_passed": true,
+      "power_capture_enabled": false,
+      "published": false,
+      "flashed": true,
+      "hardware_accepted": true,
+      "host_regressions_passed": 14,
+      "ota_aligned_margin": 40960,
+      "startup_verified": true,
+      "outside_app_unchanged": true,
+      "device_backup": "/Volumes/Seagate/RickyOS-device-backups/plus-release-1.2.14-20261102",
+      "user_interaction_accepted": true,
+      "user_acceptance": "没啥问题，可以直接发了"
+    }
+  },
+  "publication_instruction": "用户：没啥问题，可以直接发了。 Explicit authorization to publish Plus and Pico 1.2.14.",
+  "publication_authorized": true
+}

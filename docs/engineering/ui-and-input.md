@@ -41,6 +41,23 @@ Constraint: Physical button positions are fixed on hardware, but their logical f
 
 **Rule**: Always use `MappedInputManager::Button::*` enums, never raw `HalGPIO::BTN_*` indices (except in ButtonRemapActivity).
 
+### Bluetooth mapping reset
+
+The remote-button mapping list ends with **Reset All Bindings**. Touch and logical
+Confirm open the existing `OptionPopup` confirmation with Cancel selected first.
+Only explicit confirmation clears and saves `SETTINGS.bleKeyMap`; cancelling or
+leaving keeps the mapping. Paired devices and the Bluetooth preference are not
+changed, and reset remains available when the BLE host cannot start. Existing
+function rows still enter key capture directly.
+
+The additional list row uses activity-owned fixed storage. The popup reuses the
+standard bounded two-option mechanism: its owned text/choice storage must survive
+across input/render frames, so it cannot be a local stack object. It is allocated
+only on opening the confirmation, retained for reuse, and destroyed with the
+activity; no per-render allocation, new task or SDK pairing storage is introduced.
+The popup owns modal input and consumes the triggering release before selection.
+Regression coverage lives in `test/ble_input/BleSettingsTest.cpp`.
+
 ## Input Frames and Event Semantics
 
 The main loop updates `MappedInputManager` once per frame before dispatching

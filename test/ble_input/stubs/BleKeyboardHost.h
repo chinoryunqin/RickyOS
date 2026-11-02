@@ -30,7 +30,7 @@ struct TestBleHost {
     const char* name = "remote";
     const char* addr = "00:11:22:33:44:55";
   } remote;
-  int connects = 0;
+  int connects = 0, forgets = 0;
   bool scanning = false, connectResult = true, startUnderLock = false;
   bool connect(const char*) {
     ++connects;
@@ -45,7 +45,7 @@ struct TestBleHost {
   const Device& device(uint8_t) const { return remote; }
   const Device& paired(uint8_t) const { return remote; }
   const char* connectedName() const { return remote.name; }
-  void forget(const char*) {}
+  void forget(const char*) { ++forgets; }
   void releaseScanResults() {}
   bool takeConnectFailure(char*, size_t) { return false; }
   std::deque<freeink::KeyEvent> events;

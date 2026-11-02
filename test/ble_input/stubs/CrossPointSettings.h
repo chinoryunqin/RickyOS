@@ -11,7 +11,8 @@ struct CrossPointSettings {
   bleinput::KeyMap bleKeyMap{};
   bool bluetoothEnabled = true;
   uint8_t rickyGestureBack = 1, rickyGestureHome = 0, rickyGestureControl = 1, rickyGestureStatus = 1;
-  void saveToFile() {}
+  int saves = 0;
+  void saveToFile() { ++saves; }
 };
 inline CrossPointSettings testSettings;
 #define SETTINGS testSettings

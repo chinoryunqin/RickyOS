@@ -4,6 +4,7 @@
 #include <components/lists/list.h>
 
 #include "MappedInputManager.h"
+#include "activities/RenderLock.h"
 struct ActivityResult {};
 struct UiScreen {
   struct {
@@ -20,6 +21,7 @@ struct Activity {
   virtual void onEnter() {}
   virtual void onExit() {}
   virtual bool keepsBluetoothAlive() const { return false; }
+  virtual void render(RenderLock&&) {}
 };
 class UiListActivity : public Activity {
  public:
@@ -27,6 +29,7 @@ class UiListActivity : public Activity {
   void testBuild(UiScreen& screen) { buildScreen(screen); }
   void testActivate(int row) { activateIndex(row); }
   void testDraw() { drawChrome(); }
+  bool testInput() { return handleCustomInput(); }
 
  protected:
   GfxRenderer& renderer;
@@ -49,6 +52,8 @@ class UiListActivity : public Activity {
   virtual const char* headerTitle() const = 0;
   virtual void drawChrome() {}
   void requestUpdate() {}
+  void render(RenderLock&&) override {}
+  void renderPopupUnderlay() {}
   void moveSelectionTo(int row) { nav.selected = row; }
   void finish() {}
   void syncListViewport(UiScreen&, freeink::ui::ListProps&) {}

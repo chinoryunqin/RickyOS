@@ -426879,7 +426879,16 @@
  STR_KB_HINT_MOVE_CURSOR: "按 左/右 移动光标"
  STR_KB_HINT_RETURN_CURSOR: "按 左 返回光标位置"
  STR_KB_HINT_HIDE_PASSWORD: "按住 右 并按 [***] 隐藏密码"
-@@ -1464,11 +1508,35 @@
+@@ -1368,6 +1412,8 @@
+ STR_BT_PAGE_FORWARD: "下一页"
+ STR_BT_PAGE_BACK: "上一页"
+ STR_BT_NOT_MAPPED: "未设置"
++STR_BT_RESET_BINDINGS: "重置全部绑定"
++STR_BT_RESET_BINDINGS_WARNING: "将全部蓝牙按键恢复为“未设置”，已配对设备会保留。"
+ STR_BT_LOW_MEMORY: "内存不足，无法启动蓝牙"
+ STR_BT_UNAVAILABLE: "蓝牙不可用"
+ STR_BT_CONNECTION_FAILED: "连接失败"
+@@ -1464,11 +1510,35 @@
  STR_RICKY_SELECT_TRANSPARENT: "选择透明图片"
  STR_RICKY_CLEAR_TRANSPARENT: "移除透明图片"
  STR_RICKY_SET_TRANSPARENT: "设为透明壁纸"
@@ -426916,7 +426925,7 @@
  STR_RICKY_POWERED_OFF: "已关机 · 长按开机"
  STR_RICKY_PICTURE_FIT: "显示方式"
  STR_RICKY_PICTURE_FIT_WHOLE: "完整显示"
-@@ -1546,12 +1614,14 @@
+@@ -1546,12 +1616,14 @@
  STR_RICKY_BOOK_FINISHED: "读完"
  STR_RICKY_CC_FULL_REFRESH: "每%d页全刷"
  STR_RICKY_CC_FULL_REFRESH_OFF: "不全刷"
@@ -426931,7 +426940,7 @@
  STR_RICKY_GESTURE_CONTROL: "顶部下滑打开控制中心"
  STR_RICKY_GESTURE_STATUS: "点状态栏打开控制中心"
  STR_RICKY_GESTURE_TOUCH_TURN: "触屏翻页"
-@@ -1568,6 +1638,8 @@
+@@ -1568,6 +1640,8 @@
  STR_RICKY_KEYS_SIDE: "左右键翻页"
  STR_RICKY_KEYS_LONG_PRESS: "长按左右键"
  STR_RICKY_KEYS_STANDBY: "中间键待机与唤醒"
@@ -426940,7 +426949,7 @@
  STR_RICKY_SCREEN_REPAIR: "屏幕修复"
  STR_RICKY_SCREEN_REPAIRING: "正在修复屏幕，约 5 秒…"
  STR_RICKY_HELP_SCREEN_REPAIR: "出现残影、两个画面叠在一起时使用"
-@@ -1588,8 +1660,8 @@
+@@ -1588,8 +1662,8 @@
  STR_RICKY_HELP_WEBSITE: "RickyOS 官网"
  STR_RICKY_HELP_START_1: "在应用中打开文件传输，按照屏幕提示用手机或电脑传入书籍。"
  STR_RICKY_HELP_START_2: "书库中点选书籍开始阅读。全部、在读、未读可以切换筛选。文件夹在存储中浏览。"
@@ -426951,7 +426960,7 @@
  STR_RICKY_HELP_DISPLAY_2: "出现残影时可在设置中执行屏幕修复。全刷间隔越短，残影越少，但闪屏更频繁。"
  STR_RICKY_HELP_DISPLAY_3: "阅读字体在文字设置中调整；头像、昵称和首页短句在设置顶部的资料卡中修改。"
  STR_RICKY_HELP_UPDATE_1: "设置中的更新固件会检查 RickyOS 更新。更新前请保证电量充足，勿在过程中断电。"
-@@ -1600,3 +1672,163 @@
+@@ -1600,3 +1674,163 @@
  STR_RICKY_HELP_FEEDBACK_3: "通过你现有的 Ricky AI Studio 联系渠道发送反馈。本页面不会自动上传设备信息。官网入口可扫码打开。"
  STR_RICKY_MENU_AUTO_TURN: "自动翻页"
  STR_RICKY_MENU_PROGRESS: "阅读进度"
@@ -427218,7 +427227,16 @@
  STR_KB_HINT_MOVE_CURSOR: "Press LEFT or RIGHT to move cursor"
  STR_KB_HINT_RETURN_CURSOR: "Press LEFT to return to cursor position"
  STR_KB_HINT_HIDE_PASSWORD: "Hold RIGHT then press [***] to hide password"
-@@ -1486,11 +1530,35 @@
+@@ -1385,6 +1429,8 @@
+ STR_BT_PAGE_FORWARD: "Page Forward"
+ STR_BT_PAGE_BACK: "Page Back"
+ STR_BT_NOT_MAPPED: "Not set"
++STR_BT_RESET_BINDINGS: "Reset All Bindings"
++STR_BT_RESET_BINDINGS_WARNING: "Clear all remote button bindings? Paired devices will be kept."
+ STR_BT_LOW_MEMORY: "Not enough memory for Bluetooth"
+ STR_BT_UNAVAILABLE: "Bluetooth unavailable"
+ STR_BT_CONNECTION_FAILED: "Connection failed"
+@@ -1486,11 +1532,35 @@
  STR_RICKY_SELECT_TRANSPARENT: "Choose overlay PNG"
  STR_RICKY_CLEAR_TRANSPARENT: "Remove overlay PNG"
  STR_RICKY_SET_TRANSPARENT: "Set transparent wallpaper"
@@ -427255,7 +427273,7 @@
  STR_RICKY_POWERED_OFF: "Off · hold to turn on"
  STR_RICKY_PICTURE_FIT: "Picture fit"
  STR_RICKY_PICTURE_FIT_WHOLE: "Whole picture"
-@@ -1568,12 +1636,14 @@
+@@ -1568,12 +1638,14 @@
  STR_RICKY_BOOK_FINISHED: "Finished"
  STR_RICKY_CC_FULL_REFRESH: "Clean every %d"
  STR_RICKY_CC_FULL_REFRESH_OFF: "No clean refresh"
@@ -427270,7 +427288,7 @@
  STR_RICKY_GESTURE_CONTROL: "Swipe down from the top: Control center"
  STR_RICKY_GESTURE_STATUS: "Tap the status bar: Control center"
  STR_RICKY_GESTURE_TOUCH_TURN: "Touch page turns"
-@@ -1590,6 +1660,8 @@
+@@ -1590,6 +1662,8 @@
  STR_RICKY_KEYS_SIDE: "Left and right keys"
  STR_RICKY_KEYS_LONG_PRESS: "Hold left or right key"
  STR_RICKY_KEYS_STANDBY: "Middle key: Standby / Wake"
@@ -427279,7 +427297,7 @@
  STR_RICKY_SCREEN_REPAIR: "Screen repair"
  STR_RICKY_SCREEN_REPAIRING: "Repairing the screen, about 5 s…"
  STR_RICKY_HELP_SCREEN_REPAIR: "Use when old screens show through new ones"
-@@ -1610,7 +1682,7 @@
+@@ -1610,7 +1684,7 @@
  STR_RICKY_HELP_WEBSITE: "RickyOS website"
  STR_RICKY_HELP_START_1: "Open File Transfer in Apps and follow the on-screen instructions to send books from your phone or computer."
  STR_RICKY_HELP_START_2: "Select a book in Library to read. Filter by All, Reading or Unread. Browse folders in Storage."
@@ -427288,7 +427306,7 @@
  STR_RICKY_HELP_DISPLAY_1: "Display & Standby controls automatic sleep and power-button actions. Choose standby pictures in the Standby app."
  STR_RICKY_HELP_DISPLAY_2: "Use Screen Repair in Settings for ghosting. More frequent full refreshes reduce ghosting but flash the screen more often."
  STR_RICKY_HELP_DISPLAY_3: "Adjust reading fonts in Text Settings. Change your avatar, nickname and home phrase through the profile card at the top of Settings."
-@@ -1622,3 +1694,163 @@
+@@ -1622,3 +1696,163 @@
  STR_RICKY_HELP_FEEDBACK_3: "Send feedback through your existing Ricky AI Studio contact channel. This page does not upload device information. Scan the website QR code to visit the site."
  STR_RICKY_MENU_AUTO_TURN: "Auto page turn"
  STR_RICKY_MENU_PROGRESS: "Reading progress"
@@ -446201,6 +446219,125 @@
  // actions are configured separately from screen gestures.
  // Menu gestures honor showReaderMenu independently of touchReaderControls,
  // which only gates page-turn touch zones in detectTouchPageTurn().
+--- a/src/activities/settings/BleButtonMapActivity.cpp
++++ b/src/activities/settings/BleButtonMapActivity.cpp
+@@ -4,6 +4,7 @@
+ #include <Logging.h>
+ 
+ #include <cstdio>
++#include <utility>
+ 
+ #include "BleInput.h"
+ #include "CrossPointSettings.h"
+@@ -26,6 +27,8 @@
+ 
+ void BleButtonMapActivity::onEnter() {
+   captureTarget = -1;
++  unavailable = nullptr;
++  resetPopup.dismiss();
+   UiListActivity::onEnter();
+   RenderLock lock;
+   const auto result = bleinput::ensureStarted(renderer, bleinput::StartContext::Explicit);
+@@ -36,19 +39,35 @@
+ }
+ 
+ void BleButtonMapActivity::onExit() {
++  resetPopup.dismiss();
+   mappedInput.setBleCaptureMode(false);
+   Activity::onExit();
+ }
+ 
+ void BleButtonMapActivity::activateIndex(const int index) {
+-  if (unavailable || index < 0 || index >= kFunctionCount) return;
++  if (index < 0 || index >= kRowCount || resetPopup.isActive()) return;
+   app.clearTapFlash();
++  if (index == kFunctionCount) {
++    mappedInput.setBleCaptureMode(false);
++    captureTarget = -1;
++    const char* options[] = {tr(STR_CANCEL), tr(STR_CONFIRM)};
++    resetPopup.showMessage(tr(STR_BT_RESET_BINDINGS), tr(STR_BT_RESET_BINDINGS_WARNING), options, 2, 0,
++                           [](const int selected) {
++                             if (selected != 1) return;
++                             SETTINGS.bleKeyMap = {};
++                             SETTINGS.saveToFile();
++                           });
++    requestUpdate();
++    return;
++  }
++  if (unavailable) return;
+   captureTarget = index;
+   mappedInput.setBleCaptureMode(true);
+   requestUpdate();
+ }
+ 
+ bool BleButtonMapActivity::handleCustomInput() {
++  if (resetPopup.handleInput(mappedInput, [this] { requestUpdate(); })) return true;
+   if (captureTarget < 0) return false;
+   uint8_t kind = 0xFF;
+   uint8_t value = 0;
+@@ -83,6 +102,12 @@
+                     prompt);
+ }
+ 
++void BleButtonMapActivity::render(RenderLock&& lock) {
++  if (resetPopup.isActive()) renderPopupUnderlay();
++  if (resetPopup.processRender(renderer, mappedInput)) return;
++  UiListActivity::render(std::move(lock));
++}
++
+ void BleButtonMapActivity::buildScreen(UiScreen& screen) {
+   for (uint8_t i = 0; i < kFunctionCount; ++i) {
+     rowItems[i] = {};
+@@ -96,6 +121,10 @@
+     rowItems[i].value = valueBuffers[i];
+     rowItems[i].enabled = unavailable == nullptr;
+   }
++
++  rowItems[kFunctionCount] = {};
++  rowItems[kFunctionCount].label = tr(STR_BT_RESET_BINDINGS);
++  rowItems[kFunctionCount].actionValue = kFunctionCount;
+ 
+   const auto& metrics = UITheme::getInstance().getMetrics();
+   const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
+@@ -113,7 +142,7 @@
+ 
+   fui::ListProps props;
+   props.items = rowItems;
+-  props.count = kFunctionCount;
++  props.count = kRowCount;
+   props.action = ACTION_ROW;
+   props.inputMask = fui::InputTouch;
+   syncListViewport(screen, props);
+--- a/src/activities/settings/BleButtonMapActivity.h
++++ b/src/activities/settings/BleButtonMapActivity.h
+@@ -4,6 +4,7 @@
+ 
+ #include "BleKeyMapping.h"
+ #include "activities/UiListActivity.h"
++#include "components/OptionPopup.h"
+ 
+ class BleButtonMapActivity final : public UiListActivity {
+  public:
+@@ -21,14 +22,17 @@
+   };
+   static constexpr uint8_t kFunctionCount = static_cast<uint8_t>(bleinput::Action::Count);
+   static const Function kFunctions[kFunctionCount];
++  static constexpr uint8_t kRowCount = kFunctionCount + 1;
+ 
+   int captureTarget = -1;
+-  freeink::ui::ListItem rowItems[kFunctionCount]{};
++  freeink::ui::ListItem rowItems[kRowCount]{};
+   char valueBuffers[kFunctionCount][32]{};
+   const char* unavailable = nullptr;
++  OptionPopup resetPopup;
+ 
+-  int listCount() const override { return captureTarget >= 0 ? 0 : kFunctionCount; }
++  int listCount() const override { return captureTarget >= 0 ? 0 : kRowCount; }
+   void buildScreen(UiScreen& screen) override;
++  void render(RenderLock&&) override;
+   void activateIndex(int index) override;
+   bool handleCustomInput() override;
+   void onBackButton() override;
 --- a/src/activities/settings/BluetoothSettingsActivity.cpp
 +++ b/src/activities/settings/BluetoothSettingsActivity.cpp
 @@ -40,15 +40,24 @@

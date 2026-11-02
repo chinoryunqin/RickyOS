@@ -4,6 +4,7 @@
 #include <Logging.h>
 
 #include <cstdio>
+#include <utility>
 
 #include "BleInput.h"
 #include "CrossPointSettings.h"
@@ -26,6 +27,8 @@ const BleButtonMapActivity::Function BleButtonMapActivity::kFunctions[kFunctionC
 
 void BleButtonMapActivity::onEnter() {
   captureTarget = -1;
+  unavailable = nullptr;
+  resetPopup.dismiss();
   UiListActivity::onEnter();
   RenderLock lock;
   const auto result = bleinput::ensureStarted(renderer, bleinput::StartContext::Explicit);
@@ -36,19 +39,35 @@ void BleButtonMapActivity::onEnter() {
 }
 
 void BleButtonMapActivity::onExit() {
+  resetPopup.dismiss();
   mappedInput.setBleCaptureMode(false);
   Activity::onExit();
 }
 
 void BleButtonMapActivity::activateIndex(const int index) {
-  if (unavailable || index < 0 || index >= kFunctionCount) return;
+  if (index < 0 || index >= kRowCount || resetPopup.isActive()) return;
   app.clearTapFlash();
+  if (index == kFunctionCount) {
+    mappedInput.setBleCaptureMode(false);
+    captureTarget = -1;
+    const char* options[] = {tr(STR_CANCEL), tr(STR_CONFIRM)};
+    resetPopup.showMessage(tr(STR_BT_RESET_BINDINGS), tr(STR_BT_RESET_BINDINGS_WARNING), options, 2, 0,
+                           [](const int selected) {
+                             if (selected != 1) return;
+                             SETTINGS.bleKeyMap = {};
+                             SETTINGS.saveToFile();
+                           });
+    requestUpdate();
+    return;
+  }
+  if (unavailable) return;
   captureTarget = index;
   mappedInput.setBleCaptureMode(true);
   requestUpdate();
 }
 
 bool BleButtonMapActivity::handleCustomInput() {
+  if (resetPopup.handleInput(mappedInput, [this] { requestUpdate(); })) return true;
   if (captureTarget < 0) return false;
   uint8_t kind = 0xFF;
   uint8_t value = 0;
@@ -83,6 +102,12 @@ void BleButtonMapActivity::drawChrome() {
                     prompt);
 }
 
+void BleButtonMapActivity::render(RenderLock&& lock) {
+  if (resetPopup.isActive()) renderPopupUnderlay();
+  if (resetPopup.processRender(renderer, mappedInput)) return;
+  UiListActivity::render(std::move(lock));
+}
+
 void BleButtonMapActivity::buildScreen(UiScreen& screen) {
   for (uint8_t i = 0; i < kFunctionCount; ++i) {
     rowItems[i] = {};
@@ -96,6 +121,10 @@ void BleButtonMapActivity::buildScreen(UiScreen& screen) {
     rowItems[i].value = valueBuffers[i];
     rowItems[i].enabled = unavailable == nullptr;
   }
+
+  rowItems[kFunctionCount] = {};
+  rowItems[kFunctionCount].label = tr(STR_BT_RESET_BINDINGS);
+  rowItems[kFunctionCount].actionValue = kFunctionCount;
 
   const auto& metrics = UITheme::getInstance().getMetrics();
   const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
@@ -113,7 +142,7 @@ void BleButtonMapActivity::buildScreen(UiScreen& screen) {
 
   fui::ListProps props;
   props.items = rowItems;
-  props.count = kFunctionCount;
+  props.count = kRowCount;
   props.action = ACTION_ROW;
   props.inputMask = fui::InputTouch;
   syncListViewport(screen, props);

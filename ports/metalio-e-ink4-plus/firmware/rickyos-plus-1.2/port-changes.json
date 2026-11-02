@@ -405,12 +405,12 @@
     {
       "path": "lib/I18n/translations/chinese.yaml",
       "baseline_sha256": "021ec5b9e5880155fea752af9c60ce83a259dd69131f9bd12ffe0ca59e3366bd",
-      "ported_sha256": "9b36321974d43b96891b16271d3219281b736fffe765a9b5cc0890f0cb57b10b"
+      "ported_sha256": "58e0b78e5a45d79a450523124b5855ef98f94ec9d25466d65e47c6e8b7c68de4"
     },
     {
       "path": "lib/I18n/translations/english.yaml",
       "baseline_sha256": "85a4d226f1400f6a185759420c63ecff5f81eeb3722afd66c312d4aec6bcb315",
-      "ported_sha256": "5d9ecb5eed11c3f25e7d2696ebf45755e3e92624c1dc25d107be08b581aba28a"
+      "ported_sha256": "ecb4e77e9c52e74150ae4a92890664147d29aa1d0ef545774bf323f5d5fd6323"
     },
     {
       "path": "lib/JpegToBmpConverter/JpegToBmpConverter.cpp",
@@ -1196,6 +1196,16 @@
       "path": "src/activities/reader/ReaderUtils.h",
       "baseline_sha256": "efe1b606f9e3e1dd33a990130104a3831b94fa29cc4ae185840bd610f4595052",
       "ported_sha256": "44ec584269f6964e1d64283b4702b27274eecb34b605ed8586c4bcf8e34be6a7"
+    },
+    {
+      "path": "src/activities/settings/BleButtonMapActivity.cpp",
+      "baseline_sha256": "2e3b85924a3aabd16f88737cfe9e970fd3e2cbd8b38b62c3d48af3585c45262d",
+      "ported_sha256": "5431c3530853558741944d6bc3bcb68562405993b46cf92d1c8827829f3d0198"
+    },
+    {
+      "path": "src/activities/settings/BleButtonMapActivity.h",
+      "baseline_sha256": "c9ea33084627465bfbe10870b0cb822955156b579e12c863b2c56302f5f68e7e",
+      "ported_sha256": "3df7c033240554f7c2b847579ab139c18c41b2730f760e3e324c0f2f9a55f529"
     },
     {
       "path": "src/activities/settings/BluetoothSettingsActivity.cpp",
