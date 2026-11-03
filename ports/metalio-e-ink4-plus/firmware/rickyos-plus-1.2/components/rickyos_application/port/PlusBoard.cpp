@@ -253,7 +253,8 @@ void shutdown() {
 // Ltd. and Project Contributors). The chip keeps these while the battery stays
 // connected, so boards that came from the OEM firmware still have them; one that lost
 // battery power fell back to the chip defaults and charged slower. Each field is a
-// read-modify-write of exactly the OEM's bits; 960 mA charge and input limit, 4.4 V.
+// read-modify-write of the OEM's bits; use its 1.5 A option (1440 mA after the
+// chip's 80 mA quantization) for both charge current and input limit, at 4.4 V.
 bool configureCharger() {
   constexpr uint8_t kAddr = 0x6b;
   if (!metalio_i2c1_lock(50)) return false;
@@ -276,10 +277,13 @@ bool configureCharger() {
   field(0x13, 0x01, 0, 0);
   field(0x04, 0x1f, 3, 440 & 0x1f);  // VREG 4400 mV (10 mV steps)
   field(0x05, 0x0f, 0, 440 >> 5);
-  field(0x02, 0x03, 6, 12 & 0x03);   // ICHG 960 mA (80 mA steps)
-  field(0x03, 0x0f, 0, 12 >> 2);
-  field(0x06, 0x0f, 4, 48 & 0x0f);   // IINDPM 960 mA (20 mA steps)
-  field(0x07, 0x0f, 0, 48 >> 4);
+  constexpr uint16_t kChargeCurrentMa = 1440;  // OEM UI label: 1.5 A.
+  constexpr uint8_t kChargeCode = kChargeCurrentMa / 80;
+  constexpr uint8_t kInputCode = kChargeCurrentMa / 20;
+  field(0x02, 0x03, 6, kChargeCode & 0x03);
+  field(0x03, 0x0f, 0, kChargeCode >> 2);
+  field(0x06, 0x0f, 4, kInputCode & 0x0f);
+  field(0x07, 0x0f, 0, kInputCode >> 4);
   if (ok) {
     // OEM private registers, behind its unlock sequence (0x70 reads 0x03 when open).
     bool unlocked = false;
@@ -303,7 +307,7 @@ bool configureCharger() {
   field(0x24, 0x01, 3, 1);
   field(0x16, 0x01, 5, 1);     // charging enabled
   metalio_i2c1_unlock();
-  if (ok) ESP_LOGI("PlusCharger", "configured: 960 mA charge/input, 4400 mV, watchdog off");
+  if (ok) ESP_LOGI("PlusCharger", "configured: 1440 mA charge/input (1.5 A mode), 4400 mV, watchdog off");
   else ESP_LOGW("PlusCharger", "configuration failed; chip settings unchanged or partial");
   return ok;
 }
