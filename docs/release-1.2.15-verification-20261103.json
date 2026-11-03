@@ -1,0 +1,61 @@
+{
+  "version": "1.2.15",
+  "date": "2026-11-03",
+  "status": "final_images_hardware_accepted_pending_publication",
+  "published": false,
+  "targets": {
+    "pico": {
+      "version": "1.2.15",
+      "file": "RickyOS-1.2.15.bin",
+      "bytes": 5965296,
+      "sha256": "ada50cbeab7c749c73c5671e86d985de77dac93c184b2cfc4cec6fc51130a9e5",
+      "board": "readpico",
+      "chip_id": 9,
+      "source_base": "5e26832af5950554b8e7865ab42ee6e9fb017a78",
+      "build_passed": true,
+      "host_test_scripts_passed": 8,
+      "ota_aligned_margin": 61440,
+      "diagnostics_enabled": false,
+      "pdf_included": false,
+      "flashed": true,
+      "startup_verified": true,
+      "hardware_accepted": true,
+      "published": false
+    },
+    "plus": {
+      "version": "1.2.15",
+      "file": "RickyOS-Plus-1.2.15.bin",
+      "bytes": 5987520,
+      "sha256": "7d3e0b16952440cae7be18a5ded5d0b06c385fc591025686cd0e89c97ab273c3",
+      "board": "metalio-plus-s31",
+      "chip_id": 32,
+      "source_base": "041db9463a4ee5a018355fa04ace4ffd71d27c00",
+      "build_passed": true,
+      "host_test_scripts_passed": 8,
+      "ota_aligned_margin": 40960,
+      "diagnostics_enabled": false,
+      "pdf_included": false,
+      "flashed": true,
+      "startup_verified": true,
+      "hardware_accepted": true,
+      "published": false
+    }
+  },
+  "website_test_count": 78,
+  "scope": {
+    "common": [
+      "persist shelf folder and repair missing folder choices",
+      "numeric line spacing 80–400% in 1% steps, compatible with old settings",
+      "MOBI/AZW3 JPEG/PNG covers"
+    ],
+    "pico": [
+      "close inherited Wi-Fi on standby entry"
+    ],
+    "plus": [
+      "1.5A charge/input setting, actual 1440mA"
+    ]
+  },
+  "excluded": [
+    "native PDF engine and asset-partition migration"
+  ]
+}
