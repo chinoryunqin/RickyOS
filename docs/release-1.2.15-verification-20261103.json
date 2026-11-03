@@ -1,8 +1,8 @@
 {
   "version": "1.2.15",
   "date": "2026-11-03",
-  "status": "final_images_hardware_accepted_pending_publication",
-  "published": false,
+  "status": "published_verified",
+  "published": true,
   "targets": {
     "pico": {
       "version": "1.2.15",
@@ -20,7 +20,7 @@
       "flashed": true,
       "startup_verified": true,
       "hardware_accepted": true,
-      "published": false
+      "published": true
     },
     "plus": {
       "version": "1.2.15",
@@ -38,7 +38,7 @@
       "flashed": true,
       "startup_verified": true,
       "hardware_accepted": true,
-      "published": false
+      "published": true
     }
   },
   "website_test_count": 78,
@@ -57,5 +57,16 @@
   },
   "excluded": [
     "native PDF engine and asset-partition migration"
-  ]
+  ],
+  "verified_utc": "2026-11-03T09:37:51Z",
+  "source_release_commits": {
+    "pico": "471afd03c810b41fe37bb0ddc8f25762e6f08913",
+    "plus": "724d307606bbbbabd43b8ba1247dc6b9f51431a1"
+  },
+  "published_channels": {
+    "website": "https://rickyaistudio.com/",
+    "github_ota": "https://chinoryunqin.github.io/RickyOS-site/",
+    "cos": "https://rickyos-1309217881.cos.ap-guangzhou.myqcloud.com/ota/"
+  },
+  "public_checks_passed": 27
 }

@@ -26,3 +26,8 @@ Public artifacts reuse the existing accepted boot/partition segments unchanged.
 Raw device identities, full-flash backups and serial captures remain local.
 
 Both final images were serial-installed, image-verified and booted normally. Flash outside each active app slot matched the complete pre-install backup. The maintainer confirmed both final candidates passed folder persistence after reboot, 256%/400% spacing including cancellation and page turns, MOBI/AZW3 covers, and short-power standby/wake. No new real OTA installation or overnight-current measurement is claimed.
+
+Publication completed on the brand website, GitHub OTA mirror and COS. All six
+public applications and the rolling offers/notes were read back and matched the
+accepted images and single-source catalog. Previous-version assets were retained.
+The adjacent verification JSON records the final publication checkpoint.
