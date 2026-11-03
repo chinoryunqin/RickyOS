@@ -16,12 +16,13 @@ class RickyInteriorUiTest(unittest.TestCase):
 #include "components/RickyReaderMenuLayout.h"
 enum class Action {SELECT_CHAPTER, FOOTNOTES, TEXT_SETTINGS, NIGHT_MODE, FRONTLIGHT,
   GO_TO_PERCENT, AUTO_PAGE_TURN, ROTATE_SCREEN, BOOKMARKS, TOGGLE_BOOKMARK,
-  SCREENSHOT, DISPLAY_QR, GO_HOME, SYNC, DELETE_CACHE, DICTIONARY};
+  SCREENSHOT, DISPLAY_QR, GO_HOME, SYNC, DELETE_CACHE, DICTIONARY, READING_MODE, READING_LINE,
+  FONT_SIZE, TEXT_WEIGHT, HOLDING_HAND};
 struct Item {Action action;};
 int main() {
   for(int flags=0; flags<8; ++flags) {
     std::vector<Item> items;
-    for(int action=0; action<16; ++action) {
+    for(int action=0; action<21; ++action) {
       const auto a=static_cast<Action>(action);
       if(a==Action::FOOTNOTES && !(flags&1)) continue;
       if(a==Action::BOOKMARKS && !(flags&2)) continue;
@@ -31,13 +32,25 @@ int main() {
     const auto root=RickyReaderMenuLayout::build<Action>(items,false);
     const auto more=RickyReaderMenuLayout::build<Action>(items,true);
     assert(root.quickCount==4);
-    assert(root.count<=12 && more.count<=5);
+    assert(root.count<=12 && more.count<=10);
+    // 惯用手 sits in More, right after 屏幕方向.
+    for(int i=0; i+1<more.count; ++i)
+      if(items[more.indices[i]].action==Action::ROTATE_SCREEN)
+        assert(items[more.indices[i+1]].action==Action::HOLDING_HAND);
+    // 字号 and 字重 are one tap from the page.
+    bool size=false, weight=false;
+    for(int i=root.quickCount; i<root.count; ++i) {
+      if(root.indices[i]==RickyReaderMenuLayout::More) continue;
+      size|=items[root.indices[i]].action==Action::FONT_SIZE;
+      weight|=items[root.indices[i]].action==Action::TEXT_WEIGHT;
+    }
+    assert(size && weight);
     assert(items[root.indices[0]].action==Action::SELECT_CHAPTER);
     assert(items[root.indices[1]].action==Action::TOGGLE_BOOKMARK);
     assert(items[root.indices[2]].action==Action::TEXT_SETTINGS);
     assert(items[root.indices[3]].action==Action::DICTIONARY);
     assert(root.indices[root.count-1]==RickyReaderMenuLayout::More);
-    std::array<int,16> seen{};
+    std::array<int,RickyReaderMenuLayout::kMaxItems> seen{};
     for(const auto view : {root,more}) {
       for(int i=0; i<view.count; ++i) {
         const int index=view.indices[i];

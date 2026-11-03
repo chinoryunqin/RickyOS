@@ -1,3 +1,4 @@
+#include <HalNetwork.h>
 #include "KOReaderSyncActivity.h"
 
 #include <GfxRenderer.h>
@@ -420,7 +421,7 @@ void KOReaderSyncActivity::onEnter() {
   wifiActivated = true;
 
   // Check if already connected (e.g. from settings page auth)
-  if (WiFi.status() == WL_CONNECTED) {
+  if (HalNetwork::connected()) {
     LOG_DBG("KOSync", "Already connected to WiFi");
     onWifiSelectionComplete(true);
     return;

@@ -20,6 +20,22 @@ enum class UsbDriveState : uint8_t {
   IoError,
 };
 
+// Sector traffic of the current USB 传书 session (diagnostics).
+struct UsbDriveStats {
+  uint32_t reads = 0;
+  uint32_t writes = 0;
+  uint32_t sectorsWritten = 0;
+  uint32_t retries = 0;
+  uint32_t failures = 0;
+  uint32_t maxOpMs = 0;   // slowest single transfer so far
+  uint32_t inFlightMs = 0;  // how long the transfer running now has taken (0 when idle)
+  uint32_t idleMs = 0;      // since the last transfer finished
+  bool suspended = false;   // the host has suspended the bus
+  uint32_t hostQuietMs = 0;  // since the host's last SCSI command of any kind (0: none yet)
+  uint32_t startStops = 0;   // START STOP UNIT commands (power changes and ejects)
+  uint8_t lastStartStop = 0; // power condition << 2 | load_eject << 1 | start
+};
+
 class HalStorage {
  public:
   HalStorage();
@@ -46,6 +62,7 @@ class HalStorage {
   void endUsbDrive();
   UsbDriveState usbDriveState() const;
   bool usbDriveHostSuspended() const;
+  UsbDriveStats usbDriveStats() const;
   std::vector<String> listFiles(const char* path = "/", int maxFiles = 200);
   // Read the entire file at `path` into a String. Returns empty string on failure.
   String readFile(const char* path);
@@ -95,8 +112,38 @@ class HalStorage {
     StorageLock& operator=(const StorageLock&) = delete;
   };
 
+#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
+  // Stack-owned lease: serialize every SD user until rails/remount/file positions
+  // are restored. Unsupported live handles block sleep instead of being invalidated.
+  class StandbySession {
+   public:
+    bool suspend();
+    bool resume();
+    ~StandbySession();
+    StandbySession() = default;
+    StandbySession(const StandbySession&) = delete;
+    StandbySession& operator=(const StandbySession&) = delete;
+   private:
+    StorageLock lock_;
+    bool suspended_ = false;
+  };
+#endif
+
  private:
+  friend class HalFile;
   static HalStorage instance;
+#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
+  static void invalidateStandbyPath(const char* path);
+  // A card that did not come back after a standby park is mounted again on the
+  // next storage use instead of staying lost until restart. Call with the lock held.
+  static void recoverAfterStandby();
+  static uint32_t remountForStandby();
+  inline static bool standbyRemountPending = false;
+  // Set for the rest of this boot once a card needed more than one mount to come
+  // back: Standby then keeps that card powered and mounted, as before 1.2.6.
+  inline static bool standbyParkDisabled = false;
+  inline static uint32_t standbyRemountTriedMs = 0;
+#endif
 
   bool initialized = false;
   // Recursive because HalFile operations can re-enter storage wrappers while

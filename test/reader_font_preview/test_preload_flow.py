@@ -30,6 +30,7 @@ def enum(name):
 
 harness = r'''
 #define LOG_DBG(...) ((void)0)
+#define LOG_INF(...) ((void)0)
 #include <atomic>
 #include <cassert>
 #include <cstdint>
@@ -68,12 +69,15 @@ struct Registry {
 struct {
   int releases = 0;
   bool loadedFlash = false;
-  void releaseLoadedFont(int) { ++releases; }
+  void releaseLoadedFont(int, bool = false) { ++releases; }
   void ensureLoaded(int, bool allow = true) { loadedFlash = allow && SETTINGS.sdFontFlashPreload; }
 } sdFontSystem;
 Result check = Result::Ok, outcome = Result::Ok;
 int checks = 0;
-namespace SdCardFontCache { Result preflight(const char*) { ++checks; return check; } }
+namespace SdCardFontCache {
+Result preflight(const char*) { ++checks; return check; }
+const char* resultName(Result) { return ""; }
+}
 struct Popup {
   bool active = false;
   int selected = -1, action = -2, shows = 0;
@@ -175,11 +179,16 @@ int main() {
     assert(a.preloads == (mode == Mode::PreloadThenExit));
     assert(a.optionPopup_.active == (mode == Mode::Interactive || mode == Mode::AskThenExit));
   }
+  // Vector (TTF/OTF) families are offered acceleration like .cpfont: their regular file
+  // goes into the flash font cache.
   TextSettingsActivity vector;
   vector.storage.family.vector = true;
   int before = checks;
   vector.exitAfterFinalFont(Exit::Previous);
-  assert(vector.exited && checks == before && vector.preloads == 0);
+  assert(checks == before + 1 && vector.optionPopup_.active && vector.preloads == 0 && !vector.exited);
+  vector.optionPopup_.action = 0;
+  vector.handleCustomInput();
+  assert(vector.exited && vector.preloads == 1 && SETTINGS.sdFontFlashPreload == 1);
 
   TextSettingsActivity restored;
   restored.currentFamilyIndex_ = restored.initialFamilyIndex_;

@@ -23,6 +23,14 @@ class Epub {
   std::string tocNavItem;
   // where is the EPUBfile?
   std::string filepath;
+  // MOBI/KF8 use a disposable archive; filepath remains the progress identity.
+#if defined(RICKYOS_KINDLE_IMPORT)
+  std::string archivePath;
+  const std::string& archiveFile() const { return archivePath.empty() ? filepath : archivePath; }
+#else
+  const std::string& archiveFile() const { return filepath; }
+#endif
+  bool prepareArchive();
   // the base path for items in the EPUB file
   std::string contentBasePath;
   // Uniq cache key based on filepath
@@ -47,14 +55,37 @@ class Epub {
   bool parseTocNcxFile() const;
   bool parseTocNavFile() const;
   void discoverCssFilesFromZip();
-  CssParser::ParseResult parseCssFiles(CssParser::CacheStatus existingCacheStatus) const;
+  CssParser::ParseResult parseCssFiles(CssParser::CacheStatus existingCacheStatus, int progressFrom = 0,
+                                       int progressTo = 0) const;
+
+ public:
+  // Optional progress of load() (0-100) while it builds missing caches, reported
+  // between steps on the calling task. Reported values never decrease.
+  using LoadProgressFn = void (*)(void* context, int percent);
+  void setLoadProgress(LoadProgressFn fn, void* context) {
+    loadProgress = fn;
+    loadProgressContext = context;
+  }
+
+ private:
+  LoadProgressFn loadProgress = nullptr;
+  void* loadProgressContext = nullptr;
+  void reportLoad(const int percent) const {
+    if (loadProgress) loadProgress(loadProgressContext, percent);
+  }
 
  public:
   explicit Epub(std::string filepath, const std::string& cacheDir);
   ~Epub() = default;
   std::string& getBasePath() { return contentBasePath; }
   bool load(bool buildIfMissing = true, bool skipLoadingCss = false);
-  bool loadMetadata(std::string& title, std::string& author);
+  // `openedArchive`, when given and open, is this EPUB already opened by the caller
+  // (a library walk); it is consumed instead of opening the file again by name.
+  bool loadMetadata(std::string& title, std::string& author, HalFile* openedArchive = nullptr);
+  // Whether the package declares a cover image (metadata, EPUB 3 property or guide
+  // page), read from the OPF alone: no reader caches are built or written. Returns
+  // false when the OPF cannot be read, leaving `declared` untouched.
+  bool probeCover(bool& declared);
   bool clearCache() const;
   void setupCacheDir() const;
   const std::string& getCachePath() const;
@@ -64,6 +95,8 @@ class Epub {
   const std::string& getTitle() const;
   const std::string& getAuthor() const;
   const std::string& getLanguage() const;
+  // The cover image's href inside the book ("" when there is none or no cache is loaded).
+  const std::string& getCoverItemHref() const;
   std::string getCoverOverridePath() const;
   bool hasCoverOverride() const;
   std::string getCoverBmpPath(bool cropped = false, bool originalThresholds = false) const;
@@ -91,6 +124,10 @@ class Epub {
   int getSpineIndexForTextReference() const;
 
   size_t getBookSize() const;
+  // A plain TXT is split into parts (see Txt::Part): the part holding a global visible
+  // offset (-1 when the book is not split), and the global offset where a part starts.
+  int txtPartForVisibleOffset(uint32_t visibleOffset) const;
+  uint32_t txtVisibleBase(int spineIndex) const;
   float calculateProgress(int currentSpineIndex, float currentSpineRead) const;
   CssParser* getCssParser() const { return cssParser.get(); }
   int resolveHrefToSpineIndex(const std::string& href) const;

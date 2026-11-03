@@ -1,3 +1,4 @@
+#include <HalNetwork.h>
 #include "ClockSyncActivity.h"
 
 #include <GfxRenderer.h>
@@ -22,9 +23,10 @@
 void ClockSyncActivity::onEnter() {
   Activity::onEnter();
   state = State::Syncing;
+  syncStarted = false;
   syncedTime[0] = '\0';
 
-  if (WiFi.status() == WL_CONNECTED) {
+  if (HalNetwork::connected()) {
     NetworkStartup::prepare(renderer);
     requestUpdate();
     return;
@@ -36,6 +38,7 @@ void ClockSyncActivity::onEnter() {
 
 void ClockSyncActivity::onExit() {
   Activity::onExit();
+  if (syncStarted && halClock.syncState() == ClockSyncState::Syncing) halClock.cancelSync();
 
   if (shouldTearDownWifiOnExit && WiFi.getMode() != WIFI_MODE_NULL) {
     WiFi.disconnect(false);
@@ -70,19 +73,35 @@ void ClockSyncActivity::onWifiSelectionComplete(const bool connected) {
 }
 
 void ClockSyncActivity::runSync() {
-  if (WiFi.status() != WL_CONNECTED) {
+  if (!HalNetwork::connected()) {
     LOG_INF("CLK", "Manual sync requested but WiFi is not connected after selection");
     state = State::NoWifi;
     requestUpdate();
     return;
   }
 
-  const bool ok = halClock.syncNow();
-  if (!ok) {
+  if (!syncStarted) {
+    if (!halClock.requestSync()) {
+      state = State::Failed;
+      requestUpdate();
+      return;
+    }
+    syncStarted = true;
+    syncStartedAt = millis();
+    LOG_INF("CLK", "Manual sync waiting asynchronously for up to 55 seconds");
+  }
+  // Three servers can each need the lwIP 15-second receive timeout, plus
+  // startup/DNS delay. Keep the main loop running while fallback takes place.
+  halClock.update();
+  const auto clockState = halClock.syncState();
+  if (clockState == ClockSyncState::Failed || millis() - syncStartedAt >= 55000) {
+    LOG_ERR("CLK", "Manual sync failed or timed out after %lu ms", millis() - syncStartedAt);
+    halClock.cancelSync();
     state = State::Failed;
     requestUpdate();
     return;
   }
+  if (clockState != ClockSyncState::Succeeded) return;
 
   char buf[9];
   if (TimeUtils::formatCurrentTime(buf, sizeof(buf), SETTINGS.clockFormat == 1)) {
@@ -94,9 +113,11 @@ void ClockSyncActivity::runSync() {
 
 void ClockSyncActivity::loop() {
   if (state == State::Syncing) {
-    // First-tick: render the "Syncing..." screen, then perform the (blocking) sync.
-    // requestUpdateAndWait below forces the render before we block on WiFi.
-    requestUpdateAndWait();
+    if (!syncStarted) requestUpdateAndWait();
+    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+      finish();
+      return;
+    }
     runSync();
     return;
   }

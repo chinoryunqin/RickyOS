@@ -56,6 +56,9 @@ class ZipFile {
   bool lastCentralDirPosValid = false;
 
   bool loadFileStatSlim(const char* filename, FileStatSlim* fileStat);
+  // Sorted name-hash index of the central directory, shared by every ZipFile on the same
+  // archive (EPUB code opens a fresh ZipFile per item). 1 found, 0 absent, -1 no index.
+  int findInCentralIndex(const char* filename, FileStatSlim* fileStat);
   long getDataOffset(const FileStatSlim& fileStat);
   bool loadZipDetails();
   bool readCentralEntry(CentralEntry& entry, char* name, size_t nameCapacity);
@@ -67,6 +70,9 @@ class ZipFile {
   // It is NOT recommended to pre-open it for any kind of inflation due to memory constraints
   bool isOpen() const { return !!file; }
   bool open();
+  // Take over a handle the caller already opened on this archive (a directory
+  // walk's entry), sparing a by-name lookup that is linear in the folder size.
+  bool adopt(HalFile&& opened);
   bool close();
   bool getInflatedFileSize(const char* filename, size_t* size);
   // Batch lookup: scan ZIP central dir once and fill sizes for matching targets.

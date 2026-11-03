@@ -1,6 +1,7 @@
 add_executable(BookCoverLoaderTest
   BookCoverLoaderTest.cpp
   ${REPO_ROOT}/src/util/BookCoverLoader.cpp
+  ${REPO_ROOT}/src/util/PanelTileCache.cpp
   ${crosspoint_simulator_SOURCE_DIR}/src/HalStorage.cpp
 )
 

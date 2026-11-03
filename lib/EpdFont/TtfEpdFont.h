@@ -54,6 +54,16 @@
 
 class TtfEpdFont {
  public:
+  // Profiling builds: glyphs rasterized and cache releases since the last reset.
+  struct Counters {
+    uint32_t rasterized = 0;
+    uint32_t rasterUs = 0;
+    uint32_t releases = 0;
+  };
+  static Counters& counters() {
+    static Counters value;
+    return value;
+  }
   // Style roles for source slots.
   enum Style : uint8_t { Regular = 0, Bold = 1, Italic = 2, BoldItalic = 3 };
 
@@ -103,6 +113,13 @@ class TtfEpdFont {
   void setLazyMetrics(bool lazy) { lazyMetrics_ = lazy; }
   bool build(const char* utf8);
   bool addCoverage(const char* utf8);
+
+  // Rasterize the regular face's glyph for cp ahead of its first draw (idle warm-up).
+  // Speculation never costs a page anything: it stops (Full) while a tenth of the glyph
+  // table or 64 KB of the arena is all that is left, or when growing the arena would
+  // need PSRAM that is short, so it can never flush, recycle or evict what pages use.
+  enum class Prerasterize : uint8_t { Done, Skipped, Full };
+  Prerasterize prerasterize(uint32_t cp);
 
  private:
   // A borrowed source file (one per style role that the caller supplies).

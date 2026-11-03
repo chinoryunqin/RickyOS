@@ -14,23 +14,31 @@ constexpr StrId menuItems[NetworkModeSelectionActivity::MENU_ITEM_COUNT] = {
     StrId::STR_JOIN_NETWORK,
     StrId::STR_CALIBRE_WIRELESS,
     StrId::STR_CREATE_HOTSPOT,
-#if FREEINK_CAP_USB_MSC
+#if FREEINK_CAP_USB_MSC || defined(RICKYOS_USB_PREVIEW)
+#if defined(RICKYOS_USB_PREVIEW)
+    StrId::STR_RICKY_USB_PREVIEW,
+#else
     StrId::STR_USB_DRIVE,
+#endif
 #endif
 };
 constexpr StrId menuDescs[NetworkModeSelectionActivity::MENU_ITEM_COUNT] = {
     StrId::STR_JOIN_DESC,
     StrId::STR_CALIBRE_DESC,
     StrId::STR_HOTSPOT_DESC,
-#if FREEINK_CAP_USB_MSC
+#if FREEINK_CAP_USB_MSC || defined(RICKYOS_USB_PREVIEW)
+#if defined(RICKYOS_USB_PREVIEW)
+    StrId::STR_RICKY_USB_PREVIEW_DESC,
+#else
     StrId::STR_USB_DRIVE_DESC,
+#endif
 #endif
 };
 constexpr UIIcon menuIcons[NetworkModeSelectionActivity::MENU_ITEM_COUNT] = {
     UIIcon::Wifi,
     UIIcon::Library,
     UIIcon::Hotspot,
-#if FREEINK_CAP_USB_MSC
+#if FREEINK_CAP_USB_MSC || defined(RICKYOS_USB_PREVIEW)
     UIIcon::Usb,
 #endif
 };

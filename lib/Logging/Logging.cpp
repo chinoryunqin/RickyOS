@@ -2,6 +2,9 @@
 
 #include <BoardConfig.h>
 #include <esp_rom_sys.h>
+#if FREEINK_DEVICE_METALIO_PLUS
+#include <esp_log.h>
+#endif
 
 #include <string>
 
@@ -62,7 +65,11 @@ void logPrintf(const char* level, const char* origin, const char* format, ...) {
     }
   }
   va_end(args);
-#if FREEINK_LOG_TRANSPORT == FREEINK_LOG_TRANSPORT_ROM_PRINTF
+#if FREEINK_DEVICE_METALIO_PLUS
+  // IDF owns USB Serial/JTAG. Route through its console instead of creating a
+  // second Arduino USB interrupt owner or sending application logs only to UART.
+  esp_log_write(level[0] == 'E' ? ESP_LOG_ERROR : ESP_LOG_INFO, origin, "%s", buf);
+#elif FREEINK_LOG_TRANSPORT == FREEINK_LOG_TRANSPORT_ROM_PRINTF
   // Sticky's USB serial bridge uses UART0; ROM output also works before Serial0.begin().
   esp_rom_printf("%s", buf);
 #else

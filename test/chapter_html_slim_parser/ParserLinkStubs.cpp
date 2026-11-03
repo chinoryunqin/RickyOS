@@ -32,7 +32,7 @@ bool invalidateNextTextBlock = false;
 TextBlock::TextBlock(const std::vector<std::string>& words, const std::vector<int16_t>&,
                      const std::vector<EpdFontFamily::Style>&, const std::vector<uint8_t>&,
                      const std::vector<uint16_t>&, const BlockStyle& blockStyle, std::vector<std::string> rubyTexts,
-                     std::vector<LinkSpan> linkSpans)
+                     std::vector<LinkSpan> linkSpans, const std::vector<uint32_t>&)
     : blockStyle(blockStyle), rubyTexts(std::move(rubyTexts)), linkSpans(std::move(linkSpans)) {
   numWords = words.size();
   isValid = !std::exchange(invalidateNextTextBlock, false);
@@ -65,6 +65,7 @@ std::unique_ptr<Page> Page::deserialize(HalFile& file, bool) {
 }
 
 void PageLine::render(GfxRenderer&, int, int, int) {}
+void PageLine::renderVertical(GfxRenderer&, int, int, int, int) {}
 bool PageLine::serialize(HalFile&) { return false; }
 
 void PageImage::render(GfxRenderer&, int, int, int) {}
@@ -72,4 +73,5 @@ void PageImage::renderPlaceholder(GfxRenderer&, int, int) const {}
 bool PageImage::serialize(HalFile&) { return false; }
 
 void PageHorizontalRule::render(GfxRenderer&, int, int, int) {}
+void PageHorizontalRule::renderVertical(GfxRenderer&, int, int, int, int) {}
 bool PageHorizontalRule::serialize(HalFile&) { return false; }

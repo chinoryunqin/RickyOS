@@ -25,6 +25,8 @@ class FontDecompressor {
 
   // Free all cached data (page buffer + hot group).
   void clearCache();
+  // Drop only the reader page buffer; hot groups stay for the next lookup.
+  void clearPageCache() { freePageBuffer(); }
 
   // Pre-scan UTF-8 text and extract needed glyph bitmaps into a flat page buffer.
   // Each group is decompressed once into a temp buffer; only needed glyphs are kept.
@@ -67,30 +69,59 @@ class FontDecompressor {
   PageSlot pageSlots[MAX_PAGE_SLOTS] = {};
   uint8_t pageSlotCount = 0;
 
-  // Hot group: last decompressed group (byte-aligned) for non-prewarmed fallback path.
-  // Kept in byte-aligned format; individual glyphs are compacted on demand into hotGlyphBuf.
-  // Nothrow high-water malloc buffers, NOT std::vector: getBitmap() runs on the render path,
-  // and under -fno-exceptions a vector resize that hits OOM abort()s the firmware instead of
-  // failing (field crash: hotGroup.resize() -> std::bad_alloc -> abort with ~11 KB free).
-  // ensureCapacity() returns false on OOM so the caller can skip the glyph gracefully.
-  const EpdFontData* hotGroupFont = nullptr;
-  uint16_t hotGroupIndex = UINT16_MAX;
-  uint8_t* hotGroup = nullptr;  // owned; freed in freeHotGroup()/dtor
-  uint32_t hotGroupCapacity = 0;
+  // Hot groups: recently decompressed groups (byte-aligned) for the non-prewarmed path,
+  // which is every UI screen (only reader-like activities prewarm). With one slot, text
+  // that mixes glyphs from a few groups re-inflated a whole group (~16 KB) per glyph
+  // change; built-in UI fonts packed this way made a menu paint take over a second.
+  // Least-recently-used slots are reused. Each slot owns nothrow high-water malloc
+  // buffers, NOT std::vector: getBitmap() runs on the render path, and under
+  // -fno-exceptions a vector resize that hits OOM abort()s the firmware instead of failing
+  // (field crash: hotGroup.resize() -> std::bad_alloc -> abort with ~11 KB free).
+#if FREEINK_DEVICE_METALIO_PLUS
+  // The Plus packs every built-in UI face to fit its 5 MiB slot (160 groups in all), so
+  // eight slots thrashed: each tab paint re-inflated its groups (~15 ms per text call).
+  // One slot per group: each inflates once, <= ~2.5 MB PSRAM, ~6 KB of slot headers.
+  static constexpr uint8_t HOT_GROUP_SLOTS = 160;
+#elif defined(RICKYOS_PRODUCT)
+  static constexpr uint8_t HOT_GROUP_SLOTS = 8;  // <= 8 x ~16 KB, PSRAM-preferred (fiFontMalloc)
+#else
+  static constexpr uint8_t HOT_GROUP_SLOTS = 1;  // no-PSRAM targets keep the single group
+#endif
+  struct HotGroup {
+    const EpdFontData* font = nullptr;
+    uint16_t index = UINT16_MAX;
+    uint8_t* data = nullptr;
+    uint32_t capacity = 0;
+    // Aligned byte offset of each glyph in the group, so a fetch is a lookup instead of a
+    // walk over every preceding glyph (getAlignedOffset()). Entry 0 is 0 by construction.
+    uint32_t* offsets = nullptr;
+    uint32_t offsetsCapacity = 0;
+    // Frequency-grouped fonts only: the group's glyph indices in ascending order, parallel
+    // to offsets (members are scattered over the glyph array, so position != index - first).
+    uint32_t* members = nullptr;
+    uint32_t membersCapacity = 0;
+    bool offsetsValid = false;
+    uint32_t lastUse = 0;
+  };
+  HotGroup hotGroups[HOT_GROUP_SLOTS] = {};
+  uint32_t hotGroupClock = 0;
 
   // Scratch buffer for compacting a single glyph from the hot group.
   // Valid until the next getBitmap() call. Same ownership/OOM contract as hotGroup.
   uint8_t* hotGlyphBuf = nullptr;
   uint32_t hotGlyphBufCapacity = 0;
 
-  // Grow (never shrink) an owned buffer to at least `needed` bytes; false on OOM, buffer freed.
-  static bool ensureCapacity(uint8_t*& buf, uint32_t& capacity, uint32_t needed);
+  // Grow (never shrink) an owned buffer to at least `needed` elements; false on OOM, buffer freed.
+  // Templated on the element type so the glyph offset table shares the same grow-only contract.
+  template <typename T>
+  static bool ensureCapacity(T*& buf, uint32_t& capacity, uint32_t needed);
 
   void freePageBuffer();
   void freeHotGroup();
+  static uint32_t totalGlyphs(const EpdFontData* fontData);
   uint16_t getGroupIndex(const EpdFontData* fontData, uint32_t glyphIndex);
   uint32_t getAlignedOffset(const EpdFontData* fontData, uint16_t groupIndex, uint32_t glyphIndex);
   bool decompressGroup(const EpdFontData* fontData, uint16_t groupIndex, uint8_t* outBuf, uint32_t outSize);
-  static void compactSingleGlyph(const uint8_t* alignedSrc, uint8_t* packedDst, uint8_t width, uint8_t height);
+  static void compactSingleGlyph(const uint8_t* alignedSrc, uint8_t* packedDst, uint8_t width, uint8_t height, bool is4Bit);
   static int32_t findGlyphIndex(const EpdFontData* fontData, uint32_t codepoint);
 };

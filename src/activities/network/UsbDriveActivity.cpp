@@ -1,6 +1,6 @@
 #include "UsbDriveActivity.h"
 
-#if FREEINK_CAP_USB_MSC
+#if FREEINK_CAP_USB_MSC || defined(RICKYOS_USB_PREVIEW)
 
 #include <Arduino.h>
 #include <HalStorage.h>
@@ -11,14 +11,27 @@
 #include "SilentRestart.h"
 #include "components/UITheme.h"
 #include "activities/home/RickyStorageActivity.h"
+#include <LibraryBuilder.h>
+#include <LibraryIncoming.h>
+#include "util/BookCoverLoader.h"
 
 namespace fui = freeink::ui;
 
 void UsbDriveActivity::onEnter() {
+#if !defined(RICKYOS_USB_PREVIEW)
   bleinput::stop();
+#endif
   Activity::onEnter();
+  BookCoverLoader::forgetDrawnCovers();  // the computer may change books and their caches
   resetUi();
   app.setScreen(&UsbDriveActivity::driveScreen, this);
+
+#if defined(RICKYOS_USB_PREVIEW)
+  // The browser preview must never take ownership of the host's SD storage.
+  preparing = false;
+  state = State::WaitingForHost;
+  requestUpdate();
+#else
 
   // Show the safety instructions before giving the raw SD card to the USB host.
   requestUpdateAndWait();
@@ -36,38 +49,71 @@ void UsbDriveActivity::onEnter() {
   state = State::WaitingForHost;
   hostWaitStartedAt = millis();
   requestUpdate();
+#endif
 }
 
 void UsbDriveActivity::onExit() {
+#if !defined(RICKYOS_USB_PREVIEW)
   if (!restartRequested) Storage.endUsbDrive();
   RickyStorageActivity::invalidateScan();  // files may have arrived or left
+  if (!startFailed) {
+    // The computer may have added or removed books anywhere; the shelf refreshes
+    // its enrolled sources on its next entry (no walk here, USB is still unwinding).
+    library::LibraryIncoming::markUnknownChanges();
+    library::markLibraryIndexDirty();
+  }
+#endif
   Activity::onExit();
 }
 
 void UsbDriveActivity::loop() {
+#if defined(RICKYOS_USB_PREVIEW)
+  if (mappedInput.wasPressed(MappedInputManager::Button::Back) ||
+      mappedInput.wasPressed(MappedInputManager::Button::Power) || mappedInput.wasHomeGesture()) {
+    activityManager.goToInxRecent();
+  }
+#else
   if (!startFailed) {
     const State nextState = Storage.usbDriveState();
     if (nextState != state) {
+      LOG_INF("USB", "state %d -> %d", static_cast<int>(state), static_cast<int>(nextState));
       state = nextState;
       requestUpdate();
     }
   }
-
-  // A battery-powered USB device may stay mounted after cable removal. End
-  // sustained suspend sessions too; host sleep intentionally has the same policy.
-  if (state == State::Connected && Storage.usbDriveHostSuspended()) {
-    if (!hostSuspendPending) {
-      hostSuspendPending = true;
-      hostSuspendStartedAt = millis();
-    } else if (millis() - hostSuspendStartedAt >= HOST_SUSPEND_TIMEOUT_MS) {
-      LOG_INF("USB", "USB Drive host suspend timed out; ending session");
-      // endUsbDrive() soft-disconnects before teardown and reboot.
-      restartToHome();
-      return;
+#if RICKYOS_USB_DIAG
+  // Diagnostics build: the serial port is the USB disk now, so show the sector traffic
+  // on the panel. A transfer that never finishes shows as a growing "now" figure.
+  if (millis() - diagShownAt_ >= 3000) {
+    diagShownAt_ = millis();
+    const UsbDriveStats s = Storage.usbDriveStats();
+    char text[sizeof(diagText_)];
+    // Idle time in whole 10 s steps, so a quiet bus does not repaint every 3 s.
+    snprintf(text, sizeof(text), "W %lu  %lu.%lu MB  R %lu\nretry %lu  fail %lu  max %lu ms  now %lu ms\nidle %lu s  host %lu s  ss %lu/%u%s",
+             static_cast<unsigned long>(s.writes), static_cast<unsigned long>(s.sectorsWritten / 2048),
+             static_cast<unsigned long>(s.sectorsWritten % 2048 * 10 / 2048), static_cast<unsigned long>(s.reads),
+             static_cast<unsigned long>(s.retries), static_cast<unsigned long>(s.failures),
+             static_cast<unsigned long>(s.maxOpMs), static_cast<unsigned long>(s.inFlightMs),
+             static_cast<unsigned long>(s.idleMs / 10000 * 10), static_cast<unsigned long>(s.hostQuietMs / 10000 * 10),
+             static_cast<unsigned long>(s.startStops), static_cast<unsigned>(s.lastStartStop),
+             s.suspended ? "  suspended" : "");
+    if (s.startStops != diagStartStops_) {
+      diagStartStops_ = s.startStops;
+      LOG_INF("USB", "start/stop #%lu code %u", static_cast<unsigned long>(s.startStops),
+              static_cast<unsigned>(s.lastStartStop));
     }
-  } else {
-    hostSuspendPending = false;
+    if (strcmp(text, diagText_) != 0) {
+      if (s.suspended != diagSuspended_) LOG_INF("USB", "host %s", s.suspended ? "suspended" : "resumed");
+      diagSuspended_ = s.suspended;
+      memcpy(diagText_, text, sizeof(diagText_));
+      requestUpdate();
+    }
   }
+#endif
+
+  // USB suspend is a normal host power-saving state, not an eject or cable
+  // removal. Keep the SD card owned by MSC until the host actually ejects or
+  // disconnects, otherwise macOS can lose a mounted volume while idle.
 
   if (state == State::WaitingForHost && millis() - hostWaitStartedAt >= HOST_WAIT_TIMEOUT_MS) {
     LOG_INF("USB", "USB Drive host wait timed out");
@@ -102,10 +148,19 @@ void UsbDriveActivity::loop() {
     restartToHome();
     return;
   }
+  // macOS drops a disk without ejecting it when a power transition times out behind a
+  // long read burst (Finder previewing a folder of large books over this slow link),
+  // and then sends nothing at all, so no state change ever comes. Back always leaves.
+  if (state == State::Connected && mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+    LOG_INF("USB", "left by Back while connected");
+    restartToHome();
+    return;
+  }
 
   if (state == State::Ejected || state == State::Disconnected || state == State::Unsupported) {
     restartToHome();
   }
+#endif
 }
 
 void UsbDriveActivity::render(RenderLock&&) {
@@ -113,11 +168,16 @@ void UsbDriveActivity::render(RenderLock&&) {
 
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int pageWidth = renderer.getScreenWidth();
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_USB_DRIVE));
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight},
+#if defined(RICKYOS_USB_PREVIEW)
+                 tr(STR_RICKY_USB_PREVIEW));
+#else
+                 tr(STR_USB_DRIVE));
+#endif
 
   renderUi();
 
-  if (state == State::WaitingForHost || startFailed) {
+  if (state == State::WaitingForHost || state == State::Connected || startFailed) {
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   }
@@ -132,6 +192,11 @@ void UsbDriveActivity::buildDriveScreen(UiScreen& screen) const {
   const char* message = nullptr;
   const char* detail = nullptr;
   const char* secondaryDetail = nullptr;
+#if defined(RICKYOS_USB_PREVIEW)
+  message = tr(STR_RICKY_USB_PREVIEW);
+  detail = tr(STR_RICKY_USB_PREVIEW_DESC);
+  secondaryDetail = tr(STR_RICKY_USB_PREVIEW_STEPS);
+#else
   if (preparing) {
     message = tr(STR_USB_DRIVE_PREPARING);
     detail = tr(STR_USB_DRIVE_EJECT_HINT);
@@ -144,6 +209,9 @@ void UsbDriveActivity::buildDriveScreen(UiScreen& screen) const {
         message = tr(STR_USB_DRIVE_CONNECTED);
         detail = tr(STR_USB_DRIVE_CONNECT_DELAY);
         secondaryDetail = tr(STR_USB_DRIVE_EJECT_HINT);
+#if RICKYOS_USB_DIAG
+        secondaryDetail = diagText_;
+#endif
         break;
       case State::IoError:
         message = startFailed ? tr(STR_USB_DRIVE_START_ERROR) : tr(STR_USB_DRIVE_ERROR);
@@ -154,6 +222,7 @@ void UsbDriveActivity::buildDriveScreen(UiScreen& screen) const {
         return;
     }
   }
+#endif
 
   const auto& metrics = UITheme::getInstance().getMetrics();
   screen.setContentMarginFromScreen(fui::Insets{
@@ -190,11 +259,17 @@ void UsbDriveActivity::buildDriveScreen(UiScreen& screen) const {
 }
 
 void UsbDriveActivity::restartToHome() {
+#if defined(RICKYOS_USB_PREVIEW)
+  activityManager.goToInxRecent();
+#else
   if (restartRequested) return;
   restartRequested = true;
+  const unsigned long started = millis();
   Storage.endUsbDrive();
+  LOG_INF("USB", "drive released in %lu ms", millis() - started);
   delay(20);
   restartToHomeAfterStorageHandoff();
+#endif
 }
 
-#endif  // FREEINK_CAP_USB_MSC
+#endif  // FREEINK_CAP_USB_MSC || RICKYOS_USB_PREVIEW

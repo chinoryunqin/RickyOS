@@ -38,6 +38,10 @@ class TextSettingsActivity final : public UiTabListActivity {
   // Row indices per tab. enum class (not plain enum) so a LayoutRow can't be
   // silently confused with a StyleRow of equal value.
   enum class LayoutRow {
+    MarginTop,
+    MarginBottom,
+    MarginLeft,
+    MarginRight,
     LineSpacing,
     WordSpacing,
     CharacterSpacing,
@@ -45,22 +49,22 @@ class TextSettingsActivity final : public UiTabListActivity {
     FirstLineIndent,
     ParaIndentation,
     Alignment,
-    ScreenMargin,
     Count
   };
+  // 字重 and 加粗 first: they are what readers come here for. The reading line itself is
+  // chosen in the reader menu (阅读线); only its fine offset lives here, last, while on.
   enum class StyleRow {
+    TextWeight,
+    FakeBold,
     FocusReading,
-    ReadingGuideLine,
-    ReadingGuideLineStyle,
-    ReadingGuideLineOffset,
     Hyphenation,
     EmbeddedStyle,
-    FakeBold,
     AntiAliasing,
+    ReadingGuideLineOffset,
     Count
   };
-  static constexpr int HIDDEN_GUIDE_ROW_COUNT =
-      static_cast<int>(StyleRow::Hyphenation) - static_cast<int>(StyleRow::ReadingGuideLineStyle);
+  static constexpr int HIDDEN_GUIDE_ROW_COUNT = 1;  // the offset, while the reading line is off
+  static_assert(static_cast<int>(StyleRow::Count) == 7, "STYLE_ROW_NAME_IDS has a label per row");
   enum class FontLoadState : uint8_t { Idle, Preloading, Ready };
   enum class ExitDestination : uint8_t { Previous, Home };
   enum class ExitPrompt : uint8_t { None, Waiting, Accepted, TooLarge };

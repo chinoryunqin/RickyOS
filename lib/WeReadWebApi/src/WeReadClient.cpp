@@ -5,12 +5,14 @@
 #include <Epub.h>
 #include <HalClock.h>
 #include <JpegToBmpConverter.h>
+#include <LibraryBuilder.h>
+#include <LibraryIncoming.h>
 #include <Logging.h>
 #include <MD5Builder.h>
 #include <Memory.h>
 #include <PngToBmpConverter.h>
 #include <StreamingJsonParser.h>
-#include <mbedtls/sha256.h>
+#include <PlusSha256.h>
 #include <strings.h>
 
 #include <algorithm>
@@ -237,12 +239,12 @@ bool makeWebAppId(char* out, const size_t outSize) {
 bool sha256Hex(const char* value, char* out, const size_t outSize) {
   if (!value || !out || outSize < 65) return false;
   uint8_t digest[32];
-  mbedtls_sha256_context context;
-  mbedtls_sha256_init(&context);
-  const bool ok = mbedtls_sha256_starts(&context, 0) == 0 &&
-                  mbedtls_sha256_update(&context, reinterpret_cast<const uint8_t*>(value), strlen(value)) == 0 &&
-                  mbedtls_sha256_finish(&context, digest) == 0;
-  mbedtls_sha256_free(&context);
+  PlusSha256Context context;
+  plus_sha256_init(&context);
+  const bool ok = plus_sha256_starts(&context, 0) == 0 &&
+                  plus_sha256_update(&context, reinterpret_cast<const uint8_t*>(value), strlen(value)) == 0 &&
+                  plus_sha256_finish(&context, digest) == 0;
+  plus_sha256_free(&context);
   if (!ok) return false;
   for (size_t i = 0; i < sizeof(digest); ++i) snprintf(out + i * 2, outSize - i * 2, "%02x", digest[i]);
   out[64] = '\0';
@@ -2902,6 +2904,12 @@ bool Operation::remoteAppIdMatchesLocal() const {
          remote.appIdHash == WeReadProtocol::hashAppId(localAppId, strlen(localAppId));
 }
 
+void Operation::noteBookForLibrary() {
+  if (outputPath_.empty()) return;
+  library::LibraryIncoming::add(outputPath_.c_str());
+  library::markLibraryIndexDirty();
+}
+
 void Operation::persistInitialProgress() {
   const bool saved = initialProgressValid_ && initialProgressFraction_ > 0.0f
                          ? WeReadStore::saveInitialProgress(book_.bookId, initialProgressFraction_)
@@ -3139,6 +3147,7 @@ Operation::Event Operation::finishWholeBook(const std::string& source) {
     return fail(Error::SdCard);
   }
   if (!persistCoverOverride()) LOG_ERR("WR", "Failed to persist EPUB cover override");
+  noteBookForLibrary();
   cleanupTransient(bookDir_, "");
   if (!WeReadStore::saveSession(session_)) return fail(Error::SdCard);
   persistInitialProgress();
@@ -4228,6 +4237,7 @@ Operation::Event Operation::step(const WeReadStore::WorkCallback callback, void*
       }
       HalFile packaged;
       const uint64_t packageBytes = Storage.openFileForRead("WR", outputPath_, packaged) ? packaged.fileSize64() : 0;
+      noteBookForLibrary();
       LOG_INF("WR", "package complete: ms=%lu bytes=%llu images=%s", millis() - packageStartedAt,
               static_cast<unsigned long long>(packageBytes),
               options_.imagePolicy == WeReadStore::ImagePolicy::Embed ? "embed" : "exclude");

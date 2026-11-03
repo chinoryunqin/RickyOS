@@ -31,8 +31,18 @@ class ReaderPageCacheTest(unittest.TestCase):
 #include <vector>
 #include "ReaderPageCache.h"
 #include "CancelCheck.h"
+#include "ReadingMode.h"
 template<class F> struct ScopedCleanup {F fn;~ScopedCleanup(){fn();}};
-struct ImageBlock {static void releaseRenderCache() {}};
+struct GfxRenderer;
+enum class ImageRenderError {None, Failed, Cancelled};
+struct ImageBlock {
+  enum class PixelCachePolicy {Stream};
+  static void releaseRenderCache() {}
+  bool render(GfxRenderer&,int,int,PixelCachePolicy,ImageRenderError* error,CancelCheck cancel) {
+    *error=cancel.isCancelled()?ImageRenderError::Cancelled:ImageRenderError::None;
+    return *error==ImageRenderError::None;
+  }
+};
 int imageWarms=0;bool cancelImage=false;
 #define ENABLE_CHINESE_VERSION 1
 template<class... Args> void log(const char*,const char*,Args...) {}
@@ -43,12 +53,13 @@ struct Manager {
   bool cancelled=false, switching=false;
   bool isSwitchPending() const {return switching;}
   bool idleRenderCancelled(uint32_t) const {return cancelled || switching;}
+  void setTouchTolerantIdle(bool) {}
 } activityManager;
 uint8_t readerTextWeight() {return 2;}
 const uint8_t* readerTextWeightCurve(uint8_t) {return nullptr;}
 uint8_t readerTextWeightSpread(uint8_t) {return 0;}
 struct Settings {
-  uint8_t textAntiAliasing=1, readingBackgroundEnabled=0, orientation=0, fakeBold=0;
+  uint8_t textAntiAliasing=1, orientation=0, fakeBold=0;
   uint8_t readingGuideLineEnabled=0, readingGuideLineStyle=0;
   int8_t readingGuideLineOffset=0;
   ReaderRenderSpec spec;
@@ -92,6 +103,7 @@ struct GfxRenderer {
   void setRenderMode(RenderMode m) {mode=m;}
   int getLineHeight(int,float) const {return 1;}
   int getFontAscenderSize(int) const {return 1;}
+  int getTextWidth(int,const char*) const {return 1;}
   struct FrameBufferLoan {explicit FrameBufferLoan(GfxRenderer&) {}};
   struct SyntheticBoldScope {SyntheticBoldScope(GfxRenderer&,uint8_t) {}};
   struct TextWeightScope {TextWeightScope(GfxRenderer&,const uint8_t*,uint8_t=0) {}};
@@ -100,26 +112,37 @@ struct GfxRenderer {
   bool beginGrayscale16Offscreen(uint8_t*) {return false;}
   void endGrayscale16Offscreen() {}
 };
-constexpr int TAG_PageLine=1;
+constexpr int TAG_PageLine=1, TAG_PageImage=2;
 int renders=0, cancelAt=0;
 struct Block {bool isEmpty() const {return false;} int getRubyShift(int) const {return 0;}};
 struct PageLine {
-  int yPos=0;
+  int xPos=0, yPos=0;
   Block block;
   uint32_t missing=0;
-  int getTag() const {return TAG_PageLine;}
+  virtual ~PageLine()=default;
+  virtual int getTag() const {return TAG_PageLine;}
   const Block* getBlock() const {return &block;}
   void render(GfxRenderer& renderer,int,int,int) {
     renderer.frame[yPos]=static_cast<uint8_t>(renderer.mode+1);
     renderer.fonts.missing=missing;
     if (++renders == cancelAt) activityManager.cancelled=true;
   }
+  void renderVertical(GfxRenderer& renderer,int fontId,int,int,int) {render(renderer,fontId,0,0);}
 };
+struct PageImage : PageLine {
+  ImageBlock image;
+  int getTag() const override {return TAG_PageImage;}
+  ImageBlock& getImageBlock() {return image;}
+};
+using PageElement=PageLine;
 namespace readingGuideLine {
+constexpr int rowOffset(int lineHeight,int,int) {return lineHeight;}
+template<typename R> int emFor(const R& r,int fontId) {return r.getTextWidth(fontId,"中");}
 bool fitsVertically(uint8_t,int,int,int) {return true;}
 void draw(GfxRenderer& renderer,int,int,int,uint8_t) {renderer.frame[15]=0x55;}
 }
 struct Page {
+  void renderPanels(GfxRenderer&,int,int,int) const {}
   bool images=false;
   std::vector<std::unique_ptr<PageLine>> elements;
   Page() {for(int i=0;i<3;++i) {auto p=std::make_unique<PageLine>(); p->yPos=i; elements.push_back(std::move(p));}}
@@ -131,6 +154,9 @@ struct Page {
     return !c.isCancelled();
   }
 };
+namespace readerChrome {
+void drawColumnRules(GfxRenderer&,const Page&,const readingMode::Box&,int) {}
+}
 struct Section {
   int currentPage=4, pageCount=20, loads=0;
   bool building=false, images=false, fail=false, cancelOnLoad=false;
@@ -220,7 +246,7 @@ int main() {
     CHANGE(top,2); CHANGE(right,2); CHANGE(bottom,2); CHANGE(left,2);
     CHANGE(page,0); CHANGE(spine,0); CHANGE(sectionGeneration,2); CHANGE(renderEpoch,2);
     CHANGE(orientation,1); CHANGE(fakeBold,1); CHANGE(textWeight,0); CHANGE(antiAliasing,false); CHANGE(inverted,true);
-    CHANGE(background,true); CHANGE(guideLine,true); CHANGE(guideStyle,1); CHANGE(guideOffset,1);
+    CHANGE(guideLine,true); CHANGE(guideStyle,1); CHANGE(guideOffset,1);
     CHANGE(spec.fontId,2); CHANGE(spec.lineCompression,2); CHANGE(spec.extraParagraphSpacing,1);
     CHANGE(spec.firstLineIndent,2); CHANGE(spec.characterSpacing,1); CHANGE(spec.wordSpacingPercent,120);
     CHANGE(spec.paragraphAlignment,2); CHANGE(spec.viewportWidth,2); CHANGE(spec.viewportHeight,2);
@@ -295,8 +321,9 @@ int main() {
     def test_readpico_input_cancellation_on_hardware_and_simulator(self):
         source = (ROOT / 'src/main.cpp').read_text()
         begin = source.index('  // Cancel before any handler can wait for the framebuffer lock.')
+        begin = source.rfind('#if ', 0, begin)
         end = source.index('\n#endif', source.index('    activityManager.cancelIdleRender("touch", true);', begin))
-        production = source[begin:end]
+        production = source[begin:end + len('\n#endif')]
         program = r'''
 #include <cassert>
 #include <cstdint>
@@ -328,9 +355,15 @@ int main() {
   }
 }
 '''
-        for emulated in (0, 1):
-            with self.subTest(emulated=emulated):
-                run_cpp(f'#define CROSSPOINT_EMULATED {emulated}\n' + program)
+        for pico, plus in ((1, 0), (0, 1), (0, 0)):
+            for emulated in (0, 1):
+                with self.subTest(pico=pico, plus=plus, emulated=emulated):
+                    definitions = (f'#define CROSSPOINT_EMULATED {emulated}\n'
+                                   f'#define FREEINK_DEVICE_READPICO {pico}\n'
+                                   f'#define FREEINK_DEVICE_METALIO_PLUS {plus}\n')
+                    case = program if pico or plus else program.replace(
+                        'cancellations==1 && *event', 'cancellations==0 && *event')
+                    run_cpp(definitions + case)
 
     def test_render_task_priorities_and_waiter(self):
         source = (ROOT / 'src/activities/ActivityManager.cpp').read_text()
@@ -379,6 +412,9 @@ struct ActivityManager {
   std::atomic<uint32_t> idleRenderGeneration{0};
   std::atomic<const char*> lastIdleCancel{"none"};
   std::atomic<bool> lastIdleCancelRearms{false};
+  std::atomic<uint32_t> idleHardCancels{0};
+  std::atomic<bool> touchTolerantIdle{false};
+  std::atomic<uint32_t> touchTolerantHardBase{0};
   std::unique_ptr<Activity> currentActivity=std::make_unique<Activity>();
   TaskHandle_t waitingTaskHandle=0;
   std::atomic<bool> requestedUpdate{false};

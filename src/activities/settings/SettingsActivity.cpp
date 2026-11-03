@@ -32,7 +32,6 @@
 #include "HomeButtonSettingsActivity.h"
 #include "InxItemLayout.h"
 #include "KOReaderSettingsActivity.h"
-#include "KeyboardLayoutsActivity.h"
 #include "LanguageSelectActivity.h"
 #include "MappedInputManager.h"
 #include "OtaUpdateActivity.h"
@@ -45,7 +44,6 @@
 #include "SilentRestart.h"
 #include "StatusBarSettingsActivity.h"
 #include "TextSettingsActivity.h"
-#include "activities/home/FileBrowserActivity.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/settings/RickyOptionListActivity.h"
 #include "activities/util/ConfirmationActivity.h"
@@ -54,6 +52,7 @@
 #include "components/RickyDesignUi.h"
 #include "components/RickyPageUi.h"
 #include "components/RickyProfile.h"
+#include "components/RickyRowList.h"
 #include "components/SubpageLayout.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
@@ -61,15 +60,11 @@
 #include "components/icons/rickyPageIcons.h"
 #include "fontIds.h"
 #include "util/ButtonNavigator.h"
-#include "util/ReadingBackground.h"
-#include "util/RickyStorageLayout.h"
 #include "util/SystemSettingsReset.h"
 
 namespace fui = freeink::ui;
 
 namespace {
-// Image pickers open where RickyOS keeps pictures; other builds start at the root.
-constexpr const char* kImagePickerStart = RickyStorageLayout::IMAGES;
 constexpr StrId OK_OPTION[] = {StrId::STR_OK_BUTTON};
 constexpr uint64_t BYTES_PER_TENTH_GB = 100000000ULL;
 
@@ -366,6 +361,27 @@ void SettingsActivity::reorganizeRickySettings() {
   }
 }
 
+// Rows that lead somewhere (a page, a picker, a slider, the keyboard) carry a chevron;
+// switches and in-place actions (clear cache, restore) do not.
+bool SettingsActivity::opensPage(const SettingInfo& setting) {
+  switch (setting.type) {
+    case SettingType::TOGGLE:
+      return false;
+    case SettingType::ENUM: {
+      const auto labels = setting.enumLabels();
+      const bool onOff = setting.enumStringValues.empty() && labels.size() == 2 && labels[0] == StrId::STR_STATE_OFF &&
+                         labels[1] == StrId::STR_STATE_ON;
+      return !onOff;
+    }
+    case SettingType::ACTION:
+      return setting.action != SettingAction::ClearCache && setting.action != SettingAction::RestoreSystemSettings;
+    case SettingType::VALUE:
+    case SettingType::STRING:
+      return true;
+  }
+  return false;
+}
+
 const char* SettingsActivity::rickySettingDescription(const SettingInfo& setting) {
   if (setting.valuePtr == &CrossPointSettings::sleepScreen) return tr(STR_RICKY_HELP_LOCK);
   if (setting.valuePtr == &CrossPointSettings::quickResumeSleepScreen) return tr(STR_RICKY_HELP_KEEP_PAGE);
@@ -403,6 +419,10 @@ void SettingsActivity::rebuildSettingsLists() {
   std::vector<DictionaryEntry> dictionaries;
   if (!usesAccordion() || dictionariesLoaded) DictionaryRegistry::discover(dictionaries);
 
+  // getSettingsList() returns a temporary that this loop owns, and no element is
+  // read after it is filed, so move rather than deep-copy. SettingInfo owns two
+  // vectors, a span and four std::function members (~144 B), so copying each
+  // selected entry re-allocates all of that storage on every rebuild.
   for (auto& setting : getSettingsList(&sdFontSystem.registry(), &dictionaries)) {
     if (setting.category == StrId::STR_NONE_OPT || home_button::isSetting(setting.valuePtr)) continue;
     if (!usesAccordion() && (setting.valuePtr == &CrossPointSettings::inxRecentLayout ||
@@ -417,19 +437,19 @@ void SettingsActivity::rebuildSettingsLists() {
       if (setting.valuePtr == &CrossPointSettings::fadingFix && (BoardConfig::isX4Pro() || FREEINK_DEVICE_X4CLASSIC)) {
         continue;
       }
-      displaySettings.push_back(setting);
+      displaySettings.push_back(std::move(setting));
     } else if (setting.category == StrId::STR_CAT_READER) {
       // Settings merged into "Text Settings"
       // (they stay in the shared list for the web settings API)
       if (setting.inTextSettings || setting.inReadingStatsSettings) continue;
-      readerSettings.push_back(setting);
+      readerSettings.push_back(std::move(setting));
     } else if (setting.category == StrId::STR_CAT_CONTROLS) {
       if (BoardConfig::hasHomeKey() && setting.valuePtr == &CrossPointSettings::longPressMenuFunction) continue;
       if (setting.valuePtr == &CrossPointSettings::pwrBtnFootnoteBack &&
           SETTINGS.shortPwrBtn != CrossPointSettings::SHORT_PWRBTN::FOOTNOTES) {
         continue;
       }
-      controlsSettings.push_back(setting);
+      controlsSettings.push_back(std::move(setting));
     } else if (setting.category == StrId::STR_CAT_SYSTEM) {
       // These stay in the shared list for persistence and the web API, but the
       // device UI owns them in the Date & Time submenu.
@@ -438,7 +458,7 @@ void SettingsActivity::rebuildSettingsLists() {
           setting.valuePtr == &CrossPointSettings::clockFormat) {
         continue;
       }
-      systemSettings.push_back(setting);
+      systemSettings.push_back(std::move(setting));
     }
   }
 
@@ -452,10 +472,12 @@ void SettingsActivity::rebuildSettingsLists() {
 #endif
   systemSettings.push_back(SettingInfo::Action(StrId::STR_APP_VISIBILITY, SettingAction::AppVisibility));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_DATE_AND_TIME, SettingAction::ClockSettings));
+#if !FREEINK_DEVICE_METALIO_PLUS
   if (BoardConfig::hasHomeKey()) {
     controlsSettings.insert(controlsSettings.begin(),
                             SettingInfo::Action(StrId::STR_HOME_BUTTON, SettingAction::HomeButton));
   }
+#endif
   systemSettings.push_back(SettingInfo::Action(StrId::STR_WIFI_NETWORKS, SettingAction::Network));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_KOREADER_SYNC, SettingAction::KOReaderSync));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CLEAR_READING_CACHE, SettingAction::ClearCache));
@@ -466,7 +488,6 @@ void SettingsActivity::rebuildSettingsLists() {
   systemSettings.push_back(SettingInfo::Action(StrId::STR_RICKYOS_FIRMWARE_UPDATE, SettingAction::CheckForUpdates));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_RICKY_SCREEN_REPAIR, SettingAction::RickyScreenRepair));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_SD_FIRMWARE_UPDATE, SettingAction::SdFirmwareUpdate));
-  systemSettings.push_back(SettingInfo::Action(StrId::STR_KEYBOARD_LAYOUTS, SettingAction::KeyboardLayouts));
   if (usesAccordion()) {
     systemSettings.push_back(SettingInfo::Action(StrId::STR_LANGUAGE, SettingAction::Language));
     systemSettings.push_back(SettingInfo::Action(StrId::STR_ABOUT, SettingAction::About));
@@ -790,11 +811,6 @@ void SettingsActivity::toggleCurrentSetting() {
     return;
   }
 
-  if (setting.valuePtr == &CrossPointSettings::readingBackgroundEnabled) {
-    openReadingBackgroundMenu();
-    return;
-  }
-
   if (setting.type == SettingType::TOGGLE && setting.valuePtr != nullptr) {
     // Toggle the boolean value using the member pointer
     const bool currentValue = SETTINGS.*(setting.valuePtr);
@@ -878,7 +894,11 @@ void SettingsActivity::toggleCurrentSetting() {
     };
 
     switch (setting.action) {
-      case SettingAction::HomeButton: {
+      case SettingAction::HomeButton:
+#if FREEINK_DEVICE_METALIO_PLUS
+      case SettingAction::RickyKeys:
+#endif
+      {
         // Activities must outlive this call and are owned by the activity stack.
         auto activity = makeUniqueNoThrow<HomeButtonSettingsActivity>(renderer, mappedInput);
         if (!activity) {
@@ -948,9 +968,11 @@ void SettingsActivity::toggleCurrentSetting() {
       case SettingAction::RickyGestures:
         startActivityForResultWith<RickyOptionListActivity>(resultHandler, RickyOptionLists::gestures());
         break;
+#if !FREEINK_DEVICE_METALIO_PLUS
       case SettingAction::RickyKeys:
         startActivityForResultWith<RickyOptionListActivity>(resultHandler, RickyOptionLists::keys());
         break;
+#endif
       case SettingAction::RickyScreenRepair: {
         // Residual charge in the film shows old screens through new ones. Full GC16
         // black/white pairs are DC-balanced and drive every pixel through both
@@ -1026,13 +1048,6 @@ void SettingsActivity::toggleCurrentSetting() {
           startActivityForResultWith<InxAboutActivity>(resultHandler);
         else
           startActivityForResultWith<AboutActivity>(resultHandler);
-        break;
-      case SettingAction::KeyboardLayouts:
-        if (auto activity = makeUniqueNoThrow<KeyboardLayoutsActivity>(renderer, mappedInput)) {
-          startActivityForResult(std::move(activity), nullptr);
-        } else {
-          LOG_ERR("SETTINGS", "OOM: KeyboardLayoutsActivity");
-        }
         break;
       case SettingAction::None:
         // Do nothing
@@ -1149,51 +1164,7 @@ void SettingsActivity::openSleepTimeoutPicker() {
       StrId::STR_SLEEP_TIMER_VALUE_FORMAT, false, StrId::STR_SLEEP_NEVER);
 }
 
-void SettingsActivity::openReadingBackgroundMenu() {
-  static constexpr StrId OPTIONS[] = {StrId::STR_STATE_OFF, StrId::STR_CUSTOM_IMAGE};
-  optionPopup.show(StrId::STR_READING_BACKGROUND, OPTIONS, static_cast<int>(std::size(OPTIONS)),
-                   SETTINGS.readingBackgroundEnabled ? 1 : 0, [this](const int selected) {
-                     if (selected == 0) {
-                       SETTINGS.readingBackgroundEnabled = 0;
-                       SETTINGS.saveToFile();
-                       requestUpdate();
-                       return;
-                     }
-                     openReadingBackgroundPicker();
-                   });
-  requestUpdate();
-}
-
-void SettingsActivity::openReadingBackgroundPicker() {
-  const bool started = startActivityForResultWith<FileBrowserActivity>(
-      [this](const ActivityResult& result) {
-        if (result.isCancelled) return;
-        const auto* selected = std::get_if<FilePathResult>(&result.data);
-        if (!selected) {
-          LOG_ERR("SET", "PNG picker returned no path");
-          return;
-        }
-
-        GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
-        if (readingBackground::createCacheFromPng(renderer, selected->path.c_str())) {
-          SETTINGS.readingBackgroundEnabled = 1;
-          SETTINGS.saveToFile();
-          requestUpdate();
-        } else {
-          optionPopup.show(StrId::STR_FAILED_LOWER, OK_OPTION, static_cast<int>(std::size(OK_OPTION)), 0, [](int) {});
-        }
-      },
-      kImagePickerStart, FileBrowserActivity::Mode::PickPng);
-  if (!started) {
-    optionPopup.show(StrId::STR_MEMORY_ERROR, OK_OPTION, static_cast<int>(std::size(OK_OPTION)), 0, [](int) {});
-    requestUpdate();
-  }
-}
-
 std::string SettingsActivity::settingValueText(const SettingInfo& setting) {
-  if (setting.valuePtr == &CrossPointSettings::readingBackgroundEnabled) {
-    return SETTINGS.readingBackgroundEnabled ? tr(STR_CUSTOM_IMAGE) : tr(STR_STATE_OFF);
-  }
   if (setting.action == SettingAction::HomeButton) return tr(STR_CONFIGURE);
   if (setting.type == SettingType::ENUM && setting.valuePtr != nullptr) {
     // Guard like the valueGetter branch below: a corrupt/migrated settings
@@ -1269,7 +1240,7 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
     const int columns = content.width > content.height ? 3 : 2;
     const int rows = (categoryCount + columns - 1) / columns;
     const int cellHeight = ricky::ds::layout::kSettingsCardHeight;
-    const int section = ricky::ds::space::k8;
+    const int section = ricky::panel::pixels(ricky::ds::space::k8, 16);
     RickyProfile::drawCard(screen, renderer, screen.takeTop(profileHeight, section), ACTION_TAB_USER + 20);
     const int selected = RickyPageUi::syncNav(nav, listCount());
     const bool focus = showMainTabContentSelection();
@@ -1286,10 +1257,11 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
       RickyPageUi::card(target, rect, picked);
       screen.frame().hit(rect, ACTION_ROW, i, fui::InputTouch);
       RickyPageUi::pageIcon(target, renderer, rect.x + pad, rect.y + pad + icons[i]->h / 2, *icons[i], picked);
-      RickyDesignUi::text(renderer,
-                          {static_cast<int16_t>(rect.x + pad), static_cast<int16_t>(rect.y + 80),
-                           static_cast<int16_t>(rect.width - pad * 2), 44},
-                          I18N.get(categoryNames[i]), RickyDesignUi::HEADLINE, picked);
+      RickyDesignUi::text(
+          renderer,
+          {static_cast<int16_t>(rect.x + pad), static_cast<int16_t>(rect.y + ricky::panel::pixels(80, 60)),
+           static_cast<int16_t>(rect.width - pad * 2), static_cast<int16_t>(ricky::panel::pixels(44, 34))},
+          I18N.get(categoryNames[i]), RickyDesignUi::HEADLINE, picked);
     }
     screen.takeTop(section, 0);
     const auto about = screen.takeTop(ricky::ds::layout::kRowHeight, ricky::ds::space::kTouchSpacing);
@@ -1327,9 +1299,23 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
   productProps.subtitleText.color = fui::Color::DarkGray;
   productProps.subtitleText.maxLines = 2;
   productProps.rowGap = std::max<int16_t>(6, screen.theme().listRowGap);
+  const bool designRows = UiHighDpiProfile::enabled && !categoryRoot_;
+  if (designRows) RickyRowList::prepare(screen, productProps);
   syncListViewport(screen, productProps);
   if (usesMainTabBar() && !showMainTabContentSelection()) productProps.selectedIndex = -1;
   GfxRenderer::SyntheticBoldScope productBold(renderer, CrossPointSettings::SYNTHETIC_BOLD_OFF);
+  if (designRows) {
+    // System is a quiet settings list. Repeating disclosure arrows on nearly
+    // every entry made a second visual rail; keep values/toggles and full-row
+    // actions, while other settings retain their existing disclosure policy.
+    const bool quietSystem = currentSettings == &systemSettings;
+    RickyRowList::draw(screen, renderer, nav, productProps, [this, quietSystem](const int i) {
+      RickyRowList::RowStyle style;
+      style.chevron = !quietSystem && i < settingsCount && opensPage((*currentSettings)[i]);
+      return style;
+    });
+    return;
+  }
   screen.list(productProps);
   return;
 }

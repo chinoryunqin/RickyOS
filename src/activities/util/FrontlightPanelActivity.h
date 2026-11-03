@@ -7,17 +7,13 @@
 #include "components/UiAppHost.h"
 #include "util/ButtonNavigator.h"
 
-// Top-anchored control center opened by a top-edge down-swipe, a status-bar tap,
-// or a button bound to "Control Center" (iOS Control Center style): a grabber,
-// the frontlight brightness/warmth sliders (on boards with a light), and a grid
-// of quick-setting tiles — night mode, ghost-cleanup refresh, reading
-// orientation, and reader touch controls on/off. The
-// frontlight controls are always there: they are what the panel is for. Pure
-// 1-bit: no dithered fills, selection reads as a filled tile. The grabber sits
-// along the panel's bottom edge, the edge the sheet is dragged from.
+// Top-anchored RickyOS control center: rectangular quick actions, grouped
+// frontlight and audio controls, visible Close and swipe dismissal. Existing
+// FUI routing, live HAL values and save-on-exit behavior are retained.
 class FrontlightPanelActivity final : public Activity, private UiAppHost {
   ButtonNavigator buttonNavigator;
 
+  uint8_t volume = 35;
   uint8_t brightness = 60;
   uint8_t warmth = 50;
   bool lightOn = false;
@@ -31,19 +27,16 @@ class FrontlightPanelActivity final : public Activity, private UiAppHost {
   // reflected user intent in the first place.
   bool lightOnChanged = false;
   bool draggingSlider = false;
+  uint32_t lastSliderRenderAt = 0;
   // The touch tile toggles SETTINGS.touchReaderControls between off and this
   // remembered mode, so a Swipe or Inverted Tap user gets their mode back
   // rather than the Tap default. Seeded from the setting in onEnter().
   uint8_t touchModeRestore = CrossPointSettings::TOUCH_READER_ON;
   int panelBottom = 0;
 
-  // Quick-setting tiles, in grid order (2 columns): night mode, refresh,
-  // orientation, touch. Fixed set — shown on touch boards, absent elsewhere.
-  static constexpr int kTileCount = 4;
-  // RickyOS: a clock header, a row of round actions that work anywhere, and a
-  // reading row (orientation, clean-refresh interval) only over a book, so no
-  // control is shown where it has nothing to change.
-  enum class Tile : uint8_t { Night, Refresh, Standby, Transfer, Orientation, Clean };
+  // RickyOS: the Pico's sheet (clock header, one row of actions, a reading row only
+  // over a book) plus the Plus front light (switch, brightness, warmth) and volume.
+  enum class Tile : uint8_t { Night, Refresh, Standby, Transfer, Orientation, Clean, Light, FastRefresh, Preview = 200 };
   struct RoundAction {
     Tile tile;
     const freeink::Icon* icon;
@@ -51,8 +44,6 @@ class FrontlightPanelActivity final : public Activity, private UiAppHost {
     bool on;
   };
   bool overReader = false;
-  char timeText[12] = {};
-  char infoText[80] = {};
   char refreshText[24] = {};
   void runRickyTile(Tile tile);
   void cycleCleanRefresh();
@@ -60,15 +51,8 @@ class FrontlightPanelActivity final : public Activity, private UiAppHost {
   void buildRickyPanel(UiScreen& screen);
   void roundActionRow(UiScreen& screen, const RoundAction* actions, int count);
 
-  // fui::SliderRowProps and fui::TileGridProps embed a 324-byte fui::StyleSet,
-  // so the props the render path fills in live here instead of on the stack
-  // (AGENTS.md: locals stay under 256 bytes). The components take them by
-  // const reference and draw immediately, so one instance per call site is
-  // enough — every field either is reassigned on each use or keeps its
-  // constructed default.
-  freeink::ui::SliderRowProps rowProps;
-  freeink::ui::TileGridProps gridProps;
-  freeink::ui::TileGridItem gridItems[kTileCount];
+  char timeText[12] = {};
+  char infoText[80] = {};
 
   static void panelScreen(UiScreen& screen, void* user);
   static void onBrightnessEvent(const freeink::ui::ActionEvent& event, void* user);
@@ -79,11 +63,13 @@ class FrontlightPanelActivity final : public Activity, private UiAppHost {
   static void onTileEvent(const freeink::ui::ActionEvent& event, void* user);
 
   void buildPanelScreen(UiScreen& screen);
-  // One slider row: a caption line (name + live percentage) above
-  // [-] [draggable 1-bit capsule] [+], plus a lamp on/off button after the +
-  // when showToggle is set (the brightness row).
-  void addSliderRow(UiScreen& screen, const char* label, uint8_t value, freeink::ui::ActionId sliderAction,
-                    freeink::ui::ActionId stepAction, bool showToggle);
+  // A section head: the name on the left, an optional control (the light switch, the
+  // sound test) on the right, and the level (value >= 0) beside the control.
+  void sectionHead(UiScreen& screen, const char* name, int control, int value = -1);
+  // One slider: a thick pill filled in ink up to the level, its icon at the left and
+  // "name NN%" at the right. The whole touch band is the drag target.
+  void pillSlider(UiScreen& screen, freeink::ui::Rect band, const freeink::Icon& icon, const char* name,
+                  uint8_t value, freeink::ui::ActionId action, int16_t actionValue);
   int computePanelBottom() const;
   void adjustBrightness(int delta);
   void adjustWarmth(int delta);

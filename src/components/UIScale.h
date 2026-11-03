@@ -24,7 +24,7 @@ inline UIScaleSpec uiScaleSpec(bool upstreamStyle = false) {
   // size-matched SD CJK fallback) where the NotoSans reader subsets do not.
   // Same font develop's drawHeader used, so script coverage matches develop.
   spec.titleFontId = UI_12_FONT_ID;
-  if (UiHighDpiProfile::enabled) {
+  if (UiHighDpiProfile::enabled || ricky::panel::nativeSmall) {
     spec.smallFontId = RickyDesignUi::CAPTION;
     spec.bodyFontId = RickyDesignUi::BODY;
     spec.titleFontId = RickyDesignUi::TITLE;

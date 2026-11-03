@@ -1,6 +1,13 @@
+#include <HalNetwork.h>
 #include "HalClock.h"
 
 #include <Logging.h>
+#include <BoardConfig.h>
+#if FREEINK_DEVICE_METALIO_PLUS
+#include <TrustedTime.h>
+#include <esp_wifi.h>
+#include <PlusHttpsClock.h>
+#endif
 #include <WiFi.h>
 #include <esp_netif.h>
 #include <esp_netif_sntp.h>
@@ -163,7 +170,7 @@ bool HalClock::setUtcTime(const time_t epoch) {
 bool HalClock::startSntp() {
   if (_syncState == ClockSyncState::Syncing) return true;
 
-  if (WiFi.status() != WL_CONNECTED) {
+  if (!HalNetwork::connected()) {
     _syncState = ClockSyncState::Failed;
     return false;
   }
@@ -186,13 +193,19 @@ bool HalClock::startSntp() {
       return false;
     }
     esp_sntp_config_t config =
-        ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(2, ESP_SNTP_SERVER_LIST("pool.ntp.org", "time.nist.gov"));
+        ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(3, ESP_SNTP_SERVER_LIST("pool.ntp.org", "time.nist.gov", "ntp.aliyun.com"));
     if (_useChinaServers) {
+      // Tencent public server published in NTP Pool. A numeric first peer
+      // avoids repeated DNS failures on the device; retain named fallbacks.
+      // https://www.ntppool.org/scores/119.28.183.184
       config = ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(
-          3, ESP_SNTP_SERVER_LIST("ntp.aliyun.com", "ntp.tencent.com", "cn.pool.ntp.org"));
+          3, ESP_SNTP_SERVER_LIST("119.28.183.184", "ntp.aliyun.com", "ntp.tencent.com"));
     }
     config.start = false;
     config.smooth_sync = false;
+    config.sync_cb = [](struct timeval* tv) {
+      LOG_INF("CLK", "NTP reply received: UTC epoch=%lld", static_cast<long long>(tv->tv_sec));
+    };
     if (esp_netif_sntp_init(&config) != ESP_OK) {
       LOG_ERR("CLK", "Failed to initialize SNTP service");
       _syncState = ClockSyncState::Failed;
@@ -201,21 +214,42 @@ bool HalClock::startSntp() {
     _sntpInitialized = true;
   }
 
+#if FREEINK_DEVICE_METALIO_PLUS
+  if (!_wifiPowerSaveHeld) {
+    if (_wifiAwakeLease.acquire()) {
+      _wifiPowerSaveHeld = true;
+      LOG_INF("CLK", "Radio-awake lease acquired during NTP");
+    } else {
+      LOG_ERR("CLK", "Failed to disable WiFi power-save during NTP");
+    }
+  }
+#endif
   if (esp_netif_sntp_start() != ESP_OK) {
     LOG_ERR("CLK", "Failed to start SNTP service");
+    stopSntp();
     _syncState = ClockSyncState::Failed;
     return false;
   }
 
   _syncState = ClockSyncState::Syncing;
-  LOG_INF("CLK", "SNTP sync started");
+  _syncStartedMs = millis();
+  _httpsAttempted = false;
+  LOG_INF("CLK", "SNTP sync started, server group=%s", _useChinaServers ? "China" : "Global+Aliyun");
+  _lastDiagnosticMs = millis();
   return true;
 }
 
 void HalClock::stopSntp() {
-  if (!_sntpInitialized) return;
-  esp_netif_sntp_deinit();
-  _sntpInitialized = false;
+  if (_sntpInitialized) {
+    esp_netif_sntp_deinit();
+    _sntpInitialized = false;
+  }
+#if FREEINK_DEVICE_METALIO_PLUS
+  if (_wifiPowerSaveHeld) {
+    _wifiAwakeLease.release();
+    _wifiPowerSaveHeld = false;
+  }
+#endif
 }
 
 void HalClock::completeSync() {
@@ -232,10 +266,18 @@ void HalClock::completeSync() {
   if (!updateRtcFromSystemTime()) {
     LOG_ERR("CLK", "System clock synced, but external RTC persistence failed");
   }
+#if FREEINK_DEVICE_METALIO_PLUS
+  trustedtime::note();
+#endif
   LOG_INF("CLK", "System UTC clock synchronized");
 }
 
 bool HalClock::requestSync() { return startSntp(); }
+
+void HalClock::cancelSync() {
+  stopSntp();
+  if (_syncState == ClockSyncState::Syncing) _syncState = ClockSyncState::Idle;
+}
 
 bool HalClock::syncNow(const uint32_t timeoutMs) {
   if (!startSntp()) return false;
@@ -262,16 +304,55 @@ void HalClock::setAutoSyncEnabled(const bool enabled) {
 }
 
 void HalClock::update() {
-  const bool wifiConnected = WiFi.status() == WL_CONNECTED;
+  const bool wifiConnected = HalNetwork::connected();
   if (!wifiConnected) {
     if (_syncState == ClockSyncState::Syncing) _syncState = ClockSyncState::Failed;
-    if (_wifiWasConnected) stopSntp();
+    if (_wifiWasConnected || _sntpInitialized || _wifiPowerSaveHeld) stopSntp();
     _wifiWasConnected = false;
     return;
   }
 
-  if (_sntpInitialized && esp_sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED) {
+  if (_sntpInitialized && esp_netif_sntp_sync_wait(0) == ESP_OK) {
     completeSync();
+  }
+
+#if FREEINK_DEVICE_METALIO_PLUS
+  // HTTPS fallback is synchronous; do not stall active transfer/server owners.
+  if (_sntpInitialized && !_httpsAttempted && HalWifiAwakeLease::activeCount() <= 1 &&
+      millis() - _syncStartedMs >= 20000 && hasValidTime()) {
+    _httpsAttempted = true;
+    LOG_INF("CLK", "NTP still pending; trying verified HTTPS clock backup");
+    time_t epoch = 0;
+    const bool fetched = metalioPlusFetchHttpsUtc(epoch);
+    // A NTP reply received during TLS has priority over the coarse Date clock.
+    if (esp_netif_sntp_sync_wait(0) == ESP_OK) {
+      completeSync();
+    } else if (fetched) {
+      const timeval value = {epoch, 0};
+      if (settimeofday(&value, nullptr) == 0) completeSync();
+      else LOG_ERR("CLK", "Failed to apply verified HTTPS clock");
+    }
+  }
+#endif
+
+  if (_sntpInitialized && millis() - _syncStartedMs >= 60000) {
+    LOG_ERR("CLK", "NTP exchange exceeded 60 seconds; stopping and restoring WiFi power-save");
+    stopSntp();
+    _syncState = ClockSyncState::Failed;
+  }
+
+  if (_sntpInitialized && millis() - _lastDiagnosticMs >= 15000) {
+    _lastDiagnosticMs = millis();
+    esp_netif_tcpip_exec([](void*) -> esp_err_t {
+      for (uint8_t i = 0; i < 3; ++i) {
+        const ip_addr_t* address = sntp_getserver(i);
+        char text[48] = {};
+        if (address) ipaddr_ntoa_r(address, text, sizeof(text));
+        LOG_INF("CLK", "NTP server %u: %s address=%s reach=0x%02x", i,
+                sntp_getservername(i), text, sntp_getreachability(i));
+      }
+      return ESP_OK;
+    }, nullptr);
   }
 
   const bool fresh = _syncState == ClockSyncState::Succeeded && millis() - _lastSyncMs < CONFIG_LWIP_SNTP_UPDATE_DELAY;

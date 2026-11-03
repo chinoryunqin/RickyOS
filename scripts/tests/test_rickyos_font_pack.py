@@ -30,8 +30,10 @@ class RickyFontPackTest(unittest.TestCase):
 #include <iterator>
 #include <string>
 #define LOG_DBG(...) ((void)0)
+#define LOG_INF(...) ((void)0)
 namespace SdCardFontCache {
 enum class Result { Ok, AlreadyCached, TooLarge, Oom, InvalidFont };
+const char* resultName(Result) { return ""; }
 Result next=Result::Ok;
 Result preflight(const char*) { return next; }
 }
@@ -47,7 +49,8 @@ struct SdCardFontFileInfo { std::string path="/fonts/RickySerif/RickySerif_18.cp
 struct SdSystem {
   int loads=0, releases=0;
   void ensureLoaded(int,bool) { ++loads; }
-  void releaseLoadedFont(int) { ++releases; }
+  int vectorReleases=0;
+  void releaseLoadedFont(int, bool includeVector=false) { ++releases; vectorReleases+=includeVector; }
 } sdFontSystem;
 enum class StrId { STR_FONT_PRELOAD_START, STR_FONT_PRELOAD_SKIP, STR_FONT_PRELOAD_CONFIRM };
 struct TextSettingsActivity {
@@ -77,8 +80,11 @@ using MappedInputManager=TextSettingsActivity::Input;
 ''' + method(source, 'void TextSettingsActivity::finishFinalFont(') + r'''
 int main() {
   using R=SdCardFontCache::Result;
+  // Vector (TTF) families take the same consent and acceleration path as .cpfont.
+  for(bool vector : {false,true})
   for(auto check : {R::Ok,R::AlreadyCached,R::TooLarge,R::Oom,R::InvalidFont}) {
     for(bool accepted : {false,true}) {
+      family.vector=vector;
       settings.sdFontFlashPreload=1;
       sdFontSystem={};
       SdCardFontCache::next=check;
@@ -86,18 +92,19 @@ int main() {
       activity.finishFinalFont(accepted);
       bool valid=check==R::Ok || check==R::AlreadyCached;
       bool prompt=check==R::Ok && !accepted;
-      bool complete=check==R::TooLarge || (valid && !prompt);
+      // An oversized .cpfont leaves quietly; an oversized vector font says why.
+      bool tooLargeNotice=check==R::TooLarge && vector;
+      bool complete=(check==R::TooLarge && !vector) || (valid && !prompt);
       assert(activity.attempts==int(check==R::Ok && accepted));
       assert(activity.prompts==int(prompt));
-      assert(activity.errors==int(!valid && check!=R::TooLarge));
+      assert(activity.errors==int((!valid && check!=R::TooLarge) || tooLargeNotice));
       assert(activity.completions==int(complete));
       assert(settings.sdFontFlashPreload==int(valid && !prompt));
       assert(sdFontSystem.releases==int(valid && !prompt));
+      // Switching to the cached source must also drop a loaded vector face.
+      assert(sdFontSystem.vectorReleases==sdFontSystem.releases);
     }
   }
-  family.vector=true; SdCardFontCache::next=R::Oom;
-  TextSettingsActivity activity; activity.finishFinalFont(false);
-  assert(activity.completions==1 && activity.errors==0 && activity.prompts==0 && activity.attempts==0);
 }
 ''', defines=('RICKYOS_PRODUCT',))
 

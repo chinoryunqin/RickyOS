@@ -64,9 +64,9 @@ print('Production boolean rows: all themes, both states, pointer/getter and mult
 # Compile the real viewport methods, including INX's separate tab-list path.
 shared = (ROOT / 'src/activities/UiListActivity.cpp').read_text()
 tabs = (ROOT / 'src/activities/UiTabListActivity.cpp').read_text()
-keyboard = (ROOT / 'src/activities/settings/KeyboardLayoutsActivity.cpp').read_text()
-keyboard_guard = keyboard[keyboard.index('  props.toggleCheckbox = true;'):
-                          keyboard.index('  syncListViewport(screen, props);')]
+# An explicit checkbox list (the former keyboard-layouts page's rows): a caller that
+# asks for checkboxes keeps them in every theme.
+keyboard_guard = '  props.toggleCheckbox = true;\n  props.toggleWidth = 28;\n  props.toggleHeight = 28;\n'
 trace = (ROOT / 'test/inx_navigation/InxStyleParity.cpp').read_text().split('#ifdef UPSTREAM_THEME_PARITY')[0]
 controls = trace + r'''
 #include <cassert>

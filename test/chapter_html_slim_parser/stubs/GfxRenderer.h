@@ -21,6 +21,11 @@ class GfxRenderer {
     return left == 0 || left == ' ' || right == ' ' ? 0 : tracking;
   }
   bool isFontCacheScanning() const { return false; }
+  // Vertical text turns runs by switching the orientation around a draw.
+  enum Orientation { Portrait, LandscapeClockwise, PortraitInverted, LandscapeCounterClockwise };
+  Orientation orientation = Portrait;
+  Orientation getOrientation() const { return orientation; }
+  void setOrientation(const Orientation o) { orientation = o; }
   void drawLine(int, int, int, int, int, bool) const {}
   void drawText(int, int, int, const char*, bool, EpdFontFamily::Style,
                 BidiUtils::BidiBaseDir = BidiUtils::BidiBaseDir::AUTO, int8_t = 0) const {}

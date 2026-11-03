@@ -259,4 +259,43 @@ bool LibraryIndexFile::readPath(const ClixRecord& record, std::string& out) {
   return false;
 }
 
+bool LibraryIndexFile::readFolderPaths(std::vector<std::string>& out) {
+  out.clear();
+  if (!opened) return false;
+  out.reserve(head.folderCount);
+  uint32_t offset = head.folderStart;
+  const uint32_t folderEnd = head.folderStart + head.folderLen;
+  for (uint16_t i = 0; i < head.folderCount; i++) {
+    uint8_t pathLen = 0;
+    if (offset >= folderEnd || !readAt(offset, &pathLen, sizeof(pathLen)) || pathLen == 0 ||
+        pathLen > folderEnd - offset - 1u) {
+      out.clear();
+      return false;
+    }
+    out.emplace_back(pathLen, '\0');
+    if (!readAt(offset + 1, out.back().data(), pathLen)) {
+      out.clear();
+      return false;
+    }
+    offset += 1u + pathLen;
+  }
+  return true;
+}
+
+bool LibraryIndexFile::countBooksPerFolder(std::vector<uint16_t>& out) {
+  out.assign(opened ? head.folderCount : 0, 0);
+  if (!opened) return false;
+  // 1 KiB of records per read: stays sector aligned and light on the caller's stack.
+  constexpr uint16_t kChunk = 8;
+  ClixRecord records[kChunk];
+  for (uint16_t first = 0; first < head.bookCount; first += kChunk) {
+    const uint16_t n = static_cast<uint16_t>(std::min<int>(kChunk, head.bookCount - first));
+    if (!readAt(head.recordStart + static_cast<uint32_t>(first) * sizeof(ClixRecord), records, n * sizeof(ClixRecord)))
+      return false;
+    for (uint16_t i = 0; i < n; i++)
+      if (records[i].folderId < out.size()) ++out[records[i].folderId];
+  }
+  return true;
+}
+
 }  // namespace library

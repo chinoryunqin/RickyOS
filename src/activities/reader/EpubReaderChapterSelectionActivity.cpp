@@ -13,6 +13,15 @@
 
 namespace fui = freeink::ui;
 
+namespace {
+// The current chapter's marker: a 10 px dot in a 16 px leading gutter. Every other row
+// carries a blank icon of the same size, so the titles stay aligned.
+constexpr uint8_t kCurrentDot[32] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0xC0, 0x0F, 0xF0, 0x1F,
+                                     0xF8, 0x1F, 0xF8, 0x1F, 0xF8, 0x1F, 0xF8, 0x1F, 0xF8, 0x1F, 0xF8,
+                                     0x0F, 0xF0, 0x03, 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+constexpr uint8_t kNoDot[32] = {};
+}  // namespace
+
 EpubReaderChapterSelectionActivity::EpubReaderChapterSelectionActivity(GfxRenderer& renderer,
                                                                        MappedInputManager& mappedInput,
                                                                        const std::shared_ptr<Epub>& epub,
@@ -46,6 +55,7 @@ void EpubReaderChapterSelectionActivity::onEnter() {
   int tocIndex = currentTocIndex >= 0 && currentTocIndex < listCount()
                      ? currentTocIndex
                      : epub->getTocIndexForSpineIndex(currentSpineIndex);
+  currentRow = tocIndex;
   if (tocIndex == -1) {
     tocIndex = 0;
   }
@@ -72,6 +82,7 @@ void EpubReaderChapterSelectionActivity::refreshTocWindow(const int start) {
     fui::ListItem item;
     item.label = windowLabels[i].c_str();
     item.actionValue = static_cast<int16_t>(clamped + i);
+    item.icon = fui::BitmapRef{clamped + i == currentRow ? kCurrentDot : kNoDot, 16, 16, fui::BitmapFormat::BW1, true};
     windowItems[i] = item;
   }
   windowStart = clamped;

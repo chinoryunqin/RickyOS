@@ -17,12 +17,15 @@ class RickyReaderChromeTest(unittest.TestCase):
 #include <cstring>
 #include <vector>
 #include "components/RickyDesignTokens.h"
+#include "activities/reader/ReaderChrome.h"
 struct Rect {int x,y,width,height;};
 namespace freeink::ui {enum class TextAlign {Left,Center,Right};}
-struct GfxRenderer {
-  int w=684,h=1216;
+class GfxRenderer {
+ public:
+  int w=684,h=1216,lineHeight=34;
   struct ClipScope {ClipScope(GfxRenderer&,int,int,int,int) {}};
   int getTextWidth(int,const char* text) {return std::strlen(text)*12;}
+  int getLineHeight(int) const {return lineHeight;}
   void drawText(int,int x,int y,const char*) {assert(x>=0 && x<w && y>=0 && y<h);}
 };
 struct Spec {
@@ -31,6 +34,8 @@ struct Spec {
   int clockMode=0,progressBarHeightPx=6,progressBarMode=0;
   bool clock12h=false;
   bool textLaneVisible() const {return lane;}
+  bool headerLaneVisible() const {return lane;}
+  bool footerLaneVisible() const {return lane && (showChapterPageCount || showBookProgressPercent);}
   bool showsClock() const {return clock;}
   bool showsProgressBar() const {return bar;}
 };
@@ -52,6 +57,7 @@ struct UITheme {
 };
 namespace RickyDesignUi {
 constexpr int CAPTION=1;
+inline int fontFor(const GfxRenderer&,int preferred,const char*) {return preferred;}
 struct Run {Rect r; int percent=-1;};
 std::vector<Run> runs;
 template<class R>
@@ -67,13 +73,14 @@ void text(GfxRenderer& g,Rect r,const char* s,int f,bool inverted=false,freeink:
 void secondaryText(GfxRenderer& g,Rect r,const char* s,int f,bool inverted=false,freeink::ui::TextAlign a=freeink::ui::TextAlign::Left) {
   text<Rect>(g,r,s,f,inverted,a);
 }
-void progress(GfxRenderer& g,Rect r,int percent) {
+void progress(GfxRenderer& g,Rect r,int percent,bool=false,bool lineTrack=false) {
+  assert(!lineTrack);  // the gray track stays off the Plus
   assert(r.x>=5 && r.y>=5 && r.x+r.width<=g.w-5 && r.y+r.height<=g.h-8);
   runs.push_back({r,std::clamp(percent,0,100)});
 }
 }
 struct BaseTheme {
-  static void drawRickyReaderChrome(GfxRenderer&,float,int,int,const char*,bool,bool);
+  static void drawRickyReaderChrome(GfxRenderer&,float,int,int,const char*,bool,bool,bool=true,const Rect* =nullptr);
   static void drawBluetoothStatusIcon(GfxRenderer&,int,int) {}
   static void drawBookmarkStatusIcon(GfxRenderer&,int,int) {}
   static void drawBatteryLeft(GfxRenderer&,Rect,bool) {}
@@ -81,8 +88,9 @@ struct BaseTheme {
 #define GUI gui
 ''' + method(source, 'void BaseTheme::drawRickyReaderChrome(') + r'''
 int main() {
-  for (const auto size : {Rect{0,0,684,1216},Rect{0,0,1216,684}}) {
-    GfxRenderer r{size.width,size.height};
+  for (const auto size : {Rect{0,0,684,1216},Rect{0,0,1216,684},Rect{0,0,600,1000},Rect{0,0,1000,600}})
+  for (const int rowHeight : {28,34,42,56}) {
+    GfxRenderer r{size.width,size.height,rowHeight};
     settings.spec.progressBarMode=0;
     for(int flags=0;flags<256;++flags) {
       settings.spec.lane=flags&1;
@@ -99,14 +107,32 @@ int main() {
       assert(static_cast<int>(RickyDesignUi::runs.size())==expected);
       if(flags&8) {
         const auto track=RickyDesignUi::runs.back();
+        const auto chrome=readerChrome::compactLayout(rowHeight,settings.spec.headerLaneVisible(),
+                                                      settings.spec.footerLaneVisible(),true,6);
         assert(track.percent==42);
-        if(settings.spec.lane) {
-          const int textY=r.h-8-ricky::ds::space::kBlockGap-ricky::ds::type::kCaption.lineHeight;
-          assert(track.r.y+track.r.height+ricky::ds::space::kInlineGap==textY);
-          assert(track.r.y>=r.h-8-ricky::ds::layout::kReaderFooterHeight);
-        } else assert(track.r.y+track.r.height==r.h-8);
+        if(settings.spec.footerLaneVisible()) {
+          // One footer row: the bar sits on it, between the page count and the percent.
+          const int textY=r.h-8-chrome.footerTextBottom;
+          assert(track.r.y>=textY && track.r.y+track.r.height<=textY+chrome.rowHeight);
+          for(size_t i=0;i+1<RickyDesignUi::runs.size();++i) {
+            const auto& run=RickyDesignUi::runs[i];
+            if(run.r.y!=textY) continue;  // header runs
+            assert(run.r.x>=track.r.x+track.r.width || run.r.x<track.r.x);
+          }
+        } else assert(track.r.y+track.r.height==r.h-8-4);
+        assert(track.r.y>=r.h-8-chrome.footerReserve+8);
       }
     }
+    // Footer only (the puppy reading mode): the header's title run is not drawn.
+    settings.spec=Spec{};
+    RickyDesignUi::runs.clear();
+    BaseTheme::drawRickyReaderChrome(r,42.0f,3,11,"章节",false,false,false);
+    assert(static_cast<int>(RickyDesignUi::runs.size())==3);
+    const auto chrome=readerChrome::compactLayout(rowHeight,true,true,true,6);
+    // A hidden footer (no page count, no percent, no bar) reserves nothing.
+    assert(readerChrome::compactLayout(rowHeight,true,false,false,6).footerReserve==0);
+    assert(readerChrome::compactLayout(rowHeight,false,true,false,6).headerReserve==0);
+    for(const auto& run : RickyDesignUi::runs) assert(run.r.y>=r.h-8-chrome.footerReserve+8);
     settings.spec.lane=false;
     settings.spec.bar=true;
     settings.spec.progressBarMode=1;
@@ -121,10 +147,19 @@ int main() {
 
     def test_reservation_and_render_share_tokens_without_forcing_reader_preferences(self):
         reader = (ROOT / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
+        # One margin source: renderBook and the pickers take textMargins(), which
+        # reserves the header and footer bands the reading mode keeps.
+        margins = method(reader, 'readingMode::Margins EpubReaderActivity::textMargins(')
+        self.assertIn('readerChrome::compactLayout(', margins)
+        self.assertIn('chrome.headerReserve', margins)
+        self.assertIn('std::max(viewable.top + marginTop, topFloor)', margins)
+        self.assertIn('bottomReserve = chrome.footerReserve', margins)
+        self.assertNotIn('kReaderFooterHeight', margins)
+        self.assertIn('sb.textLaneVisible()', margins)
+        self.assertIn('readingMode::showsHeader(mode)', margins)
+        self.assertIn('readingMode::showsFooter(mode)', margins)
         book = method(reader, 'void EpubReaderActivity::renderBook(')
-        self.assertIn('kReaderHeaderHeight + ricky::ds::layout::kReaderHeaderGap', book)
-        self.assertIn('kReaderFooterHeight', book)
-        self.assertIn('SETTINGS.statusBarSpec().textLaneVisible()', book)
+        self.assertIn('textMargins()', book)
         status = method(reader, 'void EpubReaderActivity::renderStatusBar(')
         self.assertIn('GUI.drawRickyReaderChrome', status)
         self.assertIn('GUI.drawStatusBar', status)  # legacy/auto-turn compatibility
@@ -136,8 +171,8 @@ int main() {
         for entry in ('void EpubReaderActivity::openDictionaryWordSelect(',
                       'void EpubReaderActivity::openFootnoteSelect('):
             selection = method(reader, entry)
-            self.assertIn('SETTINGS.statusBarSpec().textLaneVisible()', selection)
-            self.assertIn('kReaderHeaderHeight + ricky::ds::layout::kReaderHeaderGap', selection)
+            self.assertIn('textMargins()', selection)
+            self.assertNotIn('getOrientedViewableTRBL', selection)
 
     def test_toolbar_keeps_action_ids_and_uses_one_icon_weight_and_selection_language(self):
         toolbar = (ROOT / 'src/activities/reader/ReaderToolbarUi.cpp').read_text()

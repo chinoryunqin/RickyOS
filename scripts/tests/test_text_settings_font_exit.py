@@ -30,7 +30,7 @@ struct SdCardFontManager {
  unsigned loadedPointSize_=0;
  void unloadAll(GfxRenderer&);
 };
-struct SdCardFontSystem {SdCardFontManager manager_; void releaseLoadedFont(GfxRenderer&);};
+struct SdCardFontSystem {SdCardFontManager manager_; void releaseLoadedFont(GfxRenderer&, bool includeVector=false);};
 SdCardFontSystem sdFontSystem;
 struct Activity {
  bool exited=false;

@@ -153,7 +153,7 @@ void SdFirmwareUpdateActivity::onConfirmationResult(const ActivityResult& result
     state = State::UPDATING;
     writtenBytes = 0;
     lastProgressRefreshPercent = 0;
-    sdFontSystem.releaseLoadedFont(renderer);
+    sdFontSystem.releaseLoadedFont(renderer, /*includeVector=*/true);  // the update overwrites the font cache
   }
   requestUpdateAndWait();
   performUpdate();

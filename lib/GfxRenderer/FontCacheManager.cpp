@@ -50,7 +50,15 @@ void FontCacheManager::setFontDecompressor(FontDecompressor* d) { fontDecompress
 
 void FontCacheManager::clearCache() {
   // Preserve bounded TTF glyph caches across renders; memory pressure uses releaseResidentCaches().
+#if FREEINK_DEVICE_METALIO_PLUS
+  // Hot groups hold only the built-in UI faces (compile-time data at fixed addresses), one
+  // slot per group (<= ~2.5 MB of the 16 MB PSRAM). Freeing them on every reader page made
+  // the status bar re-inflate its groups each turn (105-131 ms of every ~920 ms cached turn).
+  // releaseSdFontCaches() still frees them under memory pressure.
+  if (fontDecompressor_) fontDecompressor_->clearPageCache();
+#else
   if (fontDecompressor_) fontDecompressor_->clearCache();
+#endif
   for (auto& [id, font] : sdCardFonts_) {
     font->clearCache();
   }

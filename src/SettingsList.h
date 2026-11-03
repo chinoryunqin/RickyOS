@@ -18,6 +18,7 @@
 #include "ReaderFontSizes.h"
 #include "SdCardFontSystem.h"
 #include "activities/settings/SettingsActivity.h"
+#include "activities/MainTabMotion.h"
 #include "components/UITheme.h"
 #include "components/UiHighDpiProfile.h"
 #include "util/DictionaryRegistry.h"
@@ -233,6 +234,16 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
                           {StrId::STR_PAGES_1, StrId::STR_PAGES_5, StrId::STR_PAGES_10, StrId::STR_PAGES_15,
                            StrId::STR_PAGES_30, StrId::STR_NEVER},
                           "refreshFrequency", StrId::STR_CAT_DISPLAY),
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+        SettingInfo::Enum(StrId::STR_NATIVE_PAGE_TURN, &CrossPointSettings::nativePageTurn,
+{StrId::STR_STATE_OFF, StrId::STR_NATIVE_TURN_SKIM, StrId::STR_NATIVE_TURN_ARC,
+                           StrId::STR_NATIVE_TURN_RIPPLE},
+                          "nativePageTurn", StrId::STR_CAT_DISPLAY),
+#if RICKYOS_MAIN_TAB_MOTION_ENABLED
+        SettingInfo::Toggle(StrId::STR_MAIN_TAB_MOTION, &CrossPointSettings::mainTabMotion,
+                            "mainTabMotion", StrId::STR_CAT_DISPLAY),
+#endif
+#endif
         SettingInfo::Toggle(StrId::STR_SUNLIGHT_FADING_FIX, &CrossPointSettings::fadingFix, "fadingFix",
                             StrId::STR_CAT_DISPLAY),
         SettingInfo::Toggle(StrId::STR_SHOW_BUTTON_HINTS, &CrossPointSettings::showButtonHints, "showButtonHints",
@@ -270,10 +281,25 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
                            StrId::STR_SPACING_PLUS_1, StrId::STR_SPACING_PLUS_2},
                           "characterSpacing", StrId::STR_CAT_READER)
             .withTextSettings(),
-        SettingInfo::Value(StrId::STR_SCREEN_MARGIN, &CrossPointSettings::screenMargin,
-                           {CrossPointSettings::SCREEN_MARGIN_MIN, CrossPointSettings::SCREEN_MARGIN_MAX,
-                            CrossPointSettings::SCREEN_MARGIN_STEP},
-                           "screenMargin", StrId::STR_CAT_READER)
+        SettingInfo::Value(StrId::STR_MARGIN_TOP, &CrossPointSettings::marginTop,
+                           {CrossPointSettings::READER_MARGIN_MIN, CrossPointSettings::READER_MARGIN_MAX,
+                            CrossPointSettings::READER_MARGIN_STEP},
+                           "marginTop", StrId::STR_CAT_READER)
+            .withTextSettings(),
+        SettingInfo::Value(StrId::STR_MARGIN_BOTTOM, &CrossPointSettings::marginBottom,
+                           {CrossPointSettings::READER_MARGIN_MIN, CrossPointSettings::READER_MARGIN_MAX,
+                            CrossPointSettings::READER_MARGIN_STEP},
+                           "marginBottom", StrId::STR_CAT_READER)
+            .withTextSettings(),
+        SettingInfo::Value(StrId::STR_MARGIN_LEFT, &CrossPointSettings::marginLeft,
+                           {CrossPointSettings::READER_MARGIN_MIN, CrossPointSettings::READER_MARGIN_MAX,
+                            CrossPointSettings::READER_MARGIN_STEP},
+                           "marginLeft", StrId::STR_CAT_READER)
+            .withTextSettings(),
+        SettingInfo::Value(StrId::STR_MARGIN_RIGHT, &CrossPointSettings::marginRight,
+                           {CrossPointSettings::READER_MARGIN_MIN, CrossPointSettings::READER_MARGIN_MAX,
+                            CrossPointSettings::READER_MARGIN_STEP},
+                           "marginRight", StrId::STR_CAT_READER)
             .withTextSettings(),
         SettingInfo::Enum(StrId::STR_PARA_ALIGNMENT, &CrossPointSettings::paragraphAlignment,
                           {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId::STR_CENTER, StrId::STR_ALIGN_RIGHT,
@@ -291,15 +317,14 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
         SettingInfo::Toggle(StrId::STR_FOCUS_READING, &CrossPointSettings::focusReadingEnabled, "focusReadingEnabled",
                             StrId::STR_CAT_READER)
             .withTextSettings(),
-        SettingInfo::Toggle(StrId::STR_READING_BACKGROUND, &CrossPointSettings::readingBackgroundEnabled,
-                            "readingBackgroundEnabled", StrId::STR_CAT_READER),
         SettingInfo::Toggle(StrId::STR_READING_GUIDE_LINE, &CrossPointSettings::readingGuideLineEnabled,
                             "readingGuideLineEnabled", StrId::STR_CAT_READER)
             .withTextSettings(),
-        SettingInfo::Enum(StrId::STR_READING_GUIDE_LINE_STYLE, &CrossPointSettings::readingGuideLineStyle,
-                          {StrId::STR_SOLID_LINE, StrId::STR_SHORT_DASH, StrId::STR_MEDIUM_DASH, StrId::STR_LONG_DASH,
-                           StrId::STR_DOTTED_LINE, StrId::STR_WAVY_LINE},
-                          "readingGuideLineStyle", StrId::STR_CAT_READER)
+        SettingInfo::Enum(
+            StrId::STR_READING_GUIDE_LINE_STYLE, &CrossPointSettings::readingGuideLineStyle,
+            {StrId::STR_SOLID_LINE, StrId::STR_SHORT_DASH, StrId::STR_MEDIUM_DASH, StrId::STR_LONG_DASH,
+             StrId::STR_DOTTED_LINE, StrId::STR_WAVY_LINE, StrId::STR_DOUBLE_LINE, StrId::STR_HIGHLIGHT_LINE},
+            "readingGuideLineStyle", StrId::STR_CAT_READER)
             .withTextSettings(),
         SettingInfo::SignedValue(
             StrId::STR_READING_GUIDE_LINE_OFFSET, &CrossPointSettings::readingGuideLineOffset,
@@ -397,6 +422,12 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
         SettingInfo::Enum(StrId::STR_TILT_PAGE_TURN, &CrossPointSettings::tiltPageTurn,
                           {StrId::STR_STATE_OFF, StrId::STR_NORMAL, StrId::STR_INVERTED}, "tiltPageTurn",
                           StrId::STR_CAT_CONTROLS),
+        SettingInfo::Enum(StrId::STR_BACK_TAP_PAGE_TURN, &CrossPointSettings::backTapPageTurn,
+                          {StrId::STR_STATE_OFF, StrId::STR_BACK_TAP_NEXT, StrId::STR_BACK_TAP_PREVIOUS}, "backTapPageTurn",
+                          StrId::STR_CAT_CONTROLS),
+        SettingInfo::Enum(StrId::STR_BACK_TAP_SENSITIVITY, &CrossPointSettings::backTapSensitivity,
+                          {StrId::STR_BACK_TAP_FIRM, StrId::STR_BACK_TAP_MEDIUM, StrId::STR_BACK_TAP_LIGHT},
+                          "backTapSensitivity", StrId::STR_CAT_CONTROLS),
         SettingInfo::Toggle(StrId::STR_PWR_BTN_FOOTNOTE_BACK, &CrossPointSettings::pwrBtnFootnoteBack,
                             "pwrBtnFootnoteBack", StrId::STR_CAT_CONTROLS),
         SettingInfo::Toggle(StrId::STR_BACK_SHORT_TO_FILE_BROWSER, &CrossPointSettings::backShortToFileBrowser,
@@ -543,7 +574,12 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
     // Double-click power frontlight shortcut only exists on the X4 Pro.
     if (!BoardConfig::isX4Pro()) eraseEntry(StrId::STR_DBL_CLICK_PWR_LIGHT);
     // Tilt page turn needs the QMI8658 IMU (X3).
-    if (!halTiltSensor.isAvailable()) eraseEntry(StrId::STR_TILT_PAGE_TURN);
+    if (!halTiltSensor.isAvailable() || !CrossPointSettings::kTiltPageTurnShipped)
+      eraseEntry(StrId::STR_TILT_PAGE_TURN);
+    // Back double tap still needs tuning on the device (thresholds, knocks lost while a
+    // page draws): kept out of the menu until then; a stored "off" keeps it idle.
+    eraseEntry(StrId::STR_BACK_TAP_PAGE_TURN);
+    eraseEntry(StrId::STR_BACK_TAP_SENSITIVITY);
     return v;
   }();
 
@@ -553,6 +589,7 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
 inline bool isSettingAvailableOnBoard(const SettingInfo& setting) {
   if (!BoardConfig::hasTouch() && setting.nameId == StrId::STR_TOUCH_READER_CONTROLS) return false;
   if (!BoardConfig::hasHomeKey() && setting.nameId == StrId::STR_SHOW_READER_MENU) return false;
+  if (BoardConfig::hasHomeKey() && setting.valuePtr == &CrossPointSettings::standbyShortcutEnabled) return false;
   const bool frontlightSetting = setting.valuePtr == &CrossPointSettings::frontlightBrightness ||
                                  setting.valuePtr == &CrossPointSettings::frontlightOn ||
                                  setting.valuePtr == &CrossPointSettings::frontlightRestoreOnWake

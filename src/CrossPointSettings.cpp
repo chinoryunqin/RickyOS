@@ -1,5 +1,4 @@
 #include "CrossPointSettings.h"
-#include <Utf8.h>
 
 #include <BoardConfig.h>
 #include <HalStorage.h>
@@ -7,6 +6,7 @@
 #include <Logging.h>
 #include <ObfuscationUtils.h>
 #include <Serialization.h>
+#include <Utf8.h>
 
 #include <algorithm>
 #include <array>
@@ -236,9 +236,23 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
     }
   }
 
+  // The Home key gestures are appended only to the menu list (getSettingsList), so the
+  // base-list loop above never saw them; without this they reset on every boot.
+  for (unsigned i = 0; i < 3; ++i) doc[home_button::KEYS[i]] = s.*home_button::FIELDS[i];
+
+#if FREEINK_DEVICE_METALIO_PLUS
+  doc["plusTouchFeedback"] = plusTouchFeedback;
+  JsonArray plusKeys = doc["plusKeyActions"].to<JsonArray>();
+  for (uint8_t value : plusKeyActions) plusKeys.add(value);
+#endif
   doc["fakeBoldVersion"] = FAKE_BOLD_VERSION;
   // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
   doc["frontButtonBack"] = frontButtonBack;
+  doc["readingMode"] = readingMode;
+  doc["libraryListView"] = libraryListView;
+  doc["standbyCoverLayout"] = standbyCoverLayout;
+  doc["standbyShowExcerpt"] = standbyShowExcerpt;
+  doc["rickyBadgesSeen"] = rickyBadgesSeen;
   doc["frontButtonConfirm"] = frontButtonConfirm;
   doc["frontButtonLeft"] = frontButtonLeft;
   doc["frontButtonRight"] = frontButtonRight;
@@ -275,12 +289,20 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   doc["rickyHomePhrase"] = rickyHomePhrase;
   doc["rickyGestureBack"] = rickyGestureBack;
   doc["rickyGestureHome"] = rickyGestureHome;
+  doc["standbySwipeUnlock"] = standbySwipeUnlock;
+  doc["rickyCompanion"] = rickyCompanion;
   doc["rickyGestureControl"] = rickyGestureControl;
   doc["rickyGestureStatus"] = rickyGestureStatus;
+  doc["speakerVolume"] = speakerVolume;
   doc["rickyTextWeight"] = rickyTextWeight;
+  doc["nativePageTurn"] = nativePageTurn;
+  doc["readerFastRefresh"] = readerFastRefresh;
+  doc["mainTabMotion"] = mainTabMotion;
   doc["rickyStandbyFace"] = rickyStandbyFace;
   doc["rickyAutoOffIndex"] = rickyAutoOffIndex;
   doc["rickyPowerOffScreen"] = rickyPowerOffScreen;
+  doc["readingBackground"] = readingBackground;
+  doc["readingPaper"] = readingPaper;
   doc["rickyTapTurn"] = 1;       // the swipe-only default migration has run
   doc["rickyStandbyKeyOn"] = 1;  // the Back-key Standby shortcut was turned on once
   // Dictionary folder name — uses dynamic getter/setter in SettingsList, save manually
@@ -297,17 +319,12 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   // Keep the legacy marker current so rollback to a split-SKU firmware retains
   // the selected service region.
   doc["langSku"] = contentProfile == ContentProfile::China ? "cn" : "global";
-
-  // A uint16_t mask, so it does not fit the uint8_t generic loop. Omitted while
-  // unconfigured, so the default keeps following the UI language.
-  if (keyboardLayouts != 0) {
-    doc["keyboardLayouts"] = keyboardLayouts;
-  }
 }
 
 bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   CrossPointSettings& s = *this;
   bool needsResave = false;
+  speakerVolume = std::min<unsigned>(doc["speakerVolume"] | 35u, 100u);
 
   auto clamp = [](uint8_t val, uint8_t maxVal, uint8_t def) -> uint8_t { return val < maxVal ? val : def; };
 
@@ -395,6 +412,27 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     }
   }
 
+  // 1.2.9 and earlier had one margin for all four sides: seed every side from it.
+  if (doc["marginLeft"].isNull()) {
+    const uint8_t legacy = clamp(doc["screenMargin"] | screenMargin, READER_MARGIN_MAX + 1, screenMargin);
+    marginTop = marginBottom = marginLeft = marginRight = legacy;
+    needsResave = true;
+  }
+
+  // Reading mode lives in the reader menu, not in SettingsList, so it loads here.
+  // The custom reading background became the puppy reading mode.
+  rickyBadgesSeen = doc["rickyBadgesSeen"] | static_cast<uint32_t>(0);
+  libraryListView = (doc["libraryListView"] | static_cast<uint8_t>(0)) != 0 ? 1 : 0;
+  standbyCoverLayout =
+      clamp(doc["standbyCoverLayout"] | static_cast<uint8_t>(STANDBY_COVER_PICTURE), STANDBY_COVER_LAYOUT_COUNT, 0);
+  standbyShowExcerpt = (doc["standbyShowExcerpt"] | static_cast<uint8_t>(1)) != 0 ? 1 : 0;
+  if (doc["readingMode"].isNull()) {
+    readingMode = (doc["readingBackgroundEnabled"] | static_cast<uint8_t>(0)) != 0 ? 1 : 0;  // 1 = Puppy
+    if (readingMode != 0) needsResave = true;
+  } else {
+    readingMode = clamp(doc["readingMode"] | static_cast<uint8_t>(0), READING_MODE_COUNT, 0);
+  }
+
   if ((doc["fakeBoldVersion"] | static_cast<uint8_t>(0)) < FAKE_BOLD_VERSION) {
     if (doc["fakeBold"].is<uint8_t>()) {
       const uint8_t legacyFakeBold = doc["fakeBold"].as<uint8_t>();
@@ -432,6 +470,14 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     needsResave = true;
   }
   // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
+#if FREEINK_DEVICE_METALIO_PLUS
+  plusTouchFeedback = clamp(doc["plusTouchFeedback"] | uint8_t(1), 2, 1);
+  for (unsigned i = 0; i < plus_keys::FIELD_COUNT; ++i) {
+    const auto value = doc["plusKeyActions"][i];
+    plusKeyActions[i] = value.is<uint8_t>() ? plus_keys::valid(value.as<uint8_t>(), i % 2)
+                                           : (i % 2 ? plus_keys::Ignore : plus_keys::Default);
+  }
+#endif
   frontButtonBack = clamp(doc["frontButtonBack"] | (uint8_t)FRONT_HW_BACK, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_BACK);
   frontButtonConfirm =
       clamp(doc["frontButtonConfirm"] | (uint8_t)FRONT_HW_CONFIRM, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_CONFIRM);
@@ -474,6 +520,11 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   // Font family — uses dynamic getter/setter in SettingsList so the generic loop skips it.
   const uint8_t storedFontFamily = doc["fontFamily"] | (uint8_t)0;
   fontFamily = clamp(storedFontFamily, BUILTIN_FONT_COUNT, 0);
+  for (unsigned i = 0; i < 3; ++i) {
+    const uint8_t fallback = s.*home_button::FIELDS[i];
+    s.*home_button::FIELDS[i] =
+        clamp(doc[home_button::KEYS[i]] | fallback, static_cast<uint8_t>(HomeButtonAction::Count), fallback);
+  }
   if (BoardConfig::hasHomeKey() && doc["homeButtonLongPressAction"].isNull() &&
       !doc["longPressMenuFunction"].isNull()) {
     static constexpr HomeButtonAction LEGACY[] = {HomeButtonAction::Sync, HomeButtonAction::Ignore,
@@ -500,10 +551,18 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   // Missing keys take the defaults: Home swipe starts off for everyone, as agreed.
   rickyGestureBack = (doc["rickyGestureBack"] | 1) ? 1 : 0;
   rickyGestureHome = (doc["rickyGestureHome"] | 0) ? 1 : 0;
+  standbySwipeUnlock = (doc["standbySwipeUnlock"] | 0) ? 1 : 0;
+  rickyCompanion = (doc["rickyCompanion"] | 0) == RICKY_COMPANION_CAT ? RICKY_COMPANION_CAT : RICKY_COMPANION_DOG;
   rickyGestureControl = (doc["rickyGestureControl"] | 1) ? 1 : 0;
   rickyGestureStatus = (doc["rickyGestureStatus"] | 1) ? 1 : 0;
   rickyTextWeight = doc["rickyTextWeight"] | static_cast<uint8_t>(RICKY_TEXT_WEIGHT_STANDARD);
   if (rickyTextWeight >= RICKY_TEXT_WEIGHT_COUNT) rickyTextWeight = RICKY_TEXT_WEIGHT_STANDARD;
+  // Settings saved before these options existed take the defaults: both on. A choice
+  // the user saved (including off) is kept.
+  nativePageTurn = doc["nativePageTurn"] | static_cast<uint8_t>(1);
+  if (nativePageTurn > 3) nativePageTurn = 1;
+  readerFastRefresh = (doc["readerFastRefresh"] | static_cast<uint8_t>(0)) ? 1 : 0;
+  mainTabMotion = (doc["mainTabMotion"] | 1) == 1 ? 1 : 0;
   rickyStandbyFace = doc["rickyStandbyFace"] | static_cast<uint8_t>(RICKY_STANDBY_PICTURE);
   if (rickyStandbyFace >= RICKY_STANDBY_FACE_COUNT) rickyStandbyFace = RICKY_STANDBY_PICTURE;
   rickyAutoOffIndex = doc["rickyAutoOffIndex"] | static_cast<uint8_t>(3);
@@ -537,6 +596,10 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     rickyPowerOffScreen = doc["rickyPowerOffScreen"] | static_cast<uint8_t>(RICKY_POWER_OFF_DEFAULT);
     if (rickyPowerOffScreen >= RICKY_POWER_OFF_SCREEN_COUNT) rickyPowerOffScreen = RICKY_POWER_OFF_DEFAULT;
   }
+  readingBackground = doc["readingBackground"] | static_cast<uint8_t>(READING_BACKGROUND_OFF);
+  if (readingBackground >= READING_BACKGROUND_COUNT) readingBackground = READING_BACKGROUND_OFF;
+  readingPaper = doc["readingPaper"] | static_cast<uint8_t>(READING_PAPER_PICTURE);
+  if (readingPaper >= READING_PAPER_COUNT) readingPaper = READING_PAPER_PICTURE;
   // Old backups/direct JSON edits must not select a different product layout.
   struct FixedLayout {
     const char* key;
@@ -620,11 +683,6 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     needsResave = true;
   }
   onboardingVersion = doc["onboardingVersion"].is<uint8_t>() ? doc["onboardingVersion"].as<uint8_t>() : 0;
-
-  // Absent means unconfigured, which is the default.
-  if (doc["keyboardLayouts"].is<uint16_t>()) {
-    keyboardLayouts = doc["keyboardLayouts"].as<uint16_t>();
-  }
 
   if (needsResave) {
     LOG_DBG("CPS", "Resaving settings to update format");
@@ -742,6 +800,7 @@ bool CrossPointSettings::loadFromBinaryFile() {
   }
   refreshFrequency = validated(12, refreshFrequency, REFRESH_FREQUENCY_COUNT);
   screenMargin = value(13, screenMargin);
+  marginTop = marginBottom = marginLeft = marginRight = screenMargin;
   sleepScreenCoverMode = validated(14, sleepScreenCoverMode, SLEEP_SCREEN_COVER_MODE_COUNT);
   textAntiAliasing = value(15, textAntiAliasing);
   hideBatteryPercentage = validated(16, hideBatteryPercentage, HIDE_BATTERY_PERCENTAGE_COUNT);
@@ -862,6 +921,7 @@ unsigned long CrossPointSettings::getSleepTimeoutMs() const {
 
 uint8_t CrossPointSettings::rickySleepScreenMode() const {
   if (rickyPowerOffScreen == RICKY_POWER_OFF_BLANK) return BLANK;
+  if (rickyPowerOffScreen == RICKY_POWER_OFF_CUSTOM) return CUSTOM;
   if (rickyPowerOffScreen == RICKY_POWER_OFF_SAME) {
     switch (rickyStandbyFace) {
       case RICKY_STANDBY_PICTURE:
@@ -869,6 +929,7 @@ uint8_t CrossPointSettings::rickySleepScreenMode() const {
       case RICKY_STANDBY_COVER:
         return COVER_CUSTOM;  // the book being read, else the picture, as Standby
       case RICKY_STANDBY_KEEP_PAGE:
+      case RICKY_STANDBY_TRANSPARENT:
         return QUICK_RESUME;
       default:
         break;  // the calendar would show a clock that no longer runs

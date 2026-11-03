@@ -5,6 +5,9 @@
 #if CROSSPOINT_VECTOR_FONTS
 
 #include <Logging.h>
+#if RICKYOS_PAINT_PROFILE
+#include <Arduino.h>
+#endif
 #include <MemoryManager.h>
 #include <Utf8.h>
 #include <esp_heap_caps.h>
@@ -266,6 +269,11 @@ void TtfEpdFont::clearCache() {
 
 void TtfEpdFont::releaseResidentCaches() {
   if (evictionLocked_) return;  // mid-fault: this font's faces are live
+#if RICKYOS_PAINT_PROFILE
+  ++counters().releases;
+  LOG_INF("TTF", "release resident caches (free=%u max=%u)", static_cast<unsigned>(ESP.getFreeHeap()),
+          static_cast<unsigned>(ESP.getMaxAllocHeap()));
+#endif
   for (int i = 0; i < 4; ++i) {
     Face& f = faces_[i];
     // Actually RELEASE the caches (swap-with-empty frees capacity; clear() alone
@@ -333,7 +341,14 @@ const EpdGlyph* TtfEpdFont::faultGlyph(Face& f, const uint32_t cp) {
     evictionLocked_ = true;
     freeink::MemoryManager::instance().ensureFree(16 * 1024);
     evictionLocked_ = false;
-    if (!growTables()) return nullptr;
+    if (!growTables()) {
+      // The tables cannot grow: start them over within the capacity they have, as at
+      // maxGlyphs, rather than leaving every new character of the book unresolved.
+      if (f.glyphs.empty()) return nullptr;
+      LOG_INF("TTF", "glyph table stuck at %u, flushing", static_cast<unsigned>(f.glyphs.size()));
+      flushFace(f);
+      if (!growTables()) return nullptr;
+    }
   }
 
   EpdGlyph eg{};
@@ -473,7 +488,14 @@ const TtfEpdFont::GlyphMetricsEntry* TtfEpdFont::metricsFor(Face& f, const uint3
 const uint8_t* TtfEpdFont::rasterizeInto(Face& f, EpdGlyph& glyph) {
   const size_t index = static_cast<size_t>(&glyph - f.glyphs.data());
   if (index >= f.glyphs.size() || index >= f.gids.size()) return nullptr;
+#if RICKYOS_PAINT_PROFILE
+  const uint32_t rasterStart = micros();
   const freeink::font::GlyphBitmap* g = f.ft.rasterizeGlyph26_6(f.gids[index], size26_6_);
+  ++counters().rasterized;
+  counters().rasterUs += micros() - rasterStart;
+#else
+  const freeink::font::GlyphBitmap* g = f.ft.rasterizeGlyph26_6(f.gids[index], size26_6_);
+#endif
   if (glyph.dataOffset == kPendingBox) {
     // Advance came from hmtx; the raster supplies the box.
     glyph.dataOffset = 0;
@@ -493,17 +515,33 @@ const uint8_t* TtfEpdFont::rasterizeInto(Face& f, EpdGlyph& glyph) {
   const uint32_t px = w * h;
   const size_t bytes = f.fourBit ? (px + 1) / 2 : (f.twoBit ? (px + 3) / 4 : (px + 7) / 8);
   if (bytes == 0 || bytes > f.cap) return nullptr;
-  if (f.used + bytes > f.cap) {
-    // Arena full: drop every bitmap but keep the glyph records (and the metrics), so
-    // nothing layout holds goes stale; glyphs re-rasterize as they are drawn again.
+  // Arena full: drop every bitmap but keep the glyph records (and the metrics), so
+  // nothing layout holds goes stale; glyphs re-rasterize as they are drawn again.
+  const auto recycleArena = [&f]() {
     for (EpdGlyph& e : f.glyphs) e.dataLength = 0;
     f.used = 0;
-  }
-  if (!reserveChecked(f.bmp, f.used + bytes, 4096, f.cap)) {
+  };
+  if (f.used + bytes > f.cap) recycleArena();
+  // Grow in large steps: every growth copies the whole arena into a new block, so
+  // 4 KB steps meant hundreds of near-1 MB copies and, once PSRAM was fragmented,
+  // a growth that could never succeed.
+  static constexpr size_t kArenaStep = 64 * 1024;
+  if (!reserveChecked(f.bmp, f.used + bytes, kArenaStep, f.cap)) {
     evictionLocked_ = true;
     freeink::MemoryManager::instance().ensureFree(16 * 1024);
     evictionLocked_ = false;
-    if (!reserveChecked(f.bmp, f.used + bytes, 4096, f.cap)) return nullptr;
+    if (!reserveChecked(f.bmp, f.used + bytes, kArenaStep, f.cap)) {
+      // The arena cannot grow any further: treat what it already has as the cap and
+      // recycle it. Returning here instead left every glyph not yet drawn blank for
+      // the rest of the book (the arena never reached f.cap, so it never recycled).
+      if (f.bmp.capacity() < bytes) {
+        LOG_ERR("TTF", "glyph arena cannot hold %u B (capacity %u)", static_cast<unsigned>(bytes),
+                static_cast<unsigned>(f.bmp.capacity()));
+        return nullptr;
+      }
+      LOG_INF("TTF", "glyph arena stuck at %u KB, recycling", static_cast<unsigned>(f.bmp.capacity() / 1024));
+      recycleArena();
+    }
   }
   if (f.bmp.size() < f.used + bytes) f.bmp.resize(f.used + bytes, 0);
   uint8_t* dst = f.bmp.data() + f.used;
@@ -611,6 +649,27 @@ bool TtfEpdFont::build(const char* utf8) {
   flushFace(faces_[0]);
   return addCoverage(utf8);
 }
+TtfEpdFont::Prerasterize TtfEpdFont::prerasterize(const uint32_t cp) {
+  if (!loaded_) return Prerasterize::Full;
+  Face& f = faces_[0];
+  if (!f.inited) initFace(f);
+  if (!f.ready) return Prerasterize::Full;
+  static constexpr size_t kArenaMargin = 64 * 1024;
+  if (f.glyphs.size() + f.maxGlyphs / 10 >= f.maxGlyphs || f.used + kArenaMargin >= f.cap) return Prerasterize::Full;
+#if defined(ESP_PLATFORM)
+  // Growing the arena takes a 64 KB step of PSRAM; a short heap would answer with an
+  // eviction (MemoryManager::ensureFree) of the page cache or other fonts.
+  if (f.used + 4096 > f.bmp.capacity() && heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM) < 2 * 1024 * 1024) {
+    return Prerasterize::Full;
+  }
+#endif
+  const EpdGlyph* glyph = faultGlyph(f, cp);
+  if (glyph == nullptr || glyph->dataLength != 0) return Prerasterize::Skipped;  // absent or already drawn
+  if (glyph->dataOffset != kPendingBox && (glyph->width == 0 || glyph->height == 0)) return Prerasterize::Skipped;
+  rasterizeInto(f, const_cast<EpdGlyph&>(*glyph));
+  return Prerasterize::Done;
+}
+
 bool TtfEpdFont::addCoverage(const char* utf8) {
   if (!loaded_ || utf8 == nullptr) return false;
   const auto* p = reinterpret_cast<const unsigned char*>(utf8);

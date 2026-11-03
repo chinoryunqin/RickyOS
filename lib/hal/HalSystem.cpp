@@ -15,6 +15,7 @@
 #include "esp_private/esp_system_attr.h"
 #include "esp_private/panic_internal.h"
 #include "esp_timer.h"
+#include "esp_app_desc.h"
 #if !__riscv
 #include <xtensa_context.h>  // XtExcFrame for the stack capture below
 #endif
@@ -93,7 +94,28 @@ void IRAM_ATTR __wrap_panic_print_backtrace(const void* frame, int core) {
 
 namespace HalSystem {
 
+std::array<uint8_t, 8> getFirmwareBuildId() {
+  std::array<uint8_t, 8> result{};
+  const auto* description = esp_app_get_description();
+  for (size_t i = 0; i < result.size(); ++i) result[i] = description->app_elf_sha256[i];
+  return result;
+}
+
+namespace {
+std::string previousSessionLogs;
+}  // namespace
+
+std::string takePreviousSessionLogs() {
+  std::string logs;
+  logs.swap(previousSessionLogs);
+  return logs;
+}
+
 void begin() {
+  // A software restart keeps the RTC log ring; keep its text before it is cleared.
+  if (!isRebootFromPanic() && esp_reset_reason() == ESP_RST_SW && !sanitizeLogHead()) {
+    previousSessionLogs = getLastLogs();
+  }
   // On a panic reboot, preserve diagnostics until checkPanic() has tried to write them to the SD card.
   // Ordinary boots clear any stale retained diagnostics.
   if (!isRebootFromPanic()) {

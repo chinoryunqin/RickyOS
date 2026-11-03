@@ -69,6 +69,7 @@ bool convert(HalFile&,HalFile& out,int,int) {
 }
 namespace PngToBmpConverter {bool pngFileTo1BitBmpStreamWithSize(HalFile& in,HalFile& out,int w,int h){return convert(in,out,w,h);}}
 namespace JpegToBmpConverter {bool jpegFileTo1BitBmpStreamWithSize(HalFile& in,HalFile& out,int w,int h){return convert(in,out,w,h);}}
+namespace PanelTileCache {void forget(const char*){}}
 #define LOG_ERR(...) ((void)0)
 namespace RickyProfile {
 ''' + method(source, 'bool validAvatarBitmap(') + method(source, 'bool setAvatar(') +

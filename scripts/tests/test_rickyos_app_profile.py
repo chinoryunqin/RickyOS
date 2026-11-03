@@ -21,6 +21,7 @@ class RickyAppProfileTest(unittest.TestCase):
         icons = sorted(set(re.findall(r'UIIcon::(\w+)', catalog)))
         program = '''
 #include "AppVisibility.h"
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 enum class StrId { TITLES };
@@ -57,7 +58,7 @@ int main() {
   }
 #ifdef RICKYOS_PRODUCT
 #ifdef ENABLE_CHINESE_VERSION
-  static_assert(kAppCount == 6);  // transfer, WeRead, stats, Gomoku, calculator, Screensaver
+  static_assert(kAppCount == (FREEINK_DEVICE_METALIO_PLUS ? 7 : 6));  // Plus also has Recorder
 #else
   static_assert(kAppCount == 6);
 #endif
@@ -88,6 +89,9 @@ int main() {
     AppId::Minesweeper, AppId::Game2048, AppId::UglyAvatar, AppId::Buddy, AppId::PixelSwitch,
 #endif
     AppId::Calculator,
+#if FREEINK_DEVICE_METALIO_PLUS
+    AppId::Recorder,
+#endif
 #ifndef RICKYOS_PRODUCT
     AppId::Woodfish,
 #endif
@@ -95,7 +99,7 @@ int main() {
   static_assert(sizeof(expected) / sizeof(expected[0]) == kAppCount);
   for (int i=0; i<kAppCount; ++i) assert(kAppEntries[i].id == expected[i]);
   // Every persisted visibility combination still maps to the correct sparse IDs.
-  for (uint32_t mask=0; mask<(1u<<17); ++mask) {
+  for (uint32_t mask=0; mask<(1u<<18); ++mask) {
     int visible=0;
     for (int i=0;i<kAppCount;++i) {
       if (mask & appBit(kAppEntries[i].id)) continue;
@@ -106,7 +110,8 @@ int main() {
   }
   static_assert(static_cast<uint8_t>(AppId::Gomoku)==3);
   static_assert(static_cast<uint8_t>(AppId::Sokoban)==11);
-  static_assert(static_cast<uint8_t>(AppId::Count)==17);
+  static_assert(static_cast<uint8_t>(AppId::Recorder)==17);
+  static_assert(static_cast<uint8_t>(AppId::Count)==18);
 }
 '''
         program = program.replace('TITLES', ','.join(titles)).replace('ICONS', ','.join(icons))
@@ -117,13 +122,15 @@ int main() {
             cpp.write_text(program)
             for product in (True,):  # RickyOS is the only product: Chinese, its own catalog
                 for chinese in (True,):
-                    with self.subTest(product=product, chinese=chinese):
-                        binary = Path(directory) / f'catalog-{product}-{chinese}'
-                        flags = (['-DRICKYOS_PRODUCT=1'] if product else [])
-                        flags += ['-DENABLE_CHINESE_VERSION=1'] if chinese else []
-                        subprocess.run(['c++', '-std=c++20', '-Wall', '-Wextra', '-Werror',
-                                        '-I' + str(ROOT / 'src'), *flags, str(cpp), '-o', str(binary)], check=True)
-                        subprocess.run([str(binary)], check=True)
+                    for plus in (False, True):
+                        with self.subTest(product=product, chinese=chinese, plus=plus):
+                            binary = Path(directory) / f'catalog-{product}-{chinese}-{plus}'
+                            flags = (['-DRICKYOS_PRODUCT=1'] if product else [])
+                            flags += ['-DENABLE_CHINESE_VERSION=1'] if chinese else []
+                            flags += [f'-DFREEINK_DEVICE_METALIO_PLUS={int(plus)}']
+                            subprocess.run(['c++', '-std=c++20', '-Wall', '-Wextra', '-Werror',
+                                            '-I' + str(ROOT / 'src'), *flags, str(cpp), '-o', str(binary)], check=True)
+                            subprocess.run([str(binary)], check=True)
 
     def test_only_product_builds_exclude_game_sources(self):
         config = configparser.ConfigParser(interpolation=None)

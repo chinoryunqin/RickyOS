@@ -1,6 +1,10 @@
 #include "TrustedTime.h"
 
 #include <Arduino.h>
+#include <BoardConfig.h>
+#if FREEINK_DEVICE_METALIO_PLUS
+#include <HalClock.h>
+#endif
 #include <Logging.h>
 #include <Preferences.h>
 #include <esp_sntp.h>
@@ -68,7 +72,9 @@ void configureSntp() {
 }  // namespace
 
 void init() {
+#if !FREEINK_DEVICE_METALIO_PLUS
   sntp_set_time_sync_notification_cb(&onTimeSynced);
+#endif
   const int64_t floor = readFloor();
   if (floor < MIN_VALID_EPOCH) return;
   raiseFloor(floor);
@@ -95,11 +101,18 @@ void note() {
 }
 
 void startSync() {
+#if FREEINK_DEVICE_METALIO_PLUS
+  halClock.requestSync();
+#else
   if (esp_sntp_enabled()) return;  // running; the sync callback handles the rest
   configureSntp();
+#endif
 }
 
 bool syncNow(const uint32_t timeoutMs) {
+#if FREEINK_DEVICE_METALIO_PLUS
+  return halClock.syncNow(timeoutMs);
+#else
   // configureSntp() (configTzTime) restarts SNTP if already running.
   configureSntp();
   const unsigned long deadline = millis() + timeoutMs;
@@ -109,6 +122,7 @@ bool syncNow(const uint32_t timeoutMs) {
   const bool synced = sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED;
   if (synced) note();
   return synced;
+#endif
 }
 
 int64_t trustedNow() {

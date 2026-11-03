@@ -20,6 +20,9 @@
 // changes. The default Language index is resolved by defaultLanguageIndex()
 // (declared below, defined in the .cpp where the include is local).
 #include "util/HomeButtonInput.h"
+#if FREEINK_DEVICE_METALIO_PLUS
+#include "util/PlusButtonInput.h"
+#endif
 
 class CrossPointSettings : public PersistableStore<CrossPointSettings> {
  private:
@@ -362,7 +365,15 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   int8_t getCharacterSpacing() const { return static_cast<int8_t>(characterSpacing - CHARACTER_SPACING_OFFSET); }
   uint8_t textAntiAliasing = 1;
   uint8_t fakeBold = SYNTHETIC_BOLD_STANDARD;
-  uint8_t readingBackgroundEnabled = 0;
+  // readingMode::Mode: Original, Puppy (小狗伴读), Immersive (沉浸), Ancient (古籍).
+  // Chosen in the reader menu; persisted outside SettingsList.
+  static constexpr uint8_t READING_MODE_COUNT = 4;
+  uint8_t readingMode = 0;
+  // Library shelf view, chosen in the shelf tools (not in SettingsList): 0 covers, 1 list.
+  uint8_t libraryListView = 0;
+  // RickyOS badges already announced (bit per rickyBadges::Id); bit 31 marks the set as
+  // seeded, so badges earned before this version are not announced all at once.
+  uint32_t rickyBadgesSeen = 0;
   uint8_t readingGuideLineEnabled = 0;
   uint8_t readingGuideLineStyle = static_cast<uint8_t>(readingGuideLine::Style::ShortDash);
   int8_t readingGuideLineOffset = READING_GUIDE_LINE_OFFSET_DEFAULT;
@@ -371,6 +382,11 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // X4 Pro: double-click power toggles the frontlight. Disabling frees the
   // power button for shortPwrBtn actions without the double-click wait.
   uint8_t doubleClickPwrLight = 1;
+#if FREEINK_DEVICE_METALIO_PLUS
+  // AI, lower Previous/Next, side Up/Down; each short then long.
+  uint8_t plusTouchFeedback = 1;
+  uint8_t plusKeyActions[plus_keys::FIELD_COUNT] = {0, 1, 0, 1, 0, 1, 0, 1, 0, 1};
+#endif
   uint8_t homeButtonTapAction = static_cast<uint8_t>(HomeButtonAction::Home);
   uint8_t homeButtonDoubleTapAction = static_cast<uint8_t>(HomeButtonAction::ToggleFrontlight);
   uint8_t homeButtonLongPressAction = static_cast<uint8_t>(HomeButtonAction::ReaderMenu);
@@ -402,13 +418,29 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t sleepTimeoutMinutes = 10;
   // E-ink refresh frequency (default 15 pages)
   uint8_t refreshFrequency = REFRESH_15;
+uint8_t nativePageTurn = 1; // off / skim (default) / shallow arc / ripple. Saved IDs never reorder.
+// Plus reading refresh: 0 = 高清 (full reader waveform, ink restore, motion), 1 = 快刷
+// (the short text-turn table, unchanged pixels held, no motion). Switched in the
+// control center over a book; other panels ignore it.
+uint8_t readerFastRefresh = 0;
+  uint8_t mainTabMotion = 1; // Native main-tab motion, on by default; independent of the page turn.
   uint8_t hyphenationEnabled = 0;
 
   // Reader screen margin settings
   static constexpr uint8_t SCREEN_MARGIN_MIN = 5;
   static constexpr uint8_t SCREEN_MARGIN_MAX = 40;
   static constexpr uint8_t SCREEN_MARGIN_STEP = 5;
+  // Legacy single margin: read only to seed the four sides below on upgrade.
   uint8_t screenMargin = UiHighDpiProfile::enabled ? 25 : SCREEN_MARGIN_MIN;
+  // Each side of the text box on its own, so text can clear a reading background's
+  // art. The header and footer keep their own reserve: top/bottom never go under it.
+  static constexpr uint8_t READER_MARGIN_MIN = 0;
+  static constexpr uint8_t READER_MARGIN_MAX = 200;
+  static constexpr uint8_t READER_MARGIN_STEP = 5;
+  uint8_t marginTop = UiHighDpiProfile::enabled ? 25 : SCREEN_MARGIN_MIN;
+  uint8_t marginBottom = UiHighDpiProfile::enabled ? 25 : SCREEN_MARGIN_MIN;
+  uint8_t marginLeft = UiHighDpiProfile::enabled ? 25 : SCREEN_MARGIN_MIN;
+  uint8_t marginRight = UiHighDpiProfile::enabled ? 25 : SCREEN_MARGIN_MIN;
   // Hide battery percentage
   uint8_t hideBatteryPercentage = HIDE_NEVER;
   // Long-press page turn button behavior
@@ -446,18 +478,48 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     RICKY_STANDBY_CALENDAR,
     RICKY_STANDBY_COVER,
     RICKY_STANDBY_KEEP_PAGE,
+    RICKY_STANDBY_TRANSPARENT,
     RICKY_STANDBY_FACE_COUNT
   };
   uint8_t rickyStandbyFace = RICKY_STANDBY_PICTURE;
+  // The book-cover face's layout: the cover alone, or the "上次读到这里" card as an
+  // editorial page or a cover-over-text split; and whether that card shows the excerpt.
+  enum STANDBY_COVER_LAYOUT : uint8_t {
+    STANDBY_COVER_PICTURE = 0,
+    STANDBY_COVER_EDITORIAL,
+    STANDBY_COVER_SPLIT,
+    STANDBY_COVER_LAYOUT_COUNT
+  };
+  uint8_t standbyCoverLayout = STANDBY_COVER_PICTURE;
+  uint8_t standbyShowExcerpt = 1;
   // What stays on the screen once the device is off: what Standby showed, the RickyOS
-  // rest screen, or nothing. Replaces choosing among the sleepScreen modes directly.
+  // rest screen, nothing, or an independent picture. Saved IDs are append-only.
   enum RICKY_POWER_OFF_SCREEN : uint8_t {
     RICKY_POWER_OFF_SAME = 0,
     RICKY_POWER_OFF_DEFAULT,
     RICKY_POWER_OFF_BLANK,
+    RICKY_POWER_OFF_CUSTOM,  // independent /poweroff.bmp; append to preserve saved values
     RICKY_POWER_OFF_SCREEN_COUNT
   };
   uint8_t rickyPowerOffScreen = RICKY_POWER_OFF_DEFAULT;
+  // 阅读背景: /readingbg.bmp under the page, lightened by this much (off by default).
+  enum READING_BACKGROUND : uint8_t {
+    READING_BACKGROUND_OFF = 0,
+    READING_BACKGROUND_LIGHT,
+    READING_BACKGROUND_MEDIUM,
+    READING_BACKGROUND_DEEP,
+    READING_BACKGROUND_COUNT
+  };
+  uint8_t readingBackground = READING_BACKGROUND_OFF;
+  // What lies under the page: the chosen picture, or ruled paper drawn to the text's rows.
+  enum READING_PAPER : uint8_t {
+    READING_PAPER_PICTURE = 0,
+    READING_PAPER_LINES,
+    READING_PAPER_GRID,
+    READING_PAPER_DOTS,
+    READING_PAPER_COUNT
+  };
+  uint8_t readingPaper = READING_PAPER_PICTURE;
   // The sleepScreen mode the power-off screen draws with (SleepActivity).
   uint8_t rickySleepScreenMode() const;
   // Standby that has run this long powers off (index into RICKY_AUTO_OFF_HOURS; 0 = never).
@@ -486,11 +548,17 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   char rickyNickname[49] = "";
   char rickyAvatarPath[96] = "";
   char rickyHomePhrase[97] = "";  // Empty uses the localized default; at most 96 UTF-8 bytes.
+  // Profile -> Theme: the companion drawn across the UI (home peek, stats moods, reading
+  // companion, paw prints) and named in its lines. Pictures only; reader caches unaffected.
+  enum RICKY_COMPANION { RICKY_COMPANION_DOG = 0, RICKY_COMPANION_CAT = 1 };
+  uint8_t rickyCompanion = RICKY_COMPANION_DOG;
+  bool rickyCat() const { return rickyCompanion == RICKY_COMPANION_CAT; }
   // Settings -> System -> Gestures: the touch gestures that act everywhere. Swiping up
   // from the bottom to go Home is off by default: on this device it sat right on the
   // last lines of a page and on the tab bar, so readers left books by accident.
   uint8_t rickyGestureBack = 1;     // swipe right from the left side: Back
   uint8_t rickyGestureHome = 0;     // swipe up from the bottom: Home
+  uint8_t standbySwipeUnlock = 0;  // opt-in left-edge right swipe; independent of global Back/Home
   uint8_t rickyGestureControl = 1;  // swipe down from the top: control center
   uint8_t rickyGestureStatus = 1;   // tap the status bar: control center
   // Body-text stroke weight in the reader: 0 thinnest .. 2 the font as drawn .. 4 boldest.
@@ -529,6 +597,18 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t imageRendering = IMAGES_DISPLAY;
   // Tilt-based page turning (X3 only — requires QMI8658 IMU)
   uint8_t tiltPageTurn = TILT_OFF;
+  // Tilt page turn on the Plus's SC7A20H still needs tuning (it misfires): kept off and
+  // out of the menu there whatever is stored, until it is tuned.
+#if FREEINK_DEVICE_METALIO_PLUS
+  static constexpr bool kTiltPageTurnShipped = false;
+#else
+  static constexpr bool kTiltPageTurnShipped = true;
+#endif
+  uint8_t effectiveTiltPageTurn() const { return kTiltPageTurnShipped ? tiltPageTurn : TILT_OFF; }
+  // Knock twice on the back to turn the page (CrossPointBackTap: off / next / previous),
+  // and how hard a knock must be (0 firm, 1 medium, 2 light). Boards with the SC7A20H.
+  uint8_t backTapPageTurn = 0;
+  uint8_t backTapSensitivity = 1;
   // Master reader-touch toggle on boards with a touch controller.
   uint8_t touchReaderControls = TOUCH_READER_ON;
   // Which gestures turn the page in each direction (PAGE_TURN_GESTURE).
@@ -555,6 +635,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t showReaderMenu = READER_MENU_TAP;
   // Frontlight quick-panel state. Brightness and warmth remain persisted even
   // when restore-on-wake is disabled.
+  uint8_t speakerVolume = 35;  // System output volume, persisted independently of button feedback.
   uint8_t frontlightBrightness = 60;
   uint8_t frontlightWarmth = 50;
   uint8_t frontlightOn = 0;
@@ -569,11 +650,6 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Exact version of the startup guide last completed. Zero/missing means never completed.
   uint8_t onboardingVersion = 0;
   // Keyboard layouts the user can reach, using keyboard_layouts::ALL table bits.
-  // 0 means "not configured", resolved to the UI language's layout plus English.
-  // Any other value is an explicit choice and is used as-is: the language of the
-  // books someone reads is not necessarily the language of their UI.
-  // See keyboard_layouts:: for the bit assignment and the defaulting rules.
-  uint16_t keyboardLayouts = 0;
   // Quick Resume: keep current content visible with moon icon instead of showing a static sleep screen.
   uint8_t quickResumeSleepScreen = QUICK_RESUME_NEVER;
   // OTA update channel preference (0 = stable, 1 = nightly).
@@ -628,6 +704,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     bool showsProgressBar() const { return progressBarMode != HIDE_PROGRESS; }
     bool showsTitle() const { return titleMode != HIDE_TITLE; }
     bool showsClock() const { return clockMode != STATUS_BAR_CLOCK_HIDE; }
+    // The reader's header row (title, clock, battery) and footer row (page count,
+    // percent) reserve their space separately: a hidden footer gives its row to the text.
+    bool headerLaneVisible() const { return showsTitle() || showBattery || showsClock(); }
+    bool footerLaneVisible() const { return showChapterPageCount || showBookProgressPercent; }
     bool textLaneVisible() const {
       return showChapterPageCount || showBookProgressPercent || showsTitle() || showBattery || showsClock();
     }

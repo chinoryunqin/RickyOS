@@ -1,3 +1,4 @@
+#include <HalNetwork.h>
 #include "WeReadBrowseActivity.h"
 
 #include <FontCacheManager.h>
@@ -209,7 +210,7 @@ void WeReadBrowseActivity::connectThenCache() {
     RenderLock renderBarrier(*this);
     releaseReaderFont();
   }
-  if (WiFi.status() == WL_CONNECTED) {
+  if (HalNetwork::connected()) {
     startCache();
     return;
   }
@@ -225,7 +226,7 @@ void WeReadBrowseActivity::connectThenCache() {
                           mappedInput.isPressed(MappedInputManager::Button::Confirm) ||
                           mappedInput.isPressed(MappedInputManager::Button::NavPrevious) ||
                           mappedInput.isPressed(MappedInputManager::Button::NavNext);
-    if (!result.isCancelled && WiFi.status() == WL_CONNECTED) {
+    if (!result.isCancelled && HalNetwork::connected()) {
       startCache();
     } else {
       error_ = WeReadClient::Error::Network;
@@ -611,7 +612,7 @@ void WeReadBrowseActivity::handleErrorInput() {
 const char* WeReadBrowseActivity::errorMessage() const {
   switch (error_) {
     case WeReadClient::Error::Network:
-      return WiFi.status() == WL_CONNECTED ? tr(STR_WEREAD_HTTP_ERROR) : tr(STR_WEREAD_NO_WIFI);
+      return HalNetwork::connected() ? tr(STR_WEREAD_HTTP_ERROR) : tr(STR_WEREAD_NO_WIFI);
     case WeReadClient::Error::SessionExpired:
     case WeReadClient::Error::LoginFailed:
       return tr(STR_WEREAD_LOGIN_REQUIRED);

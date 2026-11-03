@@ -1,3 +1,4 @@
+#include <HalNetwork.h>
 #include "RickyWallpaperDownloadActivity.h"
 
 #include <ArduinoJson.h>
@@ -30,10 +31,11 @@ namespace {
 constexpr char kManifestTmp[] = "/wallpapers_manifest.tmp";
 constexpr char kStandbyPicture[] = "/sleep.bmp";
 constexpr size_t kMaxManifestBytes = 8 * 1024;
-constexpr size_t kMaxItems = 24;
+constexpr size_t kMaxItems = 48;  // pictures and stickers together
 constexpr uint32_t kMaxItemBytes = 2 * 1024 * 1024;
 constexpr size_t kMaxUrlBytes = 256;
 constexpr int kFileAttempts = 3;
+constexpr uint8_t kProgressStepPercent = 10;
 
 bool validBase(const char* url) {
   const size_t length = url ? strlen(url) : 0;
@@ -92,8 +94,13 @@ bool copyFile(const std::string& from, const char* to) {
 
 void RickyWallpaperDownloadActivity::onEnter() {
   Activity::onEnter();
+  enteredMs_ = millis();
   state_ = State::Connecting;
   requestUpdate();
+  if (HalNetwork::connected()) {
+    onWifiResult(true);
+    return;
+  }
   if (!startActivityForResultWith<WifiSelectionActivity>(
           [this](const ActivityResult& result) { onWifiResult(!result.isCancelled); })) {
     state_ = State::Failed;
@@ -118,13 +125,34 @@ void RickyWallpaperDownloadActivity::onWifiResult(const bool connected) {
     return;
   }
   usedNetwork_ = true;
+  LOG_INF("WPDL", "Connection ready in %lu ms", static_cast<unsigned long>(millis() - enteredMs_));
   {
     RenderLock lock(*this);
     state_ = State::Loading;
   }
   requestUpdateAndWait();
   NetworkStartup::prepare(renderer);
-  const bool ok = fetchManifest() && downloadAll();
+#if RICKYOS_PLUS_RADIO_COMPARE
+  extern void plusRadioCompareOnConnected();
+  plusRadioCompareOnConnected();
+#endif
+#if RICKYOS_PLUS_NETTEST_CONNECTED
+  extern void plusNetSelfTestOnConnected();
+  plusNetSelfTestOnConnected();
+#endif
+#if RICKYOS_PLUS_TCP_TRACE
+  extern void plusTcpTraceBegin();
+  plusTcpTraceBegin();
+#endif
+  const uint32_t manifestStarted = millis();
+  const bool manifestOk = fetchManifest();
+#if RICKYOS_PLUS_TCP_TRACE
+  extern void plusTcpTraceEnd();
+  plusTcpTraceEnd();
+#endif
+  LOG_INF("WPDL", "Manifest ready=%u in %lu ms, items=%zu", manifestOk,
+          static_cast<unsigned long>(millis() - manifestStarted), items_.size());
+  const bool ok = manifestOk && downloadAll();
   if (ok) installFirstIfUnset();
   {
     RenderLock lock(*this);
@@ -139,12 +167,19 @@ bool RickyWallpaperDownloadActivity::fetchManifest() {
   baseUrl_.clear();
   if (!HttpDownloader::hasMemoryForTls()) return false;
   // CDN caches of the "@latest" manifests go stale independently (a mainland jsDelivr
-  // edge kept v1.0.0 after v1.1.0 shipped), so read every route and keep the newest
-  // release, judged by the tag in its baseUrl.
+  // edge kept v1.0.0 after v1.1.0 shipped), so read the CDN routes and keep the newest
+  // release, judged by the tag in its baseUrl. GitHub's releases/latest and the COS
+  // bucket (no cache in front) are authoritative: after one answers, a CDN copy can only
+  // match or lag, so the search stops there. From mainland China GitHub is also the slow
+  // route (two redirects to a host that is often blocked), so it comes last and is read
+  // only when nothing before it answered; COS leads the order.
   uint32_t bestRelease = 0;
   for (int attempt = 0; attempt < RickyWallpaperCatalog::MANIFEST_COUNT; ++attempt) {
-    const char* url = RickyWallpaperCatalog::manifestFor(SETTINGS.contentProfile, attempt);
-    if (HttpDownloader::downloadToFile(url, kManifestTmp, nullptr) != HttpDownloader::OK) {
+    const char* url = RickyWallpaperCatalog::manifestFor(attempt);
+    if (url == nullptr) continue;  // COS route off
+    const bool authoritative = url == RickyWallpaperCatalog::GITHUB_MANIFEST || RickyCos::isCosUrl(url);
+    if (authoritative && !items_.empty()) continue;
+    if (HttpDownloader::downloadIndex(url, kManifestTmp) != HttpDownloader::OK) {
       LOG_ERR("WPDL", "Manifest failed: %s", url);
       Storage.remove(kManifestTmp);
       continue;
@@ -166,18 +201,21 @@ bool RickyWallpaperDownloadActivity::fetchManifest() {
     LOG_INF("WPDL", "Manifest %s: release %06x", url, static_cast<unsigned>(release));
     if (!items_.empty() && release <= bestRelease) continue;
     std::vector<Item> items;
-    for (JsonVariant entry : doc["items"].as<JsonArray>()) {
-      const char* name = entry["name"] | "";
-      const char* file = entry["file"] | "";
-      const uint32_t size = entry["size"] | 0u;
-      const bool picture =
-          FsHelpers::hasPngExtension(std::string_view(file)) || FsHelpers::hasBmpExtension(std::string_view(file));
-      if (!validName(name) || !validName(file) || !picture || size == 0 || size > kMaxItemBytes ||
-          items.size() >= kMaxItems) {
-        LOG_ERR("WPDL", "Skipping invalid manifest item");
-        continue;
+    for (const bool sticker : {false, true}) {
+      for (JsonVariant entry : doc[sticker ? "stickers" : "items"].as<JsonArray>()) {
+        const char* name = entry["name"] | "";
+        const char* file = entry["file"] | "";
+        const uint32_t size = entry["size"] | 0u;
+        // Stickers need their alpha, so PNG only; pictures may also be BMP.
+        const bool picture = FsHelpers::hasPngExtension(std::string_view(file)) ||
+                             (!sticker && FsHelpers::hasBmpExtension(std::string_view(file)));
+        if (!validName(name) || !validName(file) || !picture || size == 0 || size > kMaxItemBytes ||
+            items.size() >= kMaxItems) {
+          LOG_ERR("WPDL", "Skipping invalid manifest item");
+          continue;
+        }
+        items.push_back(Item{name, file, size, entry["crc32"] | 0u, sticker});
       }
-      items.push_back(Item{name, file, size, entry["crc32"] | 0u});
     }
     if (items.empty()) continue;
     bestRelease = release;
@@ -187,16 +225,19 @@ bool RickyWallpaperDownloadActivity::fetchManifest() {
     for (JsonVariant mirror : doc["mirrors"].as<JsonArray>()) {
       if (validBase(mirror.as<const char*>()) && mirrors_.size() < 4) mirrors_.emplace_back(mirror.as<const char*>());
     }
+    if (authoritative) break;
   }
-  // File hosts: in China the jsDelivr hosts go first whichever manifest won (GitHub is
-  // slow or unreachable there); elsewhere the manifest's own order.
+  // File hosts: the COS bucket, then the jsDelivr hosts go first whichever manifest won
+  // (GitHub is slow or unreachable from mainland China), the same on every device.
   hosts_.clear();
   hosts_.push_back(baseUrl_);
   hosts_.insert(hosts_.end(), mirrors_.begin(), mirrors_.end());
-  if (SETTINGS.contentProfile == CrossPointSettings::ContentProfile::China) {
-    std::stable_partition(hosts_.begin(), hosts_.end(),
-                          [](const std::string& host) { return host.find("jsdelivr.net") != std::string::npos; });
-  }
+  const auto rank = [](const std::string& host) {
+    if (RickyCos::isCosUrl(host.c_str())) return 0;
+    return host.find("jsdelivr.net") != std::string::npos ? 1 : 2;
+  };
+  std::stable_sort(hosts_.begin(), hosts_.end(),
+                   [&rank](const std::string& a, const std::string& b) { return rank(a) < rank(b); });
   preferredHost_ = 0;
   return !items_.empty();
 }
@@ -204,10 +245,13 @@ bool RickyWallpaperDownloadActivity::fetchManifest() {
 bool RickyWallpaperDownloadActivity::downloadAll() {
   if (!Storage.ensureDirectoryExists("/images") || !Storage.ensureDirectoryExists(RickyWallpaperCatalog::FOLDER))
     return false;
+  const bool anySticker = std::any_of(items_.begin(), items_.end(), [](const Item& item) { return item.sticker; });
+  if (anySticker && !Storage.ensureDirectoryExists(RickyWallpaperCatalog::STICKER_FOLDER)) return false;
   bytesTotal_ = 0;
   for (const auto& item : items_) bytesTotal_ += item.size;
   bytesDone_ = 0;
   progressBytes_ = 0;
+  lastPercent_ = 0;
   {
     RenderLock lock(*this);
     state_ = State::Downloading;
@@ -215,7 +259,9 @@ bool RickyWallpaperDownloadActivity::downloadAll() {
   requestUpdate();
   for (currentItem_ = 0; currentItem_ < items_.size(); ++currentItem_) {
     const Item& item = items_[currentItem_];
-    const std::string dest = std::string(RickyWallpaperCatalog::FOLDER) + "/" + item.name + extensionOf(item.file);
+    const std::string dest = std::string(item.sticker ? RickyWallpaperCatalog::STICKER_FOLDER
+                                                      : RickyWallpaperCatalog::FOLDER) +
+                             "/" + item.name + extensionOf(item.file);
     if (!downloadItem(item, dest)) return false;
     bytesDone_ += item.size;
   }
@@ -233,7 +279,9 @@ bool RickyWallpaperDownloadActivity::downloadItem(const Item& item, const std::s
     if (mappedInput.wasReleased(MappedInputManager::Button::Back)) cancelRequested_ = true;
     progressBytes_ = done + std::min<size_t>(downloaded, item.size);
     const auto percent = static_cast<uint8_t>(progressBytes_ * 100 / std::max<size_t>(1, bytesTotal_));
-    if (percent != lastPercent_) {
+    // Every repaint is a full e-ink refresh whose render competes with the transfer for
+    // the CPU; 10 % steps (as the font download) instead of one per percent.
+    if (percent >= lastPercent_ + kProgressStepPercent) {
       lastPercent_ = percent;
       requestUpdate(true);
     }
@@ -254,6 +302,7 @@ bool RickyWallpaperDownloadActivity::downloadItem(const Item& item, const std::s
   Storage.remove(dest.c_str());
   if (!Storage.rename(part.c_str(), dest.c_str())) return false;
   // An earlier release shipped this picture as a BMP; keep one copy in the folder.
+  if (item.sticker) return true;
   const std::string older = std::string(RickyWallpaperCatalog::FOLDER) + "/" + item.name + ".bmp";
   if (older != dest && Storage.exists(older.c_str())) Storage.remove(older.c_str());
   return true;
@@ -261,9 +310,10 @@ bool RickyWallpaperDownloadActivity::downloadItem(const Item& item, const std::s
 
 void RickyWallpaperDownloadActivity::installFirstIfUnset() {
   // Never replace a picture the user chose.
-  if (items_.empty() || Storage.exists(kStandbyPicture)) return;
-  const std::string first =
-      std::string(RickyWallpaperCatalog::FOLDER) + "/" + items_.front().name + extensionOf(items_.front().file);
+  // The first standby picture, never a sticker (its alpha needs the kept page under it).
+  const auto picture = std::find_if(items_.begin(), items_.end(), [](const Item& item) { return !item.sticker; });
+  if (picture == items_.end() || Storage.exists(kStandbyPicture)) return;
+  const std::string first = std::string(RickyWallpaperCatalog::FOLDER) + "/" + picture->name + extensionOf(picture->file);
   bool installed = false;
   if (FsHelpers::hasPngExtension(first)) {
     // Same conversion the picture preview uses: an 8-bit gray BMP keeps all 16 grays.
@@ -300,9 +350,11 @@ void RickyWallpaperDownloadActivity::render(RenderLock&&) {
   const int lineHeight = renderer.getLineHeight(UI_12_FONT_ID);
   const int centerY = height / 2;
   UITheme::drawCenteredText(renderer, page, UI_12_FONT_ID, centerY - lineHeight * 3, tr(STR_RICKY_WALLPAPER_DOWNLOAD));
-  char status[64];
+  char status[96];
   switch (state_) {
     case State::Connecting:
+      snprintf(status, sizeof(status), "%s", tr(STR_CONNECTING_SAVED_WIFI));
+      break;
     case State::Loading:
       snprintf(status, sizeof(status), "%s", tr(STR_RICKY_WALLPAPER_LOADING));
       break;
@@ -311,7 +363,17 @@ void RickyWallpaperDownloadActivity::render(RenderLock&&) {
                static_cast<unsigned>(std::min(currentItem_ + 1, items_.size())), static_cast<unsigned>(items_.size()));
       break;
     case State::Done:
-      snprintf(status, sizeof(status), tr(STR_RICKY_WALLPAPER_DONE), static_cast<unsigned>(items_.size()));
+    {
+      // Two folders: the gallery lists the standby pictures, 透明壁纸 holds the stickers.
+      const auto stickers = static_cast<unsigned>(
+          std::count_if(items_.begin(), items_.end(), [](const Item& item) { return item.sticker; }));
+      const auto pictures = static_cast<unsigned>(items_.size()) - stickers;
+      if (stickers) {
+        snprintf(status, sizeof(status), tr(STR_RICKY_WALLPAPER_DONE_SPLIT), pictures, stickers);
+      } else {
+        snprintf(status, sizeof(status), tr(STR_RICKY_WALLPAPER_DONE), pictures);
+      }
+    }
       break;
     case State::Failed:
       snprintf(status, sizeof(status), "%s", tr(STR_RICKY_WALLPAPER_FAILED));

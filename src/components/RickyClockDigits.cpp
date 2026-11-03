@@ -63,14 +63,27 @@ int widthBw(const char* text, const int scalePercent) { return width(text) * sca
 int capHeightBw(const int scalePercent) { return capHeight() * scalePercent / 100; }
 
 void drawBw(GfxRenderer& renderer, int x, const int yTop, const char* text, const int scalePercent) {
+  // One coverage buffer for the whole string, sized for the largest glyph. A digit is
+  // ~10 KB of coverage, and allocating per glyph freed and immediately re-requested a
+  // differently sized block five times per "HH:MM" render, which is the allocate/free
+  // pattern that fragments this device's heap. peakAllocBytes is unchanged; only the
+  // number of allocator round-trips and the block-size churn drop.
+  size_t peakAllocBytes = 0;
+  for (const auto& glyph : ricky_clock_digits::kGlyphs) {
+    peakAllocBytes = std::max(peakAllocBytes, static_cast<size_t>(glyph.width) * glyph.height);
+  }
+  if (peakAllocBytes == 0) return;
+
+  auto coverage = makeUniqueNoThrow<uint8_t[]>(peakAllocBytes);
+  if (!coverage) return;
+
   for (const char* c = text; *c; ++c) {
     const auto* glyph = glyphFor(*c);
     if (!glyph) continue;
     const int w = glyph->width;
     const int h = glyph->height;
-    // Unpack the runs once per glyph (a digit is ~10 KB of coverage).
-    auto coverage = makeUniqueNoThrow<uint8_t[]>(static_cast<size_t>(w) * h);
-    if (!coverage) return;
+    // Reused across glyphs, so clear the previous glyph's ink before unpacking this one.
+    std::fill_n(coverage.get(), static_cast<size_t>(w) * h, uint8_t{0});
     int pixel = 0;
     for (int i = 0; i < glyph->rleBytes && pixel < w * h; ++i) {
       const int run = (glyph->rle[i] >> 4) + 1;

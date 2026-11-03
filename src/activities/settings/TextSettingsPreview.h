@@ -13,7 +13,7 @@ namespace textsettings {
 struct PreviewKey {
   int fontId = -1;
   int fontPointSize = -1;
-  int screenMargin = -1;
+  int marginLeft = -1;
   int textWidth = -1;
   int maxLines = -1;
   float lineCompression = -1.0f;

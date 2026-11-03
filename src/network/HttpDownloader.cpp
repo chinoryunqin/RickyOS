@@ -6,6 +6,7 @@
 #include <Logging.h>
 #include <ResumableFetch.h>
 
+#include <algorithm>
 #include <functional>
 #include <string>
 
@@ -17,7 +18,17 @@ namespace {
 // Per-socket-op timeout. Some OPDS download endpoints are slow to send headers
 // (>15s) and chunked catalogs stall mid-body, so 15s killed them. 60s gives
 // slow servers room.
-constexpr int HTTP_TIMEOUT_MS = 60000;
+constexpr uint32_t HTTP_TIMEOUT_MS = 60000;
+
+// scheme://host[:port] of a URL for logs: paths, queries and userinfo can carry tokens.
+std::string originOf(const std::string& url) {
+  const size_t hostStart = url.find("://");
+  if (hostStart == std::string::npos) return {};
+  std::string origin = url.substr(0, url.find_first_of("/?#", hostStart + 3));
+  const size_t at = origin.rfind('@');
+  if (at != std::string::npos && at > hostStart) origin.erase(hostStart + 3, at + 1 - (hostStart + 3));
+  return origin;
+}
 
 // All HTTP(S) fetches go through wolfSSL (the firmware's only TLS stack: it
 // speaks TLS 1.3 and reads large bodies reliably). Plain-http URLs still use a
@@ -28,7 +39,11 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
                                            const std::vector<HttpDownloader::Header>& headers,
                                            const freeink::FetchSink& sink, const bool* cancelFlag = nullptr,
                                            size_t* bytesOut = nullptr, const bool downgradeRedirectsToHttp = false,
-                                           const char* rootCa = nullptr) {
+                                           const char* rootCa = nullptr, const uint32_t timeoutMs = HTTP_TIMEOUT_MS,
+                                           const std::function<void()>& pollInput = nullptr,
+                                           const uint32_t totalBudgetMs = 0,
+                                           HttpDownloader::SourceCallback onSource = nullptr,
+                                           void* sourceContext = nullptr) {
   char userAgent[80];
   const int length =
       snprintf(userAgent, sizeof(userAgent), "CrossMux-%s-" CROSSPOINT_VERSION, HalSystem::getDeviceModel());
@@ -37,6 +52,8 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
   freeink::FetchOptions options;
   options.redirectToHttp = downgradeRedirectsToHttp;
   bool rejectedRedirect = false;
+  uint32_t lastInputPoll = millis() - 20;
+  const unsigned long started = millis();
   const freeink::FetchResult result = freeink::fetchResumable(
       url, options,
       [&](freeink::SecureHttpClient& http, const bool sameOrigin) {
@@ -47,7 +64,10 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
           rejectedRedirect = true;
           return;
         }
-        http.setTimeout(HTTP_TIMEOUT_MS);
+        if (onSource) onSource(http.getHost().c_str(), sourceContext);
+        const uint32_t elapsed = static_cast<uint32_t>(millis() - started);
+        const uint32_t remaining = totalBudgetMs > elapsed ? totalBudgetMs - elapsed : 1;
+        http.setTimeout(totalBudgetMs == 0 ? timeoutMs : std::min(timeoutMs, remaining));
         if (rootCa)
           http.setCACert(rootCa);
         else
@@ -65,10 +85,32 @@ HttpDownloader::DownloadError runGetSecure(const std::string& url, const std::st
         LOG_DBG("HTTP", "wolfSSL GET: %s (heap %u, max block %u)", url.c_str(), (unsigned)ESP.getFreeHeap(),
                 (unsigned)ESP.getMaxAllocHeap());
       },
-      sink, [&rejectedRedirect, cancelFlag] { return rejectedRedirect || (cancelFlag && *cancelFlag); });
+      sink, [&rejectedRedirect, cancelFlag, &pollInput, &lastInputPoll, started, totalBudgetMs] {
+        // Poll even when no body bytes arrive (headers/TLS/retry waits).
+        const uint32_t now = millis();
+        if (pollInput && now - lastInputPoll >= 20) {
+          lastInputPoll = now;
+          pollInput();
+        }
+        return rejectedRedirect || (cancelFlag && *cancelFlag) ||
+               (totalBudgetMs != 0 && static_cast<uint32_t>(now - started) >= totalBudgetMs);
+      });
   if (bytesOut) *bytesOut = result.bytes;
+  // Where a slow download spends its time: connecting to a dead route shows as a long
+  // time with no bytes, a slow route as a low rate. Origin only: some URLs carry tokens.
+  const unsigned long elapsed = millis() - started;
+  LOG_INF("HTTP", "%zu B in %lu ms (%lu KB/s), status %d: %s", result.bytes, elapsed,
+          elapsed > 0 ? static_cast<unsigned long>(result.bytes / elapsed) : 0UL, result.status, originOf(url).c_str());
 
-  if (result.aborted) return HttpDownloader::ABORTED;
+  if (result.aborted) {
+    // A catalog route exhausting its shared budget should fall through to the next
+    // mirror; preserve ABORTED for a user cancellation or rejected verified redirect.
+    if (totalBudgetMs != 0 && elapsed >= totalBudgetMs && !rejectedRedirect && !(cancelFlag && *cancelFlag)) {
+      LOG_ERR("HTTP", "Index route budget exhausted: %s", originOf(url).c_str());
+      return HttpDownloader::HTTP_ERROR;
+    }
+    return HttpDownloader::ABORTED;
+  }
   if (result.stopped) return HttpDownloader::FILE_ERROR;
   if (result.status == 401 || result.status == 403) {
     LOG_ERR("HTTP", "wolfSSL request unauthorized: status %d: %s", result.status, url.c_str());
@@ -127,7 +169,27 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
                                                              ProgressCallback progress, const bool* cancelFlag,
                                                              const std::string& username, const std::string& password,
                                                              const std::vector<Header>& headers,
-                                                             bool downgradeRedirectsToHttp) {
+                                                             bool downgradeRedirectsToHttp,
+                                                             const std::function<void()>& pollInput,
+                                                             SourceCallback onSource, void* sourceContext) {
+  return downloadToFileWithin(url, destPath, HTTP_TIMEOUT_MS, progress, cancelFlag, username, password, headers,
+                              downgradeRedirectsToHttp, pollInput, 0, onSource, sourceContext);
+}
+
+HttpDownloader::DownloadError HttpDownloader::downloadIndex(const std::string& url, const std::string& destPath) {
+  return downloadToFileWithin(url, destPath, INDEX_TIMEOUT_MS, nullptr, nullptr, "", "", {}, false, nullptr,
+                              INDEX_TIMEOUT_MS);
+}
+
+HttpDownloader::DownloadError HttpDownloader::downloadToFileWithin(const std::string& url, const std::string& destPath,
+                                                                   const uint32_t timeoutMs, ProgressCallback progress,
+                                                                   const bool* cancelFlag, const std::string& username,
+                                                                   const std::string& password,
+                                                                   const std::vector<Header>& headers,
+                                                                   const bool downgradeRedirectsToHttp,
+                                                             const std::function<void()>& pollInput,
+                                                             const uint32_t totalBudgetMs,
+                                                             SourceCallback onSource, void* sourceContext) {
   LOG_DBG("HTTP", "Downloading: %s -> %s", url.c_str(), destPath.c_str());
 
   // Stage in <dest>.part: a failed or cancelled download never replaces an
@@ -141,17 +203,55 @@ HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& 
   }
 
   freeink::FetchSink sink;
+#if FREEINK_DEVICE_METALIO_PLUS
+  // Per-transfer counters stay on the stack; no per-chunk allocation or logs.
+  struct { uint64_t writeUs = 0, progressUs = 0; size_t calls = 0; } timing;
+  sink.write = [&file, &timing](const uint8_t* data, size_t len) {
+    const uint32_t started = micros();
+    const bool ok = file.write(data, len) == len;
+    timing.writeUs += static_cast<uint32_t>(micros() - started);
+    ++timing.calls;
+    return ok;
+  };
+#else
   sink.write = [&file](const uint8_t* data, size_t len) { return file.write(data, len) == len; };
+#endif
   // Reopening for write truncates: the server restarted the body from byte 0.
   sink.rewind = [&file, &partPath] {
     file.close();
     return Storage.openFileForWrite("HTTP", partPath.c_str(), file);
   };
+#if FREEINK_DEVICE_METALIO_PLUS
+  if (progress) sink.progress = [&progress, &timing](size_t bytes, size_t total) {
+    const uint32_t started = micros();
+    progress(bytes, total);
+    timing.progressUs += static_cast<uint32_t>(micros() - started);
+  };
+  const uint32_t transferStarted = millis();
+#else
   sink.progress = progress;
+#endif
 
   size_t downloaded = 0;
+#if FREEINK_DEVICE_METALIO_PLUS
+  const std::function<void()> timedInput = pollInput ? std::function<void()>([&pollInput, &timing] {
+    const uint32_t started = micros();
+    pollInput();
+    timing.progressUs += static_cast<uint32_t>(micros() - started);
+  }) : nullptr;
+#endif
   const DownloadError result =
-      runGetSecure(url, username, password, headers, sink, cancelFlag, &downloaded, downgradeRedirectsToHttp);
+      runGetSecure(url, username, password, headers, sink, cancelFlag, &downloaded, downgradeRedirectsToHttp,
+#if FREEINK_DEVICE_METALIO_PLUS
+                   nullptr, timeoutMs, timedInput, totalBudgetMs, onSource, sourceContext);
+#else
+                   nullptr, timeoutMs, pollInput, totalBudgetMs, onSource, sourceContext);
+#endif
+#if FREEINK_DEVICE_METALIO_PLUS
+  LOG_INF("HTTP", "Transfer timing: bytes=%zu totalMs=%lu writeMs=%llu inputMs=%llu writes=%zu result=%d",
+          downloaded, (unsigned long)(millis() - transferStarted), (unsigned long long)(timing.writeUs / 1000),
+          (unsigned long long)(timing.progressUs / 1000), timing.calls, result);
+#endif
   // Close before any remove() on the same path; DESTRUCTOR_CLOSES_FILE would
   // otherwise close only after the remove. A failed rewind leaves no open handle.
   if (file.isOpen()) file.close();

@@ -12,6 +12,8 @@ class WifiStartupFailureTest(unittest.TestCase):
         methods = '\n'.join(method(source, signature) for signature in (
             'void WifiSelectionActivity::showNetworkError()',
             'void WifiSelectionActivity::startWifiScan(',
+            'bool WifiSelectionActivity::beginScan()',
+            'bool WifiSelectionActivity::recoverScan(',
             'void WifiSelectionActivity::attemptConnection()',
             'void WifiSelectionActivity::onScanEvent('))
         run_cpp(r'''
@@ -21,7 +23,10 @@ class WifiStartupFailureTest(unittest.TestCase):
 #include <string>
 #include <vector>
 #define LOG_ERR(...) ((void)0)
-constexpr int WIFI_STA = 1, WIFI_SCAN_FAILED = -2;
+#define LOG_INF(...) ((void)0)
+constexpr int WIFI_OFF = 0, WIFI_STA = 1, WIFI_SCAN_FAILED = -2;
+void esp_wifi_stop() {}
+void esp_wifi_deinit() {}
 constexpr int WIFI_ALL_CHANNEL_SCAN = 0, WIFI_CONNECT_AP_BY_SIGNAL = 0;
 unsigned long millis() { return 0; }
 void delay(int) {}
@@ -32,12 +37,17 @@ namespace NetworkStartup {
 int starts = 0;
 bool success = false;
 bool setMode(int, int) { ++starts; return success; }
+void logMemory(const char*) {}
+void recordFailure(const char*, int) {}
 }
 struct {
  int disconnects = 0, scans = 0, connections = 0, scanResult = -1;
  void persistent(bool) {}
  void disconnect(bool = false, bool = false) { ++disconnects; }
  int scanNetworks(bool) { ++scans; return scanResult; }
+ void scanDelete() {}
+ void mode(int) {}
+ int getMode() const { return WIFI_STA; }
  void setScanMethod(int) {}
  void setSortMethod(int) {}
  void setHostname(const char*) {}
@@ -53,6 +63,9 @@ class WifiSelectionActivity {
  struct { void reset() {} } listNav;
  struct { void clearTapFlash() {} } app;
  WifiSelectionState state = WifiSelectionState::NETWORK_LIST;
+ bool scanRecoveryUsed = false;
+ bool beginScan();
+ bool recoverScan(const char*, int);
  void closeRouting() { ++routingCloses; }
  int routingCloses = 0;
  void requestUpdate() {}
@@ -67,18 +80,19 @@ int main() {
  activity.startWifiScan(true);
  assert(activity.state == WifiSelectionState::NETWORK_ERROR && !activity.autoConnecting);
  assert(activity.routingCloses >= 2);
- assert(NetworkStartup::starts == 1 && WiFi.disconnects == 0 && WiFi.scans == 0);
+ // One silent radio reset and retry before the error.
+ assert(NetworkStartup::starts == 2 && WiFi.disconnects == 0 && WiFi.scans == 0);
  activity.attemptConnection();
  assert(activity.state == WifiSelectionState::NETWORK_ERROR);
- assert(NetworkStartup::starts == 2 && WiFi.disconnects == 0 && WiFi.connections == 0);
+ assert(NetworkStartup::starts == 3 && WiFi.disconnects == 0 && WiFi.connections == 0);
  // Retry is routed from the error screen and succeeds after memory becomes available.
  NetworkStartup::success = true;
  WifiSelectionActivity::onScanEvent({}, &activity);
  assert(activity.state == WifiSelectionState::SCANNING);
- assert(NetworkStartup::starts == 3 && WiFi.disconnects == 1 && WiFi.scans == 1);
+ assert(NetworkStartup::starts == 4 && WiFi.disconnects == 1 && WiFi.scans == 1);
  // A stale/double touch during scanning must not start another scan.
  WifiSelectionActivity::onScanEvent({}, &activity);
- assert(NetworkStartup::starts == 3 && WiFi.scans == 1);
+ assert(NetworkStartup::starts == 4 && WiFi.scans == 1);
  WiFi.scanResult = WIFI_SCAN_FAILED;
  activity.startWifiScan();
  assert(activity.state == WifiSelectionState::NETWORK_ERROR);

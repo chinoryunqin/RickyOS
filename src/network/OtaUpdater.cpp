@@ -40,35 +40,58 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate(const Channel requestedCh
   updateAvailable = false;
   latestVersion.clear();
   otaUrl.clear();
+  otaRootCa = nullptr;
   otaSize = totalSize = processedSize = releaseNoteCount = 0;
   (void)requestedChannel;
   channel = Channel::Stable;
   expectedSha.fill(0);
   if (std::string_view(board_tag::boardName(), board_tag::boardNameLen()) != "readpico") return WRONG_DEVICE_ERROR;
+  // The COS bucket first (mainland China), then the site; each route has its own pinned
+  // root. The first route that answers decides: an authoritative "no update" or a
+  // broken manifest from it is the answer, a network failure moves on.
+  struct Route {
+    const char* base;
+    const char* manifest;
+    const char* notes;
+    const char* rootCa;
+  };
+  static constexpr Route kRoutes[] = {
+      {ricky_ota::COS_BASE, ricky_ota::COS_MANIFEST_URL, ricky_ota::COS_NOTES_URL, ricky_ota::COS_ROOT_CA},
+      {ricky_ota::SITE_BASE, ricky_ota::MANIFEST_URL, ricky_ota::NOTES_URL, ricky_ota::ROOT_CA},
+  };
   // Fixed, bounded stack state instead of the shared 2 KiB SAX token or a full
   // JSON body allocation. It is released when this one network request ends.
   static_assert(sizeof(RickyOtaManifest) <= 512);
+  const Route* route = nullptr;
   RickyOtaManifest manifest;
-  const bool ok = HttpDownloader::fetchVerifiedUrl(
-      ricky_ota::MANIFEST_URL, [&manifest](const uint8_t* data, size_t len) { return manifest.feed(data, len); },
-      ricky_ota::ROOT_CA);
-  if (!ok) return HTTP_ERROR;
+  for (const auto& candidate : kRoutes) {
+    if (candidate.base == ricky_ota::COS_BASE && !ricky_ota::COS_ENABLED) continue;
+    manifest = RickyOtaManifest{};
+    if (HttpDownloader::fetchVerifiedUrl(
+            candidate.manifest, [&manifest](const uint8_t* data, size_t len) { return manifest.feed(data, len); },
+            candidate.rootCa)) {
+      route = &candidate;
+      break;
+    }
+    LOG_ERR("OTA", "Manifest unreachable: %s", candidate.manifest);
+  }
+  if (!route) return HTTP_ERROR;
   if (!manifest.valid()) return JSON_PARSE_ERROR;
   if (!manifest.hasUpdate()) return NO_UPDATE;
   latestVersion = manifest.getVersion();
-  // Only a validated relative filename on the owned HTTPS site, never a URL
+  // Only a validated relative filename on an owned HTTPS route, never a URL
   // supplied by an upstream release or a locale-selected CrossMux endpoint.
-  otaUrl = ricky_ota::SITE_BASE;
+  otaUrl = route->base;
   otaUrl += manifest.getFile();
+  otaRootCa = route->rootCa;
   otaSize = totalSize = manifest.getBytes();
   expectedSha = manifest.getSha();
   updateAvailable = true;
-  LOG_INF("OTA", "RickyOS stable offer: %s (%zu bytes)", latestVersion.c_str(), otaSize);
+  LOG_INF("OTA", "RickyOS stable offer: %s (%zu bytes) from %s", latestVersion.c_str(), otaSize, route->base);
   // What's new: optional and separate, so the offer never waits on or fails for it.
   RickyOtaNotes<ReleaseJsonParser::RELEASE_NOTE_SIZE> notes(releaseNotes, latestVersion);
   if (HttpDownloader::fetchVerifiedUrl(
-          ricky_ota::NOTES_URL, [&notes](const uint8_t* data, size_t len) { return notes.feed(data, len); },
-          ricky_ota::ROOT_CA)) {
+          route->notes, [&notes](const uint8_t* data, size_t len) { return notes.feed(data, len); }, route->rootCa)) {
     releaseNoteCount = notes.count();
   }
   LOG_INF("OTA", "Release notes: %zu", releaseNoteCount);
@@ -186,7 +209,7 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
             return true;
           }
           ,
-          ricky_ota::ROOT_CA
+          otaRootCa ? otaRootCa : ricky_ota::ROOT_CA
       );
 
   /* Return back to default power saving for WiFi in case of failing */

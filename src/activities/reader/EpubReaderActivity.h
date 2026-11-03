@@ -15,12 +15,16 @@
 #include "EpubReaderMenuActivity.h"
 #include "ProgressMapper.h"
 #include "ReaderActivity.h"
+#include "BookFontSet.h"
 #include "ReaderFontPreview.h"
 #include "ReaderPageCache.h"
 #include "ReaderToolbarUi.h"
+#include "ReadingMode.h"
+#include "NativeTurnRequest.h"
 #include "components/OptionPopup.h"
 
 class EpubReaderActivity final : public ReaderActivity {
+  std::unique_ptr<BookFontSet> bookFonts_;
   std::shared_ptr<Epub> epub;
   std::unique_ptr<Section> section = nullptr;
   int currentSpineIndex = 0;
@@ -28,6 +32,15 @@ class EpubReaderActivity final : public ReaderActivity {
   std::optional<uint16_t> pendingPageJump;
   std::string pendingAnchor;
   int cachedSpineIndex = 0;
+  bool lastPageHadPanelFill_ = false;  // the shown page has a gray CSS panel (clean the turn off it)
+std::atomic<uint32_t> pendingNativeTurn_{0};
+  bool previousNativeText_ = false;
+  // When the last 16-level page finished driving; a turn taken within kQueuedTurnMs of
+  // it was tapped during that drive.
+  unsigned long lastNativeCommitEnd_ = 0;
+  static constexpr unsigned long kQueuedTurnMs = 150;
+  int previousNativeSpine_ = -1, previousNativePage_ = -1;
+  uint8_t previousNativeOrientation_ = 255;
   int cachedChapterTotalPageCount = 0;
   std::optional<uint32_t> cachedVisibleTextOffset;
   std::optional<uint32_t> currentPageVisibleOffset;
@@ -35,7 +48,7 @@ class EpubReaderActivity final : public ReaderActivity {
   unsigned long lastPageTurnTime = 0UL;
   unsigned long pageTurnDuration = 0UL;
   uint8_t pageTurnRate = 15;
-  int8_t pendingManualTurn = 0;
+uint32_t pendingManualTurn = 0;
   bool pendingPercentJump = false;
   float pendingSpineProgress = 0.0f;
   bool pendingScreenshot = false;
@@ -48,12 +61,15 @@ class EpubReaderActivity final : public ReaderActivity {
   bool showBookmarkMessage = false;
   bool showDictionaryMessage = false;
   unsigned long dictionaryMessageTime = 0UL;
+  bool dictionaryMessageVertical = false;  // the message explains why selection is off in vertical text
   bool currentPageBookmarked = false;
   int idlePrewarmSpine = -1;
   int idlePrewarmPage = -1;
   unsigned long lastRenderCompleteMs = 0;
 
-#if FREEINK_DEVICE_READPICO
+  bool nativeGray16Page(const Page& page) const;
+
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
   // Two slots of four reusable PSRAM frames each (~812 KiB total); too large for
   // the render task's stack. The activity owns them and releases them in onExit().
   //
@@ -82,13 +98,15 @@ class EpubReaderActivity final : public ReaderActivity {
   uint32_t pageCacheMissingCodepoint_[kPageCacheSlots] = {};
 
   bool pageCacheEligible() const;
-  bool nativeGray16Page(const Page& page) const;
   ReaderPageCacheKey pageCacheKey(int page, int top, int right, int bottom, int left) const;
   uint32_t idleRenderDelayMs() const override;
   void renderIdle(uint32_t generation) override;
+#if FREEINK_DEVICE_METALIO_PLUS
+  void renderIdleWarmup(uint32_t generation) override;
+#endif
   // Build one page into one cache slot; only called from renderIdle().
   bool buildPageCacheSlot(int slot, const ReaderPageCacheKey& key, uint32_t generation, Section* source = nullptr);
-#if FREEINK_DEVICE_READPICO
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
   void prefetchNextChapter(const ReaderPageCacheKey& layout, uint32_t generation);
 #endif
   void freePageCache();
@@ -264,6 +282,13 @@ class EpubReaderActivity final : public ReaderActivity {
 
   void renderContents(std::unique_ptr<Page> page, int orientedMarginTop, int orientedMarginRight,
                       int orientedMarginBottom, int orientedMarginLeft);
+  // Text column margins (top/right/bottom/left from the screen edges) for the
+  // current orientation, status bar and reading mode. Pagination, page drawing,
+  // the word picker and the footnote picker all take it from here.
+  readingMode::Margins textMargins() const;
+  // Vertical (古籍) pages have no selection geometry yet: shows why and returns true.
+  bool refuseVerticalSelect();
+  // The status bar (when the reading mode keeps it) plus the reading mode's frame.
   void renderStatusBar() const;
   void applyOrientation(uint8_t orientation);
   void applyInitialOrientation() override;
@@ -292,6 +317,8 @@ class EpubReaderActivity final : public ReaderActivity {
   void beginLoanTimeSync();
   std::string getBookTitle() const override { return epub ? epub->getTitle() : ""; }
   std::string getBookAuthor() const override { return epub ? epub->getAuthor() : ""; }
+  void showOpeningPopup();
+  void applyFontSizeFromMenu(bool mayAsk);
   std::string getBookThumbBmpPath() const override { return epub ? epub->getThumbBmpPath() : ""; }
   int getProgressBasisPoints() const override;
   void renderBook() override;
@@ -307,7 +334,8 @@ class EpubReaderActivity final : public ReaderActivity {
   void loop() override;
   void render(RenderLock&& lock) override;
 
-  bool pageTurn(bool isForward) override;
+bool pageTurn(bool isForward) override;
+  bool pageTurnWithOrigin(bool isForward, int originX, int originY);
   bool skipPages(int amount) override;
   bool isAtEndOfBook() const override;
   void onReturnFromEndOfBook() override;

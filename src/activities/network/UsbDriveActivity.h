@@ -2,7 +2,7 @@
 
 #include <BoardConfig.h>
 
-#if FREEINK_CAP_USB_MSC
+#if FREEINK_CAP_USB_MSC || defined(RICKYOS_USB_PREVIEW)
 
 #include <HalStorage.h>
 
@@ -19,7 +19,13 @@ class UsbDriveActivity final : public Activity, private UiAppHost {
   void loop() override;
   void render(RenderLock&&) override;
   bool preventAutoSleep() override { return state == State::Connected || (!startFailed && state == State::IoError); }
-  bool requiresExclusiveStorageLoop() const override { return true; }
+  bool requiresExclusiveStorageLoop() const override {
+#if defined(RICKYOS_USB_PREVIEW)
+    return false;
+#else
+    return true;
+#endif
+  }
 
  private:
   using State = UsbDriveState;
@@ -27,7 +33,6 @@ class UsbDriveActivity final : public Activity, private UiAppHost {
   static constexpr unsigned long HOST_WAIT_TIMEOUT_MS = 5UL * 60UL * 1000UL;
   static constexpr unsigned long START_FAILURE_TIMEOUT_MS = 30UL * 1000UL;
   static constexpr unsigned long FORCED_DISCONNECT_TIMEOUT_MS = 1000UL;
-  static constexpr unsigned long HOST_SUSPEND_TIMEOUT_MS = 2000UL;
 
   static void driveScreen(UiScreen& screen, void* user);
   void buildDriveScreen(UiScreen& screen) const;
@@ -38,11 +43,15 @@ class UsbDriveActivity final : public Activity, private UiAppHost {
   bool startFailed = false;
   bool restartRequested = false;
   bool forcedDisconnectRequested = false;
-  bool hostSuspendPending = false;
   unsigned long hostWaitStartedAt = 0;
   unsigned long startFailureStartedAt = 0;
   unsigned long forcedDisconnectRequestedAt = 0;
-  unsigned long hostSuspendStartedAt = 0;
+#if RICKYOS_USB_DIAG
+  char diagText_[140] = "";
+  bool diagSuspended_ = false;
+  uint32_t diagStartStops_ = 0;
+  unsigned long diagShownAt_ = 0;
+#endif
 };
 
-#endif  // FREEINK_CAP_USB_MSC
+#endif  // FREEINK_CAP_USB_MSC || RICKYOS_USB_PREVIEW

@@ -88,9 +88,13 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
 
   // Whether we are attempting to auto-connect or auto-scan saved networks.
   bool autoConnecting = false;
+  bool inheritedConfirmPending = false;
 
   // True from the Confirm press that stops auto-connect until that button is released.
   bool manualNetworkListRequested = false;
+
+  // One silent radio reset per scan request before NETWORK_ERROR is shown.
+  bool scanRecoveryUsed = false;
 
   // Saved SSIDs already attempted during the current auto-connect session.
   std::vector<std::string> autoAttemptedSsids;
@@ -101,7 +105,7 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
 
   // Connection timeout
   static constexpr unsigned long CONNECTION_TIMEOUT_MS = 15000;
-  static constexpr unsigned long AUTO_CONNECTION_TIMEOUT_MS = 7000;
+  static constexpr unsigned long AUTO_CONNECTION_TIMEOUT_MS = 15000;
   unsigned long connectionStartTime = 0;
 
   // The UiAppHost app hosts the network list and the save/forget prompts
@@ -131,6 +135,8 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
 
   void showNetworkError();
   void startWifiScan(bool autoScan = false);
+  bool beginScan();
+  bool recoverScan(const char* stage, int code);
   void processWifiScanResults();
   void appendHiddenNetworkEntry();
   void selectNetwork(int index);

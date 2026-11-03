@@ -65,8 +65,10 @@ struct PageTurnResult {
 
 inline PageTurnResult detectPageTurn(const MappedInputManager& input) {
   const bool usePress = SETTINGS.longPressButtonBehavior == SETTINGS.OFF;
-  const bool tiltNext = SETTINGS.tiltPageTurn && halTiltSensor.wasTiltedForward();
-  const bool tiltPrev = SETTINGS.tiltPageTurn && halTiltSensor.wasTiltedBack();
+  const bool tiltNext =
+      (SETTINGS.effectiveTiltPageTurn() && halTiltSensor.wasTiltedForward()) || halTiltSensor.wasBackTappedNext();
+  const bool tiltPrev =
+      (SETTINGS.effectiveTiltPageTurn() && halTiltSensor.wasTiltedBack()) || halTiltSensor.wasBackTappedPrevious();
   const bool swapFront = input.isNavDirectionSwapped();
   const auto prevButton = swapFront ? MappedInputManager::Button::Right : MappedInputManager::Button::Left;
   const auto nextButton = swapFront ? MappedInputManager::Button::Left : MappedInputManager::Button::Right;
@@ -89,6 +91,11 @@ struct TouchPageTurn {
   bool next;
   unsigned long heldMs;
 };
+
+// The reader menu opens on a tap in the top band of the page (the header strip and a
+// little below), as on Kindle. It used to be the centre third, which sat inside the
+// next-page zone: a thumb aiming for the next page often opened the menu instead.
+inline bool isInMenuBand(const int height, const int y) { return y >= 0 && y < height / 8; }
 
 inline TouchPageTurn detectTouchPageTurn(const GfxRenderer& renderer, const MappedInputManager& input,
                                          const bool rtlBook = false) {
@@ -130,16 +137,18 @@ inline TouchPageTurn detectTouchPageTurn(const GfxRenderer& renderer, const Mapp
   const int height = renderer.getScreenHeight();
   // The centered reader-menu tap target (isTouchMenuTap below) keeps priority
   // over the page-turn zones.
-  if (SETTINGS.showReaderMenu == CrossPointSettings::READER_MENU_TAP && x >= width / 3 && x < width - width / 3 &&
-      y >= height / 3 && y < height - height / 3) {
+  if (SETTINGS.showReaderMenu == CrossPointSettings::READER_MENU_TAP && isInMenuBand(height, y)) {
     return result;
   }
 
   // Give the whole page to the sole tap-enabled direction. When both accept
-  // taps, split at the left third. RTL books and Inverted Tap each reverse
-  // the shared zones, and so does the page-turn direction.
-  const bool inverted = (SETTINGS.pageTurnGesture == CrossPointSettings::INVERTED_TAP ||
-                         SETTINGS.previousPageGesture == CrossPointSettings::INVERTED_TAP) != mirrored;
+  // taps, split at the left third. 惯用手：左手 and Inverted Tap ask for the same
+  // thing, so either one mirrors the zones and both together still mirror them once
+  // (XORing them made a left-handed reader who had also tried Inverted Tap get the
+  // right-handed zones back). An RTL book reverses the result as before.
+  const bool invertedTap = SETTINGS.pageTurnGesture == CrossPointSettings::INVERTED_TAP ||
+                           SETTINGS.previousPageGesture == CrossPointSettings::INVERTED_TAP;
+  const bool inverted = rtlBook != (SETTINGS.pageTurnDirection != 0 || invertedTap);
   const bool nextZone = inverted ? x < (width * 2) / 3 : x >= width / 3;
   result.next = nextTaps && (!prevTaps || nextZone);
   result.prev = prevTaps && (!nextTaps || !nextZone);
@@ -147,9 +156,8 @@ inline TouchPageTurn detectTouchPageTurn(const GfxRenderer& renderer, const Mapp
   return result;
 }
 
-// Tap in the center third of the screen: the tap path into the reader menu on
-// every touch board. detectTouchPageTurn() excludes this centered rectangle,
-// so it remains free in tap mode. The Off/Swipe Up
+// Tap in the top band (isInMenuBand): the tap path into the reader menu on every
+// touch board. detectTouchPageTurn() excludes that band, so it remains free in tap mode. The Off/Swipe Up
 // alternatives are only surfaced on home-key boards (SettingsList), where the
 // menu stays reachable through the key's long-press function.
 inline bool isTouchMenuTap(const GfxRenderer& renderer, const MappedInputManager& input) {
@@ -158,14 +166,10 @@ inline bool isTouchMenuTap(const GfxRenderer& renderer, const MappedInputManager
   int x = 0;
   int y = 0;
   if (!input.wasScreenTapped(x, y)) return false;
-  const int width = renderer.getScreenWidth();
-  const int height = renderer.getScreenHeight();
-  const int zoneWidth = width / 3;
-  const int zoneHeight = height / 3;
-  return x >= zoneWidth && x < width - zoneWidth && y >= zoneHeight && y < height - zoneHeight;
+  return isInMenuBand(renderer.getScreenHeight(), y);
 }
 
-// Reader menu opens on the menu edge-swipe or a center-third tap. Home-key
+// Reader menu opens on the menu edge-swipe or a top-band tap. Home-key
 // actions are configured separately from screen gestures.
 // Menu gestures honor showReaderMenu independently of touchReaderControls,
 // which only gates page-turn touch zones in detectTouchPageTurn().

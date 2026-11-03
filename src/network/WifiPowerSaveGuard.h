@@ -1,5 +1,18 @@
 #pragma once
 
+#include <BoardConfig.h>
+#if FREEINK_DEVICE_METALIO_PLUS
+#include <HalWifiAwakeLease.h>
+
+struct WifiPowerSaveGuard {
+  WifiPowerSaveGuard() { lease.acquire(); }
+  WifiPowerSaveGuard(const WifiPowerSaveGuard&) = delete;
+  WifiPowerSaveGuard& operator=(const WifiPowerSaveGuard&) = delete;
+
+ private:
+  HalWifiAwakeLease lease;
+};
+#else
 #include <Logging.h>
 #include <esp_wifi.h>
 
@@ -11,12 +24,13 @@
 // power-save off for their whole lifetime (the web server) are not reverted.
 struct WifiPowerSaveGuard {
   WifiPowerSaveGuard() {
-    if (esp_wifi_get_ps(&previous) != ESP_OK) previous = WIFI_PS_MIN_MODEM;
+    if (esp_wifi_get_ps(&previous) != ESP_OK) return;
+    active = true;
     esp_err_t err = esp_wifi_set_ps(WIFI_PS_NONE);
     if (err != ESP_OK) LOG_ERR("WIFI", "Failed to disable WiFi power-save: %d", err);
   }
   ~WifiPowerSaveGuard() {
-    if (previous == WIFI_PS_NONE) return;
+    if (!active || previous == WIFI_PS_NONE) return;
     esp_err_t err = esp_wifi_set_ps(previous);
     if (err != ESP_OK) LOG_ERR("WIFI", "Failed to restore WiFi power-save: %d", err);
   }
@@ -24,5 +38,7 @@ struct WifiPowerSaveGuard {
   WifiPowerSaveGuard& operator=(const WifiPowerSaveGuard&) = delete;
 
  private:
+  bool active = false;
   wifi_ps_type_t previous = WIFI_PS_MIN_MODEM;
 };
+#endif

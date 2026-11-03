@@ -1,3 +1,4 @@
+#include <HalNetwork.h>
 #include "WeReadProgressSyncActivity.h"
 
 
@@ -96,7 +97,7 @@ void WeReadProgressSyncActivity::onEnter() {
 
   NetworkStartup::prepare(renderer);
   wifiActivated_ = true;
-  if (WiFi.status() == WL_CONNECTED) {
+  if (HalNetwork::connected()) {
     state_ = State::Starting;
     requestUpdate();
     return;
@@ -131,7 +132,7 @@ void WeReadProgressSyncActivity::launchWifiSelection() {
 }
 
 void WeReadProgressSyncActivity::onWifiSelectionComplete(const bool connected) {
-  if (!connected || WiFi.status() != WL_CONNECTED) {
+  if (!connected || !HalNetwork::connected()) {
     returnToReader();
     return;
   }

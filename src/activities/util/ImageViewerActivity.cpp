@@ -1,5 +1,7 @@
 #include "ImageViewerActivity.h"
 
+#include "util/ReadingBackground.h"
+
 #include <Bitmap.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
@@ -8,11 +10,13 @@
 #include <I18n.h>
 #include <JpegToBmpConverter.h>
 #include <PngToBmpConverter.h>
-#include <JpegToBmpConverter.h>
 
 #include <algorithm>
+#include <cstring>
 
 #include "CrossPointSettings.h"
+#include "activities/apps/standby/KeepPageFace.h"
+#include "activities/apps/standby/StandbyPictures.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -22,6 +26,11 @@ constexpr const char* TRANSPARENT_PREVIEW_PATH = "/.crosspoint/image_preview.tra
 constexpr const char* SLEEP_IMAGE_PATH = "/sleep.bmp";
 constexpr const char* SLEEP_IMAGE_PART_PATH = "/sleep.bmp.part";
 constexpr const char* SLEEP_IMAGE_BACKUP_PATH = "/sleep.bmp.bak";
+constexpr const char* POWER_OFF_IMAGE_PATH = "/poweroff.bmp";
+constexpr const char* POWER_OFF_IMAGE_PART_PATH = "/poweroff.bmp.part";
+constexpr const char* POWER_OFF_IMAGE_BACKUP_PATH = "/poweroff.bmp.bak";
+constexpr const char* READING_IMAGE_PART_PATH = "/readingbg.bmp.part";
+constexpr const char* READING_IMAGE_BACKUP_PATH = "/readingbg.bmp.bak";
 // Converted previews are kept: a PNG takes seconds to convert, and the same pictures
 // are opened again and again while choosing a wallpaper. Bounded by kPreviewCacheMax.
 constexpr const char* PREVIEW_CACHE_DIR = "/.crosspoint/previews";
@@ -61,8 +70,12 @@ void prunePreviewCache() {
   for (const auto& entry : names) Storage.remove((std::string(PREVIEW_CACHE_DIR) + "/" + entry).c_str());
 }
 
-constexpr StrId sleepCoverLabel() {
-  return StrId::STR_RICKY_SET_WALLPAPER;
+constexpr StrId sleepCoverLabel(
+    const bool sticker = false,
+    const ImageViewerActivity::WallpaperTarget target = ImageViewerActivity::WallpaperTarget::Standby) {
+  if (target == ImageViewerActivity::WallpaperTarget::PowerOff) return StrId::STR_RICKY_SET_POWER_OFF_WALLPAPER;
+  if (target == ImageViewerActivity::WallpaperTarget::Reading) return StrId::STR_RICKY_SET_READING_BACKGROUND;
+  return sticker ? StrId::STR_RICKY_SET_TRANSPARENT : StrId::STR_RICKY_SET_WALLPAPER;
 }
 
 Rect sleepCoverActionRect(const GfxRenderer& renderer) {
@@ -71,11 +84,164 @@ Rect sleepCoverActionRect(const GfxRenderer& renderer) {
               renderer.getScreenHeight() - metrics.contentSidePadding - metrics.menuRowHeight,
               renderer.getScreenWidth() - metrics.contentSidePadding * 2, metrics.menuRowHeight);
 }
+
+// The gallery's three buttons share the action row: power-off, reading background,
+// then standby on the right where the single "set" button's thumb lands.
+void galleryActionRects(const GfxRenderer& renderer, Rect& powerOff, Rect& reading, Rect& standby) {
+  const Rect row = sleepCoverActionRect(renderer);
+  const int gap = UITheme::getInstance().getMetrics().contentSidePadding / 2;
+  const int width = (row.width - 2 * gap) / 3;
+  powerOff = Rect(row.x, row.y, width, row.height);
+  reading = Rect(row.x + width + gap, row.y, width, row.height);
+  standby = Rect(row.x + row.width - width, row.y, width, row.height);
+}
+
+// The paper band the gallery's caption and buttons sit on, so the picture never shows
+// through them; the rest of the screen stays the picture.
+Rect galleryBand(const GfxRenderer& renderer) {
+  const Rect row = sleepCoverActionRect(renderer);
+  const int padding = UITheme::getInstance().getMetrics().contentSidePadding / 2;
+  const int top = row.y - renderer.getLineHeight(UI_10_FONT_ID) - padding * 3;
+  return Rect(0, top, renderer.getScreenWidth(), renderer.getScreenHeight() - top);
+}
+
+void galleryButton(const GfxRenderer& renderer, const Rect& r, const char* label, const bool primary) {
+  const int radius = UITheme::getInstance().getMetrics().optionPopupSelectionRadius;
+  renderer.fillRoundedRect(r.x, r.y, r.width, r.height, radius, primary ? Color::Black : Color::White);
+  if (!primary) renderer.drawRoundedRect(r.x, r.y, r.width, r.height, 2, radius, true);
+  const int textWidth = renderer.getTextWidth(UI_10_FONT_ID, label, EpdFontFamily::BOLD);
+  renderer.drawText(UI_10_FONT_ID, r.x + (r.width - textWidth) / 2,
+                    r.y + (r.height - renderer.getLineHeight(UI_10_FONT_ID)) / 2, label, !primary,
+                    EpdFontFamily::BOLD);
+}
+
+StandbyPictures::Target pictureTarget(const ImageViewerActivity::WallpaperTarget target) {
+  switch (target) {
+    case ImageViewerActivity::WallpaperTarget::PowerOff:
+      return StandbyPictures::Target::PowerOff;
+    case ImageViewerActivity::WallpaperTarget::Reading:
+      return StandbyPictures::Target::Reading;
+    case ImageViewerActivity::WallpaperTarget::Sticker:
+      return StandbyPictures::Target::Sticker;
+    default:
+      return StandbyPictures::Target::Standby;
+  }
+}
 }  // namespace
 
 ImageViewerActivity::ImageViewerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string path,
-                                         const bool wallpaperPicker)
-    : Activity("ImageViewer", renderer, mappedInput), filePath(std::move(path)), wallpaperPicker(wallpaperPicker) {}
+                                         const bool wallpaperPicker, const bool stickerPicker,
+                                         const WallpaperTarget wallpaperTarget)
+    : Activity("ImageViewer", renderer, mappedInput),
+      filePath(std::move(path)),
+      wallpaperPicker(wallpaperPicker),
+      stickerPicker(stickerPicker),
+      wallpaperTarget(wallpaperTarget) {}
+
+ImageViewerActivity::ImageViewerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
+                                         std::vector<std::string> pictures, const int index,
+                                         const WallpaperTarget wallpaperTarget)
+    : Activity("ImageViewer", renderer, mappedInput),
+      wallpaperPicker(true),
+      stickerPicker(wallpaperTarget == WallpaperTarget::Sticker),
+      wallpaperTarget(wallpaperTarget),
+      siblingImages(std::move(pictures)),
+      gallery(true) {
+  currentImageIndex = siblingImages.empty() ? -1 : std::clamp(index, 0, static_cast<int>(siblingImages.size()) - 1);
+  if (currentImageIndex >= 0) filePath = siblingImages[static_cast<size_t>(currentImageIndex)];
+}
+
+void ImageViewerActivity::drawActions() const {
+  if (!mappedInput.hasTouch()) return;
+  if (!gallery) {
+    GUI.drawActionButton(renderer, sleepCoverActionRect(renderer),
+                         I18N.get(sleepCoverLabel(stickerPicker, wallpaperTarget)));
+    return;
+  }
+  const Rect band = galleryBand(renderer);
+  renderer.fillRect(band.x, band.y, band.width, band.height, false);
+  renderer.fillRect(band.x, band.y, band.width, 2, true);
+  // Which picture, and where it is in the gallery: "Leaves  3 / 12".
+  std::string name = filePath.substr(filePath.find_last_of('/') + 1);
+  if (const size_t dot = name.find_last_of('.'); dot != std::string::npos && dot > 0) name.resize(dot);
+  char position[24];
+  snprintf(position, sizeof(position), "  %d / %d", currentImageIndex + 1, static_cast<int>(siblingImages.size()));
+  name += position;
+  const int padding = UITheme::getInstance().getMetrics().contentSidePadding / 2;
+  renderer.drawCenteredText(UI_10_FONT_ID, band.y + padding * 2, name.c_str());
+  if (stickerPicker) {
+    // A transparent wallpaper is only ever the standby overlay: one button.
+    galleryButton(renderer, sleepCoverActionRect(renderer), tr(STR_RICKY_SET_TRANSPARENT), true);
+    return;
+  }
+  Rect powerOff, reading, standby;
+  galleryActionRects(renderer, powerOff, reading, standby);
+  // The gallery's own screen is the primary button.
+  galleryButton(renderer, powerOff, tr(STR_RICKY_SET_POWER_OFF_SHORT), wallpaperTarget == WallpaperTarget::PowerOff);
+  galleryButton(renderer, reading, tr(STR_RICKY_SET_READING_SHORT), wallpaperTarget == WallpaperTarget::Reading);
+  galleryButton(renderer, standby, tr(STR_RICKY_SET_STANDBY_SHORT), wallpaperTarget == WallpaperTarget::Standby);
+}
+
+bool ImageViewerActivity::tapAction() {
+  if (!mappedInput.hasTouch()) return false;
+  if (!gallery) {
+    const Rect action = sleepCoverActionRect(renderer);
+    if (!mappedInput.wasTapInRect(action.x, action.y, action.width, action.height)) return false;
+    showSleepCoverOptions();
+    return true;
+  }
+  if (stickerPicker) {
+    const Rect action = sleepCoverActionRect(renderer);
+    if (!mappedInput.wasTapInRect(action.x, action.y, action.width, action.height)) return false;
+    setStickerFromGallery();
+    return true;
+  }
+  Rect powerOff, reading, standby;
+  galleryActionRects(renderer, powerOff, reading, standby);
+  if (mappedInput.wasTapInRect(powerOff.x, powerOff.y, powerOff.width, powerOff.height)) {
+    setFromGallery(WallpaperTarget::PowerOff);
+    return true;
+  }
+  if (mappedInput.wasTapInRect(reading.x, reading.y, reading.width, reading.height)) {
+    setFromGallery(WallpaperTarget::Reading);
+    return true;
+  }
+  if (mappedInput.wasTapInRect(standby.x, standby.y, standby.width, standby.height)) {
+    setFromGallery(WallpaperTarget::Standby);
+    return true;
+  }
+  return false;
+}
+
+const char* ImageViewerActivity::wallpaperSource() const {
+  return isPng() || isJpeg() ? previewPath.c_str() : filePath.c_str();
+}
+
+void ImageViewerActivity::rememberSource() const {
+  StandbyPictures::rememberSource(pictureTarget(wallpaperTarget), filePath);
+}
+
+bool ImageViewerActivity::setFromGallery(const WallpaperTarget target) {
+  // The gallery offers both screens; the install follows the one chosen. Back in the
+  // gallery its own screen is marked again, so the switch is not undone here.
+  wallpaperTarget = target;
+  if (!doSetSleepCover(wallpaperSource(), false)) return false;
+  ActivityResult result;
+  result.data = FilePathResult{filePath};
+  setResult(std::move(result));
+  finish();
+  return true;
+}
+
+bool ImageViewerActivity::setStickerFromGallery() {
+  if (!doSetSticker()) return false;
+  rememberSource();
+  ActivityResult result;
+  result.data = FilePathResult{filePath};
+  setResult(std::move(result));
+  finish();
+  return true;
+}
 
 void ImageViewerActivity::loadSiblingImages() {
   siblingImages.clear();
@@ -111,7 +277,26 @@ void ImageViewerActivity::loadSiblingImages() {
   }
 }
 
-bool ImageViewerActivity::isPng() const { return FsHelpers::hasPngExtension(filePath); }
+namespace {
+// The signature decides; the extension is only the fallback for a file too short to tell.
+ImageViewerActivity::ImageKind sniffImageKind(const std::string& path) {
+  using Kind = ImageViewerActivity::ImageKind;
+  uint8_t head[8] = {};
+  HalFile file;
+  if (Storage.openFileForRead("IMAGE", path.c_str(), file) && file.read(head, sizeof(head)) == sizeof(head)) {
+    static constexpr uint8_t kPng[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+    if (memcmp(head, kPng, sizeof(kPng)) == 0) return Kind::Png;
+    if (head[0] == 0xFF && head[1] == 0xD8 && head[2] == 0xFF) return Kind::Jpeg;
+    if (head[0] == 'B' && head[1] == 'M') return Kind::Bmp;
+  }
+  if (FsHelpers::hasPngExtension(path)) return Kind::Png;
+  if (FsHelpers::hasJpgExtension(path)) return Kind::Jpeg;
+  return Kind::Bmp;
+}
+}  // namespace
+
+bool ImageViewerActivity::isPng() const { return imageKind == ImageKind::Png; }
+bool ImageViewerActivity::isJpeg() const { return imageKind == ImageKind::Jpeg; }
 
 bool ImageViewerActivity::preparePreview() {
   previewPath = previewCachePath(filePath);
@@ -158,7 +343,8 @@ void ImageViewerActivity::onEnter() {
   // commit below clears what was underneath.
   Rect popupRect = GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
   GUI.fillPopupProgress(renderer, popupRect, 20);  // Initial 20% progress
-  const bool needsPreview = isPng() || FsHelpers::hasJpgExtension(filePath);
+  imageKind = sniffImageKind(filePath);
+  const bool needsPreview = isPng() || isJpeg();
   const unsigned long tPrep = millis();
   const bool prepared = !needsPreview || preparePreview();
   LOG_DBG("IMGV", "timing: preview %lu ms", millis() - tPrep);
@@ -204,8 +390,8 @@ void ImageViewerActivity::onEnter() {
       bool hasNext = (siblingImages.size() > 1 && currentImageIndex != -1 &&
                       currentImageIndex < static_cast<int>(siblingImages.size()) - 1);
 
-      const auto labels = mappedInput.mapLabels(tr(STR_BACK), I18N.get(sleepCoverLabel()), (hasPrevious ? "<" : ""),
-                                                (hasNext ? ">" : ""));
+      const auto labels = mappedInput.mapLabels(tr(STR_BACK), I18N.get(sleepCoverLabel(stickerPicker, wallpaperTarget)),
+                                                (hasPrevious ? "<" : ""), (hasNext ? ">" : ""));
 
       GUI.fillPopupProgress(renderer, popupRect, 50);
 
@@ -221,9 +407,7 @@ void ImageViewerActivity::onEnter() {
 
       // Draw UI hints on the base layer
       GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-      if (mappedInput.hasTouch()) {
-        GUI.drawActionButton(renderer, sleepCoverActionRect(renderer), I18N.get(sleepCoverLabel()));
-      }
+      drawActions();
       // Native 16-gray, as Standby and the sleep screen draw it. The overlay-mask path
       // also painted the Set button into its gray planes, turning it into a dark bar
       // with no readable label. Here the button is drawn in B/W and copied in.
@@ -238,8 +422,8 @@ void ImageViewerActivity::onEnter() {
         if (shown) display.setNextGray16Profile(3);
 #endif
         if (shown && mappedInput.hasTouch()) {
-          const Rect action = sleepCoverActionRect(renderer);
-          GUI.drawActionButton(renderer, action, I18N.get(sleepCoverLabel()));
+          const Rect action = gallery ? galleryBand(renderer) : sleepCoverActionRect(renderer);
+          drawActions();
           renderer.copyBwToGrayscale16(action.x, action.y, action.width, action.height);
         }
         shown = shown && renderer.commitGrayscale16();
@@ -271,8 +455,7 @@ void ImageViewerActivity::onEnter() {
             break;
           }
           GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-          if (mappedInput.hasTouch())
-            GUI.drawActionButton(renderer, sleepCoverActionRect(renderer), I18N.get(sleepCoverLabel()));
+          drawActions();
           if (mode == GfxRenderer::GRAYSCALE_LSB) {
             renderer.copyGrayscaleLsbBuffers();
           } else {
@@ -329,21 +512,31 @@ void ImageViewerActivity::onExit() {
 
 bool ImageViewerActivity::doSetSleepCover(const char* sourcePath, const bool transparent) {
   if (!imageReady) return false;
+  const bool powerOff = wallpaperTarget == WallpaperTarget::PowerOff;
+  const bool reading = wallpaperTarget == WallpaperTarget::Reading;
+  if ((powerOff || reading) && transparent) return false;
+  const char* destination = reading ? ReadingBackground::kPath : powerOff ? POWER_OFF_IMAGE_PATH : SLEEP_IMAGE_PATH;
+  const char* part = reading ? READING_IMAGE_PART_PATH : powerOff ? POWER_OFF_IMAGE_PART_PATH : SLEEP_IMAGE_PART_PATH;
+  const char* backup =
+      reading ? READING_IMAGE_BACKUP_PATH : powerOff ? POWER_OFF_IMAGE_BACKUP_PATH : SLEEP_IMAGE_BACKUP_PATH;
   GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
 
   const char* preparedPath = sourcePath;
   bool success = true;
-  if (transparent) {
+  // Recover an interrupted rename before touching the last complete picture.
+  if (Storage.exists(backup)) {
+    success = Storage.exists(destination) ? Storage.remove(backup) : Storage.rename(backup, destination);
+  }
+  if (success && transparent) {
     GfxRenderer::FrameBufferLoan loan(renderer);
     success = PngToBmpConverter::pngFileToTransparentBmpFile(sourcePath, TRANSPARENT_PREVIEW_PATH, true);
     if (success) preparedPath = TRANSPARENT_PREVIEW_PATH;
   }
 
-  Storage.remove(SLEEP_IMAGE_PART_PATH);
+  success = success && (!Storage.exists(part) || Storage.remove(part));
   if (success) {
     HalFile inFile, outFile;
-    if (Storage.openFileForRead("IMAGE", preparedPath, inFile) &&
-        Storage.openFileForWrite("IMAGE", SLEEP_IMAGE_PART_PATH, outFile)) {
+    if (Storage.openFileForRead("IMAGE", preparedPath, inFile) && Storage.openFileForWrite("IMAGE", part, outFile)) {
       const uint64_t expected = inFile.fileSize64();
       uint64_t copied = 0;
       // A full-screen 16-gray BMP is ~400 KB: 128-byte chunks took over ten seconds.
@@ -357,19 +550,17 @@ bool ImageViewerActivity::doSetSleepCover(const char* sourcePath, const bool tra
         copied += bytesRead;
       }
       outFile.flush();
-      success = success && copied == expected;
+      success = success && bytesRead == 0 && expected > 0 && copied == expected && outFile.fileSize64() == expected;
     } else {
       success = false;
     }
   }
 
   if (success) {
-    Storage.remove(SLEEP_IMAGE_BACKUP_PATH);
-    const bool hadPrevious = Storage.exists(SLEEP_IMAGE_PATH);
-    if ((hadPrevious && !Storage.rename(SLEEP_IMAGE_PATH, SLEEP_IMAGE_BACKUP_PATH)) ||
-        !Storage.rename(SLEEP_IMAGE_PART_PATH, SLEEP_IMAGE_PATH)) {
-      if (hadPrevious && !Storage.exists(SLEEP_IMAGE_PATH)) {
-        Storage.rename(SLEEP_IMAGE_BACKUP_PATH, SLEEP_IMAGE_PATH);
+    const bool hadPrevious = Storage.exists(destination);
+    if ((hadPrevious && !Storage.rename(destination, backup)) || !Storage.rename(part, destination)) {
+      if (hadPrevious && !Storage.exists(destination)) {
+        Storage.rename(backup, destination);
       }
       success = false;
     }
@@ -377,25 +568,42 @@ bool ImageViewerActivity::doSetSleepCover(const char* sourcePath, const bool tra
 
   if (success) {
     const uint8_t previousMode = SETTINGS.sleepScreen;
-    SETTINGS.sleepScreen = transparent ? CrossPointSettings::SLEEP_SCREEN_MODE::TRANSPARENT
-                                       : CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM;
-    // The picture just set is what Standby shows.
     const uint8_t previousFace = SETTINGS.rickyStandbyFace;
-    if (!transparent) SETTINGS.rickyStandbyFace = CrossPointSettings::RICKY_STANDBY_PICTURE;
+    const uint8_t previousPowerOff = SETTINGS.rickyPowerOffScreen;
+    const uint8_t previousReading = SETTINGS.readingBackground;
+    const uint8_t previousPaper = SETTINGS.readingPaper;
+    if (reading) {
+      // Choosing a picture shows it under the page, at medium unless a shade is set.
+      SETTINGS.readingPaper = CrossPointSettings::READING_PAPER_PICTURE;
+      if (SETTINGS.readingBackground == CrossPointSettings::READING_BACKGROUND_OFF)
+        SETTINGS.readingBackground = CrossPointSettings::READING_BACKGROUND_MEDIUM;
+    } else if (powerOff) {
+      SETTINGS.rickyPowerOffScreen = CrossPointSettings::RICKY_POWER_OFF_CUSTOM;
+    } else {
+      SETTINGS.sleepScreen = transparent ? CrossPointSettings::SLEEP_SCREEN_MODE::TRANSPARENT
+                                         : CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM;
+      if (!transparent) SETTINGS.rickyStandbyFace = CrossPointSettings::RICKY_STANDBY_PICTURE;
+    }
     if (!SETTINGS.saveToFile()) {
       SETTINGS.sleepScreen = previousMode;
       SETTINGS.rickyStandbyFace = previousFace;
+      SETTINGS.rickyPowerOffScreen = previousPowerOff;
+      SETTINGS.readingBackground = previousReading;
+      SETTINGS.readingPaper = previousPaper;
       (void)SETTINGS.saveToFile();
-      Storage.remove(SLEEP_IMAGE_PATH);
-      if (Storage.exists(SLEEP_IMAGE_BACKUP_PATH)) {
-        Storage.rename(SLEEP_IMAGE_BACKUP_PATH, SLEEP_IMAGE_PATH);
+      Storage.remove(destination);
+      if (Storage.exists(backup)) {
+        Storage.rename(backup, destination);
       }
       success = false;
     }
   }
 
-  Storage.remove(SLEEP_IMAGE_PART_PATH);
-  if (success) Storage.remove(SLEEP_IMAGE_BACKUP_PATH);
+  Storage.remove(part);
+  if (success) Storage.remove(backup);
+  if (success && reading) ReadingBackground::invalidate();
+  // The gallery marks the picture each screen was set from.
+  if (success && !transparent) rememberSource();
   GUI.drawPopup(renderer, success ? tr(STR_DONE) : tr(STR_FAILED_LOWER));
   delay(1000);
   return success;
@@ -403,20 +611,105 @@ bool ImageViewerActivity::doSetSleepCover(const char* sourcePath, const bool tra
 
 void ImageViewerActivity::showSleepCoverOptions() {
   if (!imageReady) return;
+  if (gallery && stickerPicker) {
+    setStickerFromGallery();
+    return;
+  }
+  if (gallery) {
+    // Keys only: the touch screen shows both buttons. Its own screen is listed first.
+    static constexpr StrId standbyFirst[] = {StrId::STR_RICKY_SET_WALLPAPER, StrId::STR_RICKY_SET_POWER_OFF_WALLPAPER};
+    static constexpr StrId powerOffFirst[] = {StrId::STR_RICKY_SET_POWER_OFF_WALLPAPER, StrId::STR_RICKY_SET_WALLPAPER};
+    const bool offFirst = wallpaperTarget == WallpaperTarget::PowerOff;
+    sleepCoverPopup.show(sleepCoverLabel(false, wallpaperTarget), offFirst ? powerOffFirst : standbyFirst, 2, 0,
+                         [this, offFirst](const int index) {
+                           const bool powerOff = (index == 0) == offFirst;
+                           setFromGallery(powerOff ? WallpaperTarget::PowerOff : WallpaperTarget::Standby);
+                         });
+    requestUpdate();
+    return;
+  }
+  if (wallpaperTarget == WallpaperTarget::PowerOff) {
+    // Power-off is a complete still image, never the retained-page sticker mode.
+    if (doSetSleepCover(wallpaperSource(), false) && wallpaperPicker) finish();
+    return;
+  }
+  if (stickerPicker) {
+    if (doSetSticker()) finish();
+    return;
+  }
   if (!isPng()) {
     // Picking a wallpaper ends here: return to the page that asked, which shows the new picture.
-    if (doSetSleepCover(FsHelpers::hasJpgExtension(filePath) ? previewPath.c_str() : filePath.c_str(), false) &&
-        wallpaperPicker)
-      finish();
+    if (doSetSleepCover(wallpaperSource(), false) && wallpaperPicker) finish();
     return;
   }
 
   static constexpr StrId options[] = {StrId::STR_NORMAL, StrId::STR_TRANSPARENT};
   static constexpr int optionCount = sizeof(options) / sizeof(options[0]);
   sleepCoverPopup.show(sleepCoverLabel(), options, optionCount, 0, [this](const int index) {
+#if defined(RICKYOS_PRODUCT)
+    // The regular image viewer and the dedicated picker must enable the same face.
+    if ((index == 1 ? doSetSticker() : doSetSleepCover(previewPath.c_str(), false)) && wallpaperPicker) finish();
+#else
     if (doSetSleepCover(index == 1 ? filePath.c_str() : previewPath.c_str(), index == 1) && wallpaperPicker) finish();
+#endif
   });
   requestUpdate();
+}
+
+bool ImageViewerActivity::doSetSticker() {
+  if (!imageReady || !isPng()) return false;
+  constexpr const char* part = KeepPageFace::kStickerPartPath;
+  constexpr const char* backup = KeepPageFace::kStickerBackupPath;
+  constexpr const char* destination = KeepPageFace::kStickerPath;
+  if (Storage.exists(backup)) {
+    // Interrupted previous rename: restore the last complete image first.
+    if (!Storage.exists(destination)) {
+      if (!Storage.rename(backup, destination)) return false;
+    } else if (!Storage.remove(backup))
+      return false;
+  }
+  bool success = !Storage.exists(part) || Storage.remove(part);
+  if (success) {
+    HalFile input, output;
+    success = Storage.openFileForRead("STICKER", filePath, input) && Storage.openFileForWrite("STICKER", part, output);
+    if (success) {
+      const uint64_t expected = input.fileSize64();
+      uint64_t copied = 0;
+      uint8_t buffer[1024];  // Bounded cold-path copy scratch, no resident allocation.
+      int count;
+      while ((count = input.read(buffer, sizeof(buffer))) > 0) {
+        if (output.write(buffer, static_cast<size_t>(count)) != static_cast<size_t>(count)) {
+          success = false;
+          break;
+        }
+        copied += count;
+      }
+      output.flush();
+      success = success && count == 0 && expected > 0 && copied == expected && output.fileSize64() == expected;
+    }
+  }
+  const bool hadPrevious = Storage.exists(destination);
+  if (success) {
+    success = (!hadPrevious || Storage.rename(destination, backup)) && Storage.rename(part, destination);
+  }
+  if (success) {
+    const uint8_t previous = SETTINGS.rickyStandbyFace;
+    SETTINGS.rickyStandbyFace = CrossPointSettings::RICKY_STANDBY_TRANSPARENT;
+    success = SETTINGS.saveToFile();
+    if (!success) {
+      SETTINGS.rickyStandbyFace = previous;
+      (void)SETTINGS.saveToFile();
+      Storage.remove(destination);
+    }
+  }
+  if (!success && hadPrevious && !Storage.exists(destination) && Storage.exists(backup)) {
+    (void)Storage.rename(backup, destination);
+  }
+  if (success && Storage.exists(backup)) Storage.remove(backup);
+  if (Storage.exists(part)) Storage.remove(part);
+  GUI.drawPopup(renderer, success ? tr(STR_DONE) : tr(STR_FAILED_LOWER));
+  delay(1000);
+  return success;
 }
 
 void ImageViewerActivity::render(RenderLock&&) { sleepCoverPopup.processRender(renderer, mappedInput); }
@@ -439,9 +732,13 @@ void ImageViewerActivity::loop() {
       return false;
     }
     currentImageIndex = nextIndex;
-    std::string dirPath = FsHelpers::extractFolderPath(filePath);
-    if (dirPath.back() != '/') dirPath += "/";
-    filePath = dirPath + siblingImages[currentImageIndex];
+    if (gallery) {
+      filePath = siblingImages[currentImageIndex];
+    } else {
+      std::string dirPath = FsHelpers::extractFolderPath(filePath);
+      if (dirPath.back() != '/') dirPath += "/";
+      filePath = dirPath + siblingImages[currentImageIndex];
+    }
     onEnter();
     return true;
   };
@@ -469,14 +766,7 @@ void ImageViewerActivity::loop() {
     return;
   }
 
-  if (mappedInput.hasTouch()) {
-    const Rect sleepCoverAction = sleepCoverActionRect(renderer);
-    if (mappedInput.wasTapInRect(sleepCoverAction.x, sleepCoverAction.y, sleepCoverAction.width,
-                                 sleepCoverAction.height)) {
-      showSleepCoverOptions();
-      return;
-    }
-  }
+  if (tapAction()) return;
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     showSleepCoverOptions();

@@ -9,6 +9,8 @@ class Epub {
   Epub(std::string path, const std::string&) : path(std::move(path)) {}
 
   bool load(bool buildIfMissing, bool) const { return buildIfMissing && path.find("load-fail") == std::string::npos; }
+  // Fixtures are synthetic book files without an OPF; exercise the normal load fallback.
+  bool probeCover(bool&) const { return false; }
   void setupCacheDir() const { Storage.mkdir("/.crosspoint/epub"); }
   bool hasCoverOverride() const {
     HalFile file;
@@ -25,6 +27,8 @@ class Epub {
   bool generateThumbBmp(int height) const {
     ++cover_stub::epubThumbnailGenerations;
     const std::string output = getThumbBmpPath(height);
+    // Like the real generator for an EPUB with no cover image: fails and writes nothing.
+    if (path.find("nocoverimage") != std::string::npos && !hasCoverOverride()) return false;
     if (path.find("coverless") == std::string::npos) return cover_stub::writeBmp(output);
     if (hasCoverOverride()) {
       ++cover_stub::overrideConversions;

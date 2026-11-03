@@ -19,7 +19,7 @@ class RickyAaIconsTest(unittest.TestCase):
         arrays = {}
         for name in ('rickyAppIcons.h', 'rickyNavigationIcons.h', 'rickyPageIcons.h'):
             text = (ICONS / name).read_text()
-            for match in re.finditer(r'(?:static constexpr|static const) uint8_t (\w+)\[\] = \{(.*?)\};', text, re.S):
+            for match in re.finditer(r'(?:static constexpr|static const|inline constexpr) uint8_t (\w+)\[\] = \{(.*?)\};', text, re.S):
                 arrays[match.group(1)] = bytes(int(b, 16) for b in re.findall(r'0x([0-9A-Fa-f]{2})', match.group(2)))
         twins = re.findall(r'\{0x([0-9A-F]{8})u,\s*(\d+),\s*(\d+),\s*k_\w+,\s*(\d+)\},\s*// (\w+)',
                            (ICONS / 'rickyAaIcons.h').read_text())

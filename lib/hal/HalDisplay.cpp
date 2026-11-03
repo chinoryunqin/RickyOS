@@ -1,5 +1,13 @@
 #include <HalDisplay.h>
 #include <HalGPIO.h>
+#if FREEINK_DEVICE_METALIO_EINK4
+#include <Logging.h>
+
+#include "UiGrayRaster.h"
+#endif
+#if FREEINK_DEVICE_METALIO_PLUS
+#include <PlusDisplayProfile.h>
+#endif
 
 #if FREEINK_DEVICE_READPICO
 #include <BoardReadPico.h>
@@ -221,13 +229,166 @@ uint16_t HalDisplay::getDisplayWidth() const { return einkDisplay.getDisplayWidt
 uint16_t HalDisplay::getDisplayHeight() const { return einkDisplay.getDisplayHeight(); }
 uint8_t HalDisplay::getGrayscaleLevels() const { return einkDisplay.getGrayscaleLevels(); }
 uint8_t* HalDisplay::beginGrayscale16() { return einkDisplay.beginGrayscale16(); }
+
+uint8_t* HalDisplay::beginGrayscaleUi() {
+#if FREEINK_DEVICE_METALIO_EINK4
+  if (uiGrayActive || isInverted() || !getFrameBuffer() || getDisplayWidthBytes() > 128 ||
+      !grayscaleCapabilities().stripUploads)
+    return nullptr;
+  // 192,000 bytes on this board, PSRAM only. Retain one raster for redraws;
+  // streaming 100-byte selector rows avoids two more 48 KB plane allocations.
+  const size_t size = static_cast<size_t>(getDisplayWidth() / 2) * getDisplayHeight();
+  if (!uiGrayFrame) uiGrayFrame = HalMemory::allocatePsram(size);
+  if (!uiGrayFrame) {
+    LOG_ERR("DISP", "UI grayscale raster allocation failed");
+    return nullptr;
+  }
+  memset(uiGrayFrame.get(), 0xFF, size);
+  uiGrayActive = true;
+  return uiGrayFrame.get();
+#else
+  return beginGrayscale16();
+#endif
+}
+
+bool HalDisplay::commitGrayscaleUi(bool forceClean) {
+#if FREEINK_DEVICE_METALIO_EINK4
+  if (!uiGrayActive) return false;
+  uiGrayActive = false;
+  const size_t stride = getDisplayWidthBytes();
+  const size_t grayStride = getDisplayWidth() / 2;
+  for (unsigned y = 0; y < getDisplayHeight(); ++y)
+    uiGrayRaster::row(uiGrayFrame.get() + y * grayStride, getFrameBuffer() + y * stride, stride,
+                      uiGrayRaster::Plane::Base);
+#if FREEINK_METALIO_UI_RETAINED
+  if (einkDisplay.displayUiGrayscale(uiGrayFrame.get(), forceClean)) return true;
+  LOG_ERR("DISP", "UI retained unavailable/failed; original refresh fallback");
+#endif
+  // Reuse the characterized overlay waveform and its physical gray cleanup.
+  // Never enable the unvalidated factory/absolute LUT for this panel.
+  einkDisplay.displayGrayscaleBase(EInkDisplay::HALF_REFRESH, false);
+  if (!einkDisplay.displayCommitted()) return false;
+  uint8_t strip[128];
+  for (unsigned plane = 0; plane < 2; ++plane) {
+    for (uint16_t y = 0; y < getDisplayHeight(); ++y) {
+      uiGrayRaster::row(uiGrayFrame.get() + y * grayStride, strip, stride,
+                        plane == 0 ? uiGrayRaster::Plane::Lsb : uiGrayRaster::Plane::Msb);
+      writeGrayscalePlaneStrip(plane == 0, strip, y, 1);
+    }
+  }
+  einkDisplay.displayGrayBuffer(false);
+  const bool committed = einkDisplay.displayCommitted();
+  if (committed) einkDisplay.cleanupGrayscaleBuffers(getFrameBuffer());
+  LOG_INF("DISP", "UI gray physical=4 raster=4bpp committed=%d", committed);
+  return committed;
+#else
+  (void)forceClean;
+  return commitGrayscale16();
+#endif
+}
+
+void HalDisplay::cancelGrayscaleUi() {
+#if FREEINK_DEVICE_METALIO_EINK4
+  uiGrayActive = false;
+#else
+  cancelGrayscale16();
+#endif
+}
+uint8_t* HalDisplay::beginRetainedGrayscale16() {
+#if FREEINK_DEVICE_METALIO_PLUS
+  uint8_t* frame = einkDisplay.beginGrayscale16();
+  if (!frame) return nullptr;
+  if (freeink::metalioPlusRestoreGray16Baseline(einkDisplay.getFrameBuffer())) {
+    freeink::metalioPlusSetGray16Profile(1);
+    return frame;
+  }
+  einkDisplay.cancelGrayscale16();
+#elif FREEINK_DEVICE_READPICO
+  uint8_t* frame = einkDisplay.beginGrayscale16();
+  if (!frame) return nullptr;
+  if (freeink::epdiyLcdRestoreGray16Baseline(einkDisplay.getFrameBuffer())) {
+    freeink::epdiyLcdSetGray16Profile(1);  // Held-diagonal waveform; unchanged page gray stays untouched.
+    return frame;
+  }
+  einkDisplay.cancelGrayscale16();
+#endif
+  return nullptr;
+}
 bool HalDisplay::commitGrayscale16() { return einkDisplay.commitGrayscale16(); }
 
 void HalDisplay::setNextGray16Profile(const uint8_t profile) {
-#if FREEINK_DEVICE_READPICO
+#if FREEINK_DEVICE_METALIO_PLUS
+  freeink::metalioPlusSetGray16Profile(profile);
+#elif FREEINK_DEVICE_READPICO
   freeink::epdiyLcdSetGray16Profile(profile);  // added by scripts/patch_rickyos_epdiy.py
 #else
   (void)profile;
+#endif
+}
+void HalDisplay::setNextPageTurn(uint8_t style, uint8_t orientation, bool fromRight, int originX, int originY) {
+  (void)originX;
+  (void)originY;
+#if FREEINK_DEVICE_METALIO_PLUS
+  freeink::metalioPlusSetPageTurn(style, orientation, fromRight, originX, originY);
+#elif FREEINK_DEVICE_READPICO
+  freeink::epdiyLcdSetPageTurn(style, orientation, fromRight);
+#else
+  (void)style;
+  (void)orientation;
+  (void)fromRight;
+#endif
+}
+void HalDisplay::setNextGray16ReaderRefresh(int x, int y, int width, int height) {
+#if FREEINK_DEVICE_METALIO_PLUS
+  freeink::metalioPlusSetGray16ReaderRefresh(x, y, width, height);
+#else
+  (void)x;
+  (void)y;
+  (void)width;
+  (void)height;
+#endif
+}
+void HalDisplay::setReaderFastRefresh(const bool on) {
+#if FREEINK_DEVICE_METALIO_PLUS
+  freeink::metalioPlusSetReaderFastRefresh(on);
+#else
+  (void)on;
+#endif
+}
+void HalDisplay::setNextMainTabTurn(uint8_t orientation, bool fromRight, int x, int y, int width, int height) {
+#if FREEINK_DEVICE_METALIO_PLUS
+  freeink::metalioPlusSetMainTabTurn(orientation, fromRight, x, y, width, height);
+#else
+  (void)orientation;
+  (void)fromRight;
+  (void)x;
+  (void)y;
+  (void)width;
+  (void)height;
+#endif
+}
+
+void HalDisplay::setNextGray16ReaderTextFinish(bool enabled) {
+#if FREEINK_DEVICE_METALIO_PLUS
+  freeink::metalioPlusSetGray16ReaderTextFinish(enabled);
+#else
+  (void)enabled;
+#endif
+}
+void HalDisplay::setNextGray16UiRefresh(int x, int y, int width, int height, uint8_t contentEvery, uint8_t smallEvery,
+                                        bool adaptive) {
+  (void)adaptive;
+#if FREEINK_DEVICE_METALIO_PLUS
+  freeink::metalioPlusSetGray16UiRefresh(x, y, width, height, contentEvery, smallEvery, adaptive);
+#elif FREEINK_DEVICE_READPICO
+  freeink::epdiyLcdSetGray16UiRefresh(x, y, width, height, contentEvery, smallEvery);
+#else
+  (void)x;
+  (void)y;
+  (void)width;
+  (void)height;
+  (void)contentEvery;
+  (void)smallEvery;
 #endif
 }
 void HalDisplay::railsOffIfIdle(const uint32_t idleMs) {

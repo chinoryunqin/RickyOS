@@ -10,6 +10,7 @@
 #include "InxItemLayout.h"
 #include "components/RickyAaIcons.h"
 #include "components/RickyDesignUi.h"
+#include "components/RickyGrayStroke.h"
 #include "components/SubpageLayout.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
@@ -32,15 +33,27 @@ struct AppEntry {
 };
 
 constexpr AppEntry kAppEntries[] = {
+#if FREEINK_DEVICE_METALIO_EINK4
+    {AppId::Cellular, StrId::STR_CELL_TITLE, UIIcon::Transfer, &ActivityManager::goToCellular},
+    {AppId::Camera, StrId::STR_CAMERA_TITLE, UIIcon::Gallery, &ActivityManager::goToCamera},
+#endif
     {AppId::FileTransfer, StrId::STR_FILE_TRANSFER, UIIcon::Transfer, &ActivityManager::goToFileTransfer},
     {AppId::WeRead, StrId::STR_WEREAD_TITLE, UIIcon::WeRead, &ActivityManager::goToWeRead},
     {AppId::ReadingStats, StrId::STR_READING_STATS, UIIcon::ReadingStats, &ActivityManager::goToRickyReadingStats},
     {AppId::Gomoku, StrId::STR_GOMOKU_TITLE, UIIcon::Gomoku, &ActivityManager::goToGomoku},
     {AppId::Calculator, StrId::STR_CALCULATOR_TITLE, UIIcon::Calculator, &ActivityManager::goToCalculator},
+#if FREEINK_DEVICE_METALIO_PLUS
+    {AppId::Recorder, StrId::STR_REC_TITLE, UIIcon::Recorder, &ActivityManager::goToRecorder},
+#endif
+    {AppId::Gallery, StrId::STR_GALLERY_TITLE, UIIcon::Gallery, &ActivityManager::goToGallery},
     // The one entry for Standby & power off (not repeated in Settings).
-    {AppId::Standby, StrId::STR_RICKY_POWER_PAGE_TITLE, UIIcon::Standby, &ActivityManager::goToStandbySettings},
+    {AppId::Standby, StrId::STR_RICKY_POWER_PAGE_TITLE, UIIcon::Wallpaper, &ActivityManager::goToStandbySettings},
 };
 
+// Preserve the product's three columns; page capacity follows the Plus viewport.
+constexpr int appGridPageStart(int selected, int count, int pageSize) {
+  return count > 0 ? std::clamp(selected, 0, count - 1) / pageSize * pageSize : 0;
+}
 constexpr int kAppCount = static_cast<int>(sizeof(kAppEntries) / sizeof(kAppEntries[0]));
 
 constexpr int visibleAppCount(const uint32_t hiddenMask) {
@@ -100,6 +113,12 @@ const uint8_t* rickyAppIcon(const UIIcon icon) {
       return ricky_app_calculator_40;
     case UIIcon::Standby:
       return ricky_app_standby_40;
+    case UIIcon::Recorder:
+      return ricky_app_recorder_40;
+    case UIIcon::Gallery:
+      return ricky_app_gallery_40;
+    case UIIcon::Wallpaper:
+      return ricky_app_wallpaper_40;
     default:
       return nullptr;
   }
@@ -108,11 +127,26 @@ const uint8_t* rickyAppIcon(const UIIcon icon) {
 // Every app sits on a rounded-square tile (the Settings cards' corner language) so the
 // grid reads as apps rather than loose glyphs; the selected one is filled with the icon
 // knocked out, like the selected tab.
-constexpr int kAppTileSize = 112;
+constexpr int kAppTileSize = ricky::ds::layout::kAppTileSize;
 constexpr int kAppTileRadius = ricky::ds::radius::kControl;
 constexpr int kAppTileStroke = ricky::ds::stroke::kHairline;
 constexpr int kAppPillWidth = kAppTileSize;  // the tile's footprint in the cell layout
 constexpr int kAppPillHeight = kAppTileSize;
+
+int appGridPageSize(const Rect& content, const int visibleCount) {
+#if FREEINK_DEVICE_METALIO_PLUS || RICKYOS_NATIVE_SMALL_PANEL
+  // Tile, label and selection padding must fit without touching the next row.
+  constexpr int minCellHeight = kAppPillHeight + 10 + 28 + 48;
+  const int gap = ricky::ds::space::kGutter;
+  const int availableRows = std::max(1, (content.height + gap) / (minCellHeight + gap));
+  const int neededRows = (std::max(1, visibleCount) + 2) / 3;
+  return 3 * std::min(availableRows, neededRows);
+#else
+  (void)content;
+  (void)visibleCount;
+  return 6;
+#endif
+}
 
 void drawRickyAppIcon(const GfxRenderer& renderer, const uint8_t* icon, const int x, const int y, const bool selected) {
   const int tileX = x + (kRickyAppIconSize - kAppTileSize) / 2;
@@ -120,7 +154,8 @@ void drawRickyAppIcon(const GfxRenderer& renderer, const uint8_t* icon, const in
   if (selected) {
     renderer.fillRoundedRect(tileX, tileY, kAppTileSize, kAppTileSize, kAppTileRadius, Color::Black);
   } else {
-    renderer.drawRoundedRect(tileX, tileY, kAppTileSize, kAppTileSize, kAppTileStroke, kAppTileRadius, true);
+    RickyGrayStroke::ring(renderer, tileX, tileY, kAppTileSize, kAppTileSize, kAppTileStroke, kAppTileRadius,
+                          ricky::ds::gray::kLine);
   }
   if (RickyAaIcons::draw(renderer, icon, kRickyAppIconSize, kRickyAppIconSize, x, y, !selected)) return;
   constexpr int rowBytes = (kRickyAppIconSize + 7) / 8;
@@ -199,15 +234,20 @@ Rect AppsMenuActivity::appContentRect() const {
   content.width -= ricky::ds::space::kPageMargin * 2;
   content.y += ricky::ds::layout::kPageHeaderHeight;
   content.height -= ricky::ds::layout::kPageHeaderHeight;
+#if !FREEINK_DEVICE_METALIO_PLUS && !RICKYOS_NATIVE_SMALL_PANEL
   content.height = std::min(content.height, 448);
+#endif
   return content;
 }
 
 int AppsMenuActivity::iconIndexFromPoint(const int x, const int y) const {
   const Rect content = appContentRect();
-  for (int i = 0; i < getVisibleAppCount(); ++i) {
-    const auto rect = RickyPageLayout::cell(content, i, 6, ricky::ds::space::kGutter, 3);
-    if (x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height) return i;
+  const int visibleCount = getVisibleAppCount();
+  const int pageSize = appGridPageSize(content, visibleCount);
+  const int start = appGridPageStart(nav.selected, visibleCount, pageSize);
+  for (int slot = 0; slot < pageSize && start + slot < visibleCount; ++slot) {
+    const auto rect = RickyPageLayout::cell(content, slot, pageSize, ricky::ds::space::kGutter, 3);
+    if (x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height) return start + slot;
   }
   return -1;
 }
@@ -246,13 +286,18 @@ bool AppsMenuActivity::handleCustomInput() {
     return true;
   }
   const auto swipe = mappedInput.wasSwipe();
+  const int pageSize = appGridPageSize(appContentRect(), visibleCount);
+  if (visibleCount <= pageSize &&
+      (swipe == MappedInputManager::SwipeDir::Up || swipe == MappedInputManager::SwipeDir::Down)) {
+    return true;  // One page: a swipe must not move focus or cause an e-ink refresh.
+  }
   if (swipe == MappedInputManager::SwipeDir::Up) {
-    nav.selected = ButtonNavigator::nextPageIndex(nav.selected, visibleCount, InxGridGeometry::itemsPerPage);
+    nav.selected = ButtonNavigator::nextPageIndex(nav.selected, visibleCount, pageSize);
     requestUpdate();
     return true;
   }
   if (swipe == MappedInputManager::SwipeDir::Down) {
-    nav.selected = ButtonNavigator::previousPageIndex(nav.selected, visibleCount, InxGridGeometry::itemsPerPage);
+    nav.selected = ButtonNavigator::previousPageIndex(nav.selected, visibleCount, pageSize);
     requestUpdate();
     return true;
   }
@@ -260,14 +305,15 @@ bool AppsMenuActivity::handleCustomInput() {
 }
 
 void AppsMenuActivity::drawIconGrid(const Rect& rect, const int visibleCount, const bool showSelection) const {
-  const int start = InxGridGeometry::pageStart(nav.selected, visibleCount);
+  const int pageSize = appGridPageSize(rect, visibleCount);
+  const int start = appGridPageStart(nav.selected, visibleCount, pageSize);
   const int lineHeight = renderer.getLineHeight(UI_10_FONT_ID);
 
-  for (int slot = 0; slot < InxGridGeometry::itemsPerPage && start + slot < visibleCount; ++slot) {
+  for (int slot = 0; slot < pageSize && start + slot < visibleCount; ++slot) {
     const int visibleIndex = start + slot;
     const int appIndex = getAppIndexForVisibleIndex(visibleIndex);
     if (appIndex < 0) continue;
-    const Rect cell = RickyPageLayout::cell(rect, slot, 6, ricky::ds::space::kGutter, 3);
+    const Rect cell = RickyPageLayout::cell(rect, slot, pageSize, ricky::ds::space::kGutter, 3);
     const bool isSelected = showSelection && visibleIndex == nav.selected;
     const std::string label =
         renderer.truncatedText(UI_10_FONT_ID, I18N.get(kAppEntries[appIndex].titleId), std::max(1, cell.width - 8));
@@ -305,7 +351,7 @@ void AppsMenuActivity::drawIconGrid(const Rect& rect, const int visibleCount, co
     renderer.drawText(UI_10_FONT_ID, labelX, iconY + iconSize + 8, label.c_str(), !isSelected);
   }
 
-  GUI.drawSideScrollBar(renderer, rect, visibleCount, start, InxGridGeometry::itemsPerPage);
+  if (visibleCount > pageSize) GUI.drawSideScrollBar(renderer, rect, visibleCount, start, pageSize);
 }
 
 void AppsMenuActivity::buildScreen(UiScreen& screen) {

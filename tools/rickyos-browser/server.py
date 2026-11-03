@@ -115,7 +115,7 @@ def seed_demo(sd):
 
 
 class Preview:
-    def __init__(self, state_dir, port):
+    def __init__(self, state_dir, port, environment="simulator_rickyos", build_root=None):
         self.state_dir = state_dir.resolve()
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self.state_lock = (self.state_dir / 'preview.lock').open('a')
@@ -144,7 +144,8 @@ class Preview:
         self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
         self.socket.settimeout(0.5)
         self.library = self.state_dir / 'bridge.dylib'
-        self.binary = ROOT / '.pio/build/simulator_rickyos/program'
+        self.environment = environment
+        self.binary = (build_root or ROOT / '.pio/build') / environment / 'program'
         self.compile_bridge()
         self.start()
 
@@ -243,11 +244,12 @@ class Preview:
         def worker():
             try:
                 pio, environment = build_toolchain()
+                environment['PLATFORMIO_BUILD_DIR'] = str(self.binary.parent.parent)
                 with (self.state_dir / 'build.log').open('wb') as log:
                     with self.lock:
                         if self.closing:
                             return
-                        self.build_process = subprocess.Popen([str(pio), 'run', '-e', 'simulator_rickyos'],
+                        self.build_process = subprocess.Popen([str(pio), 'run', '-e', self.environment],
                                                               cwd=ROOT, env=environment, stdout=log,
                                                               stderr=subprocess.STDOUT, start_new_session=True)
                     if self.build_process.wait() != 0:
@@ -373,6 +375,8 @@ def handler_for(preview):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--build-root', type=Path, default=ROOT / '.pio/build')
+    parser.add_argument('--environment', default='simulator_rickyos', choices=['simulator_rickyos', 'simulator_rickyos_metalio_eink4'])
     parser.add_argument('--port', type=int, default=8765)
     parser.add_argument('--state-dir', type=Path, default=ROOT / '.cache/rickyos-browser')
     parser.add_argument('--open', action='store_true', help='启动后打开默认浏览器')
@@ -382,7 +386,7 @@ def main():
     # Bind before launching a second simulator when the page is already running.
     server = LocalServer(('127.0.0.1', args.port), BaseHTTPRequestHandler)
     try:
-        preview = Preview(args.state_dir, args.port)
+        preview = Preview(args.state_dir, args.port, args.environment, args.build_root.resolve())
     except Exception:
         server.server_close()
         raise

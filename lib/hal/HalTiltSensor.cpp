@@ -60,11 +60,8 @@ void HalTiltSensor::begin() {
   // by differentiating the gravity component, so the part is brought up like any other
   // and update() takes the accelerometer path. isAvailable() then reports true, which is
   // the gate SettingsList uses to offer "Tilt page turn".
-#if FREEINK_DEVICE_READPICO
+  // Read Pico and Metalio Plus both carry the SC7A20H.
   _accelOnly = BoardConfig::ACTIVE.sensors.imuType == BoardConfig::ImuType::Sc7a20h;
-#else
-  _accelOnly = false;
-#endif
 
   _initMs = millis();
   _lastPollMs = millis();
@@ -111,15 +108,108 @@ bool HalTiltSensor::deepSleep() {
   clearPendingEvents();
   _inTilt = false;
   _isAwake = false;
+  _tapOn = false;
+  _sdkImu.disableDoubleTap();  // off with the sensor; wake() comes back at the tilt rate
   return true;
 }
 
-void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const bool inReader) {
+void HalTiltSensor::syncTap(const bool wanted) {
+  if (wanted == _tapOn) return;
+  _tapOn = wanted ? _sdkImu.enableDoubleTap(_tapSensitivity) : !_sdkImu.disableDoubleTap();
+  _tapNextEvent = _tapPrevEvent = false;
+  _tapBaseValid = _tapSpike = false;
+  _lastKnock = 0;
+  if (wanted && !_tapOn) LOG_ERR("GYR", "double tap unavailable");
+  else LOG_INF("GYR", "double tap %s (strength %u)", _tapOn ? "on" : "off", static_cast<unsigned>(_tapSensitivity));
+  uint8_t regs[8];
+  if (_tapOn && _sdkImu.readTapRegisters(regs))
+    LOG_INF("GYR", "tap regs ctrl1=%02x ctrl2=%02x ctrl5=%02x fifo=%02x cfg=%02x ths=%02x lim=%02x win=%02x", regs[0],
+            regs[1], regs[2], regs[3], regs[4], regs[5], regs[6], regs[7]);
+}
+
+void HalTiltSensor::onDoubleTap(const unsigned long now, const char* how) {
+  if (now - _touchMs < TAP_AFTER_TOUCH_MS || now - _lastTapMs < TAP_COOLDOWN_MS) {
+    LOG_INF("GYR", "double tap (%s) ignored: touch or cooldown", how);
+    return;
+  }
+  _lastTapMs = now;
+  _lastTiltMs = now;  // the knock must not also read as a tilt flick
+  _hadActivity = true;
+  (_tapMode == CrossPointBackTap::TAP_PREVIOUS ? _tapPrevEvent : _tapNextEvent) = true;
+  LOG_INF("GYR", "Back double tap (%s, %s)", how, _tapMode == CrossPointBackTap::TAP_PREVIOUS ? "previous" : "next");
+}
+
+void HalTiltSensor::pollTaps(const unsigned long now) {
+  uint8_t source = 0;
+  if (_sdkImu.takeDoubleTap(&source)) onDoubleTap(now, "chip");
+  else if (source) LOG_INF("GYR", "click src=0x%02x (not a double tap)", source);
+  float z[32];
+  bool lost = false;
+  const int n = _sdkImu.readTapAxis(z, 32, lost);
+  if (n < 0) return;
+  if (lost) {  // a stall (a long render) dropped samples: their timing is gone
+    _tapSpike = false;
+    _lastKnock = 0;
+  }
+  const float threshold = TAP_THRESHOLDS_G[_tapSensitivity < 3 ? _tapSensitivity : 1];
+  for (int i = 0; i < n; ++i) {
+    ++_tapSample;
+    if (!_tapBaseValid) {
+      _tapBase = z[i];
+      _tapBaseValid = true;
+      continue;
+    }
+    const float level = fabsf(z[i] - _tapBase);
+    if (!_tapSpike) {
+      _tapBase += (z[i] - _tapBase) * 0.04f;  // ~125 ms: follows gravity as the hand moves
+      if (level > threshold) {
+        _tapSpike = true;
+        _tapSpikeStart = _tapSample;
+        _tapSpikePeak = level;
+      }
+      continue;
+    }
+    if (level > _tapSpikePeak) _tapSpikePeak = level;
+    if (level >= threshold * 0.5f) {
+      if (_tapSample - _tapSpikeStart > TAP_MAX_SAMPLES * 3) {  // a sustained push or shake, not a knock
+        // Usually the device was turned: gravity moved. Restart the baseline here, or it
+        // would stay at the old angle and every later sample would read as this push.
+        _tapSpike = false;
+        _lastKnock = 0;
+        _tapBase = z[i];
+      }
+      continue;
+    }
+    _tapSpike = false;
+    const uint32_t duration = _tapSample - _tapSpikeStart;
+    LOG_INF("GYR", "knock peak=%.2fg %ums", _tapSpikePeak, static_cast<unsigned>(duration * 5));
+    if (duration > TAP_MAX_SAMPLES) {
+      _lastKnock = 0;
+      continue;
+    }
+    const uint32_t gap = _lastKnock ? _tapSpikeStart - _lastKnock : 0;
+    if (_lastKnock && gap >= TAP_GAP_MIN && gap <= TAP_GAP_MAX) {
+      _lastKnock = 0;
+      onDoubleTap(now, "knock");
+    } else {
+      _lastKnock = _tapSpikeStart;
+    }
+  }
+}
+
+void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const bool inReader,
+                           const uint8_t tapMode, const uint8_t tapSensitivity) {
   if (!_available) {
     return;
   }
 
-  const bool shouldBeAwake = mode != CrossPointTiltPageTurn::TILT_OFF && inReader;
+  const bool tapWanted = tapMode != CrossPointBackTap::TAP_OFF && inReader;
+  if (tapSensitivity != _tapSensitivity && _tapOn) {
+    syncTap(false);  // re-armed below with the new threshold
+  }
+  _tapSensitivity = tapSensitivity;
+  _tapMode = tapMode;
+  const bool shouldBeAwake = (mode != CrossPointTiltPageTurn::TILT_OFF || tapWanted) && inReader;
   if (_accelOnly && (mode != _accelMode || orientation != _accelOrientation || shouldBeAwake != _accelReading)) {
     _accelMode = static_cast<CrossPointTiltPageTurn::Value>(mode);
     _accelOrientation = static_cast<CrossPointOrientation::Value>(orientation);
@@ -144,6 +234,15 @@ void HalTiltSensor::update(const uint8_t mode, const uint8_t orientation, const 
   const unsigned long now = millis();
   // Stabilization: discard readings during gyro startup transient
   if ((now - _wakeMs) < WAKE_STABILIZE_MS) {
+    return;
+  }
+
+  syncTap(tapWanted);
+  if (_tapOn && now - _lastTapPollMs >= TAP_POLL_INTERVAL_MS) {
+    _lastTapPollMs = now;
+    pollTaps(now);
+  }
+  if (mode == CrossPointTiltPageTurn::TILT_OFF) {
     return;
   }
 
@@ -233,6 +332,18 @@ bool HalTiltSensor::wasTiltedBack() {
   return val;
 }
 
+bool HalTiltSensor::wasBackTappedNext() {
+  const bool val = _tapNextEvent;
+  _tapNextEvent = false;
+  return val;
+}
+
+bool HalTiltSensor::wasBackTappedPrevious() {
+  const bool val = _tapPrevEvent;
+  _tapPrevEvent = false;
+  return val;
+}
+
 bool HalTiltSensor::hadActivity() {
   const bool val = _hadActivity;
   _hadActivity = false;
@@ -242,6 +353,8 @@ bool HalTiltSensor::hadActivity() {
 void HalTiltSensor::clearPendingEvents() {
   _tiltForwardEvent = false;
   _tiltBackEvent = false;
+  _tapNextEvent = false;
+  _tapPrevEvent = false;
   _hadActivity = false;
   // Intentionally preserve _inTilt so a held tilt doesn't retrigger on next poll
 }

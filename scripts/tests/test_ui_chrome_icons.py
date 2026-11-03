@@ -105,13 +105,16 @@ struct CrossPointSettings {
    bool showsProgressBar() const {return progressBarMode!=0;}
    bool showsClock() const {return clockMode!=0;}
    bool textLaneVisible() const {return true;}
+   bool headerLaneVisible() const {return true;}
+   bool footerLaneVisible() const {return true;}
  } spec;
  Spec statusBarSpec() const {return spec;}
 } SETTINGS;
 struct { uint16_t getBatteryPercentage() const {return 100;} } powerManager;
 namespace bleinput { bool connected=false; bool isConnected() {return connected;} }
 namespace TimeUtils { bool formatCurrentTime(char* text,size_t,bool) { std::strcpy(text,"23:59"); return true; } }
-struct GfxRenderer {
+class GfxRenderer {
+ public:
  int width=684,height=1216,top=5,right=5,bottom=8,left=5;
  int footerLineHeight=34;
  mutable std::vector<Rect> texts;
@@ -160,6 +163,11 @@ void drawBookmarkStatusIcon(const GfxRenderer& r,int x,int y) {
  assert(x>=r.left+14 && x+24<=r.width-r.right-14 && y+24<=r.height-r.bottom-5);
 }
 void drawBluetoothStatusIcon(const GfxRenderer& r,int x,int y) {drawBookmarkStatusIcon(r,x,y);}
+// Actual digit-ink alignment is exercised on the font tables (BatteryStatusLayout.h);
+// this fixture keeps the icon at its former offset to isolate what it checks.
+namespace ricky::battery {
+inline int iconTop(const GfxRenderer&,int,int textY,int) {return textY+8;}
+}
 ''' + method(layout_source, 'int UITheme::getStatusBarTextTopPadding(')
             + method(source, 'void BaseTheme::drawBatteryLeft(')
             + method(source, 'void BaseTheme::drawStatusBar(') + r'''
@@ -187,33 +195,47 @@ int main() {
     def test_reader_content_reserves_product_chrome_and_preserves_legacy_geometry(self):
         layout_source = (ROOT / 'src/components/UITheme.cpp').read_text()
         reader_source = (ROOT / 'src/activities/reader/EpubReaderActivity.cpp').read_text()
-        render = method(reader_source, 'void EpubReaderActivity::renderBook(')
-        start = render.index('  int orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft;')
-        end = render.index('  const uint16_t viewportWidth', start)
+        # renderBook and the pickers share textMargins(); compile its body for the
+        # Original reading mode, which must keep the product chrome geometry.
+        margins = method(reader_source, 'readingMode::Margins EpubReaderActivity::textMargins(')
+        body = margins[margins.index('{') + 1:margins.rindex('}')]
         program = r'''
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
+#include <cstdlib>
 #include <initializer_list>
 [[maybe_unused]] constexpr int READER_STATUS_FONT_ID=1;
 [[maybe_unused]] constexpr int SMALL_FONT_ID=2;
 struct BaseTheme { static constexpr int STATUS_NUMERIC_FONT_ID=3; };
 struct Metrics { int statusBarVerticalMargin=UiHighDpiProfile::enabled?48:19, progressBarMarginTop=1; };
 using ThemeMetrics=Metrics;
+#include "activities/reader/ReaderChrome.h"
+#include "components/icons/rickyReaderDog.h"
+namespace RickyDesignUi {constexpr int CAPTION=10;}
 struct Settings {
- uint8_t screenMargin=25;
+ uint8_t marginTop=25, marginBottom=25, marginLeft=25, marginRight=25;
+ uint8_t readingMode=0;
  struct Spec {
    bool text=true, progress=false;
    int progressBarHeightPx=4;
    bool textLaneVisible() const {return text;}
+   bool headerLaneVisible() const {return text;}
+   bool footerLaneVisible() const {return text;}
    bool showsProgressBar() const {return progress;}
  } spec;
  Spec statusBarSpec() const {return spec;}
+ int getReaderFontId() const {return 1;}
+ float getReaderLineCompression() const {return 1.0f;}
 } SETTINGS;
-struct GfxRenderer {
+class GfxRenderer {
+ public:
  int width=684,height=1216,top=5,right=5,bottom=8,left=5;
  int textHeight=34, numericHeight=34;
  int getLineHeight(int font) const {return font==BaseTheme::STATUS_NUMERIC_FONT_ID?numericHeight:textHeight;}
+ int getLineHeight(int font,float) const {return getLineHeight(font);}
+ int getScreenWidth() const {return width;}
+ int getScreenHeight() const {return height;}
  void getOrientedViewableTRBL(int* t,int* r,int* b,int* l) const {*t=top;*r=right;*b=bottom;*l=left;}
 };
 struct UITheme {
@@ -224,9 +246,11 @@ struct UITheme {
  static int getStatusBarTextTopPadding(const GfxRenderer&);
 };
 ''' + method(layout_source, 'int UITheme::getStatusBarHeight(') + method(layout_source, 'int UITheme::getProgressBarHeight(') + method(layout_source, 'int UITheme::getStatusBarTextTopPadding(') + r'''
+readingMode::Margins textMargins(const GfxRenderer& renderer,bool automaticPageTurnActive) {
+''' + body + r'''
+}
 int contentBottom(const GfxRenderer& renderer,bool automaticPageTurnActive) {
-''' + render[start:end] + r'''
- return renderer.height-orientedMarginBottom;
+ return renderer.height-textMargins(renderer,automaticPageTurnActive).bottom;
 }
 int main() {
  for (int orientation=0;orientation<4;++orientation)
@@ -239,23 +263,51 @@ int main() {
    if(orientation==2) {r.top=8;r.bottom=5;}
    if(orientation==3) {r.left=8;r.bottom=5;}
    r.textHeight=textHeight;r.numericHeight=numericHeight;
-   SETTINGS.screenMargin=margin;SETTINGS.spec.text=text;SETTINGS.spec.progress=progress;
+   SETTINGS.marginTop=SETTINGS.marginBottom=SETTINGS.marginLeft=SETTINGS.marginRight=margin;SETTINGS.spec.text=text;SETTINGS.spec.progress=progress;
    const int lane=UITheme::getInstance().getMetrics().statusBarVerticalMargin;
    const int bar=progress?5:0;
    const int oldReserve=(text||automatic?lane:0)+bar;
    const int oldBottom=r.height-r.bottom-std::max<int>(margin,oldReserve);
    const int bottom=contentBottom(r,automatic);
    assert(bottom<=r.height-r.bottom-margin);
-   const bool productChrome=UiHighDpiProfile::enabled && text;
-   const int reserve=productChrome?std::max(oldReserve,static_cast<int>(ricky::ds::layout::kReaderFooterHeight)):oldReserve;
+   const bool productChrome=UiHighDpiProfile::enabled && (!automatic||text);
+   const auto chrome=readerChrome::compactLayout(std::max(textHeight,numericHeight),text,text,progress,4);
+   const int reserve=productChrome?chrome.footerReserve:oldReserve;
    assert(bottom==r.height-r.bottom-std::max<int>(margin,reserve));
    if(!productChrome) assert(bottom==oldBottom);
+   const auto m=textMargins(r,automatic);
+   assert(m.left==r.left+margin && m.right==r.right+margin);
+   const int topReserve=UiHighDpiProfile::enabled && text?chrome.headerReserve:0;
+   assert(m.top==r.top+std::max<int>(margin,topReserve));
+   if (productChrome && text) {
+     const int oldTop=r.top+margin+48+16;
+     const int oldProductBottom=r.height-r.bottom-std::max<int>(margin,std::max(oldReserve,96));
+     assert(r.height-m.top-m.bottom >= oldProductBottom-oldTop);
+     if(margin==25) assert(r.height-m.top-m.bottom > oldProductBottom-oldTop);
+   }
+ }
+ // Sides are independent, and never squeeze the text below half the page.
+ {
+   GfxRenderer r;
+   SETTINGS.spec.text=true;SETTINGS.spec.progress=false;
+   SETTINGS.marginLeft=120;SETTINGS.marginRight=0;SETTINGS.marginTop=150;SETTINGS.marginBottom=0;
+   auto m=textMargins(r,false);
+   assert(m.left==r.left+120 && m.right==r.right && m.top==r.top+150);
+   SETTINGS.marginLeft=SETTINGS.marginRight=200;
+   m=textMargins(r,false);
+   assert(std::abs((m.left-r.left)-(m.right-r.right))<=1 && (m.left-r.left)+(m.right-r.right)==(r.width-r.left-r.right)/2);
+   r.width=1216;r.height=684;
+   SETTINGS.marginTop=SETTINGS.marginBottom=200;
+   m=textMargins(r,false);
+   assert(r.height-m.top-m.bottom>0 && m.top-r.top<=200 && m.bottom-r.bottom<=200);
+   const int topFloor=r.top+(UiHighDpiProfile::enabled?readerChrome::compactLayout(34,true,true,false,4).headerReserve:0);
+   assert(m.top>=topFloor);
  }
 }
 '''
         for defines in (('CROSSMUX_UI_PROFILE_HIGH_DPI=1', 'FREEINK_DEVICE_READPICO=1'),
                         ('CROSSMUX_UI_PROFILE_HIGH_DPI=0', 'FREEINK_DEVICE_READPICO=0')):
-            run_cpp(program, defines=defines)
+            run_cpp(program, include_dirs=(ROOT / "src",), defines=defines)
 
 
 if __name__ == '__main__':

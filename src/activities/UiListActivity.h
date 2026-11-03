@@ -18,7 +18,8 @@
 // should NOT derive from this — they use UiAppHost directly.
 class UiListActivity : public Activity, protected UiAppHost {
  public:
-#if FREEINK_DEVICE_READPICO
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4 || \
+    defined(SIMULATOR_DEVICE_METALIO_EINK4)
   // Every list screen redraws itself whole from state (clearScreen, chrome, UI, footer).
   bool wantsGraySettle() const override { return true; }
 #endif

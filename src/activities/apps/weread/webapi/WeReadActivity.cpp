@@ -1,3 +1,4 @@
+#include <HalNetwork.h>
 #include "WeReadActivity.h"
 
 #include <Arduino.h>
@@ -33,6 +34,7 @@
 #include "components/icons/cover.h"
 #include "fontIds.h"
 #include "util/QrUtils.h"
+#include "util/BookCoverLoader.h"
 
 namespace {
 
@@ -479,6 +481,7 @@ static_assert(sizeof(WeReadChapterRangeActivity) <= 1024, "WeRead chapter select
 
 void WeReadActivity::onEnter() {
   Activity::onEnter();
+  BookCoverLoader::forgetDrawnCovers();  // downloads write books and cover overrides
   if (!WeReadBrowse::clearLegacyWorkspace()) LOG_ERR("WR", "legacy browse workspace cleanup failed");
   NetworkStartup::prepare(renderer);
   disclaimerSelected_ = 0;
@@ -711,7 +714,7 @@ void WeReadActivity::connectThen(const Job job, const WeReadStore::ShelfRecord* 
                           mappedInput.isPressed(MappedInputManager::Button::Confirm) ||
                           mappedInput.isPressed(MappedInputManager::Button::NavPrevious) ||
                           mappedInput.isPressed(MappedInputManager::Button::NavNext);
-    if (!result.isCancelled && WiFi.status() == WL_CONNECTED) {
+    if (!result.isCancelled && HalNetwork::connected()) {
       startJob(job, job == Job::Sync ? nullptr : &pendingBook_);
       return;
     }
@@ -813,7 +816,7 @@ void WeReadActivity::maybeShowLongWait(RenderLock& renderBarrier) {
 }
 
 void WeReadActivity::advanceShelfCovers() {
-  if (shelfCoverStopped_ || shelfCount_ == 0 || WiFi.status() != WL_CONNECTED) return;
+  if (shelfCoverStopped_ || shelfCount_ == 0 || !HalNetwork::connected()) return;
   const int itemsPerPage = shelfItemsPerPage();
   const int pageStart = shelfSelected_.load() / itemsPerPage * itemsPerPage;
   if (pageStart != shelfCoverPageStart_) {
@@ -1065,7 +1068,7 @@ void WeReadActivity::openSelectedDetail(const WeReadStore::ShelfRecord& book) {
   const bool coverMissing = detailLoaded_ && detail_.coverUrl[0] &&
                             (!Storage.exists(WeReadStore::coverPath(bookDir).c_str()) || coverSourceMissing);
   if (!detailLoaded_) {
-    if (WiFi.status() == WL_CONNECTED) {
+    if (HalNetwork::connected()) {
       startJob(Job::Detail, &book);
     } else {
       state_.store(State::DetailLoading);
@@ -1074,7 +1077,7 @@ void WeReadActivity::openSelectedDetail(const WeReadStore::ShelfRecord& book) {
     }
     return;
   }
-  if (WiFi.status() == WL_CONNECTED && coverMissing) {
+  if (HalNetwork::connected() && coverMissing) {
     startJob(Job::Detail, &book);
     return;
   }
@@ -1181,7 +1184,7 @@ void WeReadActivity::showShelfRefreshPopup() {
 }
 
 void WeReadActivity::startBookDownload() {
-  if (WiFi.status() == WL_CONNECTED) {
+  if (HalNetwork::connected()) {
     startJob(Job::Download, &pendingBook_);
   } else {
     connectThen(Job::Download, &pendingBook_);
@@ -1429,7 +1432,7 @@ void WeReadActivity::openShelf() {
 
 void WeReadActivity::syncShelf(const WeReadClient::Operation::ShelfCoverScope scope) {
   syncShelfCoverScope_ = scope;
-  if (WiFi.status() == WL_CONNECTED) {
+  if (HalNetwork::connected()) {
     startJob(Job::Sync);
   } else {
     connectThen(Job::Sync);
@@ -1868,7 +1871,7 @@ void WeReadActivity::handleErrorInput() {
   }
 
   if (confirm) {
-    if (WiFi.status() == WL_CONNECTED) {
+    if (HalNetwork::connected()) {
       switch (retryJob_) {
         case Job::Sync:
           startJob(Job::Sync);
@@ -2035,7 +2038,7 @@ const char* WeReadActivity::errorMessage() const {
     case WeReadClient::Error::OutOfMemory:
       return tr(STR_WEREAD_MEMORY_ERROR);
     case WeReadClient::Error::Network:
-      return WiFi.status() == WL_CONNECTED ? tr(STR_WEREAD_HTTP_ERROR) : tr(STR_WEREAD_NO_WIFI);
+      return HalNetwork::connected() ? tr(STR_WEREAD_HTTP_ERROR) : tr(STR_WEREAD_NO_WIFI);
     case WeReadClient::Error::Unavailable:
       return tr(STR_WEREAD_CACHE_NOT_AVAILABLE);
     case WeReadClient::Error::WholeBookOnly:

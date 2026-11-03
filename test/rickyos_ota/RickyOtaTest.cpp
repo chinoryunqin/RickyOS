@@ -13,6 +13,7 @@
 #include "src/network/HttpDownloader.h"
 #include "src/network/OtaUpdater.h"
 #include "src/network/RickyOtaManifest.h"
+#include "src/network/RickyOtaTrust.h"
 
 namespace {
 size_t checks = 0;
@@ -28,7 +29,7 @@ std::vector<std::string> urls;
 esp_partition_t running{0x10000, 0x640000}, next{0x650000, 0x640000};
 int begins = 0, ends = 0, switches = 0, aborts = 0;
 int writeError = 0, endError = 0;
-bool networkError = false, cutDownload = false, missingPartition = false;
+bool networkError = false, cutDownload = false, missingPartition = false, cosDown = false;
 uint16_t runningChip = 9;
 const std::string noUpdate =
     R"({"schema":1,"product":"RickyOS","board":"readpico","channel":"stable","status":"no_update"})";
@@ -47,7 +48,7 @@ void reset() {
   std::memcpy(image.data() + 100, identity.data(), identity.size());
   next = {0x650000, 0x640000};
   begins = ends = switches = aborts = writeError = endError = 0;
-  networkError = cutDownload = missingPartition = false;
+  networkError = cutDownload = missingPartition = cosDown = false;
   runningChip = 9;
 }
 std::string sha(const std::vector<uint8_t>& bytes) {
@@ -128,17 +129,21 @@ esp_err_t esp_ota_set_boot_partition(const esp_partition_t* partition) {
 uint16_t firmware_flash::runningPartitionChipId() { return runningChip; }
 bool HttpDownloader::fetchVerifiedUrl(const std::string& url, const DataCallback& consume, const char* rootCa) {
   CHECK(rootCa && std::string_view(rootCa).starts_with("-----BEGIN CERTIFICATE-----"));
-  CHECK(url.starts_with(ricky_ota::SITE_BASE));
+  // Two owned routes laid out alike, each over its own pinned root.
+  const bool cos = url.starts_with(ricky_ota::COS_BASE);
+  CHECK(cos || url.starts_with(ricky_ota::SITE_BASE));
+  CHECK(std::string_view(rootCa) == (cos ? ricky_ota::COS_ROOT_CA : ricky_ota::ROOT_CA));
   urls.push_back(url);
-  if (networkError) return false;
-  if (url == ricky_ota::MANIFEST_URL) {
+  if (networkError || (cos && cosDown)) return false;
+  const std::string path = url.substr(std::strlen(cos ? ricky_ota::COS_BASE : ricky_ota::SITE_BASE));
+  if (path == "ota.json") {
     for (const auto& character : response) {
       if (!consume(reinterpret_cast<const uint8_t*>(&character), 1)) return false;
     }
     return true;
   }
-  if (url == ricky_ota::NOTES_URL) return true;
-  CHECK(url == std::string(ricky_ota::SITE_BASE) + "firmware/RickyOS-test.bin");
+  if (path == "ota-notes.txt") return true;
+  CHECK(path == "firmware/RickyOS-test.bin");
   for (size_t i = 0; i < image.size(); i += 7) {
     if (cutDownload && i > 1000) return false;
     if (!consume(image.data() + i, std::min(size_t{7}, image.size() - i))) return false;
@@ -263,6 +268,36 @@ int main() {
   CHECK(!updater.isUpdateNewer());
   CHECK(updater.installUpdate() == OtaUpdater::UPDATE_OLDER_ERROR);
   CHECK(begins == 0);
+  // The bucket answers first and serves the image; the site only when the bucket is down.
+  static_assert(ricky_ota::COS_ENABLED);
+  reset();
+  response = offer();
+  updater = OtaUpdater{};
+  CHECK(updater.checkForUpdate(OtaUpdater::Channel::Stable) == OtaUpdater::OK);
+  CHECK(urls.size() == 2 && urls[0] == ricky_ota::COS_MANIFEST_URL && urls[1] == ricky_ota::COS_NOTES_URL);
+  CHECK(updater.installUpdate() == OtaUpdater::OK);
+  CHECK(urls.back() == std::string(ricky_ota::COS_BASE) + "firmware/RickyOS-test.bin" && written == image);
+  reset();
+  response = offer();
+  cosDown = true;
+  updater = OtaUpdater{};
+  CHECK(updater.checkForUpdate(OtaUpdater::Channel::Stable) == OtaUpdater::OK);
+  CHECK(urls.size() == 3 && urls[0] == ricky_ota::COS_MANIFEST_URL && urls[1] == ricky_ota::MANIFEST_URL &&
+        urls[2] == ricky_ota::NOTES_URL);
+  CHECK(updater.installUpdate() == OtaUpdater::OK);
+  CHECK(urls.back() == std::string(ricky_ota::SITE_BASE) + "firmware/RickyOS-test.bin" && written == image);
+  // An answer from the bucket is final: its "no update" does not fall through to the site.
+  reset();
+  response = noUpdate;
+  updater = OtaUpdater{};
+  CHECK(updater.checkForUpdate(OtaUpdater::Channel::Stable) == OtaUpdater::NO_UPDATE);
+  CHECK(urls.size() == 1 && urls[0] == ricky_ota::COS_MANIFEST_URL);
+  // Both routes down: a network error, nothing offered.
+  reset();
+  networkError = true;
+  updater = OtaUpdater{};
+  CHECK(updater.checkForUpdate(OtaUpdater::Channel::Stable) == OtaUpdater::HTTP_ERROR);
+  CHECK(urls.size() == 2 && !updater.isUpdateNewer());
   std::printf(
       "RickyOS OTA: %zu checks passed (production parser/updater, real host SHA-256, simulated network/Flash).\n",
       checks);

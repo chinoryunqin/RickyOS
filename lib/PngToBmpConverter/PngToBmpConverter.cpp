@@ -1067,6 +1067,16 @@ bool PngToBmpConverter::pngFileToBmpStreamInternal(HalFile& pngFile, Print& bmpO
   return success;
 }
 
+bool PngToBmpConverter::pngFileToCoverBmpStream(HalFile& pngFile, Print& bmpOut, bool crop, bool originalThresholds) {
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4 || defined(SIMULATOR_DEVICE_READPICO)
+  (void)originalThresholds;
+  return pngFileToBmpStreamInternal(pngFile, bmpOut, display.getDisplayHeight(), display.getDisplayWidth(), false, crop,
+                                    false, false, true);
+#else
+  return pngFileToBmpStream(pngFile, bmpOut, crop, originalThresholds);
+#endif
+}
+
 bool PngToBmpConverter::pngFileToBmpStream(HalFile& pngFile, Print& bmpOut, bool crop, bool originalThresholds) {
   // Use runtime display dimensions (swapped for portrait cover sizing)
   const int targetWidth = display.getDisplayHeight();
@@ -1112,4 +1122,13 @@ bool PngToBmpConverter::pngFileToBmpStreamWithSize(HalFile& pngFile, Print& bmpO
 bool PngToBmpConverter::pngFileTo1BitBmpStreamWithSize(HalFile& pngFile, Print& bmpOut, int targetMaxWidth,
                                                        int targetMaxHeight) {
   return pngFileToBmpStreamInternal(pngFile, bmpOut, targetMaxWidth, targetMaxHeight, true, true);
+}
+
+bool PngToBmpConverter::pngFileToThumbBmpStreamWithSize(HalFile& pngFile, Print& bmpOut, int targetMaxWidth,
+                                                        int targetMaxHeight) {
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4 || defined(SIMULATOR_DEVICE_READPICO)
+  return pngFileToBmpStreamInternal(pngFile, bmpOut, targetMaxWidth, targetMaxHeight, false, true, false, false, true);
+#else
+  return pngFileTo1BitBmpStreamWithSize(pngFile, bmpOut, targetMaxWidth, targetMaxHeight);
+#endif
 }

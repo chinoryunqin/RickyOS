@@ -27,6 +27,8 @@ class ClockSyncActivity final : public Activity {
   State state = State::Syncing;
   char syncedTime[16] = {0};
   bool shouldTearDownWifiOnExit = false;
+  bool syncStarted = false;
+  uint32_t syncStartedAt = 0;
 
   void runSync();
   void launchWifiSelection();

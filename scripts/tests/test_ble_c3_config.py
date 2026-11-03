@@ -204,7 +204,12 @@ int main() {
                     self.assertIn("--wrap=xTaskCreatePinnedToCore", flags)
                     self.assertNotIn("configure_c3_ble_controller.py", scripts)
                     self.assertFalse(resolve(section, "custom_nimble_config"))
-                    if "FREEINK_CAP_USB_MSC=1" in flags:
+                    if "FREEINK_CAP_USB_MSC=1" in flags and "RICKYOS_PRODUCT=1" in flags:
+                        # Read Pico rebuilds the core (custom sdkconfig) with a pinned TinyUSB
+                        # component for USB 传书, keeping the controller-only BLE stack.
+                        self.assertIn("CONFIG_TINYUSB_ENABLED=y", resolve(section, "custom_sdkconfig"))
+                        self.assertIn("CONFIG_BT_CONTROLLER_ONLY=y", resolve(section, "custom_sdkconfig"))
+                    elif "FREEINK_CAP_USB_MSC=1" in flags:
                         self.assertFalse(resolve(section, "custom_sdkconfig"))
                         self.assertEqual(resolve(section, "board_build.arduino.memory_type"), "dio_opi")
                     else:

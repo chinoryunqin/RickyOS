@@ -36,6 +36,8 @@ class ParsedText {
   WordStore wordStore;
   std::deque<WordStore::StoredWord> words;
   std::vector<EpdFontFamily::Style> wordStyles;
+  // Book face / tone / size per token (WordLook.h), in lockstep with wordStyles.
+  std::vector<uint32_t> wordLooks;
   // Boundary flags use all four combinations:
   //   continues=false, noSpace=false: ordinary breakable word gap
   //   continues=false, noSpace=true:  breakable zero-width, stretchable CJK/Korean gap
@@ -78,6 +80,7 @@ class ParsedText {
   bool droppedWords = false;
   std::vector<std::string> reorderedWordsScratch;
   std::vector<EpdFontFamily::Style> reorderedStylesScratch;
+  std::vector<uint32_t> reorderedLooksScratch;
   std::vector<uint16_t> reorderedWidthsScratch;
   std::vector<bool> reorderedContinuesScratch;
   std::vector<bool> reorderedNoSpaceBeforeScratch;
@@ -85,6 +88,8 @@ class ParsedText {
   std::vector<uint16_t> visualOrderScratch;
 
   std::string_view wordAt(const size_t i) const { return wordStore.view(words[i]); }
+  // The font a token is measured and drawn in: its book face, else the reader font.
+  int fontIdAt(size_t i, int fontId) const;
   bool storeWord(std::string_view text, WordStore::StoredWord& out);
   uint32_t visibleOffsetBaseAt(size_t wordIndex) const;
   uint32_t visibleOffsetAt(size_t wordIndex) const;
@@ -128,7 +133,7 @@ class ParsedText {
   ~ParsedText() = default;
 
   void addWord(std::string word, EpdFontFamily::Style fontStyle, bool underline = false, bool attachToPrevious = false,
-               uint32_t visibleTextOffset = 0, uint8_t linkId = 0);
+               uint32_t visibleTextOffset = 0, uint8_t linkId = 0, uint32_t look = 0);
   uint8_t addLinkTarget(const char* href);
   bool linkTargetMatches(uint8_t linkId, const char* href) const;
   void setRubyForWordAt(size_t index, const std::string& ruby);

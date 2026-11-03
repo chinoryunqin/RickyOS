@@ -61,8 +61,9 @@ class RickyAppIconTest(unittest.TestCase):
         # icon knocked out (B/W pass), or its anti-aliased twin on a 16-level frame.
         self.assertIn('renderer.fillRoundedRect(tileX, tileY, kAppTileSize, kAppTileSize, kAppTileRadius, Color::Black)',
                       draw)
-        self.assertIn('renderer.drawRoundedRect(tileX, tileY, kAppTileSize, kAppTileSize, kAppTileStroke, kAppTileRadius, true)',
-                      draw)
+        # Resting tiles get an exact light-gray ring (1-bit ink on a B/W frame).
+        self.assertIn('RickyGrayStroke::ring(renderer, tileX, tileY, kAppTileSize, kAppTileSize, kAppTileStroke, '
+                      'kAppTileRadius, ricky::ds::gray::kLine)', re.sub(r'\s+', ' ', draw))
         self.assertIn('RickyAaIcons::draw(renderer, icon, kRickyAppIconSize, kRickyAppIconSize, x, y, !selected)', draw)
         self.assertIn('renderer.drawPixel(x + column, y + row, !selected)', draw)
         grid = source.split('void AppsMenuActivity::drawIconGrid(', 1)[1].split('void AppsMenuActivity::buildScreen', 1)[0]

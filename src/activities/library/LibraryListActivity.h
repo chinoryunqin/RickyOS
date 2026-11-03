@@ -1,5 +1,6 @@
 #pragma once
 
+#include <LibraryCategories.h>
 #include <LibraryIndexFile.h>
 
 #include <array>
@@ -8,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "LibrarySearchTable.h"
 #include "RecentBooksStore.h"
 #include "activities/UiTabListActivity.h"
 #include "components/OptionPopup.h"
@@ -37,6 +39,7 @@ class LibraryListActivity final : public UiTabListActivity {
 
   void onEnter() override;
   void onExit() override;
+  void loop() override;
   MainTab mainTab() const override { return MainTab::Library; }
   void selectMainTabContentEdge(MainTabContentEdge edge) override {
     activeNav().requestSelection(MainTabs::contentEdgeIndex(edge, listCount()) + 1);
@@ -71,11 +74,32 @@ class LibraryListActivity final : public UiTabListActivity {
   static constexpr freeink::ui::ActionId ACTION_SEARCH = ACTION_TAB_USER;
   static constexpr freeink::ui::ActionId ACTION_REBUILD = ACTION_SEARCH + 1;
   static constexpr freeink::ui::ActionId ACTION_BACK = ACTION_REBUILD + 1;
-
-  // Walk the card and write a fresh index. Blocking, with a popup: at ~70 books
-  // it is well under a second, and it only runs when the index is missing or the
-  // user asks.
-  bool rebuildIndex();
+  static constexpr freeink::ui::ActionId ACTION_ADD = ACTION_BACK + 8;
+  void openSources();
+  // Books a transfer wrote since the last visit: refresh the sources that cover them.
+  void foldInTransfers();
+  bool transferCheckPending = false;
+  unsigned long transferCheckAt = 0;
+  void reloadIndex();
+  void removeFromLibrary(const std::string& path);
+  void openCategories();
+  void openShelfTools();
+  void assignCategories(const std::string& path = {});
+  void batchAction();
+  void clearBatch();
+  library::LibraryCategories categories;
+  int categoryFilter = 0;  // 0 all, 1 uncategorized, 2..17 stable category slot
+  // The folder the shelf shows, with everything under it ("" = every folder). A path, so
+  // a rebuild that renumbers folders keeps it; folderMatch marks the matching folder ids
+  // for the current index (one byte per folder, built by applyFilter).
+  std::string folderPath;
+  std::vector<uint8_t> folderMatch;
+  void openFolders();
+  bool categoriesReady = true;
+  bool batchMode = false;
+  uint16_t batchCount = 0;
+  std::array<uint8_t, library::CLIX_MAX_RECORDS / 8> batchSelected{};  // one bit per indexed book, no heap
+  enum ToolAction { ManageSources, ManageCategories, BatchSelect, SortTools, PageJump, ManageFolders };
 
   // Input
   void openSelectedBook();
@@ -146,6 +170,9 @@ class LibraryListActivity final : public UiTabListActivity {
   void refreshOverlap();
 
   library::LibraryIndexFile index;
+  // Built on the first search, released with the shelf or when the index changes.
+  LibrarySearchTable searchTable;
+  bool searchTableFailed = false;  // one failed build per index; retried after a reload
   int activeTabIndex = 0;
   library::SortOrder sortOrder = library::SortOrder::RecentDesc;
   // One bit per tab; Recent starts descending (newest first).
@@ -189,6 +216,7 @@ class LibraryListActivity final : public UiTabListActivity {
   uint16_t pinnedAscRows[RecentBooksStore::MAX_RECENT_BOOKS] = {};
   uint16_t overlapRows[RecentBooksStore::MAX_RECENT_BOOKS] = {};
   uint8_t pinnedTotal = 0;
+  uint8_t pinnedStoreRows[RecentBooksStore::MAX_RECENT_BOOKS] = {};
   uint8_t overlapCount = 0;
 
   bool lockNextConfirmRelease = false;
@@ -197,15 +225,34 @@ class LibraryListActivity final : public UiTabListActivity {
   // Row options modal (Recent long-press menu); owned here so it outlives the
   // touch event that opened it.
   OptionPopup optionPopup;
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+  static constexpr int SHELF_CAPACITY = 4;  // The A4: one 2 x 2 page, so its covers stay large.
+#else
   static constexpr int SHELF_CAPACITY = 6;  // One bounded 3 x 2 page, never all card records.
+#endif
   static constexpr freeink::ui::ActionId ACTION_READING_FILTER = ACTION_BACK + 1;
-  static constexpr freeink::ui::ActionId ACTION_SHELF_OPTIONS = ACTION_READING_FILTER + 1;
   uint8_t readingFilter = 0;
+  // The list view fits many more rows than the cover grid; the arrays hold the
+  // densest page either view can draw.
+  static constexpr int SHELF_MAX = 16;
+  int pageCapacity = SHELF_CAPACITY;
   int shelfStart = -1;
   int shelfHeight = 0;
   int shelfCount = 0;
-  std::array<std::string, SHELF_CAPACITY> shelfTitles{}, shelfAuthors{}, shelfPaths{}, shelfCovers{};
-  std::array<std::array<char, 56>, SHELF_CAPACITY> shelfDetails{};
+  int shelfBuiltCapacity = 0;
+  std::array<std::string, SHELF_MAX> shelfTitles{}, shelfAuthors{}, shelfPaths{}, shelfCovers{};
+  std::array<std::array<char, 56>, SHELF_MAX> shelfDetails{};
+  void toggleListView();
+  // Covers for the page on screen, made one at a time once the shelf has been
+  // idle a moment (painting itself never unzips a book). Written by the render
+  // task, consumed by loop() under the render lock.
+  void makePendingCover();
+  uint32_t coverPending = 0;   // slots on the current page whose thumbnail is missing
+  uint32_t coverAttempted = 0;  // slots already tried on this page (no retry loop)
+  int coverPageStart = -1;
+  int coverPageHeight = 0;
+  unsigned long coverIdleSince = 0;
+  void promptPageJump();
   void buildRickyShelf(UiScreen& screen);
   bool entryPath(int entry, std::string& path);
 };

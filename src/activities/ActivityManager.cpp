@@ -1,10 +1,43 @@
 #include "ActivityManager.h"
 
+#include "apps/MetalioCameraActivity.h"
+#include "apps/MetalioPeripheralActivity.h"
+
+#if RICKYOS_PLUS_TAB_BENCH
+#include <esp_timer.h>
+#endif
+#if RICKYOS_PLUS_SCREEN_TOUR
+#include "CrossPointState.h"
+#include "activities/reader/ReadingMode.h"
+#if RICKYOS_PLUS_SCREEN_TOUR == 2
+#include <esp_system.h>
+#ifndef RICKYOS_PLUS_SCREEN_TOUR_FROM
+#define RICKYOS_PLUS_SCREEN_TOUR_FROM 0
+#endif
+#include <string>
+std::string plusTour2Book(const char* titlePart);
+bool plusTour2Backup(const std::string& republic, const std::string& dance);
+bool plusTour2Restore();
+bool plusTour2Finished();
+int plusTour2FindChapter(const std::string& path, const char* needle);
+bool plusTour2SetProgress(const std::string& path, int spine);
+bool plusTour2InstallSticker();
+#endif
+#include "RecentBooksStore.h"
+#ifndef RICKYOS_PLUS_SCREEN_TOUR_FROM
+#define RICKYOS_PLUS_SCREEN_TOUR_FROM 0
+#endif
+#ifndef RICKYOS_PLUS_SCREEN_TOUR_TO
+#define RICKYOS_PLUS_SCREEN_TOUR_TO 7
+#endif
+#endif
+
 #include <BoardConfig.h>
 #include <FontCacheManager.h>
 #include <FsHelpers.h>
 #include <HalDisplay.h>
 #include <HalGPIO.h>
+#include <HalMemory.h>
 #include <HalPowerManager.h>
 #include <Memory.h>
 #include <VectorFontSupport.h>
@@ -14,10 +47,14 @@
 #include "CrossPointSettings.h"
 #include "apps/AppsMenuActivity.h"
 #include "apps/calculator/CalculatorActivity.h"
+#if FREEINK_DEVICE_METALIO_PLUS
+#include "apps/recorder/RecorderActivity.h"
+#endif
 #include "apps/gomoku/GomokuModeActivity.h"
 #include "apps/reading-stats/RickyReadingStatsActivity.h"
 #include "apps/standby/RickyStandbySettingsActivity.h"
 #include "apps/standby/StandbyActivity.h"
+#include "apps/standby/StandbyGalleryActivity.h"
 #include "apps/weread/WeReadActivity.h"
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
@@ -40,6 +77,49 @@
 #include "util/UserGuide.h"
 
 static portMUX_TYPE activityManagerSpinlock = portMUX_INITIALIZER_UNLOCKED;
+
+#if RICKYOS_PERF_SD_LOG
+#include <HalStorage.h>
+
+#include <cstdio>
+#include <cstring>
+namespace {
+// Device timing for remote measurement: the render task queues one line per gray
+// frame and the main loop appends them to the SD card (SdFat is not thread-safe).
+constexpr const char* kPerfLogPath = "/rickyos-perf.log";
+char perfPending[2048];
+size_t perfPendingLen = 0;
+unsigned long perfLastFlush = 0;
+portMUX_TYPE perfSpinlock = portMUX_INITIALIZER_UNLOCKED;
+
+void queuePerfLine(const char* line) {
+  const size_t len = strnlen(line, 255);
+  taskENTER_CRITICAL(&perfSpinlock);
+  if (perfPendingLen + len <= sizeof(perfPending)) {
+    memcpy(perfPending + perfPendingLen, line, len);
+    perfPendingLen += len;
+  }
+  taskEXIT_CRITICAL(&perfSpinlock);
+}
+
+void flushPerfLog() {
+  if (millis() - perfLastFlush < 2000) return;
+  perfLastFlush = millis();
+  char chunk[sizeof(perfPending)];
+  taskENTER_CRITICAL(&perfSpinlock);
+  const size_t len = perfPendingLen;
+  memcpy(chunk, perfPending, len);
+  perfPendingLen = 0;
+  taskEXIT_CRITICAL(&perfSpinlock);
+  if (!len) return;
+  HalFile file = Storage.open(kPerfLogPath, O_WRONLY | O_CREAT | O_APPEND);
+  if (!file || !file.isOpen()) return;
+  file.write(reinterpret_cast<const uint8_t*>(chunk), len);
+  file.flush();
+  file.close();
+}
+}  // namespace
+#endif
 
 extern HalGPIO gpio;
 
@@ -74,7 +154,8 @@ void ActivityManager::renderTaskTrampoline(void* param) {
   self->renderTaskLoop();
 }
 
-#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4 || \
+    defined(SIMULATOR_DEVICE_READPICO) || defined(SIMULATOR_DEVICE_METALIO_EINK4)
 namespace {
 // Keep the previous B/W + delayed-gray candidate available for A/B builds.
 // The direct-gray experiment skips both the B/W submission and this idle redraw.
@@ -92,17 +173,29 @@ void ActivityManager::renderTaskLoop() {
   while (true) {
     const bool idleArmed = waitTicks != portMAX_DELAY;
     const bool foreground = ulTaskNotifyTake(pdTRUE, waitTicks) != 0;
+#if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
+    const uint32_t queued = foreground ? queuedRenderMs.exchange(0) : 0;
+    const uint32_t wokeMs = millis();
+#endif
     waitTicks = portMAX_DELAY;
     // Name why an armed idle pass did not run; a reader page cache that never fills
     // looks the same from outside whichever of these fired.
     if (idleArmed && foreground) {
       LOG_DBG("ACT", "Idle render: preempted by an update");
+#if RICKYOS_PLUS_READER_TIMING
+      LOG_INF("ReaderCache", "idle preempted by an update");
+#endif
     } else if (idleArmed && idleRenderCancelled(idleGeneration)) {
       const uint32_t generation = idleRenderGeneration.load(std::memory_order_relaxed);
       const bool byInput = idleGeneration != generation;
       LOG_DBG("ACT", "Idle render: cancelled (%s)",
               byInput ? lastIdleCancel.load(std::memory_order_relaxed)
                       : (isSwitchPending() ? "switch pending" : "update requested"));
+#if RICKYOS_PLUS_READER_TIMING
+      LOG_INF("ReaderCache", "idle cancelled before start (%s)",
+              byInput ? lastIdleCancel.load(std::memory_order_relaxed)
+                      : (isSwitchPending() ? "switch pending" : "update requested"));
+#endif
       // One idle attempt per render, but a page turn's own touch-up or key release lands
       // during that render and used to spend the attempt: on device the reader's page
       // cache hit about 1 turn in 40. Input that queues no render re-arms the wait, so
@@ -116,6 +209,13 @@ void ActivityManager::renderTaskLoop() {
       }
     }
     RenderLock lock;
+#if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
+    if (foreground) {
+      LOG_INF("PERF", "render wake queue=%u ms lock=%u ms requested=%d pending=%d",
+              queued ? static_cast<uint32_t>(wokeMs - (queued - 1)) : 0, static_cast<uint32_t>(millis() - wokeMs),
+              queued != 0, isSwitchPending());
+    }
+#endif
     if (currentActivity && pendingAction.load() == PendingAction::None) {
       HalPowerManager::Lock powerLock;
       if (foreground) {
@@ -123,29 +223,38 @@ void ActivityManager::renderTaskLoop() {
         // before calling them. Input during the render also cancels its idle pass.
         auto delayMs = currentActivity->idleRenderDelayMs();
         [[maybe_unused]] bool directGray = false;
-#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4 || \
+    defined(SIMULATOR_DEVICE_READPICO) || defined(SIMULATOR_DEVICE_METALIO_EINK4)
         directGray = delayMs == 0 && currentActivity->wantsGraySettle() && ricky::ds::refresh::kDirectGrayUi;
         graySettlePending = delayMs == 0 && currentActivity->wantsGraySettle() && graySettleAllowed();
         if (graySettlePending) delayMs = kGraySettleDelayMs;
 #endif
         idleGeneration = idleRenderGeneration.load(std::memory_order_relaxed);
         display.setInverted(SETTINGS.screenInverted != 0);
-#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4 || \
+    defined(SIMULATOR_DEVICE_READPICO) || defined(SIMULATOR_DEVICE_METALIO_EINK4)
         // A missing gray buffer or failed commit gets the existing readable B/W
         // fallback. The direct path never arms a second, delayed submission.
-        if (!directGray || !renderDirectGray(std::move(lock))) currentActivity->render(std::move(lock));
+        if (!directGray || !renderDirectGray(std::move(lock))) {
+          mainTabMotion_.invalidate();
+          currentActivity->render(std::move(lock));
+        }
 #else
         currentActivity->render(std::move(lock));
 #endif
         idleDelayTicks = delayMs != 0 ? pdMS_TO_TICKS(delayMs) : portMAX_DELAY;
         waitTicks = idleDelayTicks;
       } else if (!idleRenderCancelled(idleGeneration)) {
-#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4 || \
+    defined(SIMULATOR_DEVICE_READPICO) || defined(SIMULATOR_DEVICE_METALIO_EINK4)
         if (graySettlePending) {
           graySettlePending = false;
           settleToGray(std::move(lock), idleGeneration);
         } else {
           currentActivity->renderIdle(idleGeneration);
+#if FREEINK_DEVICE_METALIO_PLUS
+          if (!idleRenderCancelled(idleGeneration)) currentActivity->renderIdleWarmup(idleGeneration);
+#endif
         }
 #else
         currentActivity->renderIdle(idleGeneration);
@@ -154,7 +263,29 @@ void ActivityManager::renderTaskLoop() {
     }
     // An idle timeout must never acknowledge requestUpdateAndWait(): its
     // notification may have arrived while the idle callback was cancelling.
-    if (!foreground) continue;
+    if (!foreground) {
+#if FREEINK_DEVICE_METALIO_PLUS
+      // Input can arrive during renderIdle(), not just during its timeout.
+      // A touch-up without a queued redraw must leave interrupted prefetch
+      // retryable after a new quiet window. Do not retry successful passes,
+      // navigation, queued updates or a disabled cache (delay == 0).
+      const uint32_t generation = idleRenderGeneration.load(std::memory_order_relaxed);
+      if (currentActivity && generation != idleGeneration && lastIdleCancelRearms.load(std::memory_order_relaxed) &&
+          !isSwitchPending() && !requestedUpdate.load()) {
+        const auto delayMs = currentActivity->idleRenderDelayMs();
+        if (delayMs != 0) {
+          idleGeneration = generation;
+          idleDelayTicks = pdMS_TO_TICKS(delayMs);
+          waitTicks = idleDelayTicks;
+          LOG_DBG("ACT", "Idle render: retry after interrupted pass");
+#if RICKYOS_PLUS_READER_TIMING
+          LOG_INF("ReaderCache", "idle interrupted (%s), retry", lastIdleCancel.load(std::memory_order_relaxed));
+#endif
+        }
+      }
+#endif
+      continue;
+    }
     TaskHandle_t waiter = nullptr;
     taskENTER_CRITICAL(&activityManagerSpinlock);
     waiter = waitingTaskHandle;
@@ -166,40 +297,109 @@ void ActivityManager::renderTaskLoop() {
   }
 }
 
-#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4 || \
+    defined(SIMULATOR_DEVICE_READPICO) || defined(SIMULATOR_DEVICE_METALIO_EINK4)
 bool ActivityManager::renderDirectGray(RenderLock&& lock) {
-  if (!renderer.beginGrayscale16()) {
-    LOG_DBG("ACT", "Direct gray: unavailable, B/W fallback");
+  if (!renderer.beginGrayscaleUi()) {
+    mainTabMotion_.invalidate();
+    LOG_ERR("ACT", "Direct gray: unavailable, B/W fallback");
     return false;
   }
   const unsigned long started = millis();
+#if RICKYOS_PLUS_TAB_BENCH
+  LOG_INF("TABBENCH", "render_start %s t=%lu", currentActivity->name.c_str(), started);
+#endif
+  const uint32_t renderGeneration = renderRequestGeneration.load(std::memory_order_relaxed);
+  // Renderers may release the lock; capture page-owned geometry first.
+  const bool mainTab = currentActivity->usesMainTabBar();
+  const MainTabLayout layout = mainTab ? currentActivity->mainTabLayout() : MainTabLayout{Rect{}, Rect{}, Rect{}};
+  const Rect navigation = layout.tabBar;
+  const Rect content = layout.content;
+  const int tabIndex = mainTab ? MainTabs::indexOf(currentActivity->mainTab()) : -1;
+  const auto orientation = static_cast<uint8_t>(renderer.getOrientation());
   renderer.setDisplayCapture(true);
   currentActivity->render(std::move(lock));
   renderer.setDisplayCapture(false);
-  if (!renderer.isGrayscale16Active()) return true;  // The page owns its cancellation.
+  if (!renderer.isGrayscale16Active()) {
+    mainTabMotion_.invalidate();
+    return true;
+  }
   // A plain touch/release must not discard the only foreground frame. Discard
   // only when a newer redraw or navigation is queued (e.g. a cover finishes).
-  if (isSwitchPending() || requestedUpdate.load()) {
+  if (isSwitchPending() || requestedUpdate.load() ||
+      renderGeneration != renderRequestGeneration.load(std::memory_order_relaxed)) {
     renderer.cancelGrayscale16();
     LOG_DBG("ACT", "Direct gray: superseded");
     return true;
   }
 #if !defined(SIMULATOR)
-  static uint8_t frames = 0;
-  const uint8_t next = static_cast<uint8_t>((frames + 1) % ricky::ds::refresh::kGc16EveryDirectFrames);
-  display.setNextGray16Profile(renderer.nextRefreshNeedsCleanup() || next == 0 ? 2 : 1);
+  const bool adaptiveTabRefresh = mainTab && RICKYOS_MAIN_TAB_MOTION_ENABLED && SETTINGS.mainTabMotion != 0;
+  renderer.setNextGray16UiRefresh(navigation.x, navigation.y, navigation.width, navigation.height,
+                                  ricky::ds::refresh::kGc16EveryDirectFrames,
+                                  ricky::ds::refresh::kGc16EveryControlFrames, adaptiveTabRefresh);
+  if (renderer.nextRefreshNeedsCleanup()) display.setNextGray16Profile(2);
+  const int direction = mainTabMotion_.directionTo(tabIndex, orientation, content,
+                                                   RICKYOS_MAIN_TAB_MOTION_ENABLED && SETTINGS.mainTabMotion != 0,
+                                                   renderer.nextRefreshNeedsCleanup());
+  if (direction) renderer.setNextMainTabTurn(content.x, content.y, content.width, content.height, direction > 0);
+#else
+  (void)navigation;
 #endif
+  const unsigned long painted = millis();
   const bool committed = renderer.commitGrayscale16();
+  mainTabMotion_.presented(tabIndex, orientation, content, committed);
+  if (!committed) LOG_ERR("ACT", "Direct gray commit failed; B/W fallback");
   if (committed) renderer.clearNextRefreshOverride();
-#if !defined(SIMULATOR)
-  if (committed) frames = next;
+  LOG_DBG("ACT", "Direct gray: %s paint=%lu ms submit=%lu ms total=%lu ms", committed ? "done" : "failed, B/W fallback",
+          painted - started, millis() - painted, millis() - started);
+#if RICKYOS_PLUS_TAB_BENCH
+  LOG_INF("TABBENCH", "painted %s paint=%lu submit=%lu end=%lu", currentActivity ? currentActivity->name.c_str() : "?",
+          painted - started, millis() - painted, millis());
 #endif
-  LOG_DBG("ACT", "Direct gray: %s in %lu ms", committed ? "done" : "failed, B/W fallback", millis() - started);
+#if RICKYOS_PERF_SD_LOG
+  {
+    char line[256];
+    int n = snprintf(line, sizeof(line), "%lu %s paint=%lu submit=%lu%s", static_cast<unsigned long>(started),
+                     currentActivity ? currentActivity->name.c_str() : "?", painted - started, millis() - painted,
+                     committed ? "" : " failed");
+#if RICKYOS_PAINT_PROFILE
+    const auto& profile = GfxRenderer::paintProfile();
+    if (n > 0 && n < static_cast<int>(sizeof(line)))
+      n += snprintf(line + n, sizeof(line) - n, " fill=%lu/%lu text=%lu/%lu shape=%lu/%lu image=%lu/%lu",
+                    profile.us[0] / 1000, profile.calls[0], profile.us[1] / 1000, profile.calls[1],
+                    profile.us[2] / 1000, profile.calls[2], profile.us[3] / 1000, profile.calls[3]);
+#endif
+    if (n > 0 && n < static_cast<int>(sizeof(line)) - 1) {
+      line[n] = '\n';
+      line[n + 1] = '\0';
+      queuePerfLine(line);
+    }
+  }
+#endif
+#if RICKYOS_PAINT_PROFILE
+  {
+    auto& profile = GfxRenderer::paintProfile();
+    LOG_INF("PERF", "paint %s: fill=%lums/%lu text=%lums/%lu shape=%lums/%lu image=%lums/%lu",
+            currentActivity ? currentActivity->name.c_str() : "?", profile.us[0] / 1000, profile.calls[0],
+            profile.us[1] / 1000, profile.calls[1], profile.us[2] / 1000, profile.calls[2], profile.us[3] / 1000,
+            profile.calls[3]);
+    profile = {};
+  }
+#endif
+#if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
+  const auto internal = HalMemory::getInternalHeap();
+  const auto dma = HalMemory::getInternalDmaHeap();
+  const auto psram = HalMemory::getPsramHeap();
+  LOG_INF("PERF", "gray heap internal=%u/%u dma=%u/%u psram=%u/%u (free/maxBlock)",
+          static_cast<unsigned>(internal.freeBytes), static_cast<unsigned>(internal.largestBlockBytes),
+          static_cast<unsigned>(dma.freeBytes), static_cast<unsigned>(dma.largestBlockBytes),
+          static_cast<unsigned>(psram.freeBytes), static_cast<unsigned>(psram.largestBlockBytes));
+#endif
   return committed;
 }
 
 void ActivityManager::settleToGray(RenderLock&& lock, const uint32_t generation) {
-  if (!renderer.beginGrayscale16()) return;
+  if (!renderer.beginGrayscaleUi()) return;
   const unsigned long started = millis();
   renderer.setDisplayCapture(true);
   currentActivity->render(std::move(lock));
@@ -225,7 +425,24 @@ void ActivityManager::settleToGray(RenderLock&& lock, const uint32_t generation)
 }
 #endif
 
+void ActivityManager::trackInputMode() {
+  if (!mappedInput.hasTouch()) return;
+  if (mappedInput.wasAnyPressed()) {
+    if (!keyFocusShown) {
+      keyFocusShown = true;
+      requestUpdate();
+    }
+  } else if (keyFocusShown && mappedInput.wasScreenTouchReleased()) {
+    keyFocusShown = false;
+    requestUpdate();  // a touch on empty space produces no frame of its own
+  }
+}
+
 void ActivityManager::loop() {
+#if RICKYOS_PERF_SD_LOG
+  // Never write while the card is exported over USB.
+  if (!currentActivity || currentActivity->name != "UsbDrive") flushPerfLog();
+#endif
 #if FREEINK_DEVICE_READPICO && !defined(SIMULATOR)
   {
     // Page turns and UI frames leave the panel rails up so the next frame starts at once;
@@ -240,6 +457,120 @@ void ActivityManager::loop() {
     resetHomeStandbyInput();
     return;
   }
+#if RICKYOS_PLUS_SCREEN_TOUR == 2
+  {
+    // Diagnostic: screenshots of the user's own books (port/PlusScreenTour2.cpp keeps and
+    // restores the state they touch). 0: home as "Ricky", 1: 理想国 in 古籍 at the chapter
+    // with 玻勒马霍斯's line, 2: 舞！舞！舞！ in 小狗伴读, 3: Standby with the 破纸而出 sticker.
+    static bool checked = false;
+    static unsigned step = 0;
+    static uint32_t nextAt = 25000;
+    static char nickname[sizeof(SETTINGS.rickyNickname)];
+    if (!checked) {
+      checked = true;
+      if (plusTour2Restore()) {
+        delay(500);
+        esp_restart();
+      }
+      if (plusTour2Finished()) step = 99;
+    }
+    if (step < 4 && currentActivity && currentActivity->name != "Boot" && millis() >= nextAt) {
+      LOG_INF("TOUR2", "step=%u from=%s", step, currentActivity->name.c_str());
+      nextAt = millis() + 45000;
+      const std::string republic = plusTour2Book("理想国"), dance = plusTour2Book("舞！舞！舞！");
+      switch (step++) {
+        case 0:
+          if (!plusTour2Backup(republic, dance)) {
+            LOG_ERR("TOUR2", "backup failed, tour stopped");
+            step = 99;
+            return;
+          }
+          memcpy(nickname, SETTINGS.rickyNickname, sizeof(nickname));
+#if RICKYOS_PLUS_SCREEN_TOUR_FROM > 0
+          // Re-shoot from a later step; the backup above still covers every step.
+          step = RICKYOS_PLUS_SCREEN_TOUR_FROM;
+          nextAt = millis() + 5000;
+          return;
+#endif
+          strncpy(SETTINGS.rickyNickname, "Ricky", sizeof(SETTINGS.rickyNickname) - 1);
+          goToInxRecent();
+          return;
+        case 1: {
+          memcpy(SETTINGS.rickyNickname, nickname, sizeof(nickname));
+          const int spine = republic.empty() ? -1 : plusTour2FindChapter(republic, "人多势众");
+          LOG_INF("TOUR2", "republic=%s spine=%d", republic.c_str(), spine);
+          if (spine >= 0) plusTour2SetProgress(republic, spine);
+          SETTINGS.readingMode = static_cast<uint8_t>(readingMode::Mode::Ancient);
+          if (!republic.empty()) goToReader(republic);
+          return;
+        }
+        case 2:
+          SETTINGS.readingMode = static_cast<uint8_t>(readingMode::Mode::Puppy);
+          LOG_INF("TOUR2", "dance=%s", dance.c_str());
+          if (!dance.empty()) goToReader(dance);
+          return;
+        case 3:
+          LOG_INF("TOUR2", "sticker=%d", plusTour2InstallSticker());
+          SETTINGS.rickyStandbyFace = CrossPointSettings::RICKY_STANDBY_TRANSPARENT;
+          goToStandby();
+          return;
+      }
+    }
+  }
+#elif RICKYOS_PLUS_SCREEN_TOUR
+  {
+    // Diagnostic: visit the screens used for screenshots, one every 10 s from 25 s after boot.
+    static unsigned step = RICKYOS_PLUS_SCREEN_TOUR_FROM;
+    static uint32_t nextAt = 25000;
+    if (step < RICKYOS_PLUS_SCREEN_TOUR_TO && currentActivity && currentActivity->name != "Boot" &&
+        millis() >= nextAt) {
+      LOG_INF("TOUR", "step=%u from=%s", step, currentActivity->name.c_str());
+      nextAt = millis() + 30000;
+      switch (step++) {
+        case 0:
+          goToLibrary();
+          return;
+        case 1:
+          goToSettings();
+          return;
+        case 2:
+          goToInxRecent();
+          return;
+        case 3:
+          if (!RECENT_BOOKS.getBooks().empty()) goToReader(RECENT_BOOKS.getBooks().front().path);
+          return;
+        case 5:
+          goToInxRecent();
+          return;
+        default: {  // 4: control center over the book, 6: over home
+          auto panel =
+              makeUniqueNoThrow<FrontlightPanelActivity>(renderer, mappedInput, currentActivity->name == "EpubReader");
+          if (panel) pushActivity(std::move(panel));
+          return;
+        }
+      }
+    }
+  }
+#endif
+#if RICKYOS_PLUS_TAB_BENCH
+  {
+    // Diagnostic: walk the tab bar unattended, three rounds, 5 s apart from 25 s after boot.
+    static uint32_t nextAt = 25000;
+    static unsigned step = 0;
+    if (step < 3 * MainTabs::values.size() && currentActivity && currentActivity->usesMainTabBar() &&
+        millis() >= nextAt) {
+      const MainTab target = MainTabs::values[(step + 1) % MainTabs::values.size()];
+      LOG_INF("TABBENCH", "step=%u from=%d to=%d t=%llu heap=%u psram=%u", step,
+              static_cast<int>(currentActivity->mainTab()), static_cast<int>(target),
+              static_cast<unsigned long long>(esp_timer_get_time() / 1000), (unsigned)ESP.getFreeHeap(),
+              (unsigned)ESP.getFreePsram());
+      ++step;
+      nextAt = millis() + 5000;
+      goToMainTab(target);
+      return;
+    }
+  }
+#endif
 
   if (currentActivity && currentActivity->requiresExclusiveStorageLoop()) {
     currentActivity->loop();
@@ -251,6 +582,8 @@ void ActivityManager::loop() {
     }
     return;
   }
+
+  trackInputMode();
 
   if (currentActivity && pendingAction.load() == PendingAction::None) {
     if (handleMainTabInput()) {
@@ -414,7 +747,8 @@ bool ActivityManager::handleHomeStandbyInput() {
       currentActivity && (currentActivity->isHomeActivity() ||
                           (currentActivity->usesMainTabBar() && currentActivity->mainTab() == MainTab::Recent &&
                            mainTabFocus == MainTabFocus::Tabs));
-  if (!eligible || !SETTINGS.standbyShortcutEnabled) {
+  // With a Home key (Plus), Back on Home stays Back: the power key owns Standby there.
+  if (!eligible || !SETTINGS.standbyShortcutEnabled || BoardConfig::hasHomeKey()) {
     resetHomeStandbyInput();
     return false;
   }
@@ -596,7 +930,7 @@ void ActivityManager::goToJoinNetwork() {
 }
 
 void ActivityManager::goToUsbDrive() {
-#if FREEINK_CAP_USB_MSC
+#if FREEINK_CAP_USB_MSC || defined(RICKYOS_USB_PREVIEW)
   auto activity = makeUniqueNoThrow<UsbDriveActivity>(renderer, mappedInput);
   if (!activity) {
     LOG_ERR("ACT", "OOM: USB Drive activity");
@@ -702,6 +1036,9 @@ void ActivityManager::goToReadingStats() { goToRickyReadingStats(); }
 void ActivityManager::goToGomoku() { replaceActivityWith<GomokuModeActivity>(); }
 
 void ActivityManager::goToCalculator() { replaceActivityWith<CalculatorActivity>(); }
+#if FREEINK_DEVICE_METALIO_PLUS
+void ActivityManager::goToRecorder() { replaceActivityWith<RecorderActivity>(); }
+#endif
 
 void ActivityManager::goToStandby() { replaceActivityWith<StandbyActivity>(); }
 
@@ -722,6 +1059,9 @@ void ActivityManager::closeStandby() {
   popActivity();  // back to the page under it; Home when Standby was the only one
 }
 void ActivityManager::goToStandbySettings() { replaceActivityWith<RickyStandbySettingsActivity>(); }
+void ActivityManager::goToGallery() {
+  replaceActivityWith<StandbyGalleryActivity>(StandbyPictures::Target::Standby, StandbyGalleryActivity::Mode::Browse);
+}
 
 void ActivityManager::goToWeRead() { replaceActivityWith<WeReadActivity>(); }
 
@@ -778,7 +1118,8 @@ bool ActivityManager::handleForcedRefresh() {
   cancelIdleRender();
   if (!currentActivity) return false;
   if (currentActivity->handleForcedRefresh()) return true;
-#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4 || \
+    defined(SIMULATOR_DEVICE_READPICO) || defined(SIMULATOR_DEVICE_METALIO_EINK4)
   if (ricky::ds::refresh::kDirectGrayUi && currentActivity->wantsGraySettle() &&
       currentActivity->idleRenderDelayMs() == 0) {
     // Refresh the real gray UI, not its approximate 1-bit proxy.
@@ -805,7 +1146,21 @@ void ActivityManager::prepareForSleep() {
   if (currentActivity) currentActivity->prepareForSleep();
 }
 
+#if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
+void ActivityManager::recordRenderRequest() {
+  uint32_t empty = 0;
+  queuedRenderMs.compare_exchange_strong(empty, static_cast<uint32_t>(millis()) + 1);
+}
+#endif
+
 void ActivityManager::requestUpdate(bool immediate) {
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4 || \
+    defined(SIMULATOR_DEVICE_READPICO) || defined(SIMULATOR_DEVICE_METALIO_EINK4)
+  renderRequestGeneration.fetch_add(1, std::memory_order_relaxed);
+#endif
+#if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
+  recordRenderRequest();
+#endif
   cancelIdleRender();
   if (immediate) {
     if (renderTaskHandle) {
@@ -818,6 +1173,13 @@ void ActivityManager::requestUpdate(bool immediate) {
   }
 }
 void ActivityManager::requestUpdateAndWait() {
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4 || \
+    defined(SIMULATOR_DEVICE_READPICO) || defined(SIMULATOR_DEVICE_METALIO_EINK4)
+  renderRequestGeneration.fetch_add(1, std::memory_order_relaxed);
+#endif
+#if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
+  recordRenderRequest();
+#endif
   cancelIdleRender();
   if (!renderTaskHandle) {
     return;
@@ -843,6 +1205,11 @@ void ActivityManager::requestUpdateAndWait() {
   // Cannot call while holding RenderLock or it will cause a deadlock
   assert(!holdingRenderLock && "Cannot call requestUpdateAndWait() while holding RenderLock");
 
+  // This render draws the current state, so it also serves a deferred requestUpdate()
+  // made earlier in this loop pass. Left set, that flag marks every frame of a long
+  // synchronous job (font acceleration: two minutes) as superseded, and the direct-gray
+  // path discards them all: the progress screen never appeared.
+  requestedUpdate = false;
   xTaskNotify(renderTaskHandle, 1, eIncrement);
   ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 }
@@ -878,3 +1245,8 @@ void RenderLock::unlock() {
  *
  */
 bool RenderLock::peek() { return xQueuePeek(activityManager.renderingMutex, NULL, 0) != pdTRUE; };
+
+#if FREEINK_DEVICE_METALIO_EINK4
+void ActivityManager::goToCellular() { replaceActivityWith<MetalioPeripheralActivity>(false); }
+void ActivityManager::goToCamera() { replaceActivityWith<MetalioCameraActivity>(); }
+#endif

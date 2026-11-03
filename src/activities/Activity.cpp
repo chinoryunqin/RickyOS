@@ -1,5 +1,6 @@
 #include "Activity.h"
 
+#include <BoardConfig.h>
 #include <algorithm>
 
 #include "ActivityManager.h"
@@ -9,7 +10,19 @@
 #include "components/UITheme.h"
 #include "util/ButtonNavigator.h"
 
-void Activity::onEnter() { LOG_DBG("ACT", "Entering activity: %s", name.c_str()); }
+void Activity::onEnter() {
+#ifdef RICKYOS_PRODUCT
+  LOG_INF("ACT", "Entering activity: %s", name.c_str());
+#if RICKYOS_PLUS_POWER_LOG
+  {
+    extern char g_powerLogActivity[24];
+    snprintf(g_powerLogActivity, sizeof(g_powerLogActivity), "%s", name.c_str());
+  }
+#endif
+#else
+  LOG_DBG("ACT", "Entering activity: %s", name.c_str());
+#endif
+}
 
 void Activity::onExit() { LOG_DBG("ACT", "Exiting activity: %s", name.c_str()); }
 
@@ -23,7 +36,9 @@ MappedInputManager::Labels Activity::mainTabButtonLabels(const char* back, const
 
   if (activityManager.getMainTabFocus() == MainTabFocus::Tabs) {
     const char* tabBack =
-        mainTab() == MainTab::Recent ? (SETTINGS.standbyShortcutEnabled ? tr(STR_STANDBY_TITLE) : "") : tr(STR_BACK);
+        mainTab() == MainTab::Recent
+            ? (SETTINGS.standbyShortcutEnabled && !BoardConfig::hasHomeKey() ? tr(STR_STANDBY_TITLE) : "")
+            : tr(STR_BACK);
     return mappedInput.mapLabels(tabBack, tr(STR_SELECT), showTabDirections ? tr(STR_DIR_LEFT) : "",
                                  showTabDirections ? tr(STR_DIR_RIGHT) : "");
   }
@@ -33,7 +48,8 @@ MappedInputManager::Labels Activity::mainTabButtonLabels(const char* back, const
 
 bool Activity::showMainTabContentSelection() const {
   return UITheme::getInstance().showSelectionCursor() &&
-         (!usesMainTabBar() || activityManager.getMainTabFocus() == MainTabFocus::Content);
+         (!usesMainTabBar() || activityManager.getMainTabFocus() == MainTabFocus::Content) &&
+         (!mappedInput.hasTouch() || activityManager.keyFocusVisible());
 }
 
 // Retain the instance-facing Activity layout API.

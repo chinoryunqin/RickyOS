@@ -17,6 +17,10 @@ class PngToBmpConverter {
   static bool pngFileToGray8BmpFile(const char* pngPath, const char* bmpPath, bool crop = true);
   static bool pngFileToTransparentBmpFile(const char* pngPath, const char* bmpPath, bool crop = true);
   static bool pngFileToBmpStream(HalFile& pngFile, Print& bmpOut, bool crop = true, bool originalThresholds = false);
+  // A book cover at screen size: 8-bit gray on 16-level panels (see JpegToBmpConverter).
+  static bool pngFileToCoverBmpStream(HalFile& pngFile, Print& bmpOut, bool crop, bool originalThresholds);
   static bool pngFileToBmpStreamWithSize(HalFile& pngFile, Print& bmpOut, int targetMaxWidth, int targetMaxHeight);
   static bool pngFileTo1BitBmpStreamWithSize(HalFile& pngFile, Print& bmpOut, int targetMaxWidth, int targetMaxHeight);
+  // Cover thumbnails: 8-bit gray on 16-level panels, 1-bit elsewhere (see JpegToBmpConverter).
+  static bool pngFileToThumbBmpStreamWithSize(HalFile& pngFile, Print& bmpOut, int targetMaxWidth, int targetMaxHeight);
 };

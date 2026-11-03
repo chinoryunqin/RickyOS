@@ -13,6 +13,30 @@
 #include "components/RickyProfile.h"
 #include "components/UITheme.h"
 
+void RickyProfileActivity::onEnter() {
+  UiListActivity::onEnter();
+  app.on(ACTION_THEME, &RickyProfileActivity::onThemeEvent, this);
+}
+
+void RickyProfileActivity::onThemeEvent(const freeink::ui::ActionEvent& event, void* user) {
+  auto* self = static_cast<RickyProfileActivity*>(user);
+  self->nav.selected = 4;
+  self->setCompanion(event.value == 1 ? CrossPointSettings::RICKY_COMPANION_CAT
+                                      : CrossPointSettings::RICKY_COMPANION_DOG);
+}
+
+void RickyProfileActivity::setCompanion(const uint8_t companion) {
+  app.clearTapFlash();
+  failed = false;
+  if (companion == SETTINGS.rickyCompanion) return;
+  RenderLock lock(*this);
+  const uint8_t previous = SETTINGS.rickyCompanion;
+  SETTINGS.rickyCompanion = companion;
+  failed = !SETTINGS.saveToFile();
+  if (failed) SETTINGS.rickyCompanion = previous;
+  requestUpdate();
+}
+
 const char* RickyProfileActivity::headerTitle() const { return tr(STR_RICKY_PROFILE); }
 
 void RickyProfileActivity::buildScreen(UiScreen& screen) {
@@ -76,6 +100,29 @@ void RickyProfileActivity::buildScreen(UiScreen& screen) {
               RickyProfile::homePhrase(), value);
   screen.frame().hit(phrase, ACTION_ROW, 3, fui::InputTouch);
 
+  // Theme: two halves, the chosen companion filled.
+  target.text(screen.takeTop(smallHeight, gap / 2), tr(STR_RICKY_THEME), small);
+  const auto theme2 = screen.takeTop(controlHeight, gap * 3);
+  target.stroke(theme2, black, focus && selected == 4 ? 3 : 1, radius);
+  const bool cat = SETTINGS.rickyCat();
+  const int16_t half = static_cast<int16_t>(theme2.width / 2);
+  const fui::Rect halves[2] = {{theme2.x, theme2.y, half, theme2.height},
+                               {static_cast<int16_t>(theme2.x + half), theme2.y,
+                                static_cast<int16_t>(theme2.width - half), theme2.height}};
+  const char* labels[2] = {tr(STR_RICKY_THEME_DOG), tr(STR_RICKY_THEME_CAT)};
+  for (int i = 0; i < 2; ++i) {
+    const bool chosen = (i == 1) == cat;
+    if (chosen) target.fill(halves[i], black, radius);
+    auto label = theme.bodyText;
+    label.align = fui::TextAlign::Center;
+    label.maxLines = 1;
+    label.color = chosen ? fui::Color::White : fui::Color::Black;
+    target.text(fui::Rect{halves[i].x, static_cast<int16_t>(halves[i].y + gap), halves[i].width,
+                          static_cast<int16_t>(bodyHeight)},
+                labels[i], label);
+    screen.frame().hit(halves[i], ACTION_THEME, i, fui::InputTouch);
+  }
+
   const auto primary = screen.takeTop(controlHeight, gap);
   target.fill(primary, black, radius);
   auto inverse = theme.bodyText;
@@ -132,6 +179,10 @@ void RickyProfileActivity::activateIndex(int index) {
     });
   } else if (index == 3) {
     startActivityForResultWith<RickyHomePhraseActivity>([this](const ActivityResult&) { requestUpdate(); });
+  } else if (index == 4) {
+    // Confirm on the row toggles; a touch on either half picks that side.
+    setCompanion(SETTINGS.rickyCat() ? CrossPointSettings::RICKY_COMPANION_DOG
+                                     : CrossPointSettings::RICKY_COMPANION_CAT);
   } else if (index == 2) {
     RenderLock lock(*this);
     failed = !RickyProfile::setAvatar("");

@@ -1,3 +1,4 @@
+#include <HalNetwork.h>
 #include "FontDownloadActivity.h"
 
 #include <ArduinoJson.h>
@@ -27,9 +28,10 @@
 #include "components/SubpageLayout.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
-#include "network/CrossMuxEndpoints.h"
 #include "network/HttpDownloader.h"
+#include "network/FontDownloadSource.h"
 #include "network/RickyFontCatalog.h"
+#include "network/RickyReaderResources.h"
 
 namespace fui = freeink::ui;
 
@@ -46,7 +48,7 @@ constexpr size_t kMaxMirrors = 4;
 constexpr int kFileAttempts = 3;
 constexpr unsigned long kRetryDelayMs = 2000;
 constexpr size_t kMaxFontFileBytes = 25 * 1024 * 1024;
-constexpr uint8_t kDownloadProgressStepPercent = 10;
+constexpr uint32_t kDownloadProgressRefreshMs = 2000;
 
 constexpr uint8_t downloadProgressPercent(const size_t completed, const size_t total) {
   if (total == 0) return 0;
@@ -54,15 +56,11 @@ constexpr uint8_t downloadProgressPercent(const size_t completed, const size_t t
   return static_cast<uint8_t>(static_cast<uint64_t>(boundedCompleted) * 100 / total);
 }
 
-constexpr bool shouldRefreshDownloadProgress(const uint8_t previous, const uint8_t current) {
-  return current < 100 && current >= previous + kDownloadProgressStepPercent;
+constexpr bool shouldRefreshDownloadProgress(const size_t previousBytes, const size_t currentBytes,
+                                              const uint32_t elapsedMs, const uint8_t percent) {
+  return percent < 100 && currentBytes / 1024 != previousBytes / 1024 &&
+         elapsedMs >= kDownloadProgressRefreshMs;
 }
-
-static_assert(downloadProgressPercent(9, 100) == 9);
-static_assert(downloadProgressPercent(110, 100) == 100);
-static_assert(!shouldRefreshDownloadProgress(0, 9));
-static_assert(shouldRefreshDownloadProgress(0, 10));
-static_assert(!shouldRefreshDownloadProgress(90, 100));  // The verified final frame is drawn synchronously.
 
 std::atomic<bool> chineseFontPromptShownThisBoot{false};
 
@@ -192,6 +190,10 @@ void FontDownloadActivity::onEnter() {
 }
 
 void FontDownloadActivity::startWifiSelection() {
+  if (HalNetwork::connected()) {
+    onWifiSelectionComplete(true);
+    return;
+  }
 #if defined(CONFIG_IDF_TARGET_ESP32C3)
   if (!readingStatsReleased_) {
     RenderLock lock(*this);
@@ -359,26 +361,30 @@ bool FontDownloadActivity::fetchAndParseManifest() {
     return false;
   }
   char manifestUrl[160];
+  if (purpose_ == Purpose::ReaderAutoInstall && !RickyReaderResources::ENABLED) {
+    LOG_ERR("FONT", "Reader resource service is disabled");
+    errorMessage_ = tr(STR_DOWNLOAD_FAILED);
+    return false;
+  }
   const int manifestUrlLength =
-      snprintf(manifestUrl, sizeof(manifestUrl), CrossMuxEndpoints::FONT_MANIFEST_FORMAT, CrossMuxEndpoints::host(),
+      snprintf(manifestUrl, sizeof(manifestUrl), RickyReaderResources::FONT_MANIFEST_FORMAT,
                FONT_MANIFEST_URL_STRINGIFY(FONTS_MANIFEST_VERSION), FONT_MANIFEST_URL_STRINGIFY(CPFONT_VERSION));
   if (manifestUrlLength < 0 || static_cast<size_t>(manifestUrlLength) >= sizeof(manifestUrl)) {
     LOG_ERR("FONT", "Manifest URL exceeds %zu bytes", sizeof(manifestUrl));
     errorMessage_ = "Failed to fetch font list";
     return false;
   }
-  const char* manifestUrls[3] = {manifestUrl, nullptr, nullptr};
-  // RickyOS lists its own catalog; the reader's automatic NotoSansSC install stays on CrossMux.
+  const char* manifestUrls[RickyFontCatalog::MANIFEST_COUNT] = {manifestUrl};
+  // Both paths are owned: ordinary families and ABI-versioned missing-glyph fonts.
   if (purpose_ != Purpose::ReaderAutoInstall) {
-    static_assert(RickyFontCatalog::MANIFEST_COUNT == 3);
     for (int attempt = 0; attempt < RickyFontCatalog::MANIFEST_COUNT; ++attempt)
-      manifestUrls[attempt] = RickyFontCatalog::manifestFor(SETTINGS.contentProfile, attempt);
+      manifestUrls[attempt] = RickyFontCatalog::manifestFor(attempt);
   }
   NetworkStartup::logMemory("font manifest request");
   auto result = HttpDownloader::HTTP_ERROR;
   for (const char* url : manifestUrls) {
-    if (url == nullptr) break;
-    result = HttpDownloader::downloadToFile(url, MANIFEST_TMP, nullptr);
+    if (url == nullptr) continue;  // a route that is off or beyond the automatic installer's single route
+    result = HttpDownloader::downloadIndex(url, MANIFEST_TMP);
     if (result == HttpDownloader::OK) break;
     LOG_ERR("FONT", "Failed to fetch manifest from %s", url);
     Storage.remove(MANIFEST_TMP);
@@ -428,7 +434,8 @@ bool FontDownloadActivity::fetchAndParseManifest() {
 
   baseUrl_ = doc["baseUrl"] | "";
   if (baseUrl_.empty() || baseUrl_.size() > kMaxBaseUrlBytes || baseUrl_.rfind("https://", 0) != 0 ||
-      baseUrl_.back() != '/') {
+      baseUrl_.back() != '/' ||
+      (purpose_ == Purpose::ReaderAutoInstall && !RickyReaderResources::isOwnedUrl(baseUrl_.c_str()))) {
     LOG_ERR("FONT", "Manifest has invalid baseUrl");
     errorMessage_ = "Invalid font manifest";
     return false;
@@ -437,7 +444,8 @@ bool FontDownloadActivity::fetchAndParseManifest() {
     const char* url = mirror.as<const char*>();
     const size_t length = url ? strlen(url) : 0;
     if (length == 0 || length > kMaxBaseUrlBytes || strncmp(url, "https://", 8) != 0 || url[length - 1] != '/' ||
-        mirrorUrls_.size() >= kMaxMirrors) {
+        mirrorUrls_.size() >= kMaxMirrors ||
+        (purpose_ == Purpose::ReaderAutoInstall && !RickyReaderResources::isOwnedUrl(url))) {
       LOG_ERR("FONT", "Ignoring invalid manifest mirror");
       continue;
     }
@@ -764,23 +772,47 @@ bool FontDownloadActivity::isVerifiedFontFile(const char* path, const ManifestFi
 }
 
 void FontDownloadActivity::resetDownloadProgress(const size_t total) {
+  downloadSourceHost_[0] = '\0';
   downloadProgress_ = 0;
   downloadTotal_ = total;
-  lastProgressRefreshPercent_ = 0;
+  lastProgressRefreshBytes_ = 0;
+  lastProgressRefreshMs_ = millis();
 }
 
 void FontDownloadActivity::updateDownloadProgress(const size_t completed) {
-  downloadProgress_ = std::min(completed, downloadTotal_);
-  const uint8_t percent = downloadProgressPercent(downloadProgress_, downloadTotal_);
-  if (!shouldRefreshDownloadProgress(lastProgressRefreshPercent_, percent)) return;
-  lastProgressRefreshPercent_ = percent;
-  requestUpdate(true);
+  bool refresh = false;
+  {
+    RenderLock lock(*this);
+    downloadProgress_ = std::min(completed, downloadTotal_);
+    const uint32_t now = millis();
+    const uint8_t percent = downloadProgressPercent(downloadProgress_, downloadTotal_);
+    refresh = shouldRefreshDownloadProgress(lastProgressRefreshBytes_, downloadProgress_,
+                                           now - lastProgressRefreshMs_, percent);
+    if (refresh) {
+      lastProgressRefreshBytes_ = downloadProgress_;
+      lastProgressRefreshMs_ = now;
+    }
+  }
+  if (refresh) requestUpdate(true);
 }
 
 void FontDownloadActivity::finishDownloadProgress() {
   downloadProgress_ = downloadTotal_;
-  lastProgressRefreshPercent_ = 100;
+  lastProgressRefreshBytes_ = downloadTotal_;
+  lastProgressRefreshMs_ = millis();
   requestUpdateAndWait();
+}
+
+void FontDownloadActivity::updateDownloadSource(const char* host) {
+  char next[sizeof(downloadSourceHost_)];
+  copyFontDownloadHost(next, sizeof(next), host);
+  if (std::strcmp(downloadSourceHost_, next) == 0) return;
+  {
+    RenderLock lock(*this);
+    std::memcpy(downloadSourceHost_, next, std::strlen(next) + 1);
+  }
+  // Diagnostics only: the download screen does not name the mirror.
+  LOG_INF("FONT", "Download source host: %s", downloadSourceHost_);
 }
 
 FontDownloadActivity::DownloadResult FontDownloadActivity::downloadFile(const ManifestFamily& family,
@@ -807,7 +839,7 @@ FontDownloadActivity::DownloadResult FontDownloadActivity::downloadFile(const Ma
   }
 
   NetworkStartup::prepare(renderer);
-  const auto onProgress = [this, fileStartProgress, fileSize = file.size](size_t downloaded, size_t) {
+  const auto pollInput = [this] {
     mappedInput.update();
     if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
       cancelRequested_ = true;
@@ -818,6 +850,8 @@ FontDownloadActivity::DownloadResult FontDownloadActivity::downloadFile(const Ma
       goHomeRequested_ = true;
     }
     UiAppHost::routeTouch(mappedInput);
+  };
+  const auto onProgress = [this, fileStartProgress, fileSize = file.size](size_t downloaded, size_t) {
     updateDownloadProgress(fileStartProgress + std::min(downloaded, fileSize));
   };
   // A refused or dropped connection is retried, moving to the next host that carries
@@ -834,9 +868,17 @@ FontDownloadActivity::DownloadResult FontDownloadActivity::downloadFile(const Ma
       delay(kRetryDelayMs);
     }
     const unsigned long started = millis();
-    result = HttpDownloader::downloadToFile(base + fileName, downloadPath, onProgress, &cancelRequested_);
-    if (result == HttpDownloader::OK)
+    result = HttpDownloader::downloadToFile(base + fileName, downloadPath, onProgress, &cancelRequested_,
+                                            "", "", {}, false, pollInput,
+                                            [](const char* hostname, void* context) {
+                                              static_cast<FontDownloadActivity*>(context)->updateDownloadSource(hostname);
+                                            }, this);
+    if (result == HttpDownloader::OK) {
       LOG_INF("FONT", "Downloaded %s: %u B in %lu ms", fileName, static_cast<unsigned>(file.size), millis() - started);
+      // The same catalog hosts carry every size. Keep the working host first
+      // for subsequent files instead of retrying a known-bad primary each time.
+      if (host > 0) std::swap(baseUrl_, mirrorUrls_[host - 1]);
+    }
   }
 
   if (result == HttpDownloader::ABORTED) {
@@ -1412,6 +1454,11 @@ void FontDownloadActivity::render(RenderLock&&) {
           Rect{metrics.contentSidePadding, barY, pageWidth - metrics.contentSidePadding * 2, metrics.progressBarHeight},
           static_cast<int>(progress * 100), 100);
 
+      char transferred[96];
+      snprintf(transferred, sizeof(transferred), tr(STR_FONT_TRANSFERRED_KIB),
+               static_cast<unsigned long>(downloadProgress_ / 1024),
+               static_cast<unsigned long>((downloadTotal_ + 1023) / 1024));
+      renderer.drawCenteredText(UI_10_FONT_ID, barY + metrics.progressBarHeight + metrics.verticalSpacing, transferred);
       const auto labels = mappedInput.mapLabels(tr(STR_CANCEL), "", "", "");
       GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
     } else if (state_ == COMPLETE) {
@@ -1483,12 +1530,19 @@ void FontDownloadActivity::render(RenderLock&&) {
     const Rect content = SubpageLayout::contentRect(safeArea, metrics);
     const Rect textBounds = SubpageLayout::insetHorizontal(content, metrics.contentSidePadding);
     const int sectionGap = SubpageLayout::sectionGap(metrics);
-    const int blockHeight = lineHeight + sectionGap + GUI.measureProgressBarHeight(renderer, metrics.progressBarHeight);
+    const int blockHeight = 2 * lineHeight + 2 * sectionGap +
+                            GUI.measureProgressBarHeight(renderer, metrics.progressBarHeight);
     int y = SubpageLayout::centeredTop(content, blockHeight);
     UITheme::drawCenteredText(renderer, textBounds, UI_10_FONT_ID, y, statusText.c_str());
     y += lineHeight + sectionGap;
     GUI.drawProgressBar(renderer, Rect{textBounds.x, y, textBounds.width, metrics.progressBarHeight}, downloadProgress_,
                         downloadTotal_);
+    char transferred[96];
+    snprintf(transferred, sizeof(transferred), tr(STR_FONT_TRANSFERRED_KIB),
+             static_cast<unsigned long>(downloadProgress_ / 1024),
+             static_cast<unsigned long>((downloadTotal_ + 1023) / 1024));
+    y += GUI.measureProgressBarHeight(renderer, metrics.progressBarHeight) + sectionGap;
+    UITheme::drawCenteredText(renderer, textBounds, UI_10_FONT_ID, y, transferred);
 
     const auto labels = mappedInput.mapLabels(tr(STR_CANCEL), "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);

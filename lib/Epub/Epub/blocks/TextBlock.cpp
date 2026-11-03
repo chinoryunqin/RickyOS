@@ -10,10 +10,21 @@
 #include <cstring>
 
 #include "../../../../src/fontIds.h"
+#include "../BookFonts.h"
+#include "../VerticalText.h"
+#include "../WordLook.h"
 
-size_t TextBlock::arenaSize(const uint16_t wordCount, const bool hasFocus, const uint16_t textBytes) {
-  // Layout documented in TextBlock.h: 16-bit arrays first, then 8-bit arrays, then text.
+namespace {
+constexpr uint8_t kFlagFocus = 1 << 0;
+constexpr uint8_t kFlagLooks = 1 << 1;
+constexpr uint8_t kFlagBox = 1 << 2;  // a BlockBox follows the block style
+}  // namespace
+
+size_t TextBlock::arenaSize(const uint16_t wordCount, const bool hasFocus, const bool hasLooks,
+                            const uint16_t textBytes) {
+  // Layout documented in TextBlock.h: the 32-bit array, 16-bit arrays, 8-bit arrays, then text.
   size_t size = static_cast<size_t>(wordCount) * (sizeof(uint16_t) + sizeof(int16_t) + sizeof(uint8_t));
+  if (hasLooks) size += static_cast<size_t>(wordCount) * sizeof(uint32_t);
   if (hasFocus) {
     size += static_cast<size_t>(wordCount) * (sizeof(uint16_t) + sizeof(uint8_t));
   }
@@ -23,6 +34,11 @@ size_t TextBlock::arenaSize(const uint16_t wordCount, const bool hasFocus, const
 void TextBlock::bindArenaPointers() {
   uint8_t* base = arena.get();
   const size_t wc = numWords;
+  looksArr = nullptr;
+  if (looksPresent) {
+    looksArr = reinterpret_cast<const uint32_t*>(base);
+    base += wc * sizeof(uint32_t);
+  }
   textOffArr = reinterpret_cast<const uint16_t*>(base);
   xposArr = reinterpret_cast<const int16_t*>(base + wc * 2);
   size_t off = wc * 4;
@@ -42,7 +58,8 @@ void TextBlock::bindArenaPointers() {
 TextBlock::TextBlock(const std::vector<std::string>& words, const std::vector<int16_t>& wordXpos,
                      const std::vector<EpdFontFamily::Style>& wordStyles, const std::vector<uint8_t>& focusBoundary,
                      const std::vector<uint16_t>& focusSuffixX, const BlockStyle& blockStyle,
-                     std::vector<std::string> rubyTexts, std::vector<LinkSpan> linkSpans)
+                     std::vector<std::string> rubyTexts, std::vector<LinkSpan> linkSpans,
+                     const std::vector<uint32_t>& wordLooks)
     : blockStyle(blockStyle), rubyTexts(std::move(rubyTexts)), linkSpans(std::move(linkSpans)) {
   // Same invariant as deserialize(): a block never holds an all-empty rubyTexts, so a
   // ruby-less line costs nothing beyond its arena. The layout engine hands one over for
@@ -67,6 +84,11 @@ TextBlock::TextBlock(const std::vector<std::string>& words, const std::vector<in
 
   numWords = static_cast<uint16_t>(words.size());
   focusPresent = hasFocus;
+  // Looks are optional too, and an all-default line drops them entirely.
+  looksPresent = false;
+  if (wordLooks.size() == words.size()) {
+    for (const uint32_t look : wordLooks) looksPresent = looksPresent || look != wordlook::kDefault;
+  }
   if (numWords == 0) {
     return;  // valid empty block, no arena
   }
@@ -79,12 +101,13 @@ TextBlock::TextBlock(const std::vector<std::string>& words, const std::vector<in
     LOG_ERR("TXB", "Construction failed: text size %u exceeds arena limit", static_cast<uint32_t>(totalText));
     numWords = 0;
     focusPresent = false;
+    looksPresent = false;
     isValid = false;
     return;
   }
   textBytes = static_cast<uint16_t>(totalText);
 
-  const size_t size = arenaSize(numWords, focusPresent, textBytes);
+  const size_t size = arenaSize(numWords, focusPresent, looksPresent, textBytes);
   arena = makeUniqueNoThrow<uint8_t[]>(size);
   if (!arena) {
     // Evict rebuildable caches (SD-font mini data, render glyph cache) and
@@ -97,6 +120,7 @@ TextBlock::TextBlock(const std::vector<std::string>& words, const std::vector<in
     numWords = 0;
     textBytes = 0;
     focusPresent = false;
+    looksPresent = false;
     isValid = false;
     return;
   }
@@ -116,6 +140,10 @@ TextBlock::TextBlock(const std::vector<std::string>& words, const std::vector<in
     off += static_cast<uint16_t>(words[i].size());
     text[off++] = '\0';
   }
+  if (looksPresent) {
+    auto* looks = const_cast<uint32_t*>(looksArr);
+    for (uint16_t i = 0; i < numWords; i++) looks[i] = wordLooks[i];
+  }
   if (focusPresent) {
     auto* suffixX = const_cast<uint16_t*>(focusSuffixXArr);
     auto* boundary = const_cast<uint8_t*>(focusBoundaryArr);
@@ -131,6 +159,100 @@ bool TextBlock::hasRuby() const {
     if (!rt.empty()) return true;
   }
   return false;
+}
+
+void TextBlock::renderVertical(GfxRenderer& renderer, const int fontId, const int columnRight, const int top,
+                               const int columnWidth) const {
+  if (!isValid) {
+    LOG_ERR("TXB", "Vertical render skipped: invalid block");
+    return;
+  }
+  using verticalText::Placement;
+  const int8_t tracking = blockStyle.characterSpacing;
+  const int ascender = renderer.getFontAscenderSize(fontId);
+  const int centerX = columnRight - columnWidth / 2;
+  const auto orientation = renderer.getOrientation();
+  const int screenWidth = renderer.getScreenWidth();
+  const int em = renderer.getTextAdvanceX(fontId, "\xE5\x9B\xBD", EpdFontFamily::REGULAR, 0);  // 国: one em
+
+  // Turned text starting `y` down the column: drawn as plain text in the turned frame,
+  // centred across the column.
+  int wordFont = fontId;  // the current word's face (book font or the reader's)
+  const auto drawTurned = [&](const char* text, const int y, const EpdFontFamily::Style style) {
+    const auto turned = verticalText::toTurned(centerX, y, screenWidth);
+    renderer.setOrientation(
+        static_cast<GfxRenderer::Orientation>(verticalText::turnedOrientation(static_cast<uint8_t>(orientation))));
+    const int baseline = turned.y + em * verticalText::kRotatedCenterPercent / 100;
+    renderer.drawText(wordFont, turned.x, baseline - ascender, text, true, style, BidiUtils::BidiBaseDir::LTR,
+                      tracking);
+    renderer.setOrientation(orientation);
+  };
+
+  char glyph[8];
+  for (uint16_t i = 0; i < numWords; i++) {
+    const char* word = wordText(i);
+    const uint16_t length = wordTextLen(i);
+    const EpdFontFamily::Style style = wordStyle(i);
+    const int wordTop = top + xposArr[i];
+    const uint32_t look = wordLook(i);
+    wordFont = bookfonts::fontIdFor(wordlook::face(look), fontId, wordlook::size(look));
+    const GfxRenderer::TextInkScope ink(renderer, wordlook::ink(look));
+
+    // A word with nothing upright (Latin, digits, a dash run) turns as one run, keeping
+    // its kerning; its turned length is the advance the layout measured.
+    bool allTurned = true;
+    {
+      const auto* cursor = reinterpret_cast<const unsigned char*>(word);
+      const auto* end = cursor + length;
+      while (cursor < end) {
+        const uint32_t cp = utf8NextCodepoint(&cursor);
+        if (cp == 0) break;
+        if (verticalText::placementFor(cp) != Placement::Rotated) {
+          allTurned = false;
+          break;
+        }
+      }
+    }
+    // Words are short; a stack copy keeps the run terminated without a heap string.
+    char run[96];
+    if (allTurned && length < sizeof(run)) {
+      memcpy(run, word, length);
+      run[length] = '\0';
+      drawTurned(run, wordTop, style);
+      continue;
+    }
+
+    int y = wordTop;
+    const auto* cursor = reinterpret_cast<const unsigned char*>(word);
+    const auto* end = cursor + length;
+    while (cursor < end) {
+      const unsigned char* start = cursor;
+      const uint32_t cp = utf8NextCodepoint(&cursor);
+      if (cp == 0) break;
+      const size_t bytes = std::min<size_t>(static_cast<size_t>(cursor - start), sizeof(glyph) - 1);
+      memcpy(glyph, start, bytes);
+      glyph[bytes] = '\0';
+      const int advance = renderer.getTextAdvanceX(wordFont, glyph, style, tracking);
+      switch (verticalText::placementFor(cp)) {
+        case Placement::Upright:
+          renderer.drawText(wordFont, centerX - advance / 2,
+                            y + advance * verticalText::kUprightBaselinePercent / 100 - ascender, glyph, true, style,
+                            BidiUtils::BidiBaseDir::LTR, 0);
+          break;
+        case Placement::CornerTopRight: {
+          const int shift = advance * verticalText::kCornerShiftPercent / 100;
+          renderer.drawText(wordFont, centerX - advance / 2 + shift,
+                            y - shift + advance * verticalText::kUprightBaselinePercent / 100 - ascender, glyph, true,
+                            style, BidiUtils::BidiBaseDir::LTR, 0);
+          break;
+        }
+        case Placement::Rotated:
+          drawTurned(glyph, y, style);
+          break;
+      }
+      y += advance;
+    }
+  }
 }
 
 void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int x, const int y) const {
@@ -211,6 +333,10 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
     const char* word = wordText(i);
     const int wordX = xposArr[i] + x;
     const EpdFontFamily::Style currentStyle = wordStyle(i);
+    // The book's own face and tone for this word (the reader font and black by default).
+    const uint32_t look = wordLook(i);
+    const int wordFont = bookfonts::fontIdFor(wordlook::face(look), fontId, wordlook::size(look));
+    const GfxRenderer::TextInkScope ink(renderer, wordlook::ink(look));
     const auto baseDir =
         static_cast<BidiUtils::BidiBaseDir>(BidiUtils::detectParagraphLevel(word, blockStyle.isRtl ? 1 : 0));
     const uint8_t boundary = focusBoundary(i);
@@ -242,11 +368,11 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
           std::min<size_t>({static_cast<size_t>(boundary), static_cast<size_t>(wordTextLen(i)), sizeof(boldBuf) - 1});
       memcpy(boldBuf, word, boldLen);
       boldBuf[boldLen] = '\0';
-      renderer.drawText(fontId, drawX, wordY, boldBuf, true, boldStyle, baseDir, tracking);
+      renderer.drawText(wordFont, drawX, wordY, boldBuf, true, boldStyle, baseDir, tracking);
       const int suffixX = drawX + focusSuffixXArr[i];
-      renderer.drawText(fontId, suffixX, wordY, word + boldLen, true, currentStyle, baseDir, tracking);
+      renderer.drawText(wordFont, suffixX, wordY, word + boldLen, true, currentStyle, baseDir, tracking);
     } else {
-      renderer.drawText(fontId, drawX, wordY, word, true, currentStyle, baseDir, tracking);
+      renderer.drawText(wordFont, drawX, wordY, word, true, currentStyle, baseDir, tracking);
     }
 
     // Horizontal ruby text rendering
@@ -263,7 +389,7 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
 
     if (EpdFontFamily::hasTextDecoration(currentStyle)) {
       int lineStartX = drawX;
-      int lineWidth = renderer.getTextAdvanceX(fontId, word, currentStyle, tracking, baseDir,
+      int lineWidth = renderer.getTextAdvanceX(wordFont, word, currentStyle, tracking, baseDir,
                                                GfxRenderer::TextMeasureMode::Rendered);
       // SUP/SUB glyphs are rendered at 50% scale; halve the underline to match (#2255).
       if ((currentStyle & (EpdFontFamily::SUP | EpdFontFamily::SUB)) != 0) {
@@ -274,9 +400,9 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
       if (wordTextLen(i) >= 3 && static_cast<uint8_t>(word[0]) == 0xE2 && static_cast<uint8_t>(word[1]) == 0x80 &&
           static_cast<uint8_t>(word[2]) == 0x83) {
         const char* visibleText = word + 3;
-        lineStartX += renderer.getTextAdvanceX(fontId, "\xe2\x80\x83", currentStyle, tracking, baseDir,
+        lineStartX += renderer.getTextAdvanceX(wordFont, "\xe2\x80\x83", currentStyle, tracking, baseDir,
                                                GfxRenderer::TextMeasureMode::Rendered);
-        lineWidth = renderer.getTextAdvanceX(fontId, visibleText, currentStyle, tracking, baseDir,
+        lineWidth = renderer.getTextAdvanceX(wordFont, visibleText, currentStyle, tracking, baseDir,
                                              GfxRenderer::TextMeasureMode::Rendered);
       }
 
@@ -313,10 +439,11 @@ bool TextBlock::serialize(HalFile& file) const {
   // exactly the on-disk layout (see TextBlock.h), so one write covers all
   // per-word arrays and the text blob.
   serialization::writePod(file, numWords);
-  serialization::writePod(file, static_cast<uint8_t>(focusPresent ? 1 : 0));
+  serialization::writePod(file, static_cast<uint8_t>((focusPresent ? kFlagFocus : 0) | (looksPresent ? kFlagLooks : 0) |
+                                                     (blockStyle.box.id != 0 ? kFlagBox : 0)));
   serialization::writePod(file, textBytes);
   if (numWords > 0) {
-    const size_t size = arenaSize(numWords, focusPresent, textBytes);
+    const size_t size = arenaSize(numWords, focusPresent, looksPresent, textBytes);
     if (file.write(arena.get(), size) != size) {
       LOG_ERR("TXB", "Serialization failed: arena write (%u bytes)", static_cast<uint32_t>(size));
       return false;
@@ -344,15 +471,16 @@ bool TextBlock::serialize(HalFile& file) const {
   serialization::writePod(file, blockStyle.isRtl);
   serialization::writePod(file, blockStyle.directionDefined);
   serialization::writePod(file, blockStyle.characterSpacing);
+  if (blockStyle.box.id != 0) serialization::writePod(file, blockStyle.box);
 
   return true;
 }
 
 std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
   uint16_t wc = 0;
-  uint8_t hasFocus = 0;
+  uint8_t flags = 0;
   uint16_t textBytes = 0;
-  if (!serialization::readPod(file, wc) || !serialization::readPod(file, hasFocus) ||
+  if (!serialization::readPod(file, wc) || !serialization::readPod(file, flags) ||
       !serialization::readPod(file, textBytes)) {
     LOG_ERR("TXB", "Deserialization failed: truncated header");
     return nullptr;
@@ -362,6 +490,10 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
   // (every word carries at least its NUL terminator).
   if (wc > 10000) {
     LOG_ERR("TXB", "Deserialization failed: word count %u exceeds maximum", wc);
+    return nullptr;
+  }
+  if ((flags & ~(kFlagFocus | kFlagLooks | kFlagBox)) != 0) {
+    LOG_ERR("TXB", "Deserialization failed: unknown flags %02x", flags);
     return nullptr;
   }
   if ((wc == 0 && textBytes != 0) || (wc > 0 && textBytes < wc)) {
@@ -377,10 +509,11 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
   }
   block->numWords = wc;
   block->textBytes = textBytes;
-  block->focusPresent = hasFocus != 0;
+  block->focusPresent = (flags & kFlagFocus) != 0;
+  block->looksPresent = (flags & kFlagLooks) != 0;
 
   if (wc > 0) {
-    const size_t size = arenaSize(wc, block->focusPresent, textBytes);
+    const size_t size = arenaSize(wc, block->focusPresent, block->looksPresent, textBytes);
     block->arena = makeUniqueNoThrow<uint8_t[]>(size);
     if (!block->arena) {
       LOG_ERR("TXB", "OOM: arena %u bytes", static_cast<uint32_t>(size));
@@ -445,6 +578,10 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile& file) {
       !serialization::readPod(file, blockStyle.directionDefined) ||
       !serialization::readPod(file, blockStyle.characterSpacing)) {
     LOG_ERR("TXB", "Deserialization failed: truncated block style");
+    return nullptr;
+  }
+  if ((flags & kFlagBox) != 0 && (!serialization::readPod(file, blockStyle.box) || blockStyle.box.id == 0)) {
+    LOG_ERR("TXB", "Deserialization failed: truncated panel");
     return nullptr;
   }
 

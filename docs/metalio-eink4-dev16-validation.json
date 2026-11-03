@@ -1,0 +1,72 @@
+{
+  "version": "1.2.11-metalio-dev16",
+  "device": "metalio_eink4",
+  "chip": "ESP32-S3",
+  "source_base": "2973acbb737d6d1ed74f7d2e48ef6ac87b15b4fb",
+  "checks": {
+    "firmware_build": "passed",
+    "native_ui": "layout unchanged from dev15; dev15 layout accepted; dev16 tab refresh appearance accepted by user on 2026-11-03",
+    "retained_driver": "16 four-tone transitions, held pixels, no-op, cadence, sleep/resync, OOM and BUSY failures passed with ASan/UBSan",
+    "facade": "original reading paths and retained UI routing passed",
+    "ui_gray_host": "passed (ASan/UBSan)",
+    "native_grayscale": "passed: BMP/JPEG/PNG, retained frame, rotations, cancellation, OOM",
+    "thumbnail_lifecycle": "passed: C3/S3/simulator/emulated",
+    "font_packing": "all glyph pixels verified",
+    "full_ci": "blocked: pre-existing uninitialized submodules",
+    "other_hardware_images": "not built: this development worktree has no X3/X4 hardware build environment"
+  },
+  "runtime": {
+    "status": "installed and write-verified; boot, SD and 11 UI transactions checked; user accepted tab refresh appearance on 2026-11-03",
+    "device_mac": "10:20:BA:6D:6C:CC",
+    "port": "/dev/cu.usbmodem101",
+    "app_offset": "0x10000",
+    "write_verified": true,
+    "partition_table_unchanged": true,
+    "ota_selection_unchanged": true,
+    "version_verified": true,
+    "sd_mounted": true,
+    "retained_ui_observed": true,
+    "ui_transactions": 11,
+    "delta_submit_ms": [
+      1264,
+      1380,
+      1369,
+      1372,
+      1266,
+      1376,
+      1368,
+      1267
+    ],
+    "clean_submit_ms": [
+      1703,
+      1799,
+      1798
+    ],
+    "library_delta_submit_ms": 1380,
+    "library_clean_submit_ms": 1799,
+    "same_library_target_raster_verified": true,
+    "visual_accepted": true,
+    "refresh_accepted": true,
+    "layout_baseline": "dev15 layout accepted by user; unchanged in dev16",
+    "notes": [
+      "Driver submit times exclude full layout and touch latency",
+      "No camera/modem test or SIM switch was requested during this run",
+      "IMU not found and power-lock messages remain; not tested by this experiment"
+    ],
+    "user_acceptance": {
+      "date": "2026-11-03",
+      "timezone": "Asia/Shanghai",
+      "feedback": "黑闪明显减少，画面干净",
+      "scope": "observed tab switching appearance on ordinary E-Ink 4 running dev16",
+      "extended_retention_and_full_input_reader_sleep_regression": "not established by this feedback"
+    }
+  },
+  "app_headroom_bytes": 171696,
+  "retained_ui_extra_psram_bytes": 192000,
+  "retained_ui_max_delta_frames": 5,
+  "camera_status": "previous bring-up remains unverified; not exercised for this UI change",
+  "firmware": {
+    "size": 6381904,
+    "sha256": "a8d71c813a0746cc95ab6d32d822556a1fc92f1ee3a40161bd669a5f2d3d62ee"
+  }
+}

@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "Rect.h"
+#include "images/RickyCat.h"
 #include "images/RickyDog.h"
 #include "images/RickyLogo.h"
 
@@ -52,17 +53,25 @@ void drawBadge(const Renderer& renderer, const Rect box, const int threshold = 7
   }
 }
 
+// The home card's peeking companion: the approved isolated dog, or the cat with the cat theme.
+struct PeekArt {
+  int width, height;
+  const uint8_t* coverage;
+};
+constexpr PeekArt dogPeek() { return {RickyDogAsset::width, RickyDogAsset::height, RickyDogAsset::coverage}; }
+constexpr PeekArt catPeek() { return {RickyCatAsset::width, RickyCatAsset::height, RickyCatAsset::coverage}; }
+
 // Use the approved isolated dog; cropping the badge also drew its circular ring.
 // Card overdraw hides the lower edge. Paper pixels are transparent.
 template <typename Renderer>
-void drawDogPeek(const Renderer& renderer, const Rect box) {
+void drawDogPeek(const Renderer& renderer, const Rect box, const PeekArt art = dogPeek()) {
   if (box.width <= 0 || box.height <= 0) return;
   for (int y = 0; y < box.height; ++y) {
-    const int sy = y * RickyDogAsset::height / box.height;
+    const int sy = y * art.height / box.height;
     for (int x = 0; x < box.width; ++x) {
-      const int sx = x * RickyDogAsset::width / box.width;
-      const int offset = sy * RickyDogAsset::width + sx;
-      const uint8_t packed = RickyDogAsset::coverage[offset / 2];
+      const int sx = x * art.width / box.width;
+      const int offset = sy * art.width + sx;
+      const uint8_t packed = art.coverage[offset / 2];
       const int level = offset % 2 ? packed & 15 : packed >> 4;
       if (!level) continue;
       if (renderer.isGrayscale16Active())

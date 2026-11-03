@@ -12,6 +12,7 @@
 #include "I18n.h"
 #include "InxItemLayout.h"
 #include "components/RickyAaIcons.h"
+#include "components/RickyDesignUi.h"
 #include "components/RickyPageLayout.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
@@ -410,13 +411,14 @@ InxTheme::MenuRowGeometry InxTheme::getMenuRowGeometry(const GfxRenderer&, const
 }
 
 void InxTheme::drawOptionPopup(const GfxRenderer& renderer, const char* title, const std::vector<std::string>& options,
-                               const int selectedIndex) const {
+                               const int selectedIndex, const char* message) const {
   if (options.empty()) return;
 
   const int optionCount = static_cast<int>(options.size());
   const int selected = std::clamp(selectedIndex, 0, optionCount - 1);
-  const auto layout =
-      InxOptionGeometry::layout(UITheme::getInstance().getScreenSafeArea(renderer, true, false), optionCount, selected);
+  const bool hasMessage = message && message[0];
+  const auto layout = InxOptionGeometry::layout(UITheme::getInstance().getScreenSafeArea(renderer, true, false),
+                                                optionCount, selected, hasMessage);
   const int visibleRows = layout.rows;
   const int maxStart = optionCount - visibleRows;
   const int start = layout.first;
@@ -427,14 +429,26 @@ void InxTheme::drawOptionPopup(const GfxRenderer& renderer, const char* title, c
   const bool selectionVisible = UITheme::getInstance().showSelectionCursor();
 
   renderer.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, ricky::ds::radius::kContainer, Color::White);
-  RickyDesignUi::text(renderer,
-                      {static_cast<int16_t>(panelX + 32), static_cast<int16_t>(panelY),
-                       static_cast<int16_t>(panelWidth - 64), static_cast<int16_t>(InxOptionGeometry::headerHeight)},
-                      title, RickyDesignUi::HEADLINE);
+  const bool hasTitle = title && title[0];
+  if (hasTitle) {
+    RickyDesignUi::text(renderer,
+                        {static_cast<int16_t>(panelX + 32), static_cast<int16_t>(panelY),
+                         static_cast<int16_t>(panelWidth - 64), static_cast<int16_t>(InxOptionGeometry::headerHeight)},
+                        title, RickyDesignUi::HEADLINE);
+  }
+  if (hasMessage) {
+    // Message-only dialogs (no title) start the body at the top of the header.
+    const int top = panelY + (hasTitle ? InxOptionGeometry::headerHeight : InxOptionGeometry::headerHeight / 3);
+    const int bottom = panelY + layout.header;
+    RickyDesignUi::text(renderer,
+                        {static_cast<int16_t>(panelX + 32), static_cast<int16_t>(top),
+                         static_cast<int16_t>(panelWidth - 64), static_cast<int16_t>(bottom - top)},
+                        message, RickyDesignUi::BODY, false, freeink::ui::TextAlign::Left, 4);
+  }
 
   for (int slot = 0; slot < visibleRows; ++slot) {
     const int optionIndex = start + slot;
-    const int rowY = panelY + InxOptionGeometry::headerHeight + slot * InxOptionGeometry::rowHeight;
+    const int rowY = panelY + layout.header + slot * InxOptionGeometry::rowHeight;
     const bool isSelected = selectionVisible && optionIndex == selected;
     if (isSelected) {
       const Rect row = layout.optionRect(slot);
@@ -448,7 +462,7 @@ void InxTheme::drawOptionPopup(const GfxRenderer& renderer, const char* title, c
 
   if (optionCount > visibleRows) {
     const int trackX = panelX + panelWidth - 10;
-    const int trackY = panelY + InxOptionGeometry::headerHeight;
+    const int trackY = panelY + layout.header;
     const int trackHeight = visibleRows * InxOptionGeometry::rowHeight;
     const int thumbHeight = std::max(8, trackHeight * visibleRows / optionCount);
     const int thumbY = trackY + start * (trackHeight - thumbHeight) / maxStart;
@@ -464,10 +478,14 @@ void InxTheme::drawMainTabBar(const GfxRenderer& renderer, const Rect rect, cons
   renderer.fillRect(rect.x, rect.y, rect.width, rect.height, false);
   const bool tabsAtBottom = SETTINGS.inxTabPosition == CrossPointSettings::INX_TAB_BOTTOM;
   const int separatorY = tabsAtBottom ? rect.y : rect.y + rect.height - 1;
-  renderer.fillRect(rect.x, separatorY, rect.width, 1, true);
-  // Rows are laid out for the capsule so it never touches the separator or labels.
-  auto rows = RickyPageLayout::navigationRows(rect, kPillHeight, renderer.getLineHeight(SMALL_FONT_ID));
-  rows.iconY += (kPillHeight - kIconSize) / 2;
+  // A light rule, not an ink line: the bar sits under the page without boxing it in
+  // (ink on a B/W frame, the 1-bit fallback for the line gray).
+  if (renderer.isGrayscale16Active())
+    renderer.fillGrayscale16Rect(rect.x, separatorY, rect.width, 1, ricky::ds::gray::kLine);
+  else
+    renderer.fillRect(rect.x, separatorY, rect.width, 1, true);
+  const int navIconSize = ricky::panel::pixels(kIconSize, 32);
+  auto rows = RickyPageLayout::navigationRows(rect, navIconSize, renderer.getLineHeight(SMALL_FONT_ID));
   const auto labelFor = [](const MainTab tab) {
     switch (tab) {
       case MainTab::Recent:
@@ -488,17 +506,23 @@ void InxTheme::drawMainTabBar(const GfxRenderer& renderer, const Rect rect, cons
     const int left = rect.x + bounds.left;
     const int width = bounds.right - bounds.left;
     const GfxRenderer::ClipScope clip(renderer, left, rect.y, width, rect.height);
-    const int iconX = left + (width - kIconSize) / 2;
+    const int iconX = left + (width - navIconSize) / 2;
     if (const uint8_t* icon = iconForTab(tab)) {
-      if (tab == selected)
-        drawSelectedInxIcon(renderer, icon, iconX, rows.iconY, width);
+      if (ricky::panel::nativeSmall)
+        RickyAaIcons::drawSmall(renderer, icon, iconX, rows.iconY, navIconSize);
       else
         drawInxIcon(renderer, icon, iconX, rows.iconY);
     }
-    // Labels stay regular: the capsule marks the tab, and the embedded CJK face has
-    // no bold to switch to.
+    // The current tab: a short ink bar on the bar's edge above it and an ink label; the
+    // others keep ink icons over secondary labels. No capsule.
+    if (tab == selected) {
+      constexpr int kMarkWidth = 48, kMarkHeight = 4;
+      const int markY = tabsAtBottom ? rect.y : rect.y + rect.height - kMarkHeight;
+      renderer.fillRect(left + (width - kMarkWidth) / 2, markY, kMarkWidth, kMarkHeight, true);
+    }
     const char* label = I18N.get(labelFor(tab));
     const int textX = left + std::max(0, (width - renderer.getTextWidth(SMALL_FONT_ID, label)) / 2);
+    const GfxRenderer::TextInkScope ink(renderer, tab == selected ? ricky::ds::gray::kInk : ricky::ds::gray::kInk2);
     renderer.drawText(SMALL_FONT_ID, textX, rows.labelY, label, true);
   }
 }

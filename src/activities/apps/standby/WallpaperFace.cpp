@@ -93,12 +93,15 @@ std::string currentCoverBmp() {
 
 void WallpaperFace::onEnter() {
   path_.clear();
+  cardOn_ = SETTINGS.rickyStandbyFace == CrossPointSettings::RICKY_STANDBY_COVER &&
+            SETTINGS.standbyCoverLayout != CrossPointSettings::STANDBY_COVER_PICTURE && card_.load();
   if (SETTINGS.rickyStandbyFace == CrossPointSettings::RICKY_STANDBY_COVER) path_ = currentCoverBmp();
   // No book (or no cover): the picture, as the power-off cover falls back to it.
   if (path_.empty() || !Storage.exists(path_.c_str())) path_ = kPicture;
   hasPicture_ = Storage.exists(path_.c_str());
   lastMinute_ = -1;
   lastDay_ = -1;
+  grayShown_ = false;
 }
 
 StandbyFace::TickResult WallpaperFace::tick() {
@@ -109,6 +112,10 @@ StandbyFace::TickResult WallpaperFace::tick() {
   const bool dayChanged = local.tm_yday != lastDay_;
   if (!showsTime() && !dayChanged) return TickResult::None;
   if (showsTime() && minute == lastMinute_ && !dayChanged) return TickResult::None;
+  // Claim the minute now: the 16-gray redraw takes ~2 s, and the loop ticking again
+  // before it lands queued a second full redraw of the same minute.
+  lastMinute_ = minute;
+  lastDay_ = local.tm_yday;
   return TickResult::Redraw;
 }
 
@@ -187,13 +194,27 @@ void WallpaperFace::drawCorner(GfxRenderer& renderer, const Rect& viewport, cons
 }
 
 bool WallpaperFace::renderNative(GfxRenderer& renderer, const Rect& viewport) {
-  if (!hasPicture_) return false;
   std::tm local{};
   const bool clock = halClock.localTime(local);
+  if (cardOn_) {
+    if (renderer.getGrayscaleLevels() != 16) return false;
+    bool shown = renderer.beginGrayscale16() && card_.drawGray(renderer, viewport);
+    if (shown) shown = renderer.commitGrayscale16();
+    renderer.cancelGrayscale16();
+    if (!shown) return false;
+    if (clock) {
+      lastMinute_ = local.tm_hour * 60 + local.tm_min;
+      lastDay_ = local.tm_yday;
+    }
+    return true;
+  }
+  if (!hasPicture_) return false;
 
-  // Every update redraws the whole 16-gray frame. This panel has no partial
-  // refresh: a B/W refresh after a 16-gray frame drives every gray pixel to black
-  // or white, which collapsed the picture after the first minute.
+  // Every update redraws the whole 16-gray frame: a B/W refresh after a 16-gray
+  // frame drives every gray pixel to black or white, which collapsed the picture
+  // after the first minute. Once a full frame is shown, the panel diffs the new
+  // frame against it and drives only the changed clock/date area (no full flash),
+  // with a clean pass over that area every kClockCleanupEvery minutes.
   // A filter is a B/W look: render() draws it.
   if (renderer.getGrayscaleLevels() != 16 || filtered()) return false;
   HalFile file;
@@ -214,9 +235,12 @@ bool WallpaperFace::renderNative(GfxRenderer& renderer, const Rect& viewport) {
                renderer.drawBitmapGrayscale16(bitmap, at.x, at.y, screenWidth, screenHeight, at.cropX, at.cropY);
   if (shown) {
     drawCorner(renderer, viewport, true);
+    constexpr uint8_t kClockCleanupEvery = 30;
+    if (grayShown_) renderer.setNextGray16UiRefresh(0, 0, 0, 0, kClockCleanupEvery, kClockCleanupEvery);
     shown = renderer.commitGrayscale16();
   }
   renderer.cancelGrayscale16();
+  grayShown_ = shown;
   if (!shown) {
     LOG_ERR("STANDBY", "16-gray standby picture failed");
     return false;
@@ -230,6 +254,15 @@ bool WallpaperFace::renderNative(GfxRenderer& renderer, const Rect& viewport) {
 
 // B/W path: the empty state, and the picture on panels without native 16-gray.
 void WallpaperFace::render(GfxRenderer& renderer, const Rect& viewport) {
+  if (cardOn_) {
+    card_.drawBw(renderer, viewport);
+    std::tm local{};
+    if (halClock.localTime(local)) {
+      lastMinute_ = local.tm_hour * 60 + local.tm_min;
+      lastDay_ = local.tm_yday;
+    }
+    return;
+  }
   if (!hasPicture_) {
     // No picture chosen yet: the RickyOS rest screen (the same one the sleep screen
     // shows by default), so Standby starts out branded instead of empty.

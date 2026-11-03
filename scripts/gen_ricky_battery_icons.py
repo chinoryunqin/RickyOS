@@ -46,8 +46,8 @@ def encode(name, marks):
                     value &= ~(0x80 >> bit)
             data.append(value)
     rows = [', '.join(f'0x{v:02X}' for v in data[i:i + 16]) for i in range(0, len(data), 16)]
-    return (f'static const uint8_t {name}_bits[] = {{\n    ' + ',\n    '.join(rows) + '};\n'
-            f'static const freeink::Icon {name} = {{{W}, {H}, {H // 2}, {name}_bits}};\n')
+    return (f'inline constexpr uint8_t {name}_bits[] = {{\n    ' + ',\n    '.join(rows) + '};\n'
+            f'inline constexpr freeink::Icon {name} = {{{W}, {H}, {H // 2}, {name}_bits}};\n')
 
 
 def header():

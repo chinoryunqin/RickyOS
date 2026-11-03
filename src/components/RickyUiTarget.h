@@ -2,8 +2,11 @@
 
 #include <FreeInkUIGfxRenderer.h>
 
+#include <cstdlib>
+
 #include "RickyAaIcons.h"
 #include "RickyDesignTokens.h"
+#include "RickyGrayStroke.h"
 
 // Firmware-owned adapter: the SDK remains product-independent. A native-sized
 // RickyOS line icon uses its coverage twin, including SDK-rendered list rows.
@@ -37,9 +40,26 @@ class RickyUiTarget : public freeink::ui::DrawTarget {
   }
   void stroke(freeink::ui::Rect rect, freeink::ui::Paint paint, uint8_t width, uint8_t radius = 0,
               uint8_t corners = freeink::ui::CornersAll) override {
+    // Gray outlines (resting cards, chips) draw in exact product gray on a 16-gray
+    // frame instead of the SDK's dither; B/W frames keep the 1-bit fallback.
+    if (const auto level = grayLevel(paint); level != ricky::ds::gray::kInk && corners == freeink::ui::CornersAll &&
+                                             renderer_.isGrayscale16Active()) {
+      RickyGrayStroke::ring(renderer_, rect.x, rect.y, rect.width, rect.height, width, radius, level);
+      return;
+    }
     target_.stroke(rect, paint, width, radius, corners);
   }
   void line(freeink::ui::Point from, freeink::ui::Point to, uint8_t width, freeink::ui::Paint paint) override {
+    // Straight gray rules likewise, the only lines the product draws in gray.
+    if (const auto level = grayLevel(paint);
+        level != ricky::ds::gray::kInk && renderer_.isGrayscale16Active() && (from.x == to.x || from.y == to.y)) {
+      const int x = std::min(from.x, to.x), y = std::min(from.y, to.y);
+      const int w = from.y == to.y ? std::abs(to.x - from.x) + 1 : width;
+      const int h = from.y == to.y ? width : std::abs(to.y - from.y) + 1;
+      renderer_.fillGrayscale16Rect(from.y == to.y ? x : x - width / 2, from.y == to.y ? y - width / 2 : y, w, h,
+                                    level);
+      return;
+    }
     target_.line(from, to, width, paint);
   }
   void triangle(freeink::ui::Point a, freeink::ui::Point b, freeink::ui::Point c, freeink::ui::Paint paint) override {
@@ -96,6 +116,12 @@ class RickyUiTarget : public freeink::ui::DrawTarget {
   }
 
  private:
+  static ricky::ds::gray::Level grayLevel(const freeink::ui::Paint& paint) {
+    if (paint.kind != freeink::ui::PaintKind::Solid) return ricky::ds::gray::kInk;
+    return paint.color == freeink::ui::Color::LightGray  ? ricky::ds::gray::kLine
+           : paint.color == freeink::ui::Color::DarkGray ? ricky::ds::gray::kInk2
+                                                        : ricky::ds::gray::kInk;
+  }
   freeink::ui::GfxRendererTarget target_;
   const GfxRenderer& renderer_;
 };

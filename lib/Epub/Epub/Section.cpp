@@ -51,7 +51,44 @@ namespace {
 //   72 / 73 - missing glyphs reserve space for a visible outline placeholder
 //   74 / 75 - character and word spacing in the render spec and cached text
 //   76 / 77 - independent Western paragraph indentation width
-constexpr uint8_t SECTION_FILE_VERSION = 77;
+//   78 / 79 - vertical text (columns, right to left) in the render spec
+//   80 / 81 - reserved: the Metalio Plus imageOutset header field
+//   82 / 83 - reserved: Plus pagination with collapsed margins (with imageOutset)
+//   84 / 85 - adjacent vertical margins collapse (CSS): max(bottom, next top), not the sum
+//   86 / 87 - Read Pico: collapsed margins plus the chapter-art imageOutset header field
+//   88 / 89 - book typography: TextBlock flags byte + per-word looks (face, tone, size)
+//   90 / 91 - the same on the Read Pico (imageOutset header)
+//   92 / 93 - the same on the Metalio Plus (imageOutset header)
+//   94 / 95 - Read Pico: book faces collected during layout (v91 test builds had none)
+//   96 / 97 - bookFontsKey in the header (fingerprint of the book's usable faces)
+//   98 / 99 - the same on the Read Pico (imageOutset header)
+//  100 /101 - the same on the Metalio Plus (imageOutset header)
+//  102 /103 - CSS panels: TextBlock flag bit 2 carries a BlockBox (background / border)
+//  104 /105 - the same on the Read Pico (imageOutset header)
+//  106 /107 - the same on the Metalio Plus (imageOutset header)
+//  108 /109 - a panel ends with its element (the paragraph after </div> no longer joins it)
+//  110 /111 - the same on the Read Pico (imageOutset header)
+//  112 /113 - the same on the Metalio Plus (imageOutset header)
+//  114 /115 - a closed container's bottom spacing lands before the next block, not after it
+//  116 /117 - the same on the Read Pico (imageOutset header)
+//  118 /119 - the same on the Metalio Plus (imageOutset header)
+//  120 /121 - a page's last line needs only its glyph height, not the full line pitch
+//  122 /123 - the same on the Read Pico (imageOutset header)
+//  124 /125 - the same on the Metalio Plus (imageOutset header)
+// Boards without the imageOutset field come first: host tests read the first declaration.
+#if !FREEINK_DEVICE_METALIO_PLUS && !FREEINK_DEVICE_READPICO
+constexpr uint8_t SECTION_FILE_VERSION = 121;
+constexpr uint32_t IMAGE_LAYOUT_HEADER_SIZE = 0;
+#elif FREEINK_DEVICE_READPICO
+// A uint16 imageOutset follows verticalText, as on the Plus; its own number keeps a
+// card moved between devices from reading another board's pagination as its own.
+constexpr uint8_t SECTION_FILE_VERSION = 123;
+constexpr uint32_t IMAGE_LAYOUT_HEADER_SIZE = sizeof(uint16_t);
+#else
+// Plus-only v81 adds a uint16 imageOutset after verticalText; v83 collapses margins.
+constexpr uint8_t SECTION_FILE_VERSION = 125;
+constexpr uint32_t IMAGE_LAYOUT_HEADER_SIZE = sizeof(uint16_t);
+#endif
 // Written into the version field while a build is in progress; patched to
 // SECTION_FILE_VERSION only when the build is finalized. An abandoned /
 // crash-interrupted .bin therefore carries version 0, which loadSectionFile rejects
@@ -72,7 +109,8 @@ constexpr uint8_t SECTION_FILE_PARTIAL_VERSION = 0xFE - (SECTION_FILE_VERSION - 
 constexpr uint32_t HEADER_SIZE = sizeof(uint8_t) + sizeof(int) + sizeof(float) + sizeof(uint8_t) + sizeof(uint8_t) +
                                  sizeof(uint8_t) + sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint16_t) +
                                  sizeof(bool) + sizeof(bool) + sizeof(uint8_t) + sizeof(bool) + sizeof(bool) +
-                                 sizeof(uint32_t) * 5 + sizeof(int8_t) + sizeof(uint8_t) + sizeof(uint8_t);
+                                 sizeof(uint32_t) * 5 + sizeof(int8_t) + sizeof(uint8_t) + sizeof(uint8_t) +
+                                 sizeof(bool) + IMAGE_LAYOUT_HEADER_SIZE + sizeof(uint32_t);
 // Called only between layout/render operations; no borrowed glyph pointer is live.
 void reclaimLayoutCaches(GfxRenderer& renderer, const char* stage) {
 #ifndef BOARD_HAS_PSRAM
@@ -138,7 +176,8 @@ void Section::writeSectionFileHeader(const ReaderRenderSpec& spec) {
                                    sizeof(spec.imageRendering) + sizeof(spec.focusReadingEnabled) +
                                    sizeof(spec.collectTouchLinks) + sizeof(uint32_t) + sizeof(uint32_t) +
                                    sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) +
-                                   sizeof(spec.characterSpacing) + sizeof(spec.wordSpacingPercent),
+                                   sizeof(spec.characterSpacing) + sizeof(spec.wordSpacingPercent) +
+                                   sizeof(spec.verticalText) + IMAGE_LAYOUT_HEADER_SIZE + sizeof(spec.bookFontsKey),
                 "Header size mismatch");
   // Written as the incomplete sentinel; finalizeBuild() patches it to
   // SECTION_FILE_VERSION as the last step, committing the file.
@@ -158,6 +197,11 @@ void Section::writeSectionFileHeader(const ReaderRenderSpec& spec) {
   serialization::writePod(file, spec.collectTouchLinks);
   serialization::writePod(file, spec.characterSpacing);
   serialization::writePod(file, spec.wordSpacingPercent);
+  serialization::writePod(file, spec.verticalText);
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
+  serialization::writePod(file, spec.imageOutset);
+#endif
+  serialization::writePod(file, spec.bookFontsKey);
   serialization::writePod(file, pageCount);  // Placeholder for page count (will be initially 0, patched later)
   serialization::writePod(file, static_cast<uint32_t>(0));  // Placeholder for LUT offset (patched later)
   serialization::writePod(file, static_cast<uint32_t>(0));  // Placeholder for anchor map offset (patched later)
@@ -203,7 +247,11 @@ bool Section::loadSectionFile(const ReaderRenderSpec& spec) {
     bool fileCollectTouchLinks = false;
     int8_t fileCharacterSpacing = 0;
     uint8_t fileWordSpacingPercent = 100;
-    const bool headerValid =
+    bool fileVerticalText = false;
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
+    uint16_t fileImageOutset = 0;
+#endif
+    bool headerValid =
         serialization::readPod(file, fileFontId) && serialization::readPod(file, fileLineCompression) &&
         serialization::readPod(file, fileExtraParagraphSpacing) && serialization::readPod(file, fileFirstLineIndent) &&
         serialization::readPod(file, fileParagraphIndentSpaces) &&
@@ -211,7 +259,16 @@ bool Section::loadSectionFile(const ReaderRenderSpec& spec) {
         serialization::readPod(file, fileViewportHeight) && serialization::readPod(file, fileHyphenationEnabled) &&
         serialization::readPod(file, fileEmbeddedStyle) && serialization::readPod(file, fileImageRendering) &&
         serialization::readPod(file, fileFocusReadingEnabled) && serialization::readPod(file, fileCollectTouchLinks) &&
-        serialization::readPod(file, fileCharacterSpacing) && serialization::readPod(file, fileWordSpacingPercent);
+        serialization::readPod(file, fileCharacterSpacing) && serialization::readPod(file, fileWordSpacingPercent) &&
+        serialization::readPod(file, fileVerticalText);
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
+    headerValid = headerValid && serialization::readPod(file, fileImageOutset);
+    const bool imageLayoutMatches = spec.imageOutset == fileImageOutset;
+#else
+    const bool imageLayoutMatches = true;
+#endif
+    uint32_t fileBookFontsKey = 0;
+    headerValid = headerValid && serialization::readPod(file, fileBookFontsKey);
 
     if (!headerValid || spec.fontId != fileFontId || spec.lineCompression != fileLineCompression ||
         spec.extraParagraphSpacing != fileExtraParagraphSpacing || spec.firstLineIndent != fileFirstLineIndent ||
@@ -220,7 +277,8 @@ bool Section::loadSectionFile(const ReaderRenderSpec& spec) {
         spec.hyphenationEnabled != fileHyphenationEnabled || spec.embeddedStyle != fileEmbeddedStyle ||
         spec.imageRendering != fileImageRendering || spec.focusReadingEnabled != fileFocusReadingEnabled ||
         spec.collectTouchLinks != fileCollectTouchLinks || spec.characterSpacing != fileCharacterSpacing ||
-        spec.wordSpacingPercent != fileWordSpacingPercent) {
+        spec.wordSpacingPercent != fileWordSpacingPercent || spec.verticalText != fileVerticalText ||
+        !imageLayoutMatches || spec.bookFontsKey != fileBookFontsKey) {
       file.close();
       LOG_ERR("SCT", "Deserialization failed: Parameters do not match");
       clearCache();
@@ -476,19 +534,22 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
   // captures the BuildContext pointer to append to its in-RAM LUT; build_ owns the
   // context for the parser's whole lifetime.
   BuildContext* ctxPtr = ctx.get();
+  // A split TXT part counts its visible text from its own start; pages record the book-wide
+  // offset (progress, bookmarks and chapter jumps all use it). 0 for everything else.
+  const uint32_t visibleBase = epub->txtVisibleBase(spineIndex);
   ctx->parser = makeUniqueNoThrow<ChapterHtmlSlimParser>(
       epub, ctxPtr->parsePath, renderer, spec.fontId, spec.lineCompression, spec.extraParagraphSpacing,
       spec.firstLineIndent, spec.paragraphAlignment, spec.viewportWidth, spec.viewportHeight, spec.hyphenationEnabled,
       spec.focusReadingEnabled,
-      [this, ctxPtr](std::unique_ptr<Page> page, const uint16_t paragraphIndex, const uint16_t listItemIndex,
-                     const uint32_t visibleTextOffset) {
+      [this, ctxPtr, visibleBase](std::unique_ptr<Page> page, const uint16_t paragraphIndex,
+                                  const uint16_t listItemIndex, const uint32_t visibleTextOffset) {
         const uint32_t position = this->onPageComplete(std::move(page));
         if (position == 0) {
           buildError_ = BuildError::Io;
           ctxPtr->parser->failIo();
           return;
         }
-        ctxPtr->lut.push_back({position, paragraphIndex, listItemIndex, visibleTextOffset});
+        ctxPtr->lut.push_back({position, paragraphIndex, listItemIndex, visibleBase + visibleTextOffset});
       },
       spec.embeddedStyle, ctxPtr->contentBase, ctxPtr->imageBasePath, spec.imageRendering, std::move(tocAnchors),
       popupFn, ctxPtr->cssParser, spec.collectTouchLinks);
@@ -504,6 +565,9 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
   ctx->parser->setTxtChapterBoundaries(txtChapterBoundaries);
   ctx->parser->setTextSpacing(spec.characterSpacing, spec.wordSpacingPercent);
   ctx->parser->setParagraphIndentSpaces(spec.paragraphIndentSpaces);
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
+  ctx->parser->setImageOutset(spec.imageOutset);
+#endif
   Hyphenator::setPreferredLanguage(epub->getLanguage());
 
   if (!build_->parser->beginParse()) {

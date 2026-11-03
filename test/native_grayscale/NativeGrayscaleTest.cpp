@@ -1,13 +1,17 @@
 #include <Arduino.h>
+#include <BidiUtils.h>
 #include <Bitmap.h>
 #include <BuildScratch.h>
 #include <FontCacheManager.h>
+#include <FontDecompressor.h>
 #include <GfxRenderer.h>
 #include <HalMemory.h>
 #include <HalStorage.h>
 #include <JPEGDEC.h>
 #include <JpegToBmpConverter.h>
+#include <PNGdec.h>
 #include <SdCardFont.h>
+#include <builtinFonts/ricky_caption_10_regular.h>
 
 #include <algorithm>
 #include <array>
@@ -16,6 +20,7 @@
 #include <cstring>
 #include <fstream>
 #include <new>
+#include <optional>
 #include <vector>
 
 #include "AirPageImageRenderer.h"
@@ -23,6 +28,7 @@
 #include "CrossPointSettings.h"
 #include "Epub/blocks/ImageBlock.h"
 #include "Epub/converters/JpegToFramebufferConverter.h"
+#include "Epub/converters/PngToFramebufferConverter.h"
 #include "QrParams.h"
 #include "SleepProbe.h"
 #include "components/themes/BaseTheme.h"
@@ -32,7 +38,7 @@ ImageBlock::ImageBlock(const std::string&, const std::string&, int16_t, int16_t)
 void ImageBlock::releaseRenderCache() {}
 void ImageBlock::clearSessionRenderFailures() {}
 static ImageRenderError legacyError = ImageRenderError::Failed;
-bool ImageBlock::render(GfxRenderer&, int, int, PixelCachePolicy, ImageRenderError* error) {
+bool ImageBlock::render(GfxRenderer&, int, int, PixelCachePolicy, ImageRenderError* error, CancelCheck) {
   if (error) *error = legacyError;
   return false;
 }
@@ -42,19 +48,35 @@ HalMemory::HeapStats HalMemory::getInternalHeap() { return {33087, 283859, 9796,
 HalMemory::HeapStats HalMemory::getPsramHeap() { return {6235816, 8373520, 4112312, 4980724}; }
 static bool failDecoderAllocation = false;
 void* operator new(size_t size, const std::nothrow_t&) noexcept {
-  return size == sizeof(JPEGDEC) && failDecoderAllocation ? nullptr : std::malloc(size);
+  return (size == sizeof(JPEGDEC) || size == sizeof(PNG)) && failDecoderAllocation ? nullptr : std::malloc(size);
 }
 
 bool FontCacheManager::isScanning() const { return false; }
 void FontCacheManager::clearCache() {}
 void SdCardFont::clearCache() {}
+// drawText() reaches these only for SD/compressed fonts; the glyph test uses a built-in one.
+void FontCacheManager::recordText(const char*, int, EpdFontFamily::Style) {}
+void FontCacheManager::reportMissingChineseCodepoint(int, uint32_t) {}
+// Left-to-right test strings only: no RTL bytes reach the shaper.
+namespace BidiUtils {
+bool isTransparentMark(uint32_t) { return false; }
+bool applyBidiVisual(const char*, std::string&, int) { return false; }
+}  // namespace BidiUtils
+SdCardFont* SdCardFont::fromMissCtx(void*) { return nullptr; }
+bool SdCardFont::isOverflowGlyph(const EpdGlyph*) const { return false; }
+const uint8_t* SdCardFont::getOverflowBitmap(const EpdGlyph*) const { return nullptr; }
+int SdCardFont::prewarm(const char*, uint8_t, bool, bool, bool) { return 0; }
+const uint8_t* FontDecompressor::getBitmap(const EpdFontData*, const EpdGlyph*, uint32_t) { return nullptr; }
 ESPMock ESP;
 namespace {
 std::array<uint8_t, HalDisplay::BUFFER_SIZE> bw;
 std::array<uint8_t, HalDisplay::DISPLAY_WIDTH * HalDisplay::DISPLAY_HEIGHT / 2> native;
+auto visibleNative = native;
+auto visibleBw = bw;
 uint8_t levels = 16;
 bool loan = false, failRefresh = false, failAllocation = false;
 int commits = 0, cancels = 0;
+std::array<int, 6> uiRegion{};
 std::vector<char> refreshEvents;
 }  // namespace
 void* operator new[](size_t size, const std::nothrow_t&) noexcept {
@@ -69,6 +91,9 @@ uint16_t HalDisplay::getDisplayWidthBytes() const { return DISPLAY_WIDTH_BYTES; 
 uint32_t HalDisplay::getBufferSize() const { return BUFFER_SIZE; }
 void HalDisplay::clearScreen(uint8_t value) const { bw.fill(value); }
 uint8_t HalDisplay::getGrayscaleLevels() const { return levels; }
+void HalDisplay::setNextGray16UiRefresh(int x, int y, int w, int h, uint8_t content, uint8_t small) {
+  uiRegion = {x, y, w, h, content, small};
+}
 uint8_t* HalDisplay::beginGrayscale16() {
   if (loan) return nullptr;
   loan = true;
@@ -80,7 +105,18 @@ bool HalDisplay::commitGrayscale16() {
   loan = false;
   ++commits;
   refreshEvents.push_back('C');
+  if (!failRefresh) {
+    visibleNative = native;
+    visibleBw = bw;
+  }
   return !failRefresh;
+}
+uint8_t* HalDisplay::beginRetainedGrayscale16() {
+  if (loan) return nullptr;
+  loan = true;
+  native = visibleNative;
+  bw = visibleBw;
+  return native.data();
 }
 void HalDisplay::cancelGrayscale16() {
   loan = false;
@@ -199,9 +235,49 @@ int main(int argc, char** argv) {
   assert(qrParams(renderer) == "&w=32&h=128&mode=gray4");
   levels = 16;
   assert(qrParams(renderer) == "&w=32&h=128&mode=gray16");
+  {
+    bw.fill(0xA5);
+    const auto before = bw;
+    const int priorCancels = cancels;
+    std::array<uint8_t, 18> canvasBw{};
+    std::array<uint8_t, 66> canvasGray{};
+    canvasBw.front() = canvasBw.back() = 0xA5;
+    canvasGray.front() = canvasGray.back() = 0x5A;
+    {
+      GfxRenderer view(GfxRenderer::UiCanvasTag{}, renderer);
+      assert(&view.getFontMap() == &renderer.getFontMap());
+      {
+        GfxRenderer::UiCanvasScope invalid(view, canvasBw.data()+1, 15, canvasGray.data()+1, 64, 16, 8);
+        assert(!invalid.active());
+      }
+      {
+        GfxRenderer::UiCanvasScope canvas(view, canvasBw.data()+1, 16, canvasGray.data()+1, 64, 16, 8);
+        assert(canvas.active() && view.getScreenWidth()==8 && view.getScreenHeight()==16);
+        assert(renderer.getScreenWidth()==32 && renderer.getScreenHeight()==128);
+        view.drawGrayscale16Pixel(0, 0, 0);
+        assert(view.grayscale16Level(0, 0)==0);
+        assert(bw==before);  // Neither clear nor drawing reached the physical HAL.
+        GfxRenderer::UiCanvasScope nested(view, canvasBw.data()+1, 16, canvasGray.data()+1, 64, 16, 8);
+        assert(!nested.active());
+      }
+      assert(!view.isGrayscale16Active());
+      assert(view.getScreenWidth()==32 && view.getScreenHeight()==128);
+    }
+    assert(cancels==priorCancels);  // Borrowed view destruction cannot cancel a live panel transaction.
+    assert(canvasBw.front()==0xA5 && canvasBw.back()==0xA5);
+    assert(canvasGray.front()==0x5A && canvasGray.back()==0x5A);
+  }
   for (const auto orientation : {GfxRenderer::Portrait, GfxRenderer::PortraitInverted, GfxRenderer::LandscapeClockwise,
                                  GfxRenderer::LandscapeCounterClockwise}) {
     renderer.setOrientation(orientation);
+    // Shared logical footer geometry reaches the physical driver in every
+    // orientation; no Activity-owned rotated coordinates or extra hit boxes.
+    const int footerY = renderer.getScreenHeight() - 8;
+    renderer.setNextGray16UiRefresh(0, footerY, renderer.getScreenWidth(), 8, 8, 32);
+    const auto [ax, ay] = physical(orientation, 0, footerY);
+    const auto [bx, by] = physical(orientation, renderer.getScreenWidth() - 1, footerY + 7);
+    assert((uiRegion == std::array<int, 6>{std::min(ax, bx), std::min(ay, by), std::abs(bx - ax) + 1,
+                                           std::abs(by - ay) + 1, 8, 32}));
     assert(renderer.beginGrayscale16());
     // Exact secondary ink, coverage and inversion, on the actual renderer.
     assert(renderer.textInkLevel() == 0);
@@ -226,6 +302,172 @@ int main(int argc, char** argv) {
     }
     assert(renderer.textInkLevel() == 0);
     renderer.cancelGrayscale16();
+    // Real PNGdec: RGBA, gray+alpha, indexed tRNS and truecolor/gray color keys.
+    PngToFramebufferConverter png;
+    for (const auto* name : {"rgba", "gray-alpha", "indexed", "rgb-key", "gray-key"}) {
+      const std::string path = std::string("/") + name + ".png";
+      RenderConfig cfg{};
+      cfg.x = 3;
+      cfg.y = 4;
+      cfg.maxWidth = 16;
+      cfg.maxHeight = 2;
+      cfg.preserveAlpha = true;
+      cfg.output = DecodeOutput::NativeGrayscale16;
+      assert(!png.decodeToFramebuffer(path, renderer, cfg));
+      assert(renderer.beginGrayscale16());
+      native.fill(0x66);
+      bw.fill(0xA5);
+      assert(renderer.commitGrayscale16());
+      const auto originalBw = bw;
+      assert(renderer.beginRetainedGrayscale16() && !renderer.beginRetainedGrayscale16());
+      assert(bw == originalBw);
+      assert(png.decodeToFramebuffer(path, renderer, cfg));
+      for (int y = 0; y < 2; ++y)
+        for (int x = 0; x < 16; ++x) {
+          const bool keyed = std::string(name).find("key") != std::string::npos;
+          const int alpha = keyed ? (x == 1 ? 0 : 15) : (x % 3 == 0 ? 0 : x % 3 == 1 ? 8 : 15);
+          const int delta = (x - 6) * alpha;
+          const int expected = 6 + (delta >= 0 ? (delta + 7) / 15 : -((7 - delta) / 15));
+          const auto [px, py] = physical(orientation, x + 3, y + 4);
+          assert(tone(px, py) == expected);
+        }
+      const auto [px, py] = physical(orientation, 2, 4);
+      assert(tone(px, py) == 6);  // All pixels outside the sticker stay gray, not BW.
+      renderer.cancelGrayscale16();
+      assert(renderer.beginRetainedGrayscale16());
+      for (const auto byte : native) assert(byte == 0x66);  // Partial/cancelled decode discarded.
+      failDecoderAllocation = true;
+      assert(!png.decodeToFramebuffer(path, renderer, cfg));
+      failDecoderAllocation = false;
+      failAllocation = true;
+      assert(!png.decodeToFramebuffer(path, renderer, cfg));
+      failAllocation = false;
+      const auto heap = availableHeap;
+      availableHeap = {100, 100, 100, 100};
+      assert(!png.decodeToFramebuffer(path, renderer, cfg));
+      availableHeap = heap;
+      renderer.cancelGrayscale16();
+    }
+    // Row-wise fast fills match the per-pixel paths byte for byte (both buffers), with
+    // odd/even nibble edges, partial B/W bytes, clipping and off-screen parts.
+    {
+      uint32_t seed = 12345u + static_cast<uint32_t>(orientation);
+      const auto next = [&seed](int bound) {
+        seed = seed * 1664525u + 1013904223u;
+        return static_cast<int>((seed >> 8) % static_cast<uint32_t>(bound));
+      };
+      const int w = renderer.getScreenWidth();
+      const int h = renderer.getScreenHeight();
+      for (int round = 0; round < 40; ++round) {
+        const int x = next(w + 40) - 20, y = next(h + 40) - 20;
+        const int rw = next(70) + 1, rh = next(70) + 1;
+        const uint8_t level = static_cast<uint8_t>(next(16));
+        const bool clipped = round % 5 == 0;
+        assert(renderer.beginGrayscale16());
+        native.fill(0x5A);
+        bw.fill(0x96);
+        {
+          std::optional<GfxRenderer::ClipScope> clip;
+          if (clipped) clip.emplace(renderer, x + 3, y + 2, rw / 2 + 1, rh / 2 + 1);
+          for (int px = x; px < x + rw; ++px)
+            for (int py = y; py < y + rh; ++py)
+              if (px >= 0 && py >= 0 && px < w && py < h) renderer.drawGrayscale16Pixel(px, py, level * 17);
+        }
+        const auto expectedNative = native;
+        const auto expectedBw = bw;
+        native.fill(0x5A);
+        bw.fill(0x96);
+        {
+          std::optional<GfxRenderer::ClipScope> clip;
+          if (clipped) clip.emplace(renderer, x + 3, y + 2, rw / 2 + 1, rh / 2 + 1);
+          renderer.fillGrayscale16Rect(x, y, rw, rh, level);
+        }
+        assert(native == expectedNative && bw == expectedBw);
+        // fillRect black/white matches drawPixel's mirrored 0/15.
+        for (const bool black : {true, false}) {
+          native.fill(0x5A);
+          bw.fill(0x96);
+          for (int py = y; py < y + rh; ++py)
+            for (int px = x; px < x + rw; ++px)
+              if (px >= 0 && py >= 0 && px < w && py < h) renderer.drawPixel(px, py, black);
+          const auto pixelNative = native;
+          const auto pixelBw = bw;
+          native.fill(0x5A);
+          bw.fill(0x96);
+          renderer.fillRect(x, y, rw, rh, black);
+          assert(native == pixelNative && bw == pixelBw);
+        }
+        renderer.cancelGrayscale16();
+      }
+    }
+    // A captured panel tile writes back exactly the pixels it covered (nibble and B/W
+    // bit edges included) and nothing else; a changed clip refuses the restore.
+    {
+      uint32_t seed = 777u + static_cast<uint32_t>(orientation);
+      const auto next = [&seed](int bound) {
+        seed = seed * 1664525u + 1013904223u;
+        return static_cast<int>((seed >> 8) % static_cast<uint32_t>(bound));
+      };
+      const auto scramble = [&next] {
+        for (auto& byte : native) byte = static_cast<uint8_t>(next(256));
+        for (auto& byte : bw) byte = static_cast<uint8_t>(next(256));
+      };
+      const int w = renderer.getScreenWidth();
+      const int h = renderer.getScreenHeight();
+      constexpr int stride = HalDisplay::DISPLAY_WIDTH;
+      for (int round = 0; round < 60; ++round) {
+        const int x = next(w + 40) - 20, y = next(h + 40) - 20;
+        const int rw = next(90) + 1, rh = next(90) + 1;
+        const bool clipped = round % 4 == 0;
+        assert(renderer.beginGrayscale16());
+        scramble();
+        const auto originalNative = native;
+        const auto originalBw = bw;
+        GfxRenderer::PanelTile tile;
+        std::vector<uint8_t> saved;
+        bool visible;
+        {
+          std::optional<GfxRenderer::ClipScope> clip;
+          if (clipped) clip.emplace(renderer, x + 2, y + 1, rw / 2 + 1, rh / 2 + 1);
+          visible = renderer.panelTileFor(x, y, rw, rh, &tile);
+          if (visible) {
+            saved.resize(tile.bytes());
+            renderer.capturePanelTile(tile, saved.data());
+          }
+        }
+        if (!visible) {
+          renderer.cancelGrayscale16();
+          continue;
+        }
+        scramble();
+        auto expectedNative = native;
+        auto expectedBw = bw;
+        for (int ly = tile.ly0; ly < tile.ly1; ++ly)
+          for (int lx = tile.lx0; lx < tile.lx1; ++lx) {
+            const auto [px, py] = physical(orientation, lx, ly);
+            const size_t g = static_cast<size_t>(py) * (stride / 2) + px / 2;
+            const uint8_t nibble = (px & 1) ? 0xF0 : 0x0F;
+            expectedNative[g] = static_cast<uint8_t>((expectedNative[g] & ~nibble) | (originalNative[g] & nibble));
+            const size_t b = static_cast<size_t>(py) * (stride / 8) + px / 8;
+            const uint8_t bit = static_cast<uint8_t>(0x80u >> (px % 8));
+            expectedBw[b] = static_cast<uint8_t>((expectedBw[b] & ~bit) | (originalBw[b] & bit));
+          }
+        if (clipped) {
+          // Restoring needs the same clip as the capture; with none, more is visible.
+          const auto before = native;
+          if (tile.lx1 - tile.lx0 < rw || tile.ly1 - tile.ly0 < rh) {
+            const GfxRenderer::ClipScope narrower(renderer, tile.lx0 + 1, tile.ly0, 1, 1);
+            if (tile.lx1 - tile.lx0 > 1) assert(!renderer.restorePanelTile(tile, saved.data()) && native == before);
+          }
+          const GfxRenderer::ClipScope same(renderer, x + 2, y + 1, rw / 2 + 1, rh / 2 + 1);
+          assert(renderer.restorePanelTile(tile, saved.data()));
+        } else {
+          assert(renderer.restorePanelTile(tile, saved.data()));
+        }
+        assert(native == expectedNative && bw == expectedBw);
+        renderer.cancelGrayscale16();
+      }
+    }
     assert(renderer.beginGrayscale16());
     renderer.fillRect(0, 0, 3, 2);
     for (int y = 0; y < renderer.getScreenHeight(); ++y) {
@@ -481,4 +723,47 @@ int main(int argc, char** argv) {
   assert(commits == beforeFiltered);  // Existing filters must not enter native output.
   SETTINGS.sleepScreenCoverFilter = CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER;
   assert(commits > 0 && cancels > 0);
+
+  // Portrait panels walk glyphs column by column (panel memory order); landscape keeps
+  // the row walk. Text is laid out in logical coordinates, so the same text over the
+  // same striped background must give the same logical pixels and B/W proxy in both:
+  // 4-bit coverage, white-on-ink text, synthetic bold (dilated 2-bit path), clipping.
+  {
+    EpdFont captionFont(&ricky_caption_10_regular);
+    renderer.insertFont(77, EpdFontFamily(&captionFont));
+    struct Case {
+      const char* text;
+      int x, y;
+      bool black;
+      uint8_t bold;
+    };
+    const Case cases[] = {{"\xe4\xb9\xa6g", 0, 0, true, 0}, {"Ag", -5, 3, true, 0}, {"\xe4\xb9\xa6", 2, 1, false, 0},
+                          {"Wy", 1, 0, true, 2}, {"\xe4\xb9\xa6", -3, 2, false, 3}};
+    for (const auto& item : cases) {
+      std::array<uint8_t, 32 * 32> tone[2];
+      std::array<bool, 32 * 32> ink[2];
+      const GfxRenderer::Orientation orientations[2] = {GfxRenderer::Portrait, GfxRenderer::LandscapeClockwise};
+      for (int k = 0; k < 2; ++k) {
+        renderer.setOrientation(orientations[k]);
+        assert(renderer.beginGrayscale16());
+        const GfxRenderer::ClipScope clip(renderer, 0, 0, 32, 32);
+        for (int x = 0; x < 32; ++x) renderer.fillGrayscale16Rect(x, 0, 1, 32, static_cast<uint8_t>((x * 7) % 16));
+        {
+          const GfxRenderer::SyntheticBoldScope bold(renderer, item.bold);
+          renderer.drawText(77, item.x, item.y, item.text, item.black);
+        }
+        for (int y = 0; y < 32; ++y)
+          for (int x = 0; x < 32; ++x) {
+            const auto [px, py] = physical(orientations[k], x, y);
+            tone[k][y * 32 + x] = renderer.grayscale16Level(x, y);
+            ink[k][y * 32 + x] = (bw[static_cast<size_t>(py) * (128 / 8) + px / 8] & (0x80 >> (px % 8))) == 0;
+          }
+        renderer.cancelGrayscale16();
+      }
+      assert(tone[0] == tone[1] && ink[0] == ink[1]);
+      bool drew = false;
+      for (int i = 0; i < 32 * 32; ++i) drew |= tone[0][i] != static_cast<uint8_t>(((i % 32) * 7) % 16);
+      assert(drew);  // the case really put glyph pixels on the stripes
+    }
+  }
 }

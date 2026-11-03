@@ -1,6 +1,12 @@
 #include "HalPowerManager.h"
 
 #include <BoardConfig.h>
+#if FREEINK_DEVICE_METALIO_PLUS
+#include <PlusBoard.h>
+#if defined(RICKYOS_PLUS_STATIC_STANDBY)
+#include "HalStorage.h"
+#endif
+#endif
 #if FREEINK_DEVICE_READPICO
 #include <BoardReadPico.h>
 #endif
@@ -31,6 +37,9 @@ HalPowerManager powerManager;  // Singleton instance
 static constexpr gpio_num_t XTEINK_C3_GPIO13 = GPIO_NUM_13;
 
 namespace {
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+std::atomic<bool> g_sideKeyBusy{false};
+#endif
 #if !FREEINK_DEVICE_READPICO
 struct StandbyRetention {
   int8_t pin;
@@ -93,7 +102,6 @@ void readPicoHostShutdown() {
 // next sleep starts are presses nobody saw: the clock redraw holds the main loop for
 // about 3 s each minute, and a tap in that window used to be dropped by the drain.
 uint16_t g_standbyKeyBoundary = 0;
-std::atomic<bool> g_sideKeyBusy{false};
 
 HalPowerManager::LightSleepWakeReason lightSleepReadPico(const uint32_t seconds) {
   using LightSleepWakeReason = HalPowerManager::LightSleepWakeReason;
@@ -235,6 +243,9 @@ void HalPowerManager::setPowerSaving(bool enabled) {
   // Protect the entire host lifetime, including scans and reconnect attempts.
   if (BleHid.isRunning()) enabled = false;
 #endif
+#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_IDLE_FREQ_MHZ) && RICKYOS_PLUS_IDLE_FREQ_MHZ == 40
+  if (!plus_board::idleCpuFrequencyAllowed()) enabled = false;
+#endif
 
   // Serialize the entire clock transition: Arduino's APB callbacks retain SPI
   // locks between BEFORE/AFTER, so concurrent frequency changes can deadlock.
@@ -245,8 +256,18 @@ void HalPowerManager::setPowerSaving(bool enabled) {
     if (setCpuFrequencyMhz(targetFrequency)) {
       isLowPower = targetLowPower;
       LOG_DBG("PWR", "CPU frequency now %u MHz", getCpuFrequencyMhz());
+#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_IDLE_FREQ_MHZ)
+      // Only log real transitions in the explicit comparison build. A setting
+      // alone is not proof that the CPU actually reached the requested rate.
+      LOG_INF("PWR", "idle comparison: target=%d actual=%u MHz idle=%u", targetFrequency,
+              getCpuFrequencyMhz(), targetLowPower);
+#endif
     } else {
       LOG_DBG("PWR", "Failed to set CPU frequency = %d MHz", targetFrequency);
+#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_IDLE_FREQ_MHZ)
+      LOG_ERR("PWR", "idle comparison rejected: target=%d actual=%u MHz", targetFrequency,
+              getCpuFrequencyMhz());
+#endif
     }
   }
 
@@ -324,7 +345,7 @@ void HalPowerManager::beginStandbyKeyWatch() {
 }
 
 void HalPowerManager::setSideKeyBusy(const bool busy) {
-#if FREEINK_DEVICE_READPICO
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
   g_sideKeyBusy.store(busy, std::memory_order_relaxed);
 #else
   (void)busy;
@@ -332,7 +353,7 @@ void HalPowerManager::setSideKeyBusy(const bool busy) {
 }
 
 bool HalPowerManager::sideKeyBusy() {
-#if FREEINK_DEVICE_READPICO
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
   return g_sideKeyBusy.load(std::memory_order_relaxed);
 #else
   return false;
@@ -340,7 +361,10 @@ bool HalPowerManager::sideKeyBusy() {
 }
 
 bool HalPowerManager::canStandbyLightSleep(const HalGPIO& gpio) const {
-#if FREEINK_DEVICE_READPICO
+#if FREEINK_DEVICE_METALIO_PLUS
+  (void)gpio;
+  return plus_board::standbySleepReady() && !sideKeyBusy();
+#elif FREEINK_DEVICE_READPICO
   // The power key is PMU-owned and has no GPIO, so the generic
   // powerPin/retention test below can never pass here. What this board has is a
   // LEVEL wake on the FCA9555 INT# (GPIO41) plus the sleep timer, and the
@@ -356,7 +380,24 @@ bool HalPowerManager::canStandbyLightSleep(const HalGPIO& gpio) const {
 }
 
 HalPowerManager::LightSleepWakeReason HalPowerManager::lightSleepFor(const uint32_t seconds) const {
-#if FREEINK_DEVICE_READPICO
+#if FREEINK_DEVICE_METALIO_PLUS
+  if (sideKeyBusy()) return LightSleepWakeReason::Failed;
+#if defined(RICKYOS_PLUS_STATIC_STANDBY)
+  HalStorage::StandbySession session;
+  plus_board::StandbyStorage storage{
+      [](void* context) { return static_cast<HalStorage::StandbySession*>(context)->suspend(); },
+      [](void* context) { return static_cast<HalStorage::StandbySession*>(context)->resume(); }, &session};
+  const auto reason = plus_board::standbyStaticSleep(seconds, storage);
+#else
+  const auto reason = plus_board::standbyLightSleep(seconds);
+#endif
+  switch (reason) {
+    case plus_board::StandbyWake::Timer: return LightSleepWakeReason::Timer;
+    case plus_board::StandbyWake::PowerButton: return LightSleepWakeReason::PowerButton;
+    case plus_board::StandbyWake::PowerButtonHeld: return LightSleepWakeReason::PowerButtonHeld;
+    default: return LightSleepWakeReason::Failed;
+  }
+#elif FREEINK_DEVICE_READPICO
   // Read Pico: no GPIO power key, no standby retention rail. The wake set is the
   // FCA9555 INT# (GPIO41) on the LOW level plus the timer, wired through the new
   // freeink::PowerManager light-sleep primitives. GPIO41 is NOT RTC-capable on
@@ -438,8 +479,51 @@ HalPowerManager::LightSleepWakeReason HalPowerManager::lightSleepFor(const uint3
 #endif  // FREEINK_DEVICE_READPICO
 }
 
+#if FREEINK_DEVICE_METALIO_PLUS
+void HalPowerManager::pollBatteryWhileAwake() {
+  const uint32_t now = millis();
+  if (batteryAwakePolled && uint32_t(now - batteryAwakePollAt) < 30000) return;
+  batteryAwakePolled = true;
+  batteryAwakePollAt = now;
+  // Reuse the UI's single sampler/cache, including its I2C failure handling.
+  // Long blocked/sleeping intervals earn no synthetic observations or catch-up.
+  getBatteryPercentage();
+#if defined(RICKYOS_PLUS_IDLE_FREQ_MHZ)
+  plus_board::traceIdlePower();
+#endif
+}
+#endif
+
 uint16_t HalPowerManager::getBatteryPercentage() const {
   static const BatteryMonitor battery;
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+  // Nonblocking single sampler shared by the UI and main loop.
+  if (batteryPollBusy.test_and_set(std::memory_order_acquire)) return batteryDisplayPercent.load();
+  struct PollGuard {
+    std::atomic_flag& flag;
+    ~PollGuard() { flag.clear(std::memory_order_release); }
+  } guard{batteryPollBusy};
+  const uint32_t now = millis();
+  if (batteryDisplay.shouldPoll(now)) {
+    const auto status = battery.readStatus();
+    BatteryDisplayFilter::Sample sample;
+    sample.valid = status.percentageKnown;
+    sample.percent = status.percentage;
+    sample.source = static_cast<uint8_t>(status.percentageSource);
+    sample.chargingKnown = status.chargingKnown;
+    sample.charging = status.charging;
+    const auto shown = batteryDisplay.update(sample, now);
+    batteryDisplayPercent.store(batteryDisplay.known() ? shown : 101);
+    if (!batteryDiagnosticLogged || uint32_t(now - batteryDiagnosticAt) >= 60000) {
+      batteryDiagnosticLogged = true;
+      batteryDiagnosticAt = now;
+      LOG_INF("BAT", "valid=%d source=%u raw=%u mv=%u charge=%d/%d shown=%u known=%d",
+              sample.valid, sample.source, sample.percent, status.millivolts,
+              sample.chargingKnown, sample.charging, shown, batteryDisplay.known());
+    }
+  }
+  return batteryDisplayPercent.load();
+#endif
   if (BoardConfig::ACTIVE.batteryGauge.gaugeAddr != 0) {
     const unsigned long now = millis();
     if (_batteryLastPollMs != 0 && (now - _batteryLastPollMs) < BATTERY_POLL_MS) {

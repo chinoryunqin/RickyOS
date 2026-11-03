@@ -16,6 +16,8 @@
 
 #include <cstdint>
 
+#include "RickyPanelProfile.h"
+
 namespace ricky::ds {
 
 inline constexpr int kSchemaVersion = 1;  // DRAFT v1 (2026-10-08)
@@ -24,21 +26,57 @@ inline constexpr int kSchemaVersion = 1;  // DRAFT v1 (2026-10-08)
 // 0. 面板
 // -----------------------------------------------------------------------------
 namespace panel {
-inline constexpr int16_t kWidth = 684;
-inline constexpr int16_t kHeight = 1216;
-inline constexpr int kPpi = 297;  // 标称值；1 mm ≈ 11.7 px
+inline constexpr int16_t kWidth = ricky::panel::pixels(684, 480);
+inline constexpr int16_t kHeight = ricky::panel::pixels(1216, 800);
+inline constexpr int kPpi = ricky::panel::pixels(297, 235);  // 标称值；1 mm ≈ 11.7 px
 }  // namespace panel
 
 // -----------------------------------------------------------------------------
 // 1. 灰阶色板（§3）。只有 6 个具名等级；其余 10 级不得直接出现在 UI 代码里。
 // -----------------------------------------------------------------------------
+// RICKYOS_GRAY_PRESET（Pico 灰阶深浅，lib/GfxRenderer 里的浅灰/深灰填充同步）。默认 3（用户 2026-10-17 定）：
+//   0 = 1.2.x 原值，1 = 加深一档，2 = 和 Plus 一样深（细线也加到 3 px），
+//   3 = 呼应 Pico 机身按键：圆键和两道短线的印刷灰（实拍约等于第 8 级）、约 3 px 粗。
+#ifndef RICKYOS_GRAY_PRESET
+#define RICKYOS_GRAY_PRESET 3
+#endif
 namespace gray {
-using Level = uint8_t;               // 0..15, 0 = black
-inline constexpr Level kInk = 0;     // #000000 文字/图标/反白底/主按钮
-inline constexpr Level kInk2 = 4;    // #444444 次级文字（仅静止帧）
-inline constexpr Level kMute = 8;    // #888888 禁用/占位（仅静止帧）
-inline constexpr Level kLine = 11;   // #BBBBBB 分隔线/进度轨（仅静止帧）
-inline constexpr Level kTint = 13;   // #DDDDDD 小面积底（仅静止帧）
+using Level = uint8_t;            // 0..15, 0 = black
+inline constexpr Level kInk = 0;  // #000000 文字/图标/反白底/主按钮
+#if RICKYOS_NATIVE_SMALL_PANEL
+inline constexpr Level kInk2 = 5;
+inline constexpr Level kMute = 10;
+inline constexpr Level kLine = 5;
+inline constexpr Level kTint = 15;
+#elif RICKYOS_GRAY_PRESET == 3
+inline constexpr Level kInk2 = 3;   // 次级文字（仅静止帧）
+inline constexpr Level kMute = 6;   // 禁用/占位（仅静止帧）
+inline constexpr Level kLine = 8;   // 分隔线/进度轨/边框：机身按键的印刷灰
+inline constexpr Level kTint = 12;  // 小面积底（仅静止帧）
+#elif RICKYOS_GRAY_PRESET == 2
+#if FREEINK_DEVICE_METALIO_PLUS
+// Plus menu chrome needs more separation from paper after fast gray updates.
+// Keep the black/white endpoints, antialias coverage and image tones unchanged.
+inline constexpr Level kInk2 = 2;
+inline constexpr Level kMute = 3;
+inline constexpr Level kLine = 5;
+#else
+inline constexpr Level kInk2 = 2;  // 次级文字（仅静止帧）
+inline constexpr Level kMute = 5;  // 禁用/占位（仅静止帧）
+inline constexpr Level kLine = 7;  // 分隔线/进度轨（仅静止帧）
+#endif
+inline constexpr Level kTint = 12;  // 小面积底（仅静止帧）
+#elif RICKYOS_GRAY_PRESET == 1
+inline constexpr Level kInk2 = 3;   // 次级文字（仅静止帧）
+inline constexpr Level kMute = 6;   // 禁用/占位（仅静止帧）
+inline constexpr Level kLine = 9;   // 分隔线/进度轨（仅静止帧）
+inline constexpr Level kTint = 12;  // 小面积底（仅静止帧）
+#else
+inline constexpr Level kInk2 = 4;   // #444444 次级文字（仅静止帧）
+inline constexpr Level kMute = 8;   // #888888 禁用/占位（仅静止帧）
+inline constexpr Level kLine = 11;  // #BBBBBB 分隔线/进度轨（仅静止帧）
+inline constexpr Level kTint = 13;  // #DDDDDD 小面积底（仅静止帧）
+#endif
 inline constexpr Level kPaper = 15;  // #FFFFFF 背景/反白文字
 
 // 8-bit sRGB 近似值，供模拟器 / 截图对比使用。
@@ -48,7 +86,7 @@ constexpr uint8_t toRgb8(Level l) { return static_cast<uint8_t>(l * 17); }
 enum class Fallback : uint8_t { ToInk, ToPaper };
 constexpr Fallback oneBitFallback(Level l) {
   // ink-2 / mute / line 用在文字与线上 → 墨；tint 只做底色 → 去底（纸）。
-  return l <= kLine ? Fallback::ToInk : Fallback::ToPaper;
+  return l <= (kLine > kMute ? kLine : kMute) ? Fallback::ToInk : Fallback::ToPaper;
 }
 constexpr bool oneBitInk(Level l) { return oneBitFallback(l) == Fallback::ToInk; }
 
@@ -78,11 +116,20 @@ struct Style {
   bool tabularDigits;  // 生成时不加 --pnum / 冻结 tnum
 };
 
+#if RICKYOS_NATIVE_SMALL_PANEL
+inline constexpr Style kDisplay{40, 48, Weight::Bold, -1, 19, Coverage::Numeric, true};
+inline constexpr Style kTitle{29, 40, Weight::Bold, 0, 14, Coverage::Ui, false};
+inline constexpr Style kHeadline{25, 32, Weight::Medium, 0, 12, Coverage::Ui, false};
+inline constexpr Style kBody{21, 28, Weight::Regular, 0, 10, Coverage::Full, false};
+inline constexpr Style kCaption{17, 24, Weight::Regular, 0, 8, Coverage::Ui, true};
+#else
 inline constexpr Style kDisplay{48, 56, Weight::Bold, -1, 23, Coverage::Numeric, true};
 inline constexpr Style kTitle{33, 44, Weight::Bold, 0, 16, Coverage::Ui, false};
 inline constexpr Style kHeadline{29, 40, Weight::Medium, 0, 14, Coverage::Ui, false};
 inline constexpr Style kBody{25, 36, Weight::Regular, 0, 12, Coverage::Full, false};
 inline constexpr Style kCaption{21, 28, Weight::Regular, 0, 10, Coverage::Ui, true};
+
+#endif
 
 // 动态文本（书名、作者、文件名、用户名）若在目标字重子集中缺字，整串退回 kBody；
 // 绝不逐字混排字重，绝不使用 GfxRenderer::SyntheticBoldScope。
@@ -108,13 +155,13 @@ inline constexpr int16_t k10 = 40;
 inline constexpr int16_t k12 = 48;
 inline constexpr int16_t k16 = 64;
 
-inline constexpr int16_t kPageMargin = k10;                                // 40：所有 UI 页面左右边距（阅读正文除外）
+inline constexpr int16_t kPageMargin = ricky::panel::pixels(k10, 24);      // 40：所有 UI 页面左右边距（阅读正文除外）
 inline constexpr int16_t kContentWidth = panel::kWidth - 2 * kPageMargin;  // 604
-inline constexpr int16_t kGutter = k5;                                     // 20：所有栅格栏距
-inline constexpr int16_t kSectionGap = k10;                                // 40：分组之间
-inline constexpr int16_t kBlockGap = k8;                                   // 32：同组内大块之间（页眉→首卡）
-inline constexpr int16_t kCardPadding = k6;                                // 24：卡片内边距
-inline constexpr int16_t kDialogPadding = k8;                              // 32
+inline constexpr int16_t kGutter = ricky::panel::pixels(k5, 12);           // 20：所有栅格栏距
+inline constexpr int16_t kSectionGap = ricky::panel::pixels(k10, 24);      // 40：分组之间
+inline constexpr int16_t kBlockGap = ricky::panel::pixels(k8, 24);         // 32：同组内大块之间（页眉→首卡）
+inline constexpr int16_t kCardPadding = ricky::panel::pixels(k6, 16);      // 24：卡片内边距
+inline constexpr int16_t kDialogPadding = ricky::panel::pixels(k8, 24);    // 32
 inline constexpr int16_t kInlineGap = k4;                                  // 16：图标→文字
 inline constexpr int16_t kTextStackGap = k1;                               // 4：标题→副标题
 inline constexpr int16_t kSelectionBleed = k4;                             // 16：列表反白条向页边距外扩
@@ -129,25 +176,25 @@ static_assert(columnWidth(4) * 4 + 3 * kGutter == kContentWidth, "4-col grid mus
 }  // namespace space
 
 namespace layout {
-inline constexpr int16_t kTouchMin = 88;  // ≈7.5 mm
-inline constexpr int16_t kStatusBarHeight = 48;
-inline constexpr int16_t kPageHeaderHeight = 96;   // 大标题页眉（tab 根页面）
-inline constexpr int16_t kSubHeaderHeight = 88;    // 返回 + 标题（子页面）
-inline constexpr int16_t kTabBarHeight = 112;      // 含顶部 2px hairline
-inline constexpr int16_t kRowHeight = 96;          // 单行列表
-inline constexpr int16_t kRowHeightTwoLine = 120;  // 标题 + 副标题
-inline constexpr int16_t kSectionHeaderHeight = 48;
-inline constexpr int16_t kButtonHeight = 88;
-inline constexpr int16_t kButtonCompactHeight = 56;  // 命中区仍补足 kTouchMin
-inline constexpr int16_t kButtonMinWidth = 160;
-inline constexpr int16_t kButtonPaddingX = 32;
-inline constexpr int16_t kTabPillWidth = 88;
-inline constexpr int16_t kTabPillHeight = 48;
-inline constexpr int16_t kSettingsCardHeight = 144;
-inline constexpr int16_t kProfileCardHeight = 136;
-inline constexpr int16_t kAppTileSize = 112;
-inline constexpr int16_t kAvatarSize = 88;
-inline constexpr int16_t kProgressHeight = 8;
+inline constexpr int16_t kTouchMin = ricky::panel::pixels(88, 64);  // ≈7.5 mm
+inline constexpr int16_t kStatusBarHeight = ricky::panel::pixels(48, 40);
+inline constexpr int16_t kPageHeaderHeight = ricky::panel::pixels(96, 64);   // 大标题页眉（tab 根页面）
+inline constexpr int16_t kSubHeaderHeight = ricky::panel::pixels(88, 64);    // 返回 + 标题（子页面）
+inline constexpr int16_t kTabBarHeight = ricky::panel::pixels(112, 88);      // 含顶部 2px hairline
+inline constexpr int16_t kRowHeight = ricky::panel::pixels(96, 72);          // 单行列表
+inline constexpr int16_t kRowHeightTwoLine = ricky::panel::pixels(120, 96);  // 标题 + 副标题
+inline constexpr int16_t kSectionHeaderHeight = ricky::panel::pixels(48, 40);
+inline constexpr int16_t kButtonHeight = ricky::panel::pixels(88, 64);
+inline constexpr int16_t kButtonCompactHeight = ricky::panel::pixels(56, 40);  // 命中区仍补足 kTouchMin
+inline constexpr int16_t kButtonMinWidth = ricky::panel::pixels(160, 120);
+inline constexpr int16_t kButtonPaddingX = ricky::panel::pixels(32, 24);
+inline constexpr int16_t kTabPillWidth = ricky::panel::pixels(88, 72);
+inline constexpr int16_t kTabPillHeight = ricky::panel::pixels(48, 36);
+inline constexpr int16_t kSettingsCardHeight = ricky::panel::pixels(144, 96);
+inline constexpr int16_t kProfileCardHeight = ricky::panel::pixels(136, 96);
+inline constexpr int16_t kAppTileSize = ricky::panel::pixels(112, 80);
+inline constexpr int16_t kAvatarSize = ricky::panel::pixels(88, 64);
+inline constexpr int16_t kProgressHeight = ricky::panel::pixels(8, 6);
 inline constexpr int16_t kReaderHeaderHeight = 48;
 inline constexpr int16_t kReaderHeaderGap = 16;
 inline constexpr int16_t kReaderFooterHeight = 96;
@@ -172,10 +219,10 @@ static_assert(kStatusBarHeight % 8 == 0 && kPageHeaderHeight % 8 == 0 && kSubHea
 // 4. 圆角（§6）：3 个值 + pill。
 // -----------------------------------------------------------------------------
 namespace radius {
-inline constexpr uint8_t kNone = 0;        // 封面、全宽条
-inline constexpr uint8_t kControl = 12;    // 按钮、行选中、输入框、封面托盘
-inline constexpr uint8_t kContainer = 24;  // 卡片、应用图块、弹窗、面板
-inline constexpr uint8_t kPill = 0xFF;     // 哨兵：绘制时取 min(w,h)/2
+inline constexpr uint8_t kNone = 0;                                  // 封面、全宽条
+inline constexpr uint8_t kControl = ricky::panel::pixels(12, 8);     // 按钮、行选中、输入框、封面托盘
+inline constexpr uint8_t kContainer = ricky::panel::pixels(24, 16);  // 卡片、应用图块、弹窗、面板
+inline constexpr uint8_t kPill = 0xFF;                               // 哨兵：绘制时取 min(w,h)/2
 
 constexpr int resolve(uint8_t r, int w, int h) {
   const int half = (w < h ? w : h) / 2;
@@ -189,8 +236,11 @@ constexpr int concentric(int outer, int inset) { return outer - inset > 0 ? oute
 // 5. 线宽（§7）：2 个值。图标线宽见 icon::strokeFor()。
 // -----------------------------------------------------------------------------
 namespace stroke {
-inline constexpr uint8_t kHairline = 2;        // 卡片描边、分隔线、次按钮、进度轨(1-bit)
-inline constexpr uint8_t kEmphasis = 4;        // 弹窗边框、按下态主按钮、强调线
+inline constexpr uint8_t kHairline =
+    ricky::panel::nativeSmall ? 2 : (RICKYOS_GRAY_PRESET >= 2 ? 3 : 2);  // 卡片描边、分隔线、次按钮、进度轨(1-bit)
+inline constexpr uint8_t kEmphasis = 4;                                  // 弹窗边框、按下态主按钮、强调线
+// 真实封面图的外沿：浅灰（gray::kLine）细边，只为让浅色封面不融进纸面；黑框会压过灰度封面。
+inline constexpr uint8_t kCoverEdge = 2;
 enum class Divider : uint8_t { None, Solid };  // 无 Dotted
 inline constexpr Divider kDefaultListDivider = Divider::None;
 }  // namespace stroke
@@ -236,11 +286,12 @@ enum class Tier : uint8_t { Interaction1Bit, Resting16Gray };
 #define RICKYOS_UI_DIRECT_GRAY 1
 #endif
 inline constexpr bool kDirectGrayUi = RICKYOS_UI_DIRECT_GRAY != 0;
-inline constexpr uint8_t kGc16EveryDirectFrames = 8;  // Experimental cadence; device acceptance required.
-inline constexpr uint32_t kGraySettleDelayMs = 1500;  // 同 ActivityManager.cpp kGraySettleDelayMs
-inline constexpr uint8_t kGc16EverySettles = 8;       // 同 settleToGray() kCleanEvery
-inline constexpr uint8_t kGc16EveryDuFrames = 32;     // 建议值，需真机调参
-inline constexpr bool kDitherInChrome = false;        // UI 外框禁止棋盘抖动
+inline constexpr uint8_t kGc16EveryDirectFrames = 8;    // Content-area changes, not every UI redraw.
+inline constexpr uint8_t kGc16EveryControlFrames = 32;  // Small controls/navigation have their own regional ledger.
+inline constexpr uint32_t kGraySettleDelayMs = 1500;    // 同 ActivityManager.cpp kGraySettleDelayMs
+inline constexpr uint8_t kGc16EverySettles = 8;         // 同 settleToGray() kCleanEvery
+inline constexpr uint8_t kGc16EveryDuFrames = 32;       // 建议值，需真机调参
+inline constexpr bool kDitherInChrome = false;          // UI 外框禁止棋盘抖动
 }  // namespace refresh
 
 // -----------------------------------------------------------------------------

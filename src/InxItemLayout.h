@@ -98,6 +98,8 @@ namespace InxOptionGeometry {
 inline constexpr int visibleRowLimit = 5;
 inline constexpr int rowHeight = UiHighDpiProfile::enabled ? UiHighDpiProfile::buttonHeight : 62;
 inline constexpr int headerHeight = UiHighDpiProfile::enabled ? UiHighDpiProfile::buttonHeight : 62;
+// A message dialog's body (a few wrapped lines) sits under the title, above the options.
+inline constexpr int messageHeight = 2 * rowHeight;
 
 constexpr int visibleRows(const int optionCount) {
   return optionCount < visibleRowLimit ? (optionCount > 0 ? optionCount : 0) : visibleRowLimit;
@@ -115,23 +117,27 @@ struct Layout {
   Rect panel;
   int rows;
   int first;
+  int header = headerHeight;  // title, plus the message body when there is one
 
   Rect optionRect(const int slot) const {
     if constexpr (UiHighDpiProfile::enabled)
-      return Rect{panel.x + 24, panel.y + headerHeight + slot * rowHeight + 4, panel.width - 48, rowHeight - 8};
-    return Rect{panel.x + 2, panel.y + headerHeight + slot * rowHeight + 3, panel.width - 4, rowHeight - 6};
+      return Rect{panel.x + 24, panel.y + header + slot * rowHeight + 4, panel.width - 48, rowHeight - 8};
+    return Rect{panel.x + 2, panel.y + header + slot * rowHeight + 3, panel.width - 4, rowHeight - 6};
   }
 };
 
-inline Layout layout(const Rect bounds, const int optionCount, const int selected) {
-  const int availableRows = std::max(1, (bounds.height - headerHeight) / rowHeight);
+// Drawing and touch hit-testing both take their rectangles from here, so a message
+// dialog's taller header moves the options for both alike.
+inline Layout layout(const Rect bounds, const int optionCount, const int selected, const bool withMessage = false) {
+  const int header = headerHeight + (withMessage ? messageHeight : 0);
+  const int availableRows = std::max(1, (bounds.height - header) / rowHeight);
   const int rows = std::min(visibleRows(optionCount), availableRows);
   const int width = std::max(1, std::min(bounds.width - 24, UiHighDpiProfile::enabled ? 608 : 360));
-  const int height = headerHeight + rows * rowHeight;
+  const int height = header + rows * rowHeight;
   const int first = std::clamp(selected - rows / 2, 0, std::max(0, optionCount - rows));
   return {
       Rect{bounds.x + (bounds.width - width) / 2, bounds.y + std::max(0, (bounds.height - height) / 2), width, height},
-      rows, first};
+      rows, first, header};
 }
 }  // namespace InxOptionGeometry
 

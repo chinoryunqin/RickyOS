@@ -1,4 +1,7 @@
 #pragma once
+#if __has_include(<BoardConfig.h>)
+#include <BoardConfig.h>
+#endif
 #include <cstdint>
 
 #include "FirstLineIndent.h"
@@ -33,8 +36,22 @@ struct ReaderRenderSpec {
   uint8_t imageRendering = 0;
   bool focusReadingEnabled = false;
   bool collectTouchLinks = false;
+  // Lines are laid out as columns (VerticalText.h): the caller swaps the viewport so
+  // viewportWidth is the column height and viewportHeight the width the columns fill.
+  bool verticalText = false;
+  // Fingerprint of the book's usable fonts (BookFontSet); 0 = none or the book's styles off.
+  // Pagination measured words in those faces, so a change re-lays the chapter out.
+  uint32_t bookFontsKey = 0;
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
+  // Chapter art can extend into the horizontal text margins, never into a
+  // decorated reading frame. Part of the Plus section-cache layout key.
+  uint16_t imageOutset = 0;
+#endif
 
   bool operator==(const ReaderRenderSpec& other) const {
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
+    if (imageOutset != other.imageOutset) return false;
+#endif
     return fontId == other.fontId && lineCompression == other.lineCompression &&
            extraParagraphSpacing == other.extraParagraphSpacing && firstLineIndent == other.firstLineIndent &&
            paragraphIndentSpaces == other.paragraphIndentSpaces && characterSpacing == other.characterSpacing &&
@@ -42,6 +59,7 @@ struct ReaderRenderSpec {
            viewportWidth == other.viewportWidth && viewportHeight == other.viewportHeight &&
            hyphenationEnabled == other.hyphenationEnabled && embeddedStyle == other.embeddedStyle &&
            imageRendering == other.imageRendering && focusReadingEnabled == other.focusReadingEnabled &&
-           collectTouchLinks == other.collectTouchLinks;
+           collectTouchLinks == other.collectTouchLinks && verticalText == other.verticalText &&
+           bookFontsKey == other.bookFontsKey;
   }
 };

@@ -17,6 +17,10 @@
 #define FONT_MANIFEST_URL_STRINGIFY(x) FONT_MANIFEST_URL_STRINGIFY_INNER(x)
 
 class FontDownloadActivity final : public UiListActivity {
+#if RICKYOS_PLUS_NET_AUTORUN
+  // Diagnostic runner uses the real bounded fetch/parser without installing fonts.
+  friend class PlusFontNetworkAutoRunner;
+#endif
  public:
   enum class Purpose : uint8_t { Manage, PromptThenManage, ReaderAutoInstall };
   enum class StartMode : uint8_t { Normal, PreviewOnly, ResumeFontLoadError };
@@ -97,7 +101,9 @@ class FontDownloadActivity final : public UiListActivity {
   size_t currentFileTotal_ = 0;
   size_t downloadProgress_ = 0;
   size_t downloadTotal_ = 0;
-  uint8_t lastProgressRefreshPercent_ = 0;
+  size_t lastProgressRefreshBytes_ = 0;
+  uint32_t lastProgressRefreshMs_ = 0;
+  char downloadSourceHost_[256]{};
   int downloadingFamilyIndex_ = -1;
   std::string errorMessage_;
   bool cancelRequested_ = false;
@@ -149,6 +155,7 @@ class FontDownloadActivity final : public UiListActivity {
   void resetDownloadProgress(size_t total);
   void updateDownloadProgress(size_t completed);
   void finishDownloadProgress();
+  void updateDownloadSource(const char* host);
   DownloadResult downloadFile(const ManifestFamily& family, const ManifestFile& file);
   DownloadResult downloadFamily(ManifestFamily& family);
   void downloadSingle(int familyIndex);

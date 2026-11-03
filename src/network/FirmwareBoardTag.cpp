@@ -7,7 +7,9 @@
 // The board name derives from the FREEINK_DEVICE_* build flags so every env
 // (and any fork built from this source) is tagged automatically. The combined
 // X3/X4 ESP32-C3 binary is one compatibility class, tagged "x4".
-#if   FREEINK_DEVICE_READPICO
+#if FREEINK_DEVICE_METALIO_EINK4
+#define CROSSPOINT_BOARD_NAME "metalio_eink4"
+#elif FREEINK_DEVICE_READPICO
 #define CROSSPOINT_BOARD_NAME "readpico"
 #elif CROSSPOINT_EMULATED
 #define CROSSPOINT_BOARD_NAME "simulator"

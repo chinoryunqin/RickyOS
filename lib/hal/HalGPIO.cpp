@@ -1,4 +1,11 @@
 #include <BoardConfig.h>
+#if FREEINK_DEVICE_METALIO_EINK4
+#include <MetalioEink4Board.h>
+#endif
+#if FREEINK_DEVICE_METALIO_PLUS
+#include <PlusBoard.h>
+#include <PlusHaptic.h>
+#endif
 #if FREEINK_DEVICE_READPICO
 #include <BoardReadPico.h>
 #endif
@@ -185,6 +192,16 @@ HalGPIO::DeviceType detectDeviceTypeWithFingerprint() {
 }  // namespace
 
 void HalGPIO::begin() {
+#if FREEINK_DEVICE_METALIO_EINK4
+  if (!freeink::metalio::begin()) LOG_ERR("HW", "Ordinary Metalio board initialization failed");
+  _deviceType = DeviceType::X4;
+  return;
+#endif
+#if FREEINK_DEVICE_METALIO_PLUS
+  if (!plus_board::begin()) LOG_ERR("HW", "Plus board initialization failed");
+  _deviceType = DeviceType::X4;
+  return; // Start touch after the panel reset sequence in beginInput().
+#endif
 #if FREEINK_MCU_C3
   _deviceType = detectDeviceTypeWithFingerprint();
   BoardConfig::selectDevice(deviceIsX3() ? BoardConfig::Board::XteinkX3 : BoardConfig::Board::XteinkX4);
@@ -247,9 +264,21 @@ void HalGPIO::beginInput() {
   // main.cpp's post-display call plus the safety net in update() can both reach
   // this point on the target that does.
   if (inputBegun) return;
+#if FREEINK_DEVICE_METALIO_PLUS
+  if (!plus_haptic::begin()) LOG_ERR("HW", "Plus haptic initialization failed");
+#endif
   inputBegun = true;
   LOG_INF("HW", "Starting input backends");
+#if FREEINK_DEVICE_METALIO_EINK4 && FREEINK_CAP_HAPTIC
+  if (!freeink::haptic::begin()) LOG_ERR("HW", "Haptic initialization failed; feedback disabled");
+#endif
   inputMgr.begin();
+#if FREEINK_DEVICE_METALIO_EINK4
+  uint8_t inputs[2]{};
+  const bool ok = freeink::metalio::read(freeink::metalio::EXPANDER, 0, inputs, sizeof(inputs));
+  LOG_INF("HW", "Post-display I2C: expander=%d SDA=%d SCL=%d CPU=%u MHz", ok, digitalRead(41), digitalRead(42),
+          getCpuFrequencyMhz());
+#endif
 }
 
 
@@ -282,7 +311,20 @@ bool HalGPIO::wasPressed(uint8_t buttonIndex) const { return inputMgr.wasPressed
 
 uint8_t HalGPIO::physicalPressedMask() const { return inputMgr.physicalPressedMask(); }
 
-#if FREEINK_CAP_HAPTIC
+#if FREEINK_DEVICE_METALIO_PLUS
+bool HalGPIO::wasTouchContactPressed() const { return inputMgr.wasTouchContactPressed(); }
+void HalGPIO::updateHapticFeedback(uint8_t enabled) {
+  if (!enabled) { plus_haptic::stop(); return; }
+  float x, y;
+  // Completed taps exclude drags and screen holds. Cover keys use independent
+  // physical/contact edges, before the user's logical remapping.
+  const bool key = wasHomeKeyPressed() || wasPressed(BTN_BACK) || wasPressed(BTN_CONFIRM) ||
+                   wasPressed(BTN_LEFT) || wasPressed(BTN_RIGHT) || wasPressed(BTN_UP) || wasPressed(BTN_DOWN);
+  if (key || (inputMgr.wasTouchTap(x, y) && inputMgr.lastTouchHeldMs() < 500)) plus_haptic::pulse();
+}
+void HalGPIO::stopHapticFeedback() { plus_haptic::stop(); }
+void HalGPIO::pulseHapticFeedback() { plus_haptic::pulse(); }
+#elif FREEINK_CAP_HAPTIC
 bool HalGPIO::wasTouchContactPressed() const { return inputMgr.wasTouchContactPressed(); }
 void HalGPIO::updateHapticFeedback(uint8_t level) {
   const uint16_t duration = freeink::haptic::pulseDuration(level);
@@ -350,7 +392,9 @@ bool HalGPIO::wasTouchActivity() const { return inputMgr.wasTouchActivity(); }
 void HalGPIO::clearTouchTapEvent() { inputMgr.clearTouchTapEvent(); }
 
 void HalGPIO::prepareForDeepSleep() {
-#if FREEINK_CAP_HAPTIC
+#if FREEINK_DEVICE_METALIO_PLUS
+  plus_haptic::stop();
+#elif FREEINK_CAP_HAPTIC
   freeink::haptic::prepareForSleep();
 #endif
   inputMgr.prepareForDeepSleep();

@@ -45,7 +45,8 @@ void BootActivity::runPostOta() {
 
   const auto* family = sdFontSystem.registry().findFamily(SETTINGS.sdFontFamilyName);
   const auto* file = family ? family->findNearestSize(SETTINGS.fontPointSize) : nullptr;
-  if (!file || family->vector) return;
+  // Vector fonts too: the update was written over the cache that held their file.
+  if (!file) return;
   auto result = SdCardFontCache::preflight(file->path.c_str());
   if (result == SdCardFontCache::Result::AlreadyCached) return;
 

@@ -30,6 +30,7 @@ void* operator new[](const std::size_t size, const std::nothrow_t&) noexcept {
 
 // Page.cpp's unrelated render paths are not exercised by these cache tests.
 void TextBlock::render(const GfxRenderer&, int, int, int) const {}
+void TextBlock::renderVertical(GfxRenderer&, int, int, int, int) const {}
 bool TextBlock::serialize(HalFile&) const { return false; }
 std::unique_ptr<TextBlock> TextBlock::deserialize(HalFile&) { return nullptr; }
 void ImageBlock::render(GfxRenderer&, int, int) {}

@@ -26,6 +26,25 @@ class Txt {
   static void invalidateCache(const std::string& cachePath);
   static bool streamTxtToHtml(const std::string& filepath, Print& out, const std::string& cachePath,
                               txt_encoding::ReadError* error = nullptr);
+
+  // Plain TXT is split into parts, each its own spine item and HTML file (html/<k>.html), so
+  // a jump lays out one part instead of the book from its start. Offsets stay global: part
+  // k's local visible offsets add visibleBase. txt-parts.bin: "TXP1", u32 count, then per
+  // part {u32 sourceStart, u32 visibleBase}; a part ends where the next starts.
+  struct Part {
+    uint32_t sourceStart = 0;
+    uint32_t visibleBase = 0;
+  };
+  static bool usesParts(std::string_view path);
+  static std::string partHref(int part);
+  static int partForHref(std::string_view href);  // -1 for anything but "content-<k>.html"
+  static bool convertTxtParts(const std::string& filepath, const std::string& cachePath,
+                              txt_encoding::ReadError* error = nullptr);
+  static int partCount(const std::string& cachePath);
+  static bool readPart(const std::string& cachePath, int index, Part& out);
+  static bool readPart(HalFile& parts, int index, Part& out);  // an open txt-parts.bin
+  // The part holding a global visible offset (last part whose base is <= offset), or -1.
+  static int partForVisibleOffset(const std::string& cachePath, uint32_t visibleOffset);
   static int tocIndexForPosition(const std::string& filepath, const std::string& cachePath, uint32_t visibleOffset,
                                  uint8_t* chapterProgress = nullptr);
   static bool resolveChapterPosition(const std::string& filepath, const std::string& cachePath, std::string_view anchor,

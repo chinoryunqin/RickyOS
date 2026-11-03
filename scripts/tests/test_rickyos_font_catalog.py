@@ -45,12 +45,32 @@ class RickyFontCatalogTest(unittest.TestCase):
         finally:
             catalog.MAX_INTERVALS = original
 
+    def test_a_fragmented_family_drops_only_optional_runs(self):
+        original = catalog.MAX_INTERVALS
+        try:
+            # Four Han runs with holes; ASCII is one more run. 0x4E10 is essential.
+            cmap = {cp: "g" for cp in list(range(0x20, 0x7F)) + [0x4E00, 0x4E02, 0x4E04, 0x4E10]}
+            han = {0x4E00, 0x4E02, 0x4E04, 0x4E10}
+            catalog.MAX_INTERVALS = 3
+            with self.assertRaises(ValueError):
+                catalog.plan_intervals(cmap, han)  # no essential set: refuse as before
+            intervals, covered = catalog.plan_intervals(cmap, han, essential={0x4E10})
+            self.assertEqual(len(intervals), 3)
+            self.assertIn(0x4E10, covered)
+            self.assertTrue(set(range(0x20, 0x7F)) <= covered)  # punctuation and Latin stay
+        finally:
+            catalog.MAX_INTERVALS = original
+
     def test_families_fit_the_firmware_manifest_and_licenses(self):
         names = [family["name"] for family in catalog.FAMILIES]
-        self.assertEqual(names, ["RickySans", "RickySerif", "LXGWWenKai", "RickyGrin"])
+        self.assertEqual(names, ["RickySans", "RickySerif", "LXGWWenKai", "RickyGrin", "RickyBookSong",
+                                 "ZhuqueFangsong", "RickyRound"])
         for family in catalog.FAMILIES:
             self.assertRegex(family["name"], r"^[A-Za-z0-9_-]{1,64}$")
             self.assertNotRegex(family["name"], "Source|Smiley")  # OFL Reserved Font Names
+            self.assertNotRegex(family["name"], "(?i)LXGW.*Neo|ZhiSong")  # IPA: not the original's name
+            if family.get("license_kind") == "IPA":
+                self.assertIn("notice", family)  # how to get the original back
             self.assertTrue(0 < len(family["description"].encode()) <= 160)
             self.assertRegex(family["font_sha256"], r"^[0-9a-f]{64}$")
         # The download list draws descriptions in the built-in UI font, which lacks rarer Han.
@@ -60,6 +80,27 @@ class RickyFontCatalogTest(unittest.TestCase):
             self.assertEqual(missing, [], family["name"])
         self.assertLessEqual(catalog.MAX_INTERVALS, 4096)
         self.assertEqual(catalog.FLASH_CACHE_LIMIT, 0x640000 - 4096)
+
+    def test_large_print_sizes_stay_within_reader_limits(self):
+        sizes = list(catalog.SIZES)
+        self.assertEqual(sizes, sorted(set(sizes)))
+        self.assertEqual(catalog.FLASH_SIZES, (12, 14, 16, 18, 20, 22))
+        self.assertEqual(max(sizes), 32)
+        download = (ROOT / "src/activities/settings/FontDownloadActivity.cpp").read_text()
+        self.assertIn(f"kMaxFilesPerFamily = {16}", download)
+        self.assertLessEqual(len(sizes), 16)
+        self.assertLessEqual(len(sizes) * len(catalog.FAMILIES), 128)  # kMaxManifestFiles
+        self.assertIn("kMaxFontFileBytes = 25 * 1024 * 1024", download)
+        self.assertEqual(catalog.MAX_FILE_BYTES, 25 * 1024 * 1024)
+        # Vector faces reach the same large-print ceiling; their size picker scrolls past 16.
+        vector = (ROOT / "src/ReaderFontSizes.h").read_text()
+        listed = re.search(r"VECTOR_READER_POINT_SIZES\[\] = \{([^}]*)\}", vector).group(1)
+        points = [int(v) for v in listed.replace("\n", " ").split(",")]
+        self.assertEqual(points, sorted(set(points)))
+        self.assertEqual(max(points), 32)
+        popup = (ROOT / "src/components/OptionPopup.h").read_text()
+        activate = popup[popup.index("void activate("):popup.index("bool active = false;")]
+        self.assertIn("hasMainTabs() ? total", activate)
 
     def test_wrong_source_stops_before_output_creation(self):
         with tempfile.TemporaryDirectory(prefix="ricky-font-catalog-") as directory:
@@ -79,14 +120,17 @@ class RickyFontCatalogTest(unittest.TestCase):
         activity = (ROOT / "src/activities/settings/FontDownloadActivity.cpp").read_text()
         block = re.search(r"  // RickyOS lists its own catalog.*?\n  \}\n", activity, re.S).group(0)
         self.assertIn("if (purpose_ != Purpose::ReaderAutoInstall)", block)  # NotoSansSC stays on CrossMux
-        self.assertIn("RickyFontCatalog::manifestFor(SETTINGS.contentProfile, attempt)", block)
+        self.assertIn("RickyFontCatalog::manifestFor(attempt)", block)  # one order, whatever the region
         self.assertIn("if (result == HttpDownloader::OK) break;", activity)
         self.assertIn(f'"https://fastly.jsdelivr.net/gh/{repo}@latest/mirror.json"', header)
+        # The Guangzhou bucket leads in China once configured; an unset route is skipped.
+        self.assertIn("MANIFEST_ORDER[MANIFEST_COUNT] = {COS_MANIFEST, MIRROR_MANIFEST, FASTLY_MANIFEST,", header)
+        self.assertNotIn("contentProfile", header)
+        self.assertIn("if (url == nullptr) continue;", activity)
 
     def test_failed_files_retry_on_mirrors(self):
         script = (ROOT / "scripts/build_rickyos_font_catalog.py").read_text()
-        self.assertIn('("mirror.json", jsdelivr, [fastly, github])', script)
-        self.assertIn('("fonts.json", github, [jsdelivr, fastly])', script)
+        self.assertIn('routes("fonts", RELEASE_REPO, tag, cos_base)', script)
         activity = (ROOT / "src/activities/settings/FontDownloadActivity.cpp").read_text()
         self.assertIn('for (JsonVariant mirror : doc["mirrors"].as<JsonArray>())', activity)
         # Only network failures retry; cancel, SD card and authorization errors stay final.

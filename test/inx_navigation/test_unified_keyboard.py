@@ -64,7 +64,7 @@ void tracePrintf(const char* format, ...) {
 }
 @TRACE@
 namespace fui = freeink::ui;
-enum class InputType { Text, Password, Url };
+enum class InputType { Text, Password, Url, Latin };
 struct CrossPointSettings {
   enum class UI_THEME { CLASSIC, LYRA, LYRA_3_COVERS, ROUNDEDRAFF, LYRA_CAROUSEL, INX };
   UI_THEME uiTheme = UI_THEME::CLASSIC;
@@ -227,10 +227,13 @@ int main() {
   for (int theme=0; theme<7; ++theme) {
     SETTINGS.uiTheme=static_cast<CrossPointSettings::UI_THEME>(theme);
     KeyboardEntryActivity kb;
+    // English is the only enabled layout: the language key leads back to it, and on
+    // English itself there is nowhere to go (no repaint).
     for (const auto& language : keyboard_layouts::ALL) {
       kb.layoutId=language.id;
-      assert(kb.activateValue(fui::QWERTY_KEY_LANG,false));
-      assert(kb.layoutId==keyboard_layouts::next(language.id));
+      const bool english=language.id==fui::KeyboardLayoutId::QwertyEn;
+      assert(kb.activateValue(fui::QWERTY_KEY_LANG,false)==!english);
+      assert(kb.layoutId==fui::KeyboardLayoutId::QwertyEn);
     }
     kb.layoutId=fui::KeyboardLayoutId::SpanishEs;
     assert(kb.syncSelectionToValue('a'));
@@ -269,7 +272,8 @@ def run_harness(code, tmp, name, high_dpi=False):
     cpp, binary = tmp / (name+'.cpp'), tmp / name
     cpp.write_text(code)
     ui = SDK / 'libs/ui/FreeInkUI'
-    command = ['c++', '-std=c++20', '-I'+str(ui/'include'), str(cpp), str(ui/'src/FreeInkUI.cpp'), '-o', str(binary)]
+    command = ['c++', '-std=c++20', '-include', str(ROOT/'src/components/RickyDesignTokens.h'),
+               '-I'+str(ui/'include'), str(cpp), str(ui/'src/FreeInkUI.cpp'), '-o', str(binary)]
     if high_dpi: command.append('-DCROSSMUX_UI_PROFILE_HIGH_DPI')
     subprocess.run(command, check=True)
     output = subprocess.check_output([str(binary)], text=True)

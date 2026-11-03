@@ -1,5 +1,10 @@
 #include "WifiSelectionActivity.h"
 
+#include <BoardConfig.h>
+#if FREEINK_DEVICE_METALIO_PLUS
+#include <HalWifiDiagnostics.h>
+#include <esp_wifi.h>
+#endif
 #include <GfxRenderer.h>
 #include <HalClock.h>
 #include <I18n.h>
@@ -7,6 +12,7 @@
 #include <TrustedTime.h>
 #include <Utf8.h>
 #include <WiFi.h>
+#include <esp_wifi.h>
 #if CROSSPOINT_EMULATED == 0
 #include <esp_mac.h>
 #endif
@@ -150,6 +156,13 @@ void WifiSelectionActivity::onPromptEvent(const fui::ActionEvent& event, void* u
 
 void WifiSelectionActivity::onEnter() {
   Activity::onEnter();
+  inheritedConfirmPending = mappedInput.isPressed(MappedInputManager::Button::Confirm);
+  if (allowAutoConnect && WiFi.status() == WL_CONNECTED) {
+    selectedSSID = WiFi.SSID().c_str();
+    connectedIP = WiFi.localIP().toString().c_str();
+    onComplete(true);
+    return;
+  }
   NetworkStartup::logMemory("WifiSelectionActivity enter");
   NetworkStartup::prepare(renderer);
 
@@ -267,20 +280,42 @@ void WifiSelectionActivity::startWifiScan(const bool autoScan) {
   networkRowItems.clear();
   requestUpdate();
 
-  // Set WiFi mode to station
+  scanRecoveryUsed = false;
+  if (!beginScan()) showNetworkError();
+}
+
+// Brings the station up and starts an async scan. A radio left half-stopped by an
+// earlier network feature (or too little internal RAM for esp_wifi_init) fails here;
+// one full teardown and retry clears it without asking the user to reboot.
+bool WifiSelectionActivity::beginScan() {
   if (!NetworkStartup::setMode(renderer, WIFI_STA)) {
     LOG_ERR("WIFI", "Station initialization failed");
-    showNetworkError();
-    return;
+    return recoverScan("mode", 0);
   }
   WiFi.disconnect();
   delay(100);
 
-  // Start async scan
   if (WiFi.scanNetworks(true) == WIFI_SCAN_FAILED) {
-    LOG_ERR("WIFI", "Could not start scan");
-    showNetworkError();
+    const int mode = static_cast<int>(WiFi.getMode());
+    LOG_ERR("WIFI", "Could not start scan (mode=%d)", mode);
+    return recoverScan("start", mode);
   }
+  return true;
+}
+
+bool WifiSelectionActivity::recoverScan(const char* stage, const int code) {
+  NetworkStartup::logMemory("WiFi scan failure");
+  NetworkStartup::recordFailure(stage, code);
+  if (scanRecoveryUsed) return false;
+  scanRecoveryUsed = true;
+
+  LOG_INF("WIFI", "Resetting radio after %s failure", stage);
+  WiFi.scanDelete();
+  WiFi.mode(WIFI_OFF);
+  esp_wifi_stop();
+  esp_wifi_deinit();
+  delay(200);
+  return beginScan();
 }
 
 void WifiSelectionActivity::processWifiScanResults() {
@@ -294,7 +329,7 @@ void WifiSelectionActivity::processWifiScanResults() {
   if (scanResult == WIFI_SCAN_FAILED) {
     LOG_ERR("WIFI", "Scan failed");
     WiFi.scanDelete();
-    showNetworkError();
+    if (!recoverScan("result", scanResult)) showNetworkError();
     return;
   }
 
@@ -435,7 +470,7 @@ void WifiSelectionActivity::promptPasswordEntry() {
           // state will be updated in next loop iteration
         }
       },
-      tr(STR_ENTER_WIFI_PASSWORD), "", 64, InputType::Text);
+      tr(STR_ENTER_WIFI_PASSWORD), "", 64, InputType::Latin);
 }
 
 void WifiSelectionActivity::promptHiddenSsid() {
@@ -459,7 +494,7 @@ void WifiSelectionActivity::promptHiddenSsid() {
         }
         // Otherwise stay in HIDDEN_SSID_ENTRY; loop() continues the flow.
       },
-      tr(STR_ENTER_WIFI_SSID), "", 32, InputType::Text);
+      tr(STR_ENTER_WIFI_SSID), "", 32, InputType::Latin);
 }
 
 bool WifiSelectionActivity::hasAttemptedAutoSsid(const std::string& ssid) const {
@@ -513,6 +548,9 @@ void WifiSelectionActivity::handleAutoConnectFailure() {
     return;
   }
 
+  // One direct join failed before a fresh scan. Retry that saved network once
+  // after it is visible; the scanned pass retains the attempted set and is bounded.
+  autoAttemptedSsids.clear();
   startWifiScan(true);
 }
 
@@ -535,7 +573,6 @@ void WifiSelectionActivity::showNetworkListFromAutoConnect() {
 
 void WifiSelectionActivity::attemptConnection() {
   state = autoConnecting ? WifiSelectionState::AUTO_CONNECTING : WifiSelectionState::CONNECTING;
-  connectionStartTime = millis();
   connectedIP.clear();
   connectionError.clear();
   requestUpdate();
@@ -548,6 +585,26 @@ void WifiSelectionActivity::attemptConnection() {
   }
   WiFi.disconnect(true, true);  // Abort any in-progress SDK auto-connect and clear NVS-saved SSID
   delay(100);
+
+#if FREEINK_DEVICE_METALIO_PLUS
+  plusWifiDiagnosticsBegin();
+  // Match the vendor station's default protocol negotiation for a controlled
+  // LAN comparison. disconnect(true) ended STA, so initialize it first.
+  if (!WiFi.mode(WIFI_STA)) {
+    LOG_ERR("WIFI", "Plus compatibility station initialization failed");
+    showNetworkError();
+    return;
+  }
+  uint8_t protocol = 0;
+  const esp_err_t protocolRead = esp_wifi_get_protocol(WIFI_IF_STA, &protocol);
+  LOG_INF("WIFI", "Plus station protocol driver default: read=%d mask=0x%02x", protocolRead, protocol);
+  // On an 802.11ax (HE) association the S31 joins and gets a DHCP lease, but unicast
+  // traffic then goes unanswered (DNS to the gateway and to public resolvers, NTP and
+  // raw TCP all time out). Joining as 802.11n avoids HE; a reader needs little bandwidth.
+  constexpr uint8_t kStationProtocols = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N;
+  const esp_err_t protocolSet = esp_wifi_set_protocol(WIFI_IF_STA, kStationProtocols);
+  LOG_INF("WIFI", "Plus station protocols set: result=%d mask=0x%02x", protocolSet, kStationProtocols);
+#endif
 
   // Scan all channels so networks with multiple APs use the strongest matching
   // BSSID instead of the first match found by the framework's default fast scan.
@@ -565,6 +622,8 @@ void WifiSelectionActivity::attemptConnection() {
     LOG_ERR("WIFI", "Failed to read station MAC for hostname");
   }
 
+  // Budget the association/DHCP exchange, not mode teardown, driver startup or UI paint.
+  connectionStartTime = millis();
   if (selectedRequiresPassword && !enteredPassword.empty()) {
     WiFi.begin(selectedSSID.c_str(), enteredPassword.c_str());
   } else {
@@ -597,6 +656,11 @@ void WifiSelectionActivity::checkConnectionStatus() {
             WiFi.RSSI());
 #endif
 
+#if FREEINK_DEVICE_METALIO_PLUS
+    // HalClock owns the shared SNTP client; do not block the join or restart
+    // it before the manual sync activity has a chance to observe completion.
+    halClock.requestSync();
+#else
     // Sync RTC from NTP on the first successful WiFi connection only. The DS3231
     // drifts ~2 ppm so one sync is enough; users can force a re-sync from
     // Settings > System > Clock > Sync clock now.
@@ -606,6 +670,8 @@ void WifiSelectionActivity::checkConnectionStatus() {
         SETTINGS.saveToFile();
       }
     }
+
+#endif
 
     // Every station join is a chance to snap the loan-clock floor to real
     // time (non-blocking; see TrustedTime).
@@ -664,6 +730,14 @@ void WifiSelectionActivity::checkConnectionStatus() {
 }
 
 void WifiSelectionActivity::loop() {
+  if (inheritedConfirmPending) {
+    if (!mappedInput.isPressed(MappedInputManager::Button::Confirm)) inheritedConfirmPending = false;
+    if (state == WifiSelectionState::CONNECTING || state == WifiSelectionState::AUTO_CONNECTING)
+      checkConnectionStatus();
+    else if (state == WifiSelectionState::SCANNING)
+      processWifiScanResults();
+    return;
+  }
   switch (state) {
     case WifiSelectionState::NETWORK_ERROR:
     case WifiSelectionState::SCANNING:

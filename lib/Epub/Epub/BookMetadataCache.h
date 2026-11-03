@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <deque>
 #include <memory>
+#include <mutex>
 #include <string>
 
 class BookMetadataCache {
@@ -54,6 +55,11 @@ class BookMetadataCache {
   bool buildIoFailed = false;
 
   HalFile bookFile;
+  // One seek + read sequence at a time on bookFile: the reader's main task (saving
+  // progress on exit, chapter titles) and its render task (laying out the next chapter)
+  // both read entries. Interleaved, one task's seek moved the other's read, the garbage
+  // offset was taken for a corrupt cache, and book.bin was deleted before progress saved.
+  std::mutex bookFileMutex;
   // Temp file handles during build
   HalFile spineFile;
   HalFile tocFile;

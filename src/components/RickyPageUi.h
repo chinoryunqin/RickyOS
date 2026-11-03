@@ -48,7 +48,8 @@ inline void arrow(fui::DrawTarget& target, fui::Rect r) {
 constexpr uint8_t CARD_RADIUS = ricky::ds::radius::kContainer;
 inline void card(fui::DrawTarget& target, fui::Rect rect, bool focused) {
   target.fill(rect, fui::Paint::solid(focused ? fui::Color::Black : fui::Color::White), CARD_RADIUS);
-  if (!focused) target.stroke(rect, fui::Paint::solid(fui::Color::Black), ricky::ds::stroke::kHairline, CARD_RADIUS);
+  // At rest a light-gray edge (exact on a 16-gray frame, ink on a B/W one).
+  if (!focused) target.stroke(rect, fui::Paint::solid(fui::Color::LightGray), ricky::ds::stroke::kHairline, CARD_RADIUS);
 }
 
 // Pre-rendered Lucide icon (rickyPageIcons.h), optically centred on `centerY`.
@@ -187,7 +188,11 @@ inline void motif(fui::DrawTarget& target, Rect r, Motif kind) {
 
 // Index titles fall back to the file name; show "浮生六记", not "浮生六记.txt".
 inline void stripBookExtension(std::string& title) {
-  static constexpr const char* extensions[] = {".epub", ".txt", ".md"};
+  static constexpr const char* extensions[] = {".epub", ".txt", ".md"
+#if defined(RICKYOS_KINDLE_IMPORT)
+    , ".mobi", ".azw3"
+#endif
+  };
   for (const char* extension : extensions) {
     const size_t length = strlen(extension);
     if (title.size() <= length) continue;
@@ -226,7 +231,7 @@ inline void generatedCover(fui::DrawTarget& target, fui::Rect rect, const char* 
   if (rect.empty()) return;
   const auto black = fui::Paint::solid(fui::Color::Black);
   target.fill(rect, fui::Paint::solid(fui::Color::White));
-  target.stroke(rect, black, 1);
+  target.stroke(rect, fui::Paint::solid(fui::Color::LightGray), ricky::ds::stroke::kCoverEdge);
   const int16_t rule = std::max<int16_t>(5, rect.width / 22);
   if (rect.width > rule * 4 && rect.height > rule * 4)
     target.stroke(fui::Rect{static_cast<int16_t>(rect.x + rule), static_cast<int16_t>(rect.y + rule),
@@ -275,7 +280,7 @@ inline void bookTile(fui::DrawTarget& target, fui::Rect rect, const char* title,
                      Motif kind = Motif::Count) {
   if (rect.empty()) return;
   target.fill(rect, fui::Paint::solid(fui::Color::White));
-  target.stroke(rect, fui::Paint::solid(fui::Color::Black), 1);
+  target.stroke(rect, fui::Paint::solid(fui::Color::LightGray), ricky::ds::stroke::kCoverEdge);
   const int lineHeight = target.lineHeight(text.font);
   const int size = std::min<int>(lineHeight, rect.height / 2);
   const int gap = std::max(8, lineHeight / 3);

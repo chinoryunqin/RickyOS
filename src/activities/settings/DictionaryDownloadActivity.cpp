@@ -21,8 +21,8 @@
 #include "components/SubpageLayout.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
-#include "network/CrossMuxEndpoints.h"
 #include "network/HttpDownloader.h"
+#include "network/RickyReaderResources.h"
 
 namespace fui = freeink::ui;
 
@@ -123,16 +123,20 @@ void DictionaryDownloadActivity::onWifiSelectionComplete(const bool success) {
 bool DictionaryDownloadActivity::fetchAndParseManifest() {
   items_.clear();
   downloadingIndex_ = -1;
+  if (!RickyReaderResources::ENABLED) {
+    errorMessage_ = StrId::STR_DOWNLOAD_FAILED;
+    return false;
+  }
   char manifestUrl[192];
   const int manifestUrlLength =
-      snprintf(manifestUrl, sizeof(manifestUrl), CrossMuxEndpoints::DICTIONARY_MANIFEST_FORMAT,
-               CrossMuxEndpoints::host(), LANGUAGE_CODES[static_cast<uint8_t>(I18N.getLanguage())]);
+      snprintf(manifestUrl, sizeof(manifestUrl), RickyReaderResources::DICTIONARY_MANIFEST_FORMAT,
+               static_cast<unsigned>(DictionaryResource::MANIFEST_VERSION));
   if (manifestUrlLength < 0 || static_cast<size_t>(manifestUrlLength) >= sizeof(manifestUrl)) {
     LOG_ERR("DICTDL", "Manifest URL exceeds %zu bytes", sizeof(manifestUrl));
     return false;
   }
   LOG_DBG("DICTDL", "Fetching manifest: %s", manifestUrl);
-  if (HttpDownloader::downloadToFile(manifestUrl, MANIFEST_TMP, nullptr) != HttpDownloader::OK) {
+  if (HttpDownloader::downloadIndex(manifestUrl, MANIFEST_TMP) != HttpDownloader::OK) {
     LOG_ERR("DICTDL", "Failed to fetch dictionary manifest");
     Storage.remove(MANIFEST_TMP);
     errorMessage_ = StrId::STR_DOWNLOAD_FAILED;
@@ -161,7 +165,8 @@ bool DictionaryDownloadActivity::fetchAndParseManifest() {
 
   baseUrl_ = doc["baseUrl"] | "";
   JsonArray dictionaries = doc["dictionaries"].as<JsonArray>();
-  if (baseUrl_.empty() || dictionaries.isNull() || dictionaries.size() > DictionaryResource::MAX_ITEMS) {
+  if (baseUrl_.empty() || baseUrl_.size() > 256 || !RickyReaderResources::isOwnedUrl(baseUrl_.c_str()) ||
+      dictionaries.isNull() || dictionaries.size() > DictionaryResource::MAX_ITEMS) {
     errorMessage_ = StrId::STR_DICTIONARY_MANIFEST_INVALID;
     return false;
   }
@@ -173,7 +178,8 @@ bool DictionaryDownloadActivity::fetchAndParseManifest() {
   for (JsonObject object : dictionaries) {
     ManifestItem item;
     item.id = object["id"] | "";
-    item.name = object["name"] | "";
+    const char* localizedName = I18N.getLanguage() == Language::ZH_CN ? (object["nameZh"] | "") : "";
+    item.name = localizedName[0] ? localizedName : (object["name"] | "");
     item.description = object["description"] | "";
     item.revision = object["revision"] | 0;
     const char* sourceUrl = object["sourceUrl"] | "";

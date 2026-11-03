@@ -13,6 +13,24 @@
 #include <Utf8.h>
 
 #include <algorithm>
+
+// Named fill grays on the 16-level frame; RICKYOS_GRAY_PRESET (RickyDesignTokens.h) deepens them.
+#ifndef RICKYOS_GRAY_PRESET
+#define RICKYOS_GRAY_PRESET 3
+#endif
+#if FREEINK_DEVICE_METALIO_PLUS
+static constexpr bool kPlusUiTone = true;
+#else
+static constexpr bool kPlusUiTone = false;
+#endif
+static constexpr uint8_t kLightGrayLevel = RICKYOS_GRAY_PRESET == 3   ? 8
+                                           : RICKYOS_GRAY_PRESET == 2 ? (kPlusUiTone ? 4 : 7)
+                                           : RICKYOS_GRAY_PRESET == 1 ? 9
+                                                                      : 11;
+static constexpr uint8_t kDarkGrayLevel = RICKYOS_GRAY_PRESET == 3   ? 5
+                                          : RICKYOS_GRAY_PRESET == 2 ? (kPlusUiTone ? 2 : 4)
+                                          : RICKYOS_GRAY_PRESET == 1 ? 6
+                                                                     : 7;
 #include <memory>
 #include <new>
 #include <string_view>
@@ -60,6 +78,11 @@ template <typename Display>
 bool commitNativeGray(Display& display) {
   if constexpr (requires { display.commitGrayscale16(); }) return display.commitGrayscale16();
   return false;
+}
+template <typename Display>
+uint8_t* beginRetainedNativeGray(Display& display) {
+  if constexpr (requires { display.beginRetainedGrayscale16(); }) return display.beginRetainedGrayscale16();
+  return nullptr;
 }
 template <typename Display>
 void cancelNativeGray(Display& display) {
@@ -118,7 +141,24 @@ void appendShapedRtlTokens(const char* text, std::string& shapedOut) {
 }
 }  // namespace
 
+#if RICKYOS_PAINT_PROFILE
+namespace {
+// Glyph fetches are timed on their own: the nesting-aware scopes would fold them into Text.
+struct GlyphFetchTimer {
+  uint32_t start = micros();
+  ~GlyphFetchTimer() {
+    auto& profile = GfxRenderer::paintProfile();
+    profile.us[static_cast<int>(GfxRenderer::PaintKind::Glyph)] += micros() - start;
+    ++profile.calls[static_cast<int>(GfxRenderer::PaintKind::Glyph)];
+  }
+};
+}  // namespace
+#endif
+
 const uint8_t* GfxRenderer::getGlyphBitmap(const EpdFontData* fontData, const EpdGlyph* glyph) const {
+#if RICKYOS_PAINT_PROFILE
+  const GlyphFetchTimer glyphFetchTimer;
+#endif
   // Vector (TTF) fonts: the glyph bitmap lives in the font's own cache, keyed by
   // the EpdGlyph the miss handler returned. Checked first so it never reaches the
   // SdCardFont overflow cast below. nullptr = zero-width glyph (e.g. space).
@@ -406,6 +446,29 @@ void GfxRenderer::ensureSdGlyphsResident(int fontId, const char* text, const Epd
 
 // Translate logical (x,y) coordinates to physical panel coordinates based on current orientation
 // This should always be inlined for better performance
+#if RICKYOS_PAINT_PROFILE
+#define RICKY_PAINT_SCOPE(kind) const GfxRenderer::PaintScope paintScope_(GfxRenderer::PaintKind::kind)
+namespace {
+uint8_t g_paintDepth = 0;
+}  // namespace
+GfxRenderer::PaintProfile& GfxRenderer::paintProfile() {
+  static PaintProfile profile;
+  return profile;
+}
+GfxRenderer::PaintScope::PaintScope(const PaintKind kind) : kind_(kind), outer_(g_paintDepth++ == 0) {
+  if (outer_) start_ = micros();
+}
+GfxRenderer::PaintScope::~PaintScope() {
+  --g_paintDepth;
+  if (!outer_) return;
+  auto& profile = paintProfile();
+  profile.us[static_cast<int>(kind_)] += micros() - start_;
+  ++profile.calls[static_cast<int>(kind_)];
+}
+#else
+#define RICKY_PAINT_SCOPE(kind) ((void)0)
+#endif
+
 static inline void rotateCoordinates(const GfxRenderer::Orientation orientation, const int x, const int y, int* phyX,
                                      int* phyY, const uint16_t panelWidth, const uint16_t panelHeight) {
   switch (orientation) {
@@ -765,6 +828,41 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
           }
         }
       }
+    } else if (rotation == TextRotation::None && (is2Bit || is4Bit) && renderer.isGrayscale16Active() &&
+               renderer.grayscale16PrefersColumns()) {
+      // On a portrait panel a logical row is a panel column: walking the glyph row by row
+      // strode a whole panel row (a PSRAM cache miss in both buffers) per pixel, and glyphs
+      // were most of a page's paint time. Walk it column by column instead, so consecutive
+      // pixels are adjacent in panel memory. Every pixel is blended once and independently,
+      // so the frame is the same byte for byte as the row walks below.
+      const uint8_t ink = renderer.textInkLevel(pixelState);
+      const int outputWidth = width + syntheticBoldPixels;
+      const auto coverage2 = [&](const int glyphX, const int glyphY) -> uint8_t {
+        return glyphX >= 0 && glyphX < width ? weighted2BitCoverage(curve, bitmap, glyphY * width + glyphX, is4Bit) : 0;
+      };
+      for (int glyphX = 0; glyphX < outputWidth; glyphX++) {
+        const int screenX = innerBase + glyphX;
+        for (int glyphY = 0; glyphY < height; glyphY++) {
+          const int screenY = outerBase + glyphY;
+          if (is4Bit && syntheticBoldPixels == 0) {
+            // Preserve all coverage steps for both ink and selected paper glyphs.
+            renderer.blendGrayscale16Pixel(screenX, screenY, ink,
+                                           weigh4BitCoverage(curve, get4BitCoverage(bitmap, glyphY * width + glyphX)));
+            continue;
+          }
+          const uint8_t current = coverage2(glyphX, glyphY);
+          const uint8_t coverage =
+              syntheticBoldPixels == 0
+                  ? current
+                  : dilate2BitCoverage(current, coverage2(glyphX - 1, glyphY), coverage2(glyphX - 2, glyphY),
+                                       coverage2(glyphX - 3, glyphY), syntheticBoldPixels);
+          if (pixelState) {
+            draw4BitGlyphPixel(renderer, screenX, screenY, static_cast<uint8_t>(coverage * 5));
+          } else if (coverage != 0) {
+            renderer.blendGrayscale16Pixel(screenX, screenY, 15, static_cast<uint8_t>(coverage * 5));
+          }
+        }
+      }
     } else if (is4Bit && renderer.isGrayscale16Active() && syntheticBoldPixels == 0) {
       // Preserve all coverage steps for both ink and selected paper glyphs.
       for (int glyphY = 0; glyphY < height; glyphY++) {
@@ -1023,6 +1121,7 @@ void GfxRenderer::drawCenteredText(const int fontId, const int y, const char* te
 void GfxRenderer::drawText(const int fontId, const int x, const int y, const char* text, const bool black,
                            const EpdFontFamily::Style style, const BidiUtils::BidiBaseDir baseDir,
                            const int8_t tracking) const {
+  RICKY_PAINT_SCOPE(Text);
   // cannot draw a NULL / empty string
   if (text == nullptr || *text == '\0') {
     return;
@@ -1274,6 +1373,7 @@ void GfxRenderer::drawRoundedRect(const int x, const int y, const int width, con
 void GfxRenderer::drawRoundedRect(const int x, const int y, const int width, const int height, const int lineWidth,
                                   const int cornerRadius, bool roundTopLeft, bool roundTopRight, bool roundBottomLeft,
                                   bool roundBottomRight, bool state) const {
+  RICKY_PAINT_SCOPE(Shape);
   if (lineWidth <= 0 || width <= 0 || height <= 0) {
     return;
   }
@@ -1379,6 +1479,7 @@ void GfxRenderer::fillRectDither(const int x, const int y, const int width, cons
 
 template <Color C>
 void GfxRenderer::fillRectImpl(const int x, const int y, const int width, const int height) const {
+  RICKY_PAINT_SCOPE(Fill);
   if constexpr (C == Color::Clear) return;
   if (width <= 0 || height <= 0) return;
   if (fontCacheManager_ && fontCacheManager_->isScanning()) return;
@@ -1407,11 +1508,20 @@ void GfxRenderer::fillRectImpl(const int x, const int y, const int width, const 
   // entirely (it is a filled rect). With that buffer active this walks pixel by pixel so
   // the mirroring applies. Only this path slows down, and only during the 16-level pass;
   // every other render path keeps the byte-level fill below.
-  if (grayscale16Buffer != nullptr) {
+  if (grayscale16Buffer != nullptr && !_stripActive) {
+    // The 16-level frame has real grays: a smooth tone instead of the B/W dot pattern
+    // (and treating these as white made light-gray tracks vanish once a screen settled).
+    // Black/white write the levels drawPixel() mirrors (0 and 15).
+    const uint8_t level = C == Color::LightGray                             ? kLightGrayLevel
+                          : C == Color::DarkGray                            ? kDarkGrayLevel
+                          : framebufferState(renderMode, C == Color::Black) ? 0
+                                                                            : 15;
+    fillGrayscale16Rect(lx0, ly0, lx1 - lx0, ly1 - ly0, level);
+    return;
+  }
+  if (grayscale16Buffer != nullptr) {  // strip target: the per-pixel path clips to the band
     if constexpr (C == Color::LightGray || C == Color::DarkGray) {
-      // The 16-level frame has real grays: a smooth tone instead of the B/W dot pattern
-      // (and treating these as white made light-gray tracks vanish once a screen settled).
-      constexpr uint8_t gray = C == Color::LightGray ? 187 : 119;  // levels 11 and 7
+      constexpr uint8_t gray = (C == Color::LightGray ? kLightGrayLevel : kDarkGrayLevel) * 17;
       for (int px = lx0; px < lx1; ++px) {
         for (int py = ly0; py < ly1; ++py) drawGrayscale16Pixel(px, py, gray);
       }
@@ -1669,6 +1779,7 @@ void GfxRenderer::fillRoundedRect(const int x, const int y, const int width, con
 void GfxRenderer::fillRoundedRect(const int x, const int y, const int width, const int height, const int cornerRadius,
                                   bool roundTopLeft, bool roundTopRight, bool roundBottomLeft, bool roundBottomRight,
                                   const Color color) const {
+  RICKY_PAINT_SCOPE(Fill);
   if (width <= 0 || height <= 0) {
     return;
   }
@@ -1735,6 +1846,7 @@ void GfxRenderer::fillRoundedRect(const int x, const int y, const int width, con
 }
 
 void GfxRenderer::drawImage(const uint8_t bitmap[], const int x, const int y, const int width, const int height) const {
+  RICKY_PAINT_SCOPE(Image);
   int rotatedX = 0;
   int rotatedY = 0;
   rotateCoordinates(orientation, x, y, &rotatedX, &rotatedY, panelWidth, panelHeight);
@@ -1758,6 +1870,7 @@ void GfxRenderer::drawImage(const uint8_t bitmap[], const int x, const int y, co
 }
 
 void GfxRenderer::drawIcon(const uint8_t bitmap[], const int x, const int y, const int size) const {
+  RICKY_PAINT_SCOPE(Image);
   // Plot the icon pixel-by-pixel through drawPixel (which applies the orientation
   // transform) instead of the byte-aligned framebuffer blit. The blit snaps the
   // icon's position to 8px (one byte) along the rotated axis, which prevents it
@@ -1778,6 +1891,7 @@ void GfxRenderer::drawIcon(const uint8_t bitmap[], const int x, const int y, con
 }
 
 void GfxRenderer::drawIconInverted(const uint8_t bitmap[], const int x, const int y, const int size) const {
+  RICKY_PAINT_SCOPE(Image);
   const int rowBytes = (size + 7) / 8;
   for (int row = 0; row < size; row++) {
     for (int col = 0; col < size; col++) {
@@ -1860,6 +1974,75 @@ bool GfxRenderer::drawBitmapCropToFill(const Bitmap& bitmap, const int x, const 
 
 uint8_t GfxRenderer::getGrayscaleLevels() const { return grayscaleLevels(display); }
 
+namespace {
+template <typename Display>
+void configureGrayUi(Display& target, int x, int y, int w, int h, uint8_t contentEvery, uint8_t smallEvery,
+                     bool adaptive) {
+  if constexpr (requires { target.setNextGray16UiRefresh(x, y, w, h, contentEvery, smallEvery, adaptive); }) {
+    target.setNextGray16UiRefresh(x, y, w, h, contentEvery, smallEvery, adaptive);
+  } else if constexpr (requires { target.setNextGray16UiRefresh(x, y, w, h, contentEvery, smallEvery); }) {
+    target.setNextGray16UiRefresh(x, y, w, h, contentEvery, smallEvery);
+  }
+}
+template <typename Display>
+void configureMainTabTurn(Display& target, uint8_t orientation, bool right, int x, int y, int w, int h) {
+  if constexpr (requires { target.setNextMainTabTurn(orientation, right, x, y, w, h); }) {
+    target.setNextMainTabTurn(orientation, right, x, y, w, h);
+  }
+}
+template <typename Display>
+void configureGrayReader(Display& target, int x, int y, int w, int h) {
+  if constexpr (requires { target.setNextGray16ReaderRefresh(x, y, w, h); }) {
+    target.setNextGray16ReaderRefresh(x, y, w, h);
+  }
+}
+}  // namespace
+
+void GfxRenderer::mapGrayRefreshArea(int& x, int& y, int& width, int& height) const {
+  const int x0 = std::clamp(x, 0, getScreenWidth());
+  const int y0 = std::clamp(y, 0, getScreenHeight());
+  const int x1 = std::clamp(x + std::max(0, width), 0, getScreenWidth());
+  const int y1 = std::clamp(y + std::max(0, height), 0, getScreenHeight());
+  x = x0;
+  y = y0;
+  width = std::max(0, x1 - x0);
+  height = std::max(0, y1 - y0);
+  switch (orientation) {
+    case Portrait:
+      x = y0;
+      y = panelHeight - x1;
+      std::swap(width, height);
+      break;
+    case PortraitInverted:
+      x = panelWidth - y1;
+      y = x0;
+      std::swap(width, height);
+      break;
+    case LandscapeClockwise:
+      x = panelWidth - x1;
+      y = panelHeight - y1;
+      break;
+    case LandscapeCounterClockwise:
+      break;
+  }
+}
+
+void GfxRenderer::setNextGray16UiRefresh(int x, int y, int width, int height, const uint8_t contentEvery,
+                                         const uint8_t smallEvery, bool adaptive) const {
+  mapGrayRefreshArea(x, y, width, height);
+  configureGrayUi(display, x, y, width, height, contentEvery, smallEvery, adaptive);
+}
+
+void GfxRenderer::setNextMainTabTurn(int x, int y, int width, int height, bool fromRight) const {
+  mapGrayRefreshArea(x, y, width, height);
+  configureMainTabTurn(display, static_cast<uint8_t>(orientation), fromRight, x, y, width, height);
+}
+
+void GfxRenderer::setNextGray16ReaderRefresh(int x, int y, int width, int height) const {
+  mapGrayRefreshArea(x, y, width, height);
+  configureGrayReader(display, x, y, width, height);
+}
+
 bool GfxRenderer::beginGrayscale16() {
   if (grayscale16Buffer || _stripActive || !frameBuffer || getGrayscaleLevels() != 16) return false;
   grayscale16Buffer = beginNativeGray(display);
@@ -1867,6 +2050,74 @@ bool GfxRenderer::beginGrayscale16() {
   setRenderMode(BW);
   clearScreen();  // Retain a B/W proxy for popup drawing and subsequent AA.
   return true;
+}
+
+bool GfxRenderer::beginGrayscaleUi() {
+#if FREEINK_DEVICE_METALIO_EINK4
+  if (grayscale16Buffer || _stripActive || !frameBuffer) return false;
+  grayscale16Buffer = display.beginGrayscaleUi();
+  if (!grayscale16Buffer) return false;
+  setRenderMode(BW);
+  clearScreen();
+  return true;
+#else
+  return beginGrayscale16();
+#endif
+}
+
+GfxRenderer::UiCanvasScope::UiCanvasScope(GfxRenderer& renderer, uint8_t* bw, size_t bwBytes, uint8_t* gray,
+                                          size_t grayBytes, uint16_t width, uint16_t height)
+    : renderer_(renderer) {
+  if (!bw || !gray || !width || !height || width > 2048 || height > 2048 || width % 8 || renderer.uiCanvasActive_ ||
+      renderer._stripActive || (renderer.ownsDisplayTransactions_ && !renderer.grayscale16Buffer) ||
+      bwBytes < static_cast<size_t>(width / 8) * height || grayBytes < static_cast<size_t>(width / 2) * height)
+    return;
+  bw_ = renderer.frameBuffer;
+  gray_ = renderer.grayscale16Buffer;
+  width_ = renderer.panelWidth;
+  height_ = renderer.panelHeight;
+  stride_ = renderer.panelWidthBytes;
+  bytes_ = renderer.frameBufferSize;
+  orientation_ = renderer.orientation;
+  mode_ = renderer.renderMode;
+  capture_ = renderer.displayCapture_;
+  left_ = renderer.clipLeft_;
+  top_ = renderer.clipTop_;
+  right_ = renderer.clipRight_;
+  bottom_ = renderer.clipBottom_;
+  renderer.frameBuffer = bw;
+  renderer.grayscale16Buffer = gray;
+  renderer.panelWidth = width;
+  renderer.panelHeight = height;
+  renderer.panelWidthBytes = width / 8;
+  renderer.frameBufferSize = static_cast<size_t>(width / 8) * height;
+  renderer.orientation = Portrait;
+  renderer.renderMode = BW;
+  renderer.displayCapture_ = true;
+  renderer.clipLeft_ = renderer.clipTop_ = 0;
+  renderer.clipRight_ = height;
+  renderer.clipBottom_ = width;
+  renderer.uiCanvasActive_ = active_ = true;
+  renderer.clearScreen();
+}
+
+GfxRenderer::UiCanvasScope::~UiCanvasScope() {
+  if (!active_) return;
+  auto& renderer = renderer_;
+  renderer.frameBuffer = bw_;
+  renderer.grayscale16Buffer = gray_;
+  renderer.panelWidth = width_;
+  renderer.panelHeight = height_;
+  renderer.panelWidthBytes = stride_;
+  renderer.frameBufferSize = bytes_;
+  renderer.orientation = orientation_;
+  renderer.renderMode = mode_;
+  renderer.displayCapture_ = capture_;
+  renderer.clipLeft_ = left_;
+  renderer.clipTop_ = top_;
+  renderer.clipRight_ = right_;
+  renderer.clipBottom_ = bottom_;
+  renderer.uiCanvasActive_ = false;
 }
 
 bool GfxRenderer::beginGrayscale16Offscreen(uint8_t* frame) {
@@ -1881,13 +2132,38 @@ bool GfxRenderer::beginGrayscale16Offscreen(uint8_t* frame) {
 
 bool GfxRenderer::commitGrayscale16() const {
   if (!grayscale16Buffer) return false;
+#if FREEINK_DEVICE_METALIO_PLUS
+  // Standby/overlay exit requests a clean baseline. Native16 must honor the
+  // same one-shot request as displayBuffer(), without consuming it on failure.
+  const bool hadRefreshOverride = nextRefreshOverridePending;
+  if (nextRefreshNeedsCleanup()) display.setNextGray16Profile(2);
+#endif
+#if FREEINK_DEVICE_METALIO_EINK4
+  const bool committed = display.commitGrayscaleUi(nextRefreshNeedsCleanup());
+  if (!committed) display.cancelGrayscaleUi();
+#else
   const bool committed = commitNativeGray(display);
   if (!committed) cancelNativeGray(display);
+#endif
+#if FREEINK_DEVICE_METALIO_PLUS
+  if (committed && hadRefreshOverride) clearNextRefreshOverride();
+#endif
   grayscale16Buffer = nullptr;
   return committed;
 }
 
+bool GfxRenderer::beginRetainedGrayscale16() {
+  if (grayscale16Buffer || _stripActive || !frameBuffer || getGrayscaleLevels() != 16) return false;
+  grayscale16Buffer = beginRetainedNativeGray(display);
+  if (!grayscale16Buffer) return false;
+  setRenderMode(BW);
+  return true;  // Native frame and B/W proxy both match the displayed baseline.
+}
+
 void GfxRenderer::cancelGrayscale16() const {
+#if FREEINK_DEVICE_METALIO_EINK4
+  display.cancelGrayscaleUi();
+#endif
   if (grayscale16Buffer) cancelNativeGray(display);
   grayscale16Buffer = nullptr;
 }
@@ -1965,6 +2241,135 @@ void GfxRenderer::drawGrayscale16Pixel(const int x, const int y, const uint8_t g
   if (px < 0 || px >= panelWidth || py < 0 || py >= panelHeight) return;
   const uint8_t level = (static_cast<unsigned>(gray) + 8) / 17;
   writeGrayscale16Physical(px, py, level);
+}
+
+void GfxRenderer::fillGrayscale16Rect(const int x, const int y, const int width, const int height,
+                                      const uint8_t level) const {
+  RICKY_PAINT_SCOPE(Fill);
+  if (!grayscale16Buffer || width <= 0 || height <= 0 || level > 15) return;
+  const int lx0 = std::max({0, x, clipLeft_});
+  const int ly0 = std::max({0, y, clipTop_});
+  const int lx1 = std::min({getScreenWidth(), x + width, clipRight_});
+  const int ly1 = std::min({getScreenHeight(), y + height, clipBottom_});
+  if (lx0 >= lx1 || ly0 >= ly1) return;
+  // Rotation is rigid, so the two opposite corners bound the physical rectangle.
+  int ax, ay, bx, by;
+  rotateCoordinates(orientation, lx0, ly0, &ax, &ay, panelWidth, panelHeight);
+  rotateCoordinates(orientation, lx1 - 1, ly1 - 1, &bx, &by, panelWidth, panelHeight);
+  const int px0 = std::max(0, std::min(ax, bx));
+  const int px1 = std::min(static_cast<int>(panelWidth) - 1, std::max(ax, bx));
+  const int py0 = std::max(0, std::min(ay, by));
+  const int py1 = std::min(static_cast<int>(panelHeight) - 1, std::max(ay, by));
+  if (px0 > px1 || py0 > py1) return;
+
+  const bool ink = framebufferState(renderMode, level < 8);
+  const uint8_t pair = static_cast<uint8_t>(level | (level << 4));
+  const size_t grayStride = panelWidth / 2;
+  // B/W proxy: MSB-first bits, ink clears a bit. Partial edge bytes are masked.
+  const int firstByte = px0 / 8;
+  const int lastByte = px1 / 8;
+  const uint8_t firstMask = static_cast<uint8_t>(0xFFu >> (px0 % 8));
+  const uint8_t lastMask = static_cast<uint8_t>(0xFFu << (7 - px1 % 8));
+  for (int py = py0; py <= py1; ++py) {
+    uint8_t* gray = grayscale16Buffer + static_cast<size_t>(py) * grayStride;
+    int a = px0;
+    int b = px1;
+    if (a & 1) {  // odd x is the high nibble of its byte
+      gray[a / 2] = static_cast<uint8_t>((gray[a / 2] & 0x0F) | (level << 4));
+      ++a;
+    }
+    if (a <= b && !(b & 1)) {  // even x is the low nibble
+      gray[b / 2] = static_cast<uint8_t>((gray[b / 2] & 0xF0) | level);
+      --b;
+    }
+    if (a <= b) memset(gray + a / 2, pair, static_cast<size_t>(b - a + 1) / 2);
+
+    uint8_t* bw = frameBuffer + static_cast<size_t>(py) * panelWidthBytes;
+    const auto apply = [ink](uint8_t& byte, const uint8_t mask) {
+      byte = ink ? static_cast<uint8_t>(byte & ~mask) : static_cast<uint8_t>(byte | mask);
+    };
+    if (firstByte == lastByte) {
+      apply(bw[firstByte], static_cast<uint8_t>(firstMask & lastMask));
+    } else {
+      apply(bw[firstByte], firstMask);
+      if (lastByte - firstByte > 1)
+        memset(bw + firstByte + 1, ink ? 0x00 : 0xFF, static_cast<size_t>(lastByte - firstByte - 1));
+      apply(bw[lastByte], lastMask);
+    }
+  }
+}
+
+size_t GfxRenderer::PanelTile::bytes() const {
+  const size_t rows = static_cast<size_t>(py1 - py0 + 1);
+  return rows * static_cast<size_t>(px1 / 2 - px0 / 2 + 1 + px1 / 8 - px0 / 8 + 1);
+}
+
+bool GfxRenderer::panelTileFor(const int x, const int y, const int width, const int height, PanelTile* tile) const {
+  if (!grayscale16Buffer || !frameBuffer || _stripActive || width <= 0 || height <= 0) return false;
+  const int lx0 = std::max({0, x, clipLeft_});
+  const int ly0 = std::max({0, y, clipTop_});
+  const int lx1 = std::min({getScreenWidth(), x + width, clipRight_});
+  const int ly1 = std::min({getScreenHeight(), y + height, clipBottom_});
+  if (lx0 >= lx1 || ly0 >= ly1) return false;
+  int ax, ay, bx, by;
+  rotateCoordinates(orientation, lx0, ly0, &ax, &ay, panelWidth, panelHeight);
+  rotateCoordinates(orientation, lx1 - 1, ly1 - 1, &bx, &by, panelWidth, panelHeight);
+  tile->lx0 = static_cast<int16_t>(lx0);
+  tile->ly0 = static_cast<int16_t>(ly0);
+  tile->lx1 = static_cast<int16_t>(lx1);
+  tile->ly1 = static_cast<int16_t>(ly1);
+  tile->px0 = static_cast<int16_t>(std::max(0, std::min(ax, bx)));
+  tile->px1 = static_cast<int16_t>(std::min(static_cast<int>(panelWidth) - 1, std::max(ax, bx)));
+  tile->py0 = static_cast<int16_t>(std::max(0, std::min(ay, by)));
+  tile->py1 = static_cast<int16_t>(std::min(static_cast<int>(panelHeight) - 1, std::max(ay, by)));
+  tile->orientation = static_cast<uint8_t>(orientation);
+  return tile->px0 <= tile->px1 && tile->py0 <= tile->py1;
+}
+
+void GfxRenderer::capturePanelTile(const PanelTile& tile, uint8_t* out) const {
+  const size_t grayBytes = static_cast<size_t>(tile.px1 / 2 - tile.px0 / 2 + 1);
+  const size_t bwBytes = static_cast<size_t>(tile.px1 / 8 - tile.px0 / 8 + 1);
+  for (int py = tile.py0; py <= tile.py1; ++py) {
+    memcpy(out, grayscale16Buffer + static_cast<size_t>(py) * (panelWidth / 2) + tile.px0 / 2, grayBytes);
+    out += grayBytes;
+    memcpy(out, frameBuffer + static_cast<size_t>(py) * panelWidthBytes + tile.px0 / 8, bwBytes);
+    out += bwBytes;
+  }
+}
+
+bool GfxRenderer::restorePanelTile(const PanelTile& tile, const uint8_t* in) const {
+  RICKY_PAINT_SCOPE(Image);
+  PanelTile now;
+  if (!panelTileFor(tile.lx0, tile.ly0, tile.lx1 - tile.lx0, tile.ly1 - tile.ly0, &now) || now.lx0 != tile.lx0 ||
+      now.ly0 != tile.ly0 || now.lx1 != tile.lx1 || now.ly1 != tile.ly1 || now.px0 != tile.px0 || now.py0 != tile.py0 ||
+      now.px1 != tile.px1 || now.py1 != tile.py1 || now.orientation != tile.orientation)
+    return false;
+  const int g0 = tile.px0 / 2, g1 = tile.px1 / 2;
+  const int b0 = tile.px0 / 8, b1 = tile.px1 / 8;
+  // Edge bytes are shared with neighbours: odd x is the high nibble, B/W is MSB first.
+  const uint8_t grayFirst = (tile.px0 & 1) ? 0xF0 : 0xFF;
+  const uint8_t grayLast = (tile.px1 & 1) ? 0xFF : 0x0F;
+  const uint8_t bwFirst = static_cast<uint8_t>(0xFFu >> (tile.px0 % 8));
+  const uint8_t bwLast = static_cast<uint8_t>(0xFFu << (7 - tile.px1 % 8));
+  const auto copyRow = [](uint8_t* dst, const uint8_t* src, const int count, const uint8_t first, const uint8_t last) {
+    const auto merge = [](uint8_t& byte, const uint8_t value, const uint8_t mask) {
+      byte = static_cast<uint8_t>((byte & ~mask) | (value & mask));
+    };
+    if (count == 1) {
+      merge(dst[0], src[0], static_cast<uint8_t>(first & last));
+      return;
+    }
+    merge(dst[0], src[0], first);
+    if (count > 2) memcpy(dst + 1, src + 1, static_cast<size_t>(count - 2));
+    merge(dst[count - 1], src[count - 1], last);
+  };
+  for (int py = tile.py0; py <= tile.py1; ++py) {
+    copyRow(grayscale16Buffer + static_cast<size_t>(py) * (panelWidth / 2) + g0, in, g1 - g0 + 1, grayFirst, grayLast);
+    in += g1 - g0 + 1;
+    copyRow(frameBuffer + static_cast<size_t>(py) * panelWidthBytes + b0, in, b1 - b0 + 1, bwFirst, bwLast);
+    in += b1 - b0 + 1;
+  }
+  return true;
 }
 
 void GfxRenderer::writeGrayscale16Physical(const int px, const int py, const uint8_t level) const {
@@ -2354,7 +2759,10 @@ void GfxRenderer::clearScreen(const uint8_t color) const {
     memset(_stripBuf, color, static_cast<size_t>(panelWidthBytes) * _stripRows);
     return;
   }
-  display.clearScreen(color);
+  if (uiCanvasActive_)
+    memset(frameBuffer, color, frameBufferSize);
+  else
+    display.clearScreen(color);
   if (displayCapture_ && grayscale16Buffer) {
     // A screen may redraw several times in one render; earlier passes must not show.
     memset(grayscale16Buffer, color == 0x00 ? 0x00 : 0xFF, grayscale16FrameBytes());
@@ -2945,6 +3353,7 @@ int GfxRenderer::getTextHeight(int fontId) const {
 
 void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y, const char* text, const bool black,
                                       const EpdFontFamily::Style style) const {
+  RICKY_PAINT_SCOPE(Text);
   // Cannot draw a NULL / empty string
   if (text == nullptr || *text == '\0') {
     return;

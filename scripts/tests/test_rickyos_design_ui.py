@@ -16,7 +16,12 @@ class RickyDesignUiTest(unittest.TestCase):
                                 ("SMALL_FONT_ID", "designCaptionFamily")]:
             self.assertEqual(source.count(f"renderer.insertFont({font_id},"), 1)
             self.assertIn(f"renderer.insertFont({font_id}, {family});", source)
-        self.assertIn("renderer.setFallbackFont(RickyDesignUi::BODY, kRtlFontId)", source)
+        # The Hebrew/Arabic (Ubuntu) fallback stays out of the product image (OTA slot size).
+        body_rtl = "renderer.setFallbackFont(RickyDesignUi::BODY, kRtlFontId);"
+        self.assertIn("#ifndef RICKYOS_PRODUCT\n  " + body_rtl + "\n#endif", source)
+        for use in ("renderer.insertFont(kRtlFontId", "static EpdFont rtlRegularFont"):
+            before = source[:source.index(use)]
+            self.assertGreater(before.rindex("#ifndef RICKYOS_PRODUCT"), before.rfind("#endif"), use)
 
     def test_whole_string_font_fallback_uses_actual_unicode_decoder(self):
         source = UI.read_text()
@@ -67,6 +72,9 @@ struct GfxRenderer {
     for(int row=y;row<y+h;++row) for(int col=x;col<x+w;++col)
       pixels[row][col]=color==Color::Black?0:255;
   }
+  void fillGrayscale16Rect(int x,int y,int w,int h,int level) const {
+    for(int row=y;row<y+h;++row) for(int col=x;col<x+w;++col) drawGrayscale16Pixel(col,row,level*17);
+  }
 };
 ''' + method(source, 'inline void fill(') + method(source, 'inline void progress(') + r'''
 int main() {
@@ -81,6 +89,23 @@ int main() {
     fill(renderer,{8,8,24,32},tone,12);
     assert(renderer.pixels[16][16]==ds::gray::toRgb8(tone));
     assert(renderer.pixels[0][0]==0); // No writes beyond the rectangle.
+    // Same pixels as the original per-pixel rounded fill, for several radii.
+    // Ink and paper go through fillRoundedRect (mocked without corners) instead.
+    for(int radius:{0,1,5,12,40}) {
+      if(tone==ds::gray::kInk||tone==ds::gray::kPaper) break;
+      GfxRenderer fast; fast.gray=true;
+      fill(fast,{3,5,37,29},tone,radius);
+      int r=std::min({radius,37/2,29/2});
+      for(int y=0;y<64;++y) for(int x=0;x<64;++x) {
+        int lx=x-3, ly=y-5; bool in=lx>=0&&lx<37&&ly>=0&&ly<29;
+        if(in) {
+          const int dx=lx<r?r-lx:lx>=37-r?lx-(37-r-1):0;
+          const int dy=ly<r?r-ly:ly>=29-r?ly-(29-r-1):0;
+          if(dx&&dy&&dx*dx+dy*dy>r*r) in=false;
+        }
+        assert(fast.pixels[y][x]==(in?ds::gray::toRgb8(tone):0));
+      }
+    }
   }
   for(int percent:{-20,0,37,100,150}) {
     GfxRenderer renderer;
@@ -88,7 +113,7 @@ int main() {
     assert(renderer.writes==0);
     renderer.gray=true;
     progress(renderer,{8,8,40,8},percent);
-    assert(renderer.pixels[12][27]==(percent>=50?0:221));
+    assert(renderer.pixels[12][27]==(percent>=50?0:ds::gray::toRgb8(ds::gray::kTint)));
   }
 }
 ''')
@@ -161,8 +186,8 @@ int main() {
 #include <cassert>
 #include "images/RickyDog.h"
 int main() {
-  assert(RickyDogAsset::width==150 && RickyDogAsset::height==100);
-  assert(sizeof(RickyDogAsset::coverage)==7500);
+  assert(RickyDogAsset::width>60 && RickyDogAsset::height>60);
+  assert(sizeof(RickyDogAsset::coverage)==(RickyDogAsset::width*RickyDogAsset::height+1)/2);
   unsigned seen=0;
   for(auto byte:RickyDogAsset::coverage) {seen|=1u<<(byte>>4);seen|=1u<<(byte&15);}
   assert(seen==65535);

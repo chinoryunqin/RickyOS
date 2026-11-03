@@ -2,6 +2,8 @@
 #include <HalStorage.h>
 #include <SdCardFontCache.h>
 
+#include <algorithm>
+#include <array>
 #include <cassert>
 
 int main() {
@@ -79,4 +81,36 @@ int main() {
   assert(preflight(path) == Result::TooLarge);
   assert(preload(path) == Result::TooLarge);
   assert(writes == 0 && erases == 0 && flash == committed);
+
+  // Vector fonts (TrueType/OpenType) are accelerated too: identified by their sfnt tag,
+  // their head and size; a changed file is no longer the cached one.
+  constexpr auto vectorPath = "/fonts/Sans/Sans.ttf";
+  const auto cpfontHeader = sourceHeader;
+  for (const auto tag : {std::array<uint8_t, 4>{0, 1, 0, 0}, std::array<uint8_t, 4>{'O', 'T', 'T', 'O'},
+                         std::array<uint8_t, 4>{'t', 'r', 'u', 'e'}}) {
+    sourceHeader.fill(0);
+    std::copy(tag.begin(), tag.end(), sourceHeader.begin());
+    sourceHeader[5] = 9;  // numTables: part of the identity, like any head byte
+    sourceSize = 64;
+    assert(preflight(vectorPath) == Result::Ok);
+    assert(preload(vectorPath) == Result::Ok);
+    size_t payload = 0;
+    assert(isValidFor(vectorPath, &payload) && payload == 64);
+    assert(preflight(vectorPath) == Result::AlreadyCached);
+    sourceHeader[5] = 10;
+    assert(!isValidFor(vectorPath) && preflight(vectorPath) == Result::Ok);
+    sourceHeader[5] = 9;
+    sourceSize = 65;
+    assert(!isValidFor(vectorPath) && preflight(vectorPath) == Result::Ok);
+    sourceSize = 4097;
+    assert(preflight(vectorPath) == Result::TooLarge);
+  }
+  // Collections and anything else are not fonts the cache can hold.
+  for (const auto tag : {std::array<uint8_t, 4>{'t', 't', 'c', 'f'}, std::array<uint8_t, 4>{'P', 'K', 3, 4}}) {
+    sourceHeader.fill(0);
+    std::copy(tag.begin(), tag.end(), sourceHeader.begin());
+    sourceSize = 64;
+    assert(preflight(vectorPath) == Result::InvalidFont);
+  }
+  sourceHeader = cpfontHeader;
 }

@@ -2,7 +2,9 @@
 
 #include <FreeInkUIIcon.h>
 #include <GfxRenderer.h>
+#include <HalAudioOutput.h>
 #include <HalClock.h>
+#include <array>
 #include <HalDisplay.h>
 #include <HalFrontlight.h>
 #include <HalGPIO.h>
@@ -19,11 +21,12 @@
 #include "components/icons/customListIcons.h"
 #include "components/icons/listIcons.h"
 #include "ReadingStatsStore.h"
+#include "util/TimeUtils.h"
+
 #include "activities/ActivityManager.h"
 #include "activities/apps/standby/StandbyActivity.h"
 #include "components/RickyPageUi.h"
 #include "components/icons/rickyPageIcons.h"
-#include "util/TimeUtils.h"
 
 namespace fui = freeink::ui;
 
@@ -35,16 +38,8 @@ constexpr fui::ActionId ACTION_BRIGHTNESS_STEP = 4;
 constexpr fui::ActionId ACTION_WARMTH_STEP = 5;
 constexpr fui::ActionId ACTION_TILE = 6;  // value = tile index
 
-// iOS-style geometry. The panel is a card hanging from the top of the screen:
-// a grabber, full-width slider pills, then a 2-column tile grid. The chrome
-// itself is fui::sheet / fui::sliderRow / fui::tileGrid; these constants only
-// size the bands, and computePanelBottom() mirrors them.
-constexpr int16_t kPanelSideMargin = 16;
-constexpr int16_t kGrabberHeight = 5;     // fui::SheetProps default, mirrored here
-constexpr int16_t kSliderRowHeight = 56;  // the pill itself (finger-sized)
-constexpr int16_t kTileHeight = UiHighDpiProfile::enabled ? UiHighDpiProfile::buttonHeight : 84;
-constexpr int16_t kTileGap = UiHighDpiProfile::enabled ? UiHighDpiProfile::controlGap : 16;
-constexpr int kTileCols = 2;
+// The sheet uses RickyOS card/control radii, with 88px FUI touch bands.
+// Geometry and hit testing share the same emitted FUI rectangles.
 // One percent per press, on the -/+ buttons and on the physical Left/Right keys
 // alike (both repeat while held), so a level can be set exactly.
 constexpr int BRIGHTNESS_STEP = 1;
@@ -52,6 +47,63 @@ constexpr int BRIGHTNESS_STEP = 1;
 // button next to the slider is for, so a 0% "on" level would only be a second,
 // worse way to reach the same place.
 constexpr uint8_t MIN_BRIGHTNESS = 1;
+constexpr int kVolumeStep = 101;
+constexpr int kVolumePreview = 200;
+constexpr int kVolumeDrag = 203;  // ACTION_TILE value of the volume track
+constexpr int16_t kGrabberHeight = 5;  // fui::SheetProps default, mirrored here
+// Light and volume rows: a head line (name, then the switch or the sound test at the
+// right) and a band of [-] [track] [+]. Every control sits in an 88 px touch square.
+constexpr int16_t kTouch = ricky::ds::layout::kTouchMin;
+constexpr int16_t kHeadHeight = 64;  // the switch and the sound test still get 88 px touch boxes
+constexpr int kHeadNone = 0, kHeadSwitch = 1, kHeadPreview = 2;
+constexpr int16_t kSwitchWidth = 80;
+constexpr int16_t kSwitchHeight = 44;
+constexpr int16_t kPreviewSize = 60;
+// Cards replace the old full-width rules: one for the light, one for the sound.
+constexpr int16_t kCardPad = 16;
+constexpr uint8_t kCardRadius = ricky::ds::radius::kContainer;
+constexpr int16_t kGroupGap = 20;   // between the tiles and the cards, and card to card
+constexpr int16_t kPillHeight = 64; // drawn pill; its touch band is the full kTouch
+constexpr int16_t kBandGap = 8;     // between two pills in one card
+// A head's control box reaches (kTouch - kHeadHeight) / 2 below the head; a band
+// right under it starts this much lower so the boxes keep 8 px.
+constexpr int16_t kBareBandGap = (kTouch - kHeadHeight) / 2 + 8;
+constexpr auto kPlayBits = [] {
+  std::array<uint8_t, 128> bits{};
+  for (auto& b : bits) b = 0xff;
+  for (int y = 6; y < 26; ++y) {
+    const int extent = 20 - 2 * (y < 16 ? 16 - y : y - 16);
+    for (int x = 9; x < 9 + extent; ++x) bits[y * 4 + x / 8] &= ~(0x80 >> (x % 8));
+  }
+  return bits;
+}();
+constexpr freeink::Icon kPlayIcon{32, 32, 16, kPlayBits.data()};
+// A speaker for the volume pill: a small box and its widening cone (cleared bits = ink).
+constexpr auto kSpeakerBits = [] {
+  std::array<uint8_t, 128> bits{};
+  for (auto& b : bits) b = 0xff;
+  for (int x = 5; x < 24; ++x) {
+    const int half = x < 12 ? 5 : 5 + (x - 12);
+    for (int y = 16 - half; y < 16 + half; ++y) bits[y * 4 + x / 8] &= ~(0x80 >> (x % 8));
+  }
+  return bits;
+}();
+constexpr freeink::Icon kSpeakerIcon{32, 32, 16, kSpeakerBits.data()};
+
+// Takes a rounded card of `height` off the top of `screen`; returns a screen laid
+// out inside its padding, as the landscape columns do.
+using CardScreen = UiAppHost::UiScreen;
+CardScreen cardArea(CardScreen& screen, const int16_t height) {
+  const auto rect = screen.takeTop(height, 0);
+  screen.target().stroke(rect, fui::Paint::solid(fui::Color::DarkGray), ricky::ds::stroke::kHairline, kCardRadius);
+  CardScreen child(screen.frame(), screen.theme());
+  const auto all = child.contentRect();
+  const fui::Rect inner{static_cast<int16_t>(rect.x + kCardPad), static_cast<int16_t>(rect.y + kCardPad),
+                        static_cast<int16_t>(rect.width - 2 * kCardPad), static_cast<int16_t>(rect.height - 2 * kCardPad)};
+  child.insetContent(fui::Insets{static_cast<int16_t>(inner.y - all.y), static_cast<int16_t>(all.right() - inner.right()),
+                                 static_cast<int16_t>(all.bottom() - inner.bottom()), static_cast<int16_t>(inner.x - all.x)});
+  return child;
+}
 
 uint8_t percentFromPermille(const int16_t permille) {
   int value = (static_cast<int>(permille) * 100 + 500) / 1000;
@@ -73,10 +125,13 @@ void FrontlightPanelActivity::onEnter() {
   // A stored 0% predates the 1% floor (or came from the web settings): show it
   // as the floor rather than a level the slider can no longer produce. onExit
   // persists that, which is the intent — 0 is not a brightness any more.
+  volume = std::min<uint8_t>(SETTINGS.speakerVolume, 100);
+  HalAudioOutput::setVolume(volume);
   brightness = std::max(MIN_BRIGHTNESS, Frontlight.brightness());
   warmth = Frontlight.warmth();
   lightOn = Frontlight.isOn();
   lightOnChanged = false;
+  lastSliderRenderAt = 0;
 
   // Seed the touch tile's restore mode from the live setting, so toggling off
   // and back on within this session returns to the mode the user had.
@@ -85,8 +140,7 @@ void FrontlightPanelActivity::onEnter() {
   }
 
   resetUi();
-  // The host app holds six handlers (UiAppHost); RickyOS boards have no frontlight
-  // and route every control through the tile action.
+  // The host app holds six handlers; light-capable boards use all six.
   if (!Frontlight.present()) {
     app.on(ACTION_TILE, &FrontlightPanelActivity::onTileEvent, this);
     app.setScreen(&FrontlightPanelActivity::panelScreen, this);
@@ -109,9 +163,10 @@ void FrontlightPanelActivity::persistLightSettings() {
   // against SETTINGS here only fires on a genuine user change. lightOn has
   // no such guarantee (see lightOnChanged's declaration), so it's gated on
   // the user actually having touched it this session instead.
-  const bool changed = SETTINGS.frontlightBrightness != brightness || SETTINGS.frontlightWarmth != warmth ||
+  const bool changed = SETTINGS.speakerVolume != volume || SETTINGS.frontlightBrightness != brightness || SETTINGS.frontlightWarmth != warmth ||
                        (lightOnChanged && SETTINGS.frontlightOn != (lightOn ? 1 : 0));
   if (changed) {
+    SETTINGS.speakerVolume = volume;
     SETTINGS.frontlightBrightness = brightness;
     SETTINGS.frontlightWarmth = warmth;
     if (lightOnChanged) SETTINGS.frontlightOn = lightOn ? 1 : 0;
@@ -127,7 +182,9 @@ void FrontlightPanelActivity::onExit() {
 void FrontlightPanelActivity::onBrightnessEvent(const fui::ActionEvent& event, void* user) {
   auto* self = static_cast<FrontlightPanelActivity*>(user);
   if (event.dragPermille < 0) return;
-  self->brightness = std::max(MIN_BRIGHTNESS, percentFromPermille(event.dragPermille));
+  const auto next = std::max(MIN_BRIGHTNESS, percentFromPermille(event.dragPermille));
+  if (next == self->brightness && self->lightOn) return;
+  self->brightness = next;
   Frontlight.setBrightness(self->brightness);
   if (!self->lightOn) {
     self->lightOn = true;
@@ -139,7 +196,9 @@ void FrontlightPanelActivity::onBrightnessEvent(const fui::ActionEvent& event, v
 void FrontlightPanelActivity::onWarmthEvent(const fui::ActionEvent& event, void* user) {
   auto* self = static_cast<FrontlightPanelActivity*>(user);
   if (event.dragPermille < 0) return;
-  self->warmth = percentFromPermille(event.dragPermille);
+  const auto next = percentFromPermille(event.dragPermille);
+  if (next == self->warmth) return;
+  self->warmth = next;
   Frontlight.setWarmth(self->warmth);
 }
 
@@ -156,7 +215,16 @@ void FrontlightPanelActivity::onWarmthStepEvent(const fui::ActionEvent& event, v
 }
 
 void FrontlightPanelActivity::onTileEvent(const fui::ActionEvent& event, void* user) {
-  static_cast<FrontlightPanelActivity*>(user)->runTile(event.value);
+  auto* self = static_cast<FrontlightPanelActivity*>(user);
+  if (event.dragPermille >= 0 || event.value == kVolumeStep || event.value == -kVolumeStep) {
+    self->volume = event.dragPermille >= 0 ? percentFromPermille(event.dragPermille)
+        : static_cast<uint8_t>(std::clamp<int>(self->volume + (event.value > 0 ? 1 : -1), 0, 100));
+    HalAudioOutput::setVolume(self->volume);
+  } else if (event.value == kVolumePreview) {
+    HalAudioOutput::preview(self->volume);
+  } else {
+    self->runTile(event.value);
+  }
 }
 
 void FrontlightPanelActivity::runTile(const int idx) {
@@ -206,7 +274,7 @@ bool FrontlightPanelActivity::handleHomeGesture() {
 void FrontlightPanelActivity::loop() {
   const auto touch = routeTouch(mappedInput, false, /*routeHeld=*/true);
   if (touch.routed) {
-    if (app.invalidated()) requestUpdate();
+    if (app.invalidated() && (!touch.snap.touchHeld || millis() - lastSliderRenderAt >= 250)) requestUpdate();
     if (touch) {
       if (touch.event.dragPermille >= 0) draggingSlider = true;
       return;
@@ -241,76 +309,110 @@ void FrontlightPanelActivity::loop() {
     return;
   }
 
-  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Left},
+  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::NavPrevious},
                                        [this] { adjustBrightness(-BRIGHTNESS_STEP); });
-  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Right},
+  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::NavNext},
                                        [this] { adjustBrightness(BRIGHTNESS_STEP); });
 }
 
 int FrontlightPanelActivity::computePanelBottom() const {
-  if (!Frontlight.present()) return rickyPanelHeight();
-  const auto tokens = uiThemeTokens(uiTarget, true);
-  const auto& metrics = uiThemeMetrics(true);
-  const int16_t lineHeight = uiTarget.lineHeight(tokens.smallText.font);
-  // Slim battery band + the air around it (mirrors buildPanelScreen).
-  const int y0 = std::max<int>(metrics.batteryHeight, lineHeight);
-  int y = tokens.spaceMd + y0 + tokens.spaceMd;
-  if (Frontlight.present()) {
-    // Screen::sliderRow reserves caption + spaceMd + control band, then a
-    // spaceMd gap; addSliderRow() adds one more spaceMd of air after each row.
-    y += lineHeight + tokens.spaceMd + kSliderRowHeight + 2 * tokens.spaceMd;  // brightness
-    if (Frontlight.hasColorTemperature()) {
-      y += lineHeight + tokens.spaceMd + kSliderRowHeight + 2 * tokens.spaceMd;  // warmth
-    }
-    y += tokens.spaceSm;
-  }
-  // Tiles are touch targets, so a buttons-only board gets no grid and the
-  // sheet is exactly the frontlight controls.
-  const int tileCount = mappedInput.hasTouch() ? kTileCount : 0;
-  y += fui::tileGridHeight(static_cast<uint16_t>(tileCount), kTileCols, kTileHeight, kTileGap);
-  // The sheet's grabber band: content margin + grabber + air to the edge.
-  // buildPanelScreen() feeds the same theme spacings into SheetProps.
-  y += tokens.spaceLg + kGrabberHeight + tokens.spaceLg + tokens.spaceMd;
-  return y;
+  return rickyPanelHeight();
 }
 
 void FrontlightPanelActivity::panelScreen(UiScreen& screen, void* user) {
   static_cast<FrontlightPanelActivity*>(user)->buildPanelScreen(screen);
 }
 
-void FrontlightPanelActivity::addSliderRow(UiScreen& screen, const char* label, const uint8_t value,
-                                           const fui::ActionId sliderAction, const fui::ActionId stepAction,
-                                           const bool showToggle) {
-  // Live percentage readout. The row draws before this call returns
-  // (immediate mode), so borrowing a stack buffer is safe.
-  char pct[8];
-  snprintf(pct, sizeof(pct), "%u%%", static_cast<unsigned>(value));
-
-  // rowProps is a member (fui::SliderRowProps embeds a 324-byte StyleSet, well
-  // past the 256-byte budget a local gets — AGENTS.md). Every field that
-  // varies between the two rows is reassigned here; the rest keep their
-  // constructed defaults, which already match the panel's card language.
-  rowProps.label = label;
-  rowProps.value = pct;
-  rowProps.sliderValue = value;
-  rowProps.sliderAction = sliderAction;
-  rowProps.decrement = stepAction;
-  rowProps.increment = stepAction;
-  rowProps.decrementValue = -BRIGHTNESS_STEP;
-  rowProps.incrementValue = BRIGHTNESS_STEP;
-  if (showToggle) {
-    // Lamp on/off after the +: the sliders set the level, this kills the light
-    // outright. Filled glyph = on, outline = off.
-    rowProps.toggleAction = ACTION_TOGGLE;
-    rowProps.toggleIcon = fui::bitmapFromIcon(lightOn ? icon_sun_filled_32 : icon_sun_32);
-  } else {
-    rowProps.toggleAction = fui::NO_ACTION;
-    rowProps.toggleIcon = fui::BitmapRef{};
+void FrontlightPanelActivity::sectionHead(UiScreen& screen, const char* name, const int control, const int value) {
+  const auto& theme = screen.theme();
+  auto& target = screen.target();
+  const auto row = screen.takeTop(kHeadHeight, 0);
+  auto label = theme.bodyText;
+  label.maxLines = 1;
+  const int16_t labelHeight = target.lineHeight(label.font);
+  const int16_t controlWidth = control == kHeadNone ? 0 : kTouch;
+  target.text(fui::Rect{row.x, static_cast<int16_t>(row.y + (row.height - labelHeight) / 2),
+                        static_cast<int16_t>(row.width - controlWidth - theme.spaceMd), labelHeight},
+              name, label);
+  if (value >= 0) {
+    // A slider without its own caption shows its level here, left of the control.
+    char percent[8];
+    snprintf(percent, sizeof(percent), "%d%%", value);
+    auto level = theme.smallText;
+    level.maxLines = 1;
+    level.align = fui::TextAlign::Right;
+    const int16_t levelHeight = target.lineHeight(level.font);
+    target.text(fui::Rect{row.x, static_cast<int16_t>(row.y + (row.height - levelHeight) / 2),
+                          static_cast<int16_t>(row.width - controlWidth - theme.spaceLg), levelHeight},
+                percent, level);
   }
-  screen.sliderRow(rowProps, kSliderRowHeight);
-  // The wrapper's own trailing gap is one spaceMd; double it so the rows
-  // breathe — a control band this tall reads cramped at the list cadence.
-  screen.spacer(screen.theme().spaceMd);
+  if (control == kHeadSwitch) {
+    // The light switch: a pill with a round knob, ink when on. Its touch box is the
+    // row's right touch square, clear of the [+] in the band below.
+    fui::ToggleProps toggle;
+    toggle.checked = lightOn;
+    toggle.action = ACTION_TOGGLE;
+    toggle.inputMask = fui::InputTouch;
+    toggle.width = kSwitchWidth;
+    toggle.height = kSwitchHeight;
+    toggle.radius = kSwitchHeight / 2;
+    toggle.knobRadius = (kSwitchHeight - 8) / 2;
+    toggle.knobInset = 4;
+    toggle.borderWidth = ricky::ds::stroke::kHairline;
+    toggle.minTouchSize = kTouch;
+    fui::toggle(screen.frame(),
+                fui::Rect{static_cast<int16_t>(row.right() - kSwitchWidth),
+                          static_cast<int16_t>(row.y + (row.height - kSwitchHeight) / 2), kSwitchWidth, kSwitchHeight},
+                toggle);
+  } else if (control == kHeadPreview) {
+    // The sound test: a round outline button with a play mark, ink while pressed.
+    const fui::Rect hit{static_cast<int16_t>(row.right() - kTouch), static_cast<int16_t>(row.y + (row.height - kTouch) / 2),
+                        kTouch, kTouch};
+    const fui::Rect disc{static_cast<int16_t>(hit.right() - kPreviewSize), static_cast<int16_t>(hit.y + (kTouch - kPreviewSize) / 2),
+                         kPreviewSize, kPreviewSize};
+    const bool pressed = fui::hasState(screen.frame().stateFor(ACTION_TILE, kVolumePreview), fui::StateActive);
+    target.fill(disc, fui::Paint::solid(pressed ? fui::Color::Black : fui::Color::White), kPreviewSize / 2);
+    if (!pressed) target.stroke(disc, fui::Paint::solid(fui::Color::Black), ricky::ds::stroke::kHairline, kPreviewSize / 2);
+    target.bitmap(fui::Rect{static_cast<int16_t>(disc.x + (kPreviewSize - 32) / 2 + 2),
+                            static_cast<int16_t>(disc.y + (kPreviewSize - 32) / 2), 32, 32},
+                  fui::bitmapFromIcon(kPlayIcon), fui::BitmapMode::Center,
+                  fui::Paint::solid(pressed ? fui::Color::White : fui::Color::Black));
+    screen.frame().hit(hit, ACTION_TILE, kVolumePreview, fui::InputTouch);
+  }
+}
+
+void FrontlightPanelActivity::pillSlider(UiScreen& screen, const fui::Rect band, const freeink::Icon& icon,
+                                         const char* name, const uint8_t value, const fui::ActionId action,
+                                         const int16_t actionValue) {
+  const auto& theme = screen.theme();
+  auto& target = screen.target();
+  const auto ink = fui::Paint::solid(fui::Color::Black);
+  const auto paper = fui::Paint::solid(fui::Color::White);
+  constexpr uint8_t radius = kPillHeight / 2;
+  const fui::Rect pill{band.x, static_cast<int16_t>(band.y + (band.height - kPillHeight) / 2), band.width, kPillHeight};
+  // The ink fills to the level, never narrower than the icon's disc, so 1% still reads.
+  const int16_t filled = static_cast<int16_t>(
+      std::max<int>(kPillHeight, pill.width * std::min<int>(value, 100) / 100));
+  target.fill(pill, paper, radius);
+  target.fill(fui::Rect{pill.x, pill.y, filled, kPillHeight}, ink, radius);
+  target.stroke(pill, ink, ricky::ds::stroke::kHairline, radius);
+  target.bitmap(fui::Rect{static_cast<int16_t>(pill.x + (kPillHeight - icon.w) / 2),
+                          static_cast<int16_t>(pill.y + (kPillHeight - icon.h) / 2), static_cast<int16_t>(icon.w),
+                          static_cast<int16_t>(icon.h)},
+                fui::bitmapFromIcon(icon), fui::BitmapMode::Center, paper);
+  // "name NN%" at the right end, in paper once the ink has reached it.
+  char text[40];
+  snprintf(text, sizeof(text), "%s %u%%", name ? name : "", static_cast<unsigned>(value));
+  auto label = theme.bodyText;
+  label.maxLines = 1;
+  label.align = fui::TextAlign::Right;
+  const int16_t labelHeight = target.lineHeight(label.font);
+  const fui::Rect textRect{static_cast<int16_t>(pill.x + kPillHeight), static_cast<int16_t>(pill.y + (kPillHeight - labelHeight) / 2),
+                           static_cast<int16_t>(pill.width - kPillHeight - radius), labelHeight};
+  const int textWidth = target.measureText(label.font, text, label).width;
+  label.color = filled > textRect.right() - textWidth / 2 ? fui::Color::White : fui::Color::Black;
+  target.text(textRect, text, label);
+  screen.frame().hit(band, action, actionValue, fui::InputTouch | fui::InputDrag);
 }
 
 void FrontlightPanelActivity::buildPanelScreen(UiScreen& screen) {
@@ -319,15 +421,18 @@ void FrontlightPanelActivity::buildPanelScreen(UiScreen& screen) {
 }
 
 namespace {
-// Round actions: a circle per column, the label under it.
-constexpr int16_t kActionDiameter = 96;
-constexpr int16_t kActionLabelGap = 10;
+// Actions: one rounded tile per column holding its icon and label, inverted when on.
+constexpr int16_t kTilePad = 16;
+constexpr int16_t kTileLabelGap = 8;
+constexpr int16_t kTileSpacing = 12;
+constexpr uint8_t kTileRadius = 20;
 constexpr int kActionColumns = 4;
 // Clean-refresh choices in REFRESH_FREQUENCY order (pages between clean refreshes; 0 = never).
 constexpr int kRefreshPages[] = {1, 5, 10, 15, 30, 0};
 }  // namespace
 
 void FrontlightPanelActivity::runRickyTile(const Tile tile) {
+  app.clearTapFlash();
   switch (tile) {
     case Tile::Night:
       SETTINGS.screenInverted = SETTINGS.screenInverted ? 0 : 1;
@@ -355,6 +460,16 @@ void FrontlightPanelActivity::runRickyTile(const Tile tile) {
     case Tile::Clean:
       cycleCleanRefresh();
       break;
+    case Tile::Light:
+      toggleLight();
+      break;
+    case Tile::FastRefresh:
+      SETTINGS.readerFastRefresh = SETTINGS.readerFastRefresh ? 0 : 1;
+      SETTINGS.saveToFile();
+      requestUpdate();
+      break;
+    case Tile::Preview:
+      break;  // ACTION_TILE dispatcher owns the audio preview command.
   }
 }
 
@@ -371,12 +486,21 @@ int FrontlightPanelActivity::rickyPanelHeight() const {
   const auto& metrics = uiThemeMetrics(true);
   const int small = uiTarget.lineHeight(tokens.smallText.font);
   const int title = uiTarget.lineHeight(tokens.titleText.font);
-  const int actionRow = kActionDiameter + kActionLabelGap + small;
-  int y = tokens.spaceMd + std::max<int>(metrics.batteryHeight, title) + tokens.spaceXs;  // clock and battery
-  y += small;                                                                             // date line
+  const bool landscape = renderer.getScreenWidth() > renderer.getScreenHeight();
+  const int tileRow = kTilePad + 40 + kTileLabelGap + small + kTilePad;
+  int y = tokens.spaceMd + std::max<int>(metrics.batteryHeight, title) + tokens.spaceXs + small;  // clock, date
   if (mappedInput.hasTouch()) {
-    y += 2 * tokens.spaceLg + actionRow;
-    if (overReader) y += 2 * tokens.spaceLg + small + tokens.spaceMd + actionRow;
+    y += kGroupGap + tileRow;
+    if (!landscape && overReader) y += kTileSpacing + tileRow;
+    const bool light = Frontlight.present();
+    const bool warm = light && Frontlight.hasColorTemperature();
+    const bool sound = HalAudioOutput::present();
+    if (landscape) {
+      if (light || sound) y += kGroupGap + 2 * kCardPad + kHeadHeight + kBareBandGap + kTouch;
+    } else {
+      if (light) y += kGroupGap + 2 * kCardPad + kHeadHeight + kBareBandGap + kTouch + (warm ? kBandGap + kTouch : 0);
+      if (sound) y += kGroupGap + 2 * kCardPad + kTouch;
+    }
   }
   y += tokens.spaceLg + kGrabberHeight + tokens.spaceLg + tokens.spaceMd;  // grabber band
   return y;
@@ -389,31 +513,28 @@ void FrontlightPanelActivity::roundActionRow(UiScreen& screen, const RoundAction
   label.maxLines = 1;
   label.align = fui::TextAlign::Center;
   const int16_t labelHeight = target.lineHeight(theme.smallText.font);
-  const auto row = screen.takeTop(static_cast<int16_t>(kActionDiameter + kActionLabelGap + labelHeight), 0);
-  const int16_t column = static_cast<int16_t>(row.width / kActionColumns);
+  const auto row = screen.takeTop(static_cast<int16_t>(kTilePad + 40 + kTileLabelGap + labelHeight + kTilePad), 0);
+  const int columns = std::max(kActionColumns, count);
+  const int16_t width = static_cast<int16_t>((row.width - (columns - 1) * kTileSpacing) / columns);
   for (int i = 0; i < count; ++i) {
     const RoundAction& action = actions[i];
-    const fui::Rect cell{static_cast<int16_t>(row.x + i * column), row.y, column, row.height};
-    const fui::Rect circle{static_cast<int16_t>(cell.x + (column - kActionDiameter) / 2), cell.y, kActionDiameter,
-                           kActionDiameter};
-    constexpr uint8_t radius = kActionDiameter / 2;
-    // On = a filled disc with the icon knocked out in white; off = a hairline ring.
-    if (action.on) {
-      target.fill(circle, fui::Paint::solid(fui::Color::Black), radius);
-    } else {
-      target.fill(circle, fui::Paint::solid(fui::Color::White), radius);
-      target.stroke(circle, fui::Paint::solid(fui::Color::Black), 2, radius);
-    }
+    const fui::Rect tile{static_cast<int16_t>(row.x + i * (width + kTileSpacing)), row.y, width, row.height};
+    // On (or pressed) = an ink tile with icon and label in paper; off = a quiet outline.
+    const bool on = action.on ||
+                    fui::hasState(screen.frame().stateFor(ACTION_TILE, static_cast<int16_t>(action.tile)), fui::StateActive);
+    target.fill(tile, fui::Paint::solid(on ? fui::Color::Black : fui::Color::White), kTileRadius);
+    if (!on) target.stroke(tile, fui::Paint::solid(fui::Color::DarkGray), ricky::ds::stroke::kHairline, kTileRadius);
     const freeink::Icon& icon = *action.icon;
-    target.bitmap(fui::Rect{static_cast<int16_t>(circle.x + (kActionDiameter - icon.w) / 2),
-                            static_cast<int16_t>(circle.y + kActionDiameter / 2 - icon.opticalCenterY),
+    target.bitmap(fui::Rect{static_cast<int16_t>(tile.x + (width - icon.w) / 2),
+                            static_cast<int16_t>(tile.y + kTilePad + 20 - icon.opticalCenterY),
                             static_cast<int16_t>(icon.w), static_cast<int16_t>(icon.h)},
                   fui::bitmapFromIcon(icon), fui::BitmapMode::Center,
-                  fui::Paint::solid(action.on ? fui::Color::White : fui::Color::Black));
-    target.text(fui::Rect{cell.x, static_cast<int16_t>(circle.bottom() + kActionLabelGap), cell.width, labelHeight},
+                  fui::Paint::solid(on ? fui::Color::White : fui::Color::Black));
+    label.color = on ? fui::Color::White : fui::Color::Black;
+    target.text(fui::Rect{static_cast<int16_t>(tile.x + 4), static_cast<int16_t>(tile.y + kTilePad + 40 + kTileLabelGap),
+                          static_cast<int16_t>(width - 8), labelHeight},
                 action.label, label);
-    // The whole column (disc and label) is the touch target.
-    screen.frame().hit(cell, ACTION_TILE, static_cast<int16_t>(action.tile), fui::InputTouch);
+    screen.frame().hit(tile, ACTION_TILE, static_cast<int16_t>(action.tile), fui::InputTouch);
   }
 }
 
@@ -429,6 +550,7 @@ void FrontlightPanelActivity::buildRickyPanel(UiScreen& screen) {
   auto small = theme.smallText;
   small.maxLines = 1;
   const int16_t smallHeight = target.lineHeight(theme.smallText.font);
+  const bool landscape = renderer.getScreenWidth() > renderer.getScreenHeight();
 
   // Clock on the left of the status band, battery on the right where Home draws it.
   const auto& metrics = uiThemeMetrics(true);
@@ -462,33 +584,18 @@ void FrontlightPanelActivity::buildRickyPanel(UiScreen& screen) {
   snprintf(infoText, sizeof(infoText), haveTime ? "%s · %s" : "%s%s", date, today);
   target.text(screen.takeTop(smallHeight, 0), infoText, small);
 
-  // Round actions are touch targets; a buttons-only board keeps just the clock.
+  // Every control below is a touch target; a buttons-only board keeps just the clock.
   if (!mappedInput.hasTouch()) return;
-  const auto rule = [&] {
-    screen.spacer(theme.spaceLg);
-    const auto line = screen.takeTop(1, 0);
-    target.fill(line, fui::Paint::solid(fui::Color::Black));
-    screen.spacer(theme.spaceLg);
-  };
-
-  rule();
-  const bool night = SETTINGS.screenInverted != 0;
-  const RoundAction common[] = {
-      {Tile::Night, &icon_ricky_night_40, tr(STR_NIGHT_MODE), night},
+  screen.spacer(kGroupGap);
+  RoundAction actions[7] = {
+      {Tile::Night, &icon_ricky_night_40, tr(STR_NIGHT_MODE), SETTINGS.screenInverted != 0},
       {Tile::Refresh, &icon_ricky_refresh_40, tr(STR_FORCE_REFRESH), false},
       {Tile::Standby, &icon_ricky_standby_40, tr(STR_RICKY_STANDBY_NOW), false},
       {Tile::Transfer, &icon_ricky_transfer_40, tr(STR_FILE_TRANSFER), false},
   };
-  roundActionRow(screen, common, static_cast<int>(std::size(common)));
-
-  if (!overReader) return;
-  // Reading: only over a book, where each of these changes the page underneath.
-  rule();
-  target.text(screen.takeTop(smallHeight, theme.spaceMd), tr(STR_RICKY_CC_READING), small);
   static constexpr StrId kOrientNames[4] = {StrId::STR_PORTRAIT, StrId::STR_LANDSCAPE_CW,
                                             StrId::STR_ORIENTATION_INVERTED, StrId::STR_LANDSCAPE_CCW};
   const uint8_t orientation = SETTINGS.orientation % 4;
-  const bool portrait = orientation == 0 || orientation == 2;
   const int refreshIndex = std::min<int>(SETTINGS.refreshFrequency, static_cast<int>(std::size(kRefreshPages)) - 1);
   if (kRefreshPages[refreshIndex] == 0) {
     snprintf(refreshText, sizeof(refreshText), "%s", tr(STR_RICKY_CC_FULL_REFRESH_OFF));
@@ -496,11 +603,92 @@ void FrontlightPanelActivity::buildRickyPanel(UiScreen& screen) {
     snprintf(refreshText, sizeof(refreshText), tr(STR_RICKY_CC_FULL_REFRESH), kRefreshPages[refreshIndex]);
   }
   const RoundAction reading[] = {
-      {Tile::Orientation, portrait ? &icon_ricky_portrait_40 : &icon_ricky_landscape_40,
+      {Tile::Orientation, orientation % 2 ? &icon_ricky_landscape_40 : &icon_ricky_portrait_40,
        I18N.get(kOrientNames[orientation]), false},
       {Tile::Clean, &icon_ricky_clean_40, refreshText, false},
+      // Reading refresh: 快刷 (on) or 高清.
+      {Tile::FastRefresh, &icon_ricky_fast_40, tr(STR_RICKY_CC_FAST_REFRESH), SETTINGS.readerFastRefresh != 0},
   };
-  roundActionRow(screen, reading, static_cast<int>(std::size(reading)));
+  int count = 4;
+  // Landscape has room for the reading actions in the same row.
+  if (landscape && overReader)
+    for (const auto& action : reading) actions[count++] = action;
+  roundActionRow(screen, actions, count);
+  // Reading: only over a book, where each of these changes the page underneath.
+  if (!landscape && overReader) {
+    screen.spacer(kTileSpacing);
+    roundActionRow(screen, reading, static_cast<int>(std::size(reading)));
+  }
+
+  const bool light = Frontlight.present();
+  const bool warm = light && Frontlight.hasColorTemperature();
+  const bool sound = HalAudioOutput::present();
+  if (!landscape) {
+    if (light) {
+      screen.spacer(kGroupGap);
+      auto card = cardArea(screen, static_cast<int16_t>(2 * kCardPad + kHeadHeight + kBareBandGap + kTouch +
+                                                         (warm ? kBandGap + kTouch : 0)));
+      sectionHead(card, tr(STR_FRONTLIGHT), kHeadSwitch);
+      card.spacer(kBareBandGap);
+      pillSlider(card, card.takeTop(kTouch, kBandGap), icon_sun_32, tr(STR_BRIGHTNESS), brightness, ACTION_BRIGHTNESS, 0);
+      if (warm) pillSlider(card, card.takeTop(kTouch, 0), icon_moon_32, tr(STR_RICKY_CC_WARMTH), warmth, ACTION_WARMTH, 0);
+    }
+    if (sound) {
+      screen.spacer(kGroupGap);
+      auto card = cardArea(screen, static_cast<int16_t>(2 * kCardPad + kTouch));
+      auto band = card.takeTop(kTouch, 0);
+      // The sound test sits at the right end of the volume pill's band.
+      const fui::Rect hit{static_cast<int16_t>(band.right() - kTouch), band.y, kTouch, kTouch};
+      band.width = static_cast<int16_t>(band.width - kTouch - theme.spaceMd);
+      pillSlider(card, band, kSpeakerIcon, tr(STR_RICKY_CC_VOLUME), volume, ACTION_TILE, kVolumeDrag);
+      const fui::Rect disc{static_cast<int16_t>(hit.x + (kTouch - kPillHeight) / 2), static_cast<int16_t>(hit.y + (kTouch - kPillHeight) / 2),
+                           kPillHeight, kPillHeight};
+      const bool pressed = fui::hasState(screen.frame().stateFor(ACTION_TILE, kVolumePreview), fui::StateActive);
+      target.fill(disc, fui::Paint::solid(pressed ? fui::Color::Black : fui::Color::White), kPillHeight / 2);
+      if (!pressed) target.stroke(disc, fui::Paint::solid(fui::Color::Black), ricky::ds::stroke::kHairline, kPillHeight / 2);
+      target.bitmap(fui::Rect{static_cast<int16_t>(disc.x + (kPillHeight - 32) / 2 + 2),
+                              static_cast<int16_t>(disc.y + (kPillHeight - 32) / 2), 32, 32},
+                    fui::bitmapFromIcon(kPlayIcon), fui::BitmapMode::Center,
+                    fui::Paint::solid(pressed ? fui::Color::White : fui::Color::Black));
+      screen.frame().hit(hit, ACTION_TILE, kVolumePreview, fui::InputTouch);
+    }
+    return;
+  }
+  // Landscape: one card per slider side by side, each a head over its pill.
+  const int columns = (light ? 1 : 0) + (warm ? 1 : 0) + (sound ? 1 : 0);
+  if (!columns) return;
+  screen.spacer(kGroupGap);
+  const int16_t height = static_cast<int16_t>(2 * kCardPad + kHeadHeight + kBareBandGap + kTouch);
+  const auto area = screen.takeTop(height, 0);
+  constexpr int16_t kGap = 20;
+  const int16_t width = static_cast<int16_t>((area.width - (columns - 1) * kGap) / columns);
+  int column = 0;
+  const auto next = [&]() {
+    UiScreen child(screen.frame(), theme);
+    const auto all = child.contentRect();
+    const int16_t x = static_cast<int16_t>(area.x + column++ * (width + kGap));
+    child.insetContent(fui::Insets{static_cast<int16_t>(area.y - all.y), static_cast<int16_t>(all.right() - x - width),
+                                   static_cast<int16_t>(all.bottom() - area.bottom()), static_cast<int16_t>(x - all.x)});
+    return cardArea(child, height);
+  };
+  if (light) {
+    auto card = next();
+    sectionHead(card, tr(STR_FRONTLIGHT), kHeadSwitch);
+    card.spacer(kBareBandGap);
+    pillSlider(card, card.takeTop(kTouch, 0), icon_sun_32, tr(STR_BRIGHTNESS), brightness, ACTION_BRIGHTNESS, 0);
+  }
+  if (warm) {
+    auto card = next();
+    sectionHead(card, tr(STR_RICKY_CC_WARMTH), kHeadNone);
+    card.spacer(kBareBandGap);
+    pillSlider(card, card.takeTop(kTouch, 0), icon_moon_32, tr(STR_RICKY_CC_WARMTH), warmth, ACTION_WARMTH, 0);
+  }
+  if (sound) {
+    auto card = next();
+    sectionHead(card, tr(STR_RICKY_CC_VOLUME), kHeadPreview);
+    card.spacer(kBareBandGap);
+    pillSlider(card, card.takeTop(kTouch, 0), kSpeakerIcon, tr(STR_RICKY_CC_VOLUME), volume, ACTION_TILE, kVolumeDrag);
+  }
 }
 
 void FrontlightPanelActivity::render(RenderLock&&) {
@@ -517,4 +705,5 @@ void FrontlightPanelActivity::render(RenderLock&&) {
   // or the next scheduled clean refresh.
   renderer.displayBuffer(cleanRefreshPending ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH);
   cleanRefreshPending = false;
+  lastSliderRenderAt = millis();
 }

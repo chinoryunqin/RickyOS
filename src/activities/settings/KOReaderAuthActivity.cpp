@@ -1,3 +1,4 @@
+#include <HalNetwork.h>
 #include "KOReaderAuthActivity.h"
 
 #include <GfxRenderer.h>
@@ -59,7 +60,7 @@ void KOReaderAuthActivity::onEnter() {
   Activity::onEnter();
 
   // Check if already connected
-  if (WiFi.status() == WL_CONNECTED) {
+  if (HalNetwork::connected()) {
     NetworkStartup::prepare(renderer);
     onWifiSelectionComplete(true);
     return;

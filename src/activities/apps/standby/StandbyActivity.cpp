@@ -1,8 +1,15 @@
+#include <HalNetwork.h>
+#include <HalAudioOutput.h>
+#if FREEINK_DEVICE_METALIO_PLUS
+#include <BleInput.h>
+#include <HalRecorder.h>
+#endif
 #include "StandbyActivity.h"
 
 #include <Arduino.h>
 #include <FsHelpers.h>
 #include <HalClock.h>
+#include <HalFrontlight.h>
 #include <I18n.h>
 #include <Logging.h>
 #include <Memory.h>
@@ -26,19 +33,17 @@
 #include "NetworkStartup.h"
 #include "ReadingStatsStore.h"
 #include "RickyWallpaperDownloadActivity.h"
+#include "StandbyGalleryActivity.h"
 #include "SloppyClockFace.h"
 #include "StandbyDiag.h"
 #include "StandbyTime.h"
 #include "WallpaperFace.h"
 #include "WifiCredentialStore.h"
 #include "activities/ActivityResult.h"
-#include "activities/home/FileBrowserActivity.h"
 #include "activities/network/WifiSelectionActivity.h"
-#include "activities/util/ImageViewerActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/PaginationDots.h"
-#include "util/RickyStorageLayout.h"
 #include "util/TimeUtils.h"
 
 namespace {
@@ -47,7 +52,7 @@ constexpr uint32_t kWifiTimeoutMs = 15000u;  // Same as WifiSelectionActivity
 constexpr uint32_t kNtpTimeoutMs = 12000u;
 constexpr uint32_t kSyncDelayMs = 1500u;
 #if CROSSPOINT_EMULATED == 0
-constexpr uint32_t kMaxLightSleepSeconds = 60u;
+[[maybe_unused]] constexpr uint32_t kMaxLightSleepSeconds = 60u;
 #endif
 
 // Face factory table. Add new faces by appending a row here and including the
@@ -68,6 +73,8 @@ constexpr FaceEntry kFaces[] = {
            return makeUniqueNoThrow<CalendarClockFace>();
          case CrossPointSettings::RICKY_STANDBY_KEEP_PAGE:
            return makeUniqueNoThrow<KeepPageFace>();
+         case CrossPointSettings::RICKY_STANDBY_TRANSPARENT:
+           return makeUniqueNoThrow<KeepPageFace>(true);
          default:
            return makeUniqueNoThrow<WallpaperFace>();  // the picture, or the cover
        }
@@ -127,6 +134,14 @@ void drawFaceDots(const GfxRenderer& renderer, int sw, int sh, uint8_t total, ui
 
 void StandbyActivity::onEnter() {
   Activity::onEnter();
+#if FREEINK_DEVICE_METALIO_PLUS
+  HalRecorder::stop();
+  HalAudioOutput::shutdown();
+  mappedInput.stopHapticFeedback();
+#endif
+  savedFrontlightOn_ = Frontlight.present() && Frontlight.isOn();
+  Frontlight.setOn(false);
+  LOG_INF("STANDBY", "Frontlight suspended: wasOn=%u", savedFrontlightOn_);
 #if CROSSPOINT_EMULATED == 0
   HalPowerManager::beginStandbyKeyWatch();
 #endif
@@ -189,6 +204,9 @@ void StandbyActivity::onExit() {
   renderer.setOrientation(savedOrientation_);
   // Time in Standby is not reading time: the book under it starts its gap afresh.
   READING_STATS.resumeSession();
+  const bool restoreLight = savedFrontlightOn_ && SETTINGS.frontlightRestoreOnWake != 0;
+  Frontlight.setOn(restoreLight);
+  LOG_INF("STANDBY", "Frontlight resumed: on=%u", restoreLight);
   LOG_DBG("STANDBY", "onExit free heap=%u", static_cast<unsigned>(ESP.getFreeHeap()));
   Activity::onExit();
 }
@@ -214,6 +232,7 @@ void StandbyActivity::switchFace(int8_t delta) {
     return;
   }
   currentFace_->onEnter();
+  drewFrame_ = false;
   requestUpdate();
 }
 
@@ -222,7 +241,7 @@ void StandbyActivity::startTimeSync() {
 
   // Another activity (e.g. Settings → WiFi) may have already connected the
   // device. Skip our own WiFi.begin in that case and request a clock sync.
-  if (WiFi.status() == WL_CONNECTED) {
+  if (HalNetwork::connected()) {
     NetworkStartup::prepare(renderer);
     LOG_DBG("STANDBY", "WiFi already connected, skipping silent attempt");
     beginClockSync();
@@ -428,9 +447,29 @@ void StandbyActivity::processFaceTick(const bool waitForUpdate) {
 
 bool StandbyActivity::tryLightSleep(const uint32_t idleMs) {
 #if CROSSPOINT_EMULATED == 0
+#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_STANDBY_DIAG)
+  static uint32_t lastGateNote = 0;
+  if (uint32_t(millis() - lastGateNote) >= 30000) {
+    lastGateNote = millis();
+    STANDBY_DIAG("gate idle=%lu pic=%u swipe=%u ble=%u rec=%u light=%u sync=%u wifi=%d ready=%u key=%u",
+                 static_cast<unsigned long>(idleMs), currentFace_ && currentFace_->needsPicture(),
+                 SETTINGS.standbySwipeUnlock, bleinput::isRunning(), HalRecorder::active(), Frontlight.isOn(),
+                 syncState_ != SyncState::Idle, static_cast<int>(WiFi.getMode()),
+                 powerManager.canStandbyLightSleep(gpio), HalPowerManager::sideKeyBusy());
+  }
+#endif
   if (mode_ != DisplayMode::Immersive || !currentFace_) return false;
   // Touch does not wake light sleep: stay awake while waiting for a picture to be picked.
   if (currentFace_->needsPicture()) return false;
+#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
+  // Any face must have completed its first paint before any bus/rail park.
+  if (!drewFrame_) return false;
+#endif
+#if FREEINK_DEVICE_METALIO_PLUS
+  // Side-key/timer candidate only. Preserve first-swipe semantics until touch
+  // wake and gesture replay have been independently validated on Plus.
+  if (SETTINGS.standbySwipeUnlock || bleinput::isRunning() || HalRecorder::active() || Frontlight.isOn()) return false;
+#endif
 
   const bool syncActive = syncState_ != SyncState::Idle;
   const bool wifiActive = WiFi.getMode() != WIFI_MODE_NULL;
@@ -444,16 +483,44 @@ bool StandbyActivity::tryLightSleep(const uint32_t idleMs) {
     return false;
   }
 
+#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
+  // A static face sleeps until the power key or auto power-off: the board keeps
+  // its peripherals parked across timer and shared-IRQ wakes (one restore per
+  // standby). millis() keeps counting through light sleep, so the power-off
+  // check in loop() fires on the wake at the deadline. A clock or date face
+  // sleeps only until its next change (one second past it, so the minute or day
+  // has turned), then redraws and parks again.
+  const unsigned long powerOffMs = SETTINGS.getStandbyPowerOffMs();
+  const unsigned long elapsedMs = millis() - enteredMs_;
+  uint32_t seconds =
+      powerOffMs == 0 ? 24u * 60u * 60u
+                      : static_cast<uint32_t>(std::clamp<unsigned long>(
+                            (powerOffMs > elapsedMs ? powerOffMs - elapsedMs : 0) / 1000UL + 1, 1, 24UL * 60UL * 60UL));
+  if (currentFace_->wantsClock()) seconds = std::min(seconds, currentFace_->secondsUntilNextWake() + 1u);
+#else
   const uint32_t seconds = std::clamp<uint32_t>(currentFace_->secondsUntilNextWake(), 1, kMaxLightSleepSeconds);
+#endif
   HalPowerManager::LightSleepWakeReason wakeReason;
   {
     RenderLock lock;
+#if FREEINK_DEVICE_METALIO_PLUS
+    renderer.waitRefreshComplete();
+#endif
     wakeReason = powerManager.lightSleepFor(seconds);
   }
   switch (wakeReason) {
     case HalPowerManager::LightSleepWakeReason::Timer:
       STANDBY_DIAG("wake: timer");
+#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
+      // A picture face draws nothing on a timer wake. A clock face redraws, and
+      // the refresh lands before the next park.
+      if (currentFace_->wantsClock()) {
+        processFaceTick(true);
+        renderer.waitRefreshComplete();
+      }
+#else
       processFaceTick(true);
+#endif
       return true;
     case HalPowerManager::LightSleepWakeReason::PowerButton:
       // A short press, already over before main.cpp's key poll could see it: leave
@@ -466,13 +533,21 @@ bool StandbyActivity::tryLightSleep(const uint32_t idleMs) {
       // Still down: main.cpp finishes it (release = leave Standby, hold = power off).
       STANDBY_DIAG("wake: key still down");
       lastInputMs_ = millis();
+#if !(FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY))
       requestUpdate();
+#endif
       return true;
     case HalPowerManager::LightSleepWakeReason::Failed:
+#if FREEINK_DEVICE_METALIO_PLUS
+      // A shared IRQ, USB, or failed read is not a key. Bound failed attempts
+      // without adding a wake timer or spinning on a persistently asserted IRQ.
+      lastInputMs_ = millis() - (standby_time::kLightSleepIdleMs - 5000u);
+#else
       // Not the key: the PMU's 30 s battery sample or another expander input. Sleep
       // again after a short pause instead of treating it as input (StandbyTime.h).
       STANDBY_DIAG("wake: other, sleep again in %ums", standby_time::kResleepAfterOtherWakeMs);
       lastInputMs_ = millis() - (standby_time::kLightSleepIdleMs - standby_time::kResleepAfterOtherWakeMs);
+#endif
       return true;
   }
 #else
@@ -482,7 +557,14 @@ bool StandbyActivity::tryLightSleep(const uint32_t idleMs) {
 }
 
 void StandbyActivity::loop() {
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  if (SETTINGS.standbySwipeUnlock && mappedInput.wasStandbyUnlockGesture()) {
+    STANDBY_DIAG("close: swipe unlock");
+    finish();
+    return;
+  }
+  // Back includes touch gestures and a header target from the prior page. Neither
+  // may bypass the independent unlock switch; physical Back keeps its preference.
+  if (!mappedInput.wasBackGesture() && mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     // One shortcut switch owns both entry and exit; the side power key stays independent.
     if (SETTINGS.standbyShortcutEnabled) {
       STANDBY_DIAG("close: Back released");
@@ -505,6 +587,7 @@ void StandbyActivity::loop() {
       if (action == StandbyFace::PictureAction::Download &&
           !startActivityForResultWith<RickyWallpaperDownloadActivity>([this](const ActivityResult&) {
             if (currentFace_) currentFace_->onEnter();
+            drewFrame_ = false;
             requestUpdate();
           })) {
         LOG_ERR("STANDBY", "Cannot open the picture downloader");
@@ -529,11 +612,17 @@ void StandbyActivity::loop() {
 
 void StandbyActivity::render(RenderLock&&) {
   if (!currentFace_) return;
+  // A static rest image has no status bar. Global notifications must not resend it
+  // to the glass; picture changes reset drewFrame_, while clock faces keep ticking.
+  if (drewFrame_ && !currentFace_->wantsClock() && !currentFace_->needsPicture()) return;
   {
     int top = 0, right = 0, bottom = 0, left = 0;
     renderer.getOrientedViewableTRBL(&top, &right, &bottom, &left);
     const Rect viewport{left, top, renderer.getScreenWidth() - left - right, renderer.getScreenHeight() - top - bottom};
-    if (currentFace_->renderNative(renderer, viewport)) return;
+    if (currentFace_->renderNative(renderer, viewport)) {
+      drewFrame_ = true;
+      return;
+    }
     renderer.clearScreen();
     {
       const GfxRenderer::ClipScope clip(renderer, viewport.x, viewport.y, viewport.width, viewport.height);
@@ -636,28 +725,16 @@ void StandbyActivity::applyGrayscalePass(const Rect& viewport) {
   renderer.restoreBwBuffer();
 }
 
-// Same flow as Settings → Power & Standby → Choose Standby Image: an image picker
-// in /images, then a preview whose Set action installs /sleep.bmp.
-void StandbyActivity::openPicturePicker(const std::string& folder) {
-  const auto reload = [this](const ActivityResult& result) {
-    // Back from the preview returns to the list it was opened from.
-    const auto* entry = std::get_if<FilePathResult>(&result.data);
-    if (result.isCancelled && entry) {
-      openPicturePicker(FsHelpers::extractFolderPath(entry->path));
-      return;
-    }
-    if (currentFace_) currentFace_->onEnter();
-    lastInputMs_ = millis();
-    requestUpdate();
-  };
-  const bool opened = startActivityForResultWith<FileBrowserActivity>(
-      [this, reload](const ActivityResult& result) {
-        const auto* entry = std::get_if<FilePathResult>(&result.data);
-        if (result.isCancelled || !entry ||
-            !startActivityForResultWith<ImageViewerActivity>(reload, entry->path, true)) {
-          reload(ActivityResult{});
-        }
+// The same gallery as the 屏保 page: thumbnails, then a preview whose Set action
+// installs /sleep.bmp.
+void StandbyActivity::openPicturePicker() {
+  const bool opened = startActivityForResultWith<StandbyGalleryActivity>(
+      [this](const ActivityResult&) {
+        if (currentFace_) currentFace_->onEnter();
+        drewFrame_ = false;
+        lastInputMs_ = millis();
+        requestUpdate();
       },
-      folder, FileBrowserActivity::Mode::PickWallpaper);
-  if (!opened) LOG_ERR("STANDBY", "Cannot open the picture picker");
+      StandbyPictures::Target::Standby);
+  if (!opened) LOG_ERR("STANDBY", "Cannot open the picture gallery");
 }

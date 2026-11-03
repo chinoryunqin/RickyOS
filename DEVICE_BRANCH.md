@@ -1,7 +1,28 @@
-# Device branch: Metalio E-Ink4-Plus
+# Device branch: ordinary Metalio E-Ink 4
 
-本分支 `codex/metalio-e-ink4-plus` 专用于 **Metalio E-Ink4-Plus V1.5 / ESP32-S31 / 4.7 寸并行屏 / FT6336U / 冷暖前光**。
+This branch ports the application features of `codex/plus-1.2.11` (`2973acbb`)
+to the ordinary ESP32-S3 / 800×480 SSD1677 device. Build from this repository root
+after restoring the checked SDK overlay:
 
-开发、构建和接入状态统一从 [ports/metalio-e-ink4-plus](ports/metalio-e-ink4-plus/README.md) 进入。根目录通用工程仅保留来源基线；不要用根部 PlatformIO 构建结果刷这台 Plus。
+```sh
+git submodule update --init freeink-sdk
+python3 scripts/prepare_metalio_sdk.py
+pio run -e rickyos_metalio_eink4
+```
 
-本分支基于已上机的设计来源 `24c05ff7`，保持来源散列与 Plus 适配补丁可核对。后续设计更新需要显式同步并重新验收。
+The SDK stays pinned to `96de1be6ce08eb732909e6e8149af8f892b9a2c5`.
+`patches/metalio-eink4/freeink-sdk.patch` and its digest manifest preserve the
+exact local SDK dependencies used by dev16, including the ordinary board's
+display and peripheral work. The restore script verifies all changed paths,
+is idempotent, and refuses a different SDK revision or conflicting local edits.
+Use `python3 scripts/prepare_metalio_sdk.py --check` to verify an existing checkout.
+The Plus source snapshot under `ports/`
+is retained as verified input; its ESP32-S31 IDF project must not be flashed to
+the ordinary device. See `docs/metalio-eink4-plus-features-20261029.md`.
+
+Current tested version: `1.2.11-metalio-dev16`. The user accepted the native
+layout and reported substantially reduced tab black flashes with a clean image
+on 2026-11-03. Five changed UI updates are followed by a cleanup. This is scoped
+tab appearance acceptance; camera, extended retention and the full hardware
+regression remain incomplete. Build/host/runtime evidence and limitations are
+recorded in `docs/metalio-eink4-ui-gray-20261029.md`.

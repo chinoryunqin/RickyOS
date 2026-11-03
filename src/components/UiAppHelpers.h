@@ -3,6 +3,7 @@
 #include <FreeInkUIGfxRenderer.h>
 #include <FreeInkUIIcon.h>
 #include <I18n.h>
+#include "icons/rickyAppIcons.h"
 
 #include <atomic>
 
@@ -90,6 +91,7 @@ inline RickyUiTarget makeUiTarget(const GfxRenderer& renderer, bool upstreamStyl
 // the legacy drawIcon assets use a different bit layout). Two crisp sizes:
 // 24 for single-line rows, 32 for label+subtitle rows.
 inline freeink::ui::BitmapRef listIconFor(const UIIcon icon, const int size = 24) {
+  if (icon == UIIcon::Recorder) return {ricky_app_recorder_40, 40, 40, freeink::ui::BitmapFormat::Mask1, true};
   if (UiHighDpiProfile::enabled) {
     switch (icon) {
       case UIIcon::Settings:

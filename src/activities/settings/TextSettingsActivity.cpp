@@ -33,18 +33,18 @@ namespace {
 // Tab labels for Font | Size | Layout | Style.
 constexpr StrId TAB_NAME_IDS[] = {StrId::STR_FONT, StrId::STR_SIZE, StrId::STR_LAYOUT, StrId::STR_STYLE};
 
-constexpr StrId LAYOUT_ROW_NAME_IDS[] = {StrId::STR_LINE_SPACING,      StrId::STR_WORD_SPACING,
+// The four margins lead: they are what a reading background makes readers adjust.
+constexpr StrId LAYOUT_ROW_NAME_IDS[] = {StrId::STR_MARGIN_TOP,        StrId::STR_MARGIN_BOTTOM,
+                                         StrId::STR_MARGIN_LEFT,       StrId::STR_MARGIN_RIGHT,
+                                         StrId::STR_LINE_SPACING,      StrId::STR_WORD_SPACING,
                                          StrId::STR_CHARACTER_SPACING, StrId::STR_EXTRA_SPACING,
                                          StrId::STR_FIRST_LINE_INDENT, StrId::STR_PARAGRAPH_INDENTATION,
-                                         StrId::STR_ALIGNMENT,         StrId::STR_SCREEN_MARGIN};
-constexpr StrId STYLE_ROW_NAME_IDS[] = {StrId::STR_FOCUS_READING,
-                                        StrId::STR_READING_GUIDE_LINE,
-                                        StrId::STR_READING_GUIDE_LINE_STYLE,
-                                        StrId::STR_READING_GUIDE_LINE_OFFSET,
-                                        StrId::STR_HYPHENATION,
-                                        StrId::STR_EMBEDDED_STYLE,
-                                        StrId::STR_FAKE_BOLD,
-                                        StrId::STR_TEXT_AA};
+                                         StrId::STR_ALIGNMENT};
+constexpr StrId STYLE_ROW_NAME_IDS[] = {StrId::STR_RICKY_WEIGHT,    StrId::STR_FAKE_BOLD,
+                                        StrId::STR_FOCUS_READING,   StrId::STR_HYPHENATION,
+                                        StrId::STR_EMBEDDED_STYLE,  StrId::STR_TEXT_AA,
+                                        StrId::STR_READING_GUIDE_LINE_OFFSET};
+static_assert(std::size(STYLE_ROW_NAME_IDS) == 7, "a label per TextSettingsActivity::StyleRow");
 
 constexpr StrId LINE_SPACING_IDS[] = {StrId::STR_TIGHT, StrId::STR_NORMAL, StrId::STR_WIDE, StrId::STR_EXTRA_WIDE};
 constexpr StrId FIRST_LINE_INDENT_IDS[] = {StrId::STR_FIRST_LINE_INDENT_AUTO, StrId::STR_FIRST_LINE_INDENT_INDENT,
@@ -56,6 +56,12 @@ constexpr StrId EXTRA_SPACING_IDS[] = {StrId::STR_EXTRA_SPACING_OFF,  StrId::STR
 constexpr StrId SYNTHETIC_BOLD_IDS[] = {StrId::STR_STATE_OFF, StrId::STR_FAKE_BOLD_LIGHT, StrId::STR_FAKE_BOLD_STANDARD,
                                         StrId::STR_FAKE_BOLD_HEAVY};
 static_assert(std::size(SYNTHETIC_BOLD_IDS) == CrossPointSettings::SYNTHETIC_BOLD_COUNT);
+// Body-text weight (the reader's coverage curve); the middle step is the font as drawn.
+// Read Pico reaches text settings only through this page, so 字重 lives here too.
+constexpr StrId TEXT_WEIGHT_IDS[] = {StrId::STR_RICKY_WEIGHT_THINNEST, StrId::STR_RICKY_WEIGHT_THIN,
+                                     StrId::STR_FAKE_BOLD_STANDARD, StrId::STR_RICKY_WEIGHT_BOLD,
+                                     StrId::STR_RICKY_WEIGHT_BOLDEST};
+static_assert(std::size(TEXT_WEIGHT_IDS) == CrossPointSettings::RICKY_TEXT_WEIGHT_COUNT);
 int findCurrentFontIndex(const SdCardFontRegistry* registry, const char* sdFontFamilyName, uint8_t fontFamily) {
   if (sdFontFamilyName[0] != '\0' && registry) {
     const auto& families = registry->getFamilies();
@@ -79,11 +85,18 @@ constexpr StrId CHARACTER_SPACING_IDS[] = {StrId::STR_SPACING_MINUS_2, StrId::ST
                                            StrId::STR_SPACING_PLUS_2};
 constexpr StrId ALIGNMENT_IDS[] = {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId::STR_CENTER, StrId::STR_ALIGN_RIGHT,
                                    StrId::STR_BOOK_S_STYLE};
-constexpr StrId GUIDE_LINE_STYLE_IDS[] = {StrId::STR_SOLID_LINE, StrId::STR_SHORT_DASH,  StrId::STR_MEDIUM_DASH,
-                                          StrId::STR_LONG_DASH,  StrId::STR_DOTTED_LINE, StrId::STR_WAVY_LINE};
-constexpr int MARGIN_MIN = CrossPointSettings::SCREEN_MARGIN_MIN;
-constexpr int MARGIN_MAX = CrossPointSettings::SCREEN_MARGIN_MAX;
-constexpr int MARGIN_STEP = CrossPointSettings::SCREEN_MARGIN_STEP;
+constexpr int MARGIN_MIN = CrossPointSettings::READER_MARGIN_MIN;
+constexpr int MARGIN_MAX = CrossPointSettings::READER_MARGIN_MAX;
+constexpr int MARGIN_STEP = CrossPointSettings::READER_MARGIN_STEP;
+uint8_t* marginField(const int row) {
+  switch (row) {
+    case 0: return &SETTINGS.marginTop;
+    case 1: return &SETTINGS.marginBottom;
+    case 2: return &SETTINGS.marginLeft;
+    case 3: return &SETTINGS.marginRight;
+    default: return nullptr;
+  }
+}
 constexpr StrId OK_OPTION[] = {StrId::STR_OK_BUTTON};
 constexpr int WORD_SPACING_MIN = CrossPointSettings::WORD_SPACING_MIN;
 constexpr int WORD_SPACING_MAX = CrossPointSettings::WORD_SPACING_MAX;
@@ -333,6 +346,11 @@ void TextSettingsActivity::buildScreen(UiScreen& screen) {
       case Tab::Layout:
         rowValues_[i] = layoutValueText(i);
         break;
+      case Tab::Style:
+        // Choice rows (字重, 加粗, line style, offset) show their setting; toggles show a
+        // checkbox below instead.
+        rowValues_[i] = styleValueText(i);
+        break;
       default:
         break;
     }
@@ -342,9 +360,6 @@ void TextSettingsActivity::buildScreen(UiScreen& screen) {
       switch (styleRowAt(i)) {
         case StyleRow::FocusReading:
           GUI.setCheckboxRow(rowItems_[i], SETTINGS.focusReadingEnabled);
-          break;
-        case StyleRow::ReadingGuideLine:
-          GUI.setCheckboxRow(rowItems_[i], SETTINGS.readingGuideLineEnabled);
           break;
         case StyleRow::Hyphenation:
           GUI.setCheckboxRow(rowItems_[i], SETTINGS.hyphenationEnabled);
@@ -385,8 +400,7 @@ const char* TextSettingsActivity::confirmLabelText() const {
     case Tab::Style:
       if (ringPos() > 0) {
         const StyleRow row = styleRowAt(ringPos() - 1);
-        if (row == StyleRow::ReadingGuideLineStyle || row == StyleRow::ReadingGuideLineOffset ||
-            row == StyleRow::FakeBold) {
+        if (row == StyleRow::ReadingGuideLineOffset || row == StyleRow::TextWeight || row == StyleRow::FakeBold) {
           return tr(STR_SELECT);
         }
       }
@@ -587,13 +601,17 @@ void TextSettingsActivity::confirmLayoutRow(int row) {
                         });
       requestUpdate();
       break;
-    case LayoutRow::ScreenMargin: {
+    case LayoutRow::MarginTop:
+    case LayoutRow::MarginBottom:
+    case LayoutRow::MarginLeft:
+    case LayoutRow::MarginRight: {
+      uint8_t* field = marginField(row);
       std::vector<std::string> options;
       options.reserve((MARGIN_MAX - MARGIN_MIN) / MARGIN_STEP + 1);
       for (int m = MARGIN_MIN; m <= MARGIN_MAX; m += MARGIN_STEP) options.push_back(std::to_string(m));
-      const int cur = (std::clamp<int>(SETTINGS.screenMargin, MARGIN_MIN, MARGIN_MAX) - MARGIN_MIN) / MARGIN_STEP;
-      optionPopup_.show(StrId::STR_SCREEN_MARGIN, options, cur, [](int idx) {
-        SETTINGS.screenMargin = static_cast<uint8_t>(MARGIN_MIN + idx * MARGIN_STEP);
+      const int cur = (std::clamp<int>(*field, MARGIN_MIN, MARGIN_MAX) - MARGIN_MIN) / MARGIN_STEP;
+      optionPopup_.show(LAYOUT_ROW_NAME_IDS[row], options, cur, [field](int idx) {
+        *field = static_cast<uint8_t>(MARGIN_MIN + idx * MARGIN_STEP);
         SETTINGS.saveToFile();
       });
       requestUpdate();
@@ -633,8 +651,11 @@ std::string TextSettingsActivity::layoutValueText(int row) const {
       return v < std::size(CHARACTER_SPACING_IDS) ? I18N.get(CHARACTER_SPACING_IDS[v])
                                                   : I18N.get(StrId::STR_SPACING_ZERO);
     }
-    case LayoutRow::ScreenMargin:
-      return std::to_string(SETTINGS.screenMargin);
+    case LayoutRow::MarginTop:
+    case LayoutRow::MarginBottom:
+    case LayoutRow::MarginLeft:
+    case LayoutRow::MarginRight:
+      return std::to_string(*marginField(row));
 
     default:
       return "";
@@ -646,19 +667,6 @@ void TextSettingsActivity::confirmStyleRow(int row) {
     case StyleRow::FocusReading:
       SETTINGS.focusReadingEnabled = !SETTINGS.focusReadingEnabled;
       break;
-    case StyleRow::ReadingGuideLine:
-      SETTINGS.readingGuideLineEnabled = !SETTINGS.readingGuideLineEnabled;
-      rebuildRowItems();
-      activeNav().selected = std::min<int>(activeNav().selected, listCount());
-      break;
-    case StyleRow::ReadingGuideLineStyle:
-      optionPopup_.show(StrId::STR_READING_GUIDE_LINE_STYLE, GUIDE_LINE_STYLE_IDS,
-                        static_cast<int>(std::size(GUIDE_LINE_STYLE_IDS)), SETTINGS.readingGuideLineStyle, [](int idx) {
-                          SETTINGS.readingGuideLineStyle = static_cast<uint8_t>(idx);
-                          SETTINGS.saveToFile();
-                        });
-      requestUpdate();
-      return;
     case StyleRow::ReadingGuideLineOffset:
       startActivityForResultWith<IntervalSelectionActivity>(
           [this](const ActivityResult& result) {
@@ -681,6 +689,14 @@ void TextSettingsActivity::confirmStyleRow(int row) {
     case StyleRow::EmbeddedStyle:
       SETTINGS.embeddedStyle = !SETTINGS.embeddedStyle;
       break;
+    case StyleRow::TextWeight:
+      optionPopup_.show(StrId::STR_RICKY_WEIGHT, TEXT_WEIGHT_IDS, static_cast<int>(std::size(TEXT_WEIGHT_IDS)),
+                        SETTINGS.rickyTextWeight % std::size(TEXT_WEIGHT_IDS), [](int idx) {
+                          SETTINGS.rickyTextWeight = static_cast<uint8_t>(idx);
+                          SETTINGS.saveToFile();
+                        });
+      requestUpdate();
+      return;
     case StyleRow::FakeBold:
       optionPopup_.show(StrId::STR_FAKE_BOLD, SYNTHETIC_BOLD_IDS, static_cast<int>(std::size(SYNTHETIC_BOLD_IDS)),
                         SETTINGS.fakeBold, [](int idx) {
@@ -704,19 +720,14 @@ std::string TextSettingsActivity::styleValueText(int row) const {
   switch (styleRowAt(row)) {
     case StyleRow::FocusReading:
       return SETTINGS.focusReadingEnabled ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
-    case StyleRow::ReadingGuideLine:
-      return SETTINGS.readingGuideLineEnabled ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
-    case StyleRow::ReadingGuideLineStyle: {
-      const uint8_t style = SETTINGS.readingGuideLineStyle;
-      return style < std::size(GUIDE_LINE_STYLE_IDS) ? I18N.get(GUIDE_LINE_STYLE_IDS[style])
-                                                     : I18N.get(StrId::STR_SHORT_DASH);
-    }
     case StyleRow::ReadingGuideLineOffset:
       return std::to_string(SETTINGS.readingGuideLineOffset);
     case StyleRow::Hyphenation:
       return SETTINGS.hyphenationEnabled ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
     case StyleRow::EmbeddedStyle:
       return SETTINGS.embeddedStyle ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
+    case StyleRow::TextWeight:
+      return I18N.get(TEXT_WEIGHT_IDS[SETTINGS.rickyTextWeight % std::size(TEXT_WEIGHT_IDS)]);
     case StyleRow::FakeBold: {
       const uint8_t value = SETTINGS.fakeBold;
       return value < std::size(SYNTHETIC_BOLD_IDS) ? I18N.get(SYNTHETIC_BOLD_IDS[value]) : tr(STR_STATE_OFF);
@@ -780,13 +791,16 @@ SdCardFontCache::Result TextSettingsActivity::preloadFont(const SdCardFontFileIn
   {
     RenderLock lock(*this);
     preloadFamilyName_ = familyName;
-    preloadPointSize_ = file.pointSize;
+    // Vector files are size-free (pointSize 0); show the reader size being set up.
+    preloadPointSize_ = file.pointSize != 0 ? file.pointSize : SETTINGS.fontPointSize;
     preloadVerifying_ = false;
     preloadCompleted_.store(0);
     preloadTotal_.store(1);
     lastPreloadPercent_ = 0;
     fontLoadState_.store(FontLoadState::Preloading);
-    sdFontSystem.releaseLoadedFont(renderer);
+    // Nothing may read the flash font cache while it is rewritten (a vector font may be
+    // streaming from it).
+    sdFontSystem.releaseLoadedFont(renderer, /*includeVector=*/true);
   }
   requestUpdateAndWait();
 
@@ -868,15 +882,20 @@ void TextSettingsActivity::exitAfterFinalFont(const ExitDestination destination)
 void TextSettingsActivity::finishFinalFont(const bool accepted) {
   SETTINGS.sdFontFlashPreload = 0;
   SETTINGS.saveToFile();
-  const auto* family = registry_ ? registry_->findFamily(SETTINGS.sdFontFamilyName) : nullptr;
-  if (family && family->vector) {
-    completeExit();
-    return;
-  }
+  // Vector (TTF/OTF) families are accelerated too: their regular file goes into the
+  // flash font cache, and FreeType reads outlines from flash instead of the SD card.
+  // fontFileForFamily() returns that regular file for them (size-free, style 0).
   const auto* file = fontFileForFamily(currentFamilyIndex_, SETTINGS.fontPointSize);
   const auto check = file ? SdCardFontCache::preflight(file->path.c_str()) : SdCardFontCache::Result::InvalidFont;
+  LOG_INF("FSET", "Font acceleration check %s: %s", file ? file->path.c_str() : "-", SdCardFontCache::resultName(check));
   if (check == SdCardFontCache::Result::TooLarge) {
-    LOG_DBG("FSET", "Font exceeds cache capacity; keeping SD backend");
+    // A .cpfont over the cache is rare and leaves quietly. Vector fonts are routinely
+    // larger (CJK TTF/OTF: 8-25 MB): say why the expected acceleration did not happen.
+    const auto* family = registry_ ? registry_->findFamily(SETTINGS.sdFontFamilyName) : nullptr;
+    if (family && family->vector) {
+      showPreloadFailure(check);
+      return;
+    }
     completeExit();
     return;
   }
@@ -910,7 +929,7 @@ void TextSettingsActivity::finishFinalFont(const bool accepted) {
     RenderLock lock(*this);
     fontLoadState_.store(FontLoadState::Idle);
     // ensureLoaded's same-family/size fast path otherwise retains the SD source.
-    if (succeeded) sdFontSystem.releaseLoadedFont(renderer);
+    if (succeeded) sdFontSystem.releaseLoadedFont(renderer, /*includeVector=*/true);
     sdFontSystem.ensureLoaded(renderer, succeeded);
   }
   if (succeeded) {
@@ -977,10 +996,8 @@ void TextSettingsActivity::maybeOfferCompleteChineseFont() {
 }
 
 TextSettingsActivity::StyleRow TextSettingsActivity::styleRowAt(int visibleIndex) const {
+  // The only conditional row is last, so visible rows map straight onto StyleRow.
   if (visibleIndex < 0 || visibleIndex >= styleRowCount()) return StyleRow::Count;
-  if (!SETTINGS.readingGuideLineEnabled && visibleIndex >= static_cast<int>(StyleRow::ReadingGuideLineStyle)) {
-    visibleIndex += HIDDEN_GUIDE_ROW_COUNT;
-  }
   return static_cast<StyleRow>(visibleIndex);
 }
 

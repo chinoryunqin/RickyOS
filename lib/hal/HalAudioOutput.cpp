@@ -1,5 +1,23 @@
 #include "HalAudioOutput.h"
 
+#include <BoardConfig.h>
+#if FREEINK_DEVICE_METALIO_PLUS
+#include <PlusAudio.h>
+namespace HalAudioOutput {
+bool present() { return true; }
+bool preview(uint8_t volume) { return plus_audio::preview(volume); }
+bool playPcm(ReadCallback read, SeekCallback, uint32_t rate, uint8_t channels, uint8_t volume) {
+  return plus_audio::play(read, rate, channels, volume);
+}
+bool restart(uint8_t) { return false; }
+void setVolume(uint8_t volume) { plus_audio::setVolume(volume); }
+void shutdown() { plus_audio::shutdown(); }
+}
+#else
+namespace HalAudioOutput {
+bool present() { return false; }
+bool preview(uint8_t) { return false; }
+}
 #if CROSSPOINT_CAP_SOUND_FEEDBACK
 
 #include <AudioManager.h>
@@ -66,5 +84,14 @@ void shutdown() {
 }
 
 }  // namespace HalAudioOutput
+
+#else
+namespace HalAudioOutput {
+bool playPcm(ReadCallback, SeekCallback, uint32_t, uint8_t, uint8_t) { return false; }
+bool restart(uint8_t) { return false; }
+void setVolume(uint8_t) {}
+void shutdown() {}
+}  // namespace HalAudioOutput
+#endif
 
 #endif

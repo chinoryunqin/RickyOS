@@ -53,3 +53,6 @@ weread_apikey*.bin
 sdkconfig.sticky
 sdkconfig.x4pro
 flake.*
+
+# Derived from builtin font sources by scripts/compress_metalio_fonts.py.
+/generated/fonts/

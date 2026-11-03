@@ -606,10 +606,11 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(HalFile& jpegFile, Print& b
 
   constexpr int MAX_IMAGE_WIDTH = 2048;
   constexpr int MAX_IMAGE_HEIGHT = 3072;
-
-  if (srcWidth <= 0 || srcHeight <= 0 || srcWidth > MAX_IMAGE_WIDTH || srcHeight > MAX_IMAGE_HEIGHT) {
-    LOG_DBG("JPG", "Image too large or invalid (%dx%d), max supported: %dx%d", srcWidth, srcHeight, MAX_IMAGE_WIDTH,
-            MAX_IMAGE_HEIGHT);
+  // The limit applies to what the decoder produces, not to the file: a phone
+  // photo (4032x3024) decoded at 1/2 or 1/4 fits it. Larger than 8x the limit
+  // cannot be brought down by the decoder's own scaling.
+  if (srcWidth <= 0 || srcHeight <= 0 || srcWidth > MAX_IMAGE_WIDTH * 8 || srcHeight > MAX_IMAGE_HEIGHT * 8) {
+    LOG_DBG("JPG", "Image too large or invalid (%dx%d)", srcWidth, srcHeight);
     return false;
   }
 
@@ -656,6 +657,11 @@ bool JpegToBmpConverter::jpegFileToBmpStreamInternal(HalFile& jpegFile, Print& b
   const int scaleSrcHeight = (srcHeight + scaleDenominator - 1) / scaleDenominator;
   LOG_DBG("JPG", "JPEG decoder scale: 1/%d (%dx%d -> %dx%d), output=%dx%d", scaleDenominator, srcWidth, srcHeight,
           scaleSrcWidth, scaleSrcHeight, outWidth, outHeight);
+  if (scaleSrcWidth > MAX_IMAGE_WIDTH || scaleSrcHeight > MAX_IMAGE_HEIGHT) {
+    LOG_DBG("JPG", "Image too large (%dx%d decodes to %dx%d), max supported: %dx%d", srcWidth, srcHeight,
+            scaleSrcWidth, scaleSrcHeight, MAX_IMAGE_WIDTH, MAX_IMAGE_HEIGHT);
+    return false;
+  }
 
   if (scaleSrcWidth != outWidth || scaleSrcHeight != outHeight) {
     scaleX_fp = (static_cast<uint32_t>(scaleSrcWidth) << 16) / outWidth;
@@ -796,6 +802,11 @@ bool JpegToBmpConverter::jpegFileToBmpStream(HalFile& jpegFile, Print& bmpOut, b
   return jpegFileToBmpStream(jpegFile, bmpOut, crop, Output::Gray2, originalThresholds);
 }
 
+bool JpegToBmpConverter::jpegFileToCoverBmpStream(HalFile& jpegFile, Print& bmpOut, bool crop,
+                                                  bool originalThresholds) {
+  return jpegFileToBmpStream(jpegFile, bmpOut, crop, grayCovers() ? Output::Gray8 : Output::Gray2, originalThresholds);
+}
+
 // Convert with custom target size (for thumbnails, 2-bit)
 bool JpegToBmpConverter::jpegFileToBmpStreamWithSize(HalFile& jpegFile, Print& bmpOut, int targetMaxWidth,
                                                      int targetMaxHeight, bool crop) {
@@ -806,4 +817,13 @@ bool JpegToBmpConverter::jpegFileToBmpStreamWithSize(HalFile& jpegFile, Print& b
 bool JpegToBmpConverter::jpegFileTo1BitBmpStreamWithSize(HalFile& jpegFile, Print& bmpOut, int targetMaxWidth,
                                                          int targetMaxHeight) {
   return jpegFileToBmpStreamInternal(jpegFile, bmpOut, targetMaxWidth, targetMaxHeight, Output::Mono1, true);
+}
+
+bool JpegToBmpConverter::jpegFileToThumbBmpStreamWithSize(HalFile& jpegFile, Print& bmpOut, int targetMaxWidth,
+                                                          int targetMaxHeight) {
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4 || defined(SIMULATOR_DEVICE_READPICO)
+  return jpegFileToBmpStreamInternal(jpegFile, bmpOut, targetMaxWidth, targetMaxHeight, Output::Gray8, true);
+#else
+  return jpegFileTo1BitBmpStreamWithSize(jpegFile, bmpOut, targetMaxWidth, targetMaxHeight);
+#endif
 }

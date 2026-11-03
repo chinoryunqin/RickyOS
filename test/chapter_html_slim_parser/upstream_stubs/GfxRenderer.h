@@ -11,6 +11,8 @@ namespace BidiUtils {
 enum class BidiBaseDir : signed char { AUTO = -1, LTR = 0, RTL = 1 };
 }
 
+enum Color : uint8_t { Clear = 0x00, White = 0x01, LightGray = 0x05, DarkGray = 0x0A, Black = 0x10 };
+
 class GfxRenderer {
  public:
   FontCacheManager fontCache;
@@ -21,7 +23,22 @@ class GfxRenderer {
     return left == 0 || left == ' ' || right == ' ' ? 0 : tracking;
   }
   bool isFontCacheScanning() const { return false; }
+  // Text tone for a run (book color); the fixture draws nothing, so it only has to exist.
+  class TextInkScope {
+   public:
+    TextInkScope(const GfxRenderer&, uint8_t) {}
+  };
+  // Vertical text turns runs by switching the orientation around a draw.
+  enum Orientation { Portrait, LandscapeClockwise, PortraitInverted, LandscapeCounterClockwise };
+  Orientation orientation = Portrait;
+  Orientation getOrientation() const { return orientation; }
+  void setOrientation(const Orientation o) { orientation = o; }
   void drawLine(int, int, int, int, int, bool) const {}
+  // Parser fixtures inspect layout, not raster output. Match the panel drawing
+  // API so the real Page implementation remains linked by this test target.
+  bool isGrayscale16Active() const { return false; }
+  void fillRoundedRect(int, int, int, int, int, Color) const {}
+  void drawRoundedRect(int, int, int, int, int, int, bool) const {}
   void drawText(int, int, int, const char*, bool, EpdFontFamily::Style,
                 BidiUtils::BidiBaseDir = BidiUtils::BidiBaseDir::AUTO, int8_t = 0) const {}
   int getTextWidth(int font, const char* text, EpdFontFamily::Style style,

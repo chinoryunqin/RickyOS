@@ -9,6 +9,12 @@ Runtime readers additionally cap resource paths at 4096 bytes and human-readable
 text at 16384 bytes. A length that exceeds its field's cap or the remaining file
 bytes invalidates the cache; the output value is left unchanged.
 
+Ordinary Metalio UI gray thumbnails (2026-10-29): `thumb_g8_<height>.bmp`
+stores an 8-bit grayscale BMP source. Older dithered `thumb_<height>.bmp`
+files are left intact and are no longer selected on this target. Quantization to
+the calibrated four physical tones happens at display time. This filename
+revision does not alter `book.bin`, reading progress, or section cache layouts.
+
 ## `book.bin`
 
 ### Version 11

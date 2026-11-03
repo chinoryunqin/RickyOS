@@ -89,10 +89,21 @@ void ReaderActivity::rememberBookOnceRendered() {
 void ReaderActivity::onExit() {
   Activity::onExit();
 
+#if !defined(BOARD_HAS_PSRAM) || FREEINK_DEVICE_METALIO_PLUS
   // Keep rebuildable font buffers from pinning the heap between reading sessions.
   if (auto* fontCache = renderer.getFontCacheManager()) {
     fontCache->releaseSdFontCaches();
   }
+#if FREEINK_DEVICE_METALIO_PLUS && CROSSPOINT_VECTOR_FONTS
+  // The next reading session can warm the released glyph arena again. Keep
+  // selected faces and their shared sources valid for UI missing-glyph fallback.
+  sdFontSystem.resetReaderWarmup();
+#endif
+#else
+  // With PSRAM the glyph arenas live there, and the memory manager's font sinks still
+  // shed them under pressure. Releasing them here made every reopened book rasterize
+  // each glyph again (FreeType from the SD card: seconds per page on device).
+#endif
 
   LOG_INF("MEM", "reader exit: free=%u max_block=%u", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
 

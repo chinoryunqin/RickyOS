@@ -90,7 +90,7 @@ async function updateStatus() {
     if (notice.textContent === '重新打开“RickyOS 浏览器预览.command”后刷新本页。') notice.textContent = '';
     document.querySelector('#status').textContent = data.building ? '正在更新预览…' : data.alive ? '模拟器运行中' : '模拟器已停止';
     document.querySelector('#status-dot').classList.toggle('live', data.alive);
-    document.querySelector('#activity').textContent = inputReady ? '684 × 1216 · 原生固件渲染' : '正在启动';
+    document.querySelector('#activity').textContent = inputReady ? `${nativeWidth} × ${nativeHeight} · 原生固件渲染` : '正在启动';
     document.querySelector('#build-time').textContent = '模拟器编译：' + data.binary_updated;
     document.querySelector('#rebuild').disabled = data.building;
     document.querySelector('#restart').disabled = data.building;

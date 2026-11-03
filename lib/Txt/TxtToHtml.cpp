@@ -81,12 +81,15 @@ bool TxtToHtml::stream(std::string_view filename, void* readerCtx, int (*readFn)
     }
   };
 
-  writeStr("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
-  writeStr(cacheVersionTag(filename));
-  writeStr("\n<!DOCTYPE html>\n<html>\n<head><title>");
   const std::string title = FsHelpers::getFileNameWithoutExtension(filename);
-  for (const char c : title) escaped(static_cast<uint8_t>(c));
-  writeStr("</title></head>\n<body>\n");
+  const auto writeHead = [&] {
+    writeStr("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
+    writeStr(cacheVersionTag(filename));
+    writeStr("\n<!DOCTYPE html>\n<html>\n<head><title>");
+    for (const char c : title) escaped(static_cast<uint8_t>(c));
+    writeStr("</title></head>\n<body>\n");
+  };
+  writeHead();
 
   size_t inputPos = 0;
   int inputSize = 0;
@@ -118,6 +121,24 @@ bool TxtToHtml::stream(std::string_view filename, void* readerCtx, int (*readFn)
   };
   const auto map = [&](const uint32_t pos, const uint8_t width, const uint8_t step) {
     if (options.map && !options.map(options.context, pos, visible, width, step)) outputOk = false;
+  };
+  // Close this document and open the next at `at`. The global visible count carries on;
+  // the new document's own count restarts with its body newline (see beginPart).
+  const auto startPart = [&](const uint32_t at) {
+    writeStr("\n</body>\n</html>\n");
+    flushOut();
+    if (!outputOk) return;
+    if (!options.beginPart(options.context, at, visible)) {
+      outputOk = false;
+      return;
+    }
+    writeHead();
+  };
+  const auto maySplit = [&](const bool chapter, const uint32_t at) {
+#ifdef RICKYOS_PRODUCT
+    if (markdown) return;
+#endif
+    if (options.splitHere && options.beginPart && options.splitHere(options.context, chapter, outPos)) startPart(at);
   };
 #ifdef RICKYOS_PRODUCT
   struct MarkdownContext {
@@ -228,6 +249,8 @@ bool TxtToHtml::stream(std::string_view filename, void* readerCtx, int (*readFn)
       if (markdown) formatter.beforeChapterAnchor();
 #endif
       finishSpaces(true);
+      maySplit(true, begin);
+      if (!outputOk) break;
       char anchor[48];
       snprintf(anchor, sizeof(anchor), "<div id=\"txt-%u\"></div>", static_cast<unsigned>(begin));
       writeStr(anchor);
@@ -256,6 +279,7 @@ bool TxtToHtml::stream(std::string_view filename, void* readerCtx, int (*readFn)
       map(begin, width, 0);
       writeStr("<br />");
       atLineStart = true;
+      maySplit(false, source);
       continue;
     }
     if (first == ' ' && !atLineStart) {
@@ -286,8 +310,7 @@ bool TxtToHtml::stream(std::string_view filename, void* readerCtx, int (*readFn)
     if (options.error)
       *options.error = readError ? (ioReadError ? txt_encoding::ReadError::Io : txt_encoding::ReadError::InvalidData)
                                  : txt_encoding::ReadError::Io;
-    LOG_ERR("TXT", "Failed TXT/MD conversion (input, index or output): %.*s", static_cast<int>(filename.size()),
-            filename.data());
+    LOG_ERR("TXT", "TXT/MD conversion failed: %.*s", static_cast<int>(filename.size()), filename.data());
     return false;
   }
   writeStr("\n</body>\n</html>\n");

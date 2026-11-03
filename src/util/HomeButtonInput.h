@@ -15,6 +15,9 @@ enum class HomeButtonAction : uint8_t {
   Dictionary,
   ReaderMenu,
   ToggleFrontlight,
+  Back,
+  Standby,
+  HoldingHand,  // switch the page-turn hand (the reader menu's 惯用手)
   Count
 };
 

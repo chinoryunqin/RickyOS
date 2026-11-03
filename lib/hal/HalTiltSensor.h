@@ -12,6 +12,11 @@ namespace CrossPointTiltPageTurn {
 enum Value : uint8_t { TILT_OFF = 0, TILT_NORMAL = 1, TILT_INVERTED = 2 };
 }
 
+// Knock twice on the back to turn the page (SC7A20H click detector).
+namespace CrossPointBackTap {
+enum Value : uint8_t { TAP_OFF = 0, TAP_NEXT = 1, TAP_PREVIOUS = 2 };
+}
+
 class HalTiltSensor;
 extern HalTiltSensor halTiltSensor;  // Singleton
 
@@ -47,6 +52,36 @@ class HalTiltSensor {
 
   mutable unsigned long _lastPollMs = 0;
 
+  // Back double tap: the IMU's own detector, polled with the tilt. A finger on the
+  // screen shakes the same axis, so taps shortly after a touch are dropped.
+  static constexpr unsigned long TAP_POLL_INTERVAL_MS = 60;
+  static constexpr unsigned long TAP_AFTER_TOUCH_MS = 600;
+  static constexpr unsigned long TAP_COOLDOWN_MS = 500;
+  uint8_t _tapMode = CrossPointBackTap::TAP_OFF;
+  uint8_t _tapSensitivity = 1;
+  bool _tapOn = false;  // detector running in the IMU
+  bool _tapNextEvent = false;
+  bool _tapPrevEvent = false;
+  unsigned long _touchMs = 0;
+  unsigned long _lastTapMs = 0;
+  unsigned long _lastTapPollMs = 0;
+  // Software detector over the 200 Hz FIFO samples of the axis through the screen: a
+  // slow baseline removes gravity, a knock is a short spike above the threshold, and two
+  // knocks 40..500 ms apart are a double tap. Times count samples (200 Hz: 5 ms each).
+  // Bench (Plus, knuckle on the back): first knocks 0.7..1.3 g, second ones often only
+  // 0.2..0.3 g, many lasting 35..95 ms; nothing at rest above 0.13 g.
+  static constexpr float TAP_THRESHOLDS_G[3] = {0.35f, 0.20f, 0.13f};  // firm, medium, light
+  static constexpr uint32_t TAP_MAX_SAMPLES = 20;                      // a knock ends within 100 ms
+  static constexpr uint32_t TAP_GAP_MIN = 8, TAP_GAP_MAX = 100;       // 40..500 ms between knocks
+  float _tapBase = 0.0f;
+  bool _tapBaseValid = false;
+  bool _tapSpike = false;
+  float _tapSpikePeak = 0.0f;
+  uint32_t _tapSample = 0, _tapSpikeStart = 0, _lastKnock = 0;
+  void syncTap(bool wanted);
+  void pollTaps(unsigned long now);
+  void onDoubleTap(unsigned long now, const char* how);
+
   // Set when the active IMU is an accelerometer with no gyroscope, so the tilt axis is
   // differentiated from gravity instead of read as an angular rate.
   bool _accelOnly = false;
@@ -72,8 +107,16 @@ class HalTiltSensor {
   // True if an IMU is present on this device
   bool isAvailable() const { return _available; }
 
-  // Poll the accelerometer and update tilt gesture state.
-  void update(const uint8_t mode, const uint8_t orientation, const bool inReader);
+  // Poll the accelerometer and update tilt and back-tap gesture state.
+  void update(const uint8_t mode, const uint8_t orientation, const bool inReader,
+              const uint8_t tapMode = CrossPointBackTap::TAP_OFF, const uint8_t tapSensitivity = 1);
+
+  // The screen was touched: hold back-tap detection for a moment (see TAP_AFTER_TOUCH_MS).
+  void noteTouch() { _touchMs = millis(); }
+
+  // Consumed once per back double tap, by the page direction it was set to.
+  bool wasBackTappedNext();
+  bool wasBackTappedPrevious();
 
   // Returns true once per tilt-forward gesture (next page direction).
   // Consumed on read — subsequent calls return false until next gesture.

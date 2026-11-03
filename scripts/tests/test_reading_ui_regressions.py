@@ -309,6 +309,7 @@ int main() {
 enum { eIncrement };
 void xTaskNotify(int,int,int) {}
 struct { void clearTouchTapEvent() {} } gpio;
+namespace BoardConfig { inline bool homeKey = false; inline bool hasHomeKey() { return homeKey; } }
 struct RenderLock {
   enum class Mode { Block,Try };
   static inline bool busy=false;
@@ -399,6 +400,7 @@ struct ActivityManager {
     replaceActivity(std::move(p));
   }
   void resetHomeStandbyInput();
+  void trackInputMode() {}  // touch/key focus visibility, covered by its own tests
   bool handleHomeStandbyInput();
   bool handleMainTabInput();
   void replaceActivity(std::unique_ptr<Activity>&&);
@@ -434,6 +436,13 @@ int main() {
     ActivityManager stray(theme);
     stray.tick({.released=true});assert(stray.standbyCalls==0);
     freshBack(stray);
+
+    // A Home-key board (Plus): Back on Home stays Back, Standby belongs to the keys bound to it.
+    BoardConfig::homeKey=true;
+    ActivityManager plus(theme);
+    plus.tick({.pressed=true,.held=true});plus.tick({.released=true});plus.tick();
+    assert(plus.standbyCalls==0);
+    BoardConfig::homeKey=false;
 
     // Both the queued request and actual activation cancel the old pair.
     ActivityManager replace(theme);

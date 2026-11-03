@@ -8,7 +8,10 @@
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "activities/reader/ReaderChrome.h"
+#include "components/RickyDesignUi.h"
 #include "components/UITheme.h"
+#include "components/themes/BaseTheme.h"
 #include "fontIds.h"
 
 namespace fui = freeink::ui;
@@ -53,6 +56,17 @@ constexpr int STATUS_BAR_CLOCK_ITEMS = CrossPointSettings::STATUS_BAR_CLOCK_MODE
 const StrId statusBarClockNames[STATUS_BAR_CLOCK_ITEMS] = {StrId::STR_HIDE, StrId::STR_DIR_RIGHT, StrId::STR_DIR_LEFT};
 
 const int verticalPreviewTextPadding = 40;
+
+// The preview is a small reader page: the reader's own header and footer drawn into a
+// card, with gray bars for the text between them, so it shows exactly what reading shows.
+constexpr int kPreviewCardHeight = 220;
+constexpr int kPreviewSide = 24;
+constexpr int kPreviewLabelGap = 36;
+
+Rect previewCard(const GfxRenderer& renderer, const ThemeMetrics& metrics) {
+  const int y = renderer.getScreenHeight() - metrics.buttonHintsHeight - metrics.verticalSpacing - kPreviewCardHeight;
+  return Rect{kPreviewSide, y, renderer.getScreenWidth() - 2 * kPreviewSide, kPreviewCardHeight};
+}
 }  // namespace
 
 StatusBarSettingsActivity::StatusBarSettingsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
@@ -163,9 +177,8 @@ void StatusBarSettingsActivity::buildScreen(UiScreen& screen) {
   // bar) so the list never runs underneath it, plus the button-hints row below.
   // The preview is pinned directly above the hints (see render()), so the band
   // is just the bar + its label, not a floating gap.
-  const int statusBarHeight = UITheme::getInstance().getStatusBarHeight();
   const auto previewFooter =
-      static_cast<int16_t>(statusBarHeight + verticalPreviewTextPadding + metrics.verticalSpacing);
+      static_cast<int16_t>(kPreviewCardHeight + kPreviewLabelGap + verticalPreviewTextPadding + metrics.verticalSpacing);
   screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
                                                 static_cast<int16_t>(metrics.buttonHintsHeight + previewFooter), 0});
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
@@ -216,16 +229,32 @@ void StatusBarSettingsActivity::render(RenderLock&&) {
   if (SETTINGS.statusBarTitle == CrossPointSettings::STATUS_BAR_TITLE::BOOK_TITLE) {
     title = tr(STR_EXAMPLE_BOOK);
   } else if (SETTINGS.statusBarTitle == CrossPointSettings::STATUS_BAR_TITLE::CHAPTER_TITLE) {
-    title = tr(STR_EXAMPLE_CHAPTER);
+    // The reader names both when the chapter has its own title.
+    title = std::string(tr(STR_EXAMPLE_BOOK)) + " · " + tr(STR_EXAMPLE_CHAPTER);
   }
 
-  // Anchor the preview as a footer directly above the button hints.
-  GUI.drawStatusBar(renderer, 75, 8, 32, title, metrics.buttonHintsHeight, 0, false);
+  // A small reader page above the button hints: frame, text bars, then the chrome.
+  const Rect card = previewCard(renderer, metrics);
+  renderer.drawRoundedRect(card.x, card.y, card.width, card.height, ricky::ds::stroke::kHairline,
+                           ricky::ds::radius::kControl, true);
+  const Rect page{card.x + 4, card.y + 4, card.width - 8, card.height - 8};
+  const auto sb = SETTINGS.statusBarSpec();
+  const auto chrome = readerChrome::compactLayout(
+      std::max(renderer.getLineHeight(RickyDesignUi::CAPTION), renderer.getLineHeight(BaseTheme::STATUS_NUMERIC_FONT_ID)),
+      sb.headerLaneVisible(), sb.footerLaneVisible(), sb.showsProgressBar(), sb.progressBarHeightPx);
+  constexpr int kTextInset = 20, kBarPitch = 26, kBarHeight = 10;
+  const int textTop = page.y + std::max(kTextInset, chrome.headerReserve);
+  const int textBottom = page.y + page.height - std::max(kTextInset, chrome.footerReserve);
+  for (int y = textTop, row = 0; y + kBarHeight <= textBottom; y += kBarPitch, ++row) {
+    const int inset = row % 4 == 3 ? page.width / 3 : 0;  // a paragraph's short last line
+    RickyDesignUi::fill(renderer,
+                        {static_cast<int16_t>(page.x + kTextInset), static_cast<int16_t>(y),
+                         static_cast<int16_t>(page.width - 2 * kTextInset - inset), static_cast<int16_t>(kBarHeight)},
+                        ricky::ds::gray::kLine, kBarHeight / 2);
+  }
+  GUI.drawRickyReaderChrome(renderer, 75, 8, 32, title.c_str(), false, false, true, &page);
 
-  renderer.drawCenteredText(UI_10_FONT_ID,
-                            renderer.getScreenHeight() - UITheme::getInstance().getStatusBarHeight() -
-                                metrics.buttonHintsHeight - verticalPreviewTextPadding,
-                            tr(STR_PREVIEW));
+  renderer.drawCenteredText(UI_10_FONT_ID, card.y - kPreviewLabelGap, tr(STR_PREVIEW));
 
   renderer.displayBuffer();
 }

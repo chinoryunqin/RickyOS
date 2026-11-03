@@ -33,6 +33,19 @@ inline constexpr int READER_ESTIMATE_FONT_ID = 0x5253420A;
 /// Hides implementation details behind a single begin() + ensureLoaded() API.
 class SdCardFontSystem {
  public:
+#if RICKYOS_PAINT_PROFILE
+  // SD traffic of streamed TTF sources since the last take (profiling builds only).
+  struct StreamStats {
+    uint32_t reads = 0, bytes = 0, us = 0;
+  };
+  static StreamStats takeStreamStats() {
+    const StreamStats out = streamStats_;
+    streamStats_ = {};
+    return out;
+  }
+  static StreamStats streamStats_;
+#endif
+
   static constexpr const char* COMPLETE_CHINESE_NOTO_SANS_FAMILY = "NotoSansSC";
 
   // Constructor and destructor are out-of-line (defined in the .cpp where
@@ -51,7 +64,10 @@ class SdCardFontSystem {
   void ensureLoaded(GfxRenderer& renderer, bool allowFlashCache = true);
 
   /// Release the resident SD font without changing the saved selection.
-  void releaseLoadedFont(GfxRenderer& renderer);
+  // Unloads the .cpfont faces. includeVector also unloads the vector (TTF) family,
+  // whose glyph cache otherwise outlives settings pages: needed before anything
+  // writes the flash font cache it may be reading, and to switch its source.
+  void releaseLoadedFont(GfxRenderer& renderer, bool includeVector = false);
 
   /// Resolve an SD card font ID from family name + reader point size.
   /// Returns 0 if not found. Used by CrossPointSettings::getReaderFontId().
@@ -70,6 +86,15 @@ class SdCardFontSystem {
     return false;
 #endif
   }
+
+  /// 正文矢量字体的一个大号字面，给单屏展示用（待机的"上次读到这里"卡片）。和正文共用
+  /// 同一份字体源，不复制文件；16 级面板上按 4 位覆盖度加载。没有矢量正文字体时返回 0。
+  /// releaseDisplayFaces() 一次全部释放；卸载正文字体时也会先释放它们。
+  /// / A larger size of the reader's vector family for one screen (the standby card).
+  /// Shares the reader's sources, no file copy; 4-bit coverage on a 16-level panel.
+  /// 0 when no vector family is loaded. Call under the render lock.
+  int acquireDisplayFace(GfxRenderer& renderer, uint8_t pointSize);
+  void releaseDisplayFaces(GfxRenderer& renderer);
 
   /// Access the registry (e.g. for settings UI to enumerate available fonts).
   const SdCardFontRegistry& registry() const { return registry_; }
@@ -107,7 +132,8 @@ class SdCardFontSystem {
   // Load/refresh the selected TTF family at the current reader size, register
   // it with the renderer, and track it so ensureSdCardFontReady() rebuilds its
   // glyph set per page. registryWasDirty forces a reload even if unchanged.
-  void loadTtfFamily(const SdCardFontFamilyInfo& family, GfxRenderer& renderer, bool registryWasDirty);
+  void loadTtfFamily(const SdCardFontFamilyInfo& family, GfxRenderer& renderer, bool registryWasDirty,
+                     bool preferFlash);
   // Unregister + free the active TTF font (and its UI-size fallbacks), if any.
   void unloadTtf(GfxRenderer& renderer);
   // Register the loaded TTF at each built-in UI size as a script fallback, so UI
@@ -116,13 +142,15 @@ class SdCardFontSystem {
   void setupTtfUiFallbacks(GfxRenderer& renderer);
   // Open one style source file (resident if small, streamed if large) into
   // ttfSources_[style]. Returns false on open/read failure.
-  bool openTtfSource(uint8_t style, const std::string& path);
+  bool openTtfSource(uint8_t style, const std::string& path, bool preferFlash);
   // Register every present source with `font` (shared bytes / file handles).
   void addTtfSources(TtfEpdFont& font);
   // Close/free all style sources.
   void freeTtfSources();
   // ReadFn for streamed sources: serves the PSRAM prefix cache first, SD after.
   static unsigned long prefixRead(void* ctx, unsigned long offset, unsigned char* buffer, unsigned long count);
+  // ReadFn for a source preloaded into the flash font cache (font acceleration).
+  static unsigned long flashRead(void* ctx, unsigned long offset, unsigned char* buffer, unsigned long count);
 #endif  // CROSSPOINT_VECTOR_FONTS
 
   SdCardFontRegistry registry_;
@@ -133,15 +161,42 @@ class SdCardFontSystem {
   // One style source file. SMALL files are read fully into `bytes` (resident,
   // PSRAM when present); LARGE files stream from `file` (kept open) so a multi-MB
   // file never sits in RAM. All faces (reader + UI sizes) share these sources.
+#if FREEINK_DEVICE_METALIO_PLUS && CROSSPOINT_VECTOR_FONTS
+ public:
+  // Idle warm-up of the reader TTF face: rasterize up to `count` of the next common
+  // characters (frequency order) not yet drawn. True while more remain. Render task only.
+  bool prerasterizeCommon(unsigned count);
+  // Re-arm after the reader releases its rebuildable glyph arena on exit.
+  void resetReaderWarmup() { prerasterCursor_ = 0; }
+
+ private:
+  size_t prerasterCursor_ = 0;  // byte offset into kPlusCommonChars; reset on every face load
+#endif
   struct TtfSource {
     // Resident form: the whole file. Streamed form: a PSRAM prefix cache of the
     // file head (cmap/loca/hmtx) — empty when PSRAM couldn't fund it.
     freeink::font::PsramVector<uint8_t> bytes;
     HalFile file;  // open handle (streamed form)
     bool streamed = false;
+    bool flash = false;  // read from the flash font cache instead of the SD card
     unsigned long size = 0;
     bool present = false;
+#if FREEINK_DEVICE_METALIO_PLUS
+    // Streamed tail (glyf): FreeType reads one glyph as ~4 small pieces (~225 B each)
+    // and each went to the card (~1.2 ms apiece). Serve them from whole 4 KB blocks,
+    // least recently used first out, in PSRAM (128 KB per streamed face, on first use).
+    static constexpr unsigned long kBlockBytes = 4096;
+    static constexpr int kBlockCount = 32;
+    uint8_t* blockData = nullptr;  // kBlockCount * kBlockBytes; nullptr = read through
+    unsigned long blockStart[kBlockCount] = {};
+    unsigned long blockLen[kBlockCount] = {};  // 0 = empty slot
+    uint32_t blockUse[kBlockCount] = {};
+    uint32_t blockClock = 0;
+    bool blockAllocFailed = false;
+#endif
   };
+  // Reads the part of a streamed source past its prefix (from the card, or its block cache).
+  static unsigned long readStreamTail(TtfSource* s, unsigned long offset, unsigned char* buffer, unsigned long count);
 
   // Active TTF font (at most one reader-size vector family loaded at a time).
   std::unique_ptr<TtfEpdFont> ttf_;
@@ -159,6 +214,9 @@ class SdCardFontSystem {
   // UI-size TTF fallbacks (share ttfSources_); parallel to their renderer font ids.
   std::vector<std::unique_ptr<TtfEpdFont>> ttfUi_;
   std::vector<int> ttfUiIds_;
+  // Display-size faces (share ttfSources_); parallel to their renderer font ids.
+  std::vector<std::unique_ptr<TtfEpdFont>> ttfDisplay_;
+  std::vector<int> ttfDisplayIds_;
 #endif  // CROSSPOINT_VECTOR_FONTS
 };
 

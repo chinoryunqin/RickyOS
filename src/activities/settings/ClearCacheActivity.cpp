@@ -11,6 +11,7 @@
 #include "fontIds.h"
 #include "util/BookCacheUtils.h"
 #include "activities/home/RickyStorageActivity.h"
+#include "util/BookCoverLoader.h"
 
 void ClearCacheActivity::onEnter() {
   Activity::onEnter();
@@ -171,6 +172,7 @@ void ClearCacheActivity::beginClear() {
 
 void ClearCacheActivity::clearCache() {
   LOG_DBG("CLEAR_CACHE", "Clearing cache...");
+  BookCoverLoader::forgetDrawnCovers();
 
   // Open .crosspoint directory
   auto root = Storage.open("/.crosspoint");

@@ -6,7 +6,6 @@
 
 #include "StandbyFace.h"
 #include "activities/Activity.h"
-#include "util/RickyStorageLayout.h"
 
 struct ActivityResult;
 
@@ -46,6 +45,7 @@ class StandbyActivity final : public Activity {
   uint32_t syncStartMs_ = 0;
   DisplayMode mode_ = DisplayMode::Normal;
   uint32_t lastInputMs_ = 0;
+  bool savedFrontlightOn_ = false;
   bool inverseMode_ = false;  // Confirm toggles black-bg/white-content. Not persisted.
 
   void switchFace(int8_t delta);
@@ -59,7 +59,7 @@ class StandbyActivity final : public Activity {
   void completeTimeSync();
   void processFaceTick(bool waitForUpdate);
   bool tryLightSleep(uint32_t idleMs);
-  void openPicturePicker(const std::string& folder = RickyStorageLayout::IMAGES);
+  void openPicturePicker();
   bool drewFrame_ = false;  // B/W frames after the first refresh fast
   GfxRenderer::Orientation savedOrientation_ = GfxRenderer::Orientation::Portrait;  // restored on exit
   unsigned long enteredMs_ = 0;                                                     // for the auto power-off

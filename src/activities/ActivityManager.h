@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <cassert>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <vector>
@@ -15,6 +16,7 @@
 #include "MappedInputManager.h"
 #include "Memory.h"
 #include "activities/MainTab.h"
+#include "activities/MainTabMotion.h"
 #include "util/ScreenshotInfo.h"
 
 class Activity;    // forward declaration
@@ -38,6 +40,9 @@ enum class HomeMenuItem { NONE, FILE_BROWSER, RECENTS, LIBRARY, OPDS_BROWSER, FI
  */
 class ActivityManager {
   friend class RenderLock;
+#if RICKYOS_PLUS_NET_AUTORUN
+  friend class PlusFontNetworkAutoRunner;
+#endif
 
  protected:
   GfxRenderer& renderer;
@@ -45,6 +50,8 @@ class ActivityManager {
   std::vector<std::unique_ptr<Activity>> stackActivities;
   std::unique_ptr<Activity> currentActivity;
   MainTabFocus mainTabFocus = MainTabFocus::Tabs;
+  bool keyFocusShown = false;
+  void trackInputMode();
   bool mainTabEntryReleasePending = false;
 
  private:
@@ -68,7 +75,9 @@ class ActivityManager {
   TaskHandle_t renderTaskHandle = nullptr;
   static void renderTaskTrampoline(void* param);
   [[noreturn]] virtual void renderTaskLoop();
-#if FREEINK_DEVICE_READPICO || defined(SIMULATOR_DEVICE_READPICO)
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4 || \
+    defined(SIMULATOR_DEVICE_READPICO) || defined(SIMULATOR_DEVICE_METALIO_EINK4)
+  MainTabMotion mainTabMotion_;
   bool renderDirectGray(RenderLock&& lock);
   void settleToGray(RenderLock&& lock, uint32_t generation);
 #endif
@@ -83,9 +92,25 @@ class ActivityManager {
   // Cross-task render request flag. requestUpdate() may set it from any task;
   // loop() consumes and clears it with exchange(false).
   std::atomic<bool> requestedUpdate{false};
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4 || \
+    defined(SIMULATOR_DEVICE_READPICO) || defined(SIMULATOR_DEVICE_METALIO_EINK4)
+  // Unlike requestedUpdate, this survives loop() consuming the notification.
+  std::atomic<uint32_t> renderRequestGeneration{0};
+#endif
+#if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
+  // Earliest coalesced request, encoded +1 to reserve zero. No per-event heap
+  // storage or filenames/text in timing logs. Unsigned differences wrap safely.
+  std::atomic<uint32_t> queuedRenderMs{0};
+  void recordRenderRequest();
+#endif
   std::atomic<uint32_t> idleRenderGeneration{0};
   std::atomic<const char*> lastIdleCancel{"none"};
   std::atomic<bool> lastIdleCancelRearms{false};
+  // Cancels other than a bare touch. While touchTolerantIdle is set, an idle step
+  // survives touch cancels and stops only on one of these (see idleRenderCancelled).
+  std::atomic<uint32_t> idleHardCancels{0};
+  std::atomic<bool> touchTolerantIdle{false};
+  std::atomic<uint32_t> touchTolerantHardBase{0};
 
  public:
   explicit ActivityManager(GfxRenderer& renderer, MappedInputManager& mappedInput)
@@ -103,11 +128,24 @@ class ActivityManager {
   void cancelIdleRender(const char* why = "other", const bool rearm = false) {
     lastIdleCancel.store(why, std::memory_order_relaxed);
     lastIdleCancelRearms.store(rearm, std::memory_order_relaxed);
+    if (std::strcmp(why, "touch") != 0) idleHardCancels.fetch_add(1, std::memory_order_relaxed);
     idleRenderGeneration.fetch_add(1, std::memory_order_relaxed);
   }
   bool idleRenderCancelled(uint32_t generation) const {
-    return generation != idleRenderGeneration.load(std::memory_order_relaxed) || isSwitchPending() ||
-           requestedUpdate.load();
+    if (isSwitchPending() || requestedUpdate.load()) return true;
+    if (generation == idleRenderGeneration.load(std::memory_order_relaxed)) return false;
+    return !touchTolerantIdle.load(std::memory_order_relaxed) ||
+           idleHardCancels.load(std::memory_order_relaxed) != touchTolerantHardBase.load(std::memory_order_relaxed);
+  }
+  // An idle step the next input most likely needs (the reader's next page) finishes
+  // even if a finger lands meanwhile: a turn waits for the render lock anyway, and a
+  // finished page is ready at once where a dropped one is rendered again from scratch.
+  // Any other cancel (a key, an update, a switch) still stops it.
+  bool touchTolerantIdleActive() const { return touchTolerantIdle.load(std::memory_order_relaxed); }
+  void setTouchTolerantIdle(const bool tolerant) {
+    if (tolerant)
+      touchTolerantHardBase.store(idleHardCancels.load(std::memory_order_relaxed), std::memory_order_relaxed);
+    touchTolerantIdle.store(tolerant, std::memory_order_relaxed);
   }
 
   // Will replace currentActivity and drop all activities on stack
@@ -148,6 +186,9 @@ class ActivityManager {
   void goToApps();
   void goToGomoku();
   void goToCalculator();
+#if FREEINK_DEVICE_METALIO_PLUS
+  void goToRecorder();
+#endif
   void goToStandby();
   // Side key / inactivity: Standby over whatever is open, popping back to it on close.
   void openStandby();
@@ -162,9 +203,17 @@ class ActivityManager {
   }
   // Apps → Standby: choose what the sleeping screen shows; full-screen Standby is a row there.
   void goToStandbySettings();
+  void goToGallery();
+#if FREEINK_DEVICE_METALIO_EINK4
+  void goToCellular();
+  void goToCamera();
+#endif
   void goToWeRead();
   void goHome(HomeMenuItem initialMenuItem = HomeMenuItem::NONE);
   MainTabFocus getMainTabFocus() const { return mainTabFocus; }
+  // Touch boards show the content focus only while the keys are in use: a finger on
+  // the glass hides it, the next key press brings it back.
+  bool keyFocusVisible() const { return keyFocusShown; }
 
   // This will move current activity to stack instead of deleting it
   void pushActivity(std::unique_ptr<Activity>&& activity);

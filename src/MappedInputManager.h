@@ -6,6 +6,9 @@
 #include <array>
 
 #include "util/HomeButtonInput.h"
+#if FREEINK_DEVICE_METALIO_PLUS
+#include "util/PlusButtonInput.h"
+#endif
 
 class GfxRenderer;
 namespace freeink {
@@ -99,14 +102,28 @@ class MappedInputManager {
   // Back = left-to-right swipe anchored at the left edge. Public so swipe-mode
   // page turns (reader) can exclude it from a plain SwipeDir::Right.
   bool wasBackGesture() const;
+  // Direction/edge only: Standby owns its opt-in switch, not global Back/Home.
+  bool wasStandbyUnlockGesture() const;
   // Home-key boards use a short Home-key tap to exit; their bottom-edge swipe
   // is intentionally unused. Other boards retain the bottom-edge Home gesture.
   // The reader menu remains on its existing top-edge gesture and middle tap.
   bool wasHomeGesture() const;
   // Configured one-frame action, independent of the gesture that triggered it.
   HomeButtonAction homeButtonAction() const { return homeAction; }
+  // Standby owns input, not the global Home shortcuts. Drop the recognizer's
+  // partial click AND the current/deferred actions without touching Back/Power
+  // or the Plus physical-key gestures that may legitimately wake the device.
+  void suppressStandbyHomeActions() const {
+    homeButtonInput.reset();
+    homeAction = HomeButtonAction::Ignore;
+    deferredHomeAction = HomeButtonAction::Ignore;
+    homeNeedsFreshPress = true;
+  }
   void resetHomeButtonInput() const {
     homeButtonInput.reset();
+#if FREEINK_DEVICE_METALIO_PLUS
+    for (auto& gesture : plusGestures) gesture.cancel();
+#endif
     deferredHomeAction = HomeButtonAction::Ignore;
   }
   bool wasMenuGesture() const;
@@ -131,6 +148,10 @@ class MappedInputManager {
   // Returns the raw front button index that was pressed this frame (or -1 if none).
   int getPressedFrontButton() const;
 
+#if FREEINK_DEVICE_METALIO_PLUS
+  void stopHapticFeedback() const { gpio.stopHapticFeedback(); }
+  void pulseHapticFeedback() const { gpio.pulseHapticFeedback(); }
+#endif
   void setBleCaptureMode(bool enabled);
   bool takeCapturedBleKey(uint8_t& kind, uint8_t& value);
 
@@ -168,7 +189,16 @@ class MappedInputManager {
   void rememberTouchHeldTime() const;
   void suppressNextRelease(Button button) const;
 
+#if FREEINK_DEVICE_METALIO_PLUS
+  void pollPlusKeys() const;
+  bool physicalButton(uint8_t button, bool (HalGPIO::*fn)(uint8_t) const) const;
+  mutable plus_keys::Gesture plusGestures[plus_keys::KEY_COUNT];
+  mutable uint16_t plusActions = 0;
+  mutable uint8_t plusBlocked = 0, plusDefaultPulse = 0;
+  mutable bool plusControl = false;
+#endif
   mutable HomeButtonInput homeButtonInput;
+  mutable bool homeNeedsFreshPress = false;
   mutable HomeButtonAction homeAction = HomeButtonAction::Ignore;
   mutable HomeButtonAction deferredHomeAction = HomeButtonAction::Ignore;
   mutable bool touchHeldOverrideValid = false;

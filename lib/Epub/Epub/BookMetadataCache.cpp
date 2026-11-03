@@ -4,6 +4,7 @@
 #include <Logging.h>
 #include <Memory.h>
 #include <Serialization.h>
+#include <Txt.h>
 #include <Utf8.h>
 #include <ZipFile.h>
 
@@ -347,6 +348,10 @@ bool BookMetadataCache::buildBookBin(const std::string& epubPath, const BookMeta
     }
   }
 
+  HalFile partsFile;
+  const bool txtParts = !isZip && spineCount > 1 && Txt::usesParts(epubPath) &&
+                        Txt::partCount(cachePath) == spineCount &&
+                        Storage.openFileForRead("BMC", cachePath + "/txt-parts.bin", partsFile);
   uint32_t cumSize = 0;
   spineIn.seek(0);
   int lastSpineTocIndex = -1;
@@ -367,6 +372,15 @@ bool BookMetadataCache::buildBookBin(const std::string& epubPath, const BookMeta
     lastSpineTocIndex = spineEntry.tocIndex;
 
     size_t itemSize = rawSize;
+    if (txtParts) {
+      // A split TXT: each part weighs its source bytes, so progress follows the text.
+      Txt::Part part, next;
+      const bool last = i + 1 == spineCount;
+      if (Txt::readPart(partsFile, i, part) && (last || Txt::readPart(partsFile, i + 1, next))) {
+        const size_t end = last ? rawSize : next.sourceStart;
+        itemSize = end > part.sourceStart ? end - part.sourceStart : 0;
+      }
+    }
     if (isZip) {
       itemSize = spineSizes ? (*spineSizes)[i] : 0;
       if (itemSize == 0) {
@@ -609,10 +623,14 @@ BookMetadataCache::SpineEntry BookMetadataCache::getSpineEntry(const int index) 
   }
 
   // Seek to spine LUT item, read from LUT and get out data
+  const std::lock_guard<std::mutex> guard(bookFileMutex);
+  if (!loaded) return {};  // another task found the cache corrupt meanwhile
   uint32_t spineEntryPos = 0;
   if (!bookFile.seek(lutOffset + sizeof(uint32_t) * index) || !serialization::readPod(bookFile, spineEntryPos) ||
       spineEntryPos >= bookFile.size() || !bookFile.seek(spineEntryPos)) {
-    LOG_ERR("BMC", "Invalid spine LUT entry %d", index);
+    LOG_ERR("BMC", "Invalid spine LUT entry %d (lut %u, pos %u, size %u, spine %u)", index,
+            static_cast<unsigned>(lutOffset), static_cast<unsigned>(spineEntryPos),
+            static_cast<unsigned>(bookFile.size()), static_cast<unsigned>(spineCount));
     invalidateCorruptCache();
     return {};
   }
@@ -637,10 +655,14 @@ BookMetadataCache::TocEntry BookMetadataCache::getTocEntry(const int index) {
   }
 
   // Seek to TOC LUT item, read from LUT and get out data
+  const std::lock_guard<std::mutex> guard(bookFileMutex);
+  if (!loaded) return {};  // another task found the cache corrupt meanwhile
   uint32_t tocEntryPos = 0;
   if (!bookFile.seek(lutOffset + sizeof(uint32_t) * spineCount + sizeof(uint32_t) * index) ||
       !serialization::readPod(bookFile, tocEntryPos) || tocEntryPos >= bookFile.size() || !bookFile.seek(tocEntryPos)) {
-    LOG_ERR("BMC", "Invalid TOC LUT entry %d", index);
+    LOG_ERR("BMC", "Invalid TOC LUT entry %d (lut %u, pos %u, size %u, toc %u)", index,
+            static_cast<unsigned>(lutOffset), static_cast<unsigned>(tocEntryPos),
+            static_cast<unsigned>(bookFile.size()), static_cast<unsigned>(tocCount));
     invalidateCorruptCache();
     return {};
   }

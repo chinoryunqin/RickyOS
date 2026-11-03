@@ -33,8 +33,37 @@ struct Frame;
 // 0 = transparent, 1-16 = gray levels (white to black)
 enum Color : uint8_t { Clear = 0x00, White = 0x01, LightGray = 0x05, DarkGray = 0x0A, Black = 0x10 };
 
+// Paint-time breakdown for device measurement: -DRICKYOS_PAINT_PROFILE=1 times the
+// outermost fill / text / shape / image call of each kind; off in shipped firmware.
+#ifndef RICKYOS_PAINT_PROFILE
+#define RICKYOS_PAINT_PROFILE 0
+#endif
+
 class GfxRenderer {
  public:
+  // Glyph = glyph bitmap fetches (font cache / decompressor / SD), counted inside Text too.
+  enum class PaintKind : uint8_t { Fill, Text, Shape, Image, Glyph, Count };
+  struct PaintProfile {
+    uint32_t us[static_cast<int>(PaintKind::Count)] = {};
+    uint32_t calls[static_cast<int>(PaintKind::Count)] = {};
+  };
+#if RICKYOS_PAINT_PROFILE
+  static PaintProfile& paintProfile();
+  // Times only the outermost profiled call, so nested fills inside a rounded fill or
+  // text inside a centered draw are not counted twice.
+  class PaintScope {
+   public:
+    explicit PaintScope(PaintKind kind);
+    ~PaintScope();
+    PaintScope(const PaintScope&) = delete;
+    PaintScope& operator=(const PaintScope&) = delete;
+
+   private:
+    PaintKind kind_;
+    uint32_t start_ = 0;
+    bool outer_ = false;
+  };
+#endif
   enum RenderMode { BW, GRAYSCALE_LSB, GRAYSCALE_MSB };
 
   struct TwoBitPixel {
@@ -69,6 +98,7 @@ class GfxRenderer {
   };
 
  private:
+  void mapGrayRefreshArea(int& x, int& y, int& width, int& height) const;
   static constexpr size_t BW_BUFFER_CHUNK_SIZE = 8000;  // 8KB chunks to allow for non-contiguous memory
   static constexpr uint8_t MAX_SYNTHETIC_BOLD_PIXELS = 3;
 
@@ -77,6 +107,8 @@ class GfxRenderer {
   // While capturing, a screen is redrawn into the 16-level frame for a later commit:
   // display pushes are skipped and clearScreen() also clears that frame.
   bool displayCapture_ = false;
+  bool uiCanvasActive_ = false;
+  bool ownsDisplayTransactions_ = true;
   RenderMode renderMode;
   mutable bool absoluteGrayPlanes = false;
   Orientation orientation;
@@ -97,16 +129,20 @@ class GfxRenderer {
   mutable bool nextRefreshOverridePending = false;
   mutable HalDisplay::RefreshMode nextRefreshOverride = HalDisplay::FAST_REFRESH;
   std::vector<uint8_t*> bwBufferChunks;
-  std::map<int, EpdFontFamily> fontMap;
+  std::map<int, EpdFontFamily> ownedFontMap;
+  std::map<int, EpdFontFamily>& fontMap = ownedFontMap;
   // Mutable because ensureSdCardFontReady() is const (called from layout code
   // that holds a const GfxRenderer&) but triggers SD card reads and heap
   // allocation inside the SdCardFont objects. Same pragmatic compromise as
   // fontCacheManager_ below.
-  mutable std::map<int, SdCardFont*> sdCardFonts_;
-  mutable std::map<int, uint16_t> sdCardFontScales_;  // fontId -> 8.8 fixed point scale (256=1.0x)
+  mutable std::map<int, SdCardFont*> ownedSdCardFonts_;
+  std::map<int, SdCardFont*>& sdCardFonts_ = ownedSdCardFonts_;
+  mutable std::map<int, uint16_t> ownedSdCardFontScales_;
+  std::map<int, uint16_t>& sdCardFontScales_ = ownedSdCardFontScales_;  // 8.8 fixed point scale
   // TTF (vector) fonts: rebuilt per page by ensureSdCardFontReady(). Mutable for
   // the same reason as sdCardFonts_ (const layout path triggers a rebuild).
-  mutable std::map<int, TtfEpdFont*> ttfFonts_;
+  mutable std::map<int, TtfEpdFont*> ownedTtfFonts_;
+  std::map<int, TtfEpdFont*>& ttfFonts_ = ownedTtfFonts_;
 
   // Mutable because drawText() is const but needs to delegate scan-mode
   // recording to the (non-const) FontCacheManager. Same pragmatic compromise
@@ -131,9 +167,11 @@ class GfxRenderer {
 
   // Ordered UI fallbacks: optional SD face, then the built-in CJK subset.
   // Resolve the whole string through one face for consistent draw/measure metrics.
-  std::map<int, std::array<int, 2>> fallbackFontMap_;
+  std::map<int, std::array<int, 2>> ownedFallbackFontMap_;
+  std::map<int, std::array<int, 2>>& fallbackFontMap_ = ownedFallbackFontMap_;
   // fontId -> the family it should actually resolve to (see setPreferredFont()).
-  std::map<int, int> preferredFontMap_;
+  std::map<int, int> ownedPreferredFontMap_;
+  std::map<int, int>& preferredFontMap_ = ownedPreferredFontMap_;
   // The family a font id really resolves to (identity unless rebound). EVERY path that
   // looks a family up -- glyph coverage, metrics, preloading -- must go through this,
   // or a rebound id is laid out with the built-in face and drawn in the SD one.
@@ -160,8 +198,18 @@ class GfxRenderer {
  public:
   explicit GfxRenderer(HalDisplay& halDisplay)
       : display(halDisplay), renderMode(BW), orientation(Portrait), fadingFix(false) {}
+  struct UiCanvasTag {};
+  // Borrow font registries from the parent without copying nodes or glyphs.
+  // Only the render task uses this view; physical geometry is never changed.
+  GfxRenderer(UiCanvasTag, GfxRenderer& source)
+      : display(source.display), renderMode(BW), orientation(Portrait), fadingFix(false),
+        fontMap(source.fontMap), sdCardFonts_(source.sdCardFonts_), sdCardFontScales_(source.sdCardFontScales_),
+        ttfFonts_(source.ttfFonts_), fontCacheManager_(source.fontCacheManager_),
+        fallbackFontMap_(source.fallbackFontMap_), preferredFontMap_(source.preferredFontMap_) {
+    ownsDisplayTransactions_ = false;
+  }
   ~GfxRenderer() {
-    cancelGrayscale16();
+    if (ownsDisplayTransactions_) cancelGrayscale16();
     freeBwBufferChunks();
   }
   GfxRenderer(const GfxRenderer&) = delete;
@@ -253,6 +301,7 @@ class GfxRenderer {
   // Orientation control (affects logical width/height and coordinate transforms)
   void setOrientation(const Orientation o) { orientation = o; }
   Orientation getOrientation() const { return orientation; }
+  void setNextMainTabTurn(int x, int y, int width, int height, bool fromRight) const;
 
   // Fading fix control
   void setFadingFix(const bool enabled) { fadingFix = enabled; }
@@ -586,6 +635,37 @@ class GfxRenderer {
   uint16_t getDisplayHeight() const { return panelHeight; }
   uint8_t getGrayscaleLevels() const;
   bool beginGrayscale16();
+  bool beginGrayscaleUi();
+  // Reuse an existing scene at its design geometry; all writes remain in the
+  // caller-owned PSRAM canvas. Restores the physical renderer on every exit.
+  class UiCanvasScope {
+   public:
+    UiCanvasScope(GfxRenderer& renderer, uint8_t* bw, size_t bwBytes, uint8_t* gray, size_t grayBytes,
+                  uint16_t width, uint16_t height);
+    ~UiCanvasScope();
+    UiCanvasScope(const UiCanvasScope&) = delete;
+    UiCanvasScope& operator=(const UiCanvasScope&) = delete;
+    bool active() const { return active_; }
+
+   private:
+    GfxRenderer& renderer_;
+    bool active_ = false;
+    uint8_t* bw_ = nullptr;
+    uint8_t* gray_ = nullptr;
+    uint16_t width_ = 0, height_ = 0, stride_ = 0;
+    uint32_t bytes_ = 0;
+    Orientation orientation_{};
+    RenderMode mode_{};
+    bool capture_ = false;
+    int left_ = 0, top_ = 0, right_ = 0, bottom_ = 0;
+  };
+  bool beginRetainedGrayscale16();
+  // Logical navigation geometry from the published page layout, rotated once
+  // at the renderer/HAL boundary. Empty bar means a subpage without main tabs.
+void setNextGray16UiRefresh(int x, int y, int width, int height, uint8_t contentEvery, uint8_t smallEvery,
+                              bool adaptive = false) const;
+  // Current logical text box; unchanged chrome outside it holds during a turn.
+  void setNextGray16ReaderRefresh(int x, int y, int width, int height) const;
   bool commitGrayscale16() const;
   void cancelGrayscale16() const;
   bool isGrayscale16Active() const { return grayscale16Buffer != nullptr; }
@@ -607,6 +687,25 @@ class GfxRenderer {
   uint8_t* grayscale16Frame() const { return grayscale16Buffer; }
   size_t grayscale16FrameBytes() const { return static_cast<size_t>(panelWidth / 2) * panelHeight; }
   void drawGrayscale16Pixel(int x, int y, uint8_t gray) const;
+  // Fill a logical rectangle with one 16-level tone (0 = black ... 15 = white) and its
+  // B/W proxy, row by row in panel memory. Same pixels as drawGrayscale16Pixel() over
+  // the rectangle, without a rotation and two read-modify-writes per pixel: on a
+  // rotated panel those walk PSRAM column-wise and dominated UI paint time.
+  void fillGrayscale16Rect(int x, int y, int width, int height, uint8_t level) const;
+  // Byte-exact snapshot of a logical rectangle in both panel buffers (16-level frame and
+  // B/W proxy), so unchanged artwork such as a cover is written back row by row instead
+  // of being read, decoded and drawn again. The caller owns the storage.
+  struct PanelTile {
+    int16_t lx0 = 0, ly0 = 0, lx1 = 0, ly1 = 0;  // logical, half-open, after clipping
+    int16_t px0 = 0, py0 = 0, px1 = 0, py1 = 0;  // physical, inclusive
+    uint8_t orientation = 0;
+    size_t bytes() const;
+  };
+  // False when no 16-level frame is active or nothing of the rectangle is visible.
+  bool panelTileFor(int x, int y, int width, int height, PanelTile* tile) const;
+  void capturePanelTile(const PanelTile& tile, uint8_t* out) const;
+  // False (nothing written) unless the same pixels are visible now as at capture.
+  bool restorePanelTile(const PanelTile& tile, const uint8_t* in) const;
   void blendGrayscale16Pixel(int x, int y, uint8_t inkLevel, uint8_t coverage) const;
   // Copy a rectangle of the B/W proxy into the native 16-gray frame (ink -> black,
   // paper -> white), so text and shapes drawn with the normal B/W API can sit on a

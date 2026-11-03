@@ -1,9 +1,15 @@
 #include <Arduino.h>
 #include <BoardConfig.h>
+#if FREEINK_DEVICE_METALIO_PLUS && RICKYOS_PLUS_FIELD_DIAG
+#include <PlusFieldDiagnostics.h>
+#endif
+#include <BatteryMonitor.h>
 #include <Epub.h>
 #include <FontCacheManager.h>
 #include <FontDecompressor.h>
 #include <GfxRenderer.h>
+#include <HalCamera.h>
+#include <HalCellular.h>
 #include <HalClock.h>
 #include <HalDisplay.h>
 #include <HalFrontlight.h>
@@ -40,6 +46,10 @@
 #include "SdCardFontSystem.h"
 #include "WifiCredentialStore.h"
 #include "activities/Activity.h"
+#include "util/TimeUtils.h"
+#if FREEINK_DEVICE_METALIO_EINK4
+#include "activities/apps/MetalioCameraActivity.h"
+#endif
 #include "activities/ActivityManager.h"
 #include "activities/settings/FontDownloadActivity.h"
 #include "activities/settings/LanguageSelectActivity.h"
@@ -49,9 +59,11 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "platform/UsbSerialJtagHandoff.h"
+#include "util/BootPreparation.h"
 #include "util/ButtonNavigator.h"
 #include "util/RickyStorageLayout.h"
 #include "util/ScreenshotUtil.h"
+#include "util/TimeUtils.h"
 #include "util/Timezones.h"
 #include "util/UserGuide.h"
 
@@ -137,15 +149,28 @@ static bool wakePowerReleasePending = false;
 // families, other sizes, and style variants come from SD .cpfont files.
 #include <StandbyDiag.h>
 #include <builtinFonts/notosans_12_regular.h>
-#include <builtinFonts/ricky_caption_10_regular.h>
-#include <builtinFonts/ricky_display_23_bold.h>
-#include <builtinFonts/ricky_headline_14_medium.h>
-#include <builtinFonts/ricky_title_16_bold.h>
 
+#include "components/RickyPanelProfile.h"
+#if RICKYOS_NATIVE_SMALL_PANEL
+#include <fonts/metalio_body_10_regular.packed.h>
+#include <fonts/metalio_book_10_medium.packed.h>
+#include <fonts/metalio_caption_8_regular.packed.h>
+#include <fonts/metalio_display_19_bold.packed.h>
+#include <fonts/metalio_headline_12_medium.packed.h>
+#include <fonts/metalio_title_14_bold.packed.h>
+#else
+#include <fonts/ricky_book_12_medium.packed.h>
+#include <fonts/ricky_caption_10_regular.packed.h>
+#include <fonts/ricky_display_23_bold.packed.h>
+#include <fonts/ricky_headline_14_medium.packed.h>
+#include <fonts/ricky_title_16_bold.packed.h>
+#endif
+
+#include "components/RickyBadgeNotice.h"
 #include "components/RickyDesignUi.h"
 // The product's only built-in CJK reading/UI size adds GB2312 level 1 (titles,
 // author names); the shared 8/10/12pt set stays as is for other targets.
-#include <builtinFonts/notosans_cjk_12_rickyos.h>
+#include <fonts/notosans_cjk_12_rickyos.packed.h>
 static const EpdFontData& cjk12Data = notosans_cjk_12_rickyos;
 EpdFont offlineReaderFont(&cjk12Data);
 EpdFontFamily offlineReaderFontFamily(&offlineReaderFont);
@@ -171,20 +196,40 @@ extern EpdFont ui12RegularFont;
 extern EpdFont ui12BoldFont;
 EpdFontFamily ui12FontFamily(&ui12RegularFont, &ui12BoldFont);
 
+#if RICKYOS_NATIVE_SMALL_PANEL
+EpdFont nativeBodyFont(&metalio_body_10_regular);
+EpdFont cjk14Font(&metalio_headline_12_medium);
+EpdFont cjk16Font(&metalio_title_14_bold);
+EpdFont designCaptionFont(&metalio_caption_8_regular);
+EpdFont designDisplayFont(&metalio_display_19_bold);
+EpdFont bookTitleFont(&metalio_book_10_medium);
+EpdFontFamily cjk8FontFamily(&designCaptionFont);
+#else
 EpdFontFamily cjk8FontFamily(&offlineReaderFont);
 EpdFont cjk14Font(&ricky_headline_14_medium);
 EpdFont cjk16Font(&ricky_title_16_bold);
 EpdFont designCaptionFont(&ricky_caption_10_regular);
 EpdFont designDisplayFont(&ricky_display_23_bold);
+EpdFont bookTitleFont(&ricky_book_12_medium);
+#endif
+EpdFontFamily bookTitleFamily(&bookTitleFont);
 EpdFontFamily designCaptionFamily(&designCaptionFont);
 EpdFontFamily designDisplayFamily(&designDisplayFont);
+#if RICKYOS_NATIVE_SMALL_PANEL
+EpdFontFamily cjk10FontFamily(&nativeBodyFont);
+#else
 EpdFontFamily cjk10FontFamily(&designCaptionFont);
+#endif
 EpdFontFamily ui14FallbackFamily(&cjk14Font);
 EpdFontFamily ui16FallbackFamily(&cjk16Font);
+#ifndef RICKYOS_PRODUCT
+// Hebrew/Arabic fallback. The RickyOS product leaves it out to fit the OTA slot (~125 KB):
+// its UI is Chinese/English, and an RTL book title draws with the replacement glyph.
 static EpdFont rtlRegularFont(&ubuntu_12_regular);
 static EpdFont rtlBoldFont(&ubuntu_12_bold);
 static EpdFontFamily rtlFontFamily(&rtlRegularFont, &rtlBoldFont);
 static constexpr int kRtlFontId = 0x52544C0C;
+#endif
 EpdFont cjk12Font(&cjk12Data);
 EpdFontFamily cjk12FontFamily(&cjk12Font);
 
@@ -326,15 +371,19 @@ void restartToHomeAfterStorageHandoff() {
   silentRebootFontPointSize = 0;
   silentRebootPayload = Frontlight.isOn() ? SILENT_REBOOT_LIGHT_ON : 0;
   silentRebootMagic = SILENT_REBOOT_MAGIC;
-  LOG_DBG("MAIN", "Restart after storage handoff (target=home)");
+  const unsigned long started = millis();
   GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
+  LOG_INF("MAIN", "storage handoff popup %lu ms", millis() - started);
   delay(50);
   handoffUsbOtgToSerialJtag();
+  LOG_INF("MAIN", "storage handoff USB switch %lu ms, restarting", millis() - started);
   ESP.restart();
 }
 
 void toggleFrontlight() {
-  if (!Frontlight.present()) return;
+  // Global shortcuts run before the active Activity gets its input. Standby
+  // must not change the light or persist a preference from an ignored gesture.
+  if (activityManager.standbyShowing() || !Frontlight.present()) return;
   const bool lightOn = !Frontlight.isOn();
   Frontlight.setOn(lightOn);
   SETTINGS.frontlightOn = lightOn ? 1 : 0;
@@ -394,7 +443,46 @@ static bool loadSleepFrameBuffer() {
 }
 
 // Enter deep sleep mode
+#if RICKYOS_PLUS_POWER_LOG
+// Power measurement (diagnostic builds only). One CSV row per event: wall clock (0 until
+// the clock is valid), uptime, event, current activity, USB / frontlight / Wi-Fi state and
+// the BQ27220 readings. Usage per state comes from the raw coulomb counter's change over
+// time; the "off" row before shutdown and the next "boot" row bracket the powered-off span.
+char g_powerLogActivity[24] = "-";
+void powerLog(const char* event) {
+  static const BatteryMonitor gauge;
+  const auto s = gauge.readPowerSnapshot();
+  // Ticks also carry the gauge's own StateOfCharge and the percentage on screen.
+  char tagged[64];
+  if (strncmp(event, "tick", 4) == 0) {
+    snprintf(tagged, sizeof(tagged), "%s-soc%u-ui%u", event, s.socOk ? s.soc : 999u,
+             static_cast<unsigned>(powerManager.getBatteryPercentage()));
+    event = tagged;
+  }
+  char line[192];
+  const int n = snprintf(line, sizeof(line), "%lu,%lu,%s,%s,%d,%d,%d,%u,%d,%d,%u,%d,%d%d%d%d%d\n",
+                         static_cast<unsigned long>(TimeUtils::getCurrentValidTimestamp()),
+                         static_cast<unsigned long>(millis()), event, g_powerLogActivity, gpio.isUsbConnected() ? 1 : 0,
+                         Frontlight.isOn() ? 1 : 0, static_cast<int>(WiFi.getMode()), s.mv, s.current, s.average,
+                         s.counter, s.deciCelsius, s.mvOk, s.currentOk, s.averageOk, s.counterOk, s.temperatureOk);
+  if (n <= 0) return;
+  constexpr const char* kPath = "/rickyos-power.csv";
+  const bool fresh = !Storage.exists(kPath);
+  HalFile file = Storage.open(kPath, O_WRONLY | O_CREAT | O_APPEND);
+  if (!file) return;
+  if (fresh) {
+    static const char kHeader[] =
+        "epoch,uptime_ms,event,activity,usb,frontlight,wifi,mv,current_ma,average_ma,counter_mah,temp_dc,ok\n";
+    file.write(reinterpret_cast<const uint8_t*>(kHeader), sizeof(kHeader) - 1);
+  }
+  file.write(reinterpret_cast<const uint8_t*>(line), static_cast<size_t>(std::min(n, int(sizeof(line) - 1))));
+}
+#endif
+
 void enterDeepSleep(bool fromTimeout = false) {
+#if RICKYOS_PLUS_POWER_LOG
+  powerLog(fromTimeout ? "off-timeout" : "off");
+#endif
   bleinput::stop();
   HalPowerManager::Lock powerLock;  // Ensure we are at normal CPU frequency for sleep preparation
   APP_STATE.lastSleepFromReader = activityManager.isReaderActivity();
@@ -409,6 +497,10 @@ void enterDeepSleep(bool fromTimeout = false) {
       SETTINGS.rickySleepScreenMode() == CrossPointSettings::SLEEP_SCREEN_MODE::QUICK_RESUME;
   // Activity-owned state (reading progress, session) is saved before the sleep screen.
   activityManager.prepareForSleep();
+  if (!HalCamera::prepareForSleep() || !HalCellular::shutdown()) {
+    LOG_ERR("MAIN", "Peripheral shutdown incomplete; postponing sleep");
+    return;
+  }
   // Every sleep mode leaves a complete retained frame on the e-ink panel. Keep
   // it visible until the first useful reader or home paint replaces it.
   APP_STATE.showBootScreen = false;
@@ -441,7 +533,7 @@ void enterDeepSleep(bool fromTimeout = false) {
     WiFi.mode(WIFI_OFF);
   }
 
-#if FREEINK_CAP_HAPTIC
+#if FREEINK_CAP_HAPTIC || FREEINK_DEVICE_METALIO_PLUS
   gpio.stopHapticFeedback();
 #endif
   halTiltSensor.deepSleep();
@@ -458,7 +550,7 @@ void enterDeepSleep(bool fromTimeout = false) {
 
 bool setupDisplayAndFonts(bool seamless = false, bool logSdFontLoadHeap = false) {
   display.begin(seamless);
-#if FREEINK_DEVICE_READPICO
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4
   // Read Pico step 4 of 5 (see the boot-order note in setup()): the panel has
   // stepped through its own rails by now — BoardReadPico::epdPrepare/On/Off are
   // the board's LgfxEpdPowerHooks, so the SY7636A enable (FCA9555 P0.3), VCOM and
@@ -491,7 +583,7 @@ bool setupDisplayAndFonts(bool seamless = false, bool logSdFontLoadHeap = false)
 #endif  // OMIT_FONTS
   // The fixed slider title font keeps its face while INX uses its historical large-text fallback.
   renderer.insertFont(CONTROL_18_FONT_ID, control18FontFamily);
-  renderer.insertFont(UI_10_FONT_ID, cjk12FontFamily);
+  renderer.insertFont(UI_10_FONT_ID, ricky::panel::nativeSmall ? cjk10FontFamily : cjk12FontFamily);
   renderer.insertFont(UI_12_FONT_ID, ui16FallbackFamily);
   renderer.insertFont(SMALL_FONT_ID, designCaptionFamily);
   renderer.insertFont(CJK_UI_8_FONT_ID, cjk8FontFamily);
@@ -502,8 +594,9 @@ bool setupDisplayAndFonts(bool seamless = false, bool logSdFontLoadHeap = false)
   renderer.setFallbackFont(UI_10_FONT_ID, CJK_UI_10_FONT_ID);
   renderer.setFallbackFont(UI_12_FONT_ID, CJK_UI_12_FONT_ID);
   renderer.setFallbackFont(NOTOSANS_18_FONT_ID, CJK_UI_12_FONT_ID);
-  renderer.insertFont(BaseTheme::STATUS_NUMERIC_FONT_ID, smallFontFamily);
-#if FREEINK_DEVICE_READPICO
+  renderer.insertFont(BaseTheme::STATUS_NUMERIC_FONT_ID,
+                      ricky::panel::nativeSmall ? designCaptionFamily : smallFontFamily);
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
   renderer.insertFont(READER_STATUS_FONT_ID, smallFontFamily);
   renderer.insertFont(READER_ESTIMATE_FONT_ID, ui10FontFamily);
   renderer.setFallbackFont(READER_STATUS_FONT_ID, CJK_UI_8_FONT_ID);
@@ -520,21 +613,30 @@ bool setupDisplayAndFonts(bool seamless = false, bool logSdFontLoadHeap = false)
   renderer.setFallbackFont(UI_12_FONT_ID, CJK_UI_16_FONT_ID);
   renderer.setFallbackFont(NOTOSANS_18_FONT_ID, CJK_UI_16_FONT_ID);
   renderer.setFallbackFont(CONTROL_18_FONT_ID, CJK_UI_16_FONT_ID);
+#ifndef RICKYOS_PRODUCT
   renderer.insertFont(kRtlFontId, rtlFontFamily);
+#endif
   renderer.setFallbackFont(CJK_UI_14_FONT_ID, CJK_UI_12_FONT_ID);
   renderer.setFallbackFont(CJK_UI_16_FONT_ID, CJK_UI_12_FONT_ID);
+#ifndef RICKYOS_PRODUCT
   renderer.setFallbackFont(CJK_UI_12_FONT_ID, kRtlFontId);
-  renderer.insertFont(RickyDesignUi::BODY, cjk12FontFamily);
+#endif
+  renderer.insertFont(RickyDesignUi::BODY, ricky::panel::nativeSmall ? cjk10FontFamily : cjk12FontFamily);
+  renderer.insertFont(RickyDesignUi::BOOK_TITLE, bookTitleFamily);
   renderer.insertFont(RickyDesignUi::CAPTION, designCaptionFamily);
   renderer.insertFont(RickyDesignUi::HEADLINE, ui14FallbackFamily);
   renderer.insertFont(RickyDesignUi::TITLE, ui16FallbackFamily);
   renderer.insertFont(RickyDesignUi::NUMERIC_DISPLAY, designDisplayFamily);
+#ifndef RICKYOS_PRODUCT
   renderer.setFallbackFont(RickyDesignUi::BODY, kRtlFontId);
+#endif
   renderer.setFallbackFont(RickyDesignUi::CAPTION, RickyDesignUi::BODY);
   // Existing functional pages keep their stable IDs, but use the same Noto
   // family as the redesigned pages. Reader families are not rebound.
   renderer.setFallbackFont(SMALL_FONT_ID, RickyDesignUi::BODY);
+#ifndef RICKYOS_PRODUCT
   renderer.setFallbackFont(UI_10_FONT_ID, kRtlFontId);
+#endif
   renderer.setFallbackFont(UI_12_FONT_ID, RickyDesignUi::BODY);
   renderer.insertFont(CHINESE_CHESS_FONT_ID, chineseChessPieceFontFamily);
 
@@ -613,6 +715,7 @@ void continueChineseFontInstall(const uint8_t expectedPointSize) {
 }
 
 void setup() {
+  HalCamera::recoverUsbBeforeSerial();
   BoardConfig::holdPowerRails();
 
   // --- Read Pico boot order (read-pico.md 1.4) ------------------------------
@@ -650,7 +753,9 @@ void setup() {
   // enumeration proceed asynchronously so users do not pay this startup cost.
   delay(250);
 #endif
+#if !FREEINK_DEVICE_METALIO_PLUS
   Serial.begin(115200);
+#endif
 #if LOG_SERIAL_HAS_TX_TIMEOUT
   logSerial.setTxTimeoutMs(1);  // This is a load-bearing 1. Do not modify.
 #endif
@@ -750,10 +855,20 @@ void setup() {
     return;
   }
 
+#if RICKYOS_PLUS_NETTEST_HEADLESS
+  // Diagnostic only: isolate radio/TCP/TLS from the renderer and application
+  // activities. Board power and SD are ready; saved network data remains on SD.
+  halClock.setAutoSyncEnabled(false);
+  LOG_INF("NETTEST", "headless isolation: UI and background clock not started");
+  extern void plusNetSelfTestStart();
+  plusNetSelfTestStart();
+  return;
+#endif
+
   HalSystem::checkPanic();
 
   const bool settingsLoaded = SETTINGS.loadFromFile();
-#if FREEINK_DEVICE_READPICO
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
   if (!settingsLoaded) SETTINGS.readerMenuStyle = CrossPointSettings::READER_MENU_LIST;
 #endif
   const auto onboardingMode =
@@ -778,6 +893,9 @@ void setup() {
     RickyStorageLayout::migrateLegacyBooks();
   }
   ACHIEVEMENTS.loadFromFile();
+#if RICKYOS_PRODUCT
+  rickyBadgeNotice::seedOnce();
+#endif
   I18N.setLanguage(static_cast<Language>(SETTINGS.language));
   KOREADER_STORE.loadFromFile();
   UITheme::getInstance().reload();
@@ -809,7 +927,8 @@ void setup() {
       // Most devices return to sleep after a USB-powered cold boot.
       LOG_DBG("MAIN", "Wakeup reason: After USB Power");
 #if FREEINK_DEVICE_X4PRO || FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_PAPERMONO || FREEINK_DEVICE_EEGO_A4 || \
-    FREEINK_DEVICE_WAVESHARE_EPAPER_397 || FREEINK_DEVICE_METALIO_EINK4 || FREEINK_DEVICE_READPICO
+    FREEINK_DEVICE_WAVESHARE_EPAPER_397 || FREEINK_DEVICE_METALIO_EINK4 || FREEINK_DEVICE_READPICO ||         \
+    FREEINK_DEVICE_METALIO_PLUS
       // X4 Pro must stay awake so USB Serial/JTAG remains available after leaving
       // USB Drive and reconnecting the cable. Paper Mono has no armable GPIO wake
       // (its button is behind the PMIC). EEGO A4's post-flash reset reads as
@@ -836,8 +955,12 @@ void setup() {
       break;
   }
 
-  // First serial output only here to avoid timing inconsistencies for power button press duration verification
+    // First serial output only here to avoid timing inconsistencies for power button press duration verification
+#ifdef RICKYOS_PRODUCT
+  LOG_INF("MAIN", "Starting CrossPoint version " CROSSPOINT_VERSION);
+#else
   LOG_DBG("MAIN", "Starting CrossPoint version " CROSSPOINT_VERSION);
+#endif
 
   // Resolve the single boot-presentation decision. Skipping the splash also
   // skips the panel-clearing pass and the X3 initial-full-sync arming (see
@@ -883,6 +1006,14 @@ void setup() {
         activityManager.goToBoot();
         break;
     }
+  }
+
+  // On a boot screen (cold boot or after an update), before any page needs it: index the
+  // library and refresh recent covers when this firmware or the card calls for it, so the
+  // first visits are not the slow ones. Wakes and silent restarts stay instant.
+  if (!recoveryFirmwareMode && !HalSystem::isRebootFromPanic() && !requiresOnboarding &&
+      (postOtaBoot || resume == BootResume::Splash)) {
+    BootPreparation::run(renderer);
   }
 
   if (recoveryFirmwareMode) {
@@ -960,11 +1091,86 @@ void setup() {
   // Ensure we're not still holding the power button before leaving setup
   waitForPowerRelease();
   allowSleepAt = millis() + 2000;
+#if FREEINK_DEVICE_METALIO_EINK4
+  HalCamera::begin("/images/camera");
+  HalCellular::begin();
+#endif
+#if RICKYOS_PLUS_NETTEST && !RICKYOS_PLUS_NETTEST_CONNECTED
+  extern void plusNetSelfTestStart();
+  plusNetSelfTestStart();
+#endif
 }
 
+namespace {
+bool cameraDiagnosticRestart = false;
+uint32_t cameraDelayedAt = 0;
+}  // namespace
+
 void loop() {
+  if (cameraDelayedAt && millis() >= cameraDelayedAt) {
+    cameraDelayedAt = 0;
+#if FREEINK_DEVICE_METALIO_EINK4
+    activityManager.replaceActivityWith<MetalioCameraActivity>(true);
+#endif
+  }
+  HalCamera::pump();
+  HalCellular::pump();
+#if FREEINK_DEVICE_METALIO_EINK4
+  if (!deepSleepInProgress && ((cameraDiagnosticRestart && !HalCamera::busy()) || HalCamera::consumeRestartRequest())) {
+    // Camera owns the native USB PHY until reset. Do not use silentRestart(),
+    // whose touch-device Wi-Fi shortcut can intentionally avoid a reset.
+    HalCellular::shutdown();
+    silentRebootTarget = static_cast<uint32_t>(SilentRebootTarget::Home);
+    silentRebootFontPointSize = 0;
+    silentRebootPayload = 0;
+    silentRebootMagic = SILENT_REBOOT_MAGIC;
+    ESP.restart();
+  }
+#endif
+#if RICKYOS_PLUS_POWER_LOG
+  {
+    static bool booted = false;
+    static uint32_t lastSample = 0;
+    if (!booted) {
+      booted = true;
+      lastSample = millis();
+      powerLog("boot");
+    } else if (millis() - lastSample >= 60000) {
+      lastSample = millis();
+      powerLog("tick");
+    }
+  }
+#endif
+#if RICKYOS_PLUS_RADIO_AUTOSTART
+  // Explicit diagnostic build only; run once after the normal UI has started.
+  static bool radioAutoStarted = false;
+  if (!radioAutoStarted && millis() >= 15000) {
+    radioAutoStarted = true;
+    extern void plusRadioAutoStart(GfxRenderer & renderer);
+    plusRadioAutoStart(renderer);
+  }
+#endif
+#if RICKYOS_PLUS_NETTEST_HEADLESS
+  delay(250);
+  return;
+#endif
 #ifdef RICKYOS_STANDBY_DIAG
   standby_diag::dumpWhenAwake();
+#endif
+#if !defined(SIMULATOR)
+  {
+    // After a software restart, replay the previous session's last log lines once a
+    // serial host has had time to reconnect (USB 传书 owned the port during that session).
+    static bool previousLogsShown = false;
+    if (!previousLogsShown && millis() > 8000) {
+      previousLogsShown = true;
+      const std::string previous = HalSystem::takePreviousSessionLogs();
+      if (!previous.empty()) {
+        LOG_INF("MAIN", "previous session's last logs:");
+        logSerial.print(previous.c_str());
+      }
+    }
+  }
 #endif
   static unsigned long maxLoopDuration = 0;
   const unsigned long loopStartTime = millis();
@@ -987,7 +1193,8 @@ void loop() {
 
   gpio.setSharedConfirmPowerShortPressEmitsPower(SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP);
   mappedInputManager.update();
-#if FREEINK_DEVICE_READPICO
+  if (activityManager.standbyShowing()) mappedInputManager.suppressStandbyHomeActions();
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
   // Cancel before any handler can wait for the framebuffer lock. These are
   // snapshot queries: they do not consume the gesture from its normal owner.
 #if CROSSPOINT_EMULATED
@@ -1003,7 +1210,9 @@ void loop() {
     activityManager.cancelIdleRender("touch", true);
   }
 #endif
-#if FREEINK_CAP_HAPTIC
+#if FREEINK_DEVICE_METALIO_PLUS
+  gpio.updateHapticFeedback(activityManager.standbyShowing() ? 0 : SETTINGS.plusTouchFeedback);
+#elif FREEINK_CAP_HAPTIC
   gpio.updateHapticFeedback(SETTINGS.hapticFeedbackLevel);
 #endif
   updateBluetoothLifecycle();
@@ -1018,6 +1227,12 @@ void loop() {
 
 #if CROSSPOINT_CAP_SOUND_FEEDBACK
   SoundFeedback::update(SETTINGS.soundFeedbackLevel, gpio.physicalPressedMask());
+#endif
+
+#if FREEINK_DEVICE_METALIO_PLUS
+  // Charge qualification must progress even when no page is repainted. This
+  // bounded poll uses NVS/I2C, not SD, and only runs while this loop is awake.
+  powerManager.pollBatteryWhileAwake();
 #endif
 
   if (activityManager.requiresExclusiveStorageLoop()) {
@@ -1036,16 +1251,42 @@ void loop() {
     return;
   }
 
-  halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, activityManager.isReaderActivity());
+  {
+    int touchX = 0, touchY = 0;
+    if (mappedInputManager.isScreenTouchHeld(touchX, touchY) || mappedInputManager.wasScreenTouchReleased())
+      halTiltSensor.noteTouch();
+  }
+  // Back double tap waits for device tuning (see SettingsList): off whatever is stored.
+  halTiltSensor.update(SETTINGS.effectiveTiltPageTurn(), SETTINGS.orientation, activityManager.isReaderActivity(),
+                       CrossPointBackTap::TAP_OFF, SETTINGS.backTapSensitivity);
   halClock.update();
 
   renderer.setFadingFix(SETTINGS.fadingFix);
 
-  // The ROM console does not depend on Arduino USB CDC's connection state.
-  if ((Serial || FREEINK_LOG_TRANSPORT == FREEINK_LOG_TRANSPORT_ROM_PRINTF) && millis() - lastMemPrint >= 10000) {
+#if FREEINK_DEVICE_METALIO_PLUS && RICKYOS_PLUS_FIELD_DIAG
+  plusFieldDiagnosticsPoll();
+#endif
+
+  // Plus logs through IDF, not Arduino Serial (Logging.cpp). Its console and
+  // the ROM console do not depend on Arduino USB CDC's connection state.
+  // Never while a page renders or drives the panel: the largest-free-block
+  // queries walk each heap under its lock, interrupts off, for hundreds of
+  // microseconds on the 16 MB PSRAM heap. On the Plus that stalled the panel's
+  // bounce-buffer refill, which then re-sent rows 16 back: a faint copy of the
+  // text beside it at the portrait left edge. The snapshot waits for the next
+  // idle loop instead.
+  if ((FREEINK_DEVICE_METALIO_PLUS || Serial || FREEINK_LOG_TRANSPORT == FREEINK_LOG_TRANSPORT_ROM_PRINTF) &&
+      millis() - lastMemPrint >= 10000 && !RenderLock::peek()) {
     const auto heap = HalMemory::getInternalHeap();
     LOG_INF("MEM", "Free: %zu bytes, Total: %zu bytes, Min Free: %zu bytes, MaxAlloc: %zu bytes", heap.freeBytes,
             heap.totalBytes, heap.minFreeBytes, heap.largestBlockBytes);
+#if FREEINK_DEVICE_METALIO_PLUS
+    // DMA is a subset of internal RAM, not an additional pool. Track its
+    // contiguous capacity separately; a large PSRAM heap cannot satisfy it.
+    const auto dma = HalMemory::getInternalDmaHeap();
+    LOG_INF("MEM", "DMA: Free: %zu bytes, Total: %zu bytes, Min Free: %zu bytes, MaxAlloc: %zu bytes", dma.freeBytes,
+            dma.totalBytes, dma.minFreeBytes, dma.largestBlockBytes);
+#endif
 #ifdef BOARD_HAS_PSRAM
     const auto psram = HalMemory::getPsramHeap();
     LOG_INF("MEM", "PSRAM: Free: %zu bytes, Total: %zu bytes, Min Free: %zu bytes, MaxAlloc: %zu bytes",
@@ -1062,7 +1303,85 @@ void loop() {
     if (line.startsWith("CMD:")) {
       String cmd = line.substring(4);
       cmd.trim();
-      if (cmd == "SCREENSHOT") {
+#if FREEINK_DEVICE_METALIO_EINK4
+      if (cmd == "CAMERA_DELAY_TEST") {
+        cameraDelayedAt = millis() + 20000;
+        logSerial.println("CAMERA_TEST_ARMED 20s");
+      } else if (cmd == "CAMERA_VIEW_TEST")
+        activityManager.replaceActivityWith<MetalioCameraActivity>(true);
+      else if (cmd == "CAMERA_VIEW_DUMP") {
+        auto file = Storage.open("/.crosspoint/camera-view-test.bmp");
+        if (file && file.fileSize() <= 100000) {
+          logSerial.printf("CAMERA_VIEW_START:%u\n", static_cast<unsigned>(file.fileSize()));
+          uint8_t chunk[256];
+          for (int count; (count = file.read(chunk, sizeof(chunk))) > 0;) logSerial.write(chunk, count);
+          logSerial.print("CAMERA_VIEW_END\n");
+        }
+      } else if (cmd == "CELL_PAGE")
+        activityManager.goToCellular();
+      else if (cmd == "CAMERA_PAGE")
+        activityManager.goToCamera();
+      else if (cmd == "HOME")
+        activityManager.goHome();
+#if FREEINK_METALIO_UI_RETAINED
+      else if (cmd == "UI_LIBRARY")
+        activityManager.goToLibrary();
+      else if (cmd == "UI_APPS")
+        activityManager.goToApps();
+      else if (cmd == "UI_SETTINGS")
+        activityManager.goToSettings();
+      else if (cmd == "UI_CLEAN") {
+        renderer.requestNextFullRefresh();
+        activityManager.requestUpdate();
+      }
+#endif
+      else if (cmd == "CELL_START")
+        HalCellular::enable(true);
+      else if (cmd == "CELL_STOP")
+        HalCellular::enable(false);
+      else if (cmd == "CELL_TEST")
+        HalCellular::probe();
+      else if (cmd == "CELL_REFRESH")
+        HalCellular::refresh();
+      else if (cmd == "CELL_SIM1")
+        HalCellular::selectSim(0);
+      else if (cmd == "CELL_SIM2")
+        HalCellular::selectSim(1);
+      else if (cmd == "CELL_STATUS") {
+        const auto s = HalCellular::snapshot();
+        logSerial.printf("CELL_STATUS state=%u enabled=%u busy=%u slot=%u csq=%d carrier=%s ip=%s error=%s\n",
+                         static_cast<unsigned>(s.state), s.enabled, s.busy, s.simSlot, s.signal, s.carrier, s.ip,
+                         s.error);
+      } else if (cmd == "CAMERA_TEST") {
+        cameraDiagnosticRestart = HalCamera::capture();
+      } else if (cmd == "CAMERA_STATUS") {
+        const auto s = HalCamera::snapshot();
+        logSerial.printf("CAMERA_STATUS state=%u error=%d bytes=%lu size=%ux%u file=%s\n",
+                         static_cast<unsigned>(s.state), s.error, static_cast<unsigned long>(s.bytes), s.width,
+                         s.height, s.path);
+        logSerial.printf("CAMERA_DIAG phase=%lu descriptor=%lu internal=%lu/%lu largest=%lu/%lu\n",
+                         static_cast<unsigned long>(s.phase), static_cast<unsigned long>(s.configDescriptorBytes),
+                         static_cast<unsigned long>(s.internalBefore), static_cast<unsigned long>(s.internalAfter),
+                         static_cast<unsigned long>(s.largestBefore), static_cast<unsigned long>(s.largestAfter));
+        logSerial.printf("CAMERA_POWER 15/16/18/1e/38 before=%02x,%02x,%02x,%02x,%02x after=%02x,%02x,%02x,%02x,%02x\n",
+                         s.powerBefore[0], s.powerBefore[1], s.powerBefore[2], s.powerBefore[3], s.powerBefore[4],
+                         s.powerAfter[0], s.powerAfter[1], s.powerAfter[2], s.powerAfter[3], s.powerAfter[4]);
+        logSerial.printf("CAMERA_USB_ERROR %s\n", s.usbError);
+        logSerial.printf(
+            "CAMERA_HOST hprt=%08lx gint=%08lx phy=%08lx usj=%08lx mux=%04x latepower=%02x,%02x,%02x,%02x,%02x\n",
+            static_cast<unsigned long>(s.hostPort), static_cast<unsigned long>(s.hostInterrupt),
+            static_cast<unsigned long>(s.phyRoute), static_cast<unsigned long>(s.usbSerial), s.muxOutput,
+            s.powerLate[0], s.powerLate[1], s.powerLate[2], s.powerLate[3], s.powerLate[4]);
+      }
+#endif
+      if (cmd == "UI_GRAY_SCREENSHOT") {
+        RenderLock lock;
+        const uint8_t* raster = display.lastUiGrayscaleRaster();
+        const size_t bytes = static_cast<size_t>(display.getDisplayWidth() / 2) * display.getDisplayHeight();
+        logSerial.printf("UI_GRAY_START:%u\n", static_cast<unsigned>(raster ? bytes : 0));
+        if (raster) logSerial.write(raster, bytes);
+        logSerial.printf("UI_GRAY_END\n");
+      } else if (cmd == "SCREENSHOT") {
         const uint32_t bufferSize = display.getBufferSize();
         logSerial.printf("SCREENSHOT_START:%d\n", bufferSize);
         uint8_t* buf = display.getFrameBuffer();
@@ -1162,6 +1481,10 @@ void loop() {
     return;
   }
   const unsigned long sleepTimeoutMs = SETTINGS.getSleepTimeoutMs();
+#if RICKYOS_PLUS_NETTEST
+  extern bool plusNetSelfTestActive();
+  if (plusNetSelfTestActive()) lastActivityTime = millis();  // the radio test must not light-sleep
+#endif
   if (sleepTimeoutMs > 0 && !activityManager.preventAutoSleep() && millis() - lastActivityTime >= sleepTimeoutMs) {
     LOG_DBG("SLP", "Auto-standby after %lu ms of inactivity", sleepTimeoutMs);
     STANDBY_DIAG("auto-standby after %lus idle", sleepTimeoutMs / 1000);
@@ -1248,6 +1571,12 @@ void loop() {
   if (mappedInputManager.homeButtonAction() == HomeButtonAction::ToggleFrontlight) {
     toggleFrontlight();
   }
+  if (mappedInputManager.homeButtonAction() == HomeButtonAction::Standby) activityManager.openStandby();
+  if (mappedInputManager.homeButtonAction() == HomeButtonAction::HoldingHand) {
+    SETTINGS.pageTurnDirection = SETTINGS.pageTurnDirection == 0 ? 1 : 0;
+    SETTINGS.saveToFile();
+    activityManager.requestUpdate();  // touch zones and any hand-dependent chrome follow at once
+  }
   if (mappedInputManager.homeButtonAction() == HomeButtonAction::Refresh ||
       (SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::FORCE_REFRESH &&
        mappedInputManager.wasReleased(MappedInputManager::Button::Power))) {
@@ -1264,12 +1593,13 @@ void loop() {
   // flash, the AA pass re-running, and a frontlight dip under the refresh
   // load); the reader's status bar picks the charging state up on the next
   // page turn instead.
-  if (gpio.wasUsbStateChanged() && !activityManager.isReaderActivity()) {
+  // Full-screen Standby has no battery icon or input hints to update.
+  if (gpio.wasUsbStateChanged() && !activityManager.isReaderActivity() && !activityManager.standbyShowing()) {
     activityManager.requestUpdate();
   }
 #ifndef CROSSPOINT_EMULATED
   if (gpio.wasInputModalityChanged() && gpio.hasTouch() && UITheme::getInstance().hasMainTabs() &&
-      !activityManager.isReaderActivity()) {
+      !activityManager.isReaderActivity() && !activityManager.standbyShowing()) {
     activityManager.requestUpdate();
   }
 #endif

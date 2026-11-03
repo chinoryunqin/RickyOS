@@ -180,7 +180,10 @@ enum UIIcon {
   Calculator,
   Woodfish,
   Usb,
-  Blocks
+  Blocks,
+  Recorder,
+  Gallery,
+  Wallpaper
 };
 
 // Default theme implementation (Classic Theme)
@@ -351,8 +354,11 @@ class BaseTheme {
   // A small framed label in the bottom-right corner over whatever the screen shows
   // ("Standby", or "Off" on the power-off screen); returns where it drew.
   static Rect drawRickyStandbyIndicator(const GfxRenderer& renderer, bool poweredOff = false);
+  // `header` false draws only the footer (the puppy reading mode puts its dog where the header sits).
+  // `area` draws into a smaller page (the status-bar settings preview); null is the screen.
   static void drawRickyReaderChrome(GfxRenderer& renderer, float bookProgress, int currentPage, int pageCount,
-                                    const char* title, bool bookmarked, bool estimated);
+                                    const char* title, bool bookmarked, bool estimated, bool header = true,
+                                    const Rect* area = nullptr);
   // Also draws the wall clock opposite the battery when the user enabled
   // SETTINGS.clockShowInHeader and system time is valid. On touch boards a
   // tappable back button leads the band (see HeaderBackTapTarget); root
@@ -411,9 +417,19 @@ class BaseTheme {
                             const std::function<std::string(int index)>& buttonLabel,
                             const std::function<UIIcon(int index)>& rowIcon) const;
   virtual Rect drawPopup(const GfxRenderer& renderer, const char* message) const;
+  // drawPopup() with room for fillPopupProgress() below the message and an empty track,
+  // so a long task shows how far it has come.
+  Rect drawProgressPopup(const GfxRenderer& renderer, const char* message) const;
+  // `message`, when set, is a wrapped body under the title (themes without one ignore it).
   virtual void drawOptionPopup(const GfxRenderer& renderer, const char* title, const std::vector<std::string>& options,
-                               int selectedIndex) const;
+                               int selectedIndex, const char* message = nullptr) const;
   virtual void fillPopupProgress(const GfxRenderer& renderer, const Rect& layout, const int progress) const;
+
+ private:
+  Rect drawPopupBox(const GfxRenderer& renderer, const char* message, int extraHeight) const;
+  static Rect popupProgressBar(const Rect& layout);
+
+ public:
   static void drawStatusBar(GfxRenderer& renderer, const float bookProgress, const int currentPage, const int pageCount,
                             std::string title, const int paddingBottom = 0, const int textYOffset = 0,
                             const bool fillMargin = true, const bool isPageBookmarked = false,

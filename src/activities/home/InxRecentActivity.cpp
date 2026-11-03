@@ -1,6 +1,7 @@
 #include "InxRecentActivity.h"
 
 #include <Bitmap.h>
+#include <BoardConfig.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
 #include <I18n.h>
@@ -13,7 +14,7 @@
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "ReadingStatsStore.h"
-#include "activities/settings/RickyProfileActivity.h"
+#include "activities/apps/reading-stats/RickyBadgesActivity.h"
 #include "components/RickyDesignTokens.h"
 #include "components/RickyHomeLayout.h"
 #include "components/SubpageLayout.h"
@@ -22,6 +23,7 @@
 #include "components/themes/inx/InxTheme.h"
 #include "fontIds.h"
 #include "util/BookCoverLoader.h"
+#include "util/PanelTileCache.h"
 #include "util/ReadingStatsAnalytics.h"
 
 namespace {
@@ -34,8 +36,11 @@ const char* titleOf(const RecentBook& book) { return book.title.empty() ? book.p
 bool drawRecentCover(const GfxRenderer& renderer, const Bitmap& bitmap, const Rect& bounds) {
   const auto fit = RickyHomeLayout::fitBitmap(bitmap.getWidth(), bitmap.getHeight(), bounds.width, bounds.height);
   if (fit.width <= 0 || fit.height <= 0) return false;
-  return renderer.drawBitmap(bitmap, bounds.x + (bounds.width - fit.width) / 2,
-                             bounds.y + (bounds.height - fit.height) / 2, fit.width, fit.height);
+  const int x = bounds.x + (bounds.width - fit.width) / 2;
+  const int y = bounds.y + (bounds.height - fit.height) / 2;
+  if (renderer.isGrayscale16Active() && !bitmap.is1Bit())
+    return renderer.drawBitmapGrayscale16(bitmap, x, y, fit.width, fit.height);
+  return renderer.drawBitmap(bitmap, x, y, fit.width, fit.height);
 }
 
 void drawMiniProgress(const GfxRenderer& renderer, const Rect rect, const uint8_t percent) {
@@ -140,6 +145,7 @@ void InxRecentActivity::onEnter() {
   }
   selected = 0;
   thumbnailHeight = 0;
+  preparedHeights.fill(0);
   targetCoverStates.fill(CoverCacheState::Unchecked);
   fallbackCoverStates.fill(CoverCacheState::Unchecked);
   if (layout() == InxRecentLayout::Flow) {
@@ -149,10 +155,14 @@ void InxRecentActivity::onEnter() {
     if (rickyHome) {
       rickyHome->begin(
           *books,
-          [](void* owner, int index, const Rect& bounds) {
+          [](void* owner, int index, const Rect& bounds, GfxRenderer& target) {
             auto& activity = *static_cast<InxRecentActivity*>(owner);
             activity.setThumbnailHeight(activity.rickyHome->coverHeight());
-            return activity.drawBookCover(index, bounds);  // The product host owns the title-only fallback.
+            auto* previous = activity.coverRenderer;
+            activity.coverRenderer = &target;
+            const bool drawn = activity.drawBookCover(index, bounds);
+            activity.coverRenderer = previous;
+            return drawn;
           },
           this);
     } else {
@@ -265,13 +275,14 @@ bool InxRecentActivity::tryDrawBookCover(const std::string& path, const Rect& bo
 #if defined(BOARD_HAS_PSRAM) && !defined(SIMULATOR) && !defined(CROSSPOINT_EMULATED)
   const auto drawCached = [this, &bounds, &state, &cache] {
     Bitmap bitmap(cache.bytes.get(), cache.size);
-    if (bitmap.parseHeaders() != BmpReaderError::Ok || bitmap.getWidth() <= 0 || bitmap.getHeight() <= 0) {
+    if (bitmap.parseHeaders() != BmpReaderError::Ok || bitmap.getWidth() <= 0 || bitmap.getHeight() <= 0 ||
+        BookCoverLoader::isOutdatedThumbnail(bitmap)) {
       cachedCoverBytes -= cache.size;
       cache = {};
       state = CoverCacheState::Missing;
       return false;
     }
-    return drawRecentCover(renderer, bitmap, bounds);
+    return drawRecentCover(coverRenderer ? *coverRenderer : renderer, bitmap, bounds);
   };
 
   if (cache.bytes) return drawCached();
@@ -280,6 +291,10 @@ bool InxRecentActivity::tryDrawBookCover(const std::string& path, const Rect& bo
   HalFile file;
   if (!Storage.openFileForRead("INX", path, file)) {
     state = CoverCacheState::Missing;
+    return false;
+  }
+  if (file.fileSize() == 0) {
+    state = CoverCacheState::Unavailable;  // BookCoverLoader's marker: this book has no usable cover
     return false;
   }
 
@@ -296,33 +311,49 @@ bool InxRecentActivity::tryDrawBookCover(const std::string& path, const Rect& bo
 #endif
 
   Bitmap bitmap(file);
-  if (bitmap.parseHeaders() != BmpReaderError::Ok || bitmap.getWidth() <= 0 || bitmap.getHeight() <= 0) {
-    state = CoverCacheState::Missing;
+  if (bitmap.parseHeaders() != BmpReaderError::Ok || bitmap.getWidth() <= 0 || bitmap.getHeight() <= 0 ||
+      BookCoverLoader::isOutdatedThumbnail(bitmap)) {
+    state = CoverCacheState::Missing;  // prepareNextMissingCover() regenerates it
     return false;
   }
-  return drawRecentCover(renderer, bitmap, bounds);
+  return drawRecentCover(coverRenderer ? *coverRenderer : renderer, bitmap, bounds);
 }
 
 bool InxRecentActivity::drawBookCover(const int bookIndex, const Rect& bounds) {
-  renderer.fillRect(bounds.x, bounds.y, bounds.width, bounds.height, false);
+  const auto& paintRenderer = coverRenderer ? *coverRenderer : renderer;
+  paintRenderer.fillRect(bounds.x, bounds.y, bounds.width, bounds.height, false);
   if (books && bookIndex >= 0 && bookIndex < static_cast<int>(books->size()) &&
       bookIndex < static_cast<int>(RecentBooksStore::MAX_RECENT_BOOKS) && thumbnailHeight > 0) {
     const RecentBook& book = (*books)[bookIndex];
     if (!book.coverBmpPath.empty()) {
+      // The bounds were just filled white, so a cover tile depends only on its file and place.
+      char place[40];
+      snprintf(place, sizeof(place), "|home|%d,%d,%d,%d", bounds.x, bounds.y, bounds.width, bounds.height);
       std::string path = UITheme::getCoverThumbPath(book.coverBmpPath, thumbnailHeight);
+      if (PanelTileCache::restore(paintRenderer, path + place)) {
+        targetCoverStates[bookIndex] = CoverCacheState::Ready;
+        return true;
+      }
 #if defined(BOARD_HAS_PSRAM) && !defined(SIMULATOR) && !defined(CROSSPOINT_EMULATED)
-      if (tryDrawBookCover(path, bounds, targetCoverStates[bookIndex], targetCoverCaches[bookIndex])) return true;
+      if (tryDrawBookCover(path, bounds, targetCoverStates[bookIndex], targetCoverCaches[bookIndex])) {
 #else
-      if (tryDrawBookCover(path, bounds, targetCoverStates[bookIndex])) return true;
+      if (tryDrawBookCover(path, bounds, targetCoverStates[bookIndex])) {
 #endif
+        PanelTileCache::store(paintRenderer, path + place, path, bounds.x, bounds.y, bounds.width, bounds.height);
+        return true;
+      }
       if (book.coverBmpPath.find("[HEIGHT]") != std::string::npos &&
           thumbnailHeight != InxMetrics::values.homeCoverHeight) {
         path = UITheme::getCoverThumbPath(book.coverBmpPath, InxMetrics::values.homeCoverHeight);
+        if (PanelTileCache::restore(paintRenderer, path + place)) return true;
 #if defined(BOARD_HAS_PSRAM) && !defined(SIMULATOR) && !defined(CROSSPOINT_EMULATED)
-        if (tryDrawBookCover(path, bounds, fallbackCoverStates[bookIndex], fallbackCoverCaches[bookIndex])) return true;
+        if (tryDrawBookCover(path, bounds, fallbackCoverStates[bookIndex], fallbackCoverCaches[bookIndex])) {
 #else
-        if (tryDrawBookCover(path, bounds, fallbackCoverStates[bookIndex])) return true;
+        if (tryDrawBookCover(path, bounds, fallbackCoverStates[bookIndex])) {
 #endif
+          PanelTileCache::store(paintRenderer, path + place, path, bounds.x, bounds.y, bounds.width, bounds.height);
+          return true;
+        }
       }
     }
   }
@@ -330,10 +361,10 @@ bool InxRecentActivity::drawBookCover(const int bookIndex, const Rect& bounds) {
   const auto size = InxCoverGeometry::fit(bounds.width, bounds.height);
   const int x = bounds.x + (bounds.width - size.width) / 2;
   const int y = bounds.y + (bounds.height - size.height) / 2;
-  renderer.drawRect(x, y, size.width, size.height, 2, true);
-  renderer.fillRect(x, y + size.height / 3, size.width, size.height * 2 / 3);
+  paintRenderer.drawRect(x, y, size.width, size.height, 2, true);
+  paintRenderer.fillRect(x, y + size.height / 3, size.width, size.height * 2 / 3);
   constexpr int iconSize = 32;
-  renderer.drawIcon(CoverIcon, x + (size.width - iconSize) / 2, y + size.height / 6 - iconSize / 2, iconSize);
+  paintRenderer.drawIcon(CoverIcon, x + (size.width - iconSize) / 2, y + size.height / 6 - iconSize / 2, iconSize);
   return false;
 }
 
@@ -362,12 +393,23 @@ bool InxRecentActivity::prepareNextMissingCover() {
         break;
     }
 
-    renderer.displayBuffer();
+    if (preparedHeights[index] == thumbnailHeight ||
+        !BookCoverLoader::canMakeThumbnail((*books)[index].path, thumbnailHeight)) {
+      // Prepared this visit and still not drawable, or nothing to prepare (TXT/MD books
+      // keep a thumbnail path too): the placeholder stays, without a repaint.
+      state = CoverCacheState::Unavailable;
+      continue;
+    }
+    preparedHeights[index] = static_cast<int16_t>(thumbnailHeight);
+    // The frame is already on the panel. The loan frees the framebuffer, so the
+    // next frame repaints it; a failure leaves a marker and is not retried.
     {
       GfxRenderer::FrameBufferLoan loan(renderer);
-      state = BookCoverLoader::ensureThumbnail((*books)[index].path, thumbnailHeight).empty()
-                  ? CoverCacheState::Unavailable
-                  : CoverCacheState::Ready;
+      // Draw reads the recents entry's path; a thumbnail written anywhere else is no use.
+      const std::string wanted = UITheme::getCoverThumbPath((*books)[index].coverBmpPath, thumbnailHeight);
+      state = BookCoverLoader::ensureThumbnail((*books)[index].path, thumbnailHeight) == wanted
+                  ? CoverCacheState::Ready
+                  : CoverCacheState::Unavailable;
     }
     requestUpdate();
     return true;
@@ -381,6 +423,16 @@ int InxRecentActivity::indexFromPoint(const int x, const int y) const {
 }
 
 void InxRecentActivity::loop() {
+  int touchX = 0, touchY = 0;
+  const bool inputPending = mappedInput.wasAnyPressed() || mappedInput.wasAnyReleased() ||
+                            mappedInput.wasScreenTouchReleased() || mappedInput.isScreenTouchHeld(touchX, touchY);
+  if (!inputPending && coverWorkPending.exchange(false)) {
+    // Waits for the render task to finish the current frame, then prepares at most
+    // one missing thumbnail; its update brings the next one.
+    RenderLock lock;
+    prepareNextMissingCover();
+    return;
+  }
   if (rickyHome) {
     const int action = rickyHome->selectedAction(mappedInput);
     if (action == RickyHomeUi::LIBRARY) {
@@ -392,7 +444,8 @@ void InxRecentActivity::loop() {
       return;
     }
     if (action == RickyHomeUi::PROFILE) {
-      startActivityForResultWith<RickyProfileActivity>([this](const ActivityResult&) { requestUpdate(); });
+      // The avatar opens the badges; the profile itself is edited from Settings.
+      startActivityForResultWith<RickyBadgesActivity>([this](const ActivityResult&) { requestUpdate(); });
       return;
     }
     if (action == RickyHomeUi::TRANSFER) {
@@ -653,8 +706,9 @@ void InxRecentActivity::render(RenderLock&&) {
     }
   }
 
-  const auto labels = mainTabButtonLabels(SETTINGS.standbyShortcutEnabled ? tr(STR_STANDBY_TITLE) : "", tr(STR_OPEN),
-                                          books && books->size() > 1, false);
+  const auto labels =
+      mainTabButtonLabels(SETTINGS.standbyShortcutEnabled && !BoardConfig::hasHomeKey() ? tr(STR_STANDBY_TITLE) : "",
+                          tr(STR_OPEN), books && books->size() > 1, false);
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   if (usesMainTabBar() && mappedInput.hasTouch() && !mainTabsAtBottom()) {
     int top, right, bottom, left;
@@ -668,6 +722,6 @@ void InxRecentActivity::render(RenderLock&&) {
     GUI.drawBatteryRight(renderer, battery,
                          SETTINGS.hideBatteryPercentage != CrossPointSettings::HIDE_BATTERY_PERCENTAGE::HIDE_ALWAYS);
   }
-  if (prepareNextMissingCover()) return;
   renderer.displayBuffer();
+  coverWorkPending = true;
 }

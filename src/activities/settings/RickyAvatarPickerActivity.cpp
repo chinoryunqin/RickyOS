@@ -30,7 +30,6 @@ void RickyAvatarPickerActivity::buildScreen(UiScreen& screen) {
   const int selected = RickyPageUi::syncNav(nav, listCount());
   const bool focus = showMainTabContentSelection();
   const int current = RickyProfile::presetAvatarIndex();
-  const bool brand = SETTINGS.rickyAvatarPath[0] == '\0';
 
   if (failed) {
     auto error = theme.smallText;
@@ -39,24 +38,21 @@ void RickyAvatarPickerActivity::buildScreen(UiScreen& screen) {
   }
   // Three columns of round portraits, at most the art's native size.
   constexpr int columns = 3;
-  const int rows = (1 + RickyAvatars::COUNT + columns - 1) / columns;
+  const int rows = (RickyAvatars::COUNT + columns - 1) / columns;
   const int importHeight = bodyHeight + pad * 2;
   const int cellWidth = (screen.body().width - gap * (columns - 1)) / columns;
   const int cellHeight =
       std::min<int>(cellWidth, (screen.body().height - importHeight - gap * 2 - gap * (rows - 1)) / rows);
   const auto body = screen.takeTop(cellHeight * rows + gap * (rows - 1), gap * 2);
   const int avatar = std::min<int>(RickyAvatars::SIZE, cellHeight - gap * 2);
-  for (int i = 0; i < 1 + RickyAvatars::COUNT; ++i) {
+  for (int i = 0; i < RickyAvatars::COUNT; ++i) {
     const fui::Rect cell{static_cast<int16_t>(body.x + i % columns * (cellWidth + gap)),
                          static_cast<int16_t>(body.y + i / columns * (cellHeight + gap)),
                          static_cast<int16_t>(cellWidth), static_cast<int16_t>(cellHeight)};
     const Rect disc{cell.x + (cell.width - avatar) / 2, cell.y + (cell.height - avatar) / 2, avatar, avatar};
-    if (i == 0)
-      RickyProfile::drawBrandAvatar(renderer, disc);
-    else
-      RickyProfile::drawPresetAvatar(renderer, disc, i - 1);
+    RickyProfile::drawPresetAvatar(renderer, disc, i);
     // The chosen portrait wears a second, outer ring; key focus frames the cell.
-    if ((i == 0 && brand) || (i > 0 && current == i - 1))
+    if (current == i)
       target.stroke(RickyPageUi::uiRect(Rect{disc.x - 7, disc.y - 7, disc.width + 14, disc.height + 14}), black, 3,
                     static_cast<uint8_t>(avatar / 2 + 7));
     if (focus && selected == i) target.stroke(cell, black, 2, RickyPageUi::CARD_RADIUS);
@@ -100,7 +96,7 @@ void RickyAvatarPickerActivity::activateIndex(const int index) {
     return;
   }
   char value[16] = "";
-  if (index > 0) snprintf(value, sizeof(value), "@avatar:%d", index - 1);
+  snprintf(value, sizeof(value), "@avatar:%d", index);
   {
     RenderLock lock(*this);
     failed = !RickyProfile::setAvatar(value);

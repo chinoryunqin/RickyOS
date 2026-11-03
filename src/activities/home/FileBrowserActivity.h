@@ -14,10 +14,10 @@
 
 class FileBrowserActivity final : public UiListActivity {
  public:
-  enum class Mode { Books, PickFirmware, PickPng, PickAvatar, PickWallpaper };
+  enum class Mode { Books, PickFirmware, PickPng, PickAvatar, PickWallpaper, PickLibraryBook, PickLibraryFolder };
 
  private:
-  enum class EditAction : uint8_t { Rename, Move, Delete, Open };
+  enum class EditAction : uint8_t { Rename, Move, Delete, Open, AddToLibrary };
   enum class BrowserState : uint8_t { Browsing, ChoosingMoveDestination };
 
   // Deletion
@@ -94,8 +94,6 @@ class FileBrowserActivity final : public UiListActivity {
   std::atomic<int> requestedMetadataStart_{0};
   int metadataStart_ = -1;
   int metadataSlot_ = -1;
-  uint64_t directoryCount_ = 0;
-  HalFile metadataDirectory_;
   char metadataPath_[UiHighDpiProfile::enabled ? 1024 : 1]{};
   bool metadataRepaint_ = false;
   unsigned long metadataRepaintAt_ = 0;

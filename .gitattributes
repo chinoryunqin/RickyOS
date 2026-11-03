@@ -15,3 +15,4 @@
 *.patch text eol=lf
 # Unified-diff context uses one space on an empty line; preserve those patch bytes.
 ports/metalio-e-ink4-plus/firmware/rickyos-plus-1.2/upstream-plus.patch whitespace=-blank-at-eol
+patches/metalio-eink4/freeink-sdk.patch whitespace=-blank-at-eol

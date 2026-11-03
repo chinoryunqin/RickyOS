@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "LibraryFormat.h"
 
@@ -91,6 +92,14 @@ class LibraryIndexFile {
 
   // Absolute path of the book, rebuilt from its folder record.
   bool readPath(const ClixRecord& record, std::string& out);
+  // Every folder path, indexed by folder id, in one pass over the folder section.
+  bool readFolderPaths(std::vector<std::string>& out);
+  // Books per folder id (out sized to folderCount), in one chunked pass over the records.
+  bool countBooksPerFolder(std::vector<uint16_t>& out);
+
+  // Raw bytes of the open index, for a caller that streams whole sections once
+  // (the in-memory search table) instead of seeking per record.
+  bool readRange(const uint32_t offset, void* dst, const size_t len) { return opened && readAt(offset, dst, len); }
 
  private:
   bool openImpl(const char* path, bool acceptStaleFold);

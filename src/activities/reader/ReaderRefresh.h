@@ -1,9 +1,15 @@
 #pragma once
+
+#include <algorithm>
 #include <CrossPointSettings.h>
 #include <GfxRenderer.h>
 
 namespace ReaderUtils {
 inline HalDisplay::RefreshMode consumeRefreshMode(int& pagesUntilFullRefresh, bool deferClean = false) {
+  // The interval can change while a book is open (the control center sits over
+  // the reader). A shorter one applies from this page, not after the old count
+  // (from "never", that count would never run out).
+  pagesUntilFullRefresh = std::min(pagesUntilFullRefresh, SETTINGS.getRefreshFrequency());
   if (deferClean && pagesUntilFullRefresh <= 1) {
     // Keep the debt: the next ordinary page must still clean.
     pagesUntilFullRefresh = 1;

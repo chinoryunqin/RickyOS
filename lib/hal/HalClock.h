@@ -1,7 +1,11 @@
 #pragma once
 
 #include <Arduino.h>
+#include <BoardConfig.h>
 #include <Rtc.h>
+#if FREEINK_DEVICE_METALIO_PLUS
+#include <HalWifiAwakeLease.h>
+#endif
 
 #include <cstdint>
 #include <ctime>
@@ -25,6 +29,13 @@ class HalClock {
   bool _useChinaServers = false;
   ClockSyncState _syncState = ClockSyncState::Idle;
   unsigned long _lastSyncMs = 0;
+  unsigned long _lastDiagnosticMs = 0;
+  unsigned long _syncStartedMs = 0;
+#if FREEINK_DEVICE_METALIO_PLUS
+  HalWifiAwakeLease _wifiAwakeLease;
+#endif
+  bool _wifiPowerSaveHeld = false;
+  bool _httpsAttempted = false;
 
   bool restoreSystemTimeFromRtc();
   bool updateRtcFromSystemTime();
@@ -50,6 +61,7 @@ class HalClock {
   void setAutoSyncEnabled(bool enabled);
   void setUseChinaServers(bool enabled) { _useChinaServers = enabled; }
   bool requestSync();
+  void cancelSync();
   bool syncNow(uint32_t timeoutMs = 10000);
   ClockSyncState syncState() const { return _syncState; }
 };

@@ -95,8 +95,15 @@ void renderPreview(const GfxRenderer& renderer, PreviewLayout& layout, int previ
   const int lineH = renderer.getTextHeight(fontId);
   if (lineH <= 0) return;
 
-  const int textLeft = left + SETTINGS.screenMargin;
-  const int textWidth = width - 2 * SETTINGS.screenMargin;
+  // The sample column takes the reader's own side margins, held to at least half the pane.
+  int marginLeft = SETTINGS.marginLeft, marginRight = SETTINGS.marginRight;
+  if (marginLeft + marginRight > width / 2) {
+    const int sum = marginLeft + marginRight;
+    marginLeft = marginLeft * (width / 2) / sum;
+    marginRight = width / 2 - marginLeft;
+  }
+  const int textLeft = left + marginLeft;
+  const int textWidth = width - marginLeft - marginRight;
   if (textWidth <= 0) return;
 
   const float compression = SETTINGS.getReaderLineCompression();
@@ -120,7 +127,7 @@ void renderPreview(const GfxRenderer& renderer, PreviewLayout& layout, int previ
   // FontCacheManager::PrewarmScope, used solely by the reader/dictionary activities.
   const PreviewKey key{.fontId = fontId,
                        .fontPointSize = SETTINGS.fontPointSize,
-                       .screenMargin = SETTINGS.screenMargin,
+                       .marginLeft = marginLeft,
                        .textWidth = textWidth,
                        .maxLines = maxLines,
                        .lineCompression = compression,
@@ -144,11 +151,13 @@ void renderPreview(const GfxRenderer& renderer, PreviewLayout& layout, int previ
   // Draw the sample twice so the paragraph gap is visible
   GfxRenderer::SyntheticBoldScope syntheticBold(renderer, SETTINGS.fakeBold);
   int y = textTop;
+  const int guideRow = readingGuideLine::rowOffset(lineAdvance, renderer.getFontAscenderSize(fontId),
+                                                   readingGuideLine::emFor(renderer, fontId));
   for (int paragraph = 0; paragraph < 2; paragraph++) {
     for (const auto& line : layout.lines) {
       if (y + lineH > textBottomLimit) return;
       line->render(renderer, fontId, textLeft, y);
-      const int guideY = y + lineAdvance + SETTINGS.readingGuideLineOffset;
+      const int guideY = y + guideRow + SETTINGS.readingGuideLineOffset;
       if (SETTINGS.readingGuideLineEnabled &&
           readingGuideLine::fitsVertically(SETTINGS.readingGuideLineStyle, guideY, textTop, textBottomLimit)) {
         readingGuideLine::draw(renderer, textLeft, guideY, textLeft + textWidth - 1, SETTINGS.readingGuideLineStyle);

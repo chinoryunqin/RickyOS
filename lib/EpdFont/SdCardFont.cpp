@@ -1828,8 +1828,13 @@ int SdCardFont::buildAdvanceTable(const char* utf8Text, uint8_t styleMask, const
 
 // --- Stats ---
 
+#if RICKYOS_PAINT_PROFILE
+#define SDCF_STATS_LOG LOG_INF  // per-page reader breakdown in profiling builds
+#else
+#define SDCF_STATS_LOG LOG_DBG
+#endif
 void SdCardFont::logStats(const char* label) {
-  LOG_DBG("SDCF", "[%s] source=%s total=%ums read_ms=%ums phases_us=%u/%u/%u/%u seeks=%u glyphs=%u bitmap=%u bytes",
+  SDCF_STATS_LOG("SDCF", "[%s] source=%s total=%ums read_ms=%ums phases_us=%u/%u/%u/%u seeks=%u glyphs=%u bitmap=%u bytes",
           label, sourceName(), stats_.prewarmTotalMs, stats_.sdReadTimeMs, stats_.collectionTimeUs,
           stats_.glyphPrepareTimeUs, stats_.bitmapTimeUs, stats_.kernTimeUs, stats_.seekCount, stats_.uniqueGlyphs,
           stats_.bitmapBytes);

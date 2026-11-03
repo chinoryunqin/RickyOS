@@ -124,7 +124,7 @@ Rect UITheme::getScreenSafeArea(const GfxRenderer& renderer, bool hasFrontButton
   const int screenWidth = renderer.getScreenWidth();
   const int screenHeight = renderer.getScreenHeight();
   Rect safeArea = Rect{0, 0, screenWidth, screenHeight};
-#if FREEINK_DEVICE_READPICO
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
   int top, right, bottom, left;
   renderer.getOrientedViewableTRBL(&top, &right, &bottom, &left);
   safeArea = Rect{left, top, screenWidth - left - right, screenHeight - top - bottom};
@@ -158,6 +158,13 @@ Rect UITheme::getScreenSafeArea(const GfxRenderer& renderer, bool hasFrontButton
 }
 
 std::string UITheme::getCoverThumbPath(std::string coverBmpPath, int coverHeight) {
+#if FREEINK_DEVICE_METALIO_EINK4
+  // Persisted recents still name the old thumbnail template. Resolve it to the
+  // same Gray8 namespace as Epub's generator without rewriting reading records.
+  const size_t thumbnail = coverBmpPath.rfind("/thumb_");
+  if (thumbnail != std::string::npos && coverBmpPath.compare(thumbnail + 7, 3, "g8_") != 0)
+    coverBmpPath.insert(thumbnail + 7, "g8_");
+#endif
   size_t pos = coverBmpPath.find("[HEIGHT]", 0);
   if (pos != std::string::npos) {
     coverBmpPath.replace(pos, 8, std::to_string(coverHeight));
@@ -199,7 +206,7 @@ int UITheme::getProgressBarHeight() {
 
 int UITheme::getStatusBarTextTopPadding(const GfxRenderer& renderer) {
   if (!UiHighDpiProfile::enabled) return 0;
-#if FREEINK_DEVICE_READPICO
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
   constexpr int textFontId = READER_STATUS_FONT_ID;
 #else
   constexpr int textFontId = SMALL_FONT_ID;

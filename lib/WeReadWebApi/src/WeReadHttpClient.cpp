@@ -1,3 +1,6 @@
+#ifndef CROSSPOINT_EMULATED
+#include <HalNetwork.h>
+#endif
 #include "WeReadHttpClient.h"
 
 #include <Arduino.h>
@@ -6,6 +9,10 @@
 
 #include <cctype>
 #include <cstring>
+
+#if FREEINK_DEVICE_METALIO_PLUS
+#include <HalWifiAwakeLease.h>
+#endif
 
 #if defined(FREEINK_NET_WOLFSSL) && !defined(CROSSPOINT_EMULATED)
 #include <strings.h>
@@ -616,8 +623,7 @@ bool networkReady() {
 #ifdef CROSSPOINT_EMULATED
   return true;
 #else
-  const wifi_mode_t mode = WiFi.getMode();
-  return (mode & WIFI_MODE_STA) && WiFi.status() == WL_CONNECTED;
+  return HalNetwork::connected();
 #endif
 }
 
@@ -671,6 +677,12 @@ Result request(Session& session, const char* url, const RequestOptions& options,
     return Result::NetworkError;
   }
   LOG_DBG("HTTP", "%s %s", options.method ? options.method : "?", url ? url : "?");
+#if FREEINK_DEVICE_METALIO_PLUS
+  // Like HttpDownloader: hold the shared radio lease (power save off, Plus TX power cap)
+  // for the request; without it first TCP connects to weread.qq.com stall for seconds.
+  HalWifiAwakeLease radioLease;
+  radioLease.acquire();
+#endif
   g_aborted = false;
   g_lastAbortCheck = 0;
   if (abortRequested()) {

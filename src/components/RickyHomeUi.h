@@ -10,7 +10,7 @@
 
 class RickyHomeUi final : public UiAppHost {
  public:
-  using CoverPainter = bool (*)(void*, int, const Rect&);
+  using CoverPainter = bool (*)(void*, int, const Rect&, GfxRenderer&);
   explicit RickyHomeUi(GfxRenderer& renderer) : UiAppHost(renderer), renderer(renderer) {}
   void begin(const std::vector<RecentBook>& recent, CoverPainter painter, void* owner);
   void configure(Rect content, int selection, bool showSelection, int progress);

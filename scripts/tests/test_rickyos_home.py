@@ -77,7 +77,7 @@ int main() {
         home = method((ROOT / 'src/components/RickyHomeUi.cpp').read_text(), 'void RickyHomeUi::drawPortrait(')
         self.assertIn('measureWrappedText(target, greetingText, greetingStyle', home)
         self.assertIn('design::BODY, false, fui::TextAlign::Left, 2)', re.sub(r'\s+', ' ', home))
-        self.assertIn('titleOf(item), design::CAPTION, selectedBook', re.sub(r'\s+', ' ', home))
+        self.assertIn('titleOf(item), design::BODY, selectedBook, fui::TextAlign::Center', re.sub(r'\s+', ' ', home))
 
     def test_portrait_follows_the_quiet_home_layout(self):
         source = method((ROOT / 'src/components/RickyHomeUi.cpp').read_text(),
@@ -102,11 +102,15 @@ int main() {
 #include <initializer_list>
 #include "components/RickyHomeLayout.h"
 struct Rect { int x,y,width,height; };
-struct Bitmap { int w,h; int getWidth() const {return w;} int getHeight() const {return h;} };
+struct Bitmap { int w,h; bool gray=false; int getWidth() const {return w;} int getHeight() const {return h;}
+  bool is1Bit() const {return !gray;} };
 struct GfxRenderer {
   mutable Rect drawn{};
-  mutable bool cropped = false;
+  mutable bool cropped = false, grayPath = false;
+  bool active = false;
+  bool isGrayscale16Active() const {return active;}
   bool drawBitmap(const Bitmap&, int x,int y,int w,int h) const {drawn={x,y,w,h};return true;}
+  bool drawBitmapGrayscale16(const Bitmap&, int x,int y,int w,int h) const {grayPath=true;drawn={x,y,w,h};return true;}
   bool drawBitmapCropToFill(const Bitmap&, int x,int y,int w,int h) const {
     cropped=true;drawn={x,y,w,h};return true;
   }
@@ -125,6 +129,13 @@ int main() {
     assert(r.drawn.x==cell.x+(cell.width-r.drawn.width)/2);
     assert(r.drawn.y==cell.y+(cell.height-r.drawn.height)/2);
     assert(std::abs(r.drawn.width*b.h-r.drawn.height*b.w) < std::max(b.w,b.h));
+    // Gray thumbnails on a 16-level frame take the gray path into the same box; 1-bit never does.
+    GfxRenderer g; g.active=true;
+    Bitmap gray=b; gray.gray=true;
+    assert(drawRecentCover(g,gray,cell) && g.grayPath);
+    assert(g.drawn.x==r.drawn.x && g.drawn.y==r.drawn.y && g.drawn.width==r.drawn.width && g.drawn.height==r.drawn.height);
+    GfxRenderer mono; mono.active=true;
+    assert(drawRecentCover(mono,b,cell) && !mono.grayPath);
 #else
     assert(r.cropped && r.drawn.width==cell.width && r.drawn.height==cell.height);
 #endif

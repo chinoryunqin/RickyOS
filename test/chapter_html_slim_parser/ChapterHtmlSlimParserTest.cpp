@@ -2,6 +2,9 @@
 #include <Epub/Page.h>
 #include <GfxRenderer.h>
 #include <gtest/gtest.h>
+
+#include "Epub/BookFonts.h"
+#include "Epub/WordLook.h"
 #include <unistd.h>
 
 #include <filesystem>
@@ -326,6 +329,41 @@ TEST_P(ChapterHtmlSlimParserTest, KeepsCssVerticalAlignAndInternalLinkMetadata) 
   EXPECT_TRUE(parser.currentTextBlock->linkTargetMatches(linkId, expectedHref));
 }
 
+namespace {
+// Two book faces by family name; widths stay the reader font's.
+class FakeBookFonts final : public bookfonts::Resolver {
+ public:
+  uint8_t faceForFamily(const std::string_view candidates) override {
+    return candidates == "kk" ? 1 : candidates == "mm" ? 2 : 0;
+  }
+  int fontIdFor(uint8_t, const int baseFontId, uint16_t) override { return baseFontId; }
+};
+}  // namespace
+
+TEST_F(ChapterHtmlSlimParserTest, InlineFaceAndToneFollowTheirElements) {
+  FakeBookFonts fonts;
+  bookfonts::setActive(&fonts);
+  // <span 正文><span 小标题>林：</span>联邦</span>, as 间客 nests p.gt > span.yzxs (an inline
+  // outer element keeps this direct drive inside the current paragraph).
+  const XML_Char* paragraph[] = {"style", "font-family: mm; color: #696969", nullptr};
+  const XML_Char* span[] = {"style", "font-family: kk; color: #8B4513", nullptr};
+  ChapterHtmlSlimParser::startElement(&parser, "span", paragraph);
+  ChapterHtmlSlimParser::startElement(&parser, "span", span);
+  ChapterHtmlSlimParser::characterData(&parser, "林：", strlen("林："));
+  ChapterHtmlSlimParser::endElement(&parser, "span");
+  ChapterHtmlSlimParser::characterData(&parser, "联邦", strlen("联邦"));
+  parser.flushPartWordBuffer();
+  bookfonts::setActive(nullptr);
+
+  const auto& looks = parser.currentTextBlock->wordLooks;
+  ASSERT_GE(looks.size(), 2u);
+  // The span's words: face kk, saddle brown is dark enough to stay black.
+  EXPECT_EQ(looks.front(), wordlook::make(1, 0));
+  // After the span closes: the paragraph's face mm and its gray (#696969 -> ink 3).
+  EXPECT_EQ(looks.back(), wordlook::make(2, wordlook::inkForLuma(0x69)));
+  EXPECT_EQ(wordlook::ink(looks.back()), 3);
+}
+
 INSTANTIATE_TEST_SUITE_P(CssVerticalAlign, ChapterHtmlSlimParserTest,
                          ::testing::Values("vertical-align: super", "vertical-align: sub"));
 
@@ -583,22 +621,38 @@ TEST_F(SectionMemoryTest, MixedChapterCacheMatchesVerifiedLayout) {
     for (const unsigned char byte : value) digest = (digest ^ byte) * 1099511628211ULL;
   };
   ASSERT_FALSE(bytes.empty());
-  EXPECT_EQ(static_cast<uint8_t>(bytes.front()), 76);
+  // SECTION_VERSION_UNDER_TEST is extracted from Section.cpp's declarations by
+  // test/chapter_html_slim_parser/CMakeLists.txt, so a version bump cannot leave
+  // this pinned expectation behind.
+  EXPECT_EQ(static_cast<uint8_t>(bytes.front()), SECTION_VERSION_UNDER_TEST);
   ASSERT_EQ(static_cast<uint8_t>(bytes[11]), 3);
   bytes.erase(11, 1);  // Western indent width appended to the preserved tri-state schema.
-  // Normalize the two new spacing bytes and their absolute file offsets back
+  // Normalize the two spacing bytes, the vertical-text flag and their absolute file offsets back
   // to the historical v70 layout; keep its verified digest unchanged.
   constexpr size_t spacingOffset = 21;
   ASSERT_EQ(static_cast<uint8_t>(bytes[spacingOffset]), 0);
   ASSERT_EQ(static_cast<uint8_t>(bytes[spacingOffset + 1]), 100);
+  ASSERT_EQ(static_cast<uint8_t>(bytes[spacingOffset + 2]), 0);  // verticalText (v79), horizontal here
+  bytes.erase(spacingOffset, 3);
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
+  // Both boards serialize imageOutset before bookFontsKey; zero in this fixture.
+  ASSERT_EQ(static_cast<uint8_t>(bytes[spacingOffset]), 0);
+  ASSERT_EQ(static_cast<uint8_t>(bytes[spacingOffset + 1]), 0);
   bytes.erase(spacingOffset, 2);
+  constexpr uint32_t erasedHeaderBytes = 10;
+#else
+  constexpr uint32_t erasedHeaderBytes = 8;
+#endif
+  // bookFontsKey (v96+): zero without book fonts; not part of the historical layout either.
+  for (size_t i = 0; i < 4; ++i) ASSERT_EQ(static_cast<uint8_t>(bytes[spacingOffset + i]), 0);
+  bytes.erase(spacingOffset, 4);
   const auto readOffset = [&bytes](size_t position) {
     uint32_t value;
     std::memcpy(&value, bytes.data() + position, sizeof(value));
     return value;
   };
-  const auto adjustOffset = [&bytes, &readOffset](size_t position) {
-    const uint32_t value = readOffset(position) - 3;
+  const auto adjustOffset = [&bytes, &readOffset, erasedHeaderBytes](size_t position) {
+    const uint32_t value = readOffset(position) - erasedHeaderBytes;
     std::memcpy(bytes.data() + position, &value, sizeof(value));
   };
   // pageCount follows spacing; the next five fields address tables in the file.
@@ -606,14 +660,15 @@ TEST_F(SectionMemoryTest, MixedChapterCacheMatchesVerifiedLayout) {
   const uint32_t pageLut = readOffset(spacingOffset + 2);
   const uint32_t anchorMap = readOffset(spacingOffset + 6);
   for (size_t position = pageLut; position < anchorMap; position += 4) adjustOffset(position);
+  // Overwrite the live version byte with the historical 70 so the digest covers
+  // this v70 normalization rather than the current SECTION_FILE_VERSION.
   bytes.front() = 70;
   append(bytes);
   for (const auto& word : laidOutWords) append(word);
   for (const auto& href : collectedFootnotes) append(href);
-  // Pre-refactor cache, text and footnotes. The expected value tracks
-  // SECTION_FILE_VERSION, whose byte is the first thing in the file: the digest
-  // moved when the version went 64 -> 66 for the versioned image cache prefix,
-  // then 66 -> 68 for first-line indent and 68 -> 70 for paragraph spacing.
+  // Pre-refactor cache, text and footnotes. The digest is pinned to the v70
+  // layout normalized above and therefore does not move when
+  // SECTION_FILE_VERSION changes; the live version byte is asserted separately.
   EXPECT_EQ(digest, 9535508317497758948ULL);  // v71/v70 cache (paragraph spacing levels), text and footnotes.
 }
 
@@ -732,8 +787,34 @@ TEST_F(ChapterHtmlSlimParserTest, ParagraphSpacingLevelsAddToCssMargins) {
     parser.currentTextBlock->addWord("word", EpdFontFamily::REGULAR);
     parser.makePages();
     ASSERT_FALSE(parser.hasFailed());
-    EXPECT_EQ(parser.currentPageNextY, 16 + 10 + gaps[level]);
+    // The bottom margin waits to collapse with the next block's top margin (CSS).
+    EXPECT_EQ(parser.currentPageNextY, 16 + 7 + gaps[level]);
+    EXPECT_EQ(parser.pendingMarginBottom, 3);
   }
+}
+
+TEST_F(ChapterHtmlSlimParserTest, AdjacentParagraphMarginsCollapseToTheLarger) {
+  parser.extraParagraphSpacing = 0;
+  parser.currentPage.reset();
+  parser.currentPageNextY = 0;
+  parser.pendingMarginBottom = 0;
+  BlockStyle first;
+  first.marginTop = 4;
+  first.marginBottom = 12;
+  parser.currentTextBlock = std::make_unique<ParsedText>(0, FirstLineIndent::Auto, false, false, first);
+  parser.currentTextBlock->addWord("one", EpdFontFamily::REGULAR);
+  parser.makePages();
+  ASSERT_FALSE(parser.hasFailed());
+  ASSERT_EQ(parser.currentPageNextY, 4 + 16);
+  BlockStyle second;
+  second.marginTop = 7;
+  second.marginBottom = 0;
+  parser.currentTextBlock = std::make_unique<ParsedText>(0, FirstLineIndent::Auto, false, false, second);
+  parser.currentTextBlock->addWord("two", EpdFontFamily::REGULAR);
+  parser.makePages();
+  ASSERT_FALSE(parser.hasFailed());
+  // max(12, 7) between the two lines, not 12 + 7.
+  EXPECT_EQ(parser.currentPageNextY, 4 + 16 + 12 + 16);
 }
 
 TEST_F(SectionMemoryTest, ParagraphSpacingLevelsRoundTripWithoutCollapsingToBool) {
@@ -764,3 +845,57 @@ TEST_F(SectionMemoryTest, ParagraphSpacingLevelsRoundTripWithoutCollapsingToBool
 }
 
 }  // namespace
+
+TEST_F(ChapterHtmlSlimParserTest, PanelEndsWithItsElement) {
+  const std::string cssPath = "/tmp/crossmux-panel-test.css";
+  std::ofstream(cssPath) << "div.num3 { margin: 1.5em 5%; padding: 1.2em; background: rgba(153, 255, 204, 0.5); "
+                            "border: 1px solid #33cccc; border-radius: 8px; }\n";
+  HalFile source;
+  ASSERT_TRUE(Storage.openFileForRead("TEST", cssPath, source));
+  ASSERT_EQ(cssParser.loadFromStream(source), CssParser::ParseResult::Complete);
+  struct Line {
+    uint16_t box;
+    int16_t left;
+    int16_t y;
+    uint8_t padBottom;
+  };
+  std::vector<Line> lines;
+  const auto collect = [&lines](const Page& page) {
+    for (const auto& e : page.elements) {
+      if (e->getTag() != TAG_PageLine) continue;
+      const auto& style = static_cast<const PageLine&>(*e).getBlock()->getBlockStyle();
+      lines.push_back({style.box.id, style.leftInset(), e->yPos, style.box.padBottom});
+    }
+  };
+  parser.completePageFn = [&](std::unique_ptr<Page> page, uint16_t, uint16_t, uint32_t) { collect(*page); };
+  parser.blockStyleStack.assign(1, BlockStyle{});
+  const XML_Char* num3[] = {"class", "num3", nullptr};
+  const XML_Char* none[] = {nullptr};
+  const auto para = [&](const char* text) {
+    ChapterHtmlSlimParser::startElement(&parser, "p", none);
+    ChapterHtmlSlimParser::characterData(&parser, text, strlen(text));
+    ChapterHtmlSlimParser::endElement(&parser, "p");
+  };
+  para("before");
+  for (int i = 0; i < 2; ++i) {
+    ChapterHtmlSlimParser::startElement(&parser, "div", num3);
+    para("inside");
+    ChapterHtmlSlimParser::endElement(&parser, "div");
+    para("after");
+  }
+  parser.makePages();
+  if (parser.currentPage) collect(*parser.currentPage);
+  std::filesystem::remove(cssPath);
+
+  ASSERT_EQ(lines.size(), 5u);
+  EXPECT_EQ(lines[0].box, 0u);
+  EXPECT_NE(lines[1].box, 0u);
+  EXPECT_GT(lines[1].left, 0);  // margin + padding + border
+  EXPECT_EQ(lines[2].box, 0u);  // the paragraph after </div> is outside the panel
+  // ... and below the panel's lower padding and margin, not just the next line down.
+  const int lineHeight = renderer.getLineHeight(0);
+  EXPECT_GT(lines[2].y, lines[1].y + lineHeight + lines[1].padBottom);
+  EXPECT_NE(lines[3].box, 0u);
+  EXPECT_NE(lines[3].box, lines[1].box);
+  EXPECT_EQ(lines[4].box, 0u);
+}

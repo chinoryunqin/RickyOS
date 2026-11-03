@@ -3,15 +3,15 @@
 #include <BoardConfig.h>
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <string>
 #include <vector>
 
 #include "InxRecentLayout.h"
+#include "Memory.h"
 #include "RecentBooksStore.h"
 #include "activities/Activity.h"
-
-#include "Memory.h"
 #include "components/RickyHomeUi.h"
 
 #if defined(BOARD_HAS_PSRAM) && !defined(SIMULATOR) && !defined(CROSSPOINT_EMULATED)
@@ -45,6 +45,9 @@ class InxRecentActivity final : public Activity {
   std::array<const ReadingBookStats*, RecentBooksStore::MAX_RECENT_BOOKS> bookStats{};
   std::array<CoverCacheState, RecentBooksStore::MAX_RECENT_BOOKS> targetCoverStates{};
   std::array<CoverCacheState, RecentBooksStore::MAX_RECENT_BOOKS> fallbackCoverStates{};
+  // Thumbnail height already prepared per book during this visit: one attempt each, so a
+  // cover that still cannot be drawn afterwards never loops prepare -> repaint.
+  std::array<int16_t, RecentBooksStore::MAX_RECENT_BOOKS> preparedHeights{};
 #if defined(BOARD_HAS_PSRAM) && !defined(SIMULATOR) && !defined(CROSSPOINT_EMULATED)
   std::array<CoverRamCache, RecentBooksStore::MAX_RECENT_BOOKS> targetCoverCaches{};
   std::array<CoverRamCache, RecentBooksStore::MAX_RECENT_BOOKS> fallbackCoverCaches{};
@@ -52,7 +55,11 @@ class InxRecentActivity final : public Activity {
 #endif
   int selected = 0;
   int thumbnailHeight = 0;
+  // Set by render() when a cover may still need a thumbnail; loop() prepares it
+  // after that frame is on the panel instead of holding the frame back.
+  std::atomic<bool> coverWorkPending{false};
   std::unique_ptr<RickyHomeUi> rickyHome;
+  GfxRenderer* coverRenderer = nullptr;  // Render-task-only optional design canvas.
 
   InxRecentLayout layout() const;
   Rect contentRect() const;
@@ -77,8 +84,9 @@ class InxRecentActivity final : public Activity {
   void drawCover(const Rect& content);
 
  public:
-#if FREEINK_DEVICE_READPICO
-  // render() redraws the whole home screen from state; a cover still to prepare queues
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4 || \
+    defined(SIMULATOR_DEVICE_METALIO_EINK4)
+  // render() redraws the whole home screen from state; a newly prepared cover queues
   // its own update, which cancels the settle.
   bool wantsGraySettle() const override { return true; }
 #endif

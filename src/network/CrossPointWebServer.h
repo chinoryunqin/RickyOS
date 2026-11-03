@@ -1,6 +1,10 @@
 #pragma once
 
 #include <ArduinoJson.h>
+#include <BoardConfig.h>
+#if FREEINK_DEVICE_METALIO_PLUS
+#include <HalWifiAwakeLease.h>
+#endif
 #include <HalStorage.h>
 #include <Memory.h>
 #include <NetworkUdp.h>
@@ -80,6 +84,9 @@ class CrossPointWebServer {
   std::unique_ptr<WebSocketsServer> wsServer = nullptr;
   memory::ByteBuffer fileListBatch;
   bool running = false;
+#if FREEINK_DEVICE_METALIO_PLUS
+  HalWifiAwakeLease wifiAwakeLease;
+#endif
   bool memoryError = false;
   unsigned long lastMemoryCheck = 0;
   bool apMode = false;  // true when running in AP mode, false for STA mode

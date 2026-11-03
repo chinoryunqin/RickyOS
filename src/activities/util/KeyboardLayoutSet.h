@@ -12,8 +12,8 @@ struct LayoutInfo {
   Language language;
 };
 
-// Table position is the persisted bit assignment. Keep existing rows in place
-// and append new layouts so SDK enum changes cannot reinterpret saved masks.
+// The SDK's built-in layouts. Only the first (English) is enabled in RickyOS; the
+// table stays so the keyboard tests can still exercise every layout's drawing.
 inline constexpr LayoutInfo ALL[] = {
     {freeink::ui::KeyboardLayoutId::QwertyEn, Language::EN},
     {freeink::ui::KeyboardLayoutId::AzertyFr, Language::FR},

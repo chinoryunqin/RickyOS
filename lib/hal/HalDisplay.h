@@ -3,6 +3,9 @@
 #include <BoardConfig.h>
 #include <DisplayRefreshContext.h>
 #include <EInkDisplay.h>
+#if FREEINK_DEVICE_METALIO_EINK4
+#include <HalMemory.h>
+#endif
 
 class HalDisplay {
  public:
@@ -52,7 +55,10 @@ class HalDisplay {
   // (read-pico.md 1.2), so it cannot ride the 800x480 default: a compile-time
   // consumer sized from it would be 2.2x too small. The device term comes from
   // the frozen profile, not from a repeated literal.
-#if FREEINK_DEVICE_READPICO
+#if FREEINK_DEVICE_METALIO_PLUS
+  static constexpr uint16_t DISPLAY_WIDTH = BoardConfig::METALIO_PLUS.displayWidth;
+  static constexpr uint16_t DISPLAY_HEIGHT = BoardConfig::METALIO_PLUS.displayHeight;
+#elif FREEINK_DEVICE_READPICO
   static constexpr uint16_t DISPLAY_WIDTH = BoardConfig::READ_PICO.displayWidth;
   static constexpr uint16_t DISPLAY_HEIGHT = BoardConfig::READ_PICO.displayHeight;
 #else
@@ -156,10 +162,35 @@ class HalDisplay {
   uint16_t getDisplayHeight() const;
   uint8_t getGrayscaleLevels() const;
   uint8_t* beginGrayscale16();
+  // Full UI raster, quantized to the board's actual physical gray levels.
+  uint8_t* beginGrayscaleUi();
+  bool commitGrayscaleUi(bool forceClean = false);
+  void cancelGrayscaleUi();
+  const uint8_t* lastUiGrayscaleRaster() const {
+#if FREEINK_DEVICE_METALIO_EINK4
+    return uiGrayFrame.get();
+#else
+    return nullptr;
+#endif
+  }
+  // Borrow the last successful native frame, without another screenshot allocation.
+  uint8_t* beginRetainedGrayscale16();
   bool commitGrayscale16();
   // Read Pico: refresh profile for the next 16-level commit (0 = Half, 1 = text turn,
   // 2 = Full cleanup). One-shot; a no-op on other panels.
   void setNextGray16Profile(uint8_t profile);
+  // Optional one-shot native wavefront; only supported on the raw parallel panels.
+  void setNextPageTurn(uint8_t style, uint8_t orientation, bool fromRight, int originX = -1, int originY = -1);
+  // Plus: reading turns use the short text-turn table without motion (快刷) instead of
+  // the full reader waveform (高清). Persistent until changed; a no-op on other panels.
+  void setReaderFastRefresh(bool on);
+  void setNextMainTabTurn(uint8_t orientation, bool fromRight, int x, int y, int width, int height);
+  void setNextGray16ReaderRefresh(int x, int y, int width, int height);
+  void setNextGray16ReaderTextFinish(bool enabled);
+  // Direct-gray UI: physical navigation strip, separate content/control cleanup
+  // ledgers. No-op on other panels. Manual Full profile still overrides this.
+  void setNextGray16UiRefresh(int x, int y, int width, int height, uint8_t contentEvery, uint8_t smallEvery,
+                              bool adaptive = false);
   // Power the panel rails down when no frame has been pushed for idleMs (Read Pico).
   void railsOffIfIdle(uint32_t idleMs);
   // Rebuild the panel scan path in place (Screen repair); the next frame is a full refresh.
@@ -170,6 +201,10 @@ class HalDisplay {
 
  private:
   EInkDisplay einkDisplay;
+#if FREEINK_DEVICE_METALIO_EINK4
+  HalMemory::PsramBuffer uiGrayFrame;
+  bool uiGrayActive = false;
+#endif
 };
 
 extern HalDisplay display;

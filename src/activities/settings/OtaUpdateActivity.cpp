@@ -577,6 +577,11 @@ void OtaUpdateActivity::runUpdateInstall() {
   LOG_INF("OTA", "TLS preflight (firmware): free=%u, maxAlloc=%u", static_cast<unsigned>(ESP.getFreeHeap()),
           static_cast<unsigned>(ESP.getMaxAllocHeap()));
 #endif
+  {
+    // The update is written over the flash font cache: stop every font reading it.
+    RenderLock lock(*this);
+    sdFontSystem.releaseLoadedFont(renderer, /*includeVector=*/true);
+  }
   const auto res = updater.installUpdate(
       [](void* ctx) {
         auto* self = static_cast<OtaUpdateActivity*>(ctx);

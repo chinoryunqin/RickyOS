@@ -6,10 +6,44 @@
 #include <cstring>
 #include <string_view>
 
+#include "RickyCos.h"
+
 namespace ricky_ota {
+#if FREEINK_DEVICE_METALIO_PLUS
+// The Plus has its own manifest beside the Read Pico's (which earlier Read Pico releases
+// fetch and must stay as it is); firmware files share the firmware/ folder. Diagnostic
+// builds may point COS at a test folder and drop the site route.
+#ifndef RICKYOS_OTA_COS_DIR
+#define RICKYOS_OTA_COS_DIR "/ota/"
+#endif
+#ifndef RICKYOS_OTA_SITE_ROUTE
+#define RICKYOS_OTA_SITE_ROUTE 1
+#endif
+inline constexpr char BOARD[] = "metalio-plus-s31";
+inline constexpr uint16_t CHIP_ID = 32;  // ESP32-S31
+inline constexpr bool SITE_ENABLED = RICKYOS_OTA_SITE_ROUTE != 0;
+inline constexpr char SITE_BASE[] = "https://chinoryunqin.github.io/RickyOS-site/";
+inline constexpr char MANIFEST_URL[] = "https://chinoryunqin.github.io/RickyOS-site/plus/ota.json";
+inline constexpr char NOTES_URL[] = "https://chinoryunqin.github.io/RickyOS-site/plus/ota-notes.txt";
+inline constexpr bool COS_ENABLED = RickyCos::ENABLED;
+inline constexpr char COS_BASE[] = RICKYOS_COS_BASE RICKYOS_OTA_COS_DIR;
+inline constexpr char COS_MANIFEST_URL[] = RICKYOS_COS_BASE RICKYOS_OTA_COS_DIR "plus/ota.json";
+inline constexpr char COS_NOTES_URL[] = RICKYOS_COS_BASE RICKYOS_OTA_COS_DIR "plus/ota-notes.txt";
+#else
+inline constexpr char BOARD[] = "readpico";
+inline constexpr uint16_t CHIP_ID = 9;  // ESP32-S3
+inline constexpr bool SITE_ENABLED = true;
 inline constexpr char SITE_BASE[] = "https://chinoryunqin.github.io/RickyOS-site/";
 inline constexpr char MANIFEST_URL[] = "https://chinoryunqin.github.io/RickyOS-site/ota.json";
 inline constexpr char NOTES_URL[] = "https://chinoryunqin.github.io/RickyOS-site/ota-notes.txt";
+// The same files in the RickyOS COS bucket (Guangzhou), tried first: <base>ota.json,
+// <base>ota-notes.txt and <base>firmware/*.bin, laid out like the site. Devices on
+// earlier releases only know the site, so every release goes to both.
+inline constexpr bool COS_ENABLED = RickyCos::ENABLED;
+inline constexpr char COS_BASE[] = RICKYOS_COS_BASE "/ota/";
+inline constexpr char COS_MANIFEST_URL[] = RICKYOS_COS_BASE "/ota/ota.json";
+inline constexpr char COS_NOTES_URL[] = RICKYOS_COS_BASE "/ota/ota-notes.txt";
+#endif
 inline constexpr size_t SLOT_BYTES = 0x640000;
 inline constexpr size_t RESERVE_BYTES = 512 * 1024;
 
