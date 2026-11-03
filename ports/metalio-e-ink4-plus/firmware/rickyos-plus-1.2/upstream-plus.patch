@@ -426960,7 +426960,7 @@
  STR_RICKY_HELP_DISPLAY_2: "出现残影时可在设置中执行屏幕修复。全刷间隔越短，残影越少，但闪屏更频繁。"
  STR_RICKY_HELP_DISPLAY_3: "阅读字体在文字设置中调整；头像、昵称和首页短句在设置顶部的资料卡中修改。"
  STR_RICKY_HELP_UPDATE_1: "设置中的更新固件会检查 RickyOS 更新。更新前请保证电量充足，勿在过程中断电。"
-@@ -1600,3 +1674,163 @@
+@@ -1600,3 +1674,165 @@
  STR_RICKY_HELP_FEEDBACK_3: "通过你现有的 Ricky AI Studio 联系渠道发送反馈。本页面不会自动上传设备信息。官网入口可扫码打开。"
  STR_RICKY_MENU_AUTO_TURN: "自动翻页"
  STR_RICKY_MENU_PROGRESS: "阅读进度"
@@ -427124,6 +427124,8 @@
 +STR_BT_PAGE_TURNER: "翻页器"
 +
 +STR_BT_PAIRING_CODE: "配对码：%06lu"
++
++STR_LINE_SPACING_VALUE: "%u%%"
 --- a/lib/I18n/translations/english.yaml
 +++ b/lib/I18n/translations/english.yaml
 @@ -2,6 +2,11 @@
@@ -427306,7 +427308,7 @@
  STR_RICKY_HELP_DISPLAY_1: "Display & Standby controls automatic sleep and power-button actions. Choose standby pictures in the Standby app."
  STR_RICKY_HELP_DISPLAY_2: "Use Screen Repair in Settings for ghosting. More frequent full refreshes reduce ghosting but flash the screen more often."
  STR_RICKY_HELP_DISPLAY_3: "Adjust reading fonts in Text Settings. Change your avatar, nickname and home phrase through the profile card at the top of Settings."
-@@ -1622,3 +1696,163 @@
+@@ -1622,3 +1696,165 @@
  STR_RICKY_HELP_FEEDBACK_3: "Send feedback through your existing Ricky AI Studio contact channel. This page does not upload device information. Scan the website QR code to visit the site."
  STR_RICKY_MENU_AUTO_TURN: "Auto page turn"
  STR_RICKY_MENU_PROGRESS: "Reading progress"
@@ -427470,6 +427472,8 @@
 +STR_BT_PAGE_TURNER: "Page turner"
 +
 +STR_BT_PAIRING_CODE: "Pairing code: %06lu"
++
++STR_LINE_SPACING_VALUE: "%u%%"
 --- a/lib/JpegToBmpConverter/JpegToBmpConverter.cpp
 +++ b/lib/JpegToBmpConverter/JpegToBmpConverter.cpp
 @@ -606,10 +606,11 @@
@@ -428816,8 +428820,8 @@
 +  char path[256]{};
 +};
 +
-+// Only allocated while managing/importing sources: starts at eight rules
-+// (~2 KB), grows fallibly to 128. Never resident on the ordinary shelf or
++// Only allocated while managing/importing sources or opening the folder picker:
++// starts at eight rules (~2 KB), grows fallibly to 128. Never resident on the ordinary shelf or
 +// placed on a task stack. Books in a folder do not consume source slots.
 +class LibrarySources {
 + public:
@@ -433313,7 +433317,7 @@
    uiTheme = INX;
    inxRecentLayout = static_cast<uint8_t>(InxRecentLayout::Flow);
    inxLibraryLayout = static_cast<uint8_t>(InxItemLayout::Icons);
-@@ -236,10 +238,24 @@
+@@ -236,10 +238,25 @@
      }
    }
  
@@ -433332,13 +433336,14 @@
    doc["frontButtonBack"] = frontButtonBack;
    doc["readingMode"] = readingMode;
 +  doc["libraryListView"] = libraryListView;
++  doc["lineSpacingPercent"] = lineSpacingPercent;
 +  doc["standbyCoverLayout"] = standbyCoverLayout;
 +  doc["standbyCalendarReversed"] = standbyCalendarReversed;
 +  doc["standbyShowExcerpt"] = standbyShowExcerpt;
    doc["rickyBadgesSeen"] = rickyBadgesSeen;
    doc["frontButtonConfirm"] = frontButtonConfirm;
    doc["frontButtonLeft"] = frontButtonLeft;
-@@ -254,6 +270,7 @@
+@@ -254,6 +271,7 @@
      object["b"] = entry.button;
    }
    // Apps use stable IDs beyond the uint8_t-only SettingsList, so persist the mask manually.
@@ -433346,7 +433351,7 @@
    doc["hiddenAppsMask"] = hiddenAppsMask;
    doc["appsCatalogVersion"] = appsCatalogVersion;
    doc["buddyClaimed"] = buddyClaimed;
-@@ -277,13 +294,20 @@
+@@ -277,13 +295,20 @@
    doc["rickyHomePhrase"] = rickyHomePhrase;
    doc["rickyGestureBack"] = rickyGestureBack;
    doc["rickyGestureHome"] = rickyGestureHome;
@@ -433367,7 +433372,7 @@
    doc["rickyTapTurn"] = 1;       // the swipe-only default migration has run
    doc["rickyStandbyKeyOn"] = 1;  // the Back-key Standby shortcut was turned on once
    // Dictionary folder name — uses dynamic getter/setter in SettingsList, save manually
-@@ -300,17 +324,12 @@
+@@ -300,17 +325,12 @@
    // Keep the legacy marker current so rollback to a split-SKU firmware retains
    // the selected service region.
    doc["langSku"] = contentProfile == ContentProfile::China ? "cn" : "global";
@@ -433386,7 +433391,7 @@
  
    auto clamp = [](uint8_t val, uint8_t maxVal, uint8_t def) -> uint8_t { return val < maxVal ? val : def; };
  
-@@ -398,9 +417,21 @@
+@@ -398,9 +418,24 @@
      }
    }
  
@@ -433401,6 +433406,9 @@
    // The custom reading background became the puppy reading mode.
    rickyBadgesSeen = doc["rickyBadgesSeen"] | static_cast<uint32_t>(0);
 +  libraryListView = (doc["libraryListView"] | static_cast<uint8_t>(0)) != 0 ? 1 : 0;
++  const uint16_t spacingPercent = doc["lineSpacingPercent"] | static_cast<uint16_t>(0);
++  lineSpacingPercent =
++      spacingPercent >= LINE_SPACING_PERCENT_MIN && spacingPercent <= LINE_SPACING_PERCENT_MAX ? spacingPercent : 0;
 +  standbyCoverLayout =
 +      clamp(doc["standbyCoverLayout"] | static_cast<uint8_t>(STANDBY_COVER_PICTURE), STANDBY_COVER_LAYOUT_COUNT, 0);
 +  standbyCalendarReversed = clamp(doc["standbyCalendarReversed"] | uint8_t(0), 2, 0);
@@ -433408,7 +433416,7 @@
    if (doc["readingMode"].isNull()) {
      readingMode = (doc["readingBackgroundEnabled"] | static_cast<uint8_t>(0)) != 0 ? 1 : 0;  // 1 = Puppy
      if (readingMode != 0) needsResave = true;
-@@ -445,6 +476,15 @@
+@@ -445,6 +480,15 @@
      needsResave = true;
    }
    // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
@@ -433424,7 +433432,7 @@
    frontButtonBack = clamp(doc["frontButtonBack"] | (uint8_t)FRONT_HW_BACK, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_BACK);
    frontButtonConfirm =
        clamp(doc["frontButtonConfirm"] | (uint8_t)FRONT_HW_CONFIRM, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_CONFIRM);
-@@ -452,6 +492,7 @@
+@@ -452,6 +496,7 @@
    frontButtonRight =
        clamp(doc["frontButtonRight"] | (uint8_t)FRONT_HW_RIGHT, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_RIGHT);
    validateFrontButtonMapping(s);
@@ -433432,7 +433440,7 @@
    bluetoothEnabled = clamp(doc["bluetoothEnabled"] | static_cast<uint8_t>(0), static_cast<uint8_t>(2), 0);
    bleKeyMap = {};
    const JsonArrayConst storedBleMap = doc["bleKeyMap"];
-@@ -487,6 +528,11 @@
+@@ -487,6 +532,11 @@
    // Font family — uses dynamic getter/setter in SettingsList so the generic loop skips it.
    const uint8_t storedFontFamily = doc["fontFamily"] | (uint8_t)0;
    fontFamily = clamp(storedFontFamily, BUILTIN_FONT_COUNT, 0);
@@ -433444,7 +433452,7 @@
    if (BoardConfig::hasHomeKey() && doc["homeButtonLongPressAction"].isNull() &&
        !doc["longPressMenuFunction"].isNull()) {
      static constexpr HomeButtonAction LEGACY[] = {HomeButtonAction::Sync, HomeButtonAction::Ignore,
-@@ -513,11 +559,22 @@
+@@ -513,11 +563,22 @@
    // Missing keys take the defaults: Home swipe starts off for everyone, as agreed.
    rickyGestureBack = (doc["rickyGestureBack"] | 1) ? 1 : 0;
    rickyGestureHome = (doc["rickyGestureHome"] | 0) ? 1 : 0;
@@ -433467,7 +433475,7 @@
    rickyStandbyFace = doc["rickyStandbyFace"] | static_cast<uint8_t>(RICKY_STANDBY_PICTURE);
    if (rickyStandbyFace >= RICKY_STANDBY_FACE_COUNT) rickyStandbyFace = RICKY_STANDBY_PICTURE;
    rickyAutoOffIndex = doc["rickyAutoOffIndex"] | static_cast<uint8_t>(3);
-@@ -551,6 +608,10 @@
+@@ -551,6 +612,10 @@
      rickyPowerOffScreen = doc["rickyPowerOffScreen"] | static_cast<uint8_t>(RICKY_POWER_OFF_DEFAULT);
      if (rickyPowerOffScreen >= RICKY_POWER_OFF_SCREEN_COUNT) rickyPowerOffScreen = RICKY_POWER_OFF_DEFAULT;
    }
@@ -433478,7 +433486,7 @@
    // Old backups/direct JSON edits must not select a different product layout.
    struct FixedLayout {
      const char* key;
-@@ -635,11 +696,6 @@
+@@ -635,11 +700,6 @@
    }
    onboardingVersion = doc["onboardingVersion"].is<uint8_t>() ? doc["onboardingVersion"].as<uint8_t>() : 0;
  
@@ -433490,7 +433498,7 @@
    if (needsResave) {
      LOG_DBG("CPS", "Resaving settings to update format");
      requestResave();
-@@ -756,6 +812,7 @@
+@@ -756,6 +816,7 @@
    }
    refreshFrequency = validated(12, refreshFrequency, REFRESH_FREQUENCY_COUNT);
    screenMargin = value(13, screenMargin);
@@ -433498,7 +433506,22 @@
    sleepScreenCoverMode = validated(14, sleepScreenCoverMode, SLEEP_SCREEN_COVER_MODE_COUNT);
    textAntiAliasing = value(15, textAntiAliasing);
    hideBatteryPercentage = validated(16, hideBatteryPercentage, HIDE_BATTERY_PERCENTAGE_COUNT);
-@@ -876,6 +933,7 @@
+@@ -818,7 +879,14 @@
+   return spec;
+ }
+ 
++uint16_t CrossPointSettings::getReaderLineSpacingPercent() const {
++  return static_cast<uint16_t>(getReaderLineCompression() * 100.0f + 0.5f);
++}
++
+ float CrossPointSettings::getReaderLineCompression() const {
++  if (lineSpacingPercent >= LINE_SPACING_PERCENT_MIN && lineSpacingPercent <= LINE_SPACING_PERCENT_MAX) {
++    return static_cast<float>(lineSpacingPercent) / 100.0f;
++  }
+   // SD card and vector fonts get a wider scale than the built-ins: their
+   // faces carry their own (often generous) natural line height, so the old
+   // Bookerly-tuned 1.1/1.2 steps were visually near-indistinguishable. At
+@@ -876,6 +944,7 @@
  
  uint8_t CrossPointSettings::rickySleepScreenMode() const {
    if (rickyPowerOffScreen == RICKY_POWER_OFF_BLANK) return BLANK;
@@ -433546,7 +433569,18 @@
    uint8_t homeButtonTapAction = static_cast<uint8_t>(HomeButtonAction::Home);
    uint8_t homeButtonDoubleTapAction = static_cast<uint8_t>(HomeButtonAction::ToggleFrontlight);
    uint8_t homeButtonLongPressAction = static_cast<uint8_t>(HomeButtonAction::ReaderMenu);
-@@ -408,13 +420,29 @@
+@@ -402,19 +414,39 @@
+   // are selectable; SdCardFontSystem::ensureLoaded() snaps this to the nearest
+   // available size (and persists the snap) whenever the family changes.
+   uint8_t fontPointSize = DEFAULT_FONT_POINT_SIZE;
+-  uint8_t lineSpacing = NORMAL;
++  uint8_t lineSpacing = NORMAL;  // Legacy four-step setting, retained for migration.
++  static constexpr uint16_t LINE_SPACING_PERCENT_MIN = 80;
++  static constexpr uint16_t LINE_SPACING_PERCENT_MAX = 400;
++  uint16_t lineSpacingPercent = 0;  // Zero retains the font-specific legacy spacing.
++  uint16_t getReaderLineSpacingPercent() const;
+   uint8_t paragraphAlignment = JUSTIFIED;
+   // Auto-sleep timeout setting (default 10 minutes). Legacy sleepTimeout enum values are migration-only.
    uint8_t sleepTimeoutMinutes = 10;
    // E-ink refresh frequency (default 15 pages)
    uint8_t refreshFrequency = REFRESH_15;
@@ -433576,7 +433610,7 @@
    // Hide battery percentage
    uint8_t hideBatteryPercentage = HIDE_NEVER;
    // Long-press page turn button behavior
-@@ -456,15 +484,46 @@
+@@ -456,15 +488,46 @@
      RICKY_STANDBY_FACE_COUNT
    };
    uint8_t rickyStandbyFace = RICKY_STANDBY_PICTURE;
@@ -433624,7 +433658,7 @@
    // The sleepScreen mode the power-off screen draws with (SleepActivity).
    uint8_t rickySleepScreenMode() const;
    // Standby that has run this long powers off (index into RICKY_AUTO_OFF_HOURS; 0 = never).
-@@ -503,6 +562,7 @@
+@@ -503,6 +566,7 @@
    // last lines of a page and on the tab bar, so readers left books by accident.
    uint8_t rickyGestureBack = 1;     // swipe right from the left side: Back
    uint8_t rickyGestureHome = 0;     // swipe up from the bottom: Home
@@ -433632,7 +433666,7 @@
    uint8_t rickyGestureControl = 1;  // swipe down from the top: control center
    uint8_t rickyGestureStatus = 1;   // tap the status bar: control center
    // Body-text stroke weight in the reader: 0 thinnest .. 2 the font as drawn .. 4 boldest.
-@@ -541,8 +601,21 @@
+@@ -541,8 +605,21 @@
    uint8_t imageRendering = IMAGES_DISPLAY;
    // Tilt-based page turning (X3 only — requires QMI8658 IMU)
    uint8_t tiltPageTurn = TILT_OFF;
@@ -433654,7 +433688,7 @@
    // Which gestures turn the page in each direction (PAGE_TURN_GESTURE).
    // Tapping the side of the page turns it, as on every reader people come from.
    uint8_t pageTurnGesture = TAP_AND_SWIPE;
-@@ -567,6 +640,7 @@
+@@ -567,6 +644,7 @@
    uint8_t showReaderMenu = READER_MENU_TAP;
    // Frontlight quick-panel state. Brightness and warmth remain persisted even
    // when restore-on-wake is disabled.
@@ -433662,7 +433696,7 @@
    uint8_t frontlightBrightness = 60;
    uint8_t frontlightWarmth = 50;
    uint8_t frontlightOn = 0;
-@@ -581,11 +655,6 @@
+@@ -581,11 +659,6 @@
    // Exact version of the startup guide last completed. Zero/missing means never completed.
    uint8_t onboardingVersion = 0;
    // Keyboard layouts the user can reach, using keyboard_layouts::ALL table bits.
@@ -433674,7 +433708,7 @@
    // Quick Resume: keep current content visible with moon icon instead of showing a static sleep screen.
    uint8_t quickResumeSleepScreen = QUICK_RESUME_NEVER;
    // OTA update channel preference (0 = stable, 1 = nightly).
-@@ -640,6 +709,10 @@
+@@ -640,6 +713,10 @@
      bool showsProgressBar() const { return progressBarMode != HIDE_PROGRESS; }
      bool showsTitle() const { return titleMode != HIDE_TITLE; }
      bool showsClock() const { return clockMode != STATUS_BAR_CLOCK_HIDE; }
@@ -433685,6 +433719,63 @@
      bool textLaneVisible() const {
        return showChapterPageCount || showBookProgressPercent || showsTitle() || showBattery || showsClock();
      }
+--- a/src/CrossPointState.cpp
++++ b/src/CrossPointState.cpp
+@@ -48,6 +48,7 @@
+ 
+ void CrossPointState::toJson(JsonDocument& doc) const {
+   doc["openEpubPath"] = openEpubPath;
++  doc["libraryFolderPath"] = libraryFolderPath;
+   JsonArray recentArr = doc["recentSleepImages"].to<JsonArray>();
+   for (int i = 0; i < SLEEP_RECENT_COUNT; i++) recentArr.add(recentSleepImages[i]);
+   doc["recentSleepPos"] = recentSleepPos;
+@@ -64,6 +65,13 @@
+ 
+ bool CrossPointState::fromJson(JsonVariantConst doc) {
+   openEpubPath = doc["openEpubPath"] | "";
++  const char* folder = doc["libraryFolderPath"] | "";
++  const size_t folderLength = strlen(folder);
++  if (folderLength < sizeof(libraryFolderPath) && (folderLength == 0 || folder[0] == '/')) {
++    memcpy(libraryFolderPath, folder, folderLength + 1);
++  } else {
++    libraryFolderPath[0] = '\0';
++  }
+   memset(recentSleepImages, 0, sizeof(recentSleepImages));
+   JsonArrayConst recentArr = doc["recentSleepImages"];
+   const int actualCount =
+@@ -99,6 +107,20 @@
+   showBootScreen = doc["showBootScreen"] | true;
+   lastKnownValidTimestamp = doc["lastKnownValidTimestamp"] | static_cast<uint32_t>(0);
+   return true;
++}
++
++bool CrossPointState::rememberLibraryFolder(const std::string& path) {
++  if (path.size() >= sizeof(libraryFolderPath) || (!path.empty() && path.front() != '/') ||
++      path.find('\0') != std::string::npos) {
++    LOG_ERR("CPS", "Invalid library folder path");
++    return false;
++  }
++  {
++    std::lock_guard<std::mutex> lock(storeMutex);
++    if (path == libraryFolderPath) return true;
++    memcpy(libraryFolderPath, path.c_str(), path.size() + 1);
++  }
++  return saveToFile();
+ }
+ 
+ bool CrossPointState::loadFromFile() {
+--- a/src/CrossPointState.h
++++ b/src/CrossPointState.h
+@@ -14,6 +14,9 @@
+   static constexpr uint8_t SLEEP_RECENT_COUNT = 16;
+ 
+   std::string openEpubPath;
++  // The index stores folder paths in at most 255 bytes. Empty means all folders.
++  char libraryFolderPath[256] = {};
++  bool rememberLibraryFolder(const std::string& path);
+   uint16_t recentSleepImages[SLEEP_RECENT_COUNT] = {};  // circular buffer of recent wallpaper indices
+   uint8_t recentSleepPos = 0;                           // next write slot
+   uint8_t recentSleepFill = 0;                          // valid entries (0..SLEEP_RECENT_COUNT)
 --- a/src/HomeButtonSettings.h
 +++ b/src/HomeButtonSettings.h
 @@ -8,7 +8,8 @@
@@ -441613,7 +441704,7 @@
 +};
 --- /dev/null
 +++ b/src/activities/library/LibraryFoldersActivity.cpp
-@@ -0,0 +1,170 @@
+@@ -0,0 +1,174 @@
 +#include "LibraryFoldersActivity.h"
 +
 +#include <I18n.h>
@@ -441652,8 +441743,8 @@
 +  UiListActivity::onEnter();
 +  waitForButtons = mappedInput.isPressed(MappedInputManager::Button::Confirm) ||
 +                   mappedInput.isPressed(MappedInputManager::Button::Back);
-+  // Skip levels that hold no books and a single subfolder ("/" -> "/books"), so the
-+  // first screen is the one with a choice on it.
++  // Skip common ancestor levels, but keep every indexed/enrolled folder as a
++  // selectable row. Skipping the only leaf would leave just All Folders.
 +  root.clear();
 +  for (;;) {
 +    std::string only;
@@ -441665,11 +441756,15 @@
 +        books = true;
 +        break;
 +      }
-+      if (only.empty()) only = name;
-+      else if (only != name) several = true;
++      if (only.empty())
++        only = name;
++      else if (only != name)
++        several = true;
 +    }
 +    if (books || several || only.empty()) break;
-+    root = join(root, only);
++    const std::string next = join(root, only);
++    if (std::any_of(folders.begin(), folders.end(), [&](const Folder& folder) { return folder.path == next; })) break;
++    root = next;
 +  }
 +  // Open where the shelf's folder lives, so changing it is one step.
 +  std::string start = root;
@@ -441798,8 +441893,8 @@
 +// Picks the folder the Library shelf shows, one level at a time: a folder with
 +// subfolders opens, Back goes up, and the first row takes the folder being viewed
 +// (with everything under it). Counts include subfolders. The result is
-+// FilePathResult{path}, "" for every folder. The caller builds the folder list from
-+// the open index, so this screen never touches the card.
++// FilePathResult{path}, "" for every folder. The caller merges indexed paths with enrolled
++// folder sources, so this screen never touches the card.
 +class LibraryFoldersActivity final : public UiListActivity {
 + public:
 +  struct Folder {
@@ -441841,7 +441936,7 @@
 +};
 --- a/src/activities/library/LibraryListActivity.cpp
 +++ b/src/activities/library/LibraryListActivity.cpp
-@@ -7,15 +7,21 @@
+@@ -7,15 +7,22 @@
  #include <HalStorage.h>
  #include <I18n.h>
  #include <LibraryBuilder.h>
@@ -441857,13 +441952,14 @@
  #include <cstdio>
  
  #include "CrossPointSettings.h"
++#include "CrossPointState.h"
 +#include "LibraryCategoriesActivity.h"
 +#include "LibraryFoldersActivity.h"
 +#include "LibrarySourcesActivity.h"
  #include "MappedInputManager.h"
  #include "ReadingStatsStore.h"
  #include "RecentBooksStore.h"
-@@ -39,6 +45,8 @@
+@@ -39,6 +46,8 @@
  namespace fui = freeink::ui;
  
  namespace {
@@ -441872,7 +441968,7 @@
  constexpr int SIDE_PADDING = 12;
  constexpr unsigned long LONG_PRESS_MS = 1000;
  
-@@ -83,20 +91,49 @@
+@@ -83,20 +92,49 @@
  }
  
  void LibraryListActivity::onEnter() {
@@ -441927,7 +442023,7 @@
          RenderLock lock(self);
          self.readingFilter = event.value;
          self.applyFilter();
-@@ -105,83 +142,154 @@
+@@ -105,83 +143,156 @@
          self.requestUpdate();
        },
        this);
@@ -441998,6 +442094,8 @@
 +  const unsigned long tPinned = millis();
    resolvePinned();
 +  const unsigned long tPinnedDone = millis();
++  folderPath = APP_STATE.libraryFolderPath;
++  if (!folderPath.empty()) applyFilter();
 +  // A shelf an earlier build carried over from before sources: rebuild from the
 +  // enrolled sources only (the import retires the snapshot first).
 +  if (index.isOpen() && Storage.exists(library::LibrarySources::legacyIndexPath()))
@@ -442141,7 +442239,7 @@
  }
  
  void LibraryListActivity::swallowHeldReleases() {
-@@ -199,15 +307,49 @@
+@@ -199,15 +310,49 @@
  // list the reader narrowed down on purpose, and the ascending toggle asks for
  // oldest-first, which pinned fresh reads would contradict.
  int LibraryListActivity::pinnedCount() const {
@@ -442192,7 +442290,7 @@
    for (int i = 0; i < pinnedTotal; i++) pinnedAscRows[i] = 0xFFFF;
    if (pinnedTotal > 0 && index.isOpen()) {
      library::BookIdentity identities[RecentBooksStore::MAX_RECENT_BOOKS];
-@@ -229,6 +371,22 @@
+@@ -229,6 +374,22 @@
        pinnedTotal = 0;
      }
    }
@@ -442215,7 +442313,7 @@
    refreshOverlap();
  }
  
-@@ -249,7 +407,7 @@
+@@ -249,7 +410,7 @@
    if (selectedEntry() < pinnedCount()) {
      const auto& books = RECENT_BOOKS.getBooks();
      if (selectedEntry() >= static_cast<int>(books.size())) return;
@@ -442224,7 +442322,7 @@
    } else {
      if (!index.isOpen()) return;
      const uint16_t ordinal = index.ordinalForRow(sortOrder, static_cast<uint16_t>(rowFor(selectedEntry())));
-@@ -275,6 +433,17 @@
+@@ -275,6 +436,17 @@
  }
  
  void LibraryListActivity::activateIndex(const int index) {
@@ -442242,7 +442340,7 @@
    if (groupsCollapsed) {
      expandGroup(index);
    } else {
-@@ -289,7 +458,13 @@
+@@ -289,7 +461,13 @@
  bool LibraryListActivity::deleteEligible() const { return !groupsCollapsed && (!query.empty() || !groupable()); }
  
  void LibraryListActivity::onRowLongPress(const int index) {
@@ -442257,7 +442355,7 @@
      showRecentBookOptions(index);
    } else if (deleteEligible()) {
      promptDeleteBook(index);
-@@ -312,8 +487,8 @@
+@@ -312,8 +490,8 @@
    if (isStoreRow) {
      const auto& books = RECENT_BOOKS.getBooks();
      if (entry >= static_cast<int>(books.size())) return;
@@ -442268,7 +442366,7 @@
    } else {
      if (!index.isOpen()) return;
      const uint16_t ordinal = index.ordinalForRow(sortOrder, static_cast<uint16_t>(rowFor(entry)));
-@@ -326,10 +501,12 @@
+@@ -326,10 +504,12 @@
      }
    }
  
@@ -442284,7 +442382,7 @@
                     [this, path, title, isStoreRow](const int choice) {
                       swallowHeldReleases();
                       switch (choice) {
-@@ -337,20 +514,16 @@
+@@ -337,20 +517,16 @@
                           openBookByPath(path);
                           break;
                         case 1:
@@ -442311,7 +442409,7 @@
                           break;
                         default:
                           break;
-@@ -359,17 +532,242 @@
+@@ -359,17 +535,259 @@
    requestUpdate();
  }
  
@@ -442489,20 +442587,37 @@
 +    app.clearTapFlash();
 +    std::vector<std::string> paths;
 +    std::vector<uint16_t> counts;
-+    if (index.isOpen() && index.readFolderPaths(paths) && index.countBooksPerFolder(counts) &&
-+        paths.size() == counts.size()) {
-+      folders.reserve(paths.size());
++    library::LibrarySources sources;
++    if (sources.load() == library::LibrarySources::Load::Error) LOG_ERR("LIB", "cannot load folder sources");
++    const bool indexed = index.isOpen() && index.readFolderPaths(paths) && index.countBooksPerFolder(counts) &&
++                         paths.size() == counts.size();
++    folders.reserve((indexed ? paths.size() : 0) + sources.size());
++    if (indexed) {
 +      for (size_t id = 0; id < paths.size(); ++id)
 +        if (counts[id]) folders.push_back({std::move(paths[id]), counts[id]});
 +    } else {
 +      LOG_ERR("LIB", "cannot list library folders");
 +    }
++    // Enrolled folders remain selectable even before any books are indexed in
++    // them. The manifest is read only for this picker; no card scan is needed.
++    for (uint16_t i = 0; i < sources.size(); ++i) {
++      const auto& source = sources[i];
++      if (source.kind != library::SourceKind::Folder && source.kind != library::SourceKind::RecursiveFolder) continue;
++      const auto found =
++          std::find_if(folders.begin(), folders.end(), [&](const auto& folder) { return folder.path == source.path; });
++      if (found == folders.end()) folders.push_back({source.path, 0});
++    }
++    LOG_INF("LIB", "folder picker: indexed=%d paths=%u sources=%u choices=%u", indexed,
++            static_cast<unsigned>(paths.size()), static_cast<unsigned>(sources.size()),
++            static_cast<unsigned>(folders.size()));
 +  }
 +  startActivityForResultWith<LibraryFoldersActivity>(
 +      [this](const ActivityResult& result) {
 +        RenderLock lock(*this);
-+        if (!result.isCancelled && std::holds_alternative<FilePathResult>(result.data))
++        if (!result.isCancelled && std::holds_alternative<FilePathResult>(result.data)) {
 +          folderPath = std::get<FilePathResult>(result.data).path;
++          if (!APP_STATE.rememberLibraryFolder(folderPath)) LOG_ERR("LIB", "Failed to save shelf folder");
++        }
 +        applyFilter();
 +        activeNav().reset();
 +        swallowHeldReleases();
@@ -442561,7 +442676,7 @@
  }
  
  void LibraryListActivity::resetAfterRebuild() {
-@@ -456,25 +854,33 @@
+@@ -456,25 +874,33 @@
          if (!Storage.remove(path.c_str())) LOG_ERR("LIB", "cannot delete %s", path.c_str());
          RickyStorageActivity::invalidateScan();
          if (RECENT_BOOKS.removeByPath(path)) RECENT_BOOKS.saveToFile();
@@ -442605,7 +442720,7 @@
  }
  
  void LibraryListActivity::stepTab(const int direction) {
-@@ -488,6 +894,7 @@
+@@ -488,6 +914,7 @@
  }
  
  void LibraryListActivity::selectTab(const int index, const bool toggleIfActive) {
@@ -442613,7 +442728,7 @@
    if (index < 0 || index >= TAB_SLOTS) return;
    if (toggleIfActive && index == activeTab()) descendingTabs ^= static_cast<uint8_t>(1u << index);
    sortOrder = orderForTab(index, descendingTabs);
-@@ -518,7 +925,7 @@
+@@ -518,7 +945,7 @@
  }
  
  int LibraryListActivity::bookRowCount() const {
@@ -442622,7 +442737,7 @@
    if (!query.empty()) return static_cast<int>(filteredCount);
    // Pinned books already in the index are skipped below the pins, not doubled;
    // pinned books the index missed still show, so the difference stays split.
-@@ -533,7 +940,7 @@
+@@ -533,7 +960,7 @@
  // With pins active, entries below pinnedCount() belong to the store and must
  // not reach this; the rest walk past the pinned books' own sort rows.
  int LibraryListActivity::rowFor(const int entry) const {
@@ -442631,7 +442746,7 @@
      if (entry < 0 || entry >= static_cast<int>(filteredCount) || !filtered) return 0;
      return filtered[entry];
    }
-@@ -631,8 +1038,8 @@
+@@ -631,8 +1058,8 @@
    requestUpdate();
  }
  
@@ -442642,7 +442757,7 @@
  // array is allocated once with the exact upper bound and fails back to an
  // explicit message rather than letting vector growth abort the firmware.
  void LibraryListActivity::applyFilter() {
-@@ -645,11 +1052,42 @@
+@@ -645,11 +1072,42 @@
    // The header shows the active query in place of the screen title, so the
    // reader can see what narrowed the list without reopening the keyboard.
    headerSearchTitle = query.empty() ? std::string() : "“" + query + "”";
@@ -442686,7 +442801,7 @@
  
    auto matches = makeUniqueNoThrow<uint16_t[]>(static_cast<size_t>(total));
    if (!matches) {
-@@ -661,13 +1099,53 @@
+@@ -661,13 +1119,53 @@
    uint16_t matchCount = 0;
    std::string author;
    for (int row = 0; row < total; row++) {
@@ -442741,7 +442856,7 @@
        const bool started = stats != nullptr;
        const bool reading = started && !stats->completed;
        if ((readingFilter == 1 && !reading) || (readingFilter == 2 && started)) continue;
-@@ -691,12 +1169,22 @@
+@@ -691,12 +1189,22 @@
    }
    filtered = std::move(matches);
    filteredCount = matchCount;
@@ -442764,7 +442879,7 @@
    auto& nav = activeNav();
    if (!query.empty()) {
      query.clear();
-@@ -737,7 +1225,7 @@
+@@ -737,7 +1245,7 @@
    if (entry < pinnedCount()) {
      const auto& books = RECENT_BOOKS.getBooks();
      if (entry < 0 || entry >= static_cast<int>(books.size())) return false;
@@ -442773,7 +442888,7 @@
      title = book.title;
      author = book.author;
      if (fileName) *fileName = book.path;
-@@ -779,7 +1267,7 @@
+@@ -779,7 +1287,7 @@
  // up to its page, so swiping back from there never left the last page. Scrolling stays
  // in UiListActivity::loop(), after the touch is routed: taking the swipe earlier left
  // the touched book pressed (drawn inverted) because its release never reached the UI.
@@ -442782,7 +442897,7 @@
  
  bool LibraryListActivity::handleButtons() {
    const int count = listCount();
-@@ -790,6 +1278,10 @@
+@@ -790,6 +1298,10 @@
    // ActivityManager::loop() before any activity runs, so it cannot land in
    // the freshly opened confirmation and select its default.
    if (mappedInput.wasLongPressed(MappedInputManager::Button::Confirm, LONG_PRESS_MS)) {
@@ -442793,7 +442908,7 @@
      if (tabsFocused()) {
        if (!degraded) toggleSortDirection();
      } else if (isRecentSort(sortOrder)) {
-@@ -811,7 +1303,10 @@
+@@ -811,7 +1323,10 @@
  
    if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
      if (tabsFocused()) {
@@ -442805,7 +442920,7 @@
        return true;
      }
      if (count > 0) activateIndex(selectedEntry());
-@@ -838,7 +1333,7 @@
+@@ -838,7 +1353,7 @@
    });
    // Search is an activation: defer it so holding Previous can still step tabs.
    buttonNavigator.onPreviousRelease([this] {
@@ -442814,7 +442929,7 @@
    });
    // A held button steps tabs while the strip has focus (the base behaviour
    // Settings keeps) and page-jumps once the selection is down in the rows,
-@@ -1020,7 +1515,7 @@
+@@ -1020,7 +1535,7 @@
  bool LibraryListActivity::entryPath(int entry, std::string& path) {
    if (entry < 0 || entry >= bookRowCount()) return false;
    if (entry < pinnedCount()) {
@@ -442823,7 +442938,7 @@
      return true;
    }
    const auto ordinal = index.ordinalForRow(sortOrder, rowFor(entry));
-@@ -1043,17 +1538,38 @@
+@@ -1043,17 +1558,38 @@
    // The product caption can fall back to BODY for a title with uncommon glyphs.
    // Reserve the taller of the two actual font lines so title and progress never touch.
    const int cardTextLineHeight =
@@ -442866,7 +442981,7 @@
    auto pageTitle = theme.titleText;
    pageTitle.bold = true;
    screen.target().text(titleRect, headerTitle(), pageTitle);
-@@ -1071,7 +1587,7 @@
+@@ -1071,7 +1607,7 @@
    moreRect.width = moreWidth;
    RickyPageUi::pageIcon(screen.target(), renderer, moreRect.x + (moreRect.width - 40) / 2,
                          moreRect.y + moreRect.height / 2, icon_ricky_filter_40);
@@ -442875,7 +442990,7 @@
    const StrId filterLabels[] = {StrId::STR_RICKY_BOOKS_ALL, StrId::STR_RICKY_BOOKS_READING,
                                  StrId::STR_RICKY_BOOKS_UNREAD};
    int widestLabel = 0;
-@@ -1100,37 +1616,104 @@
+@@ -1100,37 +1636,104 @@
      label.align = fui::TextAlign::Center;
      screen.target().text(labelRect, I18N.get(filterLabels[i]), label);
    }
@@ -442999,7 +443114,7 @@
      for (int i = 0; i < visible; ++i) {
        rowTextFor(start + i, shelfTitles[i], shelfAuthors[i]);
        RickyPageUi::stripBookExtension(shelfTitles[i]);
-@@ -1138,7 +1721,7 @@
+@@ -1138,7 +1741,7 @@
        const auto& path = shelfPaths[i];
        // Reading state only: "EPUB · 已读 12%" overflowed a three-column card, and the
        // format already shows on generated covers.
@@ -443008,7 +443123,7 @@
        if (stats && stats->lastProgressPercent >= 100)
          snprintf(shelfDetails[i].data(), shelfDetails[i].size(), "%s", tr(STR_RICKY_BOOK_FINISHED));
        else if (stats)
-@@ -1148,33 +1731,67 @@
+@@ -1148,33 +1751,67 @@
          snprintf(shelfDetails[i].data(), shelfDetails[i].size(), "%s", tr(STR_RICKY_BOOK_UNREAD));
        shelfCovers[i].clear();
      }
@@ -443094,7 +443209,7 @@
      if (picked) RickyDesignUi::fill(renderer, cell, ricky::ds::gray::kInk, ricky::ds::radius::kControl);
      const int coverWidth = coverHeight * 2 / 3;
      const fui::Rect rect{static_cast<int16_t>(cell.x + (cell.width - coverWidth) / 2),
-@@ -1196,9 +1813,14 @@
+@@ -1196,9 +1833,14 @@
                                       });
        if (painted) screen.target().stroke(rect, fui::Paint::solid(fui::Color::LightGray), ricky::ds::stroke::kHairline);
      }
@@ -443110,7 +443225,7 @@
        RickyDesignUi::cover(renderer, rect, shelfTitles[slot].c_str(), format);
      }
      const fui::Rect titleRect{static_cast<int16_t>(cell.x + cardSideInset),
-@@ -1207,22 +1829,28 @@
+@@ -1207,22 +1849,28 @@
                                static_cast<int16_t>(cardTextLineHeight)};
      const fui::Rect detailRect{titleRect.x, static_cast<int16_t>(titleRect.bottom() + cardTextGap), titleRect.width,
                                 titleRect.height};
@@ -443148,7 +443263,7 @@
  }
  
  // "12/69 books" at the bottom right: which book is selected, out of how many.
-@@ -1274,7 +1902,9 @@
+@@ -1274,7 +1922,9 @@
  void LibraryListActivity::render(RenderLock&& lock) {
    if (optionPopup.isActive()) renderPopupUnderlay();
    if (optionPopup.processRender(renderer, mappedInput)) return;
@@ -444602,8 +444717,11 @@
  #if CROSSPOINT_VECTOR_FONTS
  #include <TtfEpdFont.h>
  #endif
-@@ -64,18 +72,19 @@
+@@ -62,20 +70,22 @@
+ #include "activities/network/WifiSelectionActivity.h"
+ #include "activities/settings/FontDownloadActivity.h"
  #include "activities/settings/TextSettingsActivity.h"
++#include "activities/util/IntervalSelectionActivity.h"
  #include "components/FontPreloadView.h"
  #include "components/RickyBadgeNotice.h"
 +#include "components/RickyCompanion.h"
@@ -444623,7 +444741,7 @@
  
  namespace {
  constexpr uint8_t MAX_PAGE_TURN_RATE = 30;
-@@ -105,6 +114,17 @@
+@@ -105,6 +115,17 @@
        {0, 4, 6, 7, 8, 9, 10, 11, 11, 12, 12, 13, 14, 14, 15, 15},
        {0, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 12, 13, 14, 14, 15},
    };
@@ -444641,7 +444759,7 @@
    return weight < std::size(kCurves) && weight != 2 ? kCurves[weight] : nullptr;
  }
  
-@@ -334,6 +354,14 @@
+@@ -334,6 +355,14 @@
  }
  
  void EpubReaderActivity::onExit() {
@@ -444656,7 +444774,7 @@
    if (footnoteDepth > 0 && epub) {
      const SavedPosition& origin = savedPositions[0];
      saveProgress(origin.spineIndex, origin.pageNumber, 0);
-@@ -341,7 +369,8 @@
+@@ -341,7 +370,8 @@
  
    READING_STATS.endSession();
    ACHIEVEMENTS.recordSessionEnded(READING_STATS.getLastSessionSnapshot());
@@ -444666,7 +444784,7 @@
    // Four frames of PSRAM; the reader is the only owner and gives them back here.
    freePageCache();
  #endif
-@@ -349,11 +378,13 @@
+@@ -349,11 +379,13 @@
  #if RICKYOS_PRODUCT
    rickyBadgeNotice::announceNew(renderer);
  #endif
@@ -444682,7 +444800,7 @@
    renderer.requestNextFullRefresh();
  #endif
  }
-@@ -361,7 +392,7 @@
+@@ -361,7 +393,7 @@
  void EpubReaderActivity::showOpeningPopup() {
    // Even a cached book takes a few seconds on device to its first page (measured
    // 2.7-3.6 s), with the tapped screen unchanged meanwhile. Say so at once.
@@ -444691,7 +444809,7 @@
    // Drawn into the retained 16-level frame: the screen keeps its grays and only the
    // popup's area is driven, instead of a B/W refresh of the whole screen.
    if (renderer.beginRetainedGrayscale16()) {
-@@ -450,6 +481,17 @@
+@@ -450,6 +482,17 @@
    }
    epub = std::move(loadedEpub);
  
@@ -444709,7 +444827,7 @@
    ImageBlock::clearSessionRenderFailures();
    ImageBlock::setExtractor(epub.get(), [](void* ctx, const char* src, const char* dest, CancelCheck cancellation) {
      return static_cast<Epub*>(ctx)->extractItemToFile(src, dest, cancellation);
-@@ -533,6 +575,20 @@
+@@ -533,6 +576,20 @@
          legacyProgressPending = true;
          loadProtectionError = "txt progress migration failed";
          return false;
@@ -444730,7 +444848,7 @@
      }
    }
  
-@@ -648,6 +704,16 @@
+@@ -648,6 +705,16 @@
    auto spec = vertical ? SETTINGS.readerRenderSpec(height, width) : SETTINGS.readerRenderSpec(width, height);
    spec.collectTouchLinks = mappedInput.hasTouch() && !vertical;
    if (stylesDisabledForSession_) spec.embeddedStyle = false;
@@ -444747,7 +444865,7 @@
    if (vertical) {
      spec.verticalText = true;
      // Columns keep one pitch so the 界行 stay on their grid; images have no column
-@@ -848,11 +914,33 @@
+@@ -848,11 +915,33 @@
  
  void EpubReaderActivity::loop() {
    if (loadFailurePopup.isActive()) {
@@ -444781,7 +444899,7 @@
      return;
    }
  
-@@ -883,7 +971,7 @@
+@@ -883,7 +972,7 @@
      return;
    }
  
@@ -444790,7 +444908,7 @@
    constexpr unsigned long IDLE_PREWARM_DEBOUNCE_MS = 400;
    auto* fcm = renderer.getFontCacheManager();
    {
-@@ -965,6 +1053,7 @@
+@@ -965,6 +1054,7 @@
    switch (mappedInput.homeButtonAction()) {
      case HomeButtonAction::ReaderMenu:
      case HomeButtonAction::Bookmark:
@@ -444798,7 +444916,7 @@
      case HomeButtonAction::Sync:
      case HomeButtonAction::Dictionary:
      case HomeButtonAction::Footnotes:
-@@ -973,6 +1062,10 @@
+@@ -973,6 +1063,10 @@
      default:
        break;
    }
@@ -444809,7 +444927,7 @@
  
    if (automaticPageTurnActive) {
      if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) ||
-@@ -1044,6 +1137,13 @@
+@@ -1044,6 +1138,13 @@
  
    if (!endOfBookMenuOpen) {
      switch (mappedInput.homeButtonAction()) {
@@ -444823,7 +444941,7 @@
        case HomeButtonAction::Bookmark:
          if (!showBookmarkMessage) {
            addBookmark();
-@@ -1087,6 +1187,25 @@
+@@ -1087,6 +1188,25 @@
      }
    }
  
@@ -444849,7 +444967,7 @@
    if (confirmReleased || ReaderUtils::isTouchMenuGesture(renderer, mappedInput)) {
      // Toolbar style: the page is on screen and in the framebuffer, so paint the
      // toolbar over it (one refresh) instead of pushing a full-screen menu.
-@@ -1127,9 +1246,10 @@
+@@ -1127,9 +1247,10 @@
        pendingManualTurn = 0;
        return;
      }
@@ -444862,7 +444980,7 @@
      notePageTurn(forward, succeeded);
      requestUpdate();
      return;
-@@ -1174,17 +1294,26 @@
+@@ -1174,17 +1295,26 @@
      return;
    }
  
@@ -444893,7 +445011,7 @@
      notePageTurn(true, succeeded);
    }
    requestUpdate();
-@@ -1286,6 +1415,47 @@
+@@ -1286,6 +1416,47 @@
    requestUpdate();
  }
  
@@ -444941,7 +445059,7 @@
  void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction action) {
    auto progressChangeResultHandler = [this](const ActivityResult& result) {
      READING_STATS.resumeSession();
-@@ -1299,41 +1469,7 @@
+@@ -1299,41 +1470,7 @@
  
    switch (action) {
      case EpubReaderMenuActivity::MenuAction::SELECT_CHAPTER: {
@@ -444984,7 +445102,7 @@
        break;
      }
      case EpubReaderMenuActivity::MenuAction::FOOTNOTES: {
-@@ -1376,6 +1512,11 @@
+@@ -1376,6 +1513,11 @@
            initialPercent);
        break;
      }
@@ -444996,7 +445114,7 @@
      case EpubReaderMenuActivity::MenuAction::DICTIONARY: {
        openDictionaryWordSelect();
        break;
-@@ -1407,6 +1548,10 @@
+@@ -1407,6 +1549,10 @@
            uint16_t backupSpine = currentSpineIndex;
            uint16_t backupPage = section->currentPage;
            uint16_t backupPageCount = section->pageCount;
@@ -445007,7 +445125,7 @@
            section.reset();
            epub->clearCache();
            epub->setupCacheDir();
-@@ -1562,6 +1707,8 @@
+@@ -1562,6 +1708,8 @@
    }
  
    RenderLock lock(*this);
@@ -445016,7 +445134,7 @@
    if (section) {
      rememberCurrentContentOffset();
      cachedSpineIndex = currentSpineIndex;
-@@ -1605,15 +1752,28 @@
+@@ -1605,15 +1753,28 @@
  }
  
  bool EpubReaderActivity::pageTurn(bool isForwardTurn) {
@@ -445045,7 +445163,7 @@
        lastPageTurnTime = millis();
        return true;
      } else if (currentSpineIndex + 1 < epub->getSpineItemsCount()) {
-@@ -1631,6 +1791,7 @@
+@@ -1631,6 +1792,7 @@
    } else {
      if (section->currentPage > 0) {
        section->currentPage--;
@@ -445053,7 +445171,7 @@
        lastPageTurnTime = millis();
        return true;
      } else if (currentSpineIndex > 0) {
-@@ -1647,6 +1808,7 @@
+@@ -1647,6 +1809,7 @@
  }
  
  bool EpubReaderActivity::skipPages(int amount) {
@@ -445061,7 +445179,7 @@
    if (!section) return false;
    READING_STATS.noteActivity();
    if (amount > 0) {
-@@ -1680,6 +1842,12 @@
+@@ -1680,6 +1843,12 @@
    bool offerSync = false;
    if (perr == "txt progress migration failed") {
      msg = StrId::STR_TXT_PROGRESS_MIGRATION_FAILED;
@@ -445074,7 +445192,7 @@
    } else if (perr == "access expired") {
      msg = StrId::STR_LOAN_EXPIRED;
    } else if (perr == "loan date unverified") {
-@@ -1778,14 +1946,32 @@
+@@ -1778,14 +1947,32 @@
  readingMode::Margins EpubReaderActivity::textMargins() const {
    readingMode::Margins viewable;
    renderer.getOrientedViewableTRBL(&viewable.top, &viewable.right, &viewable.bottom, &viewable.left);
@@ -445114,7 +445232,7 @@
    int bottomReserve = 0;
    if (readingMode::showsFooter(mode)) {
      const uint8_t statusBarHeight = UITheme::getInstance().getStatusBarHeight();
-@@ -1794,13 +1980,22 @@
+@@ -1794,13 +1981,22 @@
          (statusBarHeight == 0 || statusBarHeight == UITheme::getInstance().getProgressBarHeight())) {
        bottomReserve += UITheme::getInstance().getMetrics().statusBarVerticalMargin;
      }
@@ -445144,7 +445262,7 @@
    const readingMode::Margins margins = readingMode::textMargins(mode, base, viewable, RickyReaderDog::kEdgeRow);
    if (!readingMode::setsVertically(mode)) return margins;
    return readingMode::fitColumns(
-@@ -1880,6 +2075,21 @@
+@@ -1880,6 +2076,21 @@
  
    const ReaderRenderSpec renderSpec = effectiveRenderSpec(viewportWidth, viewportHeight);
  
@@ -445166,7 +445284,7 @@
    if (!section) {
      const auto filepath = epub->getSpineItem(currentSpineIndex).href;
      LOG_DBG("ERS", "Loading file: %s, index: %d", filepath.c_str(), currentSpineIndex);
-@@ -1891,7 +2101,7 @@
+@@ -1891,7 +2102,7 @@
        return;
      }
  
@@ -445175,7 +445293,7 @@
      ++sectionGeneration_;
  #endif
      const bool cacheLoaded = section->loadSectionFile(renderSpec);
-@@ -2158,6 +2368,7 @@
+@@ -2158,6 +2369,7 @@
      pageLoadRetryCount = 0;
  
      currentPageVisibleOffset = p->visibleTextOffset;
@@ -445183,7 +445301,7 @@
      renderedSpineIndex_ = currentSpineIndex;
      currentPageFootnotes = std::move(p->footnotes);
      currentPageLinks = std::move(p->links);
-@@ -2284,6 +2495,8 @@
+@@ -2284,6 +2496,8 @@
      offset = (currentPage == section->currentPage && currentPageVisibleOffset.has_value())
                   ? currentPageVisibleOffset
                   : section->getVisibleTextOffsetForPage(static_cast<uint16_t>(currentPage));
@@ -445192,7 +445310,7 @@
    }
    uint8_t chapterProgress = getStatsChapterProgressPercent(currentPage, pageCount);
    const std::string chapterTitle = getStatsChapterTitle(*epub, spineIndex, offset, &chapterProgress);
-@@ -2307,14 +2520,23 @@
+@@ -2307,14 +2521,23 @@
    }
  }
  
@@ -445219,7 +445337,7 @@
  bool EpubReaderActivity::pageCacheEligible() const {
    // No !section->isBuilding() here, deliberately. The page cache renders ONE page --
    // the current one or the next -- and Section::loadPage() is written to serve exactly
-@@ -2328,7 +2550,13 @@
+@@ -2328,7 +2551,13 @@
    // engages at all -- every turn is a full render instead of the cached one.
    return !pageCacheFailed_ && section && renderer.hasFrameBuffer() && !activityManager.isSwitchPending() &&
           overlay == Overlay::None && fontPromptState == FontPromptState::Idle && !renderer.isInverted() &&
@@ -445234,7 +445352,7 @@
  }
  
  ReaderPageCacheKey EpubReaderActivity::pageCacheKey(const int page, const int top, const int right, const int bottom,
-@@ -2369,8 +2597,34 @@
+@@ -2369,8 +2598,34 @@
    }
  }
  
@@ -445269,7 +445387,7 @@
    // Every exit below names the condition it took. Without that, "the cache never hits"
    // is indistinguishable from "the build was cancelled", "the layout moved since the
    // last render" and "the next page has images" -- and each of those needs a different
-@@ -2400,6 +2654,9 @@
+@@ -2400,6 +2655,9 @@
    const auto& layout = renderedPageKey_;
    // A main-loop reflow/jump may have replaced the section since the last render.
    if (layout != pageCacheKey(section->currentPage, layout.top, layout.right, layout.bottom, layout.left)) {
@@ -445279,7 +445397,7 @@
      LOG_DBG("ERS", "Page cache: skip, layout moved since the last render");
      return;
    }
-@@ -2412,26 +2669,40 @@
+@@ -2412,26 +2670,40 @@
    // A build cut short by input stays retryable: the render task re-arms the idle pass
    // once input is quiet, and a Skipped slot would otherwise never be built again.
    const auto build = [&](const int slot, const ReaderPageCacheKey& key) {
@@ -445330,7 +445448,7 @@
  // On a chapter's last page the forward slot is free: build the next chapter and render
  // its first page into it. Comics put one picture in each chapter, so without this every
  // turn decoded a JPEG in the foreground (~3.5 s); now it happens while the page is read.
-@@ -2464,6 +2735,12 @@
+@@ -2464,6 +2736,12 @@
    }
    if (nextSection->pageCount == 0 || activityManager.idleRenderCancelled(generation)) return;
    const bool ready = buildPageCacheSlot(0, key, generation, nextSection.get());
@@ -445343,7 +445461,7 @@
    LOG_DBG("ERS", "Next chapter prefetch: spine %d ready=%d in %lums", next, ready, millis() - started);
  }
  #endif
-@@ -2527,13 +2804,18 @@
+@@ -2527,13 +2805,18 @@
    if (!pageCacheBase_[slot]) {
      constexpr size_t kContiguousReserve = 16 * 1024;
      // Reserve the slots still to allocate; the forward slot is already charged for slot 1.
@@ -445366,7 +445484,7 @@
        freePageCache();
        pageCacheFailed_ = true;
        LOG_ERR("ERS", "Page cache off: PSRAM allocation of %u B failed", static_cast<unsigned>(4 * bytes));
-@@ -2579,12 +2861,26 @@
+@@ -2579,12 +2862,26 @@
    const readingMode::Box textBox = readingMode::textBox(renderer.getScreenWidth(), renderer.getScreenHeight(),
                                                          {key.top, key.right, key.bottom, key.left});
    const int pitch = renderer.getLineHeight(key.spec.fontId, key.spec.lineCompression);
@@ -445393,7 +445511,7 @@
    };
  
    // Load glyphs on demand: a whole-page prewarm cannot be interrupted. Check
-@@ -2597,9 +2893,10 @@
+@@ -2597,9 +2894,10 @@
      GfxRenderer::SyntheticBoldScope syntheticBold(renderer, key.fakeBold);
      GfxRenderer::TextWeightScope textWeight(renderer, readerTextWeightCurve(key.textWeight),
                                              readerTextWeightSpread(key.textWeight));
@@ -445405,7 +445523,7 @@
      }
      if (vertical) readerChrome::drawColumnRules(renderer, *page, textBox, pitch);
      // Match foreground ordering: all text first, then the guide lines.
-@@ -2632,13 +2929,27 @@
+@@ -2632,13 +2930,27 @@
        GfxRenderer& renderer;
        ~EndOffscreen() { renderer.endGrayscale16Offscreen(); }
      } endOffscreen{renderer};
@@ -445434,7 +445552,7 @@
        }
        if (vertical) readerChrome::drawColumnRules(renderer, *page, textBox, pitch);
      }
-@@ -2671,6 +2982,10 @@
+@@ -2671,6 +2983,10 @@
    }
    pageCacheMissingCodepoint_[slot] = fcm ? fcm->consumeMissingChineseCodepoint() : 0;
    pageCache_[slot].state = ReaderPageCache::State::Ready;
@@ -445445,7 +445563,7 @@
    LOG_DBG("ERS", "Page cache: slot %d, page %d ready in %lums", slot, key.page, millis() - started);
    return true;
  }
-@@ -2679,6 +2994,9 @@
+@@ -2679,6 +2995,9 @@
  void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int orientedMarginTop,
                                          const int orientedMarginRight, const int orientedMarginBottom,
                                          const int orientedMarginLeft) {
@@ -445455,7 +445573,7 @@
    const auto t0 = millis();
    const int fontId = SETTINGS.getReaderFontId();
    const bool vertical = readingMode::setsVertically(readingMode::modeFor(SETTINGS.readingMode));
-@@ -2732,7 +3050,7 @@
+@@ -2732,7 +3051,7 @@
        if (manager) manager->clearCache();
      }
    } rawFontCacheGuard;
@@ -445464,7 +445582,7 @@
    const auto key = pageCacheKey(section ? section->currentPage : -1, orientedMarginTop, orientedMarginRight,
                                  orientedMarginBottom, orientedMarginLeft);
    // Either slot may hold this page: slot 0 was built for it as a forward turn, slot 1
-@@ -2779,8 +3097,14 @@
+@@ -2779,8 +3098,14 @@
    // RickyOS: every text face (2-bit downloaded fonts too) and synthetic bold draw straight
    // into the 16-level frame, and JPEG illustrations decode into it, so anti-aliased pages
    // take the single-render path.
@@ -445481,7 +445599,7 @@
    const bool needsAnyGrayscale = grayscaleEnabled && (SETTINGS.textAntiAliasing || pageHasImages);
    const bool absoluteImageGrayscale = grayscaleEnabled && pageHasImages && !gpio.deviceIsX3() &&
                                        display.getController() == HalDisplay::Controller::UC8279 &&
-@@ -2844,7 +3168,7 @@
+@@ -2844,7 +3169,7 @@
    };
  
    unsigned long cacheBaseMs = 0;
@@ -445490,7 +445608,7 @@
    if (use16LevelText) {
      // The 16-level pass below clears the frame and renders (or copies from the cache)
      // the page, writing the B/W proxy as it goes, so a B/W render here is thrown away.
-@@ -2859,7 +3183,7 @@
+@@ -2859,7 +3184,7 @@
    {
      renderPageWithGuideLines();
    }
@@ -445499,7 +445617,7 @@
    const uint32_t missingCodepoint =
        pageCacheHit ? pageCacheMissingCodepoint_[pageCacheLiveSlot_] : fcm->consumeMissingChineseCodepoint();
  #else
-@@ -2869,7 +3193,14 @@
+@@ -2869,7 +3194,14 @@
      uint32_t expected = 0;
      pendingMissingChineseCodepoint_.compare_exchange_strong(expected, missingCodepoint, std::memory_order_relaxed);
    }
@@ -445514,7 +445632,7 @@
    const auto tBwRender = millis();
  
    if (absoluteImageGrayscale) {
-@@ -2889,6 +3220,7 @@
+@@ -2889,6 +3221,7 @@
      // twice (more flash, more time), and the 16-level waveform is a full-screen one anyway,
      // so ghosting is still cleared.
    } else if (combinedGrayscaleBase) {
@@ -445522,7 +445640,7 @@
      ReaderUtils::displayBaseWithRefreshCycle(renderer, pagesUntilFullRefresh, manualRefreshPending);
    } else if (pageHasImages) {
      // Image pages use one base refresh before the grayscale pass. FAST leaves
-@@ -2903,6 +3235,7 @@
+@@ -2903,6 +3236,7 @@
        pagesUntilFullRefresh = 1;
      }
    } else {
@@ -445530,7 +445648,7 @@
      ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh, overlapRefresh);
    }
    const auto tDisplay = millis();
-@@ -2912,7 +3245,7 @@
+@@ -2912,7 +3246,7 @@
      const auto t16Begin = millis();
      if (renderer.beginGrayscale16()) {
        const auto t16Cleared = millis();
@@ -445539,7 +445657,7 @@
        if (pageCacheHit && pageCacheIs16_[pageCacheLiveSlot_] && pageCache16_[pageCacheLiveSlot_]) {
          memcpy(renderer.grayscale16Frame(), pageCache16_[pageCacheLiveSlot_].get(), renderer.grayscale16FrameBytes());
          memcpy(renderer.getFrameBuffer(), pageCacheBase_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
-@@ -2920,28 +3253,54 @@
+@@ -2920,28 +3254,54 @@
        } else
  #endif
        {
@@ -445597,7 +445715,7 @@
          ttf = {};
  #endif
        }
-@@ -2951,16 +3310,73 @@
+@@ -2951,16 +3311,73 @@
          return;
        }
  #if !defined(SIMULATOR)
@@ -445674,7 +445792,7 @@
  #if RICKYOS_PAINT_PROFILE
          LOG_INF("PERF", "reader commit=%lums total=%lums", tEnd - tCommit, tEnd - t0);
  #endif
-@@ -3137,7 +3553,7 @@
+@@ -3137,7 +3554,7 @@
        }
        const auto tBwStore = millis();
  
@@ -445683,7 +445801,7 @@
        if (pageCacheHit) {
          // Both planes were rendered at idle; putting them in place is one copy
          // each instead of a full page render each.
-@@ -3164,7 +3580,7 @@
+@@ -3164,7 +3581,7 @@
          return;
        }
  
@@ -445692,7 +445810,7 @@
        if (pageCacheHit) {
          memcpy(renderer.getFrameBuffer(), pageCacheMsb_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
          renderer.copyGrayscaleMsbBuffers();
-@@ -3212,9 +3628,12 @@
+@@ -3212,9 +3629,12 @@
  }
  
  void EpubReaderActivity::renderStatusBar() const {
@@ -445705,7 +445823,7 @@
      readerChrome::PageInfo info;
      info.bookTitle = epub ? epub->getTitle().c_str() : nullptr;
      // A chapter the table of contents names, not currentChapterTitle()'s "unnamed".
-@@ -3225,11 +3644,18 @@
+@@ -3225,11 +3645,18 @@
      }
      info.chapterTitle = chapter.c_str();
      info.pageInChapter = currentPage;
@@ -445726,7 +445844,7 @@
    const float pageCount = section ? section->estimatedTotalPages() : 1;
    const float sectionChapterProg = (pageCount > 0) ? (static_cast<float>(currentPage) / pageCount) : 0;
    const float bookProgress = epub ? (epub->calculateProgress(currentSpineIndex, sectionChapterProg) * 100) : 0;
-@@ -3266,8 +3692,12 @@
+@@ -3266,8 +3693,12 @@
        auto chapter = renderer.truncatedText(RickyDesignUi::BODY, title.c_str(), column);
        title = book + " · " + chapter;
      }
@@ -445739,7 +445857,74 @@
      return;
    }
    GUI.drawStatusBar(renderer, bookProgress, currentPage, pageCount, title, 0, textYOffset, true, currentPageBookmarked,
-@@ -4524,7 +4954,7 @@
+@@ -3309,13 +3740,11 @@
+                                 StrId::STR_FAKE_BOLD_STANDARD, StrId::STR_RICKY_WEIGHT_BOLD,
+                                 StrId::STR_RICKY_WEIGHT_BOLDEST};
+ static_assert(std::size(kWeightIds) == CrossPointSettings::RICKY_TEXT_WEIGHT_COUNT, "weight labels");
+-constexpr StrId kSpacingIds[] = {StrId::STR_TIGHT, StrId::STR_NORMAL, StrId::STR_WIDE, StrId::STR_EXTRA_WIDE};
+ constexpr StrId kAlignIds[] = {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId::STR_CENTER, StrId::STR_ALIGN_RIGHT,
+                                StrId::STR_BOOK_S_STYLE};
+ constexpr StrId kIndentIds[] = {StrId::STR_FIRST_LINE_INDENT_AUTO, StrId::STR_FIRST_LINE_INDENT_INDENT,
+                                 StrId::STR_FIRST_LINE_INDENT_NO_INDENT};
+ constexpr int kTextRowCount = static_cast<int>(std::size(kTextRowNames));
+-static_assert(std::size(kSpacingIds) == CrossPointSettings::LINE_COMPRESSION_COUNT, "line spacing labels");
+ static_assert(std::size(kAlignIds) == CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT, "alignment labels");
+ }  // namespace
+ 
+@@ -3355,8 +3784,12 @@
+       return I18N.get(kFamily[SETTINGS.fontFamily % CrossPointSettings::FONT_FAMILY_COUNT]);
+     case kTextRowSize:
+       return std::to_string(SETTINGS.fontPointSize) + " pt";
+-    case kTextRowSpacing:
+-      return I18N.get(kSpacingIds[SETTINGS.lineSpacing % CrossPointSettings::LINE_COMPRESSION_COUNT]);
++    case kTextRowSpacing: {
++      char value[8];
++      snprintf(value, sizeof(value), tr(STR_LINE_SPACING_VALUE),
++               static_cast<unsigned>(SETTINGS.getReaderLineSpacingPercent()));
++      return value;
++    }
+     case kTextRowAlignment:
+       return I18N.get(kAlignIds[SETTINGS.paragraphAlignment % CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT]);
+     case kTextRowIndent:
+@@ -3403,13 +3836,30 @@
+       });
+       break;
+     }
+-    case kTextRowSpacing:
+-      overlayPopup.show(StrId::STR_LINE_SPACING, kSpacingIds, static_cast<int>(std::size(kSpacingIds)),
+-                        SETTINGS.lineSpacing % CrossPointSettings::LINE_COMPRESSION_COUNT, [this](int idx) {
+-                          SETTINGS.lineSpacing = static_cast<uint8_t>(idx);
+-                          applyTextSettingLive();
+-                        });
+-      break;
++    case kTextRowSpacing: {
++      {
++        RenderLock lock;
++        settleOverlayRefresh();
++        discardOverlayPage();
++      }
++      startActivityForResultWith<IntervalSelectionActivity>(
++          [this](const ActivityResult& result) {
++            if (toolbarUi) toolbarUi->begin();  // the numeric picker registered its own UI screen
++            if (!result.isCancelled && std::holds_alternative<IntervalResult>(result.data)) {
++              SETTINGS.lineSpacingPercent = static_cast<uint16_t>(std::clamp<int>(
++                  std::get<IntervalResult>(result.data).value, int(CrossPointSettings::LINE_SPACING_PERCENT_MIN),
++                  int(CrossPointSettings::LINE_SPACING_PERCENT_MAX)));
++              applyTextSettingLive();
++            } else {
++              discardOverlayPage();
++              requestUpdate();
++            }
++          },
++          "LineSpacing", StrId::STR_LINE_SPACING, SETTINGS.getReaderLineSpacingPercent(),
++          CrossPointSettings::LINE_SPACING_PERCENT_MIN, CrossPointSettings::LINE_SPACING_PERCENT_MAX, 1, 5,
++          StrId::STR_LINE_SPACING_VALUE, true);
++      return;
++    }
+     case kTextRowAlignment:
+       overlayPopup.show(StrId::STR_PARA_ALIGNMENT, kAlignIds, static_cast<int>(std::size(kAlignIds)),
+                         SETTINGS.paragraphAlignment % CrossPointSettings::PARAGRAPH_ALIGNMENT_COUNT, [this](int idx) {
+@@ -4524,7 +4974,7 @@
    updateBookmarkFlag();
  }
  
@@ -445748,7 +445933,7 @@
    if (!section || !epub) return;
    LOG_DBG("ERS", "Toggle bookmark at spine %d, page %d", currentSpineIndex, section ? section->currentPage : -1);
    int currentPage;
-@@ -4538,12 +4968,16 @@
+@@ -4538,12 +4988,16 @@
    SavedProgressPosition progress = ProgressMapper::toSavedProgress(epub, getCurrentPosition());
    const ProgressRange pageRange = getPageProgressRange(epub, currentSpineIndex, currentPage, pageCount);
  
@@ -447544,7 +447729,7 @@
  }
 --- a/src/activities/settings/TextSettingsActivity.cpp
 +++ b/src/activities/settings/TextSettingsActivity.cpp
-@@ -33,10 +33,13 @@
+@@ -33,17 +33,19 @@
  // Tab labels for Font | Size | Layout | Style.
  constexpr StrId TAB_NAME_IDS[] = {StrId::STR_FONT, StrId::STR_SIZE, StrId::STR_LAYOUT, StrId::STR_STYLE};
  
@@ -447560,7 +447745,14 @@
  constexpr StrId STYLE_ROW_NAME_IDS[] = {StrId::STR_RICKY_WEIGHT,    StrId::STR_FAKE_BOLD,
                                          StrId::STR_FOCUS_READING,   StrId::STR_HYPHENATION,
                                          StrId::STR_EMBEDDED_STYLE,  StrId::STR_TEXT_AA,
-@@ -82,9 +85,18 @@
+                                         StrId::STR_READING_GUIDE_LINE_OFFSET};
+ static_assert(std::size(STYLE_ROW_NAME_IDS) == 7, "a label per TextSettingsActivity::StyleRow");
+ 
+-constexpr StrId LINE_SPACING_IDS[] = {StrId::STR_TIGHT, StrId::STR_NORMAL, StrId::STR_WIDE, StrId::STR_EXTRA_WIDE};
+ constexpr StrId FIRST_LINE_INDENT_IDS[] = {StrId::STR_FIRST_LINE_INDENT_AUTO, StrId::STR_FIRST_LINE_INDENT_INDENT,
+                                            StrId::STR_FIRST_LINE_INDENT_NO_INDENT};
+ static_assert(std::size(FIRST_LINE_INDENT_IDS) == 3);
+@@ -82,9 +84,18 @@
                                             StrId::STR_SPACING_PLUS_2};
  constexpr StrId ALIGNMENT_IDS[] = {StrId::STR_JUSTIFY, StrId::STR_ALIGN_LEFT, StrId::STR_CENTER, StrId::STR_ALIGN_RIGHT,
                                     StrId::STR_BOOK_S_STYLE};
@@ -447582,7 +447774,35 @@
  constexpr StrId OK_OPTION[] = {StrId::STR_OK_BUTTON};
  constexpr int WORD_SPACING_MIN = CrossPointSettings::WORD_SPACING_MIN;
  constexpr int WORD_SPACING_MAX = CrossPointSettings::WORD_SPACING_MAX;
-@@ -589,13 +601,17 @@
+@@ -555,13 +566,20 @@
+       break;
+     }
+     case LayoutRow::LineSpacing:
+-      optionPopup_.show(StrId::STR_LINE_SPACING, LINE_SPACING_IDS, static_cast<int>(std::size(LINE_SPACING_IDS)),
+-                        SETTINGS.lineSpacing, [](int idx) {
+-                          SETTINGS.lineSpacing = static_cast<uint8_t>(idx);
+-                          SETTINGS.saveToFile();
+-                        });
+-      requestUpdate();
+-      break;
++      startActivityForResultWith<IntervalSelectionActivity>(
++          [this](const ActivityResult& result) {
++            if (!result.isCancelled && std::holds_alternative<IntervalResult>(result.data)) {
++              SETTINGS.lineSpacingPercent = static_cast<uint16_t>(std::clamp<int>(
++                  std::get<IntervalResult>(result.data).value, int(CrossPointSettings::LINE_SPACING_PERCENT_MIN),
++                  int(CrossPointSettings::LINE_SPACING_PERCENT_MAX)));
++              SETTINGS.saveToFile();
++            }
++            requestUpdate();
++          },
++          "LineSpacing", StrId::STR_LINE_SPACING, SETTINGS.getReaderLineSpacingPercent(),
++          CrossPointSettings::LINE_SPACING_PERCENT_MIN, CrossPointSettings::LINE_SPACING_PERCENT_MAX, 1, 5,
++          StrId::STR_LINE_SPACING_VALUE);
++      return;
+     case LayoutRow::Alignment:
+       optionPopup_.show(StrId::STR_ALIGNMENT, ALIGNMENT_IDS, static_cast<int>(std::size(ALIGNMENT_IDS)),
+                         SETTINGS.paragraphAlignment, [](int idx) {
+@@ -589,13 +607,17 @@
                          });
        requestUpdate();
        break;
@@ -447604,7 +447824,20 @@
          SETTINGS.saveToFile();
        });
        requestUpdate();
-@@ -635,8 +651,11 @@
+@@ -610,8 +632,10 @@
+ std::string TextSettingsActivity::layoutValueText(int row) const {
+   switch (static_cast<LayoutRow>(row)) {
+     case LayoutRow::LineSpacing: {
+-      const uint8_t v = SETTINGS.lineSpacing;
+-      return v < std::size(LINE_SPACING_IDS) ? I18N.get(LINE_SPACING_IDS[v]) : I18N.get(StrId::STR_NORMAL);
++      char value[8];
++      snprintf(value, sizeof(value), tr(STR_LINE_SPACING_VALUE),
++               static_cast<unsigned>(SETTINGS.getReaderLineSpacingPercent()));
++      return value;
+     }
+     case LayoutRow::ParaSpacing: {
+       const uint8_t v = SETTINGS.extraParagraphSpacing;
+@@ -635,8 +659,11 @@
        return v < std::size(CHARACTER_SPACING_IDS) ? I18N.get(CHARACTER_SPACING_IDS[v])
                                                    : I18N.get(StrId::STR_SPACING_ZERO);
      }
@@ -451265,7 +451498,37 @@
 +#endif
 --- a/src/util/BookCoverLoader.cpp
 +++ b/src/util/BookCoverLoader.cpp
-@@ -43,7 +43,15 @@
+@@ -6,8 +6,15 @@
+ #include <HalStorage.h>
+ #include <Logging.h>
+ #include <Txt.h>
++#if defined(RICKYOS_KINDLE_IMPORT)
++#include <JpegToBmpConverter.h>
++#include <KindleImport.h>
++#include <Memory.h>
++#include <PngToBmpConverter.h>
++#endif
+ 
+ #include <algorithm>
++#include <cstring>
+ #include <mutex>
+ #include <vector>
+ 
+@@ -17,6 +24,13 @@
+ namespace {
+ 
+ enum class CachedCoverState { Missing, Ready, Terminal };
++
++bool supportsCover(const std::string& path) {
++#if defined(RICKYOS_KINDLE_IMPORT)
++  if (kindle::supported(path)) return true;
++#endif
++  return FsHelpers::hasEpubExtension(path);
++}
+ 
+ // Thumbnails known to have no usable cover in this session, so a page that returns
+ // does not reopen their markers. Bounded; cleared by forgetDrawnCovers().
+@@ -43,7 +57,15 @@
    {
      HalFile file;
      if (!Storage.openFileForRead("COVER", path, file)) return CachedCoverState::Terminal;
@@ -451282,7 +451545,7 @@
  
      Bitmap bitmap(file);
      if (bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() > 0 && bitmap.getHeight() > 0 &&
-@@ -75,6 +83,15 @@
+@@ -75,6 +97,15 @@
        HalFile marker;
        Storage.openFileForWrite("COVER", path, marker);
      }
@@ -451298,7 +451561,77 @@
      return "";
    }
    PanelTileCache::forget(path);
-@@ -95,6 +112,10 @@
+@@ -82,6 +113,61 @@
+   if (generated) *generated = true;
+   return path;
+ }
++
++#if defined(RICKYOS_KINDLE_IMPORT)
++std::string ensureKindleCover(const std::string& bookPath, const int height, bool* generated) {
++  Epub epub(bookPath, "/.crosspoint");
++  const std::string path = height > 0 ? epub.getThumbBmpPath(height) : epub.getCoverBmpPath();
++  if (isKnownCoverless(path)) return "";
++  bool noCover = false;
++  // Transient parser/I/O/OOM failures must not become permanent empty markers.
++  std::string result = ensureCachedCover(
++      path, false, generated,
++      [&]() {
++        epub.setupCacheDir();
++        const std::string temporary = epub.getCachePath() + "/.kindle-cover.tmp";
++        const ScopedCleanup cleanup{[&] { Storage.remove(temporary.c_str()); }};
++        std::string sourcePath = epub.getCoverOverridePath();
++        if (!epub.hasCoverOverride()) {
++          kindle::Error error;
++          if (!kindle::extractCover(bookPath, temporary, error)) {
++            noCover = error == kindle::Error::None;
++            if (!noCover) LOG_ERR("COVER", "Kindle cover read failed: %d", static_cast<int>(error));
++            return false;
++          }
++          sourcePath = temporary;
++        }
++        bool converted = false;
++        {
++          HalFile source, output;
++          uint8_t magic[8] = {};
++          if (!Storage.openFileForRead("COVER", sourcePath, source) ||
++              source.read(magic, sizeof(magic)) != static_cast<int>(sizeof(magic)) || !source.seek(0) ||
++              !Storage.openFileForWrite("COVER", path, output))
++            return false;
++          const bool jpeg = magic[0] == 0xff && magic[1] == 0xd8 && magic[2] == 0xff;
++          const bool png = memcmp(magic, "\x89PNG\r\n\x1a\n", sizeof(magic)) == 0;
++          if (height > 0) {
++            const int width = height * 3 / 5;
++            if (jpeg)
++              converted = JpegToBmpConverter::jpegFileToThumbBmpStreamWithSize(source, output, width, height);
++            else if (png)
++              converted = PngToBmpConverter::pngFileToThumbBmpStreamWithSize(source, output, width, height);
++          } else {
++            if (jpeg)
++              converted = JpegToBmpConverter::jpegFileToCoverBmpStream(source, output, false, false);
++            else if (png)
++              converted = PngToBmpConverter::pngFileToCoverBmpStream(source, output, false, false);
++          }
++        }
++        if (!converted) Storage.remove(path.c_str());
++        return converted;
++      },
++      height > 0);
++  if (noCover) rememberCoverless(path);
++  return result;
++}
++#endif
+ 
+ }  // namespace
+ 
+@@ -91,10 +177,18 @@
+   if (const std::string known = thumbnailPath(bookPath, height); !known.empty() && isKnownCoverless(known)) return "";
+   if (!Storage.exists(bookPath.c_str())) return "";
+ 
++#if defined(RICKYOS_KINDLE_IMPORT)
++  if (kindle::supported(bookPath)) return ensureKindleCover(bookPath, height, generated);
++#endif
++
+   if (FsHelpers::hasEpubExtension(bookPath)) {
      Epub epub(bookPath, "/.crosspoint");
      const std::string path = epub.getThumbBmpPath(height);
      std::string result = ensureCachedCover(path, !epub.hasCoverOverride(), generated, [&]() {
@@ -451309,7 +451642,24 @@
        if (!epub.load(true, true)) return false;
        epub.setupCacheDir();
        return epub.generateThumbBmp(height);
-@@ -146,7 +167,7 @@
+@@ -112,6 +206,10 @@
+   if (author) author->clear();
+   if (generated) *generated = false;
+   if (!Storage.exists(bookPath.c_str())) return "";
++
++#if defined(RICKYOS_KINDLE_IMPORT)
++  if (kindle::supported(bookPath)) return ensureKindleCover(bookPath, 0, generated);
++#endif
+ 
+   if (FsHelpers::hasEpubExtension(bookPath)) {
+     Epub epub(bookPath, "/.crosspoint");
+@@ -141,12 +239,12 @@
+ }
+ 
+ std::string thumbnailPath(const std::string& bookPath, const int height) {
+-  if (height <= 0 || !FsHelpers::hasEpubExtension(bookPath)) return "";
++  if (height <= 0 || !supportsCover(bookPath)) return "";
+   return Epub(bookPath, "/.crosspoint").getThumbBmpPath(height);
  }
  
  bool isOutdatedThumbnail(const Bitmap& bitmap) {
@@ -451318,6 +451668,22 @@
    return bitmap.is1Bit();
  #else
    (void)bitmap;
+--- a/src/util/BookCoverLoader.h
++++ b/src/util/BookCoverLoader.h
+@@ -7,10 +7,10 @@
+ namespace BookCoverLoader {
+ 
+ std::string ensureThumbnail(const std::string& bookPath, int height, bool* generated = nullptr);
+-// The file ensureThumbnail() would return for an EPUB, without touching the SD card;
+-// empty for other formats.
++// The file ensureThumbnail() would return for a supported EPUB/MOBI/AZW3,
++// without touching the SD card; empty for other formats.
+ std::string thumbnailPath(const std::string& bookPath, int height);
+-// False when ensureThumbnail() cannot make anything: not an EPUB, or already known in
++// False when ensureThumbnail() cannot make anything: unsupported format, or already known in
+ // this session to have no usable cover. No SD access.
+ bool canMakeThumbnail(const std::string& bookPath, int height);
+ // Drop what this process remembers about covers (books without one, drawn cover
 --- a/src/util/BootPreparation.cpp
 +++ b/src/util/BootPreparation.cpp
 @@ -5,6 +5,9 @@

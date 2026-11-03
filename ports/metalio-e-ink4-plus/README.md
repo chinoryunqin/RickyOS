@@ -82,6 +82,9 @@ bash tests/run_plus_port_tests.sh
 
 厂商代码保留原版权声明，MIT 许可见 `firmware/rickyos-plus-1.2/components/metalio_board/LICENSE.vendor`。RickyOS 与 SDK 的许可随固定来源还原保留。
 
+2026-11-03 独立阅读候选：文件夹筛选与记忆、80%～400% 数值行距、MOBI/AZW3 封面。
+实现、资源预算、主机检查与 Plus 真机待验项目见[阅读功能候选记录](docs/plus-reader-preferences-20261103.md)。
+
 本地新增 [控制中心重设计](docs/rickyos-1.2-plus-control-center-design.md)：依据设计规范，矩形快捷键、前光／音量分组、横竖屏布局和收起按钮。构建及 32 组真实 FUI 几何测试通过，设备视觉验收待完成。
 
 Plus 按键设置已实现并通过分类／逻辑映射及 JSON 持久化主机测试；本轮完整固件构建通过，实机按键验收待确认。见 [按键自定义](docs/rickyos-1.2-plus-buttons.md)。
