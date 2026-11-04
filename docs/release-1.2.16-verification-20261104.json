@@ -1,8 +1,8 @@
 {
   "version": "1.2.16",
   "date": "2026-11-04",
-  "status": "final_images_hardware_accepted_pending_publication",
-  "published": false,
+  "status": "published_verified",
+  "published": true,
   "website_tests": 78,
   "pdf_included": false,
   "diagnostics_enabled": false,
@@ -15,7 +15,8 @@
       "aligned_ota_margin": 49152,
       "hardware_accepted": true,
       "flashed": true,
-      "startup_verified": true
+      "startup_verified": true,
+      "published": true
     },
     "plus": {
       "file": "RickyOS-Plus-1.2.16.bin",
@@ -25,7 +26,19 @@
       "aligned_ota_margin": 28672,
       "hardware_accepted": true,
       "flashed": true,
-      "startup_verified": true
+      "startup_verified": true,
+      "published": true
     }
-  }
+  },
+  "verified_utc": "2026-11-04T09:35:20Z",
+  "source_release_commits": {
+    "pico": "d4a070bfee81bee95765e09b8b5a055b1a726a7a",
+    "plus": "d40234c36d070857e599b17112339bfda64be09e"
+  },
+  "published_channels": {
+    "website": "https://rickyaistudio.com/",
+    "github_ota": "https://chinoryunqin.github.io/RickyOS-site/",
+    "cos": "https://rickyos-1309217881.cos.ap-guangzhou.myqcloud.com/ota/"
+  },
+  "public_checks_passed": 27
 }

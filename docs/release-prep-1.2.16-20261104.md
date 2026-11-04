@@ -21,3 +21,8 @@ was finalized to the same value after that build and tested both with/without
 the override. The accepted image is retained byte-for-byte. No PDF, diagnostics,
 new partition layout or changed OTA reserve is included. Raw serial captures,
 device identities, flash backups, ELFs and private source patches remain local.
+
+Publication completed on the brand website, GitHub OTA mirror and COS. All six
+public applications and the rolling offers/notes were read back and matched the
+accepted images and single-source catalog. Previous-version assets were retained.
+The adjacent verification JSON records the final publication checkpoint.
