@@ -1,0 +1,31 @@
+{
+  "version": "1.2.16",
+  "date": "2026-11-04",
+  "status": "final_images_hardware_accepted_pending_publication",
+  "published": false,
+  "website_tests": 78,
+  "pdf_included": false,
+  "diagnostics_enabled": false,
+  "targets": {
+    "pico": {
+      "file": "RickyOS-1.2.16.bin",
+      "board": "readpico",
+      "bytes": 5977728,
+      "sha256": "613341e6bcfcf5c62aa58640233a3de5e17fa0b1a89f06fc565142b36bc0197a",
+      "aligned_ota_margin": 49152,
+      "hardware_accepted": true,
+      "flashed": true,
+      "startup_verified": true
+    },
+    "plus": {
+      "file": "RickyOS-Plus-1.2.16.bin",
+      "board": "metalio-plus-s31",
+      "bytes": 5997504,
+      "sha256": "fe79fdcd7b6fe7104315dc382be4f09706e65644ede9481901a4ad9014805678",
+      "aligned_ota_margin": 28672,
+      "hardware_accepted": true,
+      "flashed": true,
+      "startup_verified": true
+    }
+  }
+}
