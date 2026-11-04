@@ -215,7 +215,7 @@ bool decodePlusProgressiveJpeg(const std::string& path, GfxRenderer& renderer, c
     for (int x = 0; x < dw; ++x) {
       if (!cfg.bilinearScaling) {
         renderer.drawGrayscale16Pixel(
-            cfg.x + x, cfg.y + y, pixels[(static_cast<int64_t>(y) * h / dh) * w + static_cast<int64_t>(x) * w / dw]);
+            cfg.x + x, cfg.y + y, cfg.adjustTone(pixels[(static_cast<int64_t>(y) * h / dh) * w + static_cast<int64_t>(x) * w / dw]));
         continue;
       }
       const int64_t sx = std::max<int64_t>(0, ((int64_t{2} * x + 1) * w * 256 / dw - 256) / 2);
@@ -224,7 +224,7 @@ bool decodePlusProgressiveJpeg(const std::string& path, GfxRenderer& renderer, c
       const int top = pixels[y0 * w + x0] * (256 - fx) + pixels[y0 * w + x1] * fx;
       const int bot = pixels[y1 * w + x0] * (256 - fx) + pixels[y1 * w + x1] * fx;
       const uint8_t gray = static_cast<uint8_t>((top * (256 - fy) + bot * fy + 32768) >> 16);
-      renderer.drawGrayscale16Pixel(cfg.x + x, cfg.y + y, gray);
+      renderer.drawGrayscale16Pixel(cfg.x + x, cfg.y + y, cfg.adjustTone(gray));
     }
   }
   setError(ImageRenderError::None);

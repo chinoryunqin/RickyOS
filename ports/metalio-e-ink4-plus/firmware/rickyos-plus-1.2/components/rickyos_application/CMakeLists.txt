@@ -367,6 +367,8 @@ idf_component_register(
   "${APP_ROOT}/src/activities/reader/ReaderSession.cpp"
   "${APP_ROOT}/src/activities/reader/DictionaryWordSelectActivity.cpp"
   "${APP_ROOT}/src/activities/reader/EpubReaderActivity.cpp"
+  "${APP_ROOT}/src/activities/reader/ReaderImageSettings.cpp"
+  "${APP_ROOT}/src/activities/reader/ReaderImageSettingsActivity.cpp"
   "${APP_ROOT}/src/activities/reader/KOReaderSyncActivity.cpp"
   "${APP_ROOT}/src/activities/reader/QrDisplayActivity.cpp"
   "${APP_ROOT}/src/activities/reader/EndOfBookOptions.cpp"
@@ -791,7 +793,7 @@ endif()
 
 # The release version; a diagnostic build may set RICKYOS_PLUS_VERSION (e.g. an older
 # number to exercise an over-the-air update).
-set(RICKYOS_PLUS_APP_VERSION "1.2.15")
+set(RICKYOS_PLUS_APP_VERSION "1.2.16")
 if(NOT "$ENV{RICKYOS_PLUS_VERSION}" STREQUAL "")
   set(RICKYOS_PLUS_APP_VERSION "$ENV{RICKYOS_PLUS_VERSION}")
 endif()

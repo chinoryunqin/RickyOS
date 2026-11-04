@@ -3,6 +3,11 @@
   "sdk_baseline": "96de1be6ce08eb732909e6e8149af8f892b9a2c5",
   "changes": [
     {
+      "path": "docs/engineering/cache-management.md",
+      "baseline_sha256": "5f003f02adcba00e8862b371477578825a086e1fd3aba47a99f202ee4d4bbcf7",
+      "ported_sha256": "1b5f6ea6269cdb99edca2890aca1f41b986a60292b45e0425e47b91e4cd1d7c7"
+    },
+    {
       "path": "docs/features/builtin-font-metadata.md",
       "baseline_sha256": null,
       "ported_sha256": "f4e356b55e9be80c1eaf1ae6d45e9b930dcab4056ca65aebe53c35a5aa8a6205"
@@ -13,9 +18,14 @@
       "ported_sha256": "aac48b9e550b54cb3bf409196be6b4782a13e05d6785e0bacf51e48fc52a15a1"
     },
     {
+      "path": "docs/features/reader-image-adjustments.md",
+      "baseline_sha256": null,
+      "ported_sha256": "4375201af9a8ffc8c6e48b32c131b2c16669e8987438a9ffef2505bff7210b41"
+    },
+    {
       "path": "docs/file-formats.md",
       "baseline_sha256": "995f5e50ff14d4dbf381c3bbe07f34269af83e47b8d2e6838c10f768477f399b",
-      "ported_sha256": "479f398b7ef98df2533f785e636d4266c8fc293717b289c57e3b77dacffa8882"
+      "ported_sha256": "b4686e1db2258b7f682c7bbc5fe7a14390aa1f9c8371205585c56f77132c970e"
     },
     {
       "path": "freeink-sdk/libs/book/ContentProtection/src/WolfsslCrypto.cpp",
@@ -235,12 +245,12 @@
     {
       "path": "lib/Epub/Epub/Page.cpp",
       "baseline_sha256": "3041bb6d9f0a1d20b49400a39816568f58db4590dde8e9c1e849f005ecd4d25c",
-      "ported_sha256": "3dd79e2e8dbb9e547582a47bc9feb28d66356f345950fa12de6645e51d55b879"
+      "ported_sha256": "0f7742cee93ccf7034deab05e953b5c1115070ee7231681fa45c494afe533fbe"
     },
     {
       "path": "lib/Epub/Epub/Page.h",
       "baseline_sha256": "d3211e40dbb118275aa0fcc8ea175a0ec89a5a282641dbf35cd1aab1a35946af",
-      "ported_sha256": "31a5f83c248eb498bb26623a9b5b33fa9ab4e3c1ea6e9bd1a3e21d3ed62d684f"
+      "ported_sha256": "17e04c9fbb3ebc96afe229be821ba25233c5fd3edd5669af068a1ba4a1d42dc9"
     },
     {
       "path": "lib/Epub/Epub/ParsedText.cpp",
@@ -280,12 +290,12 @@
     {
       "path": "lib/Epub/Epub/blocks/ImageBlock.cpp",
       "baseline_sha256": "cc01768f0aa7a90cae80b176f6856cc0219ae9e2251c09a1c41e2df9f13e902a",
-      "ported_sha256": "44069b564e18cfbb3138e7aba5633cfe90522450d93985a9def7e828c60be67b"
+      "ported_sha256": "2340309af2f7360969f9c9b73621fafb84e1784768ea56e3b002416a65ed68f4"
     },
     {
       "path": "lib/Epub/Epub/blocks/ImageBlock.h",
       "baseline_sha256": "eb2dd76470f1119fbc94e5cac2e2326ca087e5d4a58e5cf0a1a1a307c64dbddc",
-      "ported_sha256": "0a141971b94de7eead24fb20fed4b9facae814bd53c5a45edf1f7d86d66fe0fc"
+      "ported_sha256": "68ed66752e33943eaef68a4384c5f70a57f876726efedf74db15a9f6f0782b77"
     },
     {
       "path": "lib/Epub/Epub/blocks/TextBlock.cpp",
@@ -318,14 +328,34 @@
       "ported_sha256": "cf7f7aafe52b44c22602dec7a3a3b8683f0893c5ec482fa5393f44cc4f5a5ccc"
     },
     {
+      "path": "lib/Epub/Epub/converters/ImagePixelCacheFormat.h",
+      "baseline_sha256": null,
+      "ported_sha256": "5754894ef26ab0d552fdc32d976e237b2c79338dcc6ad8c1d2adf90e48527d30"
+    },
+    {
+      "path": "lib/Epub/Epub/converters/ImageToFramebufferDecoder.h",
+      "baseline_sha256": "581f60e48e8ac864063e44fa714ab5f3f125672312494753234e3ea9467cd160",
+      "ported_sha256": "ea262034f159a60fe1a30b753bb7aa7b99bcc5ecee13a018ec47ab9f247022a4"
+    },
+    {
+      "path": "lib/Epub/Epub/converters/ImageToneCurve.h",
+      "baseline_sha256": null,
+      "ported_sha256": "a9d4520658fcc3505d27234d1f0f5887efcb17dc16ac42f4d3788c6479f42e57"
+    },
+    {
       "path": "lib/Epub/Epub/converters/JpegToFramebufferConverter.cpp",
       "baseline_sha256": "cee4267399fa69f4eb8350a756c170dfb868ecb716b87ca28f3f94c6a4da485c",
-      "ported_sha256": "b457f55f0cb6b6820a051ad0d1b1a9c475bd033a9597ec514ed80b3f7d7f00fd"
+      "ported_sha256": "2c600d77c488ad005ba4d209c70b2fb0056ea6edd123c093e2e586e25d47f085"
+    },
+    {
+      "path": "lib/Epub/Epub/converters/PixelCache.h",
+      "baseline_sha256": "06161c5cffb3be80488587b8b7da098f06bd2f771b63ff3e94b1d85673285ad3",
+      "ported_sha256": "e62b8be38be8a1291c1a3b7c2216a6ab807da874beaa4bdb620e43dee9474145"
     },
     {
       "path": "lib/Epub/Epub/converters/PngToFramebufferConverter.cpp",
       "baseline_sha256": "9c47bdd5169c5a5df56da843e5f7f33d2659f66a86e1dc717473577d59ea0ea9",
-      "ported_sha256": "41b26e4b552368f047baa151628d4004f3010b18db6bf1baf80115be6d54b03f"
+      "ported_sha256": "6e278b0c9047b03858d95f7dafaae7c8574d99fe07367ad8672c3141afceccc1"
     },
     {
       "path": "lib/Epub/Epub/converters/WebpRaster.cpp",
@@ -340,7 +370,7 @@
     {
       "path": "lib/Epub/Epub/converters/WebpToFramebufferConverter.cpp",
       "baseline_sha256": null,
-      "ported_sha256": "91f512c754a419e2809f3b2c9a8b77c723f0a797e3674a89d1a46d39b1723a0f"
+      "ported_sha256": "c6b121665d75e03d904edd0a2eb680cc2c77f9595608fe7bdb5285738bdf7930"
     },
     {
       "path": "lib/Epub/Epub/converters/WebpToFramebufferConverter.h",
@@ -395,22 +425,22 @@
     {
       "path": "lib/GfxRenderer/GfxRenderer.cpp",
       "baseline_sha256": "d9bb2737f8a0da787c6e8b956410d1aeee92e58d6cb87f80eb776f4bba3c4075",
-      "ported_sha256": "5d95e3365e9810d5d547a38b471dc0fd71afd3be1aeb5342c278d449ba01fee8"
+      "ported_sha256": "486e14c4da7ddd28e7723ec52e2f1714b76d06991bce61d0f08077dbb4e40166"
     },
     {
       "path": "lib/GfxRenderer/GfxRenderer.h",
       "baseline_sha256": "d0b47eb0d21f8256d9d509e910dbd8c94795c27621d7b85e8638aa0370097f13",
-      "ported_sha256": "fcfd310ed21619f3b5aa4d75b51658aafa81bb94219f9cda9eb2f3da2cbd7cd2"
+      "ported_sha256": "6419f8f711236d4ee5ef398b7e178af2fb6c83e54d11cc6ce1c6f4d6e39d3849"
     },
     {
       "path": "lib/I18n/translations/chinese.yaml",
       "baseline_sha256": "021ec5b9e5880155fea752af9c60ce83a259dd69131f9bd12ffe0ca59e3366bd",
-      "ported_sha256": "6b9e422ac03c3f35b9f22caef87385efcb0e934517d2f2cbab828835436c7d2d"
+      "ported_sha256": "00dc719ae671466c349df59d8165b08bad5bf1fe38a37e8ca464f1ecb02a790e"
     },
     {
       "path": "lib/I18n/translations/english.yaml",
       "baseline_sha256": "85a4d226f1400f6a185759420c63ecff5f81eeb3722afd66c312d4aec6bcb315",
-      "ported_sha256": "632dca9d873914da6096833796edcc141b30222a95a686f5c1afb75d290fadb8"
+      "ported_sha256": "60b27c5f68064a58d31143de0f85d67e3ea3cf8bc136110047a5c8e11c31bfb6"
     },
     {
       "path": "lib/JpegToBmpConverter/JpegToBmpConverter.cpp",
@@ -743,9 +773,34 @@
       "ported_sha256": "d9127a47ef25a3c5b17ce3260dbf8585b8f13eb7ba934e7e8f1590a0616f1c90"
     },
     {
+      "path": "scripts/tests/test_native_grayscale.py",
+      "baseline_sha256": "6422cc14f1f5a0a3c87f5326a8ab70c2718f44edff070eb44e67c4e857c0357f",
+      "ported_sha256": "915d35cfff41f11d322edaa3349ca15c83e109faa97f750c4e6bfc8f95fd8364"
+    },
+    {
+      "path": "scripts/tests/test_reader_image_panel.py",
+      "baseline_sha256": null,
+      "ported_sha256": "ed5d131321db925ac315b2f4dad60b584b638c67430b124997b1fb657ae5322d"
+    },
+    {
+      "path": "scripts/tests/test_reader_image_settings.py",
+      "baseline_sha256": null,
+      "ported_sha256": "08b388c6c410544a68ce48c7925f74c787825faa035e9addee3ebe81fa30a94f"
+    },
+    {
       "path": "scripts/tests/test_reader_page_cache.py",
       "baseline_sha256": "7153d307adee5a6960f252e680077353bb32ef22105d7cd5911554b492602b1e",
-      "ported_sha256": "2233c03ebb150856fb02ad97de5ed86c74d703cc315825305098d93057f6d656"
+      "ported_sha256": "657835a474bec1616c29e489abf3109be4a0a054562a967f95a9f4bf83ac98bb"
+    },
+    {
+      "path": "scripts/tests/test_reader_panel_tones.py",
+      "baseline_sha256": null,
+      "ported_sha256": "f6816e90eb1881795bc2e1c93ef4a94086d83daaaadda84bf0addfcdf2feecbb"
+    },
+    {
+      "path": "scripts/tests/test_reader_webp.py",
+      "baseline_sha256": null,
+      "ported_sha256": "729e303dfd9669fc3c745f5411ae9e1b284185678a19062d1d521d7719b90aa5"
     },
     {
       "path": "scripts/tests/test_reading_ui_regressions.py",
@@ -760,7 +815,7 @@
     {
       "path": "scripts/tests/test_rickyos_interior_ui.py",
       "baseline_sha256": "b74d60e8f83e96750320175d3fff6bef3fd407a87207c362f9995763b9b38c6c",
-      "ported_sha256": "14663a5f957de0ea9beb97b1f2ac0432807e72529946e66ee36129c1c40e7c62"
+      "ported_sha256": "b33696c1a5eee87a7a62e1e3acfd142b223953109340d195451e86bb0407ba97"
     },
     {
       "path": "scripts/tests/test_rickyos_reader_chrome.py",
@@ -790,12 +845,12 @@
     {
       "path": "src/CrossPointSettings.cpp",
       "baseline_sha256": "549f275cd35b12b0479eadda063c5460e167d1156274e759bee34e2232b4dc37",
-      "ported_sha256": "cc38c857009e53a38ce1c85df05e8a294c396bfcfb2603dd5bd2fdd86eb561e5"
+      "ported_sha256": "847e67857bf01109f208bc417e2063c9ae4f795da8d0a07e8241c7214e547772"
     },
     {
       "path": "src/CrossPointSettings.h",
       "baseline_sha256": "c5a733423898aad83b2f932929b80d3de201da9aa0e181d82d0071a2ac576330",
-      "ported_sha256": "d446f8db89add592e11afde21e00155d52c5fc0a8f2814ef32f10f6446320f1d"
+      "ported_sha256": "21ed4871d69615eb4d1949ff666468d49952eb21a74228e7f5e889cec36af9af"
     },
     {
       "path": "src/CrossPointState.cpp",
@@ -1155,12 +1210,12 @@
     {
       "path": "src/activities/reader/EpubReaderActivity.cpp",
       "baseline_sha256": "330723cad52ac629fa1451c9ca90cffff0a04b06e0266861e092ff93e8ffa1c9",
-      "ported_sha256": "1fbcbc22f21277a41949fbf899ec4d7a48e2e4251e7318f02d298ec43877a705"
+      "ported_sha256": "cb4f3fe9a78e59fcde06345a49c9f6b30cbce5c7a57e210ba709b776c3fc7fa7"
     },
     {
       "path": "src/activities/reader/EpubReaderActivity.h",
       "baseline_sha256": "6fb5eb74b19af5cbfe08ae3974b70d49d6019dc888535f7091ceeb389f3dd650",
-      "ported_sha256": "a00b638eed8cd5a8cc3d8475e228bfbcf986fced428ee69d737ad502f1eda493"
+      "ported_sha256": "832859c2fd84843af61ba6be35938bb71eb3d7fa0c9dfffb5269812c3cdc785b"
     },
     {
       "path": "src/activities/reader/EpubReaderChapterSelectionActivity.cpp",
@@ -1175,12 +1230,12 @@
     {
       "path": "src/activities/reader/EpubReaderMenuActivity.cpp",
       "baseline_sha256": "10f81dc59a4993bdc732321fa65bf70c86f26d6add5af9bd4c4d9c1b9ad30804",
-      "ported_sha256": "4892dd21cacc3ee232d176cf49de846c24b7c6d017d7b86bf4fdfbe702ec7222"
+      "ported_sha256": "5694ab0c4792182516217f274c868a7802031142512220d83dca823092c4ebb9"
     },
     {
       "path": "src/activities/reader/EpubReaderMenuActivity.h",
       "baseline_sha256": "4203d66954b8a513fac86c3d9fc4ca33fbe0b4776f64886635e235e920a0ed1c",
-      "ported_sha256": "91d756de334cc19d7bf2b211900fe30e58bf695248c95ecbdaeee427bd140bc2"
+      "ported_sha256": "9ff5501e6925fddf7c8c2d823ac63225bcec9fe1a50863e46e20f96ea0ec8422"
     },
     {
       "path": "src/activities/reader/NativeTurnRequest.h",
@@ -1196,6 +1251,36 @@
       "path": "src/activities/reader/ReaderChrome.h",
       "baseline_sha256": "79cbe3ebc3ae39099850b91dc96c9d930b17e534f394bec2dfe5a95ae08931a1",
       "ported_sha256": "1d18abf91d4067ca7d05eb251396f09f42734e0b4fe0d433c2dc8dff09a86179"
+    },
+    {
+      "path": "src/activities/reader/ReaderImagePanelLayout.h",
+      "baseline_sha256": null,
+      "ported_sha256": "ab2bec615c4e50d83417123c7ab2446c7b46464129234516a9cd739fed1bdfd3"
+    },
+    {
+      "path": "src/activities/reader/ReaderImageSettings.cpp",
+      "baseline_sha256": null,
+      "ported_sha256": "245779933c975f6f44be66d2615c87eb7f171ca948973719386d13e95cf66bf2"
+    },
+    {
+      "path": "src/activities/reader/ReaderImageSettings.h",
+      "baseline_sha256": null,
+      "ported_sha256": "a73e06608d1821e0222f4d6a7ef182cb99e63d401d9959b93ad9aaba83ba9128"
+    },
+    {
+      "path": "src/activities/reader/ReaderImageSettingsActivity.cpp",
+      "baseline_sha256": null,
+      "ported_sha256": "d2070456a85e60e620dd45742d90ab0b71323f5099f1bf0d652038b8d5c8d738"
+    },
+    {
+      "path": "src/activities/reader/ReaderImageSettingsActivity.h",
+      "baseline_sha256": null,
+      "ported_sha256": "5e242c3ce29b7813498693a09baa3c1f4ba758c4ee379f55562272291708e511"
+    },
+    {
+      "path": "src/activities/reader/ReaderPageCache.h",
+      "baseline_sha256": "7766615e071708529c5a549e761c3bc1f5d5def90154f976d136c1af4b6de55f",
+      "ported_sha256": "575673f3aa4f8e276e244998e77e7ce547319b99dc408b0a884d80c1576e5f79"
     },
     {
       "path": "src/activities/reader/ReaderRefresh.h",
@@ -1385,7 +1470,7 @@
     {
       "path": "src/components/RickyReaderMenuLayout.h",
       "baseline_sha256": "a83890eca3f01b59dabaa69b50d0b7d3b5c62133c0fd0331c9d8999f12dbd4d6",
-      "ported_sha256": "6dd21ba3dcd0bf40ce42729ecd860d5a9a3e7634f84c7bb9a057efaf48a61973"
+      "ported_sha256": "37c96677be126751ead5db308aca9c024c943435b65879eaf5f326eba9a9d0ea"
     },
     {
       "path": "src/components/RickyRowList.h",
@@ -1533,6 +1618,11 @@
       "ported_sha256": "96ac3be9b9511db1f252fdd29d4fbd31f6a1e6c66593ba91ee52eb9b372dde76"
     },
     {
+      "path": "src/util/ReaderImageBrightness.h",
+      "baseline_sha256": null,
+      "ported_sha256": "f526a9eba205d97872f05323e585a401e0cfd6cc1bfdae655ca6d1bb905da099"
+    },
+    {
       "path": "src/util/ReadingBackground.cpp",
       "baseline_sha256": null,
       "ported_sha256": "c2a1f0938a2a3c3f29b4a551662cd7cff8bc819ce9be54f134614f6c07ebdb2d"
@@ -1601,6 +1691,11 @@
       "path": "test/inx_navigation/test_unified_keyboard.py",
       "baseline_sha256": "cb6712f7e5e7e4fbf0c20f5db03830e832af995e92a743e342e2c2e8ccf5c2c3",
       "ported_sha256": "6503b06d9e6cf7d3d3ad41ce0473bb9ef6081ecf7eab01c46a0226d0014a4ac2"
+    },
+    {
+      "path": "test/native_grayscale/NativeGrayscaleTest.cpp",
+      "baseline_sha256": "413bdeeb2a1f658a0f42de02194463575f018232e21568a6d15451b733e3df64",
+      "ported_sha256": "93125f625c04dae0f53a73ba40426df8329eaa1b253e46b6626b685b4c2a81dc"
     },
     {
       "path": "test/txt_chapter_index/TxtChapterCacheTest.cpp",
