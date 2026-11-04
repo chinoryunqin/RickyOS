@@ -1,7 +1,7 @@
 #include "HalCamera.h"
 
-#include <BoardConfig.h>
-#if FREEINK_DEVICE_METALIO_EINK4
+#include "MetalioFeatures.h"
+#if RICKYOS_METALIO_CAMERA_ENABLED
 #include <HalPowerManager.h>
 #include <HalStorage.h>
 #include <Logging.h>

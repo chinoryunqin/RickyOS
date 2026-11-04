@@ -40,6 +40,7 @@ bool plusTour2InstallSticker();
 #include <HalMemory.h>
 #include <HalPowerManager.h>
 #include <Memory.h>
+#include <MetalioFeatures.h>
 #include <VectorFontSupport.h>
 
 #include <algorithm>
@@ -1247,6 +1248,14 @@ void RenderLock::unlock() {
 bool RenderLock::peek() { return xQueuePeek(activityManager.renderingMutex, NULL, 0) != pdTRUE; };
 
 #if FREEINK_DEVICE_METALIO_EINK4
-void ActivityManager::goToCellular() { replaceActivityWith<MetalioPeripheralActivity>(false); }
-void ActivityManager::goToCamera() { replaceActivityWith<MetalioCameraActivity>(); }
+void ActivityManager::goToCellular() {
+#if RICKYOS_METALIO_CELLULAR_ENABLED
+  replaceActivityWith<MetalioPeripheralActivity>(false);
+#endif
+}
+void ActivityManager::goToCamera() {
+#if RICKYOS_METALIO_CAMERA_ENABLED
+  replaceActivityWith<MetalioCameraActivity>();
+#endif
+}
 #endif

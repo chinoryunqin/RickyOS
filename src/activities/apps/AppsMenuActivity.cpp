@@ -1,6 +1,7 @@
 #include "AppsMenuActivity.h"
 
 #include <I18n.h>
+#include <MetalioFeatures.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -33,8 +34,10 @@ struct AppEntry {
 };
 
 constexpr AppEntry kAppEntries[] = {
-#if FREEINK_DEVICE_METALIO_EINK4
+#if RICKYOS_METALIO_CELLULAR_ENABLED
     {AppId::Cellular, StrId::STR_CELL_TITLE, UIIcon::Transfer, &ActivityManager::goToCellular},
+#endif
+#if RICKYOS_METALIO_CAMERA_ENABLED
     {AppId::Camera, StrId::STR_CAMERA_TITLE, UIIcon::Gallery, &ActivityManager::goToCamera},
 #endif
     {AppId::FileTransfer, StrId::STR_FILE_TRANSFER, UIIcon::Transfer, &ActivityManager::goToFileTransfer},

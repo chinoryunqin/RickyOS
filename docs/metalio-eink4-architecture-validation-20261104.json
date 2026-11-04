@@ -1,0 +1,109 @@
+{
+  "version": "1.2.11-metalio-dev17",
+  "date": "2026-11-04",
+  "branch": "codex/metalio-eink4-1.2.11",
+  "base_application_commit": "ab54131347a6b27d4d7d46060dcc0dc3fc4b3d9b",
+  "source_state": "local uncommitted architecture candidate",
+  "scope": {
+    "architecture_only": true,
+    "hardware_connected_or_queried": false,
+    "flashed": false,
+    "published": false,
+    "commercial_scope_decided": false
+  },
+  "sdk_overlay": {
+    "base_commit": "96de1be6ce08eb732909e6e8149af8f892b9a2c5",
+    "result_tree": "d750ba858a02258d3dd48c88410b2b2036c14021",
+    "patch_sha256": "747e3979343693c5a978529d4e95703def9ffeceda3747c1605be6655f15f6e9",
+    "description": "Ordinary Metalio E-Ink 4 dev17 architecture SDK overlay: 2bpp committed UI history and on-demand reader resources; upstream gitlink unchanged.",
+    "case_alias_note": "The portable overlay updates the active MetalioEink4Board.h spelling. The unused case alias in the upstream base is not changed.",
+    "verified_path_count": 102
+  },
+  "psram_fixed_buffers": {
+    "ui_before_bytes": 816000,
+    "ui_after_bytes": 336000,
+    "reading_before_bytes": 816000,
+    "reading_after_bytes": 720000,
+    "basis": "source capacities and host allocation checks; excludes other runtime resources; not device heap measurements"
+  },
+  "ui_trace": {
+    "baseline": "accepted dev16 overlay at ab54131347a6b27d4d7d46060dcc0dc3fc4b3d9b",
+    "byte_identical": true,
+    "bytes": 20725,
+    "sha256": "df86f042a730aec7e2063e08791557f94b08cd9a4f74bd4ab119452d68596886"
+  },
+  "host_checks": {
+    "disabled_module_hal_and_build_policy": {
+      "status": "passed",
+      "log": "modules-test.log"
+    },
+    "retained_ui_asan_ubsan": {
+      "status": "passed",
+      "log": "retained-test.log"
+    },
+    "facade_lifecycle_oom_recovery_asan_ubsan": {
+      "status": "passed",
+      "log": "facade-test.log"
+    },
+    "original_ssd1677": {
+      "status": "passed",
+      "log": "original-driver-test.log"
+    },
+    "native_image_gray": {
+      "status": "passed",
+      "log": "native-gray-test.log"
+    },
+    "dev16_controller_trace_comparison": {
+      "status": "passed",
+      "log": "ui-trace-comparison.log"
+    },
+    "sdk_clean_restore_and_idempotency": {
+      "status": "passed",
+      "log": "sdk-restore-final.log"
+    }
+  },
+  "repository_ci": {
+    "status": "blocked",
+    "reason": "Pre-existing uninitialized submodules; no initialization/reset performed",
+    "log": "ci-check.log"
+  },
+  "builds": {
+    "rickyos_metalio_eink4": {
+      "status": "passed",
+      "application_binary_bytes": 6382272,
+      "application_binary_sha256": "d40b295feff0ecdbf33fac4332f5db9db33e41c679dca4d03190d0100306966f",
+      "application_slot_bytes": 6553600,
+      "application_slot_headroom_bytes": 171328,
+      "static_ram_bytes": 124724,
+      "elf_flash_section_bytes": 6377023,
+      "vendor_object_load_count": 8,
+      "vendor_symbol_count": 38,
+      "log": "full-build-final.log",
+      "binary": "/Users/rick/Documents/ChatGPT/rickyos/.local/metalio-eink4-plus-features-20261029/.pio/build/rickyos_metalio_eink4/firmware.bin"
+    },
+    "rickyos_metalio_eink4_core": {
+      "status": "passed",
+      "application_binary_bytes": 6256416,
+      "application_binary_sha256": "f5d0a923596df0549215a86e9c9eb0cd64fae687222d9497f51799af5d441df7",
+      "application_slot_bytes": 6553600,
+      "application_slot_headroom_bytes": 297184,
+      "static_ram_bytes": 123148,
+      "elf_flash_section_bytes": 6251279,
+      "vendor_object_load_count": 0,
+      "vendor_symbol_count": 0,
+      "log": "core-build-final.log",
+      "binary": "/Users/rick/Documents/ChatGPT/rickyos/.local/metalio-eink4-plus-features-20261029/.pio/build/rickyos_metalio_eink4_core/firmware.bin"
+    }
+  },
+  "hardware_acceptance": {
+    "status": "deferred at user request",
+    "last_accepted_version": "1.2.11-metalio-dev16",
+    "camera_status": "not accepted; further device work required"
+  },
+  "remaining": [
+    "device heap/PSRAM peak and fragmentation measurements",
+    "long-run display, reading and sleep regression",
+    "camera and cellular resource contention and camera functionality",
+    "OTA/release and commercial scope decisions"
+  ]
+}

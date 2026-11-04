@@ -1,7 +1,7 @@
 #include "HalCellular.h"
 
-#include <BoardConfig.h>
-#if FREEINK_DEVICE_METALIO_EINK4
+#include "MetalioFeatures.h"
+#if RICKYOS_METALIO_CELLULAR_ENABLED
 #include <HalPowerManager.h>
 #include <Logging.h>
 #include <Network.h>

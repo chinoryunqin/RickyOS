@@ -23,6 +23,7 @@
 #include <I18n.h>
 #include <Logging.h>
 #include <Memory.h>
+#include <MetalioFeatures.h>
 #include <SPI.h>
 #include <TrustedTime.h>
 #include <VectorFontSupport.h>
@@ -1109,7 +1110,7 @@ uint32_t cameraDelayedAt = 0;
 void loop() {
   if (cameraDelayedAt && millis() >= cameraDelayedAt) {
     cameraDelayedAt = 0;
-#if FREEINK_DEVICE_METALIO_EINK4
+#if RICKYOS_METALIO_CAMERA_ENABLED
     activityManager.replaceActivityWith<MetalioCameraActivity>(true);
 #endif
   }
@@ -1307,9 +1308,11 @@ void loop() {
       if (cmd == "CAMERA_DELAY_TEST") {
         cameraDelayedAt = millis() + 20000;
         logSerial.println("CAMERA_TEST_ARMED 20s");
-      } else if (cmd == "CAMERA_VIEW_TEST")
+      } else if (cmd == "CAMERA_VIEW_TEST") {
+#if RICKYOS_METALIO_CAMERA_ENABLED
         activityManager.replaceActivityWith<MetalioCameraActivity>(true);
-      else if (cmd == "CAMERA_VIEW_DUMP") {
+#endif
+      } else if (cmd == "CAMERA_VIEW_DUMP") {
         auto file = Storage.open("/.crosspoint/camera-view-test.bmp");
         if (file && file.fileSize() <= 100000) {
           logSerial.printf("CAMERA_VIEW_START:%u\n", static_cast<unsigned>(file.fileSize()));

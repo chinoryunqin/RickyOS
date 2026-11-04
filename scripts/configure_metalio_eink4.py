@@ -5,8 +5,22 @@ import json
 import subprocess
 import sys
 Import("env")
-if env["PIOENV"] in ("rickyos_metalio_eink4", "simulator_rickyos_metalio_eink4"):
+if env["PIOENV"] in ("rickyos_metalio_eink4", "rickyos_metalio_eink4_core", "simulator_rickyos_metalio_eink4"):
     root = Path(env.subst("$PROJECT_DIR"))
+    sys.path.insert(0, str(root / 'scripts'))
+    from metalio_module_config import modules_from_defines
+    modules = modules_from_defines(env.ParseFlags(env.GetProjectOption('build_flags')).get('CPPDEFINES', []))
+    blocked = set()
+    if not modules['camera']:
+        blocked.add('MetalioCamera')
+    if not modules['cellular']:
+        blocked.update(('MetalioModem', 'UartUhci', 'IotEth'))
+    def peripheral_source(build_env, node):
+        return None if blocked.intersection(Path(str(node)).parts) else node
+    # LDF can discover installed libraries through disabled #include branches.
+    # Filter their sources as well as gating the HAL; do not rely on LTO alone.
+    for library in blocked:
+        env.AddBuildMiddleware(peripheral_source, '*/' + library + '/*')
     report = root / "generated/fonts/packing-report.json"
     records = json.loads(report.read_text()) if report.exists() else []
     if len(records) != 7 or not any(r["name"] == "metalio_body_10_regular" for r in records) or any(

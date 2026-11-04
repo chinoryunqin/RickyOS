@@ -12,7 +12,7 @@ pio run -e rickyos_metalio_eink4
 
 The SDK stays pinned to `96de1be6ce08eb732909e6e8149af8f892b9a2c5`.
 `patches/metalio-eink4/freeink-sdk.patch` and its digest manifest preserve the
-exact local SDK dependencies used by dev16, including the ordinary board's
+exact local SDK dependencies used by the current candidate, including the ordinary board's
 display and peripheral work. The restore script verifies all changed paths,
 is idempotent, and refuses a different SDK revision or conflicting local edits.
 Use `python3 scripts/prepare_metalio_sdk.py --check` to verify an existing checkout.
@@ -26,3 +26,11 @@ on 2026-11-03. Five changed UI updates are followed by a cleanup. This is scoped
 tab appearance acceptance; camera, extended retention and the full hardware
 regression remain incomplete. Build/host/runtime evidence and limitations are
 recorded in `docs/metalio-eink4-ui-gray-20261029.md`.
+
+Development now includes the `1.2.11-metalio-dev17` architecture candidate:
+2bpp committed UI history, on-demand reading resources, and independent optional
+camera/cellular modules. The default build retains the complete feature set;
+`pio run -e rickyos_metalio_eink4_core` is a hardware-free architecture validation
+profile. Device acceptance remains scoped to dev16; dev17 has not been flashed.
+See `docs/metalio-eink4-architecture-20261104.md` for ownership, lifecycle,
+host checks and the deferred hardware/release work.

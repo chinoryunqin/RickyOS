@@ -472,7 +472,7 @@ index 444ad155d01148d3bb6f21b65c180dcea6a52ae3..ecee43ef4fecfb71a98f3a7699c1dca7
    // CrossPoint compatibility state (see the compatibility surface above).
    // _redRamSynced mirrors whether the X4 RED-RAM baseline is current (advisory);
 diff --git a/libs/display/FreeInkDisplay/src/FreeInkDisplay.cpp b/libs/display/FreeInkDisplay/src/FreeInkDisplay.cpp
-index f24576e01f5ee87188713e7a6c3fe95d42cfec32..cae334a5dcad6fc8ae76f0befa8fb7a1907a7b8a 100644
+index f24576e01f5ee87188713e7a6c3fe95d42cfec32..17c1e3e0d233bf1b3430bdd0d67cf33ab41f68f8 100644
 --- a/libs/display/FreeInkDisplay/src/FreeInkDisplay.cpp
 +++ b/libs/display/FreeInkDisplay/src/FreeInkDisplay.cpp
 @@ -21,44 +21,16 @@
@@ -627,7 +627,59 @@ index f24576e01f5ee87188713e7a6c3fe95d42cfec32..cae334a5dcad6fc8ae76f0befa8fb7a1
  #endif
        break;
    }
-@@ -997,6 +895,22 @@ uint8_t* FreeInkDisplay::beginGrayscale16() {
+@@ -225,13 +123,20 @@ void FreeInkDisplay::selectDriver() {
+   _textAaPending = false;
+   _textDriverReady = false;
+   _textCombinedAvailable = BoardConfig::ACTIVE.displayController == BoardConfig::DisplayController::SSD1677 &&
+-                           _driver && _driver->geometry().width == 800 && _driver->geometry().height == 480 &&
+-                           paperMonoDriver().prepareBuffers();
++                           _driver && _driver->geometry().width == 800 && _driver->geometry().height == 480;
++#if !FREEINK_DEVICE_METALIO_EINK4
++  _textCombinedAvailable = _textCombinedAvailable && paperMonoDriver().prepareBuffers();
++#endif
+   paperMonoDriver().setOriginalDriver(_originalDriver);
++#if FREEINK_DEVICE_METALIO_EINK4
++  esp_rom_printf("SSD1677 text-only combined AA: %s (384000 bytes PSRAM on demand)\n",
++                 _textCombinedAvailable ? "available" : "unsupported controller/geometry");
++#else
+   esp_rom_printf("SSD1677 text-only combined AA: %s (384000 bytes PSRAM)\n",
+                  _textCombinedAvailable
+                      ? "ready"
+                      : "unsupported controller/geometry or PSRAM allocation failed; original driver only");
++#endif
+ #endif
+   // A driver chosen after setInverted() (begin(), setDisplayX3()) must still
+   // learn the standing content polarity.
+@@ -630,7 +535,16 @@ bool FreeInkDisplay::selectTextAaDriver(bool textOnlyAntiAliasing) {
+   syncPendingAsync();  // A normal in-flight waveform is not a BUSY failure.
+   paperMonoDriver().setTransitionSource(OpticalState::Unknown);
+   auto source = textOnlyAntiAliasing && canUseTextTransition() ? _driver->opticalState() : OpticalState::Unknown;
+-  const bool combined = textOnlyAntiAliasing && _textCombinedAvailable;
++  bool combined = textOnlyAntiAliasing && _textCombinedAvailable;
++#if FREEINK_DEVICE_METALIO_EINK4
++  if (combined && !paperMonoDriver().prepareBuffers()) {
++    combined = false;
++    // Capability survives a transient OOM. This transaction uses the original
++    // path; a later explicit text-page request may retry once, never per strip.
++    esp_rom_printf("SSD1677 text AA buffers unavailable; original grayscale for this transaction\n");
++  }
++  const bool releaseCombined = !combined && _driver == &paperMonoDriver();
++#endif
+   PanelDriver* next = combined ? static_cast<PanelDriver*>(&paperMonoDriver()) : _originalDriver;
+   if (!next) return false;
+   if (_textDriverReady && _bus.isBusy()) {
+@@ -668,6 +582,10 @@ bool FreeInkDisplay::selectTextAaDriver(bool textOnlyAntiAliasing) {
+   _driver->setBackgroundHint(_inverted);
+   _driver->requestResync(0);
+   if (combined) paperMonoDriver().setTransitionSource(source);
++#if FREEINK_DEVICE_METALIO_EINK4
++  if (releaseCombined && paperMonoDriver().releaseAfterHandoff(_bus))
++    esp_rom_printf("SSD1677 text AA buffers released: 384000 bytes PSRAM\n");
++#endif
+   _shadowValid = false;
+   _redRamSynced = false;
+   esp_rom_printf("SSD1677 display path: %s\n", combined ? "text AA" : "original grayscale");
+@@ -997,6 +915,22 @@ uint8_t* FreeInkDisplay::beginGrayscale16() {
    return buffer;
  }
  
@@ -650,7 +702,25 @@ index f24576e01f5ee87188713e7a6c3fe95d42cfec32..cae334a5dcad6fc8ae76f0befa8fb7a1
  bool FreeInkDisplay::commitGrayscale16() {
    if (!_nativeGrayActive || !_driver) return false;
    _nativeGrayActive = false;
-@@ -1133,9 +1047,7 @@ void FreeInkDisplay::writeGrayscalePlaneStrip(GrayPlane plane, const uint8_t* ro
+@@ -1039,7 +973,7 @@ bool FreeInkDisplay::displayGrayscaleBase(GrayscaleMode mode, RefreshMode fallba
+                       _textCombinedAvailable && !_inverted && !_inversionDirty;
+   _textAaPending = false;
+   if (!selectTextAaDriver(textAa)) return false;
+-  _textAaPending = textAa;
++  _textAaPending = textAa && _driver == &paperMonoDriver();
+ #endif
+   const auto caps = grayscaleCapabilities(mode);
+   if (!caps.supported()) return false;
+@@ -1070,7 +1004,7 @@ void FreeInkDisplay::displayGrayscaleBase(RefreshMode fallback, bool turnOffScre
+   const bool textAa = context == RefreshContext::TextOnlyAntiAliasing && _textCombinedAvailable;
+   _textAaPending = false;
+   if (!selectTextAaDriver(textAa)) return;
+-  _textAaPending = textAa;
++  _textAaPending = textAa && _driver == &paperMonoDriver();
+ #endif
+   _shadowValid = false;
+   _driver->displayGrayscaleBaseWithContext(_bus, frameBuffer, toInternal(fallback), turnOffScreen, context);
+@@ -1133,9 +1067,7 @@ void FreeInkDisplay::writeGrayscalePlaneStrip(GrayPlane plane, const uint8_t* ro
                                      rows, yStart, numRows);
  }
  
@@ -661,7 +731,7 @@ index f24576e01f5ee87188713e7a6c3fe95d42cfec32..cae334a5dcad6fc8ae76f0befa8fb7a1
  
  void FreeInkDisplay::prepareGrayscaleTarget() {
    if (grayscaleCapabilities().stagingWhileBusy) {
-@@ -1143,9 +1055,7 @@ void FreeInkDisplay::prepareGrayscaleTarget() {
+@@ -1143,9 +1075,7 @@ void FreeInkDisplay::prepareGrayscaleTarget() {
    }
  }
  
@@ -732,7 +802,7 @@ index 10727339ba15faeaef9e0fb47fd73ceb14406ba6..d707bc05cf1a608960a6f60c82e5d76b
    // frame (the C3 boards have no RAM to spare for one). Same single CS-low
    // burst contract as sendPlaneFlipped().
 diff --git a/libs/display/FreeInkDisplay/src/driver/CrossMuxSsd1677Driver.cpp b/libs/display/FreeInkDisplay/src/driver/CrossMuxSsd1677Driver.cpp
-index 00c541ae5947151770a9504e43098efc693dae73..3b2a8ba88a28f058e7d11d2b8c85a88830513276 100644
+index 00c541ae5947151770a9504e43098efc693dae73..4e03474d9cbd3067f2bc5f56f3c66bde7ede7362 100644
 --- a/libs/display/FreeInkDisplay/src/driver/CrossMuxSsd1677Driver.cpp
 +++ b/libs/display/FreeInkDisplay/src/driver/CrossMuxSsd1677Driver.cpp
 @@ -1,14 +1,18 @@
@@ -1034,7 +1104,7 @@ index 00c541ae5947151770a9504e43098efc693dae73..3b2a8ba88a28f058e7d11d2b8c85a888
 +  if (!raster || !bw || _wb > 128 || _cfg.cleanPolicy != CrossMuxSsd1677CleanPolicy::BlackPulse || !_cfg.fastLut)
 +    return false;
 +  if (!completeRefresh(bus)) return false;
-+  const size_t bytes = static_cast<size_t>(_bufferSize) * 4;
++  const size_t bytes = static_cast<size_t>(_bufferSize) * 2;
 +  if (!_uiPrevious) {
 +    // Optical history must survive page redraws, and is too large for the task
 +    // stack or internal/DMA heap. Allocation failure retains the old HAL route.
@@ -1048,7 +1118,7 @@ index 00c541ae5947151770a9504e43098efc693dae73..3b2a8ba88a28f058e7d11d2b8c85a888
 +  const bool known = _uiHistoryValid && _opticalState == OpticalState::Gray && !_needsInitialFull && !_needsGrayClear;
 +  if (known) {
 +    for (size_t pixel = 0; pixel < static_cast<size_t>(_bufferSize) * 8; ++pixel)
-+      changed += metalioUiGray::tone(raster, pixel) != metalioUiGray::tone(_uiPrevious, pixel);
++      changed += metalioUiGray::tone(raster, pixel) != metalioUiGray::historyTone(_uiPrevious, pixel);
 +    if (!changed && !forceClean) {
 +      esp_rom_printf("[MUI] unchanged; no activation\n");
 +      return true;
@@ -1083,7 +1153,7 @@ index 00c541ae5947151770a9504e43098efc693dae73..3b2a8ba88a28f058e7d11d2b8c85a888
 +  if (!displayCommitted()) return false;
 +  cleanupGrayscaleBuffers(bus, bw);
 +  if (!completeRefresh(bus)) return false;
-+  memcpy(_uiPrevious, raster, bytes);
++  metalioUiGray::packHistory(raster, _uiPrevious, static_cast<size_t>(_bufferSize) * 8);
 +  _uiHistoryValid = true;
 +  _uiUpdates = delta ? _uiUpdates + 1 : 0;
 +  esp_rom_printf("[MUI] %s changed=%lu base=%lu gray=%lu total=%lu updates=%u\n", delta ? "delta" : "clean",
@@ -1145,7 +1215,7 @@ index 00c541ae5947151770a9504e43098efc693dae73..3b2a8ba88a28f058e7d11d2b8c85a888
  
  #endif
 diff --git a/libs/display/FreeInkDisplay/src/driver/CrossMuxSsd1677Driver.h b/libs/display/FreeInkDisplay/src/driver/CrossMuxSsd1677Driver.h
-index fab91086b401b323168feb53b296296f1104ea27..933252c455bcbdb74792481157b3cc9c9ad43e38 100644
+index fab91086b401b323168feb53b296296f1104ea27..13e8fdc78c753e1d830ddd1ec1438d8bff74062f 100644
 --- a/libs/display/FreeInkDisplay/src/driver/CrossMuxSsd1677Driver.h
 +++ b/libs/display/FreeInkDisplay/src/driver/CrossMuxSsd1677Driver.h
 @@ -1,9 +1,5 @@
@@ -1201,7 +1271,7 @@ index fab91086b401b323168feb53b296296f1104ea27..933252c455bcbdb74792481157b3cc9c
  
   private:
 +#if FREEINK_METALIO_UI_RETAINED
-+  uint8_t* _uiPrevious = nullptr;  // PSRAM only, one 4bpp native frame; never internal RAM.
++  uint8_t* _uiPrevious = nullptr;  // PSRAM only, committed 2bpp history; never internal RAM.
 +  bool _uiHistoryValid = false;
 +  uint8_t _uiUpdates = 0;
 +  void writeUiPlane(EpdBus& bus, uint8_t command, const uint8_t* raster, unsigned plane, bool delta);
@@ -1219,10 +1289,35 @@ index fab91086b401b323168feb53b296296f1104ea27..933252c455bcbdb74792481157b3cc9c
  
  }  // namespace freeink
 diff --git a/libs/display/FreeInkDisplay/src/driver/PaperMonoDriver.cpp b/libs/display/FreeInkDisplay/src/driver/PaperMonoDriver.cpp
-index 86892914a93bef7569f812f0c584b3cfa5cc9018..233d2e8fbd1c2900478e6546de5e07f749aa86a2 100644
+index 86892914a93bef7569f812f0c584b3cfa5cc9018..b0c188793debffc3c4641bfd6d7efb2fa23ed617 100644
 --- a/libs/display/FreeInkDisplay/src/driver/PaperMonoDriver.cpp
 +++ b/libs/display/FreeInkDisplay/src/driver/PaperMonoDriver.cpp
-@@ -573,12 +573,9 @@ uint16_t PaperMonoDriver::makeTriLut(uint8_t out[111], bool bgTopUp) const {
+@@ -198,6 +198,24 @@ bool PaperMonoDriver::allocateBuffers() {
+   return ok;
+ }
+ 
++bool PaperMonoDriver::releaseAfterHandoff(EpdBus& bus) {
++  if (bus.isBusy()) return false;
++  for (uint8_t** ptr : {&_lastBw, &_pendingBw, &_grayLsb, &_grayMsb, &_glassNonWhite, &_glassBlack, &_sel24, &_sel26}) {
++    heap_caps_free(*ptr);
++    *ptr = nullptr;
++  }
++  _needsFull = true;
++  _lastBwValid = false;
++  _windowBaselineValid = false;
++  _displayCommitted = false;
++  _initialized = false;
++  _controllerPowered = false;
++  _ioFailed = false;
++  abortPostRefresh();
++  resetGray();
++  return true;
++}
++
+ void PaperMonoDriver::begin(EpdBus& bus) {
+   if (!allocateBuffers()) return;
+   _ioFailed = false;
+@@ -573,12 +591,9 @@ uint16_t PaperMonoDriver::makeTriLut(uint8_t out[111], bool bgTopUp) const {
    // Every boundary at which a class changes voltage. Between two consecutive
    // boundaries all entries have a constant source selection and fit one group.
    uint16_t bounds[7] = {
@@ -1238,7 +1333,7 @@ index 86892914a93bef7569f812f0c584b3cfa5cc9018..233d2e8fbd1c2900478e6546de5e07f7
        tail,
    };
    sortAscending(bounds, 7);
-@@ -654,8 +651,7 @@ bool PaperMonoDriver::runOtpUpdate(EpdBus& bus, const uint8_t* bwTarget, bool fo
+@@ -654,8 +669,7 @@ bool PaperMonoDriver::runOtpUpdate(EpdBus& bus, const uint8_t* bwTarget, bool fo
      const uint8_t oldNonWhite = _glassNonWhite[i];
      const uint8_t oldBlack = _glassBlack[i];
      const uint8_t oldGray = static_cast<uint8_t>(oldNonWhite & ~oldBlack);
@@ -1248,7 +1343,7 @@ index 86892914a93bef7569f812f0c584b3cfa5cc9018..233d2e8fbd1c2900478e6546de5e07f7
      changedBits |= changedMask;
  #ifdef ENABLE_SERIAL_LOG
      changed += popcount8(changedMask);
-@@ -700,9 +696,9 @@ bool PaperMonoDriver::runOtpUpdate(EpdBus& bus, const uint8_t* bwTarget, bool fo
+@@ -700,9 +714,9 @@ bool PaperMonoDriver::runOtpUpdate(EpdBus& bus, const uint8_t* bwTarget, bool fo
        activateOtp(bus);
      }
  #else
@@ -1261,7 +1356,7 @@ index 86892914a93bef7569f812f0c584b3cfa5cc9018..233d2e8fbd1c2900478e6546de5e07f7
  #endif
    }
    if (!checkIdle(bus)) return false;
-@@ -989,7 +985,8 @@ void PaperMonoDriver::displayWindow(EpdBus& bus, const uint8_t* fb, const uint8_
+@@ -989,7 +1003,8 @@ void PaperMonoDriver::displayWindow(EpdBus& bus, const uint8_t* fb, const uint8_
    if (turnOff) powerOffController(bus);
  }
  
@@ -1271,7 +1366,7 @@ index 86892914a93bef7569f812f0c584b3cfa5cc9018..233d2e8fbd1c2900478e6546de5e07f7
    display(bus, fb, prev, mode, turnOff);
    return false;
  }
-@@ -1073,7 +1070,7 @@ bool PaperMonoDriver::markGrayRows(GrayPlane plane, uint16_t yStart, uint16_t nu
+@@ -1073,7 +1088,7 @@ bool PaperMonoDriver::markGrayRows(GrayPlane plane, uint16_t yStart, uint16_t nu
  }
  
  void PaperMonoDriver::writeGrayscalePlaneStrip(EpdBus& bus, GrayPlane plane, const uint8_t* rows, uint16_t yStart,
@@ -1280,7 +1375,7 @@ index 86892914a93bef7569f812f0c584b3cfa5cc9018..233d2e8fbd1c2900478e6546de5e07f7
    (void)bus;
    if (!rows || numRows == 0 || yStart + numRows > HEIGHT || !allocateBuffers()) return;
    uint8_t* target = plane == GrayPlane::Lsb ? _grayLsb : _grayMsb;
-@@ -1098,7 +1095,7 @@ void PaperMonoDriver::prepareGrayscaleTarget(const uint8_t* bw) {
+@@ -1098,7 +1113,7 @@ void PaperMonoDriver::prepareGrayscaleTarget(const uint8_t* bw) {
  }
  
  void PaperMonoDriver::displayGray(EpdBus& bus, const uint8_t* fb, bool turnOff, const unsigned char* lut,
@@ -1289,7 +1384,7 @@ index 86892914a93bef7569f812f0c584b3cfa5cc9018..233d2e8fbd1c2900478e6546de5e07f7
    (void)turnOff;
    (void)lut;
    (void)factoryMode;
-@@ -1116,8 +1113,7 @@ void PaperMonoDriver::displayGray(EpdBus& bus, const uint8_t* fb, bool turnOff,
+@@ -1116,8 +1131,7 @@ void PaperMonoDriver::displayGray(EpdBus& bus, const uint8_t* fb, bool turnOff,
      return;
    }
  
@@ -1299,7 +1394,7 @@ index 86892914a93bef7569f812f0c584b3cfa5cc9018..233d2e8fbd1c2900478e6546de5e07f7
                         _grayMsbGeneration == _renderGeneration;
    if (_pendingTri) {
      commitPending(bus, useGray);
-@@ -1147,7 +1143,7 @@ void PaperMonoDriver::displayGray(EpdBus& bus, const uint8_t* fb, bool turnOff,
+@@ -1147,7 +1161,7 @@ void PaperMonoDriver::displayGray(EpdBus& bus, const uint8_t* fb, bool turnOff,
  }
  
  void PaperMonoDriver::displayGrayCalibration(EpdBus& bus, const uint8_t* fb, uint16_t customX, uint16_t customY,
@@ -1308,7 +1403,7 @@ index 86892914a93bef7569f812f0c584b3cfa5cc9018..233d2e8fbd1c2900478e6546de5e07f7
    // There is a single gray tone and a single waveform now, so a side-by-side
    // "reference vs current" split has nothing left to compare. Render the whole
    // frame through the production path instead, driving every pixel so the
-@@ -1161,8 +1157,7 @@ void PaperMonoDriver::displayGrayCalibration(EpdBus& bus, const uint8_t* fb, uin
+@@ -1161,8 +1175,7 @@ void PaperMonoDriver::displayGrayCalibration(EpdBus& bus, const uint8_t* fb, uin
    _pendingTri = true;
    _pendingCorrective = true;
    _pendingGeneration = _renderGeneration;
@@ -1318,7 +1413,7 @@ index 86892914a93bef7569f812f0c584b3cfa5cc9018..233d2e8fbd1c2900478e6546de5e07f7
                         _grayMsbGeneration == _renderGeneration;
    commitPending(bus, useGray);
  }
-@@ -1183,8 +1178,7 @@ void PaperMonoDriver::cleanupGrayscaleBuffers(EpdBus& bus, const uint8_t* bw) {
+@@ -1183,8 +1196,7 @@ void PaperMonoDriver::cleanupGrayscaleBuffers(EpdBus& bus, const uint8_t* bw) {
    // displayGray() bailed without consuming the stashed target (no selectors
    // were ever staged, for instance). The frame must still reach the panel.
    if (bw && _pendingBw) memcpy(_pendingBw, bw, BUFFER_SIZE);
@@ -1329,10 +1424,18 @@ index 86892914a93bef7569f812f0c584b3cfa5cc9018..233d2e8fbd1c2900478e6546de5e07f7
    commitPending(bus, useGray);
  }
 diff --git a/libs/display/FreeInkDisplay/src/driver/PaperMonoDriver.h b/libs/display/FreeInkDisplay/src/driver/PaperMonoDriver.h
-index 892460aa5dde30e718d85f411b9ef5907f675d58..da1c5ced30ab1cde15f35e0ea47df4cf788657d4 100644
+index 892460aa5dde30e718d85f411b9ef5907f675d58..a25c162e4e5d96c8f77200c870a2a26f8c559684 100644
 --- a/libs/display/FreeInkDisplay/src/driver/PaperMonoDriver.h
 +++ b/libs/display/FreeInkDisplay/src/driver/PaperMonoDriver.h
-@@ -94,9 +94,9 @@ class PaperMonoDriver final : public PanelDriver {
+@@ -90,13 +90,17 @@ class PaperMonoDriver final : public PanelDriver {
+   void resetGray();
+ 
+  private:
++  friend class FreeInkDisplay;
++  // Only the facade may release this session after another driver takes the
++  // idle controller. A new session must establish its own optical history.
++  bool releaseAfterHandoff(EpdBus& bus);
+   // Timelines in 5 ms frames.
    struct TriParams {
      // One-shot W/G/B sweep. The three per-class white lengths are derived from
      // these so that each class's net V*frames is exactly zero; see makeTriLut().
@@ -1345,7 +1448,7 @@ index 892460aa5dde30e718d85f411b9ef5907f675d58..da1c5ced30ab1cde15f35e0ea47df4cf
    };
  
    PanelDriver* _originalDriver = nullptr;
-@@ -164,14 +164,14 @@ class PaperMonoDriver final : public PanelDriver {
+@@ -164,14 +168,14 @@ class PaperMonoDriver final : public PanelDriver {
  
    // All logical raster order; writePlane() applies the 180-degree mount
    // transform on the way out.
@@ -1558,10 +1661,10 @@ index 0d5038b23b796450616bb5bfaf33702395349f39..67317b1444bd1fceac546d176107243d
  };
 diff --git a/libs/display/FreeInkDisplay/src/lut/MetalioUiGray.h b/libs/display/FreeInkDisplay/src/lut/MetalioUiGray.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..0e314f065b1e1a0b19eae3d956d8735478a9e8ff
+index 0000000000000000000000000000000000000000..9a594241b6e8d533d0c708dc84fb711c1c8b13de
 --- /dev/null
 +++ b/libs/display/FreeInkDisplay/src/lut/MetalioUiGray.h
-@@ -0,0 +1,25 @@
+@@ -0,0 +1,35 @@
 +#pragma once
 +
 +#include <cstddef>
@@ -1572,12 +1675,22 @@ index 0000000000000000000000000000000000000000..0e314f065b1e1a0b19eae3d956d87354
 +inline uint8_t tone(const uint8_t* raster, size_t pixel) {
 +  return (((raster[pixel / 2] >> ((pixel & 1) * 4)) & 15) + 2) / 5;
 +}
++// Optical history stores the committed four-tone value, not intermediate
++// coverage. Four pixels per byte, low pair first; composition remains 4bpp.
++inline uint8_t historyTone(const uint8_t* packed, size_t pixel) { return (packed[pixel / 4] >> ((pixel & 3) * 2)) & 3; }
++inline void packHistory(const uint8_t* raster, uint8_t* packed, size_t pixels) {
++  for (size_t pixel = 0; pixel < pixels; pixel += 4) {
++    uint8_t value = 0;
++    for (unsigned i = 0; i < 4 && pixel + i < pixels; ++i) value |= tone(raster, pixel + i) << (i * 2);
++    packed[pixel / 4] = value;
++  }
++}
 +enum class Plane { EndpointBw, EndpointOld, GrayLsb, GrayMsb };
 +inline uint8_t selectors(const uint8_t* next, const uint8_t* previous, size_t first, Plane plane) {
 +  uint8_t result = 0;
 +  for (unsigned bit = 0; bit < 8; ++bit) {
 +    const auto target = tone(next, first + bit);
-+    if (target == tone(previous, first + bit)) continue;
++    if (target == historyTone(previous, first + bit)) continue;
 +    const bool set = plane == Plane::EndpointBw    ? target == 3
 +                     : plane == Plane::EndpointOld ? target != 3
 +                     : plane == Plane::GrayLsb     ? target == 1
@@ -1739,6 +1852,20 @@ index bd458f466fe53ad59f776e29b76a7f960f5d715d..0ffdf42f64746b9bc7a432d80f47c612
 +    0x07, 0x02, 0x00, 0x01, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 +    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 +    0x00, 0x00, 0x00, 0x00, 0x01, 0x22, 0x22, 0x22, 0x22, 0x22, 0x17, 0x46, 0xA8, 0x32, 0x30};
+diff --git a/libs/display/FreeInkDisplay/test/host/ssd1677_stubs/esp_heap_caps.h b/libs/display/FreeInkDisplay/test/host/ssd1677_stubs/esp_heap_caps.h
+index ab2828cc45f3f69342d0780850b0d71487e8c2b7..ffd2f170066cfb35e9af17e5b25ca4f6315fdc48 100644
+--- a/libs/display/FreeInkDisplay/test/host/ssd1677_stubs/esp_heap_caps.h
++++ b/libs/display/FreeInkDisplay/test/host/ssd1677_stubs/esp_heap_caps.h
+@@ -3,7 +3,9 @@
+ #include <cstdlib>
+ inline constexpr int MALLOC_CAP_SPIRAM = 1, MALLOC_CAP_8BIT = 2;
+ inline int allocationCalls = 0, allocationFailAt = 0, liveAllocations = 0;
++inline size_t lastAllocationSize = 0;
+ inline void* heap_caps_malloc(size_t n, int caps) {
++  lastAllocationSize = n;
+   assert(caps == (MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+   if (++allocationCalls == allocationFailAt) return nullptr;
+   void* p = std::malloc(n);
 diff --git a/libs/display/FreeInkDisplay/test/host/test_eego_a4.py b/libs/display/FreeInkDisplay/test/host/test_eego_a4.py
 new file mode 100644
 index 0000000000000000000000000000000000000000..4b41887aa665d980665e46f97bada802a18abeaf
@@ -1879,10 +2006,10 @@ index 0000000000000000000000000000000000000000..4b41887aa665d980665e46f97bada802
 +print('A4 driver: planes, padding, drive registers, baseline, cadence, wake and PSRAM OOM passed')
 diff --git a/libs/display/FreeInkDisplay/test/host/test_metalio_ui_retained.cpp b/libs/display/FreeInkDisplay/test/host/test_metalio_ui_retained.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..53051958c01e7c50414ee5620a237f53c46f731a
+index 0000000000000000000000000000000000000000..2ccac7cfb7b55419ad4476adf68254d56dc73837
 --- /dev/null
 +++ b/libs/display/FreeInkDisplay/test/host/test_metalio_ui_retained.cpp
-@@ -0,0 +1,140 @@
+@@ -0,0 +1,141 @@
 +#include <array>
 +#include <cassert>
 +#include <vector>
@@ -1935,7 +2062,8 @@ index 0000000000000000000000000000000000000000..53051958c01e7c50414ee5620a237f53
 +    return driver.displayUiGrayscale(bus, raster.data(), bw.data(), clean);
 +  };
 +  assert(submit());
-+  assert(paints(bus).size() == 3);  // existing endpoint clean, base and gray
++  assert(lastAllocationSize == raster.size() / 2);  // Four committed pixels per byte.
++  assert(paints(bus).size() == 3);                  // existing endpoint clean, base and gray
 +  assert(driver.displayCommitted());
 +  bus.clear();
 +  assert(submit() && bus.events.empty());  // identical frames never flash
@@ -2249,14 +2377,87 @@ index 3c7c5876de38d7bac5017e7dc460e8bd1699efd0..9c788a8764c11c444109f801fc905b6f
          binary = tmp / "trace"
          command += [str(source or HERE / "test_ssd1677.cpp")]
 diff --git a/libs/display/FreeInkDisplay/test/host/test_ssd1677_text_route.cpp b/libs/display/FreeInkDisplay/test/host/test_ssd1677_text_route.cpp
-index bccdaeb9e4da8eb82869735b09e587a37796b7a9..3be6b87d9ca9d4d0cf36382877abaf99b697def6 100644
+index bccdaeb9e4da8eb82869735b09e587a37796b7a9..dd0504d696909ba19bc1ab0077ff3f77368656b3 100644
 --- a/libs/display/FreeInkDisplay/test/host/test_ssd1677_text_route.cpp
 +++ b/libs/display/FreeInkDisplay/test/host/test_ssd1677_text_route.cpp
-@@ -125,6 +125,28 @@ int main(int argc, char** argv) {
+@@ -117,7 +117,32 @@ int main(int argc, char** argv) {
+   if (std::strcmp(argv[1], "batch1") == 0) d.setMurphyM4Batch(MurphyM4Batch::First);
+ #endif
+   d.begin();
++#if FREEINK_DEVICE_METALIO_EINK4
++  assert(liveAllocations == 0);  // No reader planes at boot or for UI-only sessions.
++  if (!uc && allocationFailAt) {
++    assert(d.supportsTextOnlyCombinedBase());
++    d.displayGrayscaleBase(Mode::HALF_REFRESH, false, RefreshContext::TextOnlyAntiAliasing);
++  }
++#endif
+   if (uc || allocationFailAt) {
++#if FREEINK_DEVICE_METALIO_EINK4
++    if (!uc) {
++      assert(d.supportsTextOnlyCombinedBase() && !d.combinesGrayscaleBase());
++      assert(paperMonoDriver()._pendingBw == nullptr && liveAllocations == 0);
++      assert(d._driver == d._originalDriver && !d._textAaPending);
++      // Memory recovered: a later page retries without a reboot. Partial
++      // failed attempts did not publish a bogus glass or controller baseline.
++      std::array<uint8_t, 48000> plane{};
++      d.displayGrayscaleBase(Mode::HALF_REFRESH, false, RefreshContext::TextOnlyAntiAliasing);
++      assert(d.combinesGrayscaleBase() && liveAllocations == 8);
++      d.copyGrayscaleBuffers(plane.data(), plane.data());
++      d.displayGrayBuffer(false);
++      assert(d.displayCommitted());
++      d.cleanupGrayscaleBuffers(d.getFrameBuffer());
++      assert(d.selectTextAaDriver(false) && liveAllocations == 0);
++      return 0;
++    }
++#endif
+     assert(!d.supportsTextOnlyCombinedBase());
+     assert(!d.supportsReaderTransitions() && !d.canUseTextTransition());
+     assert(paperMonoDriver()._pendingBw == nullptr);
+@@ -125,8 +150,75 @@ int main(int argc, char** argv) {
      assert(d._driver == d._originalDriver);
      return 0;
    }
 +#if FREEINK_METALIO_UI_RETAINED
++  if (std::strcmp(argv[1], "lazy") == 0) {
++    auto& bus = d._bus;
++    auto& reader = paperMonoDriver();
++    std::array<uint8_t, 48000> gray{};
++    const auto page = [&] {
++      d.getFrameBuffer()[0] ^= 0x80;
++      d.displayGrayscaleBase(Mode::FAST_REFRESH, false, RefreshContext::TextOnlyAntiAliasing);
++      d.copyGrayscaleBuffers(gray.data(), gray.data());
++      d.displayGrayBuffer(false);
++      d.cleanupGrayscaleBuffers(d.getFrameBuffer());
++      assert(d.displayCommitted() && d._driver == &reader);
++    };
++    assert(allocationCalls == 0 && liveAllocations == 0);
++    for (unsigned cycle = 0; cycle < 12; ++cycle) {
++      const auto before = allocationCalls;
++      page();
++      assert(allocationCalls == before + 8 && liveAllocations == 8);
++      page();
++      assert(allocationCalls == before + 8 && liveAllocations == 8);
++      bus.busy = true;
++      assert(!reader.releaseAfterHandoff(bus) && liveAllocations == 8);
++      bus.busy = false;
++      d.displayBuffer(Mode::FAST_REFRESH, false);
++      assert(d._driver == d._originalDriver && liveAllocations == 0);
++      assert(!reader._lastBwValid && !reader._pendingBw && !reader._glassNonWhite);
++    }
++    // A failed shutdown followed by a successful controller reset must also
++    // free the inactive reader's buffers without trusting its stale history.
++    page();
++    bus.resetClearsFailure = true;
++    bus.failAt = bus.activation + 1;
++    assert(d.selectTextAaDriver(false));
++    assert(!bus.busy && liveAllocations == 0 && !reader._lastBwValid);
++    bus.resetClearsFailure = false;
++    page();
++    assert(liveAllocations == 8);
++    d.displayBuffer(Mode::FAST_REFRESH, false);
++    assert(liveAllocations == 0);
++    return 0;
++  }
 +  if (std::strcmp(argv[1], "ui") == 0) {
 +    std::array<uint8_t, 192000> raster;
 +    raster.fill(0xff);
@@ -2266,6 +2467,7 @@ index bccdaeb9e4da8eb82869735b09e587a37796b7a9..3be6b87d9ca9d4d0cf36382877abaf99
 +    auto& bus = d._bus;
 +    bus.clear();
 +    assert(d.displayUiGrayscale(raster.data(), false) && pixels(bus) == 3);
++    assert(liveAllocations == 1 && lastAllocationSize == 96000);
 +    bus.clear();
 +    assert(d.displayUiGrayscale(raster.data(), false) && pixels(bus) == 0);
 +    raster[0] = 0x55;
@@ -2279,9 +2481,35 @@ index bccdaeb9e4da8eb82869735b09e587a37796b7a9..3be6b87d9ca9d4d0cf36382877abaf99
 +  }
 +#endif
    assert(d.supportsTextOnlyCombinedBase());
++#if FREEINK_DEVICE_METALIO_EINK4
++  assert(liveAllocations == 0);
++#else
    assert(liveAllocations == 8);
++#endif
    auto& bus = d._bus;
-@@ -213,7 +235,12 @@ int main(int argc, char** argv) {
+   auto& combined = paperMonoDriver();
+   std::array<uint8_t, 48000> bw, lsb{}, msb{};
+@@ -140,6 +232,7 @@ int main(int argc, char** argv) {
+     d.copyGrayscaleBuffers(lsb.data(), msb.data());
+   };
+   stage(Mode::HALF_REFRESH);
++  assert(liveAllocations == 8);
+   assert(pixels(bus) == 0);
+   d.displayGrayBuffer(false);
+   assert(d.displayCommitted());
+@@ -188,7 +281,11 @@ int main(int argc, char** argv) {
+     stage(Mode::FAST_REFRESH);
+     d.displayGrayBuffer(false);
+     assert(d._driver == d._originalDriver && last(bus, 0x32) != edgeLut);
++#if FREEINK_DEVICE_METALIO_EINK4
++    assert(allocationCalls == allocated + 8 && liveAllocations == 0);
++#else
+     assert(allocationCalls == allocated);
++#endif
+     return 0;
+   }
+ #endif
+@@ -213,7 +310,12 @@ int main(int argc, char** argv) {
    d.displayGrayscaleBase(Mode::FAST_REFRESH, false, RefreshContext::TextOnlyAntiAliasing);
    d.copyGrayscaleLsbBuffers(lsb.data());
    d.displayGrayBuffer(false);
@@ -2295,8 +2523,22 @@ index bccdaeb9e4da8eb82869735b09e587a37796b7a9..3be6b87d9ca9d4d0cf36382877abaf99
    d.cleanupGrayscaleBuffers(bw.data());
    bus.clear();
    stage(Mode::FAST_REFRESH);
+@@ -521,7 +623,13 @@ int main(int argc, char** argv) {
+   d.setInverted(true);
+   assert(!d.supportsReaderTransitions() && !d.canUseTextTransition());
+ #endif
++#if FREEINK_DEVICE_METALIO_EINK4
++  assert(allocationCalls >= 8 && allocationCalls % 8 == 0);
++  d.displayBuffer(Mode::FULL_REFRESH, false);
++  assert(liveAllocations == 0);
++#else
+   assert(allocationCalls == 8);
++#endif
+ }
+ 
+ #endif
 diff --git a/libs/display/FreeInkDisplay/test/host/test_ssd1677_text_route.py b/libs/display/FreeInkDisplay/test/host/test_ssd1677_text_route.py
-index 3c9758fe40b151a15cca264ce46328b05f9fefff..cd2ae7d530529b0dc5df980ed074c5151b1fa03f 100644
+index 3c9758fe40b151a15cca264ce46328b05f9fefff..59f0e9e0c08c0b70c7abff7bb8923e0f7c06236c 100644
 --- a/libs/display/FreeInkDisplay/test/host/test_ssd1677_text_route.py
 +++ b/libs/display/FreeInkDisplay/test/host/test_ssd1677_text_route.py
 @@ -12,12 +12,11 @@ LIB = HERE.parents[1]
@@ -2333,7 +2575,7 @@ index 3c9758fe40b151a15cca264ce46328b05f9fefff..cd2ae7d530529b0dc5df980ed074c515
                      transitions = int(bool(expected) and board in
                                        ("STICKY", "MURPHY_M4", "METALIO_EINK4", "WAVESHARE_EPAPER_397"))
                      self.assertIn(f"#define TEST_TRANSITIONS_ENABLED {transitions}\n", result.stdout)
-@@ -58,19 +57,11 @@ class TextRoutingTest(unittest.TestCase):
+@@ -58,28 +57,22 @@ class TextRoutingTest(unittest.TestCase):
              board.write_text(board.read_text().replace("XteinkX4Pro,", "XteinkX4Pro, XteinkX4Classic, MurphyM4, PaperMono,"))
              arduino = root / "Arduino.h"
              arduino.write_text(arduino.read_text() + '\n#define DRAM_ATTR\n')
@@ -2354,8 +2596,11 @@ index 3c9758fe40b151a15cca264ce46328b05f9fefff..cd2ae7d530529b0dc5df980ed074c515
 +                    drivers = ["PaperMono"]
                      if local:
                          drivers += ["CrossMuxSsd1677"]
-                     command = ["c++", "-std=c++17", "-DARDUINO=1", "-DEINK_DISPLAY_SINGLE_BUFFER_MODE=1",
-@@ -80,6 +71,8 @@ class TextRoutingTest(unittest.TestCase):
+-                    command = ["c++", "-std=c++17", "-DARDUINO=1", "-DEINK_DISPLAY_SINGLE_BUFFER_MODE=1",
++                    command = ["c++", "-std=c++17", "-fsanitize=address,undefined", "-DARDUINO=1", "-DEINK_DISPLAY_SINGLE_BUFFER_MODE=1",
+                                f"-DFREEINK_SSD1677_TEXT_ROUTING={int(combined and device != 'PAPERMONO')}", "-DFREEINK_DRIVER_SSD1677=1",
+                                "-DFREEINK_DRIVER_PAPER_MONO=1", "-DFREEINK_DRIVER_UC8179=1",
+                                "-DFREEINK_DRIVER_UC8279_X4=1", f"-DFREEINK_DEVICE_{device}=1",
                                 "-I"+str(root), "-I"+str(root / "include"),
                                 str(HERE / "test_ssd1677_text_route.cpp"), str(root / "src/FreeInkDisplay.cpp")]
                      command += [str(root / f"src/driver/{name}Driver.cpp") for name in drivers]
@@ -2369,7 +2614,7 @@ index 3c9758fe40b151a15cca264ce46328b05f9fefff..cd2ae7d530529b0dc5df980ed074c515
                      subprocess.run(command + ["-o", str(binary)], check=True)
                      scenarios = ["normal", *map(str, range(1, 9))]
 +                    if device == "METALIO_EINK4":
-+                        scenarios += ["ui"]
++                        scenarios += ["ui", "lazy"]
                      if device != "PAPERMONO":
 -                        scenarios += ["rotated", "uc8179", "uc8279"]
 +                        scenarios += ["rotated"]
