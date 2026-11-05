@@ -873,6 +873,16 @@
       "ported_sha256": "f32c745f3e51fd3b576be4e9d7b0a338154dda865b73932bf12aeeba8a3c7faa"
     },
     {
+      "path": "src/JsonSettingsIO.cpp",
+      "baseline_sha256": "d70b7cd79d90ed4bde9e2de91ed074a03f7982915a01a282431ed98d15e1a546",
+      "ported_sha256": "f13b4426cc12de5db7d49ccc60ffc2c4ed6b02488f0b9e3d5e78cdb9a424e228"
+    },
+    {
+      "path": "src/JsonSettingsIO.h",
+      "baseline_sha256": "e93fcb39f5c09709fa48abd69b8de0bfd6eeea51c2312f855f69a32b4a2f09c0",
+      "ported_sha256": "2fca6c67c0dbf5b971196af64cc77274a097371f781e6aca34004d747c165e9e"
+    },
+    {
       "path": "src/MappedInputManager.cpp",
       "baseline_sha256": "6cb329fd1abfcff7b2537405b9cad92aa4c78e94fddefe3086d2fb6650ca60c7",
       "ported_sha256": "d3780a5505f68b7d8d307fd159962fc49da1c90a45ab0ccca729cbed1a72d860"
@@ -896,6 +906,16 @@
       "path": "src/ReaderTapZonesJson.h",
       "baseline_sha256": null,
       "ported_sha256": "7f7071b9f3d665456724868eb88a1806eb33faa1412304bc1fa08cd272c53e13"
+    },
+    {
+      "path": "src/ReadingStatsStore.cpp",
+      "baseline_sha256": "94b86cabc14648a8d474e2ddbe92bffab3867a9d63ae1f392e11dd894cc440a0",
+      "ported_sha256": "cc215d4c8365b389055bb7fdb2fc29f2e8823dfb85ffb807934459b635f2c94e"
+    },
+    {
+      "path": "src/ReadingStatsStore.h",
+      "baseline_sha256": "921802ad44b831d8a4fa55bbbe81240ddd0f2fec7d09921e287e897dd6350341",
+      "ported_sha256": "9de5112a029e009a9e2e0e1d6c2d801a5172d79af4e05db3b4c86b8ef8951307"
     },
     {
       "path": "src/SdCardFontSystem.cpp",

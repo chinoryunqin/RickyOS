@@ -456402,3 +456402,397 @@
              or width * height > MAX_PIXELS or len(raw) != 16 + width * height):
          raise ValueError('invalid native frame')
      # Lossless encoding of the simulator's grayscale pixels, not a second UI renderer.
+diff --git a/src/JsonSettingsIO.cpp b/src/JsonSettingsIO.cpp
+--- a/src/JsonSettingsIO.cpp
++++ b/src/JsonSettingsIO.cpp
+@@ -1,6 +1,7 @@
+ #include "JsonSettingsIO.h"
+ 
+ #include <ArduinoJson.h>
++#include <BufferedFile.h>
+ #include <HalStorage.h>
+ #include <Logging.h>
+ #include <Memory.h>
+@@ -15,10 +16,8 @@
+ 
+ namespace {
+ 
+-// Atomic JSON write: serialize (streamed) to "<path>.tmp", then rename over the
+-// target so a power loss mid-write never corrupts the existing file. Streaming
+-// keeps peak heap bounded for large analytics documents.
+-bool saveJsonDocumentToFile(const char* moduleName, const char* path, const JsonDocument& doc) {
++bool saveJsonDocumentToFile(const char* moduleName, const char* path, const JsonDocument& doc,
++                            const char* backupPath = nullptr) {
+   if (!path || *path == '\0') {
+     LOG_ERR(moduleName, "Missing JSON path for write");
+     return false;
+@@ -39,11 +38,8 @@
+   memcpy(tempPath.get(), path, pathLength);
+   memcpy(tempPath.get() + pathLength, ".tmp", sizeof(".tmp"));
+ 
+-  if (Storage.exists(tempPath.get())) {
+-    Storage.remove(tempPath.get());
+-  }
+-
+-  size_t written = 0;
++  const HalStorage::StorageLock lock;
++  bool tempComplete = false;
+   {
+     HalFile file;
+     if (!Storage.openFileForWrite(moduleName, tempPath.get(), file)) {
+@@ -51,37 +47,57 @@
+       return false;
+     }
+ 
+-    written = serializeJson(doc, file);
+-    file.flush();
+-  }
+-  if (written == 0) {
++    const size_t written = serializeJson(doc, file);
++    const bool closed = file.close();
++    tempComplete = closed && written == measureJson(doc);
++  }
++  if (!tempComplete) {
+     Storage.remove(tempPath.get());
+-    LOG_ERR(moduleName, "serializeJson wrote 0 bytes for %s", path);
+-    return false;
+-  }
+-
+-  if (Storage.exists(path) && !Storage.remove(path)) {
+-    Storage.remove(tempPath.get());
+-    LOG_ERR(moduleName, "Could not remove JSON file before replace: %s", path);
+-    return false;
+-  }
+-
+-  if (!Storage.rename(tempPath.get(), path)) {
+-    Storage.remove(tempPath.get());
+-    LOG_ERR(moduleName, "Could not rename JSON temp file to final path: %s", path);
++    LOG_ERR(moduleName, "Incomplete JSON write: %s", tempPath.get());
++    return false;
++  }
++
++  // Keep the previous committed file on FAT while publishing the new one.
++  if (backupPath && Storage.exists(path)) {
++    if ((Storage.exists(backupPath) && !Storage.remove(backupPath)) || !Storage.rename(path, backupPath)) {
++      LOG_ERR(moduleName, "Could not back up JSON file: %s", path);
++      return false;
++    }
++  }
++  const bool published =
++      backupPath ? Storage.rename(tempPath.get(), path) : Storage.replaceFile(tempPath.get(), path);
++  if (!published) {
++    LOG_ERR(moduleName, "Could not publish JSON temp file: %s", path);
+     return false;
+   }
+ 
+   return true;
+ }
+ 
++class ReadingStatsJsonReader {
++ public:
++  explicit ReadingStatsJsonReader(HalFile& file) : size(file.size()), reader(file, 512) {}
++
++  int read() {
++    uint8_t byte;
++    return reader.read(&byte, 1) == 1 ? byte : -1;
++  }
++
++  size_t readBytes(char* buffer, size_t length) { return reader.read(buffer, length); }
++  bool reachedEnd() const { return reader.position() == size; }
++
++ private:
++  const size_t size;
++  serialization::BufferedFileReader reader;
++};
++
+ }  // namespace
+ 
+ // ---- ReadingStatsStore ----
+-// reading_stats.json, format version 6. Written atomically (temp + rename) and
+-// parsed via a streamed HalFileStream so large histories don't double peak heap.
+-
+-bool JsonSettingsIO::saveReadingStats(const ReadingStatsStore& store, const char* path) {
++// reading_stats.json, format version 6. Stream directly from the SD card to
++// avoid the whole-file helper's size limit and a second full copy in memory.
++
++bool JsonSettingsIO::saveReadingStats(const ReadingStatsStore& store, const char* path, const char* backupPath) {
+   JsonDocument doc;
+   doc["formatVersion"] = 6;
+ 
+@@ -137,15 +153,41 @@
+     }
+   }
+ 
+-  return saveJsonDocumentToFile("RST", path, doc);
+-}
+-
+-bool JsonSettingsIO::loadReadingStats(ReadingStatsStore& store, const char* json) {
++  return saveJsonDocumentToFile("RST", path, doc, backupPath);
++}
++
++JsonSettingsIO::ReadingStatsLoadResult JsonSettingsIO::loadReadingStatsFromFile(ReadingStatsStore& store,
++                                                                              const char* path) {
+   JsonDocument doc;
+-  auto error = deserializeJson(doc, json);
+-  if (error) {
+-    LOG_ERR("RST", "JSON parse error: %s", error.c_str());
+-    return false;
++  {
++    HalFile file;
++    if (!Storage.openFileForRead("RST", path, file)) {
++      return ReadingStatsLoadResult::Unavailable;
++    }
++    ReadingStatsJsonReader reader(file);
++    const auto error = deserializeJson(doc, reader);
++    if (error) {
++      LOG_ERR("RST", "JSON parse error in %s: %s", path, error.c_str());
++      if (error == DeserializationError::NoMemory ||
++          ((error == DeserializationError::EmptyInput || error == DeserializationError::IncompleteInput) &&
++           !reader.reachedEnd())) {
++        return ReadingStatsLoadResult::Unavailable;
++      }
++      return ReadingStatsLoadResult::Invalid;
++    }
++    // ArduinoJson stops at the end of the root object. Reject trailing data
++    // and distinguish a short card read from reaching the physical end.
++    int trailing;
++    while ((trailing = reader.read()) == ' ' || trailing == '\n' || trailing == '\r' || trailing == '\t') {
++    }
++    if (trailing != -1 || !doc["books"].is<JsonArray>()) {
++      LOG_ERR("RST", "Invalid reading stats document: %s", path);
++      return ReadingStatsLoadResult::Invalid;
++    }
++    if (!reader.reachedEnd()) {
++      LOG_ERR("RST", "Short read of reading stats: %s", path);
++      return ReadingStatsLoadResult::Unavailable;
++    }
+   }
+ 
+   store.books.clear();
+@@ -238,18 +280,7 @@
+   }
+   store.rebuildAggregatedReadingDays();
+   LOG_DBG("RST", "Reading stats loaded from file (%d books)", static_cast<int>(store.books.size()));
+-  return true;
+-}
+-
+-bool JsonSettingsIO::loadReadingStatsFromFile(ReadingStatsStore& store, const char* path) {
+-  if (!Storage.exists(path)) {
+-    return false;
+-  }
+-  const String json = Storage.readFile(path);
+-  if (json.isEmpty()) {
+-    return false;
+-  }
+-  return loadReadingStats(store, json.c_str());
++  return ReadingStatsLoadResult::Loaded;
+ }
+ 
+ // ---- AchievementsStore ----
+diff --git a/src/JsonSettingsIO.h b/src/JsonSettingsIO.h
+--- a/src/JsonSettingsIO.h
++++ b/src/JsonSettingsIO.h
+@@ -5,9 +5,9 @@
+ 
+ namespace JsonSettingsIO {
+ 
+-bool saveReadingStats(const ReadingStatsStore& store, const char* path);
+-bool loadReadingStats(ReadingStatsStore& store, const char* json);
+-bool loadReadingStatsFromFile(ReadingStatsStore& store, const char* path);
++enum class ReadingStatsLoadResult { Loaded, Invalid, Unavailable };
++bool saveReadingStats(const ReadingStatsStore& store, const char* path, const char* backupPath = nullptr);
++ReadingStatsLoadResult loadReadingStatsFromFile(ReadingStatsStore& store, const char* path);
+ 
+ bool saveAchievements(const AchievementsStore& store, const char* path);
+ bool loadAchievements(AchievementsStore& store, const char* json);
+diff --git a/src/ReadingStatsStore.cpp b/src/ReadingStatsStore.cpp
+--- a/src/ReadingStatsStore.cpp
++++ b/src/ReadingStatsStore.cpp
+@@ -17,6 +17,9 @@
+ 
+ namespace {
+ constexpr char READING_STATS_FILE_JSON[] = "/.crosspoint/reading_stats.json";
++constexpr char READING_STATS_BACKUP[] = "/.crosspoint/reading_stats.json.bak";
++constexpr char READING_STATS_TEMP[] = "/.crosspoint/reading_stats.json.tmp";
++constexpr char READING_STATS_DAMAGED[] = "/.crosspoint/reading_stats.json.bad";
+ constexpr unsigned long MAX_READING_GAP_MS = 30UL * 60UL * 1000UL;
+ constexpr unsigned long SESSION_HEARTBEAT_MS = 60UL * 1000UL;
+ constexpr unsigned long CHECKPOINT_INTERVAL_MS = 10UL * 60UL * 1000UL;
+@@ -560,23 +563,12 @@
+ }
+ 
+ bool ReadingStatsStore::shouldSaveCheckpoint() const {
+-  if (!dirty || !activeSession.active) {
++  if (!dirty || !activeSession.active || persistence == Persistence::Blocked) {
+     return false;
+   }
+   const unsigned long nowMs = millis();
+   return (nowMs - dirtySinceMs) >= CHECKPOINT_INTERVAL_MS &&
+          (lastSaveAttemptMs == 0 || (nowMs - lastSaveAttemptMs) >= CHECKPOINT_RETRY_INTERVAL_MS);
+-}
+-
+-bool ReadingStatsStore::persistToFile(const char* path) const {
+-  Storage.mkdir("/.crosspoint");
+-  lastSaveAttemptMs = millis();
+-  const bool saved = JsonSettingsIO::saveReadingStats(*this, path);
+-  if (saved) {
+-    dirty = false;
+-    dirtySinceMs = 0;
+-  }
+-  return saved;
+ }
+ 
+ void ReadingStatsStore::rebuildSummaryCache() const {
+@@ -1071,8 +1063,7 @@
+     return false;
+   }
+ 
+-  const bool loaded = JsonSettingsIO::loadReadingStatsFromFile(*this, path.c_str());
+-  if (!loaded) {
++  if (JsonSettingsIO::loadReadingStatsFromFile(*this, path.c_str()) != JsonSettingsIO::ReadingStatsLoadResult::Loaded) {
+     return false;
+   }
+ 
+@@ -1097,25 +1088,72 @@
+ }
+ 
+ bool ReadingStatsStore::saveToFile() const {
+-  if (!dirty && Storage.exists(READING_STATS_FILE_JSON)) {
++  if (!dirty) {
+     return true;
+   }
+-  return persistToFile(READING_STATS_FILE_JSON);
++  const HalStorage::StorageLock lock;
++  lastSaveAttemptMs = millis();
++  if (persistence == Persistence::Blocked ||
++      (persistence == Persistence::NewFile &&
++       (Storage.exists(READING_STATS_FILE_JSON) || Storage.exists(READING_STATS_BACKUP) ||
++        Storage.exists(READING_STATS_TEMP)))) {
++    LOG_ERR("RST", "Reading stats save blocked to preserve existing history");
++    return false;
++  }
++  Storage.mkdir("/.crosspoint");
++  persistence = Persistence::Ready;
++  if (!JsonSettingsIO::saveReadingStats(*this, READING_STATS_FILE_JSON, READING_STATS_BACKUP)) {
++    return false;
++  }
++  dirty = false;
++  dirtySinceMs = 0;
++  return true;
+ }
+ 
+ bool ReadingStatsStore::loadFromFile() {
+-  const std::string tempPath = std::string(READING_STATS_FILE_JSON) + ".tmp";
+-  if (!Storage.exists(READING_STATS_FILE_JSON) && Storage.exists(tempPath.c_str())) {
+-    if (Storage.rename(tempPath.c_str(), READING_STATS_FILE_JSON)) {
+-      LOG_DBG("RST", "Recovered reading_stats.json from interrupted temp file");
+-    }
+-  }
+-
+-  if (!Storage.exists(READING_STATS_FILE_JSON)) {
+-    return false;
+-  }
+-
+-  const bool loaded = JsonSettingsIO::loadReadingStatsFromFile(*this, READING_STATS_FILE_JSON);
++  using JsonSettingsIO::ReadingStatsLoadResult;
++  const HalStorage::StorageLock lock;
++  persistence = Persistence::Blocked;
++  if (!Storage.ready()) {
++    LOG_ERR("RST", "Storage unavailable while loading reading stats");
++    return false;
++  }
++
++  const bool primaryExists = Storage.exists(READING_STATS_FILE_JSON);
++  const auto primaryResult = primaryExists ? JsonSettingsIO::loadReadingStatsFromFile(*this, READING_STATS_FILE_JSON)
++                                           : ReadingStatsLoadResult::Unavailable;
++  bool loaded = primaryResult == ReadingStatsLoadResult::Loaded;
++  if (loaded) {
++    persistence = Persistence::Ready;
++  } else {
++    bool foundFile = primaryExists;
++    for (const char* path : {READING_STATS_BACKUP, READING_STATS_TEMP}) {
++      if (!Storage.exists(path)) {
++        continue;
++      }
++      foundFile = true;
++      if (JsonSettingsIO::loadReadingStatsFromFile(*this, path) != ReadingStatsLoadResult::Loaded) {
++        continue;
++      }
++      loaded = true;
++      // Keep an unreadable primary intact. Only move it aside when its bytes
++      // are known to be malformed and a recovery copy has been parsed.
++      if ((!primaryExists || (primaryResult == ReadingStatsLoadResult::Invalid &&
++                              !Storage.exists(READING_STATS_DAMAGED) &&
++                              Storage.rename(READING_STATS_FILE_JSON, READING_STATS_DAMAGED))) &&
++          Storage.rename(path, READING_STATS_FILE_JSON)) {
++        persistence = Persistence::Ready;
++        LOG_DBG("RST", "Recovered reading stats from %s", path);
++      }
++      break;
++    }
++    if (!foundFile) {
++      persistence = Persistence::NewFile;
++    } else if (persistence == Persistence::Blocked) {
++      LOG_ERR("RST", "Could not restore reading stats on disk; keeping existing files");
++    }
++  }
++
+   if (loaded) {
+     const bool needsSave = dirty;
+     normalizeReadingDays(readingDays);
+@@ -1182,13 +1220,9 @@
+ }
+ 
+ bool ReadingStatsStore::reloadAfterNetwork() {
+-  if (!Storage.exists(READING_STATS_FILE_JSON)) {
+-    return true;
+-  }
+-
+   const bool loaded = loadFromFile();
+-  if (!loaded) {
++  if (!loaded && persistence != Persistence::NewFile) {
+     LOG_ERR("RST", "Failed to reload reading stats after network operation");
+   }
+-  return loaded;
+-}
++  return loaded || persistence == Persistence::NewFile;
++}
+diff --git a/src/ReadingStatsStore.h b/src/ReadingStatsStore.h
+--- a/src/ReadingStatsStore.h
++++ b/src/ReadingStatsStore.h
+@@ -52,9 +52,9 @@
+ 
+ class ReadingStatsStore;
+ namespace JsonSettingsIO {
+-bool saveReadingStats(const ReadingStatsStore& store, const char* path);
+-bool loadReadingStats(ReadingStatsStore& store, const char* json);
+-bool loadReadingStatsFromFile(ReadingStatsStore& store, const char* path);
++enum class ReadingStatsLoadResult;
++bool saveReadingStats(const ReadingStatsStore& store, const char* path, const char* backupPath);
++ReadingStatsLoadResult loadReadingStatsFromFile(ReadingStatsStore& store, const char* path);
+ }  // namespace JsonSettingsIO
+ 
+ class ReadingStatsStore {
+@@ -93,10 +93,11 @@
+   mutable bool dirty = false;
+   mutable unsigned long dirtySinceMs = 0;
+   mutable unsigned long lastSaveAttemptMs = 0;
++  enum class Persistence { Blocked, NewFile, Ready };
++  mutable Persistence persistence = Persistence::Blocked;
+ 
+-  friend bool JsonSettingsIO::saveReadingStats(const ReadingStatsStore&, const char*);
+-  friend bool JsonSettingsIO::loadReadingStats(ReadingStatsStore&, const char*);
+-  friend bool JsonSettingsIO::loadReadingStatsFromFile(ReadingStatsStore&, const char*);
++  friend bool JsonSettingsIO::saveReadingStats(const ReadingStatsStore&, const char*, const char*);
++  friend JsonSettingsIO::ReadingStatsLoadResult JsonSettingsIO::loadReadingStatsFromFile(ReadingStatsStore&, const char*);
+ 
+   size_t findBookIndexByPath(const std::string& path) const;
+   size_t findBookIndexByBookId(const std::string& bookId) const;
+@@ -124,7 +125,6 @@
+   void invalidateSummaryCache();
+   void rebuildSummaryCache() const;
+   void markDirty();
+-  bool persistToFile(const char* path) const;
+   static bool isClockValid(uint32_t epochSeconds);
+ 
+  public:
