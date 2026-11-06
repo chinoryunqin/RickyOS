@@ -172,6 +172,7 @@ class GfxRenderer {
   // fontId -> the family it should actually resolve to (see setPreferredFont()).
   std::map<int, int> ownedPreferredFontMap_;
   std::map<int, int>& preferredFontMap_ = ownedPreferredFontMap_;
+  mutable int fixedTextFontId_ = 0;
   // The family a font id really resolves to (identity unless rebound). EVERY path that
   // looks a family up -- glyph coverage, metrics, preloading -- must go through this,
   // or a rebound id is laid out with the built-in face and drawn in the SD one.
@@ -286,6 +287,20 @@ class GfxRenderer {
   // through resolveFontFamilyId(). The built-in family stays reachable via this id's
   // fallback entry, so glyphs the SD face lacks still render. Empty by default, so
   // every other target behaves exactly as before.
+  int effectiveFontId(int fontId) const { return resolveFontFamilyId(fontId); }
+  // Freeze a whole paragraph's fallback before wrapping it into separate runs.
+  int textFontId(int fontId, const char* text) const {
+    return resolveTextFontId(fontId, text, EpdFontFamily::REGULAR);
+  }
+  class TextFontScope {
+   public:
+    TextFontScope(const GfxRenderer& renderer, int fontId)
+        : renderer_(renderer), previous_(renderer.fixedTextFontId_) { renderer_.fixedTextFontId_ = fontId; }
+    ~TextFontScope() { renderer_.fixedTextFontId_ = previous_; }
+   private:
+    const GfxRenderer& renderer_;
+    int previous_;
+  };
   void setPreferredFont(int fontId, int preferredFontId) { preferredFontMap_[fontId] = preferredFontId; }
   void clearPreferredFonts() { preferredFontMap_.clear(); }
   // Ensure SD card font glyph data is loaded for the given text. Called from layout code
@@ -662,7 +677,7 @@ class GfxRenderer {
   bool beginRetainedGrayscale16();
   // Logical navigation geometry from the published page layout, rotated once
   // at the renderer/HAL boundary. Empty bar means a subpage without main tabs.
-void setNextGray16UiRefresh(int x, int y, int width, int height, uint8_t contentEvery, uint8_t smallEvery,
+  void setNextGray16UiRefresh(int x, int y, int width, int height, uint8_t contentEvery, uint8_t smallEvery,
                               bool adaptive = false) const;
   // Current logical text box; unchanged chrome outside it holds during a turn.
   void setNextGray16ReaderRefresh(int x, int y, int width, int height) const;
@@ -692,6 +707,8 @@ void setNextGray16UiRefresh(int x, int y, int width, int height, uint8_t content
   // the rectangle, without a rotation and two read-modify-writes per pixel: on a
   // rotated panel those walk PSRAM column-wise and dominated UI paint time.
   void fillGrayscale16Rect(int x, int y, int width, int height, uint8_t level) const;
+  // Native gray8 tone; lineWidth == 0 fills, otherwise draws only the border.
+  void drawGrayscale16RoundedRect(int x, int y, int width, int height, int lineWidth, int radius, uint8_t gray) const;
   // Byte-exact snapshot of a logical rectangle in both panel buffers (16-level frame and
   // B/W proxy), so unchanged artwork such as a cover is written back row by row instead
   // of being read, decoded and drawn again. The caller owns the storage.

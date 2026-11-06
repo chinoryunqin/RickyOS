@@ -1,6 +1,7 @@
 #include "JsonSettingsIO.h"
 
 #include <ArduinoJson.h>
+#include <BufferedFile.h>
 #include <HalStorage.h>
 #include <Logging.h>
 #include <Memory.h>
@@ -15,10 +16,8 @@
 
 namespace {
 
-// Atomic JSON write: serialize (streamed) to "<path>.tmp", then rename over the
-// target so a power loss mid-write never corrupts the existing file. Streaming
-// keeps peak heap bounded for large analytics documents.
-bool saveJsonDocumentToFile(const char* moduleName, const char* path, const JsonDocument& doc) {
+bool saveJsonDocumentToFile(const char* moduleName, const char* path, const JsonDocument& doc,
+                            const char* backupPath = nullptr) {
   if (!path || *path == '\0') {
     LOG_ERR(moduleName, "Missing JSON path for write");
     return false;
@@ -39,11 +38,8 @@ bool saveJsonDocumentToFile(const char* moduleName, const char* path, const Json
   memcpy(tempPath.get(), path, pathLength);
   memcpy(tempPath.get() + pathLength, ".tmp", sizeof(".tmp"));
 
-  if (Storage.exists(tempPath.get())) {
-    Storage.remove(tempPath.get());
-  }
-
-  size_t written = 0;
+  const HalStorage::StorageLock lock;
+  bool tempComplete = false;
   {
     HalFile file;
     if (!Storage.openFileForWrite(moduleName, tempPath.get(), file)) {
@@ -51,37 +47,57 @@ bool saveJsonDocumentToFile(const char* moduleName, const char* path, const Json
       return false;
     }
 
-    written = serializeJson(doc, file);
-    file.flush();
+    const size_t written = serializeJson(doc, file);
+    const bool closed = file.close();
+    tempComplete = closed && written == measureJson(doc);
   }
-  if (written == 0) {
+  if (!tempComplete) {
     Storage.remove(tempPath.get());
-    LOG_ERR(moduleName, "serializeJson wrote 0 bytes for %s", path);
+    LOG_ERR(moduleName, "Incomplete JSON write: %s", tempPath.get());
     return false;
   }
 
-  if (Storage.exists(path) && !Storage.remove(path)) {
-    Storage.remove(tempPath.get());
-    LOG_ERR(moduleName, "Could not remove JSON file before replace: %s", path);
-    return false;
+  // Keep the previous committed file on FAT while publishing the new one.
+  if (backupPath && Storage.exists(path)) {
+    if ((Storage.exists(backupPath) && !Storage.remove(backupPath)) || !Storage.rename(path, backupPath)) {
+      LOG_ERR(moduleName, "Could not back up JSON file: %s", path);
+      return false;
+    }
   }
-
-  if (!Storage.rename(tempPath.get(), path)) {
-    Storage.remove(tempPath.get());
-    LOG_ERR(moduleName, "Could not rename JSON temp file to final path: %s", path);
+  const bool published =
+      backupPath ? Storage.rename(tempPath.get(), path) : Storage.replaceFile(tempPath.get(), path);
+  if (!published) {
+    LOG_ERR(moduleName, "Could not publish JSON temp file: %s", path);
     return false;
   }
 
   return true;
 }
 
+class ReadingStatsJsonReader {
+ public:
+  explicit ReadingStatsJsonReader(HalFile& file) : size(file.size()), reader(file, 512) {}
+
+  int read() {
+    uint8_t byte;
+    return reader.read(&byte, 1) == 1 ? byte : -1;
+  }
+
+  size_t readBytes(char* buffer, size_t length) { return reader.read(buffer, length); }
+  bool reachedEnd() const { return reader.position() == size; }
+
+ private:
+  const size_t size;
+  serialization::BufferedFileReader reader;
+};
+
 }  // namespace
 
 // ---- ReadingStatsStore ----
-// reading_stats.json, format version 6. Written atomically (temp + rename) and
-// parsed via a streamed HalFileStream so large histories don't double peak heap.
+// reading_stats.json, format version 6. Stream directly from the SD card to
+// avoid the whole-file helper's size limit and a second full copy in memory.
 
-bool JsonSettingsIO::saveReadingStats(const ReadingStatsStore& store, const char* path) {
+bool JsonSettingsIO::saveReadingStats(const ReadingStatsStore& store, const char* path, const char* backupPath) {
   JsonDocument doc;
   doc["formatVersion"] = 6;
 
@@ -137,15 +153,41 @@ bool JsonSettingsIO::saveReadingStats(const ReadingStatsStore& store, const char
     }
   }
 
-  return saveJsonDocumentToFile("RST", path, doc);
+  return saveJsonDocumentToFile("RST", path, doc, backupPath);
 }
 
-bool JsonSettingsIO::loadReadingStats(ReadingStatsStore& store, const char* json) {
+JsonSettingsIO::ReadingStatsLoadResult JsonSettingsIO::loadReadingStatsFromFile(ReadingStatsStore& store,
+                                                                              const char* path) {
   JsonDocument doc;
-  auto error = deserializeJson(doc, json);
-  if (error) {
-    LOG_ERR("RST", "JSON parse error: %s", error.c_str());
-    return false;
+  {
+    HalFile file;
+    if (!Storage.openFileForRead("RST", path, file)) {
+      return ReadingStatsLoadResult::Unavailable;
+    }
+    ReadingStatsJsonReader reader(file);
+    const auto error = deserializeJson(doc, reader);
+    if (error) {
+      LOG_ERR("RST", "JSON parse error in %s: %s", path, error.c_str());
+      if (error == DeserializationError::NoMemory ||
+          ((error == DeserializationError::EmptyInput || error == DeserializationError::IncompleteInput) &&
+           !reader.reachedEnd())) {
+        return ReadingStatsLoadResult::Unavailable;
+      }
+      return ReadingStatsLoadResult::Invalid;
+    }
+    // ArduinoJson stops at the end of the root object. Reject trailing data
+    // and distinguish a short card read from reaching the physical end.
+    int trailing;
+    while ((trailing = reader.read()) == ' ' || trailing == '\n' || trailing == '\r' || trailing == '\t') {
+    }
+    if (trailing != -1 || !doc["books"].is<JsonArray>()) {
+      LOG_ERR("RST", "Invalid reading stats document: %s", path);
+      return ReadingStatsLoadResult::Invalid;
+    }
+    if (!reader.reachedEnd()) {
+      LOG_ERR("RST", "Short read of reading stats: %s", path);
+      return ReadingStatsLoadResult::Unavailable;
+    }
   }
 
   store.books.clear();
@@ -238,18 +280,7 @@ bool JsonSettingsIO::loadReadingStats(ReadingStatsStore& store, const char* json
   }
   store.rebuildAggregatedReadingDays();
   LOG_DBG("RST", "Reading stats loaded from file (%d books)", static_cast<int>(store.books.size()));
-  return true;
-}
-
-bool JsonSettingsIO::loadReadingStatsFromFile(ReadingStatsStore& store, const char* path) {
-  if (!Storage.exists(path)) {
-    return false;
-  }
-  const String json = Storage.readFile(path);
-  if (json.isEmpty()) {
-    return false;
-  }
-  return loadReadingStats(store, json.c_str());
+  return ReadingStatsLoadResult::Loaded;
 }
 
 // ---- AchievementsStore ----

@@ -72,7 +72,10 @@ bool btReleased = false;
 // panel driver in what is left (hotspot transfer refused for low memory on Read Pico 1.2),
 // so hand that memory to the heap before Wi-Fi starts. One-way until the next restart.
 void releaseIdleBluetooth() {
-#if !defined(SIMULATOR) && FREEINK_CAP_BLE_HID_HOST
+// Plus exposes a runtime Bluetooth shortcut. Releasing this reservation is
+// irreversible until reboot, even after the Wi-Fi session has ended. Keep
+// it available there; stop() still releases the running host's dynamic heap.
+#if !defined(SIMULATOR) && FREEINK_CAP_BLE_HID_HOST && !FREEINK_DEVICE_METALIO_PLUS
   if (btReleased || SETTINGS.bluetoothEnabled) return;
   if (esp_bt_controller_get_status() != ESP_BT_CONTROLLER_STATUS_IDLE) return;
   const size_t before = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);

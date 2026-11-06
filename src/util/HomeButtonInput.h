@@ -18,6 +18,7 @@ enum class HomeButtonAction : uint8_t {
   Back,
   Standby,
   HoldingHand,  // switch the page-turn hand (the reader menu's 惯用手)
+  AddBookmark,
   Count
 };
 

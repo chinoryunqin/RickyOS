@@ -7,25 +7,14 @@
 #include <iterator>
 #include <string>
 
-#include "AppMetricCard.h"
 #include "ReadingStatsDetailActivity.h"
+#include "components/RickyDesignUi.h"
+#include "components/RickyStatsLayout.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
 #include "fontIds.h"
-#include "util/HeaderDateUtils.h"
 
 namespace fui = freeink::ui;
-
-namespace {
-constexpr int SUMMARY_CARD_HEIGHT = 70;
-constexpr int SUMMARY_GAP = 8;
-
-std::string getBookTitle(const ReadingBookStats& book) { return book.title.empty() ? book.path : book.title; }
-
-void drawMetricCard(const GfxRenderer& renderer, const Rect& rect, const char* label, const std::string& value) {
-  AppMetricCard::draw(renderer, rect, label, value);
-}
-}  // namespace
 
 ReadingDayDetailActivity::ReadingDayDetailActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                                    const uint32_t dayOrdinal)
@@ -49,7 +38,7 @@ void ReadingDayDetailActivity::refreshEntries() {
     fui::ListItem item;
     item.label = book ? (book->title.empty() ? book->path.c_str() : book->title.c_str()) : tr(STR_NOT_SET);
     item.subtitle = book ? (book->author.empty() ? tr(STR_IN_PROGRESS) : book->author.c_str()) : tr(STR_NOT_SET);
-    item.icon = listIconFor(UIIcon::Book, 32);
+    item.icon = listIconFor(UIIcon::Book, 40);
     item.value = rowValues[i].c_str();
     item.actionValue = static_cast<int16_t>(i);
     rowItems.push_back(item);
@@ -59,8 +48,6 @@ void ReadingDayDetailActivity::refreshEntries() {
   const auto timeline = ReadingStatsAnalytics::buildTimelineDayEntry(dayOrdinal);
   totalReadingText = ReadingStatsAnalytics::formatDurationHm(entries.empty() ? 0 : timeline.totalReadingMs);
   bookCountText = std::to_string(entries.size());
-  topBookTitle = !entries.empty() && entries.front().book != nullptr ? getBookTitle(*entries.front().book)
-                                                                     : std::string(tr(STR_NOT_SET));
 }
 
 void ReadingDayDetailActivity::openSelectedBook() {
@@ -88,46 +75,69 @@ void ReadingDayDetailActivity::activateIndex(const int index) {
   openSelectedBook();
 }
 
-void ReadingDayDetailActivity::drawChrome() {
-  const auto& metrics = UITheme::getInstance().getMetrics();
-  const int pageWidth = renderer.getScreenWidth();
-  const int sidePadding = metrics.contentSidePadding;
-  const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
-  const int cardWidth = (pageWidth - sidePadding * 2 - SUMMARY_GAP) / 2;
-
-  HeaderDateUtils::drawHeaderWithDate(renderer, tr(STR_READING_DAY), dateLabel.c_str());
-
-  drawMetricCard(renderer, Rect{sidePadding, contentTop, cardWidth, SUMMARY_CARD_HEIGHT}, tr(STR_TOTAL_TIME),
-                 totalReadingText);
-  drawMetricCard(renderer, Rect{sidePadding + cardWidth + SUMMARY_GAP, contentTop, cardWidth, SUMMARY_CARD_HEIGHT},
-                 tr(STR_BOOKS_READ), bookCountText);
-
-  const int listTop = contentTop + SUMMARY_CARD_HEIGHT + metrics.verticalSpacing;
-  GUI.drawSubHeader(renderer, Rect{0, listTop, pageWidth, 34}, tr(STR_TOP_BOOK), topBookTitle.c_str());
-}
+const char* ReadingDayDetailActivity::headerTitle() const { return tr(STR_READING_DAY); }
 
 void ReadingDayDetailActivity::buildScreen(UiScreen& screen) {
-  const auto& metrics = UITheme::getInstance().getMetrics();
-  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
-  const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
-  const int listTop = contentTop + SUMMARY_CARD_HEIGHT + metrics.verticalSpacing;
-  const int listContentTop = listTop + 34 + 10;
-  screen.setContentMargin(fui::Insets{
-      static_cast<int16_t>(listContentTop), static_cast<int16_t>(renderer.getScreenWidth() - (safe.x + safe.width)),
-      static_cast<int16_t>(metrics.buttonHintsHeight + metrics.verticalSpacing), static_cast<int16_t>(safe.x)});
-
+  namespace ds = ricky::ds;
+  namespace design = RickyDesignUi;
+  const auto bounds = pageContentRect();
+  const auto safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
+  const int left = std::max<int>(ds::space::kPageMargin, safe.x);
+  const int right = std::min<int>(renderer.getScreenWidth() - ds::space::kPageMargin, safe.x + safe.width);
+  const int top = bounds.y + ds::space::kBlockGap;
+  const int bottom = std::min(bounds.y + bounds.height, safe.y + safe.height) - ds::space::k4;
+  screen.setContentMarginFromScreen(
+      fui::Insets{static_cast<int16_t>(top), static_cast<int16_t>(renderer.getScreenWidth() - right),
+                  static_cast<int16_t>(renderer.getScreenHeight() - bottom), static_cast<int16_t>(left)});
+  const int gap = ds::space::kGutter;
+  const int pad = ds::space::kCardPadding;
+  const int captionHeight = std::max(renderer.getLineHeight(design::CAPTION), renderer.getLineHeight(design::BODY));
+  const int valueHeight = std::max(renderer.getLineHeight(design::HEADLINE), renderer.getLineHeight(design::BODY));
+  const auto date = screen.takeTop(captionHeight, ds::space::kBlockGap);
+  design::secondaryText(renderer, date, dateLabel.c_str());
+  const int width = (screen.body().width - gap) / 2;
+  const StrId labels[] = {StrId::STR_TOTAL_TIME, StrId::STR_BOOKS_READ};
+  const char* values[] = {totalReadingText.c_str(), bookCountText.c_str()};
+  RickyUiTarget measureTarget(renderer);
+  fui::TextStyle labelStyle;
+  labelStyle.font = fui::GfxRendererTarget::FONT_BODY;
+  labelStyle.maxLines = 2;
+  int labelHeight = captionHeight;
+  for (const auto label : labels) {
+    const char* text = I18N.get(label);
+    measureTarget.setFont(labelStyle.font,
+                          renderer.textFontId(design::fontFor(renderer, design::CAPTION, text), text));
+    labelHeight = std::max<int>(
+        labelHeight, fui::measureWrappedText(measureTarget, text, labelStyle, std::max(1, width - pad * 2)).height);
+  }
+  const int cardHeight = RickyStatsLayout::summaryCardHeight(valueHeight, labelHeight);
+  const auto cards = screen.takeTop(cardHeight, ds::space::kBlockGap);
+  for (int i = 0; i < 2; ++i) {
+    const fui::Rect card{static_cast<int16_t>(cards.x + i * (width + gap)), cards.y, static_cast<int16_t>(width),
+                         cards.height};
+    design::softCard(renderer, card, false);
+    design::text(renderer,
+                 {static_cast<int16_t>(card.x + pad), static_cast<int16_t>(card.y + pad),
+                  static_cast<int16_t>(width - pad * 2), static_cast<int16_t>(valueHeight)},
+                 values[i], design::HEADLINE);
+    design::secondaryText(renderer,
+                          {static_cast<int16_t>(card.x + pad),
+                           static_cast<int16_t>(card.y + pad + valueHeight + ds::space::kTextStackGap),
+                           static_cast<int16_t>(width - pad * 2), static_cast<int16_t>(labelHeight)},
+                          I18N.get(labels[i]), design::CAPTION, false, fui::TextAlign::Left, 2);
+  }
   if (entries.empty()) {
     screen.centeredText(tr(STR_NO_READING_DAY), screen.theme().bodyText);
     return;
   }
-
   fui::ListProps props;
   props.items = rowItems.data();
   props.count = static_cast<uint16_t>(rowItems.size());
   props.action = ACTION_ROW;
   props.inputMask = fui::InputTouch;
-  props.valueInset = 8;
-  syncListViewport(screen, props, /*hasSubtitle=*/true);
+  props.valueInset = ds::space::kInlineGap;
+  props.labelText.maxLines = 2;
+  syncListViewport(screen, props);
   screen.list(props);
 }
 

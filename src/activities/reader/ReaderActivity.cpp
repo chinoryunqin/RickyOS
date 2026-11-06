@@ -3,6 +3,7 @@
 #include <FontCacheManager.h>
 #include <FsHelpers.h>
 #include <HalStorage.h>
+#include <I18n.h>
 #include <KOReaderDocumentId.h>
 #include <Memory.h>
 #include <TrustedTime.h>
@@ -17,6 +18,8 @@
 #include "ReaderUtils.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
+#include "SystemUiFonts.h"
+#include "components/UITheme.h"
 
 ReaderActivity::ReaderActivity(const char* name, GfxRenderer& renderer, MappedInputManager& mappedInput,
                                std::string bookPath, const bool allowFastInitialRefresh)
@@ -86,13 +89,25 @@ void ReaderActivity::rememberBookOnceRendered() {
   RECENT_BOOKS.addBook(bookPath, getBookTitle(), getBookAuthor(), getBookThumbBmpPath());
 }
 
+void ReaderActivity::showExitProgress() {
+  if (!pageRendered.load(std::memory_order_acquire) || !renderer.hasFrameBuffer()) return;
+  renderer.waitRefreshComplete();
+  if (renderer.beginRetainedGrayscale16()) {
+    renderer.setDisplayCapture(true);
+    GUI.drawPopup(renderer, tr(STR_RICKY_LEAVING_BOOK));
+    renderer.setDisplayCapture(false);
+    if (renderer.commitGrayscale16()) return;
+  }
+  GUI.drawPopup(renderer, tr(STR_RICKY_LEAVING_BOOK));
+}
+
 void ReaderActivity::onExit() {
   Activity::onExit();
 
 #if !defined(BOARD_HAS_PSRAM) || FREEINK_DEVICE_METALIO_PLUS
   // Keep rebuildable font buffers from pinning the heap between reading sessions.
   if (auto* fontCache = renderer.getFontCacheManager()) {
-    fontCache->releaseSdFontCaches();
+    fontCache->releaseSdFontCaches(systemUiFonts::ownsFont);
   }
 #if FREEINK_DEVICE_METALIO_PLUS && CROSSPOINT_VECTOR_FONTS
   // The next reading session can warm the released glyph arena again. Keep
@@ -186,6 +201,7 @@ void ReaderActivity::loop() {
   if (handleEndOfBookMenu()) return;
   if (handleFormatInput()) return;
   if (handleBackNavigation()) return;
+  if (ReaderUtils::isTouchRefreshTap(renderer, mappedInput)) { handleForcedRefresh(); return; }
 
   const auto touch = ReaderUtils::detectTouchPageTurn(renderer, mappedInput);
   auto [prevTriggered, nextTriggered, fromTilt] = ReaderUtils::detectPageTurn(mappedInput);

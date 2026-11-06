@@ -35,6 +35,9 @@ struct RenderConfig {
   // behaviour, one source pixel per output pixel), true = bilinear blend of the
   // source neighbourhood. Callers that must keep the cheap path leave it false.
   bool bilinearScaling = false;
+  const uint8_t* toneLut = nullptr;  // Borrowed immutable reader-owned 256-byte LUT; synchronous decode only.
+  uint32_t cacheIdentity = 0;
+  uint8_t adjustTone(uint8_t sample) const { return toneLut ? toneLut[sample] : sample; }
   std::string cachePath;  // If non-empty, decoder will write pixel cache to this path
   DecodeOutput output = DecodeOutput::FrameBufferAndCache;
   // Optional, caller-owned result for this synchronous decode.

@@ -79,9 +79,12 @@ bool MetalioCameraActivity::decodeFrame() {
 }
 void MetalioCameraActivity::activate(int index) {
   if (index == 0) {
-    // Freeze the shown frame; save that exact JPEG after an in-flight preview finishes.
-    paused_ = true;
-    if (imageReady_) saveQueued_ = true;
+    // Check the last completed refresh under the same lock as render().
+    RenderLock lock(RenderLock::Mode::Try);
+    if (lock.ownsLock() && imageReady_ && !HalCamera::busy() &&
+        HalCamera::snapshot().generation == displayedGeneration_ && HalCamera::saveCurrent()) {
+      paused_ = true;
+    }
   } else if (index == 1) {
     paused_ = !paused_;
     if (!imageReady_ || shown_.state == HalCamera::State::Error) paused_ = false;
@@ -151,11 +154,7 @@ void MetalioCameraActivity::loop() {
       return;
     }
   }
-  if (saveQueued_ && !HalCamera::busy()) {
-    saveQueued_ = false;
-    requestUpdateAndWait();  // Paint the frozen frame before saving its JPEG.
-    HalCamera::saveCurrent();
-  } else if (!paused_ && !HalCamera::busy() && bitmap_ && decoder_ && millis() >= nextPreview_) {
+  if (!paused_ && !HalCamera::busy() && bitmap_ && decoder_ && millis() >= nextPreview_) {
     HalCamera::requestPreview();
     nextPreview_ = millis() + 3000;
   }
@@ -191,5 +190,6 @@ void MetalioCameraActivity::render(RenderLock&&) {
   const auto hints = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, hints.btn1, hints.btn2, hints.btn3, hints.btn4);
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+  displayedGeneration_ = imageReady_ ? generation_ : 0;
 }
 #endif

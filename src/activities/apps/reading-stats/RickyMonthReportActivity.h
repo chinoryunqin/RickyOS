@@ -1,21 +1,19 @@
 #pragma once
 
-#include "activities/UiListActivity.h"
+#include "RickyStatsActivity.h"
 
 // RickyOS month report: one month in a page. The total and how it was read, the month's
 // title (全勤书虫, 周末读者, …) with why, the books read most, the week's shape, and the
 // badges earned that month or the next one to aim for.
-class RickyMonthReportActivity final : public UiListActivity {
+class RickyMonthReportActivity final : public RickyStatsActivity {
  public:
   // month = year * 12 + (month - 1), as rickyMonth uses.
   RickyMonthReportActivity(GfxRenderer& renderer, MappedInputManager& input, int month)
-      : UiListActivity("RickyMonthReport", renderer, input), month_(month) {}
+      : RickyStatsActivity("RickyMonthReport", renderer, input), month_(month) {}
 
  protected:
-  int listCount() const override { return 0; }
   const char* headerTitle() const override;
-  void buildScreen(UiScreen& screen) override;
-  void activateIndex(int) override {}
+  void buildPage(UiScreen& screen, RickyStatsPage& page) override;
 
  private:
   int month_;

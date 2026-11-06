@@ -558,11 +558,16 @@ TEST_F(SectionMemoryTest, LayoutOomAndWriteErrorNeverCommitCache) {
     }
     expectNoCache();
   }
+}
+
+TEST_F(SectionMemoryTest, MalformedChapterCommitsRecoveredPagination) {
   writeHtml("<html><body><p>broken</body></html>");
   Section section(epub, 0, renderer);
-  EXPECT_FALSE(section.createSectionFile(spec));
-  EXPECT_EQ(section.buildError(), Section::BuildError::InvalidData);
-  expectNoCache();
+  ASSERT_TRUE(section.createSectionFile(spec));
+  ASSERT_TRUE(section.loadSectionFile(spec));
+  EXPECT_FALSE(section.isPartial());
+  EXPECT_EQ(section.pageCount, 1);
+  EXPECT_TRUE(std::filesystem::exists(epub->cachePath + "/html/0.html.recover-v1"));
 }
 
 TEST_F(SectionMemoryTest, InitializationFailureReleasesResourcesAndPreservesPriorCache) {

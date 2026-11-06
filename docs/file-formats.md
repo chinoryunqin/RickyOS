@@ -106,6 +106,18 @@ if (parsedSize != fileSize) {
 
 ## `section.bin`
 
+The ordinary Metalio 1.2.16 candidate uses CSS cache version 17. CSS background
+image paths use a bounded resource pool. A stale CSS cache invalidates its
+derived pagination. A chapter recovered from malformed XHTML can keep a
+one-byte `.recover-v1` marker beside its extracted HTML to choose recovery on
+the next build. The marker is outside the section and progress formats.
+
+Decoded image caches use a 12-byte PXC2 header with a 32-bit magic, a 32-bit
+adjustment identity and two 16-bit dimensions. Packed 2bpp rows follow it.
+The new filenames end in `.v2.pxc`, `.b.v2.pxc` or `.tone.v2.pxc`. The
+identity includes the image adjustment and scaling parameters, so changing
+the reading profile cannot reuse pixels from a different adjustment.
+
 ### Isolated Plus port: version 119 (book typography and panels, 2026-10-22)
 
 This applies to `ports/metalio-e-ink4-plus/firmware/rickyos-plus-1.2`, not to
@@ -232,6 +244,17 @@ Auto is the default. Changing modes invalidates both complete and partial caches
 older caches are rebuilt because their headers lack this field.
 Without a CSS indent, Auto leaves paragraphs unindented. Select Indent to retain
 the implicit indentation used by older firmware when extra paragraph spacing was off.
+
+Versions 133 (no image-outset header), 135 (Read Pico WebP), 137 (Read Pico
+without WebP), 139 (Plus WebP), and 141 (Plus without WebP) reinterpret the same
+one-byte spacing field as `paragraphSpacingPercent` (0..200, in 1% steps).
+A value of 100 adds one line pitch after a paragraph; 0 adds no extra gap.
+The field remains an independent cache key. Complete and suspended caches from
+older versions are rebuilt because their bytes encode six discrete levels.
+JSON settings use a new `paragraphSpacingPercent` key; old `extraParagraphSpacing`
+values 0..5 migrate to 0/50/75/100/125/150%, preserving the old visual gap.
+The legacy binary settings importer applies the same conversion. Explicit book
+paragraph margins still take precedence when embedded styles are enabled.
 
 Versions 70/71 encode `extraParagraphSpacing` as a byte: 0 disables extra spacing;
 1..5 add 0.5, 0.75, 1, 1.25 or 1.5 line heights after a paragraph. The exact level
@@ -453,7 +476,7 @@ struct SectionBin {
 
     s32 fontId;
     float lineCompression;
-    u8 extraParagraphSpacing;
+    u8 paragraphSpacingPercent; // 0..200% of line pitch
     u8 firstLineIndent;
     u8 paragraphIndentSpaces; // forced Western indent, 0..5
     u8 paragraphAlignment;
@@ -1035,3 +1058,119 @@ make a real book disappear.
 
 `selfSize` is the expected file size. Comparing it against the real one is a free
 truncation guard: a build cut short by a power failure cannot pass.
+
+## LSR1 — explicitly selected library sources
+
+`/.crosspoint/library-sources.v1` is separate from CLX1. Byte order is little
+endian: `LSR1` (4 bytes), rule count (u16, max 128), rules, checksum (u32).
+Each rule is kind (u8: 1 folder, 2 recursive folder, 3 book, 4 excluded book),
+path byte length (u8, 1..255), and that many UTF-8 path bytes without NUL.
+Paths must be canonical absolute paths without dot segments or control bytes.
+Checksum is FNV-1a32 over all preceding bytes. Exact EOF is required.
+`.tmp` and `.bak` support checked install/rollback. On first opt-in, the old
+CLX1 file is copied to `library-legacy.idx` as finite references, not a scan root.
+
+## LCT1 — manual library categories
+
+`/.crosspoint/library-categories.v1` does not alter CLX1 or reading progress.
+All integers are explicitly little endian, independent of struct padding.
+
+| Section | Bytes / constraints |
+|---|---|
+| Magic | `LCT1`, 4 bytes |
+| Member count | u16, max 16384 (the CLX1 book limit); exact file size must be `790 + count * 10 + 4` |
+| Category names | 16 stable slots × 49 bytes, each NUL-terminated UTF-8, max 48 name bytes; empty first byte = unused slot |
+| Members | Strictly increasing unique u64 CLX1 complete-path fingerprints + u16 nonzero category mask; bits may reference only occupied slots |
+| Checksum | FNV-1a32 of the magic, all 784 name bytes and all member bytes; count is excluded but protected by exact file size |
+
+Duplicate names, blank-only/control-containing names, invalid UTF-8, unordered
+records, unknown mask bits, invalid checksums and truncated files are rejected.
+Updates stream/merge into `.tmp`, close/check writes, rotate the old file to
+`.bak`, then install the temporary file. A missing current file is recovered
+from `.bak`; a corrupt current file is not silently overwritten with emptiness.
+Deleting a category clears its bit before its slot can be reused. It never
+deletes or moves a book. Unclassified books have no member record.
+Paths survive index sorting/rebuild but externally renamed or moved books have
+new identities, as in CLX1 reconciliation. Category files are not device-internal
+Flash assets: they live alongside the SD-based catalog.
+
+
+### Pico static WebP / CFF compatibility (unreleased 2026-11-01)
+
+With RICKYOS_WEBP enabled, Read Pico uses section version131 / partial151.
+The section binary layout is unchanged; old123/159 chapters are rebuilt lazily
+because decoder/body-background capabilities changed. Source-offset progress is retained.
+CSS cache17 adds background-image index(u16) before backgroundLuma, flag bit25,
+and a final bounded local-background resource pool: count(u16), then repeated
+path length(u16) and UTF-8 bytes (32 paths,512B each,4096B total).
+Style wire size is89B. Font and background resource stores are separate.
+Body canvas art is contained in the viewport behind normal text; cover cropping,
+repeat/position/gradient and arbitrary nested backgrounds are not implemented.
+Image extraction/pixel caches use img_webp1_; unsupported/missing art does not stop text.
+A former zero-byte coverless marker retries once with a .webp-v1 capability sidecar.
+User books, EPUB bytes, progress and bookmark formats are not modified.
+
+## Reader image pixel cache v2 (PXC2)
+
+Reader image adjustments introduce `.v2.pxc`, `.b.v2.pxc` and `.tone.v2.pxc`.
+The 12-byte little-endian header is `uint32 magic=0x32435850`,
+`uint32 adjustmentIdentity`, `uint16 width`, `uint16 height`, followed by
+row-major 2bpp pixels, four pixels per byte, most significant sample first.
+Identity packs signed 8-bit contrast, signed 8-bit brightness and the smooth
+flag at bits 0, 8 and 16. It is checked before pixels are used. The algorithm
+version is v2; any incompatible tone algorithm needs a new identity/version.
+Neutral nearest/bilinear retain separate caches. All non-neutral settings
+share one replaceable `.tone.v2.pxc` per image, bounding slider-induced disk
+growth. Native 16-gray direct rendering remains cache-free. Old `.pxc` and
+`.b.pxc` files are ignored. Book/section binary layouts do not change.
+
+Per-book image preferences live outside the disposable EPUB cache at
+`/.crosspoint/image-<64-bit-book-path-FNV1a>.json`, version 1, containing the
+full book path (checked on load), contrast, brightness and smooth. No override
+means follow reading defaults. Clearing book caches preserves this preference.
+
+### Reader image contrast algorithm identity (images-dev3)
+
+PXC2 keeps its 12-byte header and magic. Identity bits 0–7 encode signed
+contrast, 8–15 encode signed image brightness and bit 16 encodes smoothing.
+Bit 17 marks the stronger contrast algorithm whenever contrast is nonzero.
+The same shared identity function keys full reader pages and PXC2 images, so
+old non-neutral contrast pixels cannot survive an algorithm update. Neutral
+and brightness-only profiles retain their previous identity and output.
+Book/section binary layouts and the per-book JSON schema are unchanged.
+
+### Reader brightness scale v2 (images-dev4)
+
+Per-book image JSON now writes `version: 2`. Its brightness value is the user
+scale (-40..40); rendering uses brightness minus 15. Settings JSON records
+`readerImageBrightnessScaleVersion: 2` with the same user-scale value.
+Legacy version-1 book profiles and unversioned global brightness migrate on
+load: old zero adopts the new zero baseline; other values add 15 and clamp
+to the UI range. Thus old -15 becomes new zero without a second darkening.
+Legacy brightness above +25 reaches the new UI maximum +40, whose render
+offset is +25; it cannot retain the old extreme highlight lift. Migration is
+read-only for book files until Apply; settings use their existing resave path.
+
+PXC2 still has the same header. Its identity brightness byte encodes the
+actual render offset (-55..25), rather than the new UI label. Identical pixels
+retain identical keys; new default zero uses the old -15 cache identity.
+Raw original-tone comparison uses render offset zero and remains unadjusted.
+No book/section binary layouts change.
+
+
+Paragraph-gap scale trial: versions 143/145/147/149/151 respectively replace
+133/135/137/139/141. The one-byte field now stores 0..200 with 100 neutral;
+ordinary paragraph margins can shrink to zero or expand. Binary header size is
+unchanged. Complete and suspended pagination from the additional-gap trial are
+invalidated together. JSON writes `paragraphSpacingScalePercent`; previous
+`paragraphSpacingPercent` and legacy enum values migrate to the new neutral
+midpoint and are clamped to the new upper limit. BlockStyle's paragraph marker
+is layout-only and is not written to page records.
+
+Paragraph-gap 400% trial: section versions 153/155/157/159/161 replace
+143/145/147/149/151; the paragraphSpacingPercent field at offset 9 is now
+uint16 little-endian (0..400, neutral 100), adding one byte to the header.
+The paired partial-cache version changes too; old complete and suspended
+caches rebuild. Existing paragraphSpacingScalePercent JSON values remain unchanged.
+No new heap allocations; render/settings/preview records gain a 16-bit field
+and existing SettingInfo records gain one member pointer for wide values.

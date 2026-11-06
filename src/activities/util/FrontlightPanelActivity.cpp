@@ -15,6 +15,9 @@
 #include <iterator>
 
 #include "CrossPointSettings.h"
+#include "BleInput.h"
+#include "activities/settings/BluetoothSettingsActivity.h"
+#include "components/icons/uiChromeIcons.h"
 #include "MappedInputManager.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
@@ -89,6 +92,22 @@ constexpr auto kSpeakerBits = [] {
   return bits;
 }();
 constexpr freeink::Icon kSpeakerIcon{32, 32, 16, kSpeakerBits.data()};
+#if FREEINK_CAP_BLE_HID_HOST
+// Use the existing system Bluetooth mark at the same 40px optical size as the
+// other quick actions. This constexpr bitmap costs no runtime allocation.
+constexpr auto kBluetoothBits = [] {
+  std::array<uint8_t, 200> bits{};
+  for (auto& b : bits) b = 0xff;
+  for (int y = 0; y < 40; ++y)
+    for (int x = 0; x < 40; ++x) {
+      const int sx = x * 24 / 40, sy = y * 24 / 40;
+      if (!(icon_reader_bluetooth_24_bits[sy * 3 + sx / 8] & (0x80 >> (sx % 8))))
+        bits[y * 5 + x / 8] &= ~(0x80 >> (x % 8));
+    }
+  return bits;
+}();
+constexpr freeink::Icon kBluetoothIcon{40, 40, 20, kBluetoothBits.data()};
+#endif
 
 // Takes a rounded card of `height` off the top of `screen`; returns a screen laid
 // out inside its padding, as the landscape columns do.
@@ -216,6 +235,13 @@ void FrontlightPanelActivity::onWarmthStepEvent(const fui::ActionEvent& event, v
 
 void FrontlightPanelActivity::onTileEvent(const fui::ActionEvent& event, void* user) {
   auto* self = static_cast<FrontlightPanelActivity*>(user);
+#if FREEINK_CAP_BLE_HID_HOST
+  if (event.value == static_cast<int16_t>(Tile::Bluetooth) && event.longPress) {
+    self->app.clearTapFlash();
+    self->openBluetoothSettings();
+    return;
+  }
+#endif
   if (event.dragPermille >= 0 || event.value == kVolumeStep || event.value == -kVolumeStep) {
     self->volume = event.dragPermille >= 0 ? percentFromPermille(event.dragPermille)
         : static_cast<uint8_t>(std::clamp<int>(self->volume + (event.value > 0 ? 1 : -1), 0, 100));
@@ -272,7 +298,21 @@ bool FrontlightPanelActivity::handleHomeGesture() {
 }
 
 void FrontlightPanelActivity::loop() {
-  const auto touch = routeTouch(mappedInput, false, /*routeHeld=*/true);
+#if FREEINK_CAP_BLE_HID_HOST
+  if (SETTINGS.bluetoothEnabled && !bleinput::isRunning() && !bleinput::radioBusy() &&
+      millis() >= nextBluetoothAttemptAt) {
+    nextBluetoothAttemptAt = millis() + 2000;
+    RenderLock lock;
+    bleinput::ensureStarted(renderer, bleinput::StartContext::Explicit);
+  }
+  if (renderedBluetoothState != bluetoothState()) requestUpdate();
+  if (bluetoothBannerUntil && millis() >= bluetoothBannerUntil) {
+    bluetoothBannerUntil = 0;
+    bluetoothBanner[0] = 0;
+    requestUpdate();
+  }
+#endif
+  const auto touch = routeTouch(mappedInput, true, /*routeHeld=*/true);
   if (touch.routed) {
     if (app.invalidated() && (!touch.snap.touchHeld || millis() - lastSliderRenderAt >= 250)) requestUpdate();
     if (touch) {
@@ -468,9 +508,57 @@ void FrontlightPanelActivity::runRickyTile(const Tile tile) {
       SETTINGS.saveToFile();
       requestUpdate();
       break;
+    case Tile::Bluetooth:
+      toggleBluetooth();
+      break;
     case Tile::Preview:
       break;  // ACTION_TILE dispatcher owns the audio preview command.
   }
+}
+
+uint8_t FrontlightPanelActivity::bluetoothState() const {
+#if FREEINK_CAP_BLE_HID_HOST
+  if (!SETTINGS.bluetoothEnabled) return 0;
+  if (bleinput::radioBusy()) return 1;
+  return bleinput::isConnected() ? 3 : 2;
+#else
+  return 0;
+#endif
+}
+
+void FrontlightPanelActivity::openBluetoothSettings() {
+#if FREEINK_CAP_BLE_HID_HOST
+  startActivityForResultWith<BluetoothSettingsActivity>([this](const ActivityResult&) { requestUpdate(); });
+#endif
+}
+
+void FrontlightPanelActivity::toggleBluetooth() {
+#if FREEINK_CAP_BLE_HID_HOST
+  SETTINGS.bluetoothEnabled = !SETTINGS.bluetoothEnabled;
+  SETTINGS.saveToFile();
+  bluetoothBannerUntil = 0;
+  bluetoothBanner[0] = 0;
+  if (!SETTINGS.bluetoothEnabled) {
+    bleinput::stop();
+  } else {
+    bleinput::StartResult result;
+    {
+      RenderLock lock;
+      result = bleinput::ensureStarted(renderer, bleinput::StartContext::Explicit);
+    }
+    const char* message = result == bleinput::StartResult::RadioBusy   ? tr(STR_BT_WIFI_PAUSED)
+                          : result == bleinput::StartResult::LowMemory ? tr(STR_BT_LOW_MEMORY)
+                          : result == bleinput::StartResult::Failed || result == bleinput::StartResult::Unavailable
+                              ? tr(STR_BT_UNAVAILABLE)
+                              : nullptr;
+    if (message) {
+      snprintf(bluetoothBanner, sizeof(bluetoothBanner), "%s", message);
+      bluetoothBannerUntil = millis() + 4000;
+    }
+    nextBluetoothAttemptAt = millis() + 2000;
+  }
+  requestUpdate();
+#endif
 }
 
 void FrontlightPanelActivity::cycleCleanRefresh() {
@@ -515,10 +603,13 @@ void FrontlightPanelActivity::roundActionRow(UiScreen& screen, const RoundAction
   const int16_t labelHeight = target.lineHeight(theme.smallText.font);
   const auto row = screen.takeTop(static_cast<int16_t>(kTilePad + 40 + kTileLabelGap + labelHeight + kTilePad), 0);
   const int columns = std::max(kActionColumns, count);
-  const int16_t width = static_cast<int16_t>((row.width - (columns - 1) * kTileSpacing) / columns);
+  // Keep the normal spacing where possible; narrow portrait screens need a
+  // 8-12px gap to fit five full-size targets. Drawing and hit-testing use it.
+  const int16_t gap = std::clamp<int16_t>((row.width - columns * kTouch) / (columns - 1), 8, kTileSpacing);
+  const int16_t width = static_cast<int16_t>((row.width - (columns - 1) * gap) / columns);
   for (int i = 0; i < count; ++i) {
     const RoundAction& action = actions[i];
-    const fui::Rect tile{static_cast<int16_t>(row.x + i * (width + kTileSpacing)), row.y, width, row.height};
+    const fui::Rect tile{static_cast<int16_t>(row.x + i * (width + gap)), row.y, width, row.height};
     // On (or pressed) = an ink tile with icon and label in paper; off = a quiet outline.
     const bool on = action.on ||
                     fui::hasState(screen.frame().stateFor(ACTION_TILE, static_cast<int16_t>(action.tile)), fui::StateActive);
@@ -534,7 +625,9 @@ void FrontlightPanelActivity::roundActionRow(UiScreen& screen, const RoundAction
     target.text(fui::Rect{static_cast<int16_t>(tile.x + 4), static_cast<int16_t>(tile.y + kTilePad + 40 + kTileLabelGap),
                           static_cast<int16_t>(width - 8), labelHeight},
                 action.label, label);
-    screen.frame().hit(tile, ACTION_TILE, static_cast<int16_t>(action.tile), fui::InputTouch);
+    screen.frame().hit(tile, ACTION_TILE, static_cast<int16_t>(action.tile),
+                       action.tile == Tile::Bluetooth ? static_cast<uint16_t>(fui::InputTouch | fui::InputLongPress)
+                                                      : fui::InputTouch);
   }
 }
 
@@ -582,12 +675,13 @@ void FrontlightPanelActivity::buildRickyPanel(UiScreen& screen) {
   snprintf(today, sizeof(today), tr(STR_RICKY_HOME_TODAY),
            static_cast<unsigned>(READING_STATS.getTodayReadingMs() / 60000));
   snprintf(infoText, sizeof(infoText), haveTime ? "%s · %s" : "%s%s", date, today);
+  if (bluetoothBannerUntil) snprintf(infoText, sizeof(infoText), "%s", bluetoothBanner);
   target.text(screen.takeTop(smallHeight, 0), infoText, small);
 
   // Every control below is a touch target; a buttons-only board keeps just the clock.
   if (!mappedInput.hasTouch()) return;
   screen.spacer(kGroupGap);
-  RoundAction actions[7] = {
+  RoundAction actions[8] = {
       {Tile::Night, &icon_ricky_night_40, tr(STR_NIGHT_MODE), SETTINGS.screenInverted != 0},
       {Tile::Refresh, &icon_ricky_refresh_40, tr(STR_FORCE_REFRESH), false},
       {Tile::Standby, &icon_ricky_standby_40, tr(STR_RICKY_STANDBY_NOW), false},
@@ -610,6 +704,14 @@ void FrontlightPanelActivity::buildRickyPanel(UiScreen& screen) {
       {Tile::FastRefresh, &icon_ricky_fast_40, tr(STR_RICKY_CC_FAST_REFRESH), SETTINGS.readerFastRefresh != 0},
   };
   int count = 4;
+#if FREEINK_CAP_BLE_HID_HOST
+  renderedBluetoothState = bluetoothState();
+  const char* bluetoothLabel = renderedBluetoothState == 3   ? tr(STR_BT_CONNECTED)
+                               : renderedBluetoothState == 1 ? tr(STR_BT_PAUSED_SHORT)
+                               : renderedBluetoothState == 2 ? tr(STR_BT_NOT_CONNECTED)
+                                                             : tr(STR_BLUETOOTH);
+  actions[count++] = {Tile::Bluetooth, &kBluetoothIcon, bluetoothLabel, SETTINGS.bluetoothEnabled != 0};
+#endif
   // Landscape has room for the reading actions in the same row.
   if (landscape && overReader)
     for (const auto& action : reading) actions[count++] = action;

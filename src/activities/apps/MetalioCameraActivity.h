@@ -29,9 +29,9 @@ class MetalioCameraActivity final : public Activity {
   std::unique_ptr<JPEGDEC> decoder_;
   HalCamera::Snapshot shown_;
   int width_ = 0, height_ = 0, maxHeight_ = 0, sourceWidth_ = 0, sourceHeight_ = 0, selected_ = 0;
-  uint32_t generation_ = 0, nextPreview_ = 0;
+  uint32_t generation_ = 0, displayedGeneration_ = 0, nextPreview_ = 0;
   bool diagnostic_ = false, diagnosticSaved_ = false;
   uint32_t diagnosticDoneAt_ = 0;
-  bool imageReady_ = false, paused_ = false, saveQueued_ = false, waitRelease_ = true;
+  bool imageReady_ = false, paused_ = false, waitRelease_ = true;
 };
 #endif

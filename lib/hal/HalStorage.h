@@ -114,7 +114,8 @@ class HalStorage {
 
 #if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
   // Stack-owned lease: serialize every SD user until rails/remount/file positions
-  // are restored. Unsupported live handles block sleep instead of being invalidated.
+  // are restored. Unsupported live handles retain SD and use shallow CPU sleep
+  // instead of being invalidated by the static park.
   class StandbySession {
    public:
     bool suspend();

@@ -1,6 +1,8 @@
 #pragma once
 
+#include <CancelCheck.h>
 #include <HalStorage.h>
+#include <TxtEncoding.h>
 
 #include <cstddef>
 #include <string>
@@ -26,9 +28,11 @@ class Epub {
   std::string getLanguage() const { return "en"; }
   CssParser* getCssParser() const { return css; }
   template <typename Output>
-  bool readItemContentsToStream(const std::string&, Output&, size_t, bool = false) const {
+  bool readItemContentsToStream(const std::string&, Output&, size_t, bool = false, size_t = 0, CancelCheck = {},
+                                txt_encoding::ReadError* = nullptr) const {
     return false;
   }
+  uint32_t txtVisibleBase(int) const { return 0; }
 
   bool extractItemToFile(const std::string&, const std::string&) const { return false; }
 };

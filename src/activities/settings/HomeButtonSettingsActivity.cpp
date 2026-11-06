@@ -16,7 +16,7 @@ constexpr StrId KEY_LABELS[] = {StrId::STR_HOME_BUTTON, StrId::STR_PLUS_KEY_AI, 
                                 StrId::STR_PLUS_KEY_UP, StrId::STR_PLUS_KEY_DOWN};
 constexpr StrId KEY_ACTIONS[] = {StrId::STR_PLUS_KEY_DEFAULT, StrId::STR_IGNORE, StrId::STR_BACK, StrId::STR_CONFIRM, StrId::STR_PREV_PAGE,
                                 StrId::STR_NEXT_PAGE, StrId::STR_HOME_SHORTCUT, StrId::STR_READER_MENU, StrId::STR_FORCE_REFRESH,
-                                StrId::STR_TOGGLE_FRONTLIGHT, StrId::STR_RICKY_CC_TITLE};
+                                StrId::STR_TOGGLE_FRONTLIGHT, StrId::STR_RICKY_CC_TITLE, StrId::STR_KEY_ADD_BOOKMARK, StrId::STR_HOME_ACTION_HAND};
 static_assert(sizeof(KEY_ACTIONS)/sizeof(KEY_ACTIONS[0]) == plus_keys::Count);
 }
 #endif
@@ -62,6 +62,7 @@ void HomeButtonSettingsActivity::activateIndex(int index) {
         SETTINGS.longPressButtonBehavior = CrossPointSettings::OFF;
         SETTINGS.standbyShortcutEnabled = 0;
         SETTINGS.plusTouchFeedback = 1;
+        SETTINGS.plusSideKeyFeedback = 0;
         SETTINGS.saveToFile();
         mappedInput.resetHomeButtonInput();
       });
@@ -74,7 +75,8 @@ void HomeButtonSettingsActivity::activateIndex(int index) {
         });
       } else {
         *row.field = !*row.field;
-        if (row.field == &SETTINGS.plusTouchFeedback && !*row.field) mappedInput.stopHapticFeedback();
+        if ((row.field == &SETTINGS.plusTouchFeedback || row.field == &SETTINGS.plusSideKeyFeedback) && !*row.field)
+          mappedInput.stopHapticFeedback();
         SETTINGS.saveToFile();
       }
     } else { keyPage = index; nav.reset(); }

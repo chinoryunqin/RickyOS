@@ -19,9 +19,9 @@
 struct ReaderRenderSpec {
   int fontId = 0;
   float lineCompression = 1.0f;
-  uint8_t extraParagraphSpacing = 0;  // 0=off, 1..5=0.5x/0.75x/1x/1.25x/1.5x line height
+  uint16_t paragraphSpacingPercent = 100;  // 0..400%, 100% preserves authored gaps
   // Reader-level first-line indent, one of FirstLineIndent::Auto/Indent/
-  // NoIndent (see ParsedText.h). Independent of extraParagraphSpacing:
+  // NoIndent (see ParsedText.h). Independent of paragraphSpacingPercent:
   // paragraphs keep their indent even when extra paragraph spacing is
   // enabled.
   uint8_t firstLineIndent = FirstLineIndent::Auto;
@@ -53,7 +53,7 @@ struct ReaderRenderSpec {
     if (imageOutset != other.imageOutset) return false;
 #endif
     return fontId == other.fontId && lineCompression == other.lineCompression &&
-           extraParagraphSpacing == other.extraParagraphSpacing && firstLineIndent == other.firstLineIndent &&
+           paragraphSpacingPercent == other.paragraphSpacingPercent && firstLineIndent == other.firstLineIndent &&
            paragraphIndentSpaces == other.paragraphIndentSpaces && characterSpacing == other.characterSpacing &&
            wordSpacingPercent == other.wordSpacingPercent && paragraphAlignment == other.paragraphAlignment &&
            viewportWidth == other.viewportWidth && viewportHeight == other.viewportHeight &&

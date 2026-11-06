@@ -107,6 +107,12 @@ int main() {
   assert(freeink_metalio_recover_camera_power() && regs == original);
   puts("PASS retained snapshot recovery restores charger after MCU reset");
   assert(powerOn() == ESP_OK);
+  failReg = 0x18;
+  writes.clear();
+  assert(!powerOff() && (regs[0x18] & 0x40) && writes.empty());
+  assert(freeink_metalio_recover_camera_power() && regs == original);
+  puts("PASS failed VBUS disable does not restore charger fields");
+  assert(powerOn() == ESP_OK);
   failReg = 0x0a;
   assert(!powerOff() && powerOn() == ESP_ERR_INVALID_STATE);
   assert(freeink_metalio_recover_camera_power() && regs == original);

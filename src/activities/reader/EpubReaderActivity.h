@@ -10,17 +10,18 @@
 #include <optional>
 #include <vector>
 
+#include "BookFontSet.h"
 #include "BookmarkEntry.h"
 #include "ChapterPosition.h"
 #include "EpubReaderMenuActivity.h"
+#include "NativeTurnRequest.h"
 #include "ProgressMapper.h"
 #include "ReaderActivity.h"
-#include "BookFontSet.h"
 #include "ReaderFontPreview.h"
+#include "ReaderImageSettings.h"
 #include "ReaderPageCache.h"
 #include "ReaderToolbarUi.h"
 #include "ReadingMode.h"
-#include "NativeTurnRequest.h"
 #include "components/OptionPopup.h"
 
 class EpubReaderActivity final : public ReaderActivity {
@@ -33,7 +34,7 @@ class EpubReaderActivity final : public ReaderActivity {
   std::string pendingAnchor;
   int cachedSpineIndex = 0;
   bool lastPageHadPanelFill_ = false;  // the shown page has a gray CSS panel (clean the turn off it)
-std::atomic<uint32_t> pendingNativeTurn_{0};
+  std::atomic<uint32_t> pendingNativeTurn_{0};
   bool previousNativeText_ = false;
   // When the last 16-level page finished driving; a turn taken within kQueuedTurnMs of
   // it was tapped during that drive.
@@ -48,7 +49,7 @@ std::atomic<uint32_t> pendingNativeTurn_{0};
   unsigned long lastPageTurnTime = 0UL;
   unsigned long pageTurnDuration = 0UL;
   uint8_t pageTurnRate = 15;
-uint32_t pendingManualTurn = 0;
+  uint32_t pendingManualTurn = 0;
   bool pendingPercentJump = false;
   float pendingSpineProgress = 0.0f;
   bool pendingScreenshot = false;
@@ -167,6 +168,15 @@ uint32_t pendingManualTurn = 0;
   // does NOT re-render the page: the overlay page snapshot was decoded with the
   // old filter, so it is dropped on close and the page re-decodes once there.
   bool imageScalingDirty = false;
+  ReaderImageDraft imageDraft_;
+  ReaderImageProfile imageBookProfile_;
+  bool imageFollowsDefault_ = true;
+  enum class ImagePreview : uint8_t { None, Adjusted, Original };
+  ImagePreview imagePreview_ = ImagePreview::None;
+  bool imageWaitForRelease_ = false;
+  void openImageSettings(bool beginSession);
+  ReaderImageProfile effectiveImageProfile() const;
+  void invalidateImageRendering();
   int autoTurnOption = 0;  // current auto page-turn rate index (More panel)
   std::vector<EpubReaderMenuActivity::MenuItem> moreItems;
 
@@ -233,7 +243,9 @@ uint32_t pendingManualTurn = 0;
   // released the section.
   ChapterPosition chapterPosition() const;
   int bookPercentFor(const ChapterPosition& position) const;
+  float visibleBookProgress(int page, int pageCount) const;
   void openReaderMenu();
+  void openChapterSelection(bool returnToMenu);
   // Toolbar reader menu (see Overlay above).
   bool usesToolbarMenu() const;
   void openOverlay(Overlay target);
@@ -268,7 +280,7 @@ uint32_t pendingManualTurn = 0;
   unsigned long confirmLongPressThreshold() const;
   void toggleAutoPageTurn(uint8_t requestedPageTurnRate);
   void loadCachedBookmarks();
-  void addBookmark();
+  void addBookmark(bool addOnly = false);
   void updateBookmarkFlag();
   void applyProgressChange(const ProgressChangeResult& sync);
   // Bookmarks panel rows: [add/remove this page] [each bookmark] [manage...].
@@ -334,7 +346,7 @@ uint32_t pendingManualTurn = 0;
   void loop() override;
   void render(RenderLock&& lock) override;
 
-bool pageTurn(bool isForward) override;
+  bool pageTurn(bool isForward) override;
   bool pageTurnWithOrigin(bool isForward, int originX, int originY);
   bool skipPages(int amount) override;
   bool isAtEndOfBook() const override;

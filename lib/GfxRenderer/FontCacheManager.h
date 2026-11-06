@@ -24,7 +24,7 @@ class FontCacheManager {
   //     FreeType faces (TtfEpdFont::releaseResidentCaches).
   // Everything faults back in on demand. For heap-critical transitions (e.g.
   // web-server + WiFi startup, image decode, dictionary, sleep).
-  void releaseSdFontCaches();
+  void releaseSdFontCaches(bool (*keepTtfFace)(int) = nullptr);
   void prewarmCache(int fontId, const char* utf8Text, uint8_t styleMask = 0x0F, bool accumulate = true);
   void logStats(const char* label = "render");
   void resetStats();

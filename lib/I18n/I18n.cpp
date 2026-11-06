@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <cstring>
 
-#include "I18nStrings.h"
+#include <I18nStrings.h>
 
 using namespace i18n_strings;
 

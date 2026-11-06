@@ -39,6 +39,7 @@ class GfxRenderer {
   bool isGrayscale16Active() const { return false; }
   void fillRoundedRect(int, int, int, int, int, Color) const {}
   void drawRoundedRect(int, int, int, int, int, int, bool) const {}
+  void drawGrayscale16RoundedRect(int, int, int, int, int, int, uint8_t) const {}
   void drawText(int, int, int, const char*, bool, EpdFontFamily::Style,
                 BidiUtils::BidiBaseDir = BidiUtils::BidiBaseDir::AUTO, int8_t = 0) const {}
   int getTextWidth(int font, const char* text, EpdFontFamily::Style style,

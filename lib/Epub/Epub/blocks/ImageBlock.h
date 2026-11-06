@@ -6,6 +6,7 @@
 #include <string>
 
 #include "Block.h"
+#include "Epub/converters/ImageToneCurve.h"
 #include "Epub/converters/ImageToFramebufferDecoder.h"
 
 class ImageBlock final : public Block {
@@ -57,6 +58,9 @@ class ImageBlock final : public Block {
   // also part of the pixel-cache identity, so toggling it re-decodes instead of
   // serving pixels produced by the other one.
   static void setBilinearScaling(bool enabled);
+  static void setTone(int contrast, int brightness);
+  static uint32_t adjustmentIdentity() { return toneCurve.identity(bilinearScaling); }
+  static const uint8_t* toneLut() { return toneCurve.data(); }
   // Current filter; the pixel-cache path is derived from it (see getCachePath).
   static bool bilinearScalingEnabled() { return bilinearScaling; }
 
@@ -66,6 +70,8 @@ class ImageBlock final : public Block {
   void render(GfxRenderer& renderer, const int x, const int y);
   bool render(GfxRenderer& renderer, int x, int y, PixelCachePolicy cachePolicy, ImageRenderError* error = nullptr,
               CancelCheck cancellation = {});
+  // Synchronous scaled preview: no .pxc writes and no retained image buffer.
+  bool renderPreview(GfxRenderer& renderer, const RenderConfig& config);
   bool cacheDecodedImage(GfxRenderer& renderer, int x, int y, CancelCheck cancellation = {});
   bool serialize(HalFile& file);
   static std::unique_ptr<ImageBlock> deserialize(HalFile& file);
@@ -78,6 +84,7 @@ class ImageBlock final : public Block {
 
   static void* extractCtx;
   static ExtractFn extractFn;
+  static ImageToneCurve toneCurve;
   static bool bilinearScaling;  // reader-pushed resampling filter
 
   bool renderInternal(GfxRenderer& renderer, int x, int y, PixelCachePolicy cachePolicy, DecodeOutput output,

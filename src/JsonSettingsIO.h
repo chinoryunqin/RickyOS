@@ -5,9 +5,9 @@ class ReadingStatsStore;
 
 namespace JsonSettingsIO {
 
-bool saveReadingStats(const ReadingStatsStore& store, const char* path);
-bool loadReadingStats(ReadingStatsStore& store, const char* json);
-bool loadReadingStatsFromFile(ReadingStatsStore& store, const char* path);
+enum class ReadingStatsLoadResult { Loaded, Invalid, Unavailable };
+bool saveReadingStats(const ReadingStatsStore& store, const char* path, const char* backupPath = nullptr);
+ReadingStatsLoadResult loadReadingStatsFromFile(ReadingStatsStore& store, const char* path);
 
 bool saveAchievements(const AchievementsStore& store, const char* path);
 bool loadAchievements(AchievementsStore& store, const char* json);

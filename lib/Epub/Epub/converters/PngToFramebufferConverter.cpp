@@ -330,7 +330,7 @@ void emitBilinearRow(PngContext& ctx, const int dstY, const uint8_t* rowTop, con
         const int premul =
             mix(mix(rowTop[x0] * a00, rowTop[x1] * a01, fxFP), mix(rowBot[x0] * a10, rowBot[x1] * a11, fxFP), fyFP);
         const int sample = std::min(255, (premul + alpha / 2) / alpha);
-        ctx.renderer->blendGrayscale16Pixel(outX, outY, (sample + 8) / 17, (alpha + 8) / 17);
+        ctx.renderer->blendGrayscale16Pixel(outX, outY, (ctx.config->adjustTone(static_cast<uint8_t>(sample)) + 8) / 17, (alpha + 8) / 17);
       }
       continue;
     }
@@ -344,7 +344,7 @@ void emitBilinearRow(PngContext& ctx, const int dstY, const uint8_t* rowTop, con
     }
     if (gray < 0) gray = 0;
     if (gray > 255) gray = 255;
-    const uint8_t sample = static_cast<uint8_t>(gray);
+    const uint8_t sample = ctx.config->adjustTone(static_cast<uint8_t>(gray));
 
     if (outX >= ctx.screenWidth) continue;
     const uint8_t alpha = ctx.alphaLineBuffer ? ctx.alphaLineBuffer[x0] : 255;
@@ -480,9 +480,9 @@ int pngDrawCallback(PNGDRAW* pDraw) {
       if (outX < screenWidth) {
         const uint8_t alpha = ctx->alphaLineBuffer ? ctx->alphaLineBuffer[srcX] : 255;
         if (ctx->config->output == DecodeOutput::NativeGrayscale16) {
-          ctx->renderer->blendGrayscale16Pixel(outX, outY, (ctx->grayLineBuffer[srcX] + 8) / 17, (alpha + 8) / 17);
+          ctx->renderer->blendGrayscale16Pixel(outX, outY, (ctx->config->adjustTone(ctx->grayLineBuffer[srcX]) + 8) / 17, (alpha + 8) / 17);
         } else if (alpha >= 8 && alpha > alphaThreshold4x4(outX, outY)) {
-          uint8_t gray = ctx->grayLineBuffer[srcX];
+          uint8_t gray = ctx->config->adjustTone(ctx->grayLineBuffer[srcX]);
 
           uint8_t ditheredGray;
           if (useDithering) {
@@ -702,7 +702,7 @@ bool PngToFramebufferConverter::decodeToFramebuffer(const std::string& imagePath
   // re-decode on every one of an image page's ~14 render passes.
   ctx.caching = config.output != DecodeOutput::NativeGrayscale16 && !config.preserveAlpha && !config.cachePath.empty();
   if (ctx.caching) {
-    if (!ctx.cache.begin(config.cachePath, ctx.dstWidth, ctx.dstHeight, config.x, config.y, 1)) {
+    if (!ctx.cache.begin(config.cachePath, ctx.dstWidth, ctx.dstHeight, config.x, config.y, 1, config.cacheIdentity)) {
       LOG_ERR("PNG", "Failed to start cache stream%s", cacheOnly ? "" : ", continuing without caching");
       ctx.caching = false;
       if (cacheOnly) return false;

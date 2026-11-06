@@ -2903,10 +2903,9 @@ index e674fecfa8da1544887dc504c5633349d61e96df..fd15f9db485de81472cd7d3af5e3d889
 +}
 +#endif
 diff --git a/libs/hardware/BoardConfig/include/BoardConfig.h b/libs/hardware/BoardConfig/include/BoardConfig.h
-index 609a713ad91a26ade056e31f3819d81c66faad88..f3282e70868e77fef306de5258865347dee2e86b 100644
 --- a/libs/hardware/BoardConfig/include/BoardConfig.h
 +++ b/libs/hardware/BoardConfig/include/BoardConfig.h
-@@ -26,218 +26,58 @@
+@@ -26,62 +26,16 @@
  // ============================================================================
  
  // --- 1) Devices are selected explicitly --------------------------------------
@@ -2951,19 +2950,20 @@ index 609a713ad91a26ade056e31f3819d81c66faad88..f3282e70868e77fef306de5258865347
 -#endif
 -#ifndef FREEINK_DEVICE_PAPERS3
 -#define FREEINK_DEVICE_PAPERS3 0
+-#endif
+-#ifndef FREEINK_DEVICE_MURPHY_M4
+-#define FREEINK_DEVICE_MURPHY_M4 0
 +// RickyOS builds one ESP32-S3 device per binary. The Plus port has its own
 +// BoardConfig; ordinary Metalio E-Ink 4 uses the SPI/SDMMC profile below.
 +#ifndef FREEINK_DEVICE_METALIO_EINK4
 +#define FREEINK_DEVICE_METALIO_EINK4 0
- #endif
--#ifndef FREEINK_DEVICE_MURPHY_M4
--#define FREEINK_DEVICE_MURPHY_M4 0
++#endif
 +#ifndef FREEINK_DEVICE_METALIO_PLUS
 +#define FREEINK_DEVICE_METALIO_PLUS 0
  #endif
  #ifndef FREEINK_DEVICE_EEGO_A4
  #define FREEINK_DEVICE_EEGO_A4 0
- #endif
+-#endif
 -#ifndef FREEINK_DEVICE_WAVESHARE_EPAPER_397
 -#define FREEINK_DEVICE_WAVESHARE_EPAPER_397 0
 -#endif
@@ -2972,24 +2972,27 @@ index 609a713ad91a26ade056e31f3819d81c66faad88..f3282e70868e77fef306de5258865347
 -#endif
 -#ifndef FREEINK_DEVICE_ONEPAGE
 -#define FREEINK_DEVICE_ONEPAGE 0
--#endif
+ #endif
  // Read Pico (小纸 Pico, RDP-G01-W) — ESP32-S3 N16R8 with an E0470A01 684x1216
  // raw-parallel panel, SY7636A rails behind an FCA9555, CST836U touch,
- // SC7A20H accelerometer and a CW32L010 PMU. See docs/engineering/read-pico.md.
+@@ -89,155 +43,41 @@
  #ifndef FREEINK_DEVICE_READPICO
  #define FREEINK_DEVICE_READPICO 0
  #endif
 -#ifndef FREEINK_DEVICE_WS397
 -#define FREEINK_DEVICE_WS397 0
 -#endif
- 
+-
 -// --- 2) Coherence: exactly one MCU family, at least one device ---------------
 -#if !(FREEINK_DEVICE_X4 || FREEINK_DEVICE_X3 || FREEINK_DEVICE_X4PRO || FREEINK_DEVICE_X4CLASSIC ||            \
 -      FREEINK_DEVICE_M5 || FREEINK_DEVICE_MURPHY || FREEINK_DEVICE_DELINK || FREEINK_DEVICE_LILYGO ||          \
 -      FREEINK_DEVICE_M5PAPER || FREEINK_DEVICE_STICKY || FREEINK_DEVICE_PAPERMONO || FREEINK_DEVICE_PAPERS3 || \
 -      FREEINK_DEVICE_MURPHY_M4 || FREEINK_DEVICE_EEGO_A4 || FREEINK_DEVICE_WAVESHARE_EPAPER_397 ||             \
 -      FREEINK_DEVICE_ONEPAGE || FREEINK_DEVICE_METALIO_EINK4 || FREEINK_DEVICE_READPICO || FREEINK_DEVICE_WS397)
--#error \
++
++// --- 2) Coherence: exactly one device ----------------------------------------
++#if (FREEINK_DEVICE_EEGO_A4 + FREEINK_DEVICE_READPICO + FREEINK_DEVICE_METALIO_EINK4) != 1
+ #error \
 -    "FreeInk: no device selected. Pass at least one -DFREEINK_DEVICE_<NAME> (X4, X3, X4PRO, X4CLASSIC, M5, MURPHY, DELINK, LILYGO, M5PAPER, STICKY, PAPERMONO, PAPERS3, MURPHY_M4, EEGO_A4, WAVESHARE_EPAPER_397, METALIO_EINK4, ONEPAGE, READPICO, WS397) in your build env — see platformio.sample.ini."
 -#endif
 -// Each device belongs to one MCU family; a binary targets exactly one. X3/X4 are
@@ -3005,12 +3008,11 @@ index 609a713ad91a26ade056e31f3819d81c66faad88..f3282e70868e77fef306de5258865347
 -   FREEINK_DEVICE_WAVESHARE_EPAPER_397 || FREEINK_DEVICE_METALIO_EINK4 || FREEINK_DEVICE_READPICO || FREEINK_DEVICE_WS397)
 -#define FREEINK_MCU_ESP32 (FREEINK_DEVICE_M5PAPER)
 -#if (FREEINK_MCU_C3 + FREEINK_MCU_C61 + FREEINK_MCU_S3 + FREEINK_MCU_ESP32) != 1
-+// --- 2) Coherence: exactly one device ----------------------------------------
-+#if (FREEINK_DEVICE_EEGO_A4 + FREEINK_DEVICE_READPICO + FREEINK_DEVICE_METALIO_EINK4) != 1
- #error \
+-#error \
 -    "FreeInk: all selected devices must share one MCU family — ESP32-C3 (X3/X4), ESP32-C61 (OnePage), ESP32-S3 (M5/Murphy/de-link/LilyGo/Sticky/X4Pro), or ESP32 (M5Paper). Build one binary per family."
+-#endif
 +    "FreeInk: select exactly one device: -DFREEINK_DEVICE_READPICO=1 or -DFREEINK_DEVICE_EEGO_A4=1 or -DFREEINK_DEVICE_METALIO_EINK4=1."
- #endif
++#endif
 +#define FREEINK_MCU_S3 1
  
  // --- 3) Derive panel drivers from the device set -----------------------------
@@ -3121,8 +3123,7 @@ index 609a713ad91a26ade056e31f3819d81c66faad88..f3282e70868e77fef306de5258865347
 +#define FREEINK_DRIVER_SSD1677 FREEINK_DEVICE_METALIO_EINK4
  #ifndef FREEINK_SSD1677_COMBINED_AA
 -#define FREEINK_SSD1677_COMBINED_AA (!(FREEINK_DEVICE_X4PRO || FREEINK_DEVICE_X4CLASSIC))
-+#define FREEINK_SSD1677_COMBINED_AA 1
- #endif
+-#endif
 -#if FREEINK_SSD1677_COMBINED_AA && CONFIG_IDF_TARGET_ESP32S3 &&                                               \
 -    (FREEINK_DEVICE_STICKY || FREEINK_DEVICE_X4PRO || FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_MURPHY_M4 || \
 -     FREEINK_DEVICE_WAVESHARE_EPAPER_397 || FREEINK_DEVICE_METALIO_EINK4)
@@ -3131,6 +3132,8 @@ index 609a713ad91a26ade056e31f3819d81c66faad88..f3282e70868e77fef306de5258865347
 -#define FREEINK_SSD1677_TEXT_ROUTING 0
 -#endif
 -// Trusted text handoffs are default only on the selected platforms.
++#define FREEINK_SSD1677_COMBINED_AA 1
++#endif
 +#define FREEINK_SSD1677_TEXT_ROUTING (FREEINK_DEVICE_METALIO_EINK4 && FREEINK_SSD1677_COMBINED_AA)
  #ifndef FREEINK_SSD1677_READER_TRANSITIONS
 -#define FREEINK_SSD1677_READER_TRANSITIONS                                                   \
@@ -3141,8 +3144,9 @@ index 609a713ad91a26ade056e31f3819d81c66faad88..f3282e70868e77fef306de5258865347
 -#define FREEINK_DRIVER_PAPER_MONO 1
 -#else
 -#define FREEINK_DRIVER_PAPER_MONO 0
+-#endif
 +#define FREEINK_SSD1677_READER_TRANSITIONS FREEINK_SSD1677_TEXT_ROUTING
- #endif
++#endif
 +#define FREEINK_DRIVER_PAPER_MONO FREEINK_SSD1677_TEXT_ROUTING
  
  // --- 4) Derive default capabilities (override with -DFREEINK_CAP_*=0/1) -------
@@ -3265,8 +3269,8 @@ index 609a713ad91a26ade056e31f3819d81c66faad88..f3282e70868e77fef306de5258865347
 -#define FREEINK_LOG_TRANSPORT FREEINK_LOG_TRANSPORT_ROM_PRINTF
 -#else
  #define FREEINK_LOG_TRANSPORT FREEINK_LOG_TRANSPORT_SERIAL
- #endif
 -#endif
+ #endif
  
  // Bidirectional serial transport exposed by the board's physical USB-C port.
  // Most boards route it through Arduino's selected Serial implementation, while
@@ -3290,7 +3294,7 @@ index 609a713ad91a26ade056e31f3819d81c66faad88..f3282e70868e77fef306de5258865347
  
  // Physical device family. X3 and X4 are sibling devices on the same ESP32-C3
  // board (identical pinout, different panel/size): both profiles compile into the
-@@ -460,23 +272,23 @@ enum class Board : uint8_t {
+@@ -460,23 +272,23 @@
    WaveshareEpaper397,
    OnePage,  // OnePage: ESP32-C61, SSD1677 800x480 SPI panel, 4-key ADC ladder + 3 side keys
    MetalioEink4,
@@ -3325,7 +3329,7 @@ index 609a713ad91a26ade056e31f3819d81c66faad88..f3282e70868e77fef306de5258865347
    // Read Pico: NO GPIO buttons at all. Navigation comes from the CST836U touch
    // plus three capacitive key zones that live in the strip of the (taller) touch
    // panel BELOW the drawn image — they are hit-tested on raw coordinates by the
-@@ -689,8 +501,8 @@ struct AudioConfig {
+@@ -689,8 +501,8 @@
                       // high only while playing; PIN_UNASSIGNED if none. Active-high.
    int8_t codecSda;   // codec control I2C — may be a shared bus (e.g. touch)
    int8_t codecScl;
@@ -3336,7 +3340,7 @@ index 609a713ad91a26ade056e31f3819d81c66faad88..f3282e70868e77fef306de5258865347
    uint16_t ampSettleMs = 0;  // silence after amp enable before PCM; board-calibrated
  };
  
-@@ -771,8 +583,8 @@ struct I2cFrontlightConfig {
+@@ -771,8 +583,8 @@
    uint8_t address;
    int8_t enable;
  };
@@ -3347,7 +3351,7 @@ index 609a713ad91a26ade056e31f3819d81c66faad88..f3282e70868e77fef306de5258865347
  
  // Power-rail latch pins a battery-powered board must drive HIGH early in boot
  // to keep itself on (PWR_HOLD / PWR_LOCK style latches, e.g. the Sticky's
-@@ -866,33 +678,6 @@ struct BoardProfile {
+@@ -866,33 +678,6 @@
    HapticConfig haptic = {};
  };
  
@@ -3381,7 +3385,7 @@ index 609a713ad91a26ade056e31f3819d81c66faad88..f3282e70868e77fef306de5258865347
  constexpr FrontlightConfig NO_FRONTLIGHT = {PIN_UNASSIGNED, 0, 0, true};
  constexpr AudioConfig NO_AUDIO = {AudioOutput::None,
                                    PIN_UNASSIGNED,
-@@ -907,59 +692,16 @@ constexpr AudioConfig NO_AUDIO = {AudioOutput::None,
+@@ -907,58 +692,15 @@
                                    0,
                                    PIN_UNASSIGNED};
  constexpr LedConfig NO_LEDS = {PIN_UNASSIGNED, 0, LedColorOrder::GRB, false};
@@ -3436,14 +3440,13 @@ index 609a713ad91a26ade056e31f3819d81c66faad88..f3282e70868e77fef306de5258865347
  constexpr SdmmcPins NO_SDMMC = {
      PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, 0};
  constexpr BatteryGaugeConfig NO_GAUGE = {PIN_UNASSIGNED, PIN_UNASSIGNED, 0, 0, 0};  // ADC battery
- 
+-
 -// Shared display SPI default for every Xteink board and controller variant.
 -constexpr uint32_t XTEINK_DISPLAY_SPI_HZ = 10000000u;
--
+ 
  // --- Xteink X4 — ESP32-C3, SSD1677 (800x480) ---------------------------------
  // Default 10 MHz, like the other Xteink profiles. Preserve the explicit legacy
- // 40 MHz opt-in for consumers that have validated it on their hardware.
-@@ -968,984 +710,53 @@ constexpr uint32_t XTEINK_DISPLAY_SPI_HZ = 10000000u;
+@@ -968,371 +710,34 @@
  #else
  #define FREEINK_X4_DISPLAY_SPI_HZ 10000000u
  #endif
@@ -3613,10 +3616,25 @@ index 609a713ad91a26ade056e31f3819d81c66faad88..f3282e70868e77fef306de5258865347
 -    800,
 -    480,
 -    {15, 14, 16, 17, PIN_UNASSIGNED, 18, PIN_UNASSIGNED},
--    20000000,
++// --- EEGO A4 — ESP32-S3 N16R8, UC8279C + GSLX680 ---------------------------
++// This profile follows the validated EEGO A4 template pinout and calibration.
++constexpr BoardProfile EEGO_A4 = {
++    Board::EegoA4,
++    "eego_a4",
++    InputStyle::DigitalButtons,
++    DisplayController::UC8279C,
++    768,
++    552,
++    {42, 45, 21, 14, 13, 41, 6},
+     20000000,
 -    {PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, false, 0},
 -    {PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, 2, 3, PIN_UNASSIGNED, false},
--    PIN_UNASSIGNED,
++    {39, 40, 38, 47, PIN_UNASSIGNED, true, 20000000},
++    {PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, 5, 7, 8, true},
++    10,
++    11,
++    1.559f,
+     PIN_UNASSIGNED,
 -    PIN_UNASSIGNED,
 -    2.0f,
 -    PIN_UNASSIGNED,
@@ -3812,13 +3830,18 @@ index 609a713ad91a26ade056e31f3819d81c66faad88..f3282e70868e77fef306de5258865347
 -    {TouchController::Gt911, 21, 22, 36, PIN_UNASSIGNED, 0x5D, 0, 959, 0, 539, false, 0x14, false,
 -     true,                                // gt911CoordsAtByte0: reports coords at byte 0 (no track-id) on M5Paper
 -     PIN_UNASSIGNED, true, false, true},  // powerEnable, swapXY=true, flipX=false, flipY=true
--    NO_FRONTLIGHT,
--    NO_AUDIO,
--    NO_LEDS,
--    NO_FLIP,
--    NO_SDMMC,
--    NO_GAUGE,
--    NO_MIC,
++    // The GSLX680 backend applies the official 1.2.7 calibration
++    // (InputManager::pollGslx680) and returns panel-native
++    // x=0..767, y=0..551; no raw-range mapping is needed here.
++    {TouchController::Gslx680, 2,     1,     PIN_UNASSIGNED, 3,    0x40, 0, 767, 0, 551, false, 0, false, false,
++     PIN_UNASSIGNED,           false, false, false,          true, true},
+     NO_FRONTLIGHT,
+     NO_AUDIO,
+     NO_LEDS,
+@@ -1340,612 +745,18 @@
+     NO_SDMMC,
+     NO_GAUGE,
+     NO_MIC,
 -    NO_SENSORS,
 -    1.2f,  // uiScale: 4.7" 960x540 touch (~234 PPI) — finger-sized chrome, like Sticky
 -    // Power latch: main-power MOSFET on GPIO2, driven HIGH first thing in boot
@@ -4157,8 +4180,8 @@ index 609a713ad91a26ade056e31f3819d81c66faad88..f3282e70868e77fef306de5258865347
 -    {9, 7, 3, 7},
 -    true};  // batteryChargeStatusActiveHigh: GPIO21 STAT is driven HIGH while charging
 -
- // --- EEGO A4 — ESP32-S3 N16R8, UC8279C + GSLX680 ---------------------------
- // This profile follows the validated EEGO A4 template pinout and calibration.
+-// --- EEGO A4 — ESP32-S3 N16R8, UC8279C + GSLX680 ---------------------------
+-// This profile follows the validated EEGO A4 template pinout and calibration.
 -constexpr BoardProfile EEGO_A4 = {Board::EegoA4,
 -                                  "eego_a4",
 -                                  InputStyle::DigitalButtons,
@@ -4199,31 +4222,19 @@ index 609a713ad91a26ade056e31f3819d81c66faad88..f3282e70868e77fef306de5258865347
 -constexpr BoardProfile MURPHY_M4 = {
 -    Board::MurphyM4,
 -    "murphy_m4",
-+constexpr BoardProfile EEGO_A4 = {
-+    Board::EegoA4,
-+    "eego_a4",
-     InputStyle::DigitalButtons,
+-    InputStyle::DigitalButtons,
 -    DisplayController::SSD1677,
 -    800,
 -    480,
 -    {4, 3, 5, 6, 7, 8, PIN_UNASSIGNED},
-+    DisplayController::UC8279C,
-+    768,
-+    552,
-+    {42, 45, 21, 14, 13, 41, 6},
-     20000000,
+-    20000000,
 -    {PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, 10, false,
 -     0, false},
 -    {PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, 1, 2, 0, false},
 -    9,
 -    43,
 -    2.0f,
-+    {39, 40, 38, 47, PIN_UNASSIGNED, true, 20000000},
-+    {PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, 5, 7, 8, true},
-+    10,
-+    11,
-+    1.559f,
-     PIN_UNASSIGNED,
+-    PIN_UNASSIGNED,
 -    // The portrait controller frame is swapped into the 800x480 panel frame.
 -    // GPIO46 is the unusable active-low IRQ, GPIO7 shares reset with the display,
 -    // and GPIO45 powers the touch controller while LOW.
@@ -4248,19 +4259,12 @@ index 609a713ad91a26ade056e31f3819d81c66faad88..f3282e70868e77fef306de5258865347
 -     false,
 -     false},
 -    {47, 25000, 10, true, 48},
-+    // The GSLX680 backend applies the official 1.2.7 calibration
-+    // (InputManager::pollGslx680) and returns panel-native
-+    // x=0..767, y=0..551; no raw-range mapping is needed here.
-+    {TouchController::Gslx680, 2,     1,     PIN_UNASSIGNED, 3,    0x40, 0, 767, 0, 551, false, 0, false, false,
-+     PIN_UNASSIGNED,           false, false, false,          true, true},
-+    NO_FRONTLIGHT,
-     NO_AUDIO,
-     NO_LEDS,
-     NO_FLIP,
+-    NO_AUDIO,
+-    NO_LEDS,
+-    NO_FLIP,
 -    {16, 15, 17, 18, 11, 14, 4},
-+    NO_SDMMC,
-     NO_GAUGE,
-     NO_MIC,
+-    NO_GAUGE,
+-    NO_MIC,
 -    {13, 12, 400000, 0x32, 0, 0, 1, RtcType::Rx8010, ImuType::None},
 +    {2, 1, 400000, 0x51, 0, 0, 0, RtcType::Pcf8563, ImuType::None},
      1.2f,
@@ -4455,7 +4459,19 @@ index 609a713ad91a26ade056e31f3819d81c66faad88..f3282e70868e77fef306de5258865347
  
  // Metalio E-Ink 4: metalio-hw-test/main/hal/metalio-e-ink-4/config.h.
  constexpr BoardProfile METALIO_EINK4 = {
-@@ -1995,9 +806,18 @@ static_assert(METALIO_EINK4.sdmmc.busWidth == 1 && METALIO_EINK4.sdmmc.d3 == PIN
+@@ -1971,9 +782,9 @@
+     NO_FLIP,
+     {38, 40, 39, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, 1},
+     // CX25601N at 0x6B is NOT BQ25896-compatible. Use gauge-native charging status.
+-    {41, 42, 400000, 0x55, 0, 0, GaugeType::Bq27220},
++    {41, 42, 200000, 0x55, 0, 0, GaugeType::Bq27220},
+     NO_MIC,
+-    {41, 42, 400000, 0x51, 0, 0, 0, RtcType::Pcf8563, ImuType::None},
++    {41, 42, 200000, 0x51, 0, 0, 0, RtcType::Pcf8563, ImuType::None},
+     1.2f};
+ static_assert(METALIO_EINK4.displayWidth / 8 * METALIO_EINK4.displayHeight == 48000);
+ static_assert(METALIO_EINK4.sdmmc.busWidth == 1 && METALIO_EINK4.sdmmc.d3 == PIN_UNASSIGNED);
+@@ -1995,9 +806,18 @@
  // reset, the EPD rails and the SD card detect are all FCA9555 Port-0 lines, the
  // battery/time/power handoff is the PMU frame protocol, and the panel's 16-bit i80
  // wiring + power hooks are the board's LgfxEpdConfig. Those live in BoardReadPico.
@@ -4477,7 +4493,7 @@ index 609a713ad91a26ade056e31f3819d81c66faad88..f3282e70868e77fef306de5258865347
  
  constexpr BoardProfile READ_PICO = {
      Board::ReadPico,
-@@ -2008,12 +828,12 @@ constexpr BoardProfile READ_PICO = {
+@@ -2008,12 +828,12 @@
      684,   // displayHeight: gate lines  (epdiy E0470_DISPLAY.height)
      {PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED,
       PIN_UNASSIGNED},  // no SPI display pins: the 16-bit i80 bus lives in LgfxEpdConfig
@@ -4493,7 +4509,7 @@ index 609a713ad91a26ade056e31f3819d81c66faad88..f3282e70868e77fef306de5258865347
      PIN_UNASSIGNED,  // batteryAdc: none — the CW32L010 PMU reports battery/SoC
      PIN_UNASSIGNED,  // batteryChargeStatus: none — charge state comes from the PMU
      1.0f,            // batteryDividerMultiplier: unused (no ADC path)
-@@ -2047,8 +867,8 @@ constexpr BoardProfile READ_PICO = {
+@@ -2047,8 +867,8 @@
      // not repeated: swapXY alone (no flipY) transposes the axes, and reverting to
      // swapXY = false makes the mapping rotate 90 degrees -- which is what put a
      // top-bar tap onto a middle book row and opened the reader.
@@ -4504,7 +4520,7 @@ index 609a713ad91a26ade056e31f3819d81c66faad88..f3282e70868e77fef306de5258865347
      NO_FRONTLIGHT,
      READ_PICO_AUDIO,  // AudioOutput::None; LEDC buzzer on GPIO2 (Buzzer lib)
      NO_LEDS,
-@@ -2063,105 +883,42 @@ constexpr BoardProfile READ_PICO = {
+@@ -2063,105 +883,42 @@
      // SC7A20H at 0x19 (WHO_AM_I 0x11). The CW32L010 (0x2A) also carries the RTC
      // and alarms, reached through the PMU protocol rather than a register map.
      {39, 40, 400000, 0x2A, 0, 0x19, 0, RtcType::Cw32L010Pmu, ImuType::Sc7a20h},
@@ -4622,7 +4638,7 @@ index 609a713ad91a26ade056e31f3819d81c66faad88..f3282e70868e77fef306de5258865347
  #endif
  
  // Runtime-active profile. Defaults to DEFAULT_DEVICE — identical to the old
-@@ -2176,103 +933,20 @@ inline void holdPowerRails();  // defined below; used by selectDevice()
+@@ -2176,72 +933,9 @@
  // leaves ACTIVE unchanged) if `which` was not included via -DFREEINK_DEVICE_*.
  inline bool selectDevice(Board which) {
    switch (which) {
@@ -4692,44 +4708,43 @@ index 609a713ad91a26ade056e31f3819d81c66faad88..f3282e70868e77fef306de5258865347
 -#if FREEINK_DEVICE_PAPERS3
 -    case Board::M5PaperS3:
 -      ACTIVE = M5PAPER_S3;
--      break;
--#endif
--#if FREEINK_DEVICE_EEGO_A4
--    case Board::EegoA4:
--      ACTIVE = EEGO_A4;
--      break;
--#endif
++#if FREEINK_DEVICE_METALIO_EINK4
++    case Board::MetalioEink4:
++      ACTIVE = METALIO_EINK4;
+       break;
+ #endif
+ #if FREEINK_DEVICE_EEGO_A4
+@@ -2249,29 +943,9 @@
+       ACTIVE = EEGO_A4;
+       break;
+ #endif
 -#if FREEINK_DEVICE_WAVESHARE_EPAPER_397
 -    case Board::WaveshareEpaper397:
 -      ACTIVE = WAVESHARE_EPAPER_397;
 -      break;
 -#endif
- #if FREEINK_DEVICE_METALIO_EINK4
-     case Board::MetalioEink4:
-       ACTIVE = METALIO_EINK4;
-       break;
- #endif
+-#if FREEINK_DEVICE_METALIO_EINK4
+-    case Board::MetalioEink4:
+-      ACTIVE = METALIO_EINK4;
+-      break;
+-#endif
 -#if FREEINK_DEVICE_ONEPAGE
 -    case Board::OnePage:
 -      ACTIVE = ONEPAGE;
-+#if FREEINK_DEVICE_EEGO_A4
-+    case Board::EegoA4:
-+      ACTIVE = EEGO_A4;
-       break;
- #endif
+-      break;
+-#endif
  #if FREEINK_DEVICE_READPICO
      case Board::ReadPico:
        ACTIVE = READ_PICO;
-       break;
+-      break;
 -#endif
 -#if FREEINK_DEVICE_WS397
 -    case Board::WsEpaper397:
 -      ACTIVE = WS_EPAPER_397;
--      break;
+       break;
  #endif
      default:
-       return false;
-@@ -2295,7 +969,7 @@ inline bool isX4Pro() { return ACTIVE.board == Board::XteinkX4Pro; }
+@@ -2295,7 +969,7 @@
  inline bool isX4Classic() { return ACTIVE.board == Board::XteinkX4Classic; }
  inline bool isPaperMono() { return ACTIVE.board == Board::PaperMono; }
  inline bool isEegoA4() { return ACTIVE.board == Board::EegoA4; }
@@ -4738,7 +4753,7 @@ index 609a713ad91a26ade056e31f3819d81c66faad88..f3282e70868e77fef306de5258865347
  inline bool isMurphyM4() { return ACTIVE.board == Board::MurphyM4; }
  inline bool isWaveshareEpaper397() { return ACTIVE.board == Board::WaveshareEpaper397; }
  inline bool isOnePage() { return ACTIVE.board == Board::OnePage; }
-@@ -2334,6 +1008,9 @@ inline bool latchConflictsWithBus(int8_t pin) {
+@@ -2334,6 +1008,9 @@
  // the user releases the power button. Releasing the pins (driving them LOW)
  // is a software power-off. No-op on boards without a latch.
  inline void holdPowerRails() {
@@ -4773,7 +4788,6 @@ index fe74493c5471bf0bedcb13521ebe34fb81d4846c..3b2f1739b7844422236b67d27721d8aa
  constexpr int SCL = FREEINK_M5PM1_SCL;
  constexpr uint32_t I2C_HZ = 100000;
 diff --git a/libs/hardware/BoardConfig/include/MetalioEink4Board.h b/libs/hardware/BoardConfig/include/MetalioEink4Board.h
-index 2158e18f32a8f869465f47bf7e125b634a12f200..bdb19b5d06e781b5eedafe5c2d5d1ebfb8ee8711 100644
 --- a/libs/hardware/BoardConfig/include/MetalioEink4Board.h
 +++ b/libs/hardware/BoardConfig/include/MetalioEink4Board.h
 @@ -4,6 +4,9 @@
@@ -4786,7 +4800,7 @@ index 2158e18f32a8f869465f47bf7e125b634a12f200..bdb19b5d06e781b5eedafe5c2d5d1ebf
  
  // Shared Wire owns transaction serialization (endTransmission(false) + requestFrom).
  // Only the input/setup/shutdown task writes the expander's output shadow.
-@@ -115,6 +118,40 @@ inline bool setOutput(uint16_t value) {
+@@ -115,6 +118,40 @@
    return true;
  }
  
@@ -4827,7 +4841,7 @@ index 2158e18f32a8f869465f47bf7e125b634a12f200..bdb19b5d06e781b5eedafe5c2d5d1ebf
  inline bool begin() {
    if (ready) return true;
    pinMode(44, OUTPUT);
-@@ -122,16 +159,33 @@ inline bool begin() {
+@@ -122,16 +159,34 @@
    gpio_hold_dis(GPIO_NUM_44);  // Release the previous deep sleep's LOW hold, including capability-off builds.
    pinMode(46, INPUT_PULLUP);   // SD DAT3/CD: input-only, never part of the 1-bit data bus.
    pinMode(2, INPUT_PULLUP);
@@ -4842,7 +4856,8 @@ index 2158e18f32a8f869465f47bf7e125b634a12f200..bdb19b5d06e781b5eedafe5c2d5d1ebf
 -  ready = true;
 -  return true;
 +  for (uint8_t attempt = 0; attempt < 2; ++attempt) {
-+    if (!Wire.begin(41, 42, 400000)) return false;
++    // At 400 kHz this board repeatedly stalled SCL before camera power-up.
++    if (!Wire.begin(41, 42, 200000)) return false;
 +    Wire.setTimeOut(10);
 +#if FREEINK_CAP_CAMERA
 +    if (freeink_metalio_recover_camera_power && !freeink_metalio_recover_camera_power()) {
@@ -4858,7 +4873,7 @@ index 2158e18f32a8f869465f47bf7e125b634a12f200..bdb19b5d06e781b5eedafe5c2d5d1ebf
 +      initialized = setOutput(output | TOUCH_RESET);
 +      if (initialized) {
 +        delay(120);
-+        esp_rom_printf("[metalio] Board rails/touch ready (attempt=%u)\r\n", unsigned(attempt + 1));
++        esp_rom_printf("[metalio] Board rails/touch ready at 200 kHz (attempt=%u)\r\n", unsigned(attempt + 1));
 +        ready = true;
 +        return true;
 +      }
@@ -4871,7 +4886,7 @@ index 2158e18f32a8f869465f47bf7e125b634a12f200..bdb19b5d06e781b5eedafe5c2d5d1ebf
  }
  
  inline uint8_t buttons() {
-@@ -143,7 +197,7 @@ inline uint8_t buttons() {
+@@ -143,7 +198,7 @@
    if (!read(EXPANDER, 0, data, sizeof(data))) {
      nextRead = now + 2000;
      state = 0;  // A failed read must never retain a held key.
@@ -4880,7 +4895,7 @@ index 2158e18f32a8f869465f47bf7e125b634a12f200..bdb19b5d06e781b5eedafe5c2d5d1ebf
      return state;
    }
    nextRead = now + 20;
-@@ -173,16 +227,17 @@ inline bool externalPowerConnected(bool& connected) {
+@@ -173,16 +228,17 @@
  }
  
  // Caller has saved state, parked the display and waited for its BUSY completion.
@@ -4888,12 +4903,13 @@ index 2158e18f32a8f869465f47bf7e125b634a12f200..bdb19b5d06e781b5eedafe5c2d5d1ebf
 -  while (!begin()) {
 -    esp_rom_printf("[metalio] Power-off initialization failed; retrying\r\n");
 -    delay(1000);
+-  }
+-  esp_rom_printf("[metalio] Power-off pulses until hardware cuts power\r\n");
 +inline void shutdown() {
 +  if (!begin()) {
 +    esp_rom_printf("[metalio] Power-off initialization failed; GPIO3 sleep fallback\r\n");
 +    return;
-   }
--  esp_rom_printf("[metalio] Power-off pulses until hardware cuts power\r\n");
++  }
 +  esp_rom_printf("[metalio] Power-off pulses for up to five seconds\r\n");
    constexpr uint32_t PULSE_HALF_MS = 100;
    uint32_t lastError = millis() - 1000;
@@ -7265,10 +7281,9 @@ index 0000000000000000000000000000000000000000..f6b3ad5d6761e533ef16d0018b503438
 +SOFTWARE.
 diff --git a/libs/hardware/MetalioCamera/include/MetalioCamera.h b/libs/hardware/MetalioCamera/include/MetalioCamera.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..d1a3627bf8f0579b3cef54ad1224cc2f6ea57f6d
 --- /dev/null
 +++ b/libs/hardware/MetalioCamera/include/MetalioCamera.h
-@@ -0,0 +1,30 @@
+@@ -0,0 +1,31 @@
 +#pragma once
 +#include <esp_err.h>
 +
@@ -7278,7 +7293,7 @@ index 0000000000000000000000000000000000000000..d1a3627bf8f0579b3cef54ad1224cc2f
 +
 +namespace freeink::metalio_camera {
 +// Retained across software reset, so diagnostics survive the USB mux handoff.
-+// phase: 1 power, 2 mux, 3 enumeration, 4 formats, 5 frame, 6 parked.
++// phase: 1 power, 2 mux, 3 enumeration, 4 formats, 5 capture, 6 frame ready.
 +struct Diagnostic {
 +  uint32_t phase;
 +  uint32_t configDescriptorBytes;
@@ -7294,7 +7309,8 @@ index 0000000000000000000000000000000000000000..d1a3627bf8f0579b3cef54ad1224cc2f
 +void recoverSerialRoute();
 +using UsbBusyProbe = bool (*)();
 +void setUsbBusyProbe(UsbBusyProbe probe);
-+esp_err_t capture(UsbUvcStill::JpegBuffer& jpeg, UsbUvcStill::DetectInfo& info);
++esp_err_t capture(UsbUvcStill::JpegBuffer& jpeg, bool keepSession);
++void close();
 +// Host/PHY are kept until a controlled reset, with the camera physically
 +// disconnected. Boot restores the USB mux before the application starts.
 +bool needsRestart();
@@ -7315,10 +7331,9 @@ index 0000000000000000000000000000000000000000..8bdb0896f8b6894fcb30438b03c12f6c
 +}
 diff --git a/libs/hardware/MetalioCamera/src/CameraPower.cpp b/libs/hardware/MetalioCamera/src/CameraPower.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..8d0b4924911c57122adaf6e0d2b2698a5b22136d
 --- /dev/null
 +++ b/libs/hardware/MetalioCamera/src/CameraPower.cpp
-@@ -0,0 +1,92 @@
+@@ -0,0 +1,95 @@
 +// CX25601N fields and sequencing: CloudZao Metalio-E-INK4 d12f481f,
 +// main/boards/common/power/cx25601n.cc:292-344,527-570. MIT; see LICENSE.CloudZao.
 +#include "CameraPower.h"
@@ -7353,8 +7368,11 @@ index 0000000000000000000000000000000000000000..8d0b4924911c57122adaf6e0d2b2698a
 +}  // namespace
 +bool powerOff() {
 +  if (!savedValid()) return true;
-+  bool ok = update(0x18, 0x40, 0);  // remove camera VBUS before returning the USB PHY
++  // Leave the snapshot intact if VBUS could not be disabled. Restoring charge
++  // while OTG may still be active can leave the board in a bad power state.
++  if (!update(0x18, 0x40, 0)) return false;
 +  delay(50);
++  bool ok = true;
 +  for (size_t i = 0; i < sizeof(registers); ++i) ok = write(registers[i], saved.values[i]) && ok;
 +  if (ok) saved.magic = 0;
 +  return ok;
@@ -7434,10 +7452,9 @@ index 0000000000000000000000000000000000000000..294004db60c78dd581b3dd5eba41c90f
 +}  // namespace freeink::metalio_camera
 diff --git a/libs/hardware/MetalioCamera/src/MetalioCamera.cpp b/libs/hardware/MetalioCamera/src/MetalioCamera.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..fe36687e926612b8cc59627e73ed5221d564c995
 --- /dev/null
 +++ b/libs/hardware/MetalioCamera/src/MetalioCamera.cpp
-@@ -0,0 +1,106 @@
+@@ -0,0 +1,143 @@
 +#include "MetalioCamera.h"
 +
 +#include <esp_heap_caps.h>
@@ -7447,6 +7464,7 @@ index 0000000000000000000000000000000000000000..fe36687e926612b8cc59627e73ed5221
 +#include <soc/usb_dwc_struct.h>
 +#include <soc/usb_serial_jtag_struct.h>
 +
++#include <atomic>
 +#include <cstdarg>
 +#include <cstdio>
 +#include <cstring>
@@ -7457,17 +7475,20 @@ index 0000000000000000000000000000000000000000..fe36687e926612b8cc59627e73ed5221
 +namespace {
 +UsbBusyProbe busyProbe = nullptr;
 +bool used = false;
++bool sessionOpen = false;
 +constexpr uint32_t kDiagnosticMagic = 0x55564347;
 +RTC_NOINIT_ATTR Diagnostic retained;
 +RTC_NOINIT_ATTR uint32_t diagnosticMagic, diagnosticInverse;
 +vprintf_like_t previousPrintf = nullptr;
++std::atomic<unsigned> enumStage{0}, enumFailedStage{0};
 +int captureUsbError(const char* format, va_list args) {
 +  char line[192];
 +  va_list copy;
 +  va_copy(copy, args);
 +  vsnprintf(line, sizeof(line), format, copy);
 +  va_end(copy);
-+  if (strstr(line, "usb") || strstr(line, "USB") || strstr(line, "enum") || strstr(line, "HUB")) {
++  if (strstr(line, "usb") || strstr(line, "USB") || strstr(line, "ENUM") || strstr(line, "HUB") ||
++      strstr(line, "UsbUvcStill") || strstr(line, "HCD")) {
 +    const size_t used = strnlen(retained.usbError, sizeof(retained.usbError));
 +    if (used < sizeof(retained.usbError) - 1)
 +      snprintf(retained.usbError + used, sizeof(retained.usbError) - used, "%s", line);
@@ -7486,8 +7507,7 @@ index 0000000000000000000000000000000000000000..fe36687e926612b8cc59627e73ed5221
 +void setUsbBusyProbe(UsbBusyProbe probe) { busyProbe = probe; }
 +bool usbBusy() { return busyProbe && busyProbe(); }
 +bool needsRestart() { return used; }
-+esp_err_t capture(UsbUvcStill::JpegBuffer& jpeg, UsbUvcStill::DetectInfo& info) {
-+  if (usbBusy()) return ESP_ERR_INVALID_STATE;
++static esp_err_t startPower() {
 +  retained = {};
 +  diagnosticInverse = ~kDiagnosticMagic;
 +  diagnosticMagic = kDiagnosticMagic;
@@ -7495,26 +7515,53 @@ index 0000000000000000000000000000000000000000..fe36687e926612b8cc59627e73ed5221
 +  retained.largestBefore = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
 +  readPowerStatus(retained.powerBefore);
 +  retained.phase = 1;
++  enumStage = 0;
++  enumFailedStage = 0;
 +  esp_err_t result = powerOn();
 +  if (result != ESP_OK) {
 +    finishDiagnostic(result);
 +    return result;
 +  }
-+  used = true;
++  readPowerStatus(retained.powerAfter);
++  if (retained.powerAfter[2] == 0xff || !(retained.powerAfter[2] & 0x40)) {
++    powerOff();
++    finishDiagnostic(ESP_FAIL);
++    return ESP_FAIL;
++  }
 +  retained.phase = 2;
 +  if (!selectCamera()) {
 +    powerOff();
 +    finishDiagnostic(ESP_FAIL);
 +    return ESP_FAIL;
 +  }
++  used = true;
 +  delay(80);
-+  readPowerStatus(retained.powerAfter);
++  return ESP_OK;
++}
++void close() {
++  if (!sessionOpen) return;
++  UsbUvcStill::StopSession();
++  disconnected();  // Retry restoring the charger if the first attempt failed.
++  sessionOpen = false;
++}
++esp_err_t capture(UsbUvcStill::JpegBuffer& jpeg, bool keepSession) {
++  if (usbBusy()) return ESP_ERR_INVALID_STATE;
++  const bool opening = !sessionOpen;
++  if (opening) {
++    const esp_err_t power = startPower();
++    if (power != ESP_OK) return power;
++  }
 +  previousPrintf = esp_log_set_vprintf(captureUsbError);
-+  retained.phase = 3;
-+  result = UsbUvcStill::StartSession(8000);
-+  if (result == ESP_OK) {
-+    retained.phase = 4;
-+    result = UsbUvcStill::Detect(info, 3000);
++  esp_err_t result = ESP_OK;
++  if (opening) {
++    retained.phase = 3;
++    sessionOpen = true;  // Even a failed host start may have acquired resources.
++    result = UsbUvcStill::StartSession(8000);
++    if (result == ESP_OK) {
++      UsbUvcStill::DetectInfo info;
++      retained.phase = 4;
++      result = UsbUvcStill::Detect(info, 3000);
++    }
 +  }
 +  if (result == ESP_OK) {
 +    retained.phase = 5;
@@ -7532,9 +7579,11 @@ index 0000000000000000000000000000000000000000..fe36687e926612b8cc59627e73ed5221
 +  if (metalio::read(metalio::EXPANDER, 2, mux, 2)) retained.muxOutput = mux[0] | (mux[1] << 8);
 +  readPowerStatus(retained.powerLate);
 +  finishDiagnostic(result);
-+  UsbUvcStill::StopSession();
++  if (result != ESP_OK || !keepSession) close();
 +  esp_log_set_vprintf(previousPrintf);
-+  disconnected();
++  const size_t logSize = strnlen(retained.usbError, sizeof(retained.usbError));
++  snprintf(retained.usbError + logSize, sizeof(retained.usbError) - logSize, " enum_stage=%u enum_failed=%u",
++           enumStage.load(), enumFailedStage.load());
 +  if (result == ESP_OK) retained.phase = 6;
 +  finishDiagnostic(result);
 +  return result;
@@ -7543,6 +7592,11 @@ index 0000000000000000000000000000000000000000..fe36687e926612b8cc59627e73ed5221
 +
 +extern "C" void freeink_camera_config_descriptor(uint16_t length) {
 +  freeink::metalio_camera::retained.configDescriptorBytes = length;
++}
++
++extern "C" void freeink_camera_enum_stage(unsigned stage, unsigned failed) {
++  if (stage != 0) freeink::metalio_camera::enumStage = stage;
++  if (failed != 0) freeink::metalio_camera::enumFailedStage = failed;
 +}
 diff --git a/libs/hardware/MetalioCamera/src/host/LICENSE.Espressif b/libs/hardware/MetalioCamera/src/host/LICENSE.Espressif
 new file mode 100644
@@ -7754,10 +7808,9 @@ index 0000000000000000000000000000000000000000..d645695673349e3947e8e5ae42332d0a
 +   limitations under the License.
 diff --git a/libs/hardware/MetalioCamera/src/host/enum.c b/libs/hardware/MetalioCamera/src/host/enum.c
 new file mode 100644
-index 0000000000000000000000000000000000000000..81e06ec81c6533b84611136ddc5d25177d8df966
 --- /dev/null
 +++ b/libs/hardware/MetalioCamera/src/host/enum.c
-@@ -0,0 +1,1400 @@
+@@ -0,0 +1,1403 @@
 +/*
 + * SPDX-FileCopyrightText: 2023-2026 Espressif Systems (Shanghai) CO LTD
 + *
@@ -8296,6 +8349,7 @@ index 0000000000000000000000000000000000000000..81e06ec81c6533b84611136ddc5d2517
 + * Set the length to request full Configuration descriptor
 + */
 +extern void freeink_camera_config_descriptor(uint16_t length) __attribute__((weak));
++extern void freeink_camera_enum_stage(unsigned stage, unsigned failed) __attribute__((weak));
 +
 +static esp_err_t parse_short_config_desc(void)
 +{
@@ -8885,6 +8939,7 @@ index 0000000000000000000000000000000000000000..81e06ec81c6533b84611136ddc5d2517
 +        }
 +    }
 +    p_enum_driver->single_thread.stage = next_stage;
++    if (freeink_camera_enum_stage) freeink_camera_enum_stage(next_stage, last_stage_pass ? 0 : last_stage);
 +    return stage_need_process(next_stage);
 +}
 +
@@ -9002,6 +9057,7 @@ index 0000000000000000000000000000000000000000..81e06ec81c6533b84611136ddc5d2517
 +             0);
 +
 +    p_enum_driver->single_thread.stage = ENUM_STAGE_GET_SHORT_DEV_DESC;
++    if (freeink_camera_enum_stage) freeink_camera_enum_stage(ENUM_STAGE_GET_SHORT_DEV_DESC, 0);
 +    p_enum_driver->single_thread.dev_uid = uid;
 +    p_enum_driver->single_thread.dev_hdl = dev_hdl;
 +    p_enum_driver->single_thread.parent_dev_hdl = dev_info.parent.dev_hdl;
@@ -11484,10 +11540,9 @@ index 0000000000000000000000000000000000000000..a07ff44767a149fd06b1d308dec3e78d
 +#endif
 diff --git a/libs/hardware/MetalioCamera/src/usb_uvc_still.cc b/libs/hardware/MetalioCamera/src/usb_uvc_still.cc
 new file mode 100644
-index 0000000000000000000000000000000000000000..b6ff50a924d4967d184ce0bfe52f918f682f6a53
 --- /dev/null
 +++ b/libs/hardware/MetalioCamera/src/usb_uvc_still.cc
-@@ -0,0 +1,934 @@
+@@ -0,0 +1,963 @@
 +#include "usb_uvc_still.h"
 +
 +#include <algorithm>
@@ -11509,6 +11564,7 @@ index 0000000000000000000000000000000000000000..b6ff50a924d4967d184ce0bfe52f918f
 +
 +#if CONFIG_IDF_TARGET_ESP32S3
 +#include "esp_private/usb_phy.h"
++#include "hal/usb_dwc_ll.h"
 +#include "hal/usb_serial_jtag_ll.h"
 +#include "usb/usb_host.h"
 +#include "usb/uvc_host.h"
@@ -11542,6 +11598,7 @@ index 0000000000000000000000000000000000000000..b6ff50a924d4967d184ce0bfe52f918f
 +bool s_op_busy = false;
 +bool s_session_active = false;   // UVC 已装且可用于 Capture/Detect
 +bool s_host_installed = false;   // usb_host + phy + usb_lib 已装（退出页面仍保留）
++bool s_root_started = false;
 +bool s_uvc_installed = false;
 +
 +usb_phy_handle_t s_phy = nullptr;
@@ -11890,6 +11947,12 @@ index 0000000000000000000000000000000000000000..b6ff50a924d4967d184ce0bfe52f918f
 +}
 +
 +esp_err_t WaitUvcConnected(uint32_t enum_wait_ms) {
++    if (!s_root_started) {
++        // Register the UVC client before the already connected camera can enumerate.
++        const esp_err_t err = usb_host_lib_set_root_port_power(true);
++        if (err != ESP_OK) return err;
++        s_root_started = true;
++    }
 +    const TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(enum_wait_ms);
 +    while (!s_uvc_seen && xTaskGetTickCount() < deadline) {
 +        vTaskDelay(pdMS_TO_TICKS(50));
@@ -11986,6 +12049,27 @@ index 0000000000000000000000000000000000000000..b6ff50a924d4967d184ce0bfe52f918f
 +
 +    usb_host_config_t host_config = {};
 +    host_config.skip_phy_setup = true;
++    host_config.root_port_unpowered = true;
++#if CONFIG_USB_HOST_ENABLE_ENUM_FILTER_CALLBACK
++    // Arduino enables the filter and a missing callback rejects the device.
++    // The mux connects the built-in camera here. Keep its default configuration.
++    host_config.enum_filter_cb = [](const usb_device_desc_t*, uint8_t*) { return true; };
++#endif
++    // Like ESP-IDF's IN bias, size RX from the hardware-reported capacity.
++    // InitHostPhy() enabled the USB bus clock. Endpoint info can reserve words
++    // from the nominal 256-word FIFO, making a fixed 208/16/32 layout invalid.
++    constexpr unsigned kNonPeriodicTxLines = 16;
++    constexpr unsigned kPeriodicTxLines = 32;
++    const unsigned fifoLines = usb_dwc_ll_ghwcfg_get_fifo_depth(USB_DWC_LL_GET_HW(0));
++    if (fifoLines > kNonPeriodicTxLines + kPeriodicTxLines) {
++        host_config.fifo_settings_custom.rx_fifo_lines = fifoLines - kNonPeriodicTxLines - kPeriodicTxLines;
++        host_config.fifo_settings_custom.nptx_fifo_lines = kNonPeriodicTxLines;
++        host_config.fifo_settings_custom.ptx_fifo_lines = kPeriodicTxLines;
++    }
++    ESP_LOGI(TAG, "USB FIFO depth=%u rx=%u nptx=%u ptx=%u", fifoLines,
++             static_cast<unsigned>(host_config.fifo_settings_custom.rx_fifo_lines),
++             static_cast<unsigned>(host_config.fifo_settings_custom.nptx_fifo_lines),
++             static_cast<unsigned>(host_config.fifo_settings_custom.ptx_fifo_lines));
 +    // 百问会话时 core0 常无空闲 LEVEL1 槽；LOWMED 允许 1~3，并在 core1 上 install
 +    host_config.intr_flags = ESP_INTR_FLAG_LOWMED;
 +    err = UsbHostInstallOnCore1(&host_config);
@@ -16593,3 +16677,60 @@ index d3cc7801875db4429943f1e277b11dc516f44ae4..39062256a339752e760540fa114e920c
      text.color = foreground.color;
      // `color` already names the ink; DisplayTarget::text() treats `inverted`
      // as a further flip of it. Setting both made a white foreground resolve
+diff --git a/libs/font/FreeInkFont/third_party/freetype/include/freetype/config/ftmodule.h b/libs/font/FreeInkFont/third_party/freetype/include/freetype/config/ftmodule.h
+--- a/libs/font/FreeInkFont/third_party/freetype/include/freetype/config/ftmodule.h
++++ b/libs/font/FreeInkFont/third_party/freetype/include/freetype/config/ftmodule.h
+@@ -20,3 +20,9 @@
+ #if FREEINK_FONT_ENABLE_AUTOHINT
+ FT_USE_MODULE( FT_Module_Class, autofit_module_class )
+ #endif
++
++#if FREEINK_FONT_ENABLE_CFF
++FT_USE_MODULE( FT_Module_Class, psaux_module_class )
++FT_USE_MODULE( FT_Module_Class, pshinter_module_class )
++FT_USE_MODULE( FT_Driver_ClassRec, cff_driver_class )
++#endif
+diff --git a/libs/ui/FreeInkUI/include/components/lists/list.h b/libs/ui/FreeInkUI/include/components/lists/list.h
+--- a/libs/ui/FreeInkUI/include/components/lists/list.h
++++ b/libs/ui/FreeInkUI/include/components/lists/list.h
+@@ -2,6 +2,7 @@
+ 
+ #include "../../FreeInkUICore.h"
+ 
++#include <algorithm>
+ #include <atomic>
+ #if __has_include(<BoardConfig.h>)
+ #include <BoardConfig.h>
+@@ -163,6 +164,9 @@
+   // pixel clipping; omitted on targets without clipping. Only full rows count
+   // towards navigation and interaction.
+   bool partialTrailingRow = false;
++  // Opt in when a visible file preview should open on tap. Its hit rect is
++  // clipped to the same viewport; it still does not count as a full nav row.
++  bool partialTrailingInteractive = false;
+   int16_t partialTrailingMinHeight = 18;
+   // Additional marker drawn on the selected row (the v1 theme Underline and
+   // Triangle selection styles).
+@@ -721,7 +725,7 @@
+       state |= StateSelected;
+     if (!item.enabled)
+       state |= StateDisabled;
+-    if (!partial && props.action != NO_ACTION && item.enabled) {
++    if ((!partial || props.partialTrailingInteractive) && props.action != NO_ACTION && item.enabled) {
+       // item.enabled controls interactivity; a StateDisabled carried in
+       // item.state is visual-only dimming and must not block touch routing
+       // (findTouch skips disabled interactions).
+@@ -744,10 +748,10 @@
+       // this row. Horizontal expansion still covers the reserved scroll strip.
+       if (props.partialTrailingRow) {
+         hit.y = row.y;
+-        hit.height = row.height;
++        hit.height = static_cast<int16_t>(std::min<int>(row.height, rowArea.bottom() - row.y));
+       }
+-      frame.hit(hit, props.action, item.actionValue, props.inputMask, hitState);
+-      if (revealed)
++      if (hit.height > 0) frame.hit(hit, props.action, item.actionValue, props.inputMask, hitState);
++      if (!partial && revealed)
+         frame.hit(actionRect, reveal->action, item.actionValue,
+                   InputTouch, StateNormal);
+     }

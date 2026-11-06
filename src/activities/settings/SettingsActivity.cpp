@@ -1,5 +1,7 @@
-#include "SettingsActivity.h"
-
+#include "SystemUiFonts.h"
+#if RICKYOS_SYSTEM_UI_FONTS
+#include "UiTypographyActivity.h"
+#endif
 #include <BoardConfig.h>
 #include <GfxRenderer.h>
 #include <HalDisplay.h>
@@ -7,6 +9,8 @@
 #include <HalSystem.h>
 #include <LibraryBuilder.h>
 #include <Logging.h>
+
+#include "SettingsActivity.h"
 #if (FREEINK_DEVICE_MURPHY_M4 || FREEINK_CAP_HAPTIC) && !defined(SIMULATOR)
 #include <HalGPIO.h>
 #endif
@@ -35,6 +39,7 @@
 #include "LanguageSelectActivity.h"
 #include "MappedInputManager.h"
 #include "OtaUpdateActivity.h"
+#include "ReaderTouchZonesActivity.h"
 #include "ReadingStatsSettingsActivity.h"
 #include "RickyHelpActivity.h"
 #include "RickyProfileActivity.h"
@@ -306,7 +311,7 @@ void SettingsActivity::reorganizeRickySettings() {
 
   // Rows that live on their own pages or do nothing on this device leave the lists:
   // - the Standby & power-off page has what Standby and power-off show, the picture's
-  //   fit and filter, when Standby starts and when it powers off;
+  //   fit and filter; timing stays in Display & Standby;
   // - every touch gesture is on the Gestures page, every key on the Keys page;
   // - Read Pico has no Confirm key for the long-press function, and plugins / SD
   //   firmware update are not part of RickyOS (Profile is the card on top of Settings).
@@ -314,7 +319,7 @@ void SettingsActivity::reorganizeRickySettings() {
     const auto field = setting.valuePtr;
     if (field == &CrossPointSettings::sleepScreen || field == &CrossPointSettings::standbyOverlay ||
         field == &CrossPointSettings::quickResumeSleepScreen || field == &CrossPointSettings::sleepScreenCoverMode ||
-        field == &CrossPointSettings::sleepScreenCoverFilter || field == &CrossPointSettings::sleepTimeoutMinutes) {
+        field == &CrossPointSettings::sleepScreenCoverFilter) {
       return true;
     }
     return field == &CrossPointSettings::touchReaderControls || field == &CrossPointSettings::pageTurnGesture ||
@@ -470,6 +475,9 @@ void SettingsActivity::rebuildSettingsLists() {
 #if FREEINK_CAP_BLE_HID_HOST
   controlsSettings.push_back(SettingInfo::Action(StrId::STR_BLUETOOTH, SettingAction::Bluetooth));
 #endif
+#if RICKYOS_SYSTEM_UI_FONTS
+  systemSettings.push_back(SettingInfo::Action(StrId::STR_UI_TYPOGRAPHY, SettingAction::UiTypography));
+#endif
   systemSettings.push_back(SettingInfo::Action(StrId::STR_APP_VISIBILITY, SettingAction::AppVisibility));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_DATE_AND_TIME, SettingAction::ClockSettings));
 #if !FREEINK_DEVICE_METALIO_PLUS
@@ -503,6 +511,8 @@ void SettingsActivity::rebuildSettingsLists() {
                         SettingInfo::Action(StrId::STR_MANAGE_DICTIONARIES, SettingAction::ManageDictionaries));
   readerSettings.push_back(SettingInfo::Action(StrId::STR_CUSTOMISE_STATUS_BAR, SettingAction::CustomiseStatusBar));
   readerSettings.push_back(SettingInfo::Action(StrId::STR_READING_STATS, SettingAction::ReadingStatsSettings));
+  if (BoardConfig::hasTouch())
+    readerSettings.push_back(SettingInfo::Action(StrId::STR_TOUCH_GRID_TITLE, SettingAction::ReaderTouchZones));
 
   reorganizeRickySettings();
   currentSettings = &settingsForCategory(selectedCategoryIndex);
@@ -806,7 +816,7 @@ void SettingsActivity::toggleCurrentSetting() {
   const bool sleepScreenChanged = setting.valuePtr == &CrossPointSettings::sleepScreen;
   const bool quickResumeTimeoutChanged = setting.valuePtr == &CrossPointSettings::quickResumeSleepScreen;
 
-  if (setting.nameId == StrId::STR_TIME_TO_SLEEP) {
+  if (setting.valuePtr == &CrossPointSettings::sleepTimeoutMinutes) {
     openSleepTimeoutPicker();
     return;
   }
@@ -884,6 +894,9 @@ void SettingsActivity::toggleCurrentSetting() {
     } else {
       SETTINGS.*(setting.valuePtr) = currentValue + setting.valueRange.step;
     }
+  } else if (setting.type == SettingType::VALUE && setting.wideValuePtr != nullptr) {
+    const int next = SETTINGS.*(setting.wideValuePtr) + setting.valueRange.step;
+    SETTINGS.*(setting.wideValuePtr) = next > setting.valueRange.max ? setting.valueRange.min : next;
   } else if (setting.type == SettingType::ACTION) {
     // Every child page returns here through ActivityManager's Pop; make sure the
     // settings list is both rebuilt (values may have changed) and repainted.
@@ -894,6 +907,9 @@ void SettingsActivity::toggleCurrentSetting() {
     };
 
     switch (setting.action) {
+      case SettingAction::ReaderTouchZones:
+        startActivityForResultWith<ReaderTouchZonesActivity>(resultHandler);
+        break;
       case SettingAction::HomeButton:
 #if FREEINK_DEVICE_METALIO_PLUS
       case SettingAction::RickyKeys:
@@ -1034,6 +1050,14 @@ void SettingsActivity::toggleCurrentSetting() {
             },
             &sdFontSystem.registry(), TextSettingsActivity::Tab::Family);
         break;
+      case SettingAction::UiTypography:
+#if RICKYOS_SYSTEM_UI_FONTS
+        startActivityForResultWith<UiTypographyActivity>([this](const ActivityResult&) {
+          rebuildSettingsLists();
+          requestUpdate();
+        });
+#endif
+        break;
       case SettingAction::Language:
         // Row labels are translated once in rebuildRowItems() and don't
         // re-run on Pop (see ActivityManager::loop()), so a language switch
@@ -1159,7 +1183,7 @@ void SettingsActivity::openSleepTimeoutPicker() {
         }
         requestUpdate();
       },
-      "SleepTimeoutInterval", StrId::STR_TIME_TO_SLEEP, SETTINGS.sleepTimeoutMinutes,
+      "SleepTimeoutInterval", StrId::STR_RICKY_AUTO_STANDBY, SETTINGS.sleepTimeoutMinutes,
       CrossPointSettings::MIN_SLEEP_TIMEOUT_MINUTES, CrossPointSettings::MAX_SLEEP_TIMEOUT_MINUTES, 1, 5,
       StrId::STR_SLEEP_TIMER_VALUE_FORMAT, false, StrId::STR_SLEEP_NEVER);
 }
@@ -1188,8 +1212,11 @@ std::string SettingsActivity::settingValueText(const SettingInfo& setting) {
     }
     return "";
   }
+  if (setting.type == SettingType::VALUE && setting.wideValuePtr != nullptr) {
+    return std::to_string(SETTINGS.*(setting.wideValuePtr));
+  }
   if (setting.type == SettingType::VALUE && setting.valuePtr != nullptr) {
-    if (setting.nameId == StrId::STR_TIME_TO_SLEEP) {
+    if (setting.valuePtr == &CrossPointSettings::sleepTimeoutMinutes) {
       if (SETTINGS.sleepTimeoutMinutes >= CrossPointSettings::SLEEP_TIMEOUT_NEVER_MINUTES) {
         return tr(STR_SLEEP_NEVER);
       }
@@ -1248,20 +1275,35 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
                                     &icon_ricky_fonts_40,   &icon_ricky_folder_40, &icon_ricky_system_40};
     static_assert(sizeof(icons) / sizeof(icons[0]) == categoryCount);
     const auto grid = screen.takeTop(cellHeight * rows + gap * (rows - 1), 0);
-    auto label = theme.bodyText;
-    label.maxLines = 1;
     for (int i = 0; i < categoryCount; ++i) {
       const auto rect = RickyPageUi::uiRect(
           RickyPageLayout::cell(Rect{grid.x, grid.y, grid.width, grid.height}, i, categoryCount, gap, columns));
       const bool picked = focus && selected == i;
       RickyPageUi::card(target, rect, picked);
       screen.frame().hit(rect, ACTION_ROW, i, fui::InputTouch);
-      RickyPageUi::pageIcon(target, renderer, rect.x + pad, rect.y + pad + icons[i]->h / 2, *icons[i], picked);
-      RickyDesignUi::text(
-          renderer,
-          {static_cast<int16_t>(rect.x + pad), static_cast<int16_t>(rect.y + ricky::panel::pixels(80, 60)),
-           static_cast<int16_t>(rect.width - pad * 2), static_cast<int16_t>(ricky::panel::pixels(44, 34))},
-          I18N.get(categoryNames[i]), RickyDesignUi::HEADLINE, picked);
+      const auto* label = I18N.get(categoryNames[i]);
+      const int labelFont = renderer.textFontId(RickyDesignUi::fontFor(renderer, RickyDesignUi::HEADLINE, label), label);
+      const int labelTop = ricky::panel::pixels(80, 60);
+      const int labelHeight = rect.height - labelTop - gap / 2;
+      const int labelWidth = rect.width - pad * 2;
+      const bool useInlineLabel = ricky::panel::nativeSmall &&
+                                  (renderer.getLineHeight(labelFont) > labelHeight ||
+                                   renderer.getTextWidth(labelFont, label) > labelWidth);
+      if (useInlineLabel) {
+        const int labelX = rect.x + pad + icons[i]->w + gap / 2;
+        RickyPageUi::pageIcon(target, renderer, rect.x + pad, rect.y + rect.height / 2, *icons[i], picked);
+        RickyDesignUi::text(renderer,
+                            {static_cast<int16_t>(labelX), static_cast<int16_t>(rect.y + gap / 2),
+                             static_cast<int16_t>(rect.right() - pad - labelX),
+                             static_cast<int16_t>(rect.height - gap)},
+                            label, RickyDesignUi::BODY, picked, fui::TextAlign::Left, 2);
+      } else {
+        RickyPageUi::pageIcon(target, renderer, rect.x + pad, rect.y + pad + icons[i]->h / 2, *icons[i], picked);
+        RickyDesignUi::text(renderer,
+                            {static_cast<int16_t>(rect.x + pad), static_cast<int16_t>(rect.y + labelTop),
+                             static_cast<int16_t>(labelWidth), static_cast<int16_t>(labelHeight)},
+                            label, RickyDesignUi::HEADLINE, picked);
+      }
     }
     screen.takeTop(section, 0);
     const auto about = screen.takeTop(ricky::ds::layout::kRowHeight, ricky::ds::space::kTouchSpacing);

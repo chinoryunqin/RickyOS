@@ -3,6 +3,9 @@
 #include <HalPowerManager.h>
 #include <I18n.h>
 #include <Logging.h>
+#if FREEINK_DEVICE_METALIO_PLUS
+#include <WiFi.h>
+#endif
 
 #include <cstdio>
 #include <cstring>
@@ -165,12 +168,25 @@ void logDiagnostics(const char* phase) {
 #endif
 }
 
+bool radioBusy() {
+#if FREEINK_DEVICE_METALIO_PLUS
+  return WiFi.getMode() != WIFI_MODE_NULL;
+#else
+  return false;
+#endif
+}
+
 StartResult ensureStarted(GfxRenderer& renderer, const StartContext context) {
 #if !FREEINK_CAP_BLE_HID_HOST
   (void)renderer;
   (void)context;
   return StartResult::Unavailable;
 #else
+#if FREEINK_DEVICE_METALIO_PLUS
+  // Share the same radio exclusion as updateBluetoothLifecycle. Do not start
+  // a host in settings only for the main loop to tear it down immediately.
+  if (radioBusy()) return StartResult::RadioBusy;
+#endif
   if (BleHid.isRunning()) return StartResult::AlreadyRunning;
   if (NetworkStartup::bluetoothMemoryReleased()) {
     LOG_INF("BLE", "Controller memory was released for Wi-Fi this boot; restart to use Bluetooth");
@@ -216,7 +232,7 @@ StartResult ensureStarted(GfxRenderer& renderer, const StartContext context) {
 #endif
 
   HalPowerManager::Lock powerLock;
-  if (!BleHid.begin("CrossMux")) {
+  if (!BleHid.begin("RickyOS")) {
     reportStartFailure(GateFailure::HostStart, context, before, readMemory());
     return StartResult::Failed;
   }

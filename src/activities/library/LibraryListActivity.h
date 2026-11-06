@@ -4,6 +4,7 @@
 #include <LibraryIndexFile.h>
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -14,6 +15,7 @@
 #include "activities/UiTabListActivity.h"
 #include "components/OptionPopup.h"
 #include "components/media/cover-grid.h"
+#include "util/BookCoverLoader.h"
 
 // One Library screen: every indexed book on the card shown by recency, title,
 // or author. The Recent shelf orders by file modification time (when a book
@@ -39,6 +41,8 @@ class LibraryListActivity final : public UiTabListActivity {
 
   void onEnter() override;
   void onExit() override;
+  bool readyToLeave() const override { return !coverJob.running(); }
+  void prepareForSleep() override { coverJob.wait(); }
   void loop() override;
   MainTab mainTab() const override { return MainTab::Library; }
   void selectMainTabContentEdge(MainTabContentEdge edge) override {
@@ -247,7 +251,11 @@ class LibraryListActivity final : public UiTabListActivity {
   // idle a moment (painting itself never unzips a book). Written by the render
   // task, consumed by loop() under the render lock.
   void makePendingCover();
-  uint32_t coverPending = 0;   // slots on the current page whose thumbnail is missing
+  BookCoverLoader::ThumbnailJob coverJob;
+  int coverJobPage = -1;
+  int coverJobHeight = 0;
+  bool coverJobLast = false;
+  std::atomic<uint32_t> coverPending{0};  // slots whose thumbnail is missing
   uint32_t coverAttempted = 0;  // slots already tried on this page (no retry loop)
   int coverPageStart = -1;
   int coverPageHeight = 0;

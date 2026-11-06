@@ -106,6 +106,7 @@ void ReadingStatsSettingsActivity::buildScreen(UiScreen& screen) {
     props.valueText = screen.theme().bodyText;
   }
   props.rowProvider = [](void*, uint16_t index, fui::ListItem& item) {
+    item.actionValue = static_cast<int16_t>(index);
     item.label = I18N.get(MENU_NAMES[index]);
     switch (static_cast<MenuItem>(index)) {
       case MenuItem::DailyGoal: {

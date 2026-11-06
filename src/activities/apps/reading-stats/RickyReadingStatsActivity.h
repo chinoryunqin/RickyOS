@@ -2,27 +2,25 @@
 
 #include <cstdint>
 
-#include "activities/UiListActivity.h"
+#include "RickyStatsActivity.h"
 
-// RickyOS reading statistics: one page, no menu. Today against the daily goal with the
+// RickyOS reading statistics: a vertically browsable overview, no menu. Today against the daily goal with the
 // logo's dog reacting to it, the month as a calendar of paw prints (the reading streak
 // of util/ReadingStreak.h), the month's totals and one small fact that changes daily,
 // all from ReadingStatsStore. ‹ › or the page buttons move between months; a day with
 // reading opens its detail. The last card links to the badges (or Down) and the month
 // report (or Confirm); in a month's first days it announces last month's report.
-class RickyReadingStatsActivity final : public UiListActivity {
+class RickyReadingStatsActivity final : public RickyStatsActivity {
  public:
   RickyReadingStatsActivity(GfxRenderer& renderer, MappedInputManager& input)
-      : UiListActivity("RickyReadingStats", renderer, input) {}
+      : RickyStatsActivity("RickyReadingStats", renderer, input) {}
 
   void onEnter() override;
 
  protected:
-  int listCount() const override { return 0; }
   const char* headerTitle() const override;
-  void buildScreen(UiScreen& screen) override;
-  void activateIndex(int) override {}
-  bool handleCustomInput() override;
+  void buildPage(UiScreen& screen, RickyStatsPage& page) override;
+  bool handleStatsInput() override;
 
  private:
   static constexpr freeink::ui::ActionId ACTION_PREVIOUS_MONTH = ACTION_USER;
@@ -38,6 +36,10 @@ class RickyReadingStatsActivity final : public UiListActivity {
 
   void showMonth(int month);
   void openDay(int dayOfMonth);
+  void openTappedDay();
+  Rect calendarGrid_;
+  int calendarRowHeight_ = 0;
+  int calendarLeading_ = 0;
   void openBadges();
   void openReport(int month);
 };

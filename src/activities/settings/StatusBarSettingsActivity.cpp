@@ -177,8 +177,8 @@ void StatusBarSettingsActivity::buildScreen(UiScreen& screen) {
   // bar) so the list never runs underneath it, plus the button-hints row below.
   // The preview is pinned directly above the hints (see render()), so the band
   // is just the bar + its label, not a floating gap.
-  const auto previewFooter =
-      static_cast<int16_t>(kPreviewCardHeight + kPreviewLabelGap + verticalPreviewTextPadding + metrics.verticalSpacing);
+  const auto previewFooter = static_cast<int16_t>(kPreviewCardHeight + kPreviewLabelGap + verticalPreviewTextPadding +
+                                                  metrics.verticalSpacing);
   screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
                                                 static_cast<int16_t>(metrics.buttonHintsHeight + previewFooter), 0});
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
@@ -239,9 +239,10 @@ void StatusBarSettingsActivity::render(RenderLock&&) {
                            ricky::ds::radius::kControl, true);
   const Rect page{card.x + 4, card.y + 4, card.width - 8, card.height - 8};
   const auto sb = SETTINGS.statusBarSpec();
-  const auto chrome = readerChrome::compactLayout(
-      std::max(renderer.getLineHeight(RickyDesignUi::CAPTION), renderer.getLineHeight(BaseTheme::STATUS_NUMERIC_FONT_ID)),
-      sb.headerLaneVisible(), sb.footerLaneVisible(), sb.showsProgressBar(), sb.progressBarHeightPx);
+  const auto chrome = readerChrome::compactLayout(std::max(renderer.getLineHeight(RickyDesignUi::CAPTION),
+                                                           renderer.getLineHeight(BaseTheme::STATUS_NUMERIC_FONT_ID)),
+                                                  sb.headerLaneVisible(), sb.footerLaneVisible(), sb.showsProgressBar(),
+                                                  sb.progressBarHeightPx, ricky::panel::nativeSmall);
   constexpr int kTextInset = 20, kBarPitch = 26, kBarHeight = 10;
   const int textTop = page.y + std::max(kTextInset, chrome.headerReserve);
   const int textBottom = page.y + page.height - std::max(kTextInset, chrome.footerReserve);

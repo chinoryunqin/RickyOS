@@ -10,6 +10,7 @@ struct ReaderPageCacheKey {
   ReaderRenderSpec spec;
   uint32_t sectionGeneration = 0;
   uint32_t renderEpoch = 0;
+  uint32_t imageAdjustments = 0;
   int spine = -1;
   int page = -1;
   int top = 0;

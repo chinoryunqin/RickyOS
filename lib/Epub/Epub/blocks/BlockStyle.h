@@ -53,6 +53,9 @@ struct BlockStyle {
   // The book's CSS set a top or bottom margin: its spacing is the book's, and the reader's
   // extra paragraph spacing is not added on top. Layout-only, not serialized.
   bool verticalMarginDefined = false;
+  // Layout-only: ordinary text paragraphs accept the reader's gap scale;
+  // heading and container padding retain their own geometry. Not serialized.
+  bool paragraphSpacingControlled = false;
 
   // Set when this block was created by a <br> element. Used by startNewTextBlock to inject
   // a full line-height gap when the <br> block stays empty (section-break use case).
@@ -190,9 +193,10 @@ struct BlockStyle {
       blockStyle.box.border = static_cast<uint8_t>(border);
       blockStyle.box.borderLuma = cssStyle.borderLuma;
       blockStyle.box.fillLuma = fill;
-      blockStyle.box.radius = cssStyle.hasBorderRadius()
-                                  ? static_cast<uint8_t>(std::clamp<int>(cssStyle.borderRadius.toPixelsInt16(emSize, vw), 0, 40))
-                                  : 0;
+      blockStyle.box.radius =
+          cssStyle.hasBorderRadius()
+              ? static_cast<uint8_t>(std::clamp<int>(cssStyle.borderRadius.toPixelsInt16(emSize, vw), 0, 40))
+              : 0;
       blockStyle.box.padTop = static_cast<uint8_t>(std::clamp<int>(blockStyle.paddingTop, 0, 255));
       blockStyle.box.padBottom = static_cast<uint8_t>(std::clamp<int>(blockStyle.paddingBottom, 0, 255));
     }

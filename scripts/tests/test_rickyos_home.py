@@ -75,9 +75,75 @@ int main() {
 }
 ''', include_dirs=(ROOT / 'freeink-sdk/libs/ui/FreeInkUI/include',))
         home = method((ROOT / 'src/components/RickyHomeUi.cpp').read_text(), 'void RickyHomeUi::drawPortrait(')
-        self.assertIn('measureWrappedText(target, greetingText, greetingStyle', home)
+        self.assertIn('measureWrappedText(greetingTarget, greetingText, greetingStyle', home)
         self.assertIn('design::BODY, false, fui::TextAlign::Left, 2)', re.sub(r'\s+', ' ', home))
-        self.assertIn('titleOf(item), design::BODY, selectedBook, fui::TextAlign::Center', re.sub(r'\s+', ' ', home))
+        self.assertIn('titleOf(item), design::BOOK_TITLE, selectedBook, fui::TextAlign::Center', re.sub(r'\s+', ' ', home))
+
+    def test_greeting_reserves_two_actual_ui_font_lines_at_large_scale(self):
+        home = (ROOT / 'src/components/RickyHomeUi.cpp').read_text()
+        start = home.index('  RickyUiTarget greetingTarget(renderer);')
+        geometry = home[start:home.index('  const auto profile =', start)]
+        # Reuse the SDK wrapping engine with variable font metrics. The host's
+        # body font is deliberately smaller than the actual design BODY face.
+        run_cpp(r'''
+#include <algorithm>
+#include <cassert>
+#include <string>
+#include "FreeInkUICore.h"
+namespace fui = freeink::ui;
+namespace freeink::ui { struct GfxRendererTarget { static constexpr int FONT_BODY=0; }; }
+struct Renderer { int line; };
+namespace design {
+constexpr int BODY=17;
+int fontFor(const Renderer&,int font,const char*) { return font; }
+}
+struct RickyUiTarget : fui::DrawTarget {
+  int height;
+  explicit RickyUiTarget(const Renderer& renderer):height(renderer.line) {}
+  void setFont(fui::FontId slot,int font) { assert(slot==0 && font==design::BODY); }
+  fui::Size measureText(fui::FontId,const char* text,fui::TextStyle) const override {
+    int width=0;
+    for(auto p=reinterpret_cast<const unsigned char*>(text);*p;++p)
+      if((*p&0xC0)!=0x80) width+=(*p<128?8:20)*height/34;
+    return {static_cast<int16_t>(width),static_cast<int16_t>(height)};
+  }
+  int16_t lineHeight(fui::FontId) const override { return height; }
+  void fill(fui::Rect,fui::Paint,uint8_t,uint8_t) override {}
+  void stroke(fui::Rect,fui::Paint,uint8_t,uint8_t,uint8_t) override {}
+  void line(fui::Point,fui::Point,uint8_t,fui::Paint) override {}
+  void triangle(fui::Point,fui::Point,fui::Point,fui::Paint) override {}
+  void bitmap(fui::Rect,fui::BitmapRef,fui::BitmapMode,fui::Paint,fui::Rotation) override {}
+  void text(fui::Rect,const char*,fui::TextStyle) override {}
+};
+constexpr int px(int standard,int small) { return ricky::panel::pixels(standard,small); }
+struct Screen { fui::Rect body() const { return {0,0,px(610,432),px(1000,700)}; } };
+int main() {
+  for(int line:ricky::panel::nativeSmall ? std::initializer_list<int>{28,34,40}
+                                       : std::initializer_list<int>{36,44,52,64}) for(const char* greetingText:{
+      "Ricky，今天也读几页。", "Ricky，读一会儿，歇一会儿。",
+      "Ricky，翻开书，慢慢来。", "Ricky，留一点时间给阅读。",
+      "Ricky，愿今天有个好故事。", "Ricky，願今天有個好故事。",
+      "Ricky, may today bring a good story."}) {
+    Renderer renderer{line}; Screen screen; constexpr int gap=16;
+''' + geometry + r'''
+    assert(greetingHeight>=line);
+    auto drawnStyle=greetingStyle;
+    drawnStyle.maxLines=std::min<int>(2,greetingHeight/line);
+    std::string visible;
+    fui::layoutText(greetingTarget,{0,0,static_cast<int16_t>(greetingWidth),
+                                   static_cast<int16_t>(greetingHeight)},greetingText,drawnStyle,
+                    [&](const char* run,fui::Rect r) {
+                      assert(r.bottom()<=greetingHeight);
+                      visible+=run;
+                    });
+    std::string expected=greetingText;
+    visible.erase(std::remove(visible.begin(),visible.end(),' '),visible.end());
+    expected.erase(std::remove(expected.begin(),expected.end(),' '),expected.end());
+    assert(visible==expected);
+    if(line==64) assert(greetingHeight>72);
+  }
+}
+''', include_dirs=(ROOT / 'freeink-sdk/libs/ui/FreeInkUI/include',), defines=('FREEINK_DEVICE_METALIO_EINK4=1',))
 
     def test_portrait_follows_the_quiet_home_layout(self):
         source = method((ROOT / 'src/components/RickyHomeUi.cpp').read_text(),
@@ -89,7 +155,8 @@ int main() {
         self.assertIn('screen.frame().hit(cell, OPEN_BOOK, index', source)
         self.assertIn('screen.frame().hit(cell, OPEN_BOOK, STATISTICS', source)
         # Two title lines and a metadata lane must fit even with BODY fallback.
-        self.assertIn('shelf.height - 120', source)
+        self.assertIn('shelf.height - metadataHeight', source)
+        self.assertIn('metadataHeight = px(120, 68)', source)
         self.assertIn('gap * 3) / 4', source)
         self.assertIn('thumbnailHeight = coverH', source)
         self.assertIn('showSelection && selected == index', source)
@@ -148,7 +215,7 @@ int main() {
             run_cpp(program, include_dirs=(ROOT / 'src',), defines=defines)
         actual = source[source.index('bool InxRecentActivity::tryDrawBookCover('):
                         source.index('bool InxRecentActivity::drawBookCover(')]
-        self.assertEqual(actual.count('drawRecentCover(renderer, bitmap, bounds)'), 2)
+        self.assertEqual(actual.count('drawRecentCover(coverRenderer ? *coverRenderer : renderer, bitmap, bounds)'), 2)
         self.assertIn('activity.setThumbnailHeight(activity.rickyHome->coverHeight())', source)
         self.assertNotIn('activity.setThumbnailHeight(bounds.height)', source)
         home = method((ROOT / 'src/components/RickyHomeUi.cpp').read_text(), 'void RickyHomeUi::drawPortrait(')

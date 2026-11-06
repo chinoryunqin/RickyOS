@@ -11,7 +11,7 @@ class HomeButtonSettingsActivity final : public UiListActivity {
 
  private:
   #if FREEINK_DEVICE_METALIO_PLUS
-  static constexpr int GESTURE_COUNT = 8;  // 6 keys, touch feedback, reset
+  static constexpr int GESTURE_COUNT = 9;  // 6 keys, touch/key feedback, reset
   int keyPage = -1;
   void onBackButton() override;
 #else

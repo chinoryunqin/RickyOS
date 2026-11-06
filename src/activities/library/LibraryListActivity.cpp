@@ -19,6 +19,7 @@
 #include <cstdio>
 
 #include "CrossPointSettings.h"
+#include "CrossPointState.h"
 #include "LibraryCategoriesActivity.h"
 #include "LibraryFoldersActivity.h"
 #include "LibrarySourcesActivity.h"
@@ -165,6 +166,8 @@ void LibraryListActivity::onEnter() {
   const unsigned long tPinned = millis();
   resolvePinned();
   const unsigned long tPinnedDone = millis();
+  folderPath = APP_STATE.libraryFolderPath;
+  if (!folderPath.empty()) applyFilter();
   // A shelf an earlier build carried over from before sources: rebuild from the
   // enrolled sources only (the import retires the snapshot first).
   if (index.isOpen() && Storage.exists(library::LibrarySources::legacyIndexPath()))
@@ -183,49 +186,33 @@ void LibraryListActivity::onEnter() {
 
 void LibraryListActivity::loop() {
   // After the first paint: the import screen replaces the shelf, never the other way round.
-  if (transferCheckPending && static_cast<long>(millis() - transferCheckAt) >= 0) foldInTransfers();
+  if (transferCheckPending && !coverJob.running() && static_cast<long>(millis() - transferCheckAt) >= 0)
+    foldInTransfers();
   UiTabListActivity::loop();
-  if (coverPending && !batchMode && millis() - coverIdleSince > 1500) makePendingCover();
+  if ((coverPending.load(std::memory_order_relaxed) || coverJobLast) && !coverJob.running() &&
+      !activityManager.isSwitchPending() && !RenderLock::peek())
+    makePendingCover();
 }
 
 void LibraryListActivity::makePendingCover() {
-  std::string path;
-  int height = 0;
-  bool last = false;
-  {
-    RenderLock lock(*this);
-    if (!coverPending || coverPageStart != shelfStart) {
-      coverPending = 0;
-      return;
-    }
-    const int slot = __builtin_ctz(coverPending);
-    coverPending &= coverPending - 1;
-    coverAttempted |= 1u << slot;
-    if (slot >= shelfCount) return;
-    path = shelfPaths[slot];
-    height = coverPageHeight;
-    last = coverPending == 0;
-  }
-  // One book per loop pass: input queued meanwhile is handled before the next.
-  // Like Home's covers: the render task is held off and the decode borrows the
-  // framebuffer, which is repainted afterwards anyway.
-  [[maybe_unused]] const auto started = millis();
-  bool generated = false;
-  bool made = false;
-  {
-    RenderLock lock(*this);
-    GfxRenderer::FrameBufferLoan loan(renderer);
-    made = !BookCoverLoader::ensureThumbnail(path, height, &generated).empty();
-  }
-  LOG_INF("LIB", "cover %s in %lu ms: %s", made ? (generated ? "made" : "found") : "unavailable", millis() - started,
-          path.c_str());
-  if (last) {
-    // One repaint for the page: the loans cleared the framebuffer, and every cover
-    // that could be made is now on the card.
-    RenderLock lock(*this);
+  RenderLock lock(*this);
+  if (coverJobLast && coverJobPage == shelfStart && coverJobHeight == coverPageHeight) {
+    coverJobLast = false;
     shelfStart = -1;
     requestUpdate();
+    return;
   }
+  coverJobLast = false;
+  if (!coverPending || coverPageStart != shelfStart || batchMode || millis() - coverIdleSince <= 1500) return;
+
+  const int slot = __builtin_ctz(coverPending);
+  coverPending &= coverPending - 1;
+  coverAttempted |= 1u << slot;
+  if (slot >= shelfCount) return;
+  coverJobPage = shelfStart;
+  coverJobHeight = coverPageHeight;
+  coverJobLast = coverPending == 0;
+  coverJob.start(shelfPaths[slot], coverJobHeight);
 }
 
 void LibraryListActivity::foldInTransfers() {
@@ -697,20 +684,37 @@ void LibraryListActivity::openFolders() {
     app.clearTapFlash();
     std::vector<std::string> paths;
     std::vector<uint16_t> counts;
-    if (index.isOpen() && index.readFolderPaths(paths) && index.countBooksPerFolder(counts) &&
-        paths.size() == counts.size()) {
-      folders.reserve(paths.size());
+    library::LibrarySources sources;
+    if (sources.load() == library::LibrarySources::Load::Error) LOG_ERR("LIB", "cannot load folder sources");
+    const bool indexed = index.isOpen() && index.readFolderPaths(paths) && index.countBooksPerFolder(counts) &&
+                         paths.size() == counts.size();
+    folders.reserve((indexed ? paths.size() : 0) + sources.size());
+    if (indexed) {
       for (size_t id = 0; id < paths.size(); ++id)
         if (counts[id]) folders.push_back({std::move(paths[id]), counts[id]});
     } else {
       LOG_ERR("LIB", "cannot list library folders");
     }
+    // Enrolled folders remain selectable even before any books are indexed in
+    // them. The manifest is read only for this picker; no card scan is needed.
+    for (uint16_t i = 0; i < sources.size(); ++i) {
+      const auto& source = sources[i];
+      if (source.kind != library::SourceKind::Folder && source.kind != library::SourceKind::RecursiveFolder) continue;
+      const auto found =
+          std::find_if(folders.begin(), folders.end(), [&](const auto& folder) { return folder.path == source.path; });
+      if (found == folders.end()) folders.push_back({source.path, 0});
+    }
+    LOG_INF("LIB", "folder picker: indexed=%d paths=%u sources=%u choices=%u", indexed,
+            static_cast<unsigned>(paths.size()), static_cast<unsigned>(sources.size()),
+            static_cast<unsigned>(folders.size()));
   }
   startActivityForResultWith<LibraryFoldersActivity>(
       [this](const ActivityResult& result) {
         RenderLock lock(*this);
-        if (!result.isCancelled && std::holds_alternative<FilePathResult>(result.data))
+        if (!result.isCancelled && std::holds_alternative<FilePathResult>(result.data)) {
           folderPath = std::get<FilePathResult>(result.data).path;
+          if (!APP_STATE.rememberLibraryFolder(folderPath)) LOG_ERR("LIB", "Failed to save shelf folder");
+        }
         applyFilter();
         activeNav().reset();
         swallowHeldReleases();
@@ -1797,7 +1801,7 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
                          static_cast<int16_t>(cell.y + cardInset), static_cast<int16_t>(coverWidth),
                          static_cast<int16_t>(coverHeight)};
     bool painted = false;
-    if (!shelfCovers[slot].empty()) {
+    if (!shelfCovers[slot].empty() && !coverJob.isWriting(shelfPaths[slot], coverHeight)) {
       // 1-bit covers leave paper pixels undrawn, so the cell fill under them is part of the key.
       char key[48];
       snprintf(key, sizeof(key), "|lib|%d,%d,%d,%d|%d", rect.x, rect.y, rect.width, rect.height, picked ? 1 : 0);

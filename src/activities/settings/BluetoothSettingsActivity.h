@@ -25,6 +25,8 @@ class BluetoothSettingsActivity final : public UiListActivity {
   char banner[64]{};
   unsigned long bannerUntil = 0;
   bool awaitingConnect = false;
+  bool renderedConnected = false;
+  unsigned long nextStartAttemptAt = 0;
   bool pairedHoldActionTaken = false;
   uint8_t renderedDeviceCount = 0xFF;
   bool renderedScanning = false;
@@ -40,7 +42,7 @@ class BluetoothSettingsActivity final : public UiListActivity {
   void drawChrome() override;
 
   void rebuildRows();
-  bool ensureAvailable();
+  bool ensureAvailable(bool showFeedback = true);
   void enterScanView();
   void connectTo(const char* address);
   void forgetPaired(int index);

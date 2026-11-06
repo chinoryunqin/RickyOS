@@ -121,6 +121,18 @@ inline TouchPageTurn detectTouchPageTurn(const GfxRenderer& renderer, const Mapp
     return result;
   }
 
+  if (SETTINGS.readerTapZones.enabled) {
+    int x = 0, y = 0;
+    if (input.wasScreenTapped(x, y)) {
+      const auto action = readerTapZones::actionAt(SETTINGS.readerTapZones, x, y,
+                                                  renderer.getScreenWidth(), renderer.getScreenHeight());
+      result.prev = action == readerTapZones::Action::Previous;
+      result.next = action == readerTapZones::Action::Next;
+      // A released tap is one page only, regardless of how long the finger was down.
+    }
+    return result;
+  }
+
   const bool nextTaps = gestureAllowsTap(SETTINGS.pageTurnGesture);
   const bool prevTaps = gestureAllowsTap(SETTINGS.previousPageGesture);
   if (!nextTaps && !prevTaps) {
@@ -162,11 +174,40 @@ inline TouchPageTurn detectTouchPageTurn(const GfxRenderer& renderer, const Mapp
 // menu stays reachable through the key's long-press function.
 inline bool isTouchMenuTap(const GfxRenderer& renderer, const MappedInputManager& input) {
   if (!input.hasTouch()) return false;
+  if (SETTINGS.readerTapZones.enabled && SETTINGS.touchReaderControls) {
+    int x = 0, y = 0;
+    return input.wasScreenTapped(x, y) &&
+           readerTapZones::actionAt(SETTINGS.readerTapZones, x, y, renderer.getScreenWidth(),
+                                   renderer.getScreenHeight()) == readerTapZones::Action::Menu;
+  }
   if (SETTINGS.showReaderMenu != CrossPointSettings::READER_MENU_TAP) return false;
   int x = 0;
   int y = 0;
   if (!input.wasScreenTapped(x, y)) return false;
   return isInMenuBand(renderer.getScreenHeight(), y);
+}
+
+inline bool isTouchRefreshTap(const GfxRenderer& renderer, const MappedInputManager& input) {
+  if (!SETTINGS.readerTapZones.enabled || !SETTINGS.touchReaderControls || !input.hasTouch()) return false;
+  int x = 0, y = 0;
+  return input.wasScreenTapped(x, y) &&
+         readerTapZones::actionAt(SETTINGS.readerTapZones, x, y, renderer.getScreenWidth(),
+                                 renderer.getScreenHeight()) == readerTapZones::Action::Refresh;
+}
+
+inline bool isTouchContentsTap(const GfxRenderer& renderer, const MappedInputManager& input) {
+  if (!SETTINGS.readerTapZones.enabled || !SETTINGS.touchReaderControls || !input.hasTouch()) return false;
+  int x = 0, y = 0;
+  return input.wasScreenTapped(x, y) &&
+         readerTapZones::actionAt(SETTINGS.readerTapZones, x, y, renderer.getScreenWidth(),
+                                 renderer.getScreenHeight()) == readerTapZones::Action::Contents;
+}
+inline bool isTouchAddBookmarkTap(const GfxRenderer& renderer, const MappedInputManager& input) {
+  if (!SETTINGS.readerTapZones.enabled || !SETTINGS.touchReaderControls || !input.hasTouch()) return false;
+  int x = 0, y = 0;
+  return input.wasScreenTapped(x, y) &&
+         readerTapZones::actionAt(SETTINGS.readerTapZones, x, y, renderer.getScreenWidth(),
+                                 renderer.getScreenHeight()) == readerTapZones::Action::AddBookmark;
 }
 
 // Reader menu opens on the menu edge-swipe or a top-band tap. Home-key

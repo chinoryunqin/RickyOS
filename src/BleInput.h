@@ -11,7 +11,7 @@ class GfxRenderer;
 namespace bleinput {
 
 enum class StartContext : uint8_t { Reader, Explicit };
-enum class StartResult : uint8_t { Started, AlreadyRunning, LowMemory, Unavailable, Failed };
+enum class StartResult : uint8_t { Started, AlreadyRunning, LowMemory, Unavailable, Failed, RadioBusy };
 
 #if FREEINK_DEVICE_READPICO
 // Read Pico holds a large block of CONTIGUOUS INTERNAL DMA for its panel (epdiy's
@@ -38,6 +38,7 @@ inline constexpr size_t kMinLargestPsram = 32 * 1024;
 // Caller holds RenderLock across lifecycle checks, memory recovery and startup.
 StartResult ensureStarted(GfxRenderer& renderer, StartContext context);
 void stop();
+bool radioBusy();
 void logDiagnostics(const char* phase);
 bool encodeKey(const freeink::KeyEvent& event, uint8_t& kind, uint8_t& value);
 void describeKey(uint8_t kind, uint8_t value, char* out, size_t outLen);

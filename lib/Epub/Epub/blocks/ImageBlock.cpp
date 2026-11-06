@@ -1,4 +1,5 @@
 #include "ImageBlock.h"
+#include "Epub/converters/ImagePixelCacheFormat.h"
 
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
@@ -14,7 +15,8 @@
 #include "Epub/converters/DirectPixelWriter.h"
 #include "Epub/converters/ImageDecoderFactory.h"
 
-// Cache file format:
+// PXC2 cache (see ImagePixelCacheFormat.h and docs/file-formats.md):
+// - uint32_t magic, uint32_t adjustment identity
 // - uint16_t width
 // - uint16_t height
 // - uint8_t pixels[...] - 2 bits per pixel, packed (4 pixels per byte), row-major order
@@ -29,6 +31,10 @@ ImageBlock::ExtractFn ImageBlock::extractFn = nullptr;
 // application's settings, so the reader pushes this in (same pattern as
 // setExtractor()) and the decode path reads it here.
 bool ImageBlock::bilinearScaling = false;
+ImageToneCurve ImageBlock::toneCurve;
+void ImageBlock::setTone(const int contrast, const int brightness) {
+  if (toneCurve.set(contrast, brightness)) releaseRenderCache();
+}
 
 void ImageBlock::setExtractor(void* ctx, ExtractFn fn) {
   extractCtx = ctx;
@@ -38,11 +44,11 @@ void ImageBlock::setExtractor(void* ctx, ExtractFn fn) {
 void ImageBlock::setBilinearScaling(const bool enabled) {
   if (bilinearScaling == enabled) return;
   bilinearScaling = enabled;
+  releaseRenderCache();
   // Logged on every transition: the filter also changes the pixel-cache name, so
   // this line is what proves the reader actually re-decoded with the new setting
   // rather than serving the other variant's cache.
-  LOG_INF("IMG", "Image resampling filter -> %s (cache suffix %s)", enabled ? "bilinear" : "nearest",
-          enabled ? ".b.pxc" : ".pxc");
+  LOG_INF("IMG", "Image resampling filter -> %s (PXC2)", enabled ? "bilinear" : "nearest");
 }
 
 bool ImageBlock::imageExists() const { return Storage.exists(imagePath.c_str()); }
@@ -53,7 +59,8 @@ std::string getCachePath(const std::string& imagePath) {
   // Replace extension with .pxc (pixel cache). The resampling filter is part of
   // the cache identity: the cached file holds already-scaled pixels, so a
   // nearest-decoded cache must not be served after switching to bilinear.
-  const char* suffix = ImageBlock::bilinearScalingEnabled() ? ".b.pxc" : ".pxc";
+  const char* suffix = ImageBlock::toneLut() ? ".tone.v2.pxc" :
+      (ImageBlock::bilinearScalingEnabled() ? ".b.v2.pxc" : ".v2.pxc");
   const size_t dotPos = imagePath.rfind('.');
   if (dotPos != std::string::npos) {
     return imagePath.substr(0, dotPos) + suffix;
@@ -63,7 +70,10 @@ std::string getCachePath(const std::string& imagePath) {
 
 bool readValidCacheHeader(HalFile& cacheFile, const int expectedWidth, const int expectedHeight, uint16_t& cachedWidth,
                           uint16_t& cachedHeight) {
-  if (cacheFile.read(&cachedWidth, 2) != 2 || cacheFile.read(&cachedHeight, 2) != 2) {
+  uint32_t magic = 0, identity = 0;
+  if (cacheFile.read(&magic, 4) != 4 || magic != imagePixelCache::kMagicV2 ||
+      cacheFile.read(&identity, 4) != 4 || identity != ImageBlock::adjustmentIdentity() ||
+      cacheFile.read(&cachedWidth, 2) != 2 || cacheFile.read(&cachedHeight, 2) != 2) {
     return false;
   }
 
@@ -74,7 +84,7 @@ bool readValidCacheHeader(HalFile& cacheFile, const int expectedWidth, const int
   }
 
   const size_t bytesPerRow = (cachedWidth + 3) / 4;
-  const size_t expectedSize = 4 + bytesPerRow * cachedHeight;
+  const size_t expectedSize = imagePixelCache::kHeaderBytes + bytesPerRow * cachedHeight;
   return cacheFile.size() >= expectedSize;
 }
 
@@ -264,7 +274,7 @@ bool renderFromCache(GfxRenderer& renderer, const std::string& cachePath, int x,
 
   // Streaming fallback (slot didn't fit). A failed slot load may have consumed
   // part of the payload; rewind to just past the header.
-  cacheFile.seek(4);
+  cacheFile.seek(imagePixelCache::kHeaderBytes);
 
   // Read several rows per SD access. A one-row-per-read loop here means
   // cachedHeight (~728) tiny reads through the storage mutex + SdFat; batching
@@ -456,6 +466,7 @@ bool ImageBlock::renderInternal(GfxRenderer& renderer, const int x, const int y,
     native.preserveAlpha = true;
 #endif
     native.bilinearScaling = bilinearScalingEnabled();
+    native.toneLut = toneLut();
     native.error = &decodeError;
     native.cancellation = cancellation;
     auto* converter = ImageDecoderFactory::getDecoder(imagePath);
@@ -525,6 +536,8 @@ bool ImageBlock::renderInternal(GfxRenderer& renderer, const int x, const int y,
   config.cachePath = cachePath;      // Enable caching during decode
   config.output = output;
   config.bilinearScaling = bilinearScalingEnabled();
+  config.toneLut = toneLut();
+  config.cacheIdentity = adjustmentIdentity();
   config.error = &decodeError;
   config.cancellation = cancellation;
 
@@ -554,6 +567,12 @@ bool ImageBlock::renderInternal(GfxRenderer& renderer, const int x, const int y,
   LOG_DBG("IMG", "Decode successful");
   if (error) *error = ImageRenderError::None;
   return true;
+}
+
+bool ImageBlock::renderPreview(GfxRenderer& renderer, const RenderConfig& config) {
+  if (config.cancellation.isCancelled() || !ensureExtracted(config.cancellation)) return false;
+  auto* decoder = ImageDecoderFactory::getDecoder(imagePath);
+  return decoder && decoder->decodeToFramebuffer(imagePath, renderer, config);
 }
 
 bool ImageBlock::serialize(HalFile& file) {

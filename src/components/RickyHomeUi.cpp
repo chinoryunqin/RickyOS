@@ -272,11 +272,15 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
     statsText[0] = 0;
   }
   snprintf(greetingText, sizeof(greetingText), I18N.get(greetingKeys[greetingChoice]), RickyProfile::nickname());
-  auto greetingStyle = screen.theme().bodyText;
+  // Measure the same face used by secondaryText, including the user's UI scale.
+  RickyUiTarget greetingTarget(renderer);
+  greetingTarget.setFont(fui::GfxRendererTarget::FONT_BODY, design::fontFor(renderer, design::BODY, greetingText));
+  fui::TextStyle greetingStyle;
+  greetingStyle.font = fui::GfxRendererTarget::FONT_BODY;
   greetingStyle.maxLines = 2;
   const int greetingWidth = std::max(1, screen.body().width - px(250, 180) - gap);
-  const int greetingHeight = std::clamp<int>(
-      fui::measureWrappedText(target, greetingText, greetingStyle, greetingWidth).height, px(36, 28), px(72, 56));
+  const int greetingHeight = std::max<int>(
+      px(36, 28), fui::measureWrappedText(greetingTarget, greetingText, greetingStyle, greetingWidth).height);
   const auto profile = screen.takeTop(px(88, 44) + greetingHeight + px(4, 0), px(ds::space::k6, 8));
   const auto avatar =
       box(profile.right() - ds::layout::kAvatarSize, profile.y, ds::layout::kAvatarSize, ds::layout::kAvatarSize);
@@ -436,7 +440,7 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
     const int numberWidth = renderer.getTextWidth(numberFont, statsText);
     design::text(renderer, box(cell.x + pad, cell.y + px(40, 24), numberWidth + 8, px(56, 48)), statsText,
                  design::NUMERIC_DISPLAY);
-    design::secondaryText(renderer, box(cell.x + pad + numberWidth + 8, cell.y + px(64, 40), px(64, 40), px(28, 24)),
+    design::secondaryText(renderer, box(cell.x + pad + numberWidth + 8, cell.y + px(64, 40), px(64, 64), px(28, 24)),
                           i == 0 ? tr(STR_RICKY_HOME_MINUTES_UNIT) : tr(STR_RICKY_HOME_DAYS_UNIT), design::CAPTION);
     if (i == 0) {
       const int dog = px(kRickyMascotSmallSize, 48);

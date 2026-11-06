@@ -815,6 +815,82 @@ bool metadata(const std::string& path, std::string& title, std::string& author, 
   decode(importer->document.header().title, title); decode(importer->document.header().author, author);
   error = Error::None; return true;
 }
+bool extractCover(const std::string& path, const std::string& output, Error& error) {
+  error = Error::None;
+  HalFile source;
+  if (!Storage.openFileForRead("KINDLE", path, source)) {
+    error = Error::Io;
+    return false;
+  }
+  if (source.fileSize64() > 128 * 1024 * 1024) {
+    error = Error::Unsupported;
+    return false;
+  }
+  // The parser has fixed header/Huffman tables larger than a task stack should
+  // hold. Keep one checked object; never allocate the cover or book as a whole.
+  auto document = makeUniqueNoThrow<Document>();
+  if (!document) {
+    error = Error::OutOfMemory;
+    LOG_ERR("KINDLE", "OOM: cover parser");
+    return false;
+  }
+  if (!document->open({&source, static_cast<uint32_t>(source.fileSize64()), readAt, {}})) {
+    error = document->error();
+    return false;
+  }
+  const auto& header = document->header();
+  if (header.cover == kInvalid) return false;
+  if (header.resources >= document->absoluteRecordCount() ||
+      header.cover >= document->absoluteRecordCount() - header.resources) {
+    error = Error::Invalid;
+    return false;
+  }
+  uint32_t offset = 0, size = 0;
+  if (!document->recordBounds(header.resources + header.cover, offset, size, true)) {
+    error = document->error();
+    return false;
+  }
+  uint8_t magic[8] = {};
+  if (size < sizeof(magic) || !readAt(&source, offset, magic, sizeof(magic))) {
+    error = Error::Io;
+    return false;
+  }
+  if (!(magic[0] == 0xff && magic[1] == 0xd8 && magic[2] == 0xff) &&
+      memcmp(magic, "\x89PNG\r\n\x1a\n", sizeof(magic)) != 0) {
+    error = Error::Unsupported;
+    return false;
+  }
+  // Reusable 4 KiB PSRAM transfer buffer: bounded regardless of image size,
+  // released before the existing image decoder borrows its framebuffer scratch.
+  constexpr size_t kCoverChunk = 4096;
+  auto transfer = buffer(kCoverChunk);
+  if (!transfer) {
+    error = Error::OutOfMemory;
+    return false;
+  }
+  bool copied = false;
+  {
+    HalFile target;
+    if (Storage.openFileForWrite("KINDLE", output, target)) {
+      copied = true;
+      for (uint32_t position = 0; position < size;) {
+        const size_t count = std::min<size_t>(kCoverChunk, size - position);
+        if (!readAt(&source, offset + position, transfer.get(), count) ||
+            target.write(transfer.get(), count) != count) {
+          copied = false;
+          break;
+        }
+        position += count;
+      }
+    }
+  }
+  if (!copied) {
+    Storage.remove(output.c_str());
+    error = Error::Io;
+  }
+  return copied;
+}
+
 bool prepare(const std::string& path, const std::string& cache, std::string& archive,
              bool& rebuilt, Error& error, CancelCheck cancellation) {
   rebuilt = false; archive.clear(); error = Error::None;

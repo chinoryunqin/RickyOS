@@ -63,9 +63,10 @@ void LanguageSelectActivity::activateIndex(const int index) {
   const uint8_t previousOnboardingVersion = SETTINGS.onboardingVersion;
   SETTINGS.applyLanguageSelection(langIndex);
   const Language language = static_cast<Language>(langIndex);
-  const bool simplifiedChinese = language == Language::ZH_CN;
+  const bool simplifiedChinese = language == Language::ZH_CN || language == Language::ZH_TW;
   switch (mode_) {
     case Mode::Settings:
+      SETTINGS.contentProfile = previousContentProfile;  // Interface locale does not choose a resource region.
       break;
     case Mode::Initial:
       SETTINGS.clockUtcOffsetQ = simplifiedChinese ? 80 : 48;

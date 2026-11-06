@@ -26,7 +26,11 @@ inline constexpr int BOOK_TITLE = 0x524406;
 // Whole-run selection: never silently mix bold/regular glyphs in a title.
 inline int fontFor(const GfxRenderer& renderer, int preferred, const char* text) {
   if (!text || preferred == BODY) return preferred;
-  const auto it = renderer.getFontMap().find(preferred);
+  const int effective = renderer.effectiveFontId(preferred);
+  // A custom book face already has a renderer fallback chain. Keep the title
+  // role for both measuring and drawing, including for incomplete font files.
+  if (preferred == BOOK_TITLE && effective != preferred) return preferred;
+  const auto it = renderer.getFontMap().find(effective);
   if (it == renderer.getFontMap().end()) return BODY;
   const uint8_t* cursor = reinterpret_cast<const uint8_t*>(text);
   for (uint32_t cp; (cp = utf8NextCodepoint(&cursor)) != 0;)
@@ -119,7 +123,9 @@ inline void text(const GfxRenderer& renderer, fui::Rect r, const char* value, in
   // A tiny stack adapter avoids changing the host's published font bindings.
   // Layout's fixed-capacity UTF-8 wrapping avoids per-line heap vectors.
   RickyUiTarget target(renderer);
-  target.setFont(fui::GfxRendererTarget::FONT_BODY, fontFor(renderer, font, value));
+  const int resolved = renderer.textFontId(fontFor(renderer, font, value), value);
+  const GfxRenderer::TextFontScope face(renderer, resolved);
+  target.setFont(fui::GfxRendererTarget::FONT_BODY, resolved);
   fui::TextStyle style;
   style.font = fui::GfxRendererTarget::FONT_BODY;
   style.color = inverted                  ? fui::Color::White
@@ -128,6 +134,15 @@ inline void text(const GfxRenderer& renderer, fui::Rect r, const char* value, in
                                           : fui::Color::Black;
   style.align = align;
   style.maxLines = lines;
+  const auto parentClip = renderer.getClipRect();
+  const auto clipped = [&](fui::Rect area) {
+    const int x = std::max<int>(area.x, parentClip[0]);
+    const int y = std::max<int>(area.y, parentClip[1]);
+    return fui::Rect{
+        static_cast<int16_t>(x), static_cast<int16_t>(y),
+        static_cast<int16_t>(std::max(0, std::min<int>(area.right(), parentClip[0] + parentClip[2]) - x)),
+        static_cast<int16_t>(std::max(0, std::min<int>(area.bottom(), parentClip[1] + parentClip[3]) - y))};
+  };
   const int height = target.lineHeight(style.font);
   if (height <= 0 || r.empty()) return;
   if (r.height < height) {
@@ -136,12 +151,16 @@ inline void text(const GfxRenderer& renderer, fui::Rect r, const char* value, in
     // glyphs cut in half.
     const fui::Rect line{r.x, static_cast<int16_t>(r.y - (height - r.height) / 2), r.width,
                          static_cast<int16_t>(height)};
-    const GfxRenderer::ClipScope clip(renderer, line.x, line.y, line.width, line.height);
+    const auto ink = clipped(line);
+    if (ink.empty()) return;
+    const GfxRenderer::ClipScope clip(renderer, ink.x, ink.y, ink.width, ink.height);
     style.maxLines = 1;
     target.text(line, value, style);
     return;
   }
-  const GfxRenderer::ClipScope clip(renderer, r.x, r.y, r.width, r.height);
+  const auto ink = clipped(r);
+  if (ink.empty()) return;
+  const GfxRenderer::ClipScope clip(renderer, ink.x, ink.y, ink.width, ink.height);
   style.maxLines = std::min<int>(style.maxLines, r.height / height);
   fui::layoutText(target, r, value, style, [&](const char* run, fui::Rect bounds) {
     auto single = style;

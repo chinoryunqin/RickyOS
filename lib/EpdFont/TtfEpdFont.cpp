@@ -640,8 +640,8 @@ bool TtfEpdFont::coverageThunk(void* ctx, const uint32_t codepoint) {
   return codepoint >= 0xFB00u && codepoint <= 0xFB04u && reg.ligGid[codepoint - 0xFB00u] != 0;
 }
 
-EpdFontFamily TtfEpdFont::family() const {
-  return EpdFontFamily(&faces_[0].font, &faces_[1].font, &faces_[2].font, &faces_[3].font);
+EpdFontFamily TtfEpdFont::family(const bool boldPrimary) const {
+  return EpdFontFamily(&faces_[boldPrimary ? 1 : 0].font, &faces_[1].font, &faces_[2].font, &faces_[3].font);
 }
 
 bool TtfEpdFont::build(const char* utf8) {

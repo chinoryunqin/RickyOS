@@ -36,7 +36,18 @@ class FrontlightPanelActivity final : public Activity, private UiAppHost {
 
   // RickyOS: the Pico's sheet (clock header, one row of actions, a reading row only
   // over a book) plus the Plus front light (switch, brightness, warmth) and volume.
-  enum class Tile : uint8_t { Night, Refresh, Standby, Transfer, Orientation, Clean, Light, FastRefresh, Preview = 200 };
+  enum class Tile : uint8_t {
+    Night,
+    Refresh,
+    Standby,
+    Transfer,
+    Orientation,
+    Clean,
+    Light,
+    FastRefresh,
+    Bluetooth,
+    Preview = 200
+  };
   struct RoundAction {
     Tile tile;
     const freeink::Icon* icon;
@@ -44,6 +55,13 @@ class FrontlightPanelActivity final : public Activity, private UiAppHost {
     bool on;
   };
   bool overReader = false;
+  uint8_t renderedBluetoothState = 0xFF;
+  unsigned long nextBluetoothAttemptAt = 0;
+  unsigned long bluetoothBannerUntil = 0;
+  char bluetoothBanner[80] = {};
+  void toggleBluetooth();
+  void openBluetoothSettings();
+  uint8_t bluetoothState() const;
   char refreshText[24] = {};
   void runRickyTile(Tile tile);
   void cycleCleanRefresh();
@@ -91,6 +109,13 @@ class FrontlightPanelActivity final : public Activity, private UiAppHost {
   void onEnter() override;
   void onExit() override;
   void loop() override;
+  bool keepsBluetoothAlive() const override {
+#if FREEINK_CAP_BLE_HID_HOST
+    return SETTINGS.bluetoothEnabled != 0;
+#else
+    return false;
+#endif
+  }
   void render(RenderLock&&) override;
   bool handleHomeGesture() override;
 };

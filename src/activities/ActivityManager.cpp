@@ -1,3 +1,4 @@
+#include "SystemUiFonts.h"
 #include "ActivityManager.h"
 
 #include "apps/MetalioCameraActivity.h"
@@ -210,6 +211,7 @@ void ActivityManager::renderTaskLoop() {
       }
     }
     RenderLock lock;
+    systemUiFonts::ensureLoaded(renderer);
 #if FREEINK_READPICO_DIAGNOSTICS && !defined(SIMULATOR)
     if (foreground) {
       LOG_INF("PERF", "render wake queue=%u ms lock=%u ms requested=%d pending=%d",
@@ -637,6 +639,7 @@ void ActivityManager::loop() {
   }
 
   while (pendingAction.load() != PendingAction::None) {
+    if (currentActivity && !currentActivity->readyToLeave()) break;
     if (pendingAction.load() == PendingAction::Pop) {
       if (RenderLock::peek()) break;
       RenderLock lock;
@@ -692,6 +695,9 @@ void ActivityManager::loop() {
       RenderLock lock;
 
       if (pendingAction.load() == PendingAction::Replace) {
+        if (currentActivity && (pendingActivity->isHomeActivity() || pendingActivity->mainTab() == MainTab::Recent ||
+                                pendingActivity->mainTab() == MainTab::Library || pendingActivity->name == "FileBrowser"))
+          currentActivity->showExitProgress();
         // Destroy the current activity
         exitActivity(lock);
         // Clear the stack
@@ -1104,6 +1110,7 @@ bool ActivityManager::isReaderActivity() const {
 }
 
 bool ActivityManager::keepsBluetoothAlive() const {
+  if (standbyShowing()) return false;
   return std::any_of(stackActivities.begin(), stackActivities.end(),
                      [](const auto& activity) { return activity->keepsBluetoothAlive(); }) ||
          (currentActivity && currentActivity->keepsBluetoothAlive());

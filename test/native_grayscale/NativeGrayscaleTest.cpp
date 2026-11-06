@@ -2,6 +2,7 @@
 #include <BidiUtils.h>
 #include <Bitmap.h>
 #include <BuildScratch.h>
+#include <Epub/converters/ImageToneCurve.h>
 #include <FontCacheManager.h>
 #include <FontDecompressor.h>
 #include <GfxRenderer.h>
@@ -27,6 +28,7 @@
 #include "AirPageWallpaper.h"
 #include "CrossPointSettings.h"
 #include "Epub/blocks/ImageBlock.h"
+#include "Epub/converters/ImageDecoderFactory.h"
 #include "Epub/converters/JpegToFramebufferConverter.h"
 #include "Epub/converters/PngToFramebufferConverter.h"
 #include "QrParams.h"
@@ -34,7 +36,14 @@
 #include "components/themes/BaseTheme.h"
 
 // Native rendering bypasses ImageBlock; the four-level seam checks error forwarding.
-ImageBlock::ImageBlock(const std::string&, const std::string&, int16_t, int16_t) : width(0), height(0) {}
+ImageBlock::ImageBlock(const std::string& path, const std::string& src, int16_t w, int16_t h)
+    : imagePath(path), srcPath(src), width(w), height(h) {}
+// Extraction itself is covered by the reader tests; this native probe starts
+// from real already-extracted JPEG/PNG files and runs production preview dispatch.
+bool ImageBlock::ensureExtracted(CancelCheck cancellation) {
+  return !cancellation.isCancelled() && Storage.exists(imagePath.c_str());
+}
+#include "ImageBlockPreviewProbe.h"
 void ImageBlock::releaseRenderCache() {}
 void ImageBlock::clearSessionRenderFailures() {}
 static ImageRenderError legacyError = ImageRenderError::Failed;
@@ -527,6 +536,65 @@ int main(int argc, char** argv) {
   assert(renderer.beginGrayscale16());
   assert(jpeg.decodeToFramebuffer("/ramp.jpg", renderer, config));
   for (int i = 0; i < 16; ++i) assert(tone(i * 8 + 4, 8) == i);
+  // Actual decoder emission paths: tone LUT must affect native pixels before
+  // 4-bit quantization, while a null LUT exactly preserves the existing ramp.
+  ImageToneCurve curve;
+  for (bool smooth : {false, true}) {
+    curve.set(25, 20);
+    config.toneLut = curve.data();
+    config.bilinearScaling = smooth;
+    assert(jpeg.decodeToFramebuffer("/ramp.jpg", renderer, config));
+    for (int i = 0; i < 16; ++i)
+      assert(tone(i * 8 + 4, 8) == (config.adjustTone(static_cast<uint8_t>(17 * i)) + 8) / 17);
+    PngToFramebufferConverter pngTone;
+    RenderConfig pngConfig = config;
+    pngConfig.maxWidth = 16;
+    pngConfig.maxHeight = 2;
+    pngConfig.preserveAlpha = true;
+    native.fill(0x66);
+    assert(pngTone.decodeToFramebuffer("/rgba.png", renderer, pngConfig));
+    for (int x = 0; x < 16; ++x) {
+      const auto [px, py] = physical(GfxRenderer::LandscapeCounterClockwise, x, 0);
+      const int alpha = x % 3 == 0 ? 0 : x % 3 == 1 ? 8 : 15;
+      const int mapped = (pngConfig.adjustTone(static_cast<uint8_t>(17 * x)) + 8) / 17;
+      const int delta = (mapped - 6) * alpha;
+      const int expected = 6 + (delta >= 0 ? (delta + 7) / 15 : -((7 - delta) / 15));
+      assert(tone(px, py) == expected);
+    }
+  }
+  // The inline panel uses the real source decoder at its preview dimensions,
+  // with no PXC path. Verify native pixels against direct JPEG/PNG decoding,
+  // including transparent pixels and both resampling filters.
+  for (const char* path : {"/ramp.jpg", "/rgba.png"}) {
+    ImageBlock preview(path, "", 128, 16);
+    for (bool smooth : {false, true}) {
+      RenderConfig small = config;
+      small.x = 7;
+      small.y = 3;
+      small.maxWidth = 64;
+      small.maxHeight = 8;
+      small.useExactDimensions = true;
+      small.preserveAlpha = true;
+      small.bilinearScaling = smooth;
+      assert(small.cachePath.empty());
+      native.fill(0x66);
+      bw.fill(0xA5);
+      auto* decoder = ImageDecoderFactory::getDecoder(path);
+      assert(decoder && decoder->decodeToFramebuffer(path, renderer, small));
+      const auto expectedNative = native;
+      const auto expectedBw = bw;
+      native.fill(0x66);
+      bw.fill(0xA5);
+      assert(preview.renderPreview(renderer, small));
+      assert(native == expectedNative && bw == expectedBw);
+      assert(!Storage.exists((std::string(path) + ".v2.pxc").c_str()));
+      assert(!Storage.exists((std::string(path) + ".tone.v2.pxc").c_str()));
+    }
+  }
+  config.toneLut = nullptr;
+  config.bilinearScaling = false;
+  assert(jpeg.decodeToFramebuffer("/ramp.jpg", renderer, config));
+  for (int i = 0; i < 16; ++i) assert(tone(i * 8 + 4, 8) == i);
   failRefresh = true;
   const int cancelsBeforeFailedCommit = cancels;
   assert(!renderer.commitGrayscale16() && !renderer.isGrayscale16Active());
@@ -722,6 +790,24 @@ int main(int argc, char** argv) {
   sleepProbe.renderCustomSleepScreen();
   assert(commits == beforeFiltered);  // Existing filters must not enter native output.
   SETTINGS.sleepScreenCoverFilter = CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER;
+  // Power-off owns a different file. It must render without /sleep.bmp, and a
+  // missing/invalid power-off image must not quietly show the standby picture.
+  assert(Storage.rename("/sleep.bmp", "/poweroff.bmp"));
+  SETTINGS.rickyPowerOffScreen = CrossPointSettings::RICKY_POWER_OFF_CUSTOM;
+  const int beforePowerOff = commits;
+  sleepProbe.renderCustomSleepScreen();
+  assert(commits == beforePowerOff + 1 && sleepProbe.defaults == 1 && !loan);
+  assert(Storage.rename("/poweroff.bmp", "/sleep.bmp"));
+  sleepProbe.renderCustomSleepScreen();
+  assert(commits == beforePowerOff + 1 && sleepProbe.defaults == 2 && !loan);
+  {
+    std::ofstream invalid(std::string(argv[2]) + "/poweroff.bmp", std::ios::binary);
+    invalid << "not-a-bitmap";
+  }
+  sleepProbe.renderCustomSleepScreen();
+  assert(commits == beforePowerOff + 1 && sleepProbe.defaults == 3 && !loan);
+  assert(Storage.remove("/poweroff.bmp"));
+  SETTINGS.rickyPowerOffScreen = CrossPointSettings::RICKY_POWER_OFF_SAME;
   assert(commits > 0 && cancels > 0);
 
   // Portrait panels walk glyphs column by column (panel memory order); landscape keeps
@@ -731,14 +817,43 @@ int main(int argc, char** argv) {
   {
     EpdFont captionFont(&ricky_caption_10_regular);
     renderer.insertFont(77, EpdFontFamily(&captionFont));
+    // EPUB rgba(238,240,255,.55) resolves to luma 247. It must remain pale,
+    // independent of theme gray presets, with readable CSS-toned glyphs above it.
+    for (auto orientation : {GfxRenderer::Portrait, GfxRenderer::PortraitInverted, GfxRenderer::LandscapeClockwise,
+                             GfxRenderer::LandscapeCounterClockwise}) {
+      renderer.setOrientation(orientation);
+      assert(renderer.beginGrayscale16());
+      renderer.drawGrayscale16RoundedRect(0, 0, 32, 28, 0, 4, 247);
+      renderer.drawGrayscale16RoundedRect(0, 0, 32, 28, 2, 4, 186);
+      auto [px, py] = physical(orientation, 10, 10);
+      assert(tone(px, py) == 15);
+      auto [ex, ey] = physical(orientation, 10, 0);
+      assert(tone(ex, ey) == 11);
+      {
+        GfxRenderer::TextInkScope ink(renderer, 4);
+        renderer.drawText(77, 4, 4, "1. A", true);
+      }
+      size_t darkPixels = 0;
+      for (int y = 3; y < 24; ++y)
+        for (int x = 3; x < 29; ++x) {
+          auto [gx, gy] = physical(orientation, x, y);
+          darkPixels += tone(gx, gy) < 8;
+        }
+      assert(darkPixels > 0);
+      renderer.cancelGrayscale16();
+    }
+
     struct Case {
       const char* text;
       int x, y;
       bool black;
       uint8_t bold;
     };
-    const Case cases[] = {{"\xe4\xb9\xa6g", 0, 0, true, 0}, {"Ag", -5, 3, true, 0}, {"\xe4\xb9\xa6", 2, 1, false, 0},
-                          {"Wy", 1, 0, true, 2}, {"\xe4\xb9\xa6", -3, 2, false, 3}};
+    const Case cases[] = {{"\xe4\xb9\xa6g", 0, 0, true, 0},
+                          {"Ag", -5, 3, true, 0},
+                          {"\xe4\xb9\xa6", 2, 1, false, 0},
+                          {"Wy", 1, 0, true, 2},
+                          {"\xe4\xb9\xa6", -3, 2, false, 3}};
     for (const auto& item : cases) {
       std::array<uint8_t, 32 * 32> tone[2];
       std::array<bool, 32 * 32> ink[2];

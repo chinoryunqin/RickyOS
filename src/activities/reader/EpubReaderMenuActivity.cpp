@@ -9,6 +9,7 @@
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "ReaderFontSizes.h"
+#include "ReaderUiProfile.h"
 #include "ReaderUtils.h"
 #include "SdCardFontSystem.h"
 #include "components/RickyDesignUi.h"
@@ -43,6 +44,8 @@ const freeink::Icon& menuRowIcon(EpubReaderMenuActivity::MenuAction action) {
       return icon_ricky_row_timer_32;
     case Action::GO_TO_PERCENT:
       return icon_ricky_row_percent_32;
+    case Action::IMAGE_SCALING:
+      return icon_ricky_row_image_32;
     case Action::BOOKMARKS:
       return icon_ricky_row_bookmark_32;
     case Action::SYNC:
@@ -71,7 +74,7 @@ EpubReaderMenuActivity::EpubReaderMenuActivity(GfxRenderer& renderer, MappedInpu
                                                const bool hasFootnotes, const bool hasBookmarks,
                                                const char* chapterTitle, const bool pageBookmarked,
                                                const unsigned bookmarkCount)
-    : UiListActivity("EpubReaderMenu", renderer, mappedInput, false, !UiHighDpiProfile::enabled),
+    : UiListActivity("EpubReaderMenu", renderer, mappedInput, false, !readerUi::enabled),
       title(title),
       pendingOrientation(currentOrientation),
       currentPage(currentPage),
@@ -100,7 +103,7 @@ void EpubReaderMenuActivity::buildMenuRowItems() {
     const int original = menuView.indices[i];
     item.label =
         original == RickyReaderMenuLayout::More ? tr(STR_RICKY_MORE_ACTIONS) : I18N.get(menuItems[original].labelId);
-    if (UiHighDpiProfile::enabled && original >= 0) {
+    if (readerUi::enabled && original >= 0) {
       switch (menuItems[original].action) {
         case MenuAction::SELECT_CHAPTER:
           item.label = tr(STR_RICKY_MENU_CHAPTERS);
@@ -133,7 +136,7 @@ void EpubReaderMenuActivity::buildMenuRowItems() {
 void EpubReaderMenuActivity::setMenuView(bool more) {
   moreView = more;
   menuView = RickyReaderMenuLayout::build<MenuAction>(menuItems, more);
-  if (!UiHighDpiProfile::enabled) {
+  if (!readerUi::enabled) {
     menuView.quickCount = 0;
     menuView.count = static_cast<uint8_t>(std::min(menuItems.size(), MAX_MENU_ITEMS));
     for (int i = 0; i < menuView.count; ++i) menuView.indices[i] = static_cast<int8_t>(i);
@@ -150,17 +153,20 @@ void EpubReaderMenuActivity::buildMenuItems(std::vector<MenuItem>& items, bool h
   if (hasFootnotes) {
     items.push_back({MenuAction::FOOTNOTES, StrId::STR_FOOTNOTES});
   }
-  if (hasBookmarks) {
+  if (hasBookmarks || readerUi::enabled) {
     items.push_back({MenuAction::BOOKMARKS, StrId::STR_BOOKMARKS});
   }
   items.push_back({MenuAction::TOGGLE_BOOKMARK, StrId::STR_TOGGLE_BOOKMARK});
-  items.push_back({MenuAction::NIGHT_MODE, StrId::STR_NIGHT_MODE});
-  if (Frontlight.present()) {
-    items.push_back({MenuAction::FRONTLIGHT, StrId::STR_FRONTLIGHT});
+  if (!readerUi::enabled) {
+    items.push_back({MenuAction::NIGHT_MODE, StrId::STR_NIGHT_MODE});
+    if (Frontlight.present()) {
+      items.push_back({MenuAction::FRONTLIGHT, StrId::STR_FRONTLIGHT});
+    }
   }
   items.push_back({MenuAction::DICTIONARY, StrId::STR_LOOKUP});
   items.push_back({MenuAction::ROTATE_SCREEN, StrId::STR_ORIENTATION});
   items.push_back({MenuAction::HOLDING_HAND, StrId::STR_PAGE_TURN_DIRECTION});
+  if (BoardConfig::hasTouch()) items.push_back({MenuAction::TOUCH_ZONES, StrId::STR_TOUCH_GRID_TITLE});
   items.push_back({MenuAction::READING_MODE, StrId::STR_READING_MODE});
   items.push_back({MenuAction::READING_LINE, StrId::STR_READING_GUIDE_LINE});
   items.push_back({MenuAction::FONT_SIZE, StrId::STR_FONT_SIZE});
@@ -173,6 +179,7 @@ void EpubReaderMenuActivity::buildMenuItems(std::vector<MenuItem>& items, bool h
   items.push_back({MenuAction::SYNC, StrId::STR_SYNC_PROGRESS});
   items.push_back({MenuAction::DELETE_CACHE, StrId::STR_DELETE_CACHE});
   items.push_back({MenuAction::TEXT_SETTINGS, StrId::STR_TEXT_SETTINGS});
+  items.push_back({MenuAction::IMAGE_SCALING, StrId::STR_READER_IMAGE_SETTINGS});
 }
 
 void EpubReaderMenuActivity::closeCancelled() {
@@ -363,7 +370,7 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
       static_cast<int16_t>(renderer.getScreenWidth() - (safe.x + safe.width)),
       static_cast<int16_t>(renderer.getScreenHeight() - (safe.y + safe.height)), static_cast<int16_t>(safe.x)});
 
-  if (UiHighDpiProfile::enabled) {
+  if (readerUi::enabled) {
     const fui::Rect home{
         static_cast<int16_t>(safe.x + safe.width - ricky::ds::space::kPageMargin - ricky::ds::layout::kTouchMin),
         static_cast<int16_t>(safe.y + metrics.topPadding + ricky::ds::layout::kStatusBarHeight),
@@ -371,17 +378,10 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
     screen.frame().hit(home, ACTION_USER, 0, fui::InputTouch);
   }
 
-  // Progress summary where the old sub-header band sat.
-  std::string progressLine;
-  if (totalPages > 0) {
-    progressLine = std::string(tr(STR_CHAPTER_PREFIX)) + std::to_string(currentPage) + "/" +
-                   std::to_string(totalPages) + std::string(tr(STR_PAGES_SEPARATOR));
-  }
-  progressLine += std::string(tr(STR_BOOK_PREFIX)) + std::to_string(bookProgressPercent) + "%";
   const fui::Rect band =
-      screen.takeTop(UiHighDpiProfile::enabled ? ricky::ds::layout::kSectionHeaderHeight : metrics.tabBarHeight);
+      screen.takeTop(readerUi::enabled ? ricky::ds::layout::kSectionHeaderHeight : metrics.tabBarHeight);
   const int16_t pad = screen.theme().headerSidePadding;
-  if (UiHighDpiProfile::enabled) {
+  if (readerUi::enabled) {
     // Real chapter title, chapter-relative page count and book percentage.
     // Fixed lanes keep a long chapter from displacing the numeric summary.
     const auto content = band.inset({0, ricky::ds::space::kPageMargin, 0, ricky::ds::space::kPageMargin});
@@ -398,6 +398,12 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
         renderer, {static_cast<int16_t>(content.right() - lane), content.y, static_cast<int16_t>(lane), content.height},
         pages, RickyDesignUi::CAPTION, false, fui::TextAlign::Right);
   } else {
+    std::string progressLine;
+    if (totalPages > 0) {
+      progressLine = std::string(tr(STR_CHAPTER_PREFIX)) + std::to_string(currentPage) + "/" +
+                     std::to_string(totalPages) + tr(STR_PAGES_SEPARATOR);
+    }
+    progressLine += std::string(tr(STR_BOOK_PREFIX)) + std::to_string(bookProgressPercent) + "%";
     screen.target().text(band.inset(fui::Insets{0, pad, 0, pad}), progressLine.c_str(), screen.theme().smallText);
   }
   screen.spacer(ricky::ds::space::k4);
@@ -446,9 +452,13 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
                                   : action == MenuAction::TOGGLE_BOOKMARK ? icon_ricky_bookmark_40
                                   : action == MenuAction::TEXT_SETTINGS   ? icon_ricky_fonts_40
                                                                           : icon_ricky_lookup_40;
-      RickyPageUi::pageIcon(screen.target(), renderer, cell.x + (cell.width - 40) / 2, cell.y + 44, icon, selected);
-      RickyDesignUi::text(renderer, {cell.x, static_cast<int16_t>(cell.y + 80), cell.width, 56}, menuRowItems[i].label,
-                          RickyDesignUi::CAPTION, selected, fui::TextAlign::Center, 2);
+      RickyPageUi::pageIcon(screen.target(), renderer, cell.x + (cell.width - 40) / 2,
+                            cell.y + ricky::panel::pixels(44, 30), icon, selected);
+      RickyDesignUi::text(renderer,
+                          {cell.x, static_cast<int16_t>(cell.y + ricky::panel::pixels(80, 56)), cell.width,
+                           static_cast<int16_t>(ricky::panel::pixels(56, 32))},
+                          menuRowItems[i].label, RickyDesignUi::CAPTION, selected, fui::TextAlign::Center,
+                          ricky::panel::nativeSmall ? 1 : 2);
       screen.frame().hit(cell, ACTION_ROW, static_cast<int16_t>(i), fui::InputTouch);
     }
     screen.spacer(ricky::ds::space::kBlockGap);
@@ -462,7 +472,7 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
   props.valueInset = 8;               // air between the value and the row edge
   // Label at the value's font size: both sides of the row read as one unit.
   // maxLines=2 also marks the style caller-owned (see textStyleUnset).
-  props.labelText = UiHighDpiProfile::enabled ? screen.theme().bodyText : screen.theme().smallText;
+  props.labelText = readerUi::enabled ? screen.theme().bodyText : screen.theme().smallText;
   props.labelText.maxLines = 2;
   props.labelText.align = fui::TextAlign::Left;
   props.toggleWidth = ricky::ds::layout::kToggleWidth;
@@ -471,7 +481,7 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
   props.toggleKnobRadius = ricky::ds::layout::kToggleKnobOn / 2;
   props.toggleKnobInset = (ricky::ds::layout::kToggleHeight - ricky::ds::layout::kToggleKnobOn) / 2;
   props.toggleBorderWidth = ricky::ds::stroke::kHairline;
-  if (UiHighDpiProfile::enabled) {
+  if (readerUi::enabled) {
     // Draw row accessories through FUI using the exact viewport geometry that
     // also drives touch and button paging. No second selection or hit model.
     RickyRowList::prepare(screen, props);
@@ -504,8 +514,8 @@ void EpubReaderMenuActivity::drawChrome() {
   // indicator; the rest of the screen renders through the app.
   const Rect header{screen.x, screen.y + metrics.topPadding, screen.width, metrics.headerHeight};
   GUI.drawHeaderWithStyle(renderer, header, moreView ? tr(STR_RICKY_MORE_ACTIONS) : title.c_str(), nullptr, true,
-                          usesUpstreamStyle(), UiHighDpiProfile::enabled ? ricky::ds::layout::kTouchMin : 0);
-  if (UiHighDpiProfile::enabled) {
+                          usesUpstreamStyle(), readerUi::enabled ? ricky::ds::layout::kTouchMin : 0);
+  if (readerUi::enabled) {
     const int x = screen.x + screen.width - ricky::ds::space::kPageMargin - ricky::ds::layout::kTouchMin;
     const int y = header.y + ricky::ds::layout::kStatusBarHeight;
     auto target = makeUiTarget(renderer);

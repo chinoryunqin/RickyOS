@@ -82,6 +82,7 @@ class HalPowerManager {
   // the key events seen so far; main.cpp reports while it is judging a press, and
   // Standby does not light-sleep in the middle of one.
   static void beginStandbyKeyWatch();
+  static void logStandbySleepSummary();
   static void setSideKeyBusy(bool busy);
   static bool sideKeyBusy();
 

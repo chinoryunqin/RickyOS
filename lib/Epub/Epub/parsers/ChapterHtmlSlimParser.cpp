@@ -1,6 +1,7 @@
 #include "ChapterHtmlSlimParser.h"
 
 #include <Arduino.h>
+#include <Epub/ParagraphSpacing.h>
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
@@ -18,14 +19,14 @@
 
 #include "../../../../src/fontIds.h"
 #include "Epub.h"
+#include "Epub/BookFonts.h"
 #include "Epub/Page.h"
 #include "Epub/VisibleTextUtils.h"
+#include "Epub/WordLook.h"
 #include "Epub/converters/ImageDecoderFactory.h"
 #include "Epub/converters/ImageDimsProbe.h"
 #include "Epub/converters/ImageToFramebufferDecoder.h"
 #include "Epub/htmlEntities.h"
-#include "Epub/BookFonts.h"
-#include "Epub/WordLook.h"
 #if FREEINK_DEVICE_METALIO_PLUS
 #include <PlusReaderImageLayout.h>
 #endif
@@ -327,8 +328,58 @@ bool ChapterHtmlSlimParser::allocatePage() {
   currentPageNextY = 0;
   pendingMarginBottom = 0;
   currentPageVisibleOffsetSet = false;
+#if RICKYOS_WEBP
+  if (!addBodyBackgroundToPage()) return false;
+#endif
   return true;
 }
+
+#if RICKYOS_WEBP
+void ChapterHtmlSlimParser::configureBodyBackground(const CssStyle& style) {
+  if (!embeddedStyle || imageRendering != 0 || !epub || !cssParser || !style.hasBackgroundImage()) return;
+  const auto path = cssParser->backgroundImageAt(style.backgroundImage);
+  if (path.empty()) return;
+  const std::string source = FsHelpers::decodeUriEscapes(std::string(path));
+  ImageDimsProbe probe;
+  epub->readItemContentsToStream(source, probe, 1024, /*allowEarlyStop=*/true);
+  ImageDimensions dims = {0, 0};
+  const char* extension = ImageDimsProbe::extensionForFormat(probe.detectedFormat());
+  if (!probe.getDimensions(dims) || !extension || dims.width <= 0 || dims.height <= 0) {
+    LOG_ERR("EHP", "Skipping unavailable document background: %s", source.c_str());
+    return;  // A missing decorative image must not block any readable text.
+  }
+  // Contain the complete illustration in the reading viewport. Browser-style cover
+  // crops can remove faces or captions on narrow art; this bounded fallback retains them.
+  const float scale =
+      std::min(static_cast<float>(viewportWidth) / dims.width, static_cast<float>(viewportHeight) / dims.height);
+  bodyBackgroundWidth_ = static_cast<int16_t>(std::max(1, static_cast<int>(dims.width * scale)));
+  bodyBackgroundHeight_ = static_cast<int16_t>(std::max(1, static_cast<int>(dims.height * scale)));
+  bodyBackgroundSource_ = source;
+  bodyBackgroundCache_ = imageBasePath + "background1" + extension;
+  LOG_DBG("EHP", "Document background: %s -> %dx%d", source.c_str(), bodyBackgroundWidth_, bodyBackgroundHeight_);
+  if (currentPage) addBodyBackgroundToPage();
+}
+
+bool ChapterHtmlSlimParser::addBodyBackgroundToPage() {
+  if (bodyBackgroundSource_.empty() || !currentPage) return true;
+  auto block = makeUniqueNoThrow<ImageBlock>(bodyBackgroundCache_, bodyBackgroundSource_, bodyBackgroundWidth_,
+                                             bodyBackgroundHeight_);
+  if (!block) {
+    failAllocation("document background block");
+    return false;
+  }
+  auto image = makeUniqueNoThrow<PageImage>(std::move(block), (viewportWidth - bodyBackgroundWidth_) / 2, 0);
+  if (!image) {
+    failAllocation("document background image");
+    return false;
+  }
+  // One PageImage per page (no new framebuffer); normal body content stays on top
+  // and background art consumes no text flow height. It is serialized as an ordinary image.
+  currentPage->elements.reserve(currentPage->elements.size() + 1);
+  currentPage->elements.push_back(std::move(image));
+  return true;
+}
+#endif
 
 void ChapterHtmlSlimParser::setCurrentPageVisibleOffset(const uint32_t offset) {
   if (currentPageVisibleOffsetSet) return;
@@ -503,7 +554,7 @@ void ChapterHtmlSlimParser::startNewTextBlock(const BlockStyle& blockStyle) {
   flushPendingAnchor();
   if (hasFailed()) return;
   currentTextBlock =
-      makeUniqueNoThrow<ParsedText>(extraParagraphSpacing, firstLineIndent, hyphenationEnabled, focusReadingEnabled,
+      makeUniqueNoThrow<ParsedText>(paragraphSpacingPercent, firstLineIndent, hyphenationEnabled, focusReadingEnabled,
                                     blockStyle, collectTouchLinks, paragraphIndentSpaces);
   if (!currentTextBlock) {
     LOG_ERR("EHP", "OOM: ParsedText (%u bytes)", static_cast<unsigned>(sizeof(ParsedText)));
@@ -536,8 +587,8 @@ void ChapterHtmlSlimParser::emitHorizontalRule(const BlockStyle& blockStyle) {
   const int16_t topMargin = blockStyle.marginTop > 0 ? blockStyle.marginTop : defaultVerticalSpacing;
   const int16_t bottomMargin = blockStyle.marginBottom > 0 ? blockStyle.marginBottom : defaultVerticalSpacing;
   const int16_t bottomPadding = blockStyle.paddingBottom > 0 ? blockStyle.paddingBottom : 0;
-  const int16_t topSpacing =
-      static_cast<int16_t>(std::max(pendingMarginBottom, topMargin) + (blockStyle.paddingTop > 0 ? blockStyle.paddingTop : 0));
+  const int16_t topSpacing = static_cast<int16_t>(std::max(pendingMarginBottom, topMargin) +
+                                                  (blockStyle.paddingTop > 0 ? blockStyle.paddingTop : 0));
   const int16_t bottomSpacing = static_cast<int16_t>(bottomMargin + bottomPadding);
   constexpr uint8_t ruleThickness = 2;
   const int16_t availableWidth =
@@ -880,7 +931,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
   if (self->cssParser) {
     cssStyle = self->resolveElementStyle(name, classAttr);
     if (!styleAttr.empty()) {
-      CssStyle inlineStyle = self->cssParser->parseInlineStyleWithFamilies(styleAttr);
+      CssStyle inlineStyle = self->cssParser->parseInlineStyleWithFamilies(styleAttr, self->contentBase);
       cssStyle.applyOver(inlineStyle);
     }
     // Text buffered so far belongs to the outer face / tone: hand it over before an element
@@ -926,6 +977,13 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
     self->depth += 1;
     return;
   }
+
+#if RICKYOS_WEBP
+  if (strcasecmp(name, "body") == 0) {
+    self->configureBodyBackground(cssStyle);
+    if (self->hasFailed()) return;
+  }
+#endif
 
   // Buffer one simple row; oversized rows fall back to full-width flow.
   if (strcmp(name, "table") == 0) {
@@ -1023,7 +1081,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
     }
 
     self->currentTextBlock = makeUniqueNoThrow<ParsedText>(
-        self->extraParagraphSpacing, self->firstLineIndent, self->hyphenationEnabled, self->focusReadingEnabled,
+        self->paragraphSpacingPercent, self->firstLineIndent, self->hyphenationEnabled, self->focusReadingEnabled,
         tableCellBlockStyle, self->collectTouchLinks, self->paragraphIndentSpaces);
     if (!self->currentTextBlock) {
       LOG_ERR("EHP", "OOM: table cell");
@@ -1122,7 +1180,7 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
           const bool recognised = sniffedExtension != nullptr || ImageDecoderFactory::isFormatSupported(resolvedPath);
 
           if (!recognised) {
-            LOG_ERR("EHP", "Unsupported image entry (neither JPEG/PNG content nor a known extension): %s",
+            LOG_ERR("EHP", "Unsupported image entry (neither supported image content nor a known extension): %s",
                     resolvedPath.c_str());
           } else {
             // Create a unique filename for the cached image. Prefer the sniffed
@@ -1265,9 +1323,8 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
                 // Resolve before page breaking / ImageBlock serialization so the
                 // taller full-width art never covers following text. Text margins
                 // and the shared Pico/C3 layout remain unchanged.
-                if (plusReaderImage::fitChapterArt(dims.width, dims.height, self->viewportWidth,
-                                                   self->viewportHeight, self->imageOutset, displayWidth,
-                                                   displayHeight)) {
+                if (plusReaderImage::fitChapterArt(dims.width, dims.height, self->viewportWidth, self->viewportHeight,
+                                                   self->imageOutset, displayWidth, displayHeight)) {
                   LOG_DBG("EHP", "Chapter art fits reading width: %dx%d", displayWidth, displayHeight);
                 }
 #endif
@@ -1572,6 +1629,9 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
         accumulated.box.left = static_cast<int16_t>(std::max(0, left));
         accumulated.box.width = static_cast<int16_t>(std::max(0, static_cast<int>(self->viewportWidth) - left - right));
       }
+      accumulated.paragraphSpacingControlled = strcmp(name, "p") == 0 || strcmp(name, "div") == 0 ||
+                                               strcmp(name, "li") == 0 || strcmp(name, "dt") == 0 ||
+                                               strcmp(name, "dd") == 0;
       self->blockStyleStack.push_back(accumulated);
       self->startNewTextBlock(accumulated.withoutBottom());
       if (self->hasFailed()) return;
@@ -1771,7 +1831,7 @@ void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char
     const BlockStyle flowStyle =
         self->blockStyleStack.empty() ? BlockStyle() : self->blockStyleStack.back().withoutBottom();
     self->currentTextBlock = makeUniqueNoThrow<ParsedText>(
-        self->extraParagraphSpacing, self->firstLineIndent, self->hyphenationEnabled, self->focusReadingEnabled,
+        self->paragraphSpacingPercent, self->firstLineIndent, self->hyphenationEnabled, self->focusReadingEnabled,
         flowStyle, self->collectTouchLinks, self->paragraphIndentSpaces);
     if (!self->currentTextBlock) {
       LOG_ERR("EHP", "OOM: text block for character data");
@@ -2056,10 +2116,9 @@ void XMLCALL ChapterHtmlSlimParser::endElement(void* userData, const XML_Char* n
 
   // An element that set the face or tone closes: its text must leave with that look.
   self->pruneElementPath();
-  const bool willPopLook = self->elementPathSize > 0 &&
-                           self->elementPath[self->elementPathSize - 1].depth == self->depth - 1 &&
-                           (self->elementPath[self->elementPathSize - 1].hasFace ||
-                            self->elementPath[self->elementPathSize - 1].hasInk);
+  const bool willPopLook =
+      self->elementPathSize > 0 && self->elementPath[self->elementPathSize - 1].depth == self->depth - 1 &&
+      (self->elementPath[self->elementPathSize - 1].hasFace || self->elementPath[self->elementPathSize - 1].hasInk);
   const bool styleWillChange = willPopStyleStack || willClearBold || willClearItalic || willPopLook;
   const bool headerOrBlockTag = isHeaderOrBlock(name);
   const bool tableStructuralTag = isTableStructuralTag(name);
@@ -2162,7 +2221,7 @@ void XMLCALL ChapterHtmlSlimParser::endElement(void* userData, const XML_Char* n
     const BlockStyle flowStyle =
         self->blockStyleStack.empty() ? BlockStyle() : self->blockStyleStack.back().withoutBottom();
     self->currentTextBlock = makeUniqueNoThrow<ParsedText>(
-        self->extraParagraphSpacing, self->firstLineIndent, self->hyphenationEnabled, self->focusReadingEnabled,
+        self->paragraphSpacingPercent, self->firstLineIndent, self->hyphenationEnabled, self->focusReadingEnabled,
         flowStyle, self->collectTouchLinks, self->paragraphIndentSpaces);
     if (!self->currentTextBlock) {
       LOG_ERR("EHP", "OOM: text block after table");
@@ -2208,7 +2267,8 @@ void XMLCALL ChapterHtmlSlimParser::endElement(void* userData, const XML_Char* n
         if (closing.paddingBottom > 0) {
           self->currentPageNextY = static_cast<int16_t>(self->currentPageNextY + closing.paddingBottom);
         }
-        self->pendingMarginBottom = std::max<int16_t>(self->pendingMarginBottom, std::max<int16_t>(closing.marginBottom, 0));
+        self->pendingMarginBottom =
+            std::max<int16_t>(self->pendingMarginBottom, std::max<int16_t>(closing.marginBottom, 0));
       } else if (self->currentTextBlock) {
         const auto style = self->currentTextBlock->getBlockStyle();
         self->currentTextBlock->setBlockStyle(style.addBottom(self->blockStyleStack.back()));
@@ -2276,7 +2336,8 @@ bool ChapterHtmlSlimParser::checkMemory() {
 
 ChapterHtmlSlimParser::~ChapterHtmlSlimParser() { abortParse(); }
 
-bool ChapterHtmlSlimParser::beginParse() {
+bool ChapterHtmlSlimParser::beginParse(const bool recoverHtml) {
+  syntaxFailed_ = false;
   allocationFailed_ = false;
   ioFailed_ = false;
   if (!checkMemory()) return false;
@@ -2338,6 +2399,22 @@ bool ChapterHtmlSlimParser::beginParse() {
   XML_SetElementHandler(xmlParser_, startElement, endElement);
   XML_SetCharacterDataHandler(xmlParser_, characterData);
 
+  if (recoverHtml) {
+    // Allocate the fixed-size recovery workspace only for malformed chapters.
+    // Keeping it off the task stack also leaves normal EPUB parsing unchanged.
+    recovery_ = makeUniqueNoThrow<RecoveringHtmlStream>(
+        [](void* context, const char* bytes, size_t size) {
+          auto* self = static_cast<ChapterHtmlSlimParser*>(context);
+          const auto status = XML_Parse(self->xmlParser_, bytes, static_cast<int>(size), XML_FALSE);
+          return status != XML_STATUS_ERROR && !self->hasFailed();
+        },
+        this);
+    if (!recovery_) {
+      failAllocation("HTML recovery workspace");
+      abortParse();
+      return false;
+    }
+  }
   parseStartTime_ = millis();
   return true;
 }
@@ -2349,6 +2426,27 @@ ChapterHtmlSlimParser::ParseStatus ChapterHtmlSlimParser::parseStep() {
   if (layoutOom || (currentTextBlock && currentTextBlock->hadDroppedWords())) {
     LOG_ERR("EHP", "Text layout dropped content (OOM); failing section build");
     return ParseStatus::Error;
+  }
+
+  if (recovery_) {
+    char input[256];
+    const size_t len = parseFile_.read(input, sizeof(input));
+    if (len == 0 && parseFile_.available() > 0) {
+      failIo();
+      return ParseStatus::Error;
+    }
+    const bool done = parseFile_.available() == 0;
+    parseActive_ = true;
+    bool recovered = recovery_->write(input, len, done);
+    if (recovered && done) recovered = XML_Parse(xmlParser_, "", 0, XML_TRUE) != XML_STATUS_ERROR;
+    parseActive_ = false;
+    if (XML_GetErrorCode(xmlParser_) == XML_ERROR_NO_MEMORY) failAllocation("HTML recovery XML");
+    if (hasFailed()) return allocationFailed_ ? ParseStatus::OutOfMemory : ParseStatus::Error;
+    if (!recovered) {
+      LOG_ERR("EHP", "HTML recovery failed: %s", XML_ErrorString(XML_GetErrorCode(xmlParser_)));
+      return ParseStatus::Error;
+    }
+    return done ? ParseStatus::Done : ParseStatus::More;
   }
 
   void* const buf = XML_GetBuffer(xmlParser_, PARSE_BUFFER_SIZE);
@@ -2380,6 +2478,7 @@ ChapterHtmlSlimParser::ParseStatus ChapterHtmlSlimParser::parseStep() {
       LOG_DBG("EHP", "Ignoring trailing data after </html>: %s", XML_ErrorString(XML_GetErrorCode(xmlParser_)));
       return ParseStatus::Done;
     }
+    syntaxFailed_ = true;
     LOG_ERR("EHP", "Parse error at line %lu:\n%s", XML_GetCurrentLineNumber(xmlParser_),
             XML_ErrorString(XML_GetErrorCode(xmlParser_)));
     return ParseStatus::Error;
@@ -2391,6 +2490,7 @@ ChapterHtmlSlimParser::ParseStatus ChapterHtmlSlimParser::parseStep() {
 }
 
 void ChapterHtmlSlimParser::abortParse() {
+  recovery_.reset();
   if (xmlParser_) {
     destroyXmlParser(xmlParser_);
     xmlParser_ = nullptr;
@@ -2422,6 +2522,7 @@ bool ChapterHtmlSlimParser::finishParse() {
     xmlParser_ = nullptr;
   }
   parseFile_.close();
+  recovery_.reset();
 
   // Process last page if there is still text
   if (currentTextBlock) {
@@ -2480,8 +2581,8 @@ bool ChapterHtmlSlimParser::addLineToPage(std::unique_ptr<TextBlock> line, const
 
   // A line fits when its glyphs do: the line spacing below the page's last line is
   // never seen, so it may hang past the text area instead of leaving a blank band.
-  const int glyphHeight = std::min(lineHeight, renderer.getLineHeight(fontId) + line->getRubyShift(
-                                                                                 renderer.getFontAscenderSize(fontId)));
+  const int glyphHeight =
+      std::min(lineHeight, renderer.getLineHeight(fontId) + line->getRubyShift(renderer.getFontAscenderSize(fontId)));
   if (currentPageNextY + glyphHeight > viewportHeight) {
     setCurrentPageVisibleOffset(visibleOffset);
     completePageFn(std::move(currentPage), xpathParagraphIndex, xpathListItemIndex, currentPageVisibleOffset);
@@ -2544,7 +2645,11 @@ void ChapterHtmlSlimParser::makePages() {
 
   // Apply top spacing before the paragraph (stored in pixels)
   const BlockStyle& blockStyle = currentTextBlock->getBlockStyle();
-  currentPageNextY = static_cast<int16_t>(currentPageNextY + takeCollapsedTopMargin(blockStyle.marginTop));
+  const int16_t paragraphTop = blockStyle.paragraphSpacingControlled
+                                   ? static_cast<int16_t>(paragraphSpacing::marginPixels(
+                                         blockStyle.marginTop, lineHeight, paragraphSpacingPercent))
+                                   : blockStyle.marginTop;
+  currentPageNextY = static_cast<int16_t>(currentPageNextY + takeCollapsedTopMargin(paragraphTop));
   if (blockStyle.paddingTop > 0) {
     currentPageNextY += blockStyle.paddingTop;
   }
@@ -2582,19 +2687,11 @@ void ChapterHtmlSlimParser::makePages() {
   }
 
   // Bottom margin waits to collapse with the next block's top margin; padding applies now.
-  pendingMarginBottom = std::max<int16_t>(blockStyle.marginBottom, 0);
+  pendingMarginBottom = blockStyle.paragraphSpacingControlled
+                            ? static_cast<int16_t>(paragraphSpacing::marginPixels(blockStyle.marginBottom, lineHeight,
+                                                                                  paragraphSpacingPercent))
+                            : std::max<int16_t>(blockStyle.marginBottom, 0);
   if (blockStyle.paddingBottom > 0) {
     currentPageNextY += blockStyle.paddingBottom;
-  }
-
-  // Extra paragraph spacing: 0=off, else 0.5x/0.75x/1x/1.25x/1.5x line height. A book that
-  // sets its own paragraph margins keeps exactly those while its styles are on; adding the
-  // reader's spacing on top roughly doubled the gaps of typeset books.
-  if (extraParagraphSpacing > 0 && !(embeddedStyle && blockStyle.verticalMarginDefined)) {
-    constexpr float EXTRA_PARAGRAPH_SPACING_FACTORS[] = {0.0f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f};
-    const float factor = extraParagraphSpacing < std::size(EXTRA_PARAGRAPH_SPACING_FACTORS)
-                             ? EXTRA_PARAGRAPH_SPACING_FACTORS[extraParagraphSpacing]
-                             : 1.5f;
-    currentPageNextY += static_cast<int16_t>(lineHeight * factor);
   }
 }

@@ -348,6 +348,7 @@ int GfxRenderer::resolveFontFamilyId(const int fontId) const {
 }
 
 int GfxRenderer::resolveTextFontId(const int fontId, const char* text, const EpdFontFamily::Style style) const {
+  if (fixedTextFontId_ != 0) return fixedTextFontId_;
   // A target may rebind a UI id to the SD family its UI is drawn in (setPreferredFont).
   // Resolving it here, instead of swapping fontMap entries, keeps measuring and drawing
   // on one face -- both call this function.
@@ -2296,6 +2297,50 @@ void GfxRenderer::fillGrayscale16Rect(const int x, const int y, const int width,
         memset(bw + firstByte + 1, ink ? 0x00 : 0xFF, static_cast<size_t>(lastByte - firstByte - 1));
       apply(bw[lastByte], lastMask);
     }
+  }
+}
+
+// CSS panels retain their luminance instead of the theme's stronger named grays.
+// A zero-width stroke fills the rounded rectangle; positive widths draw only its ring.
+void GfxRenderer::drawGrayscale16RoundedRect(const int x, const int y, const int width, const int height,
+                                             const int lineWidth, const int radius, const uint8_t gray) const {
+  if (!grayscale16Buffer || width <= 0 || height <= 0 || lineWidth < 0 ||
+      (fontCacheManager_ && fontCacheManager_->isScanning()))
+    return;
+  const int outerRadius = std::clamp(radius, 0, std::min(width, height) / 2);
+  const int stroke = std::min(lineWidth, std::min(width, height) / 2 + 1);
+  const int innerWidth = width - 2 * stroke;
+  const int innerHeight = height - 2 * stroke;
+  const int innerRadius = std::max(0, outerRadius - stroke);
+  const uint8_t level = (static_cast<unsigned>(gray) + 8) / 17;
+  const auto inset = [](const int row, const int h, const int r) {
+    const int distance = std::max(r - row, row - (h - r - 1));
+    if (distance <= 0) return 0;
+    int reach = r;
+    while (reach > 0 && reach * reach + distance * distance > r * r) --reach;
+    return r - reach;
+  };
+  const auto span = [&](const int left, const int row, const int count) {
+    if (count <= 0) return;
+    if (!_stripActive) {
+      fillGrayscale16Rect(left, row, count, 1, level);
+    } else {
+      for (int col = 0; col < count; ++col) drawGrayscale16Pixel(left + col, row, gray);
+    }
+  };
+  const int firstRow = std::max({0, -y, clipTop_ - y});
+  const int lastRow = std::min({height, getScreenHeight() - y, clipBottom_ - y});
+  for (int row = firstRow; row < lastRow; ++row) {
+    const int outer = inset(row, height, outerRadius);
+    const int left = x + outer;
+    const int count = width - 2 * outer;
+    if (lineWidth == 0 || innerWidth <= 0 || innerHeight <= 0 || row < stroke || row >= height - stroke) {
+      span(left, y + row, count);
+      continue;
+    }
+    const int inner = stroke + inset(row - stroke, innerHeight, innerRadius);
+    span(left, y + row, inner - outer);
+    span(x + width - inner, y + row, inner - outer);
   }
 }
 

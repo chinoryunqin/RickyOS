@@ -185,6 +185,11 @@ struct EpubReaderActivity {
   int currentSpineIndex=2;
   bool pageCacheFailed_=false;
   enum class Overlay {None,Menu}; Overlay overlay=Overlay::None;
+  enum class ImagePreview {None,Adjusted,Original};
+  ImagePreview imagePreview_=ImagePreview::None;
+  uint32_t imageIdentity=0;
+  struct ImageProfile {uint32_t value;uint32_t identity() const {return value;}};
+  ImageProfile effectiveImageProfile() const {return {imageIdentity};}
   enum class FontPromptState {Idle,Asking}; FontPromptState fontPromptState=FontPromptState::Idle;
   ReaderRenderSpec effectiveRenderSpec(uint16_t w,uint16_t h) const {
     auto spec=SETTINGS.spec; spec.viewportWidth=w; spec.viewportHeight=h; return spec;
@@ -244,7 +249,7 @@ int main() {
     auto changed=key;
 #define CHANGE(field,value) changed=key; changed.field=value; assert(!r.pageCache_[0].ready(changed))
     CHANGE(top,2); CHANGE(right,2); CHANGE(bottom,2); CHANGE(left,2);
-    CHANGE(page,0); CHANGE(spine,0); CHANGE(sectionGeneration,2); CHANGE(renderEpoch,2);
+    CHANGE(imageAdjustments,1); CHANGE(page,0); CHANGE(spine,0); CHANGE(sectionGeneration,2); CHANGE(renderEpoch,2);
     CHANGE(orientation,1); CHANGE(fakeBold,1); CHANGE(textWeight,0); CHANGE(antiAliasing,false); CHANGE(inverted,true);
     CHANGE(guideLine,true); CHANGE(guideStyle,1); CHANGE(guideOffset,1);
     CHANGE(spec.fontId,2); CHANGE(spec.lineCompression,2); CHANGE(spec.extraParagraphSpacing,1);
@@ -313,6 +318,8 @@ int main() {
    r.renderIdle(0); assert(r.section->loads==1 && r.pageCache_[1].key.page==18);}
   reset();
   {EpubReaderActivity r; r.overlay=EpubReaderActivity::Overlay::Menu; r.renderIdle(0); assert(r.section->loads==0);}
+  {EpubReaderActivity r; r.imagePreview_=EpubReaderActivity::ImagePreview::Adjusted; r.renderIdle(0); assert(r.section->loads==0);}
+  {EpubReaderActivity r; r.renderIdle(0); r.imageIdentity=1; assert(!r.consume());}
   reset();
 }
 '''
@@ -474,6 +481,8 @@ int main() {
         page = (ROOT / 'lib/Epub/Epub/Page.cpp').read_text()
         epub = (ROOT / 'lib/Epub/Epub.cpp').read_text()
         cache = (ROOT / 'lib/Epub/Epub/converters/PixelCache.h').read_text()
+        image = (ROOT / 'lib/Epub/Epub/blocks/ImageBlock.cpp').read_text()
+        validate = method(image, 'bool readValidCacheHeader(')
         program = r"""
 #include <algorithm>
 #include <cassert>
@@ -484,6 +493,7 @@ int main() {
 #include <string>
 #include <vector>
 #include "CancelCheck.h"
+#include "ImagePixelCacheFormat.h"
 template<class... Args> void log(const char*,const char*,Args...) {}
 #define LOG_DBG(...) log(__VA_ARGS__)
 #define LOG_ERR(...) log(__VA_ARGS__)
@@ -493,7 +503,10 @@ CancelCheck cancel{nullptr,[](void*){return stopped;}};
 struct HalFile {
  bool opened=false;
  int writes=0,stopAfter=0;
+ size_t position=0;
  std::vector<uint8_t> bytes;
+ size_t size() const {return bytes.size();}
+ int read(void* p,size_t n){if(position+n>bytes.size())return 0;memcpy(p,bytes.data()+position,n);position+=n;return int(n);}
  size_t write(const void* p,size_t n){
   const auto* b=static_cast<const uint8_t*>(p);bytes.insert(bytes.end(),b,b+n);
   if(stopAfter && ++writes==stopAfter) stopped=true;
@@ -535,6 +548,8 @@ struct Page{
  bool warmImages(GfxRenderer&,int,int,CancelCheck);
 };
 """ + method(page, 'bool Page::warmImages(') + r"""
+struct ImageBlock {static inline uint32_t identity=0;static uint32_t adjustmentIdentity(){return identity;}};
+""" + validate + r"""
 int main(){
  GfxRenderer renderer;Page page;
  auto a=std::make_unique<PageImage>();auto* first=a.get();page.elements.push_back(std::move(a));
@@ -557,12 +572,26 @@ int main(){
  stopped=false;
  {
   PixelCache cache;assert(cache.begin("test.pxc",8,32,0,0,1));
-  assert(cache.finalize(cancel));assert(Storage.exists && cache.file.bytes.size()==4+2*32);
+  assert(cache.finalize(cancel));assert(Storage.exists && cache.file.bytes.size()==imagePixelCache::kHeaderBytes+2*32);
+  uint16_t w=0,h=0;
+  const auto complete=cache.file.bytes;
+  assert(readValidCacheHeader(cache.file,8,32,w,h) && w==8 && h==32);
+  cache.file.position=0;ImageBlock::identity=1;
+  assert(!readValidCacheHeader(cache.file,8,32,w,h));ImageBlock::identity=0;
+  for(size_t n=0;n<imagePixelCache::kHeaderBytes;++n){
+    cache.file.bytes.assign(complete.begin(),complete.begin()+n);cache.file.position=0;
+    assert(!readValidCacheHeader(cache.file,8,32,w,h));
+  }
+  cache.file.bytes=complete;cache.file.bytes[0]=0;cache.file.position=0;
+  assert(!readValidCacheHeader(cache.file,8,32,w,h));
+  cache.file.bytes=complete;cache.file.position=0;
+  assert(!readValidCacheHeader(cache.file,12,32,w,h));
+
  }
  assert(Storage.exists); // A complete cache survives destruction and can be retried normally.
 }
 """
-        run_cpp(program, include_dirs=(ROOT / 'lib/Memory',))
+        run_cpp(program, include_dirs=(ROOT / 'lib/Memory', ROOT / 'lib/Epub/Epub/converters'))
 
 
 if __name__ == '__main__':

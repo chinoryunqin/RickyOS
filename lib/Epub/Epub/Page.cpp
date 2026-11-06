@@ -1,11 +1,11 @@
 #include "Page.h"
 
 #include <GfxRenderer.h>
-
-#include <algorithm>
 #include <Logging.h>
 #include <Memory.h>
 #include <Serialization.h>
+
+#include <algorithm>
 
 namespace {
 
@@ -55,9 +55,15 @@ void renderBlockBoxes(const std::vector<std::unique_ptr<PageElement>>& elements,
     const int height = yOffset + bottom + spacing + box.padBottom - y;
     if (box.width > 0 && height > 0) {
       if (gray16 && box.fillLuma < 250) {
-        renderer.fillRoundedRect(x, y, box.width, height, box.radius, box.fillLuma >= 160 ? LightGray : DarkGray);
+        renderer.drawGrayscale16RoundedRect(x, y, box.width, height, 0, box.radius, box.fillLuma);
       }
-      if (box.border > 0) renderer.drawRoundedRect(x, y, box.width, height, box.border, box.radius, true);
+      if (box.border > 0) {
+        if (gray16) {
+          renderer.drawGrayscale16RoundedRect(x, y, box.width, height, box.border, box.radius, box.borderLuma);
+        } else {
+          renderer.drawRoundedRect(x, y, box.width, height, box.border, box.radius, true);
+        }
+      }
     }
     i = j;
   }

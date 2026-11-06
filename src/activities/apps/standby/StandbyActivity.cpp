@@ -4,6 +4,7 @@
 #include <BleInput.h>
 #include <HalRecorder.h>
 #endif
+#include "SystemUiFonts.h"
 #include "StandbyActivity.h"
 
 #include <Arduino.h>
@@ -133,6 +134,10 @@ void drawFaceDots(const GfxRenderer& renderer, int sw, int sh, uint8_t total, ui
 }  // namespace
 
 void StandbyActivity::onEnter() {
+  {
+    RenderLock lock(*this);
+    systemUiFonts::suspend(renderer);
+  }
   Activity::onEnter();
 #if FREEINK_DEVICE_METALIO_PLUS
   HalRecorder::stop();
@@ -145,12 +150,12 @@ void StandbyActivity::onEnter() {
 #if CROSSPOINT_EMULATED == 0
   HalPowerManager::beginStandbyKeyWatch();
 #endif
-  // The calendar clock stands on its side, the keys under the screen to the left: the
-  // portrait bottom is the panel's right edge, which LandscapeClockwise puts at x = 0
-  // (the reader's 横屏（顺时针）). Only Standby turns; the orientation is restored on exit.
+  // A calendar can rest on either long edge without pressing the side keys.
+  // Only Standby turns; the caller's orientation is restored on exit.
   savedOrientation_ = renderer.getOrientation();
   if (SETTINGS.rickyStandbyFace == CrossPointSettings::RICKY_STANDBY_CALENDAR) {
-    renderer.setOrientation(GfxRenderer::Orientation::LandscapeClockwise);
+    renderer.setOrientation(SETTINGS.standbyCalendarReversed ? GfxRenderer::Orientation::LandscapeCounterClockwise
+                                                           : GfxRenderer::Orientation::LandscapeClockwise);
   }
   LOG_DBG("STANDBY", "onEnter free heap=%u", static_cast<unsigned>(ESP.getFreeHeap()));
   // Always default to face 0 (Sloppy Clock). If face 0 is somehow unavailable
@@ -178,11 +183,20 @@ void StandbyActivity::onEnter() {
     syncState_ = SyncState::Delayed;
     syncStartMs_ = millis();
   }
+#if FREEINK_DEVICE_METALIO_PLUS
+  // A valid clock or a static face skips NTP, but an inherited station/AP still
+  // blocks light sleep. Only a pending clock sync may keep that radio alive.
+  if (syncState_ == SyncState::Idle && WiFi.getMode() != WIFI_MODE_NULL) stopTimeSyncWifi();
+#endif
   requestUpdate();
 }
 
 void StandbyActivity::onExit() {
+  systemUiFonts::resume();
   STANDBY_DIAG("standby exit (up %lus)", (millis() - enteredMs_) / 1000);
+#if FREEINK_DEVICE_METALIO_PLUS
+  HalPowerManager::logStandbySleepSummary();
+#endif
   switch (syncState_) {
     case SyncState::Idle:
     case SyncState::Delayed:
@@ -447,28 +461,30 @@ void StandbyActivity::processFaceTick(const bool waitForUpdate) {
 
 bool StandbyActivity::tryLightSleep(const uint32_t idleMs) {
 #if CROSSPOINT_EMULATED == 0
-#if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_STANDBY_DIAG)
+#if FREEINK_DEVICE_METALIO_PLUS
   static uint32_t lastGateNote = 0;
   if (uint32_t(millis() - lastGateNote) >= 30000) {
     lastGateNote = millis();
-    STANDBY_DIAG("gate idle=%lu pic=%u swipe=%u ble=%u rec=%u light=%u sync=%u wifi=%d ready=%u key=%u",
+    LOG_INF("STANDBY", "gate idle=%lu pic=%u swipe=%u ble=%u rec=%u light=%u sync=%u wifi=%d ready=%u key=%u usb=%u",
                  static_cast<unsigned long>(idleMs), currentFace_ && currentFace_->needsPicture(),
                  SETTINGS.standbySwipeUnlock, bleinput::isRunning(), HalRecorder::active(), Frontlight.isOn(),
                  syncState_ != SyncState::Idle, static_cast<int>(WiFi.getMode()),
-                 powerManager.canStandbyLightSleep(gpio), HalPowerManager::sideKeyBusy());
+                 powerManager.canStandbyLightSleep(gpio), HalPowerManager::sideKeyBusy(), gpio.isUsbConnected());
   }
 #endif
   if (mode_ != DisplayMode::Immersive || !currentFace_) return false;
+#if !FREEINK_DEVICE_METALIO_PLUS
   // Touch does not wake light sleep: stay awake while waiting for a picture to be picked.
   if (currentFace_->needsPicture()) return false;
+#endif
 #if FREEINK_DEVICE_METALIO_PLUS && defined(RICKYOS_PLUS_STATIC_STANDBY)
-  // Any face must have completed its first paint before any bus/rail park.
+  // The missing-picture prompt also sleeps after the idle window. It retains
+  // its first frame just like a wallpaper; the physical power key still wakes.
   if (!drewFrame_) return false;
 #endif
 #if FREEINK_DEVICE_METALIO_PLUS
-  // Side-key/timer candidate only. Preserve first-swipe semantics until touch
-  // wake and gesture replay have been independently validated on Plus.
-  if (SETTINGS.standbySwipeUnlock || bleinput::isRunning() || HalRecorder::active() || Frontlight.isOn()) return false;
+  // Swipe unlock is disabled; only active peripherals block side-key/timer sleep.
+  if (bleinput::isRunning() || HalRecorder::active() || Frontlight.isOn()) return false;
 #endif
 
   const bool syncActive = syncState_ != SyncState::Idle;
@@ -557,13 +573,8 @@ bool StandbyActivity::tryLightSleep(const uint32_t idleMs) {
 }
 
 void StandbyActivity::loop() {
-  if (SETTINGS.standbySwipeUnlock && mappedInput.wasStandbyUnlockGesture()) {
-    STANDBY_DIAG("close: swipe unlock");
-    finish();
-    return;
-  }
   // Back includes touch gestures and a header target from the prior page. Neither
-  // may bypass the independent unlock switch; physical Back keeps its preference.
+  // may unlock standby; physical Back keeps its preference.
   if (!mappedInput.wasBackGesture() && mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     // One shortcut switch owns both entry and exit; the side power key stays independent.
     if (SETTINGS.standbyShortcutEnabled) {
@@ -579,8 +590,11 @@ void StandbyActivity::loop() {
   int tapY = 0;
   const bool tapped = mappedInput.wasScreenTapped(tapX, tapY);
   if (tapped || mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+#if !FREEINK_DEVICE_METALIO_PLUS
     lastInputMs_ = millis();
+#endif
     if (currentFace_ && currentFace_->needsPicture()) {
+      lastInputMs_ = millis();
       const auto action = tapped ? currentFace_->pictureActionAt(tapX, tapY) : StandbyFace::PictureAction::Choose;
       if (action == StandbyFace::PictureAction::Choose) openPicturePicker();
       // The downloader restarts to Home when it is done, like the font downloader.
@@ -592,12 +606,17 @@ void StandbyActivity::loop() {
           })) {
         LOG_ERR("STANDBY", "Cannot open the picture downloader");
       }
+      return;
     }
+#if !FREEINK_DEVICE_METALIO_PLUS
     return;
+#endif
   }
+#if !FREEINK_DEVICE_METALIO_PLUS
   if (mappedInput.wasAnyReleased() || mappedInput.wasSwipe() != MappedInputManager::SwipeDir::None) {
     lastInputMs_ = millis();
   }
+#endif
   pumpTimeSync();
   // Standby left alone long enough powers off (Settings -> Display & Standby).
   const unsigned long powerOffMs = SETTINGS.getStandbyPowerOffMs();

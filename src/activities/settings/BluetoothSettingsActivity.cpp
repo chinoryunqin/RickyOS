@@ -40,15 +40,24 @@ void BluetoothSettingsActivity::setBanner(const char* text) {
   bannerUntil = millis() + kBannerMs;
 }
 
-bool BluetoothSettingsActivity::ensureAvailable() {
+bool BluetoothSettingsActivity::ensureAvailable(const bool showFeedback) {
   bleinput::StartResult result;
   {
     RenderLock lock;
     result = bleinput::ensureStarted(renderer, bleinput::StartContext::Explicit);
   }
+  if (result == bleinput::StartResult::RadioBusy) {
+    if (showFeedback) {
+      setBanner(tr(STR_BT_WIFI_PAUSED));
+      requestUpdate();
+    }
+    return false;
+  }
   if (result == bleinput::StartResult::Started || result == bleinput::StartResult::AlreadyRunning) return true;
-  setBanner(result == bleinput::StartResult::LowMemory ? tr(STR_BT_LOW_MEMORY) : tr(STR_BT_UNAVAILABLE));
-  requestUpdate();
+  if (showFeedback) {
+    setBanner(result == bleinput::StartResult::LowMemory ? tr(STR_BT_LOW_MEMORY) : tr(STR_BT_UNAVAILABLE));
+    requestUpdate();
+  }
   return false;
 }
 
@@ -64,7 +73,7 @@ void BluetoothSettingsActivity::rebuildRows() {
   };
 
   if (view == View::Menu) {
-    if (auto* row = addRow(tr(STR_BLUETOOTH), static_cast<int16_t>(Action::Toggle))) {
+    if (auto* row = addRow(tr(STR_BT_PAGE_TURNER), static_cast<int16_t>(Action::Toggle))) {
       row->toggle = true;
       row->toggleChecked = SETTINGS.bluetoothEnabled;
     }
@@ -206,9 +215,21 @@ bool BluetoothSettingsActivity::handleButtons() {
 }
 
 bool BluetoothSettingsActivity::handleCustomInput() {
+  if (SETTINGS.bluetoothEnabled && !bleinput::isRunning() && !bleinput::radioBusy() && millis() >= nextStartAttemptAt) {
+    nextStartAttemptAt = millis() + 2000;
+    ensureAvailable(false);
+  }
+  if (renderedConnected != BleHid.isConnected()) requestUpdate();
   if (bannerUntil && millis() > bannerUntil) {
     banner[0] = '\0';
     bannerUntil = 0;
+    requestUpdate();
+  }
+
+  uint32_t passkey = 0;
+  if (BleHid.takePairingPasskey(passkey)) {
+    snprintf(banner, sizeof(banner), tr(STR_BT_PAIRING_CODE), static_cast<unsigned long>(passkey));
+    bannerUntil = millis() + 30000;
     requestUpdate();
   }
 
@@ -238,7 +259,10 @@ bool BluetoothSettingsActivity::handleCustomInput() {
 void BluetoothSettingsActivity::drawChrome() {
   UiListActivity::drawChrome();
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const char* status = banner[0] ? banner : BleHid.isConnected() ? BleHid.connectedName() : tr(STR_BT_NOT_CONNECTED);
+  const char* status = banner[0]                                            ? banner
+                       : SETTINGS.bluetoothEnabled && bleinput::radioBusy() ? tr(STR_BT_WIFI_PAUSED)
+                       : BleHid.isConnected()                               ? BleHid.connectedName()
+                                                                            : tr(STR_BT_NOT_CONNECTED);
   GUI.drawSubHeader(renderer,
                     Rect{0, metrics.topPadding + metrics.headerHeight, renderer.getScreenWidth(), metrics.tabBarHeight},
                     status);
@@ -246,6 +270,7 @@ void BluetoothSettingsActivity::drawChrome() {
 
 void BluetoothSettingsActivity::buildScreen(UiScreen& screen) {
   rebuildRows();
+  renderedConnected = BleHid.isConnected();
   renderedScanning = BleHid.isScanning();
   renderedDeviceCount = BleHid.deviceCount();
   const auto& metrics = UITheme::getInstance().getMetrics();

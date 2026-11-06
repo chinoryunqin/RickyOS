@@ -18,7 +18,7 @@ class ImageDimsProbe : public Print {
   // Format identified from the stream's leading bytes. The extension in an
   // EPUB's href is only a hint — manifests legitimately point at images named
   // without one — so callers that must choose a decoder should trust this.
-  enum class Format : uint8_t { Unknown, Jpeg, Png };
+  enum class Format : uint8_t { Unknown, Jpeg, Png, Webp };
 
   size_t write(uint8_t b) override;
   size_t write(const uint8_t* data, size_t len) override;
@@ -37,6 +37,12 @@ class ImageDimsProbe : public Print {
         return ".jpg";
       case Format::Png:
         return ".png";
+      case Format::Webp:
+#if RICKYOS_WEBP
+        return ".webp";
+#else
+        break;
+#endif
       case Format::Unknown:
         break;
     }
@@ -48,6 +54,7 @@ class ImageDimsProbe : public Print {
 
   enum class State : uint8_t {
     Sniff,       // first byte selects the parser; the format follows on validation
+    WebpHeader,
     PngHeader,   // PNG signature + IHDR at fixed offsets
     JpegSoi,     // second SOI byte (0xD8)
     JpegFf,      // expect a 0xFF marker prefix
@@ -70,6 +77,7 @@ class ImageDimsProbe : public Print {
   // 32-bit: PNG IHDR width/height are 4-byte fields. Accumulating them in a
   // uint16_t silently truncates an oversized image to a plausible small value
   // that passes the INT16_MAX sanity check in getDimensions().
+  uint8_t webpHeader[30]{};
   uint32_t width = 0;
   uint32_t height = 0;
 };

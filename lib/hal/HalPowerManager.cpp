@@ -3,6 +3,9 @@
 #include <BoardConfig.h>
 #if FREEINK_DEVICE_METALIO_PLUS
 #include <PlusBoard.h>
+#if defined(RICKYOS_PLUS_POWER_CAPTURE)
+#include <PlusPowerCapture.h>
+#endif
 #if defined(RICKYOS_PLUS_STATIC_STANDBY)
 #include "HalStorage.h"
 #endif
@@ -37,6 +40,59 @@ HalPowerManager powerManager;  // Singleton instance
 static constexpr gpio_num_t XTEINK_C3_GPIO13 = GPIO_NUM_13;
 
 namespace {
+#if FREEINK_DEVICE_METALIO_PLUS
+plus_board::StandbyPowerSnapshot g_lastStandbySummary{};
+bool g_haveStandbySummary = false;
+
+#if defined(RICKYOS_PLUS_POWER_CAPTURE)
+// 108 bytes of fixed-size RAM; preserved after wake/USB reconnect for JTAG.
+// No heap, SD/NVS writes, extra wake source, charger or gauge configuration.
+plus_board::PowerCapture g_plusPowerCapture;
+
+void logPowerCaptureWindow(const char* name, const plus_board::PowerCaptureWindow& window) {
+  const auto& first = window.first;
+  const auto& last = window.last;
+  LOG_INF("POWER", "%s state=%lu n=%lu faults=%lu first_ms=%lu q=%u mv=%u i=%d avg=%d op=%u valid=%u "
+                  "last_ms=%lu q=%u mv=%u i=%d avg=%d op=%u valid=%u",
+          name, static_cast<unsigned long>(window.state), static_cast<unsigned long>(window.samples),
+          static_cast<unsigned long>(window.faults), static_cast<unsigned long>(first.atMs), first.counter, first.mv,
+          first.current, first.average, first.operation, first.valid, static_cast<unsigned long>(last.atMs),
+          last.counter, last.mv, last.current, last.average, last.operation, last.valid);
+}
+
+plus_board::PowerCaptureSample readPowerCaptureSample(bool& batteryOnly) {
+  batteryOnly = plus_board::batteryPowerOnly();
+  if (!batteryOnly) return {};
+  static const BatteryMonitor battery;
+  const auto raw = battery.readPowerSnapshot();
+  batteryOnly = plus_board::batteryPowerOnly();
+  const bool valid = raw.mvOk && raw.currentOk && raw.averageOk && raw.counterOk && raw.operationOk &&
+                     raw.mv >= 2500 && raw.mv <= 5000 && (raw.operation & 0x0020) && !(raw.operation & 0x0400);
+  return {millis(), raw.counter, raw.mv, raw.current, raw.average, raw.operation, uint16_t(valid)};
+}
+
+void observePowerCapture() {
+  bool batteryOnly = false;
+  const auto sample = readPowerCaptureSample(batteryOnly);
+  g_plusPowerCapture.observe(sample, batteryOnly);
+  if (!batteryOnly) {
+    LOG_INF("POWER", "capture magic=%lu version=%lu cycle=%lu mode=%lu rearm=%lu",
+            static_cast<unsigned long>(g_plusPowerCapture.magic), static_cast<unsigned long>(g_plusPowerCapture.version),
+            static_cast<unsigned long>(g_plusPowerCapture.cycle), static_cast<unsigned long>(g_plusPowerCapture.mode),
+            static_cast<unsigned long>(g_plusPowerCapture.rearmOnBattery));
+    logPowerCaptureWindow("awake", g_plusPowerCapture.awake);
+    logPowerCaptureWindow("standby", g_plusPowerCapture.standby);
+  }
+}
+#endif
+
+void logStandbySnapshot(const plus_board::StandbyPowerSnapshot& state) {
+  LOG_INF("STANDBY", "summary duration_ms=%lu sleep_ms=%llu entered=%lu rejected=%lu sd_retained=%lu",
+          static_cast<unsigned long>(state.elapsedMs), static_cast<unsigned long long>(state.sleepUs / 1000),
+          static_cast<unsigned long>(state.entered), static_cast<unsigned long>(state.rejected),
+          static_cast<unsigned long>(state.sdRetained));
+}
+#endif
 #if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
 std::atomic<bool> g_sideKeyBusy{false};
 #endif
@@ -341,6 +397,27 @@ void HalPowerManager::startDeepSleep(HalGPIO& gpio) const {
 void HalPowerManager::beginStandbyKeyWatch() {
 #if FREEINK_DEVICE_READPICO
   g_standbyKeyBoundary = 0;
+#elif FREEINK_DEVICE_METALIO_PLUS
+  g_haveStandbySummary = false;
+  plus_board::beginStandbyPowerTrace();
+#if defined(RICKYOS_PLUS_POWER_CAPTURE)
+  bool batteryOnly = false;
+  const auto sample = readPowerCaptureSample(batteryOnly);
+  g_plusPowerCapture.enterStandby(sample, batteryOnly);
+#endif
+#endif
+}
+
+void HalPowerManager::logStandbySleepSummary() {
+#if FREEINK_DEVICE_METALIO_PLUS
+#if defined(RICKYOS_PLUS_POWER_CAPTURE)
+  bool batteryOnly = false;
+  const auto sample = readPowerCaptureSample(batteryOnly);
+  g_plusPowerCapture.exitStandby(sample, batteryOnly);
+#endif
+  g_lastStandbySummary = plus_board::standbyPowerSnapshot();
+  g_haveStandbySummary = true;
+  logStandbySnapshot(g_lastStandbySummary);
 #endif
 }
 
@@ -382,6 +459,11 @@ bool HalPowerManager::canStandbyLightSleep(const HalGPIO& gpio) const {
 HalPowerManager::LightSleepWakeReason HalPowerManager::lightSleepFor(const uint32_t seconds) const {
 #if FREEINK_DEVICE_METALIO_PLUS
   if (sideKeyBusy()) return LightSleepWakeReason::Failed;
+#if defined(RICKYOS_PLUS_POWER_CAPTURE)
+  // A cable unplugged just before the 35 s idle deadline may have missed the
+  // last awake poll. Capture once here, before SD/rails park, not on a timer.
+  if (g_plusPowerCapture.needsStandbyStart()) observePowerCapture();
+#endif
 #if defined(RICKYOS_PLUS_STATIC_STANDBY)
   HalStorage::StandbySession session;
   plus_board::StandbyStorage storage{
@@ -488,6 +570,12 @@ void HalPowerManager::pollBatteryWhileAwake() {
   // Reuse the UI's single sampler/cache, including its I2C failure handling.
   // Long blocked/sleeping intervals earn no synthetic observations or catch-up.
   getBatteryPercentage();
+#if defined(RICKYOS_PLUS_POWER_CAPTURE)
+  observePowerCapture();
+#endif
+  // The USB console is absent during battery sleep. Replay the frozen result
+  // through the existing awake poll so a reconnected host can collect it.
+  if (g_haveStandbySummary) logStandbySnapshot(g_lastStandbySummary);
 #if defined(RICKYOS_PLUS_IDLE_FREQ_MHZ)
   plus_board::traceIdlePower();
 #endif

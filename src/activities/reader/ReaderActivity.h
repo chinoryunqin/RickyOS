@@ -73,6 +73,7 @@ class ReaderActivity : public Activity {
 
   void onEnter() override;
   void onExit() override;
+  void showExitProgress() override;
   void prepareForSleep() override;
   void loop() override;
   void render(RenderLock&& lock) override;

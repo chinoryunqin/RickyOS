@@ -37,22 +37,21 @@ constexpr StrId TAB_NAME_IDS[] = {StrId::STR_FONT, StrId::STR_SIZE, StrId::STR_L
 constexpr StrId LAYOUT_ROW_NAME_IDS[] = {StrId::STR_MARGIN_TOP,        StrId::STR_MARGIN_BOTTOM,
                                          StrId::STR_MARGIN_LEFT,       StrId::STR_MARGIN_RIGHT,
                                          StrId::STR_LINE_SPACING,      StrId::STR_WORD_SPACING,
-                                         StrId::STR_CHARACTER_SPACING, StrId::STR_EXTRA_SPACING,
+                                         StrId::STR_CHARACTER_SPACING, StrId::STR_PARAGRAPH_SPACING,
                                          StrId::STR_FIRST_LINE_INDENT, StrId::STR_PARAGRAPH_INDENTATION,
                                          StrId::STR_ALIGNMENT};
-constexpr StrId STYLE_ROW_NAME_IDS[] = {StrId::STR_RICKY_WEIGHT,    StrId::STR_FAKE_BOLD,
-                                        StrId::STR_FOCUS_READING,   StrId::STR_HYPHENATION,
-                                        StrId::STR_EMBEDDED_STYLE,  StrId::STR_TEXT_AA,
+constexpr StrId STYLE_ROW_NAME_IDS[] = {StrId::STR_RICKY_WEIGHT,
+                                        StrId::STR_FAKE_BOLD,
+                                        StrId::STR_FOCUS_READING,
+                                        StrId::STR_HYPHENATION,
+                                        StrId::STR_EMBEDDED_STYLE,
+                                        StrId::STR_TEXT_AA,
                                         StrId::STR_READING_GUIDE_LINE_OFFSET};
 static_assert(std::size(STYLE_ROW_NAME_IDS) == 7, "a label per TextSettingsActivity::StyleRow");
 
-constexpr StrId LINE_SPACING_IDS[] = {StrId::STR_TIGHT, StrId::STR_NORMAL, StrId::STR_WIDE, StrId::STR_EXTRA_WIDE};
 constexpr StrId FIRST_LINE_INDENT_IDS[] = {StrId::STR_FIRST_LINE_INDENT_AUTO, StrId::STR_FIRST_LINE_INDENT_INDENT,
                                            StrId::STR_FIRST_LINE_INDENT_NO_INDENT};
 static_assert(std::size(FIRST_LINE_INDENT_IDS) == 3);
-constexpr StrId EXTRA_SPACING_IDS[] = {StrId::STR_EXTRA_SPACING_OFF,  StrId::STR_EXTRA_SPACING_0_5,
-                                       StrId::STR_EXTRA_SPACING_0_75, StrId::STR_EXTRA_SPACING_1,
-                                       StrId::STR_EXTRA_SPACING_1_25, StrId::STR_EXTRA_SPACING_1_5};
 constexpr StrId SYNTHETIC_BOLD_IDS[] = {StrId::STR_STATE_OFF, StrId::STR_FAKE_BOLD_LIGHT, StrId::STR_FAKE_BOLD_STANDARD,
                                         StrId::STR_FAKE_BOLD_HEAVY};
 static_assert(std::size(SYNTHETIC_BOLD_IDS) == CrossPointSettings::SYNTHETIC_BOLD_COUNT);
@@ -90,11 +89,16 @@ constexpr int MARGIN_MAX = CrossPointSettings::READER_MARGIN_MAX;
 constexpr int MARGIN_STEP = CrossPointSettings::READER_MARGIN_STEP;
 uint8_t* marginField(const int row) {
   switch (row) {
-    case 0: return &SETTINGS.marginTop;
-    case 1: return &SETTINGS.marginBottom;
-    case 2: return &SETTINGS.marginLeft;
-    case 3: return &SETTINGS.marginRight;
-    default: return nullptr;
+    case 0:
+      return &SETTINGS.marginTop;
+    case 1:
+      return &SETTINGS.marginBottom;
+    case 2:
+      return &SETTINGS.marginLeft;
+    case 3:
+      return &SETTINGS.marginRight;
+    default:
+      return nullptr;
   }
 }
 constexpr StrId OK_OPTION[] = {StrId::STR_OK_BUTTON};
@@ -540,13 +544,18 @@ void TextSettingsActivity::applySize(int listIndex) {
 void TextSettingsActivity::confirmLayoutRow(int row) {
   switch (static_cast<LayoutRow>(row)) {
     case LayoutRow::ParaSpacing:
-      optionPopup_.show(StrId::STR_EXTRA_SPACING, EXTRA_SPACING_IDS, static_cast<int>(std::size(EXTRA_SPACING_IDS)),
-                        SETTINGS.extraParagraphSpacing, [](int idx) {
-                          SETTINGS.extraParagraphSpacing = static_cast<uint8_t>(idx);
-                          SETTINGS.saveToFile();
-                        });
-      requestUpdate();
-      break;
+      startActivityForResultWith<IntervalSelectionActivity>(
+          [this](const ActivityResult& result) {
+            if (!result.isCancelled && std::holds_alternative<IntervalResult>(result.data)) {
+              SETTINGS.paragraphSpacingPercent = static_cast<uint16_t>(
+                  std::clamp<int>(std::get<IntervalResult>(result.data).value, 0, paragraphSpacing::MAX_PERCENT));
+              SETTINGS.saveToFile();
+            }
+            requestUpdate();
+          },
+          "ParagraphSpacing", StrId::STR_PARAGRAPH_SPACING, SETTINGS.paragraphSpacingPercent, 0,
+          paragraphSpacing::MAX_PERCENT, 1, 5, StrId::STR_LINE_SPACING_VALUE);
+      return;
     case LayoutRow::FirstLineIndent:
       optionPopup_.show(StrId::STR_FIRST_LINE_INDENT, FIRST_LINE_INDENT_IDS,
                         static_cast<int>(std::size(FIRST_LINE_INDENT_IDS)), SETTINGS.firstLineIndent, [](int idx) {
@@ -567,13 +576,20 @@ void TextSettingsActivity::confirmLayoutRow(int row) {
       break;
     }
     case LayoutRow::LineSpacing:
-      optionPopup_.show(StrId::STR_LINE_SPACING, LINE_SPACING_IDS, static_cast<int>(std::size(LINE_SPACING_IDS)),
-                        SETTINGS.lineSpacing, [](int idx) {
-                          SETTINGS.lineSpacing = static_cast<uint8_t>(idx);
-                          SETTINGS.saveToFile();
-                        });
-      requestUpdate();
-      break;
+      startActivityForResultWith<IntervalSelectionActivity>(
+          [this](const ActivityResult& result) {
+            if (!result.isCancelled && std::holds_alternative<IntervalResult>(result.data)) {
+              SETTINGS.lineSpacingPercent = static_cast<uint16_t>(std::clamp<int>(
+                  std::get<IntervalResult>(result.data).value, int(CrossPointSettings::LINE_SPACING_PERCENT_MIN),
+                  int(CrossPointSettings::LINE_SPACING_PERCENT_MAX)));
+              SETTINGS.saveToFile();
+            }
+            requestUpdate();
+          },
+          "LineSpacing", StrId::STR_LINE_SPACING, SETTINGS.getReaderLineSpacingPercent(),
+          CrossPointSettings::LINE_SPACING_PERCENT_MIN, CrossPointSettings::LINE_SPACING_PERCENT_MAX, 1, 5,
+          StrId::STR_LINE_SPACING_VALUE);
+      return;
     case LayoutRow::Alignment:
       optionPopup_.show(StrId::STR_ALIGNMENT, ALIGNMENT_IDS, static_cast<int>(std::size(ALIGNMENT_IDS)),
                         SETTINGS.paragraphAlignment, [](int idx) {
@@ -626,12 +642,16 @@ void TextSettingsActivity::confirmLayoutRow(int row) {
 std::string TextSettingsActivity::layoutValueText(int row) const {
   switch (static_cast<LayoutRow>(row)) {
     case LayoutRow::LineSpacing: {
-      const uint8_t v = SETTINGS.lineSpacing;
-      return v < std::size(LINE_SPACING_IDS) ? I18N.get(LINE_SPACING_IDS[v]) : I18N.get(StrId::STR_NORMAL);
+      char value[8];
+      snprintf(value, sizeof(value), tr(STR_LINE_SPACING_VALUE),
+               static_cast<unsigned>(SETTINGS.getReaderLineSpacingPercent()));
+      return value;
     }
     case LayoutRow::ParaSpacing: {
-      const uint8_t v = SETTINGS.extraParagraphSpacing;
-      return v < std::size(EXTRA_SPACING_IDS) ? I18N.get(EXTRA_SPACING_IDS[v]) : I18N.get(StrId::STR_EXTRA_SPACING_OFF);
+      char value[8];
+      snprintf(value, sizeof(value), tr(STR_LINE_SPACING_VALUE),
+               static_cast<unsigned>(SETTINGS.paragraphSpacingPercent));
+      return value;
     }
     case LayoutRow::ParaIndentation:
       return std::to_string(SETTINGS.paragraphIndentSpaces);
@@ -887,7 +907,8 @@ void TextSettingsActivity::finishFinalFont(const bool accepted) {
   // fontFileForFamily() returns that regular file for them (size-free, style 0).
   const auto* file = fontFileForFamily(currentFamilyIndex_, SETTINGS.fontPointSize);
   const auto check = file ? SdCardFontCache::preflight(file->path.c_str()) : SdCardFontCache::Result::InvalidFont;
-  LOG_INF("FSET", "Font acceleration check %s: %s", file ? file->path.c_str() : "-", SdCardFontCache::resultName(check));
+  LOG_INF("FSET", "Font acceleration check %s: %s", file ? file->path.c_str() : "-",
+          SdCardFontCache::resultName(check));
   if (check == SdCardFontCache::Result::TooLarge) {
     // A .cpfont over the cache is rare and leaves quietly. Vector fonts are routinely
     // larger (CJK TTF/OTF: 8-25 MB): say why the expected acceleration did not happen.

@@ -1,7 +1,7 @@
 #pragma once
-
 #include <ArduinoJson.h>
 #include <BoardConfig.h>
+#include <Epub/ParagraphSpacing.h>
 #include <Epub/ReaderRenderSpec.h>
 #include <PersistableStore.h>
 
@@ -11,6 +11,7 @@
 #include "BleKeyMapping.h"
 #include "InxItemLayout.h"
 #include "InxRecentLayout.h"
+#include "ReaderTapZones.h"
 #include "components/UiHighDpiProfile.h"
 #include "util/ReadingGuideLine.h"
 
@@ -322,12 +323,20 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t statusBar = FULL;
   uint8_t statusBarChapterPageCount = 1;
   uint8_t statusBarBookProgressPercentage = 1;
+#if FREEINK_DEVICE_METALIO_EINK4 || defined(SIMULATOR_DEVICE_METALIO_EINK4)
+  uint8_t statusBarProgressBar = BOOK_PROGRESS;
+#else
   uint8_t statusBarProgressBar = HIDE_PROGRESS;
+#endif
   uint8_t statusBarProgressBarThickness = PROGRESS_BAR_NORMAL;
   uint8_t statusBarTitle = CHAPTER_TITLE;
   uint8_t statusBarBattery = 1;
   // Clock display in the reader status bar.
+#if FREEINK_DEVICE_METALIO_EINK4 || defined(SIMULATOR_DEVICE_METALIO_EINK4)
+  uint8_t statusBarClock = STATUS_BAR_CLOCK_LEFT;
+#else
   uint8_t statusBarClock = STATUS_BAR_CLOCK_HIDE;
+#endif
   // LEGACY, kept for migration only: quarter-hour UTC offset biased by 48
   // (48 = UTC+0). Superseded by clockTimezone; read once by
   // timezones::activeIndex() when clockTimezone is unset.
@@ -337,12 +346,12 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Opportunistically synchronize the system UTC clock while Wi-Fi is already connected.
   uint8_t clockAutoSync = 1;
   // Text rendering settings
-  uint8_t extraParagraphSpacing = 0;
+  uint16_t paragraphSpacingPercent = paragraphSpacing::DEFAULT_PERCENT;  // 100% keeps authored paragraph gaps.
   // Reader-level first-line indent control, one of FirstLineIndent::Auto /
   // Indent / NoIndent (see lib/Epub/Epub/FirstLineIndent.h). The default
   // Auto keeps the book's own CSS text-indent untouched; Indent replaces it
   // with two CJK characters / three Latin spaces; NoIndent forces flush.
-  // Independent of extraParagraphSpacing.
+  // Independent of paragraphSpacingPercent.
   uint8_t firstLineIndent = 0;
   // Index into the timezone table (src/util/Timezones.cpp, append-only).
   // 255 = never chosen; falls back to the legacy UTC offset, then UTC.
@@ -385,6 +394,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
 #if FREEINK_DEVICE_METALIO_PLUS
   // AI, lower Previous/Next, side Up/Down; each short then long.
   uint8_t plusTouchFeedback = 1;
+  uint8_t plusSideKeyFeedback = 0;
   uint8_t plusKeyActions[plus_keys::FIELD_COUNT] = {0, 1, 0, 1, 0, 1, 0, 1, 0, 1};
 #endif
   uint8_t homeButtonTapAction = static_cast<uint8_t>(HomeButtonAction::Home);
@@ -412,18 +422,24 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // are selectable; SdCardFontSystem::ensureLoaded() snaps this to the nearest
   // available size (and persists the snap) whenever the family changes.
   uint8_t fontPointSize = DEFAULT_FONT_POINT_SIZE;
-  uint8_t lineSpacing = NORMAL;
+  char uiFontFamily[64] = {};    // Independent interface choice; empty uses bundled fonts.
+  uint8_t uiTextScale = 100;     // Percent, 80..140; title/body/caption retain their roles.
+  uint8_t lineSpacing = NORMAL;  // Legacy four-step setting, retained for migration.
+  static constexpr uint16_t LINE_SPACING_PERCENT_MIN = 80;
+  static constexpr uint16_t LINE_SPACING_PERCENT_MAX = 400;
+  uint16_t lineSpacingPercent = 0;  // Zero retains the font-specific legacy spacing.
+  uint16_t getReaderLineSpacingPercent() const;
   uint8_t paragraphAlignment = JUSTIFIED;
   // Auto-sleep timeout setting (default 10 minutes). Legacy sleepTimeout enum values are migration-only.
   uint8_t sleepTimeoutMinutes = 10;
   // E-ink refresh frequency (default 15 pages)
   uint8_t refreshFrequency = REFRESH_15;
-uint8_t nativePageTurn = 1; // off / skim (default) / shallow arc / ripple. Saved IDs never reorder.
-// Plus reading refresh: 0 = 高清 (full reader waveform, ink restore, motion), 1 = 快刷
-// (the short text-turn table, unchanged pixels held, no motion). Switched in the
-// control center over a book; other panels ignore it.
-uint8_t readerFastRefresh = 0;
-  uint8_t mainTabMotion = 1; // Native main-tab motion, on by default; independent of the page turn.
+  uint8_t nativePageTurn = 1;  // off / skim (default) / shallow arc / ripple. Saved IDs never reorder.
+  // Plus reading refresh: 0 = 高清 (full reader waveform, ink restore, motion), 1 = 快刷
+  // (the short text-turn table, unchanged pixels held, no motion). Switched in the
+  // control center over a book; other panels ignore it.
+  uint8_t readerFastRefresh = 0;
+  uint8_t mainTabMotion = 1;  // Native main-tab motion, on by default; independent of the page turn.
   uint8_t hyphenationEnabled = 0;
 
   // Reader screen margin settings
@@ -482,6 +498,8 @@ uint8_t readerFastRefresh = 0;
     RICKY_STANDBY_FACE_COUNT
   };
   uint8_t rickyStandbyFace = RICKY_STANDBY_PICTURE;
+  // Calendar-only 180-degree placement choice; independent of reading orientation.
+  uint8_t standbyCalendarReversed = 0;
   // The book-cover face's layout: the cover alone, or the "上次读到这里" card as an
   // editorial page or a cover-over-text split; and whether that card shows the excerpt.
   enum STANDBY_COVER_LAYOUT : uint8_t {
@@ -542,6 +560,8 @@ uint8_t readerFastRefresh = 0;
   // Image resampling inside the reader (see IMAGE_SCALING). Applies to inline
   // book images only; reader chrome and other activities are untouched.
   uint8_t imageScaling = IMAGE_SCALING_NEAREST;
+  int8_t readerImageContrast = 0;
+  int8_t readerImageBrightness = 0;
   // SD card font family name (empty = use built-in fontFamily)
   char sdFontFamilyName[32] = "";
   // Bounded personal profile, additive JSON keys; never changes reader caches.
@@ -558,7 +578,7 @@ uint8_t readerFastRefresh = 0;
   // last lines of a page and on the tab bar, so readers left books by accident.
   uint8_t rickyGestureBack = 1;     // swipe right from the left side: Back
   uint8_t rickyGestureHome = 0;     // swipe up from the bottom: Home
-  uint8_t standbySwipeUnlock = 0;  // opt-in left-edge right swipe; independent of global Back/Home
+  uint8_t standbySwipeUnlock = 0;   // retired; always disabled, retained only for settings compatibility
   uint8_t rickyGestureControl = 1;  // swipe down from the top: control center
   uint8_t rickyGestureStatus = 1;   // tap the status bar: control center
   // Body-text stroke weight in the reader: 0 thinnest .. 2 the font as drawn .. 4 boldest.
@@ -611,6 +631,7 @@ uint8_t readerFastRefresh = 0;
   uint8_t backTapSensitivity = 1;
   // Master reader-touch toggle on boards with a touch controller.
   uint8_t touchReaderControls = TOUCH_READER_ON;
+  readerTapZones::Config readerTapZones;
   // Which gestures turn the page in each direction (PAGE_TURN_GESTURE).
   // Tapping the side of the page turns it, as on every reader people come from.
   uint8_t pageTurnGesture = TAP_AND_SWIPE;

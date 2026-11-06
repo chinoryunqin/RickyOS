@@ -25,11 +25,19 @@ struct CompactLayout {
 };
 
 // textHeight is the chrome's own small type (caption, status numerals), not body text.
-// The footer is one row close to the panel edge: page count left, percent right and
-// the progress bar between them, centred on the row. Without the text lane the bar
-// alone sits at the bottom. Every pixel the chrome does not take goes to the text.
+// The existing compact footer places the bar between the counters. The ordinary
+// product's stacked footer places it above them, matching the design reference.
+// With no text lane only the bar reserves space; hidden chrome reserves nothing.
 constexpr CompactLayout compactLayout(const int textHeight, const bool headerLane, const bool footerLane,
-                                      const bool progress, const int progressHeight) {
+                                      const bool progress, const int progressHeight, const bool stacked = false) {
+  if (stacked) {
+    const int row = textHeight < 24 ? 24 : textHeight;
+    const int textBottom = 16 + row;
+    const int barHeight = progressHeight < 1 ? 1 : progressHeight;
+    const int barBottom = footerLane ? textBottom + 8 : 16;
+    const int occupied = progress ? barBottom + barHeight : footerLane ? textBottom : 0;
+    return {row, 8, headerLane ? row + 24 : 0, textBottom, barBottom, occupied ? occupied + 12 : 0};
+  }
   constexpr int headerPadding = 4;
   constexpr int bottomPadding = 4;
   constexpr int contentGap = 8;
@@ -38,8 +46,8 @@ constexpr CompactLayout compactLayout(const int textHeight, const bool headerLan
   const int barHeight = progressHeight < 1 ? 1 : progressHeight;
   const int barBottom = footerLane ? bottomPadding + (row - barHeight) / 2 : bottomPadding;
   const int occupied = footerLane ? textBottom : progress ? barBottom + barHeight : 0;
-  return {row, headerPadding, headerLane ? headerPadding * 2 + row + contentGap : 0,
-          textBottom, barBottom, occupied ? occupied + contentGap : 0};
+  return {row,        headerPadding, headerLane ? headerPadding * 2 + row + contentGap : 0,
+          textBottom, barBottom,     occupied ? occupied + contentGap : 0};
 }
 
 struct PageInfo {

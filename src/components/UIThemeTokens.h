@@ -95,9 +95,9 @@ inline freeink::ui::ThemeTokens uiThemeTokens(const freeink::ui::GfxRendererTarg
   if (UiHighDpiProfile::enabled || ricky::panel::nativeSmall) {
     tokens.listValueText.color = fui::Color::DarkGray;
     tokens.minTouchSize = ricky::ds::layout::kTouchMin;
-    tokens.rowHeight = ricky::ds::layout::kRowHeight;
-    tokens.listMinRowHeight = ricky::ds::layout::kRowHeight;
-    tokens.listTouchMinRowHeight = ricky::ds::layout::kRowHeight;
+    tokens.rowHeight = metrics.listRowHeight;
+    tokens.listMinRowHeight = metrics.listRowHeight;
+    tokens.listTouchMinRowHeight = metrics.listRowHeight;
     tokens.listTouchRowPaddingY = ricky::ds::space::k3;
     tokens.listTouchRowGap = ricky::ds::space::kTouchSpacing;
     tokens.listRowGap = ricky::ds::space::kTouchSpacing;

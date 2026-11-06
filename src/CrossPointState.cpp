@@ -48,6 +48,7 @@ void CrossPointState::pushRecentOverlaySleep(uint16_t idx) {
 
 void CrossPointState::toJson(JsonDocument& doc) const {
   doc["openEpubPath"] = openEpubPath;
+  doc["libraryFolderPath"] = libraryFolderPath;
   JsonArray recentArr = doc["recentSleepImages"].to<JsonArray>();
   for (int i = 0; i < SLEEP_RECENT_COUNT; i++) recentArr.add(recentSleepImages[i]);
   doc["recentSleepPos"] = recentSleepPos;
@@ -64,6 +65,13 @@ void CrossPointState::toJson(JsonDocument& doc) const {
 
 bool CrossPointState::fromJson(JsonVariantConst doc) {
   openEpubPath = doc["openEpubPath"] | "";
+  const char* folder = doc["libraryFolderPath"] | "";
+  const size_t folderLength = strlen(folder);
+  if (folderLength < sizeof(libraryFolderPath) && (folderLength == 0 || folder[0] == '/')) {
+    memcpy(libraryFolderPath, folder, folderLength + 1);
+  } else {
+    libraryFolderPath[0] = '\0';
+  }
   memset(recentSleepImages, 0, sizeof(recentSleepImages));
   JsonArrayConst recentArr = doc["recentSleepImages"];
   const int actualCount =
@@ -99,6 +107,20 @@ bool CrossPointState::fromJson(JsonVariantConst doc) {
   showBootScreen = doc["showBootScreen"] | true;
   lastKnownValidTimestamp = doc["lastKnownValidTimestamp"] | static_cast<uint32_t>(0);
   return true;
+}
+
+bool CrossPointState::rememberLibraryFolder(const std::string& path) {
+  if (path.size() >= sizeof(libraryFolderPath) || (!path.empty() && path.front() != '/') ||
+      path.find('\0') != std::string::npos) {
+    LOG_ERR("CPS", "Invalid library folder path");
+    return false;
+  }
+  {
+    std::lock_guard<std::mutex> lock(storeMutex);
+    if (path == libraryFolderPath) return true;
+    memcpy(libraryFolderPath, path.c_str(), path.size() + 1);
+  }
+  return saveToFile();
 }
 
 bool CrossPointState::loadFromFile() {

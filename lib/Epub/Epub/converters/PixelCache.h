@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ImagePixelCacheFormat.h"
+
 #include <CancelCheck.h>
 #include <HalStorage.h>
 #include <Logging.h>
@@ -64,7 +66,7 @@ struct PixelCache {
 
   // Open the cache file, write the header, and allocate a band buffer big enough
   // to hold the tallest single decode block (maxBlockDstRows output rows).
-  bool begin(const std::string& cachePath, int w, int h, int ox, int oy, int maxBlockDstRows) {
+  bool begin(const std::string& cachePath, int w, int h, int ox, int oy, int maxBlockDstRows, uint32_t identity = 0) {
     width = w;
     height = h;
     originX = ox;
@@ -110,7 +112,8 @@ struct PixelCache {
 
     uint16_t w16 = (uint16_t)w;
     uint16_t h16 = (uint16_t)h;
-    if (file.write(&w16, 2) != 2 || file.write(&h16, 2) != 2) {
+    if (file.write(&imagePixelCache::kMagicV2, 4) != 4 || file.write(&identity, 4) != 4 ||
+        file.write(&w16, 2) != 2 || file.write(&h16, 2) != 2) {
       LOG_ERR("IMG", "Failed to write cache header: %s", cachePath.c_str());
       abort();
       return false;
@@ -170,7 +173,7 @@ struct PixelCache {
     }
     file.close();
     LOG_DBG("IMG", "Cache written: %s (%dx%d, %d bytes)", cachePathStr.c_str(), width, height,
-            4 + bytesPerRow * height);
+            static_cast<int>(imagePixelCache::kHeaderBytes) + bytesPerRow * height);
     ok = false;  // file handed off; nothing left to clean up
     return true;
   }

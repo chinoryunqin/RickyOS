@@ -38,6 +38,7 @@ inline std::vector<std::pair<int,int>> modes;
 inline unsigned long millis() { return clockMs; }
 inline void (*delayHook)(unsigned)=nullptr;
 inline void delay(unsigned n) { clockMs+=n; waits.push_back(n); if(delayHook) delayHook(n); }
+inline void delayMicroseconds(unsigned) {}
 inline void pinMode(int pin,int mode) { modes.emplace_back(pin,mode); }
 inline void digitalWrite(int,int) {}
 ''')
@@ -58,6 +59,7 @@ struct MockWire {
   bool fail=false, beginOk=true;
   unsigned failWrites=0;
   bool begin(int sda,int scl,unsigned hz) { assert(sda==41 && scl==42 && hz==400000); return beginOk; }
+  void end() {}
   void setTimeOut(unsigned) {}
   void beginTransmission(uint8_t addr) { address=addr; data.clear(); }
   void write(uint8_t value) { data.push_back(value); }
@@ -285,20 +287,24 @@ int main() {
  delayHook=nullptr;
  assert(Wire.failWrites==0 && Wire.transactions.size()==10);
  assert(!(output & POWER_PULSE));
- // Initialization failure retries every second, then enters the same loop.
+ // The existing board contract returns on failed initialization, allowing the
+ // HAL's GPIO3 sleep fallback; it must not trap the host in an unbounded retry.
  ready=false; Wire.beginOk=false; waits.clear(); romLogs=0;
+ shutdown();
+ assert(!ready && waits.empty() && romLogs==1);
+ // A later successful initialization still establishes rails before pulses.
+ Wire.beginOk=true; waits.clear(); romLogs=0;
  delayHook=+[](unsigned n) {
-   if(waits.size()<=2) {
-     assert(n==1000);
-     if(waits.size()==2) Wire.beginOk=true;
-   }
+   if(waits.size()==1) assert(n==10);
+   else if(waits.size()==2) assert(n==120);
+   else assert(n==100);
    if(waits.size()==12) throw PowerRemoved{};
  };
  try { shutdown(); } catch(const PowerRemoved&) {}
  delayHook=nullptr;
- assert(ready && romLogs==3);
- assert(waits[2]==10 && waits[3]==120); // Board reset sequence on recovered init.
- for(unsigned i=4;i<waits.size();++i) assert(waits[i]==100);
+ assert(ready && romLogs==2);
+ assert(waits[0]==10 && waits[1]==120);
+ for(unsigned i=2;i<waits.size();++i) assert(waits[i]==100);
  Wire.fail=false; Wire.input={0xff,0xff};
  InputManager input;
  input.begin();

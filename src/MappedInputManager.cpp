@@ -4,6 +4,9 @@
 #include <FreeInkUICore.h>
 #include <GfxRenderer.h>
 #include <HalFrontlight.h>
+#if RICKYOS_PLUS_BLE_DIAG
+#include <Logging.h>
+#endif
 
 #include <algorithm>
 
@@ -178,6 +181,24 @@ bool MappedInputManager::mapButton(const Button button, bool (HalGPIO::*fn)(uint
 }
 
 namespace {
+#if FREEINK_CAP_BLE_HID_HOST
+bool defaultPageAction(const bleinput::KeyMap& map, const uint8_t kind, const uint8_t value, bleinput::Action& action) {
+  using freeink::SpecialKey;
+  bool forward = false, back = false;
+  if (kind == 0) {
+    const auto key = static_cast<SpecialKey>(value);
+    forward = key == SpecialKey::Right || key == SpecialKey::Down || key == SpecialKey::PageDown;
+    back = key == SpecialKey::Left || key == SpecialKey::Up || key == SpecialKey::PageUp;
+  } else if (kind == 1) {
+    forward = value == 0xEA;
+    back = value == 0xE9;
+  }
+  if (!forward && !back) return false;
+  action = forward ? bleinput::Action::PageForward : bleinput::Action::PageBack;
+  return bleinput::findByAction(map, action) == nullptr;
+}
+#endif
+
 MappedInputManager::Button buttonForAction(const bleinput::Action action) {
   using Action = bleinput::Action;
   using Button = MappedInputManager::Button;
@@ -256,7 +277,17 @@ void MappedInputManager::pollBle() const {
     }
 
     bleinput::Action action;
-    if (!bleinput::lookup(SETTINGS.bleKeyMap, kind, value, action)) continue;
+    const bool mapped = bleinput::lookup(SETTINGS.bleKeyMap, kind, value, action) ||
+                        defaultPageAction(SETTINGS.bleKeyMap, kind, value, action);
+#if RICKYOS_PLUS_BLE_DIAG
+    static uint8_t debugKeysLeft = 32;
+    if (debugKeysLeft) {
+      --debugKeysLeft;
+      LOG_INF("BLEKEY", "kind=%u value=%u mapped=%u action=%d", kind, value, mapped,
+              mapped ? static_cast<int>(action) : -1);
+    }
+#endif
+    if (!mapped) continue;
     const Button button = buttonForAction(action);
     const uint8_t index = static_cast<uint8_t>(button);
     if (index >= kButtonCount) continue;
@@ -479,8 +510,6 @@ bool MappedInputManager::wasBackGesture() const {
   if (!SETTINGS.rickyGestureBack) return false;
   return wasEdgeSwipe(fui::ScreenEdge::Left);
 }
-
-bool MappedInputManager::wasStandbyUnlockGesture() const { return wasEdgeSwipe(fui::ScreenEdge::Left); }
 
 bool MappedInputManager::wasHeaderTapBack() const {
   return false;
@@ -713,6 +742,8 @@ void MappedInputManager::pollPlusKeys() const {
       case plus_keys::Refresh: homeAction = HomeButtonAction::Refresh; break;
       case plus_keys::Light: homeAction = HomeButtonAction::ToggleFrontlight; break;
       case plus_keys::Control: plusControl = true; break;
+      case plus_keys::Bookmark: homeAction = HomeButtonAction::AddBookmark; break;
+      case plus_keys::HoldingHand: homeAction = HomeButtonAction::HoldingHand; break;
       default: break;
     }
   }

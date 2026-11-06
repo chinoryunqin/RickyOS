@@ -56,6 +56,7 @@ class UITheme {
   CrossPointSettings::UI_THEME currentType = CrossPointSettings::UI_THEME::INX;
   mutable ThemeMetrics adjustedMetrics;
   mutable bool metricsValid = false;
+  mutable uint8_t metricsScale = 100;
   mutable bool metricsForButtonHints = false;
 };
 

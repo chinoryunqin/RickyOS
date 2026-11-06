@@ -9,9 +9,13 @@
 
 #include "JpegToFramebufferConverter.h"
 #include "PngToFramebufferConverter.h"
+#include "WebpToFramebufferConverter.h"
 
 std::unique_ptr<JpegToFramebufferConverter> ImageDecoderFactory::jpegDecoder = nullptr;
 std::unique_ptr<PngToFramebufferConverter> ImageDecoderFactory::pngDecoder = nullptr;
+#if RICKYOS_WEBP
+std::unique_ptr<WebpToFramebufferConverter> ImageDecoderFactory::webpDecoder = nullptr;
+#endif
 
 ImageToFramebufferDecoder* ImageDecoderFactory::getDecoder(const std::string& imagePath) {
   std::string ext = imagePath;
@@ -24,18 +28,22 @@ ImageToFramebufferDecoder* ImageDecoderFactory::getDecoder(const std::string& im
   } else {
     ext = "";
   }
-#if FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_READPICO
   // Legacy section caches may still name PNG bytes .jpg. Prefer a bounded
   // content probe after extraction; keep suffix-based probing for lazy files.
   HalFile file;
   if (Storage.openFileForRead("DEC", imagePath, file)) {
-    uint8_t header[8]{};
+    uint8_t header[12]{};
     const int count = file.read(header, sizeof(header));
     const uint8_t png[8]{137, 80, 78, 71, 13, 10, 26, 10};
-    if (count == 8 && std::equal(header, header + 8, png))
+    if (count >= 8 && std::equal(header, header + 8, png))
       ext = ".png";
     else if (count >= 3 && header[0] == 255 && header[1] == 216 && header[2] == 255)
       ext = ".jpg";
+#if RICKYOS_WEBP
+    else if (count == 12 && memcmp(header,"RIFF",4)==0 && memcmp(header+8,"WEBP",4)==0)
+      ext = ".webp";
+#endif
   }
 #endif
 
@@ -59,6 +67,12 @@ ImageToFramebufferDecoder* ImageDecoderFactory::getDecoder(const std::string& im
     return pngDecoder.get();
   }
 
+#if RICKYOS_WEBP
+  if (WebpToFramebufferConverter::supportsFormat(ext)) {
+    if (!webpDecoder) webpDecoder = makeUniqueNoThrow<WebpToFramebufferConverter>();
+    return webpDecoder.get();
+  }
+#endif
   LOG_ERR("DEC", "No decoder found for image: %s", imagePath.c_str());
   return nullptr;
 }

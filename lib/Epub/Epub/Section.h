@@ -27,6 +27,7 @@ class Section {
   std::string filePath;
   HalFile file;
 
+  bool startBuildInternal(const ReaderRenderSpec& spec, const std::function<void()>& popupFn, bool recoverHtml);
   void writeSectionFileHeader(const ReaderRenderSpec& spec);
   uint32_t onPageComplete(std::unique_ptr<Page> page);
 
@@ -50,6 +51,8 @@ class Section {
     std::string htmlPath;
     std::string tmpHtmlPath;
     bool reusedHtml = false;
+    bool recoveringHtml = false;
+    ReaderRenderSpec spec;
     CssParser* cssParser = nullptr;
     // HTML byte progress, for estimating the section's total page count while it's still building.
     uint32_t bytesConsumed = 0;

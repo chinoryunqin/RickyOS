@@ -17,8 +17,9 @@
 #include "KOReaderCredentialStore.h"
 #include "ReaderFontSizes.h"
 #include "SdCardFontSystem.h"
-#include "activities/settings/SettingsActivity.h"
 #include "activities/MainTabMotion.h"
+#include "activities/reader/ReaderUiProfile.h"
+#include "activities/settings/SettingsActivity.h"
 #include "components/UITheme.h"
 #include "components/UiHighDpiProfile.h"
 #include "util/DictionaryRegistry.h"
@@ -187,6 +188,12 @@ inline std::vector<StrId> buildLongPressMenuValues() {
   return {VALUES, VALUES + count};
 }
 
+// Static labels keep this enum out of the heap-backed label vectors.
+inline constexpr StrId AUTO_POWER_OFF_LABELS[] = {StrId::STR_RICKY_NEVER,    StrId::STR_RICKY_HOURS_1,
+                                                  StrId::STR_RICKY_HOURS_3,  StrId::STR_RICKY_HOURS_6,
+                                                  StrId::STR_RICKY_HOURS_12, StrId::STR_RICKY_HOURS_24};
+static_assert(std::size(AUTO_POWER_OFF_LABELS) == CrossPointSettings::RICKY_AUTO_OFF_COUNT);
+
 // Shared settings list used by both the device settings UI and the web settings API.
 // Each entry has a key (for JSON API) and category (for grouping).
 // ACTION-type entries and entries without a key are device-only.
@@ -236,12 +243,12 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
                           "refreshFrequency", StrId::STR_CAT_DISPLAY),
 #if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
         SettingInfo::Enum(StrId::STR_NATIVE_PAGE_TURN, &CrossPointSettings::nativePageTurn,
-{StrId::STR_STATE_OFF, StrId::STR_NATIVE_TURN_SKIM, StrId::STR_NATIVE_TURN_ARC,
+                          {StrId::STR_STATE_OFF, StrId::STR_NATIVE_TURN_SKIM, StrId::STR_NATIVE_TURN_ARC,
                            StrId::STR_NATIVE_TURN_RIPPLE},
                           "nativePageTurn", StrId::STR_CAT_DISPLAY),
 #if RICKYOS_MAIN_TAB_MOTION_ENABLED
-        SettingInfo::Toggle(StrId::STR_MAIN_TAB_MOTION, &CrossPointSettings::mainTabMotion,
-                            "mainTabMotion", StrId::STR_CAT_DISPLAY),
+        SettingInfo::Toggle(StrId::STR_MAIN_TAB_MOTION, &CrossPointSettings::mainTabMotion, "mainTabMotion",
+                            StrId::STR_CAT_DISPLAY),
 #endif
 #endif
         SettingInfo::Toggle(StrId::STR_SUNLIGHT_FADING_FIX, &CrossPointSettings::fadingFix, "fadingFix",
@@ -338,10 +345,9 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
             StrId::STR_ORIENTATION, &CrossPointSettings::orientation,
             {StrId::STR_PORTRAIT, StrId::STR_LANDSCAPE_CW, StrId::STR_ORIENTATION_INVERTED, StrId::STR_LANDSCAPE_CCW},
             "orientation", StrId::STR_CAT_READER),
-        SettingInfo::Enum(StrId::STR_EXTRA_SPACING, &CrossPointSettings::extraParagraphSpacing,
-                          {StrId::STR_EXTRA_SPACING_OFF, StrId::STR_EXTRA_SPACING_0_5, StrId::STR_EXTRA_SPACING_0_75,
-                           StrId::STR_EXTRA_SPACING_1, StrId::STR_EXTRA_SPACING_1_25, StrId::STR_EXTRA_SPACING_1_5},
-                          "extraParagraphSpacing", StrId::STR_CAT_READER)
+        SettingInfo::WideValue(StrId::STR_PARAGRAPH_SPACING, &CrossPointSettings::paragraphSpacingPercent,
+                               {0, paragraphSpacing::MAX_PERCENT, 1}, "paragraphSpacingScalePercent",
+                               StrId::STR_CAT_READER)
             .withTextSettings(),
         SettingInfo::Enum(StrId::STR_FIRST_LINE_INDENT, &CrossPointSettings::firstLineIndent,
                           {StrId::STR_FIRST_LINE_INDENT_AUTO, StrId::STR_FIRST_LINE_INDENT_INDENT,
@@ -423,8 +429,8 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
                           {StrId::STR_STATE_OFF, StrId::STR_NORMAL, StrId::STR_INVERTED}, "tiltPageTurn",
                           StrId::STR_CAT_CONTROLS),
         SettingInfo::Enum(StrId::STR_BACK_TAP_PAGE_TURN, &CrossPointSettings::backTapPageTurn,
-                          {StrId::STR_STATE_OFF, StrId::STR_BACK_TAP_NEXT, StrId::STR_BACK_TAP_PREVIOUS}, "backTapPageTurn",
-                          StrId::STR_CAT_CONTROLS),
+                          {StrId::STR_STATE_OFF, StrId::STR_BACK_TAP_NEXT, StrId::STR_BACK_TAP_PREVIOUS},
+                          "backTapPageTurn", StrId::STR_CAT_CONTROLS),
         SettingInfo::Enum(StrId::STR_BACK_TAP_SENSITIVITY, &CrossPointSettings::backTapSensitivity,
                           {StrId::STR_BACK_TAP_FIRM, StrId::STR_BACK_TAP_MEDIUM, StrId::STR_BACK_TAP_LIGHT},
                           "backTapSensitivity", StrId::STR_CAT_CONTROLS),
@@ -433,11 +439,14 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
         SettingInfo::Toggle(StrId::STR_BACK_SHORT_TO_FILE_BROWSER, &CrossPointSettings::backShortToFileBrowser,
                             "backShortToFileBrowser", StrId::STR_CAT_CONTROLS),
 
-        // --- System ---
         SettingInfo::Value(
-            StrId::STR_TIME_TO_SLEEP, &CrossPointSettings::sleepTimeoutMinutes,
+            StrId::STR_RICKY_AUTO_STANDBY, &CrossPointSettings::sleepTimeoutMinutes,
             {CrossPointSettings::MIN_SLEEP_TIMEOUT_MINUTES, CrossPointSettings::MAX_SLEEP_TIMEOUT_MINUTES, 1},
-            "sleepTimeoutMinutes", StrId::STR_CAT_SYSTEM),
+            "sleepTimeoutMinutes", StrId::STR_CAT_DISPLAY),
+        SettingInfo::StaticEnum(StrId::STR_RICKY_AUTO_OFF, &CrossPointSettings::rickyAutoOffIndex,
+                                AUTO_POWER_OFF_LABELS, "rickyAutoOffIndex", StrId::STR_CAT_DISPLAY),
+
+        // --- System ---
         SettingInfo::Toggle(StrId::STR_SHOW_HIDDEN_FILES, &CrossPointSettings::showHiddenFiles, "showHiddenFiles",
                             StrId::STR_CAT_SYSTEM),
 #if CROSSPOINT_CAP_SOUND_FEEDBACK
@@ -637,7 +646,7 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
   const auto& baseList = getBaseSettingsList();
 
   std::vector<SettingInfo> v = baseList;
-  if (UiHighDpiProfile::enabled) {
+  if (readerUi::enabled) {
     // Product navigation is fixed; preserve the stored preference for compatibility,
     // but do not expose a switch which cannot change this device's menu.
     v.erase(std::remove_if(v.begin(), v.end(),

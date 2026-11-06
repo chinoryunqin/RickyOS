@@ -325,7 +325,8 @@ bool InxRecentActivity::drawBookCover(const int bookIndex, const Rect& bounds) {
   if (books && bookIndex >= 0 && bookIndex < static_cast<int>(books->size()) &&
       bookIndex < static_cast<int>(RecentBooksStore::MAX_RECENT_BOOKS) && thumbnailHeight > 0) {
     const RecentBook& book = (*books)[bookIndex];
-    if (!book.coverBmpPath.empty()) {
+    visibleCovers[bookIndex] = true;
+    if (!book.coverBmpPath.empty() && !coverJob.isWriting(book.path, thumbnailHeight)) {
       // The bounds were just filled white, so a cover tile depends only on its file and place.
       char place[40];
       snprintf(place, sizeof(place), "|home|%d,%d,%d,%d", bounds.x, bounds.y, bounds.width, bounds.height);
@@ -372,6 +373,7 @@ bool InxRecentActivity::prepareNextMissingCover() {
   if (!books || thumbnailHeight <= 0) return false;
   const size_t count = std::min(books->size(), RecentBooksStore::MAX_RECENT_BOOKS);
   for (size_t index = 0; index < count; ++index) {
+    if (!visibleCovers[index]) continue;
     CoverCacheState& state = targetCoverStates[index];
     switch (state) {
       case CoverCacheState::Unchecked: {
@@ -401,17 +403,15 @@ bool InxRecentActivity::prepareNextMissingCover() {
       continue;
     }
     preparedHeights[index] = static_cast<int16_t>(thumbnailHeight);
-    // The frame is already on the panel. The loan frees the framebuffer, so the
-    // next frame repaints it; a failure leaves a marker and is not retried.
-    {
-      GfxRenderer::FrameBufferLoan loan(renderer);
-      // Draw reads the recents entry's path; a thumbnail written anywhere else is no use.
-      const std::string wanted = UITheme::getCoverThumbPath((*books)[index].coverBmpPath, thumbnailHeight);
-      state = BookCoverLoader::ensureThumbnail((*books)[index].path, thumbnailHeight) == wanted
-                  ? CoverCacheState::Ready
-                  : CoverCacheState::Unavailable;
+    const auto& book = (*books)[index];
+    if (UITheme::getCoverThumbPath(book.coverBmpPath, thumbnailHeight) !=
+            BookCoverLoader::thumbnailPath(book.path, thumbnailHeight) ||
+        !coverJob.start(book.path, thumbnailHeight)) {
+      state = CoverCacheState::Unavailable;
+      continue;
     }
-    requestUpdate();
+    coverJobIndex = index;
+    coverJobHeight = thumbnailHeight;
     return true;
   }
   return false;
@@ -423,15 +423,17 @@ int InxRecentActivity::indexFromPoint(const int x, const int y) const {
 }
 
 void InxRecentActivity::loop() {
-  int touchX = 0, touchY = 0;
-  const bool inputPending = mappedInput.wasAnyPressed() || mappedInput.wasAnyReleased() ||
-                            mappedInput.wasScreenTouchReleased() || mappedInput.isScreenTouchHeld(touchX, touchY);
-  if (!inputPending && coverWorkPending.exchange(false)) {
-    // Waits for the render task to finish the current frame, then prepares at most
-    // one missing thumbnail; its update brings the next one.
+  if ((coverWorkPending || coverJobIndex >= 0) && !coverJob.running() && !RenderLock::peek()) {
     RenderLock lock;
-    prepareNextMissingCover();
-    return;
+    if (coverJobIndex >= 0) {
+      if (coverJobHeight == thumbnailHeight) {
+        targetCoverStates[coverJobIndex] = coverJob.made() ? CoverCacheState::Ready : CoverCacheState::Unavailable;
+        if (coverJob.made() && visibleCovers[coverJobIndex]) requestUpdate();
+        else coverWorkPending = true;
+      }
+      coverJobIndex = -1;
+    }
+    if (millis() - coverWorkSince > 750 && coverWorkPending.exchange(false)) prepareNextMissingCover();
   }
   if (rickyHome) {
     const int action = rickyHome->selectedAction(mappedInput);
@@ -666,6 +668,7 @@ void InxRecentActivity::drawCover(const Rect& content) {
 }
 
 void InxRecentActivity::render(RenderLock&&) {
+  visibleCovers.fill(false);
   renderer.clearScreen();
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int width = renderer.getScreenWidth();
@@ -723,5 +726,6 @@ void InxRecentActivity::render(RenderLock&&) {
                          SETTINGS.hideBatteryPercentage != CrossPointSettings::HIDE_BATTERY_PERCENTAGE::HIDE_ALWAYS);
   }
   renderer.displayBuffer();
+  coverWorkSince = millis();
   coverWorkPending = true;
 }

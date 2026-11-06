@@ -54,16 +54,8 @@ constexpr StrId kFilterChips[] = {StrId::STR_RICKY_CHIP_ORIGINAL, StrId::STR_RIC
 constexpr StrId kLayoutChips[] = {StrId::STR_RICKY_LAYOUT_COVER, StrId::STR_RICKY_LAYOUT_EDITORIAL,
                                   StrId::STR_RICKY_LAYOUT_SPLIT};
 constexpr StrId kExcerptChips[] = {StrId::STR_RICKY_CHIP_HIDE, StrId::STR_RICKY_CHIP_SHOW};
+constexpr StrId kCalendarDirections[] = {StrId::STR_LANDSCAPE_CW, StrId::STR_LANDSCAPE_CCW};
 static_assert(std::size(kFilterChips) == Settings::SLEEP_SCREEN_COVER_FILTER_COUNT);
-// Minutes before Standby; SLEEP_TIMEOUT_NEVER_MINUTES means never.
-constexpr uint8_t kStandbyMinutes[] = {1, 3, 5, 10, 15, 30, Settings::SLEEP_TIMEOUT_NEVER_MINUTES};
-constexpr StrId kStandbyMinuteLabels[] = {
-    StrId::STR_RICKY_MINUTES_1,  StrId::STR_RICKY_MINUTES_3,  StrId::STR_RICKY_MINUTES_5, StrId::STR_RICKY_MINUTES_10,
-    StrId::STR_RICKY_MINUTES_15, StrId::STR_RICKY_MINUTES_30, StrId::STR_RICKY_NEVER};
-static_assert(std::size(kStandbyMinuteLabels) == std::size(kStandbyMinutes));
-constexpr StrId kAutoOffLabels[] = {StrId::STR_RICKY_NEVER,   StrId::STR_RICKY_HOURS_1,  StrId::STR_RICKY_HOURS_3,
-                                    StrId::STR_RICKY_HOURS_6, StrId::STR_RICKY_HOURS_12, StrId::STR_RICKY_HOURS_24};
-static_assert(std::size(kAutoOffLabels) == Settings::RICKY_AUTO_OFF_COUNT);
 constexpr StrId kPowerOffLabels[] = {StrId::STR_RICKY_POWER_OFF_SAME, StrId::STR_RICKY_SLEEP_LIGHT,
                                      StrId::STR_RICKY_SLEEP_BLANK, StrId::STR_RICKY_POWER_OFF_CUSTOM};
 constexpr StrId kPowerOffCards[] = {StrId::STR_RICKY_CARD_SAME, StrId::STR_RICKY_CARD_DEFAULT,
@@ -83,12 +75,6 @@ int styleIndex() {
   for (size_t i = 0; i < std::size(kStyles); ++i)
     if (kStyles[i] == SETTINGS.rickyStandbyFace) return static_cast<int>(i);
   return 0;
-}
-
-int standbyMinutesIndex() {
-  for (size_t i = 0; i < std::size(kStandbyMinutes); ++i)
-    if (kStandbyMinutes[i] == SETTINGS.sleepTimeoutMinutes) return static_cast<int>(i);
-  return -1;
 }
 
 // The picture and the cover sit on the screen with the same fit, filter and corner.
@@ -279,7 +265,6 @@ void RickyStandbySettingsActivity::rebuildRows() {
   if (tab_ == PowerOffTab) {
     for (int i = 0; i < 4; ++i) add(static_cast<Item>(PowerOff0 + i));
     if (SETTINGS.rickyPowerOffScreen == Settings::RICKY_POWER_OFF_CUSTOM) add(ChangePowerOffPicture);
-    add(AutoPowerOff);
     return;
   }
   const bool transparent = SETTINGS.rickyStandbyFace == Settings::RICKY_STANDBY_TRANSPARENT;
@@ -298,6 +283,7 @@ void RickyStandbySettingsActivity::rebuildRows() {
   add(StandbyNow);
 #endif
   for (int i = 0; i < 5; ++i) add(static_cast<Item>(Style0 + i));
+  if (SETTINGS.rickyStandbyFace == Settings::RICKY_STANDBY_CALENDAR) add(CalendarDirection);
   if (SETTINGS.rickyStandbyFace == Settings::RICKY_STANDBY_PICTURE) {
     for (int i = 0; i < static_cast<int>(strip_.size()); ++i) add(static_cast<Item>(Picture0 + i));
     add(AllPictures);
@@ -306,7 +292,6 @@ void RickyStandbySettingsActivity::rebuildRows() {
     add(ChooseSticker);
     if (Storage.exists(KeepPageFace::kStickerPath)) add(ClearSticker);
   }
-  add(AutoStandby);
 }
 
 void RickyStandbySettingsActivity::onTabAction(const int index) {
@@ -557,36 +542,6 @@ void RickyStandbySettingsActivity::buildScreen(UiScreen& screen) {
     return;
   }
 
-  // The bottom row: when Standby starts, or when it powers off.
-  const auto bottom = screen.takeBottom(static_cast<int16_t>(ds::layout::kRowHeight), static_cast<int16_t>(gap / 2));
-  {
-    const Item item = tab_ == PowerOffTab ? AutoPowerOff : AutoStandby;
-    const bool picked = hit(bottom, item);
-    RickyPageUi::card(target, bottom, picked);
-    const char* labelText = tab_ == PowerOffTab ? tr(STR_RICKY_AUTO_OFF) : tr(STR_RICKY_AUTO_STANDBY);
-    const char* value = nullptr;
-    if (tab_ == PowerOffTab) {
-      value = I18N.get(kAutoOffLabels[std::min<int>(SETTINGS.rickyAutoOffIndex, std::size(kAutoOffLabels) - 1)]);
-    } else if (const int preset = standbyMinutesIndex(); preset >= 0) {
-      value = I18N.get(kStandbyMinuteLabels[preset]);
-    } else {
-      // A value set before the presets (any minute from 1 to 30).
-      snprintf(minutes_, sizeof(minutes_), tr(STR_RICKY_MINUTES_N),
-               static_cast<unsigned>(SETTINGS.sleepTimeoutMinutes));
-      value = minutes_;
-    }
-    const int bodyHeight = renderer.getLineHeight(RickyDesignUi::BODY);
-    const int middle = bottom.y + bottom.height / 2;
-    RickyDesignUi::text(renderer, rect(bottom.x + gap, middle - bodyHeight / 2, bottom.width / 2, bodyHeight),
-                        labelText, RickyDesignUi::BODY, picked);
-    const int chevronX = bottom.right() - 24 - gap;
-    RickyDesignUi::text(renderer,
-                        rect(bottom.x + bottom.width / 2, middle - captionHeight / 2,
-                             chevronX - gap - bottom.x - bottom.width / 2, captionHeight),
-                        value, RickyDesignUi::CAPTION, picked, fui::TextAlign::Right, 1, ds::gray::kInk2);
-    RickyPageUi::chevron(target, rect(chevronX, bottom.y, 24, bottom.height), picked);
-  }
-
   // Cards: the styles, or the power-off screens, each a small drawing over its name.
   const int cardCount = tab_ == PowerOffTab ? 4 : 5;
   const int cardGap = tab_ == PowerOffTab ? gap : 12;
@@ -597,6 +552,7 @@ void RickyStandbySettingsActivity::buildScreen(UiScreen& screen) {
 
   // The strip or the overlay's controls under the cards (Standby only).
   const bool pictureStyle = tab_ == StandbyTab && SETTINGS.rickyStandbyFace == Settings::RICKY_STANDBY_PICTURE;
+  const bool calendarStyle = tab_ == StandbyTab && SETTINGS.rickyStandbyFace == Settings::RICKY_STANDBY_CALENDAR;
   const bool transparent = tab_ == StandbyTab && SETTINGS.rickyStandbyFace == Settings::RICKY_STANDBY_TRANSPARENT;
   const bool customPowerOff =
       tab_ == PowerOffTab && SETTINGS.rickyPowerOffScreen == Settings::RICKY_POWER_OFF_CUSTOM;
@@ -606,10 +562,21 @@ void RickyStandbySettingsActivity::buildScreen(UiScreen& screen) {
   const int stripArtHeight = std::min(stripArtWidth * 4 / 3, std::max(96, screen.body().height / 6));
   int underCards = 0;
   if (pictureStyle) underCards = headingHeight + 8 + stripArtHeight + 2 * kPlate;
-  if (transparent || customPowerOff) underCards = ds::layout::kButtonHeight;
+  if (transparent || customPowerOff || calendarStyle) underCards = ds::layout::kButtonHeight;
   if (underCards) {
     const auto under = screen.takeBottom(static_cast<int16_t>(underCards), static_cast<int16_t>(gap));
-    if (pictureStyle) {
+    if (calendarStyle) {
+      const bool picked = hit(under, CalendarDirection);
+      control(renderer, under, picked, ds::radius::kControl);
+      const int mid = under.y + under.height / 2;
+      RickyDesignUi::text(renderer, rect(under.x + gap, mid - captionHeight / 2,
+          under.width / 2 - gap, captionHeight), tr(STR_RICKY_CALENDAR_DIRECTION), RickyDesignUi::CAPTION, picked);
+      RickyDesignUi::text(renderer, rect(under.x + under.width / 2, mid - captionHeight / 2,
+          under.width / 2 - gap - 24, captionHeight),
+          I18N.get(kCalendarDirections[SETTINGS.standbyCalendarReversed ? 1 : 0]), RickyDesignUi::CAPTION, picked,
+          fui::TextAlign::Right);
+      RickyPageUi::chevron(target, rect(under.right() - gap - 24, under.y, 24, under.height), picked);
+    } else if (pictureStyle) {
       const fui::Rect heading = rect(under.x, under.y, under.width, headingHeight);
       RickyDesignUi::text(renderer, heading, tr(STR_RICKY_PICTURES), RickyDesignUi::HEADLINE, false);
       // "All 24 ›": the gallery.
@@ -882,14 +849,10 @@ void RickyStandbySettingsActivity::activateIndex(const int index) {
       case StandbyNow:
         startActivityForResultWith<StandbyActivity>([this](const ActivityResult&) { requestUpdate(); });
         return;
-      case AutoStandby:
-        showOption(optionPopup, StrId::STR_RICKY_AUTO_STANDBY, kStandbyMinuteLabels,
-                   std::max(0, standbyMinutesIndex()),
-                   [](const int chosen) { SETTINGS.sleepTimeoutMinutes = kStandbyMinutes[chosen]; });
-        break;
-      case AutoPowerOff:
-        showOption(optionPopup, StrId::STR_RICKY_AUTO_OFF, kAutoOffLabels, SETTINGS.rickyAutoOffIndex,
-                   [](const int chosen) { SETTINGS.rickyAutoOffIndex = static_cast<uint8_t>(chosen); });
+      case CalendarDirection:
+        showOption(optionPopup, StrId::STR_RICKY_CALENDAR_DIRECTION, kCalendarDirections,
+                   SETTINGS.standbyCalendarReversed ? 1 : 0,
+                   [](const int chosen) { SETTINGS.standbyCalendarReversed = static_cast<uint8_t>(chosen); });
         break;
       default:
         return;

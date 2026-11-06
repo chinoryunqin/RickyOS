@@ -88,7 +88,7 @@ class TtfEpdFont {
   bool load(uint16_t pointSize, bool twoBit = true, size_t glyphCacheBytes = 32 * 1024, uint16_t maxGlyphs = 768,
             bool fourBit = false);
 
-  EpdFontFamily family() const;
+  EpdFontFamily family(bool boldPrimary = false) const;
 
   // Per-scope reset (mirrors SdCardFont::clearCache): drop every face's cached
   // page glyphs but KEEP the allocations (byte arena + vector capacity), so a

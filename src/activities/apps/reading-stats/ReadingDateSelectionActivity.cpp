@@ -9,10 +9,7 @@
 #include <string>
 
 #include "ReadingStatsStore.h"
-#include "activities/apps/GameUi.h"
 #include "components/UITheme.h"
-#include "fontIds.h"
-#include "util/HeaderDateUtils.h"
 #include "util/TimeUtils.h"
 
 namespace {
@@ -54,7 +51,7 @@ unsigned wrapValue(const unsigned value, const int delta, const unsigned minValu
 }  // namespace
 
 void ReadingDateSelectionActivity::onEnter() {
-  Activity::onEnter();
+  RickyStatsEditor::onEnter();
 
   bool initialized = false;
   if (initialDayOrdinal != 0) {
@@ -79,7 +76,7 @@ void ReadingDateSelectionActivity::onEnter() {
   requestUpdate();
 }
 
-void ReadingDateSelectionActivity::adjustSelectedField(const int delta) {
+void ReadingDateSelectionActivity::adjustSelectedValue(const int delta) {
   if (selectedField == 0) {
     day = wrapValue(day, delta, MIN_DAY, getDaysInMonth(year, month));
   } else if (selectedField == 1) {
@@ -105,112 +102,25 @@ void ReadingDateSelectionActivity::finishWithDate() {
   finish();
 }
 
-void ReadingDateSelectionActivity::loop() {
-  // Exit on the Back release edge (consistent with the menu and sibling screens) so the same
-  // Back actuation can't pop here and then leak its release to the parent's Back handler.
-  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-    ActivityResult result;
-    result.isCancelled = true;
-    setResult(std::move(result));
-    finish();
-    return;
-  }
+const char* ReadingDateSelectionActivity::headerTitle() const { return tr(STR_SET_DATE); }
 
-  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
-    finishWithDate();
-    return;
-  }
-
-  const auto& metrics = UITheme::getInstance().getMetrics();
-  const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
-  const int listHeight = metrics.listWithSubtitleRowHeight * FIELD_COUNT;
-  if (handleListTouch(selectedField, FIELD_COUNT, contentTop, listHeight, true) != ListTouchResult::None) {
-    return;
-  }
-
-  const Rect minus = gameTouchActionRect(renderer.getScreenWidth(), renderer.getScreenHeight(),
-                                         metrics.contentSidePadding, metrics.menuSpacing, metrics.menuRowHeight, 0, 3);
-  const Rect plus = gameTouchActionRect(renderer.getScreenWidth(), renderer.getScreenHeight(),
-                                        metrics.contentSidePadding, metrics.menuSpacing, metrics.menuRowHeight, 1, 3);
-  const Rect confirm =
-      gameTouchActionRect(renderer.getScreenWidth(), renderer.getScreenHeight(), metrics.contentSidePadding,
-                          metrics.menuSpacing, metrics.menuRowHeight, 2, 3);
-  if (mappedInput.wasTapInRect(minus.x, minus.y, minus.width, minus.height)) {
-    adjustSelectedField(-1);
-    return;
-  }
-  if (mappedInput.wasTapInRect(plus.x, plus.y, plus.width, plus.height)) {
-    adjustSelectedField(1);
-    return;
-  }
-  if (mappedInput.wasTapInRect(confirm.x, confirm.y, confirm.width, confirm.height)) {
-    finishWithDate();
-    return;
-  }
-
-  buttonNavigator.onRelease({MappedInputManager::Button::Down}, [this] {
-    selectedField = ButtonNavigator::nextIndex(selectedField, FIELD_COUNT);
-    requestUpdate();
-  });
-
-  buttonNavigator.onRelease({MappedInputManager::Button::Up}, [this] {
-    selectedField = ButtonNavigator::previousIndex(selectedField, FIELD_COUNT);
-    requestUpdate();
-  });
-
-  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Left}, [this] { adjustSelectedField(-1); });
-  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Right}, [this] { adjustSelectedField(1); });
+const char* ReadingDateSelectionActivity::fieldLabel(int index) const {
+  static constexpr StrId labels[] = {StrId::STR_DAY, StrId::STR_MONTH, StrId::STR_YEAR};
+  return I18N.get(labels[index]);
 }
 
-void ReadingDateSelectionActivity::render(RenderLock&&) {
-  renderer.clearScreen();
+std::string ReadingDateSelectionActivity::fieldValue(int index) const {
+  if (index == 0) return formatTwoDigits(day);
+  if (index == 1) return formatTwoDigits(month);
+  return std::to_string(year);
+}
 
-  const auto& metrics = UITheme::getInstance().getMetrics();
-  const int pageWidth = renderer.getScreenWidth();
-  const int sidePadding = metrics.contentSidePadding;
-  const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
-  const int listHeight = metrics.listWithSubtitleRowHeight * FIELD_COUNT;
-
-  HeaderDateUtils::drawHeaderWithDate(renderer, tr(STR_SET_DATE), getSelectedDateLabel().c_str());
-
-  GUI.drawList(
-      renderer, Rect{0, contentTop, pageWidth, listHeight}, FIELD_COUNT, selectedField,
-      [](int index) {
-        if (index == 0) return std::string(tr(STR_DAY));
-        if (index == 1) return std::string(tr(STR_MONTH));
-        return std::string(tr(STR_YEAR));
-      },
-      [this](int index) {
-        if (index == 0) return formatTwoDigits(day);
-        if (index == 1) return formatTwoDigits(month);
-        return std::to_string(year);
-      },
-      [](int) { return UIIcon::Recent; }, nullptr, false);
-
-  const int hintTop = contentTop + listHeight + metrics.verticalSpacing;
-  const int hintWidth = pageWidth - sidePadding * 2;
-  const std::string hint = renderer.truncatedText(
-      UI_10_FONT_ID,
-      I18n::getInstance().get(mappedInput.hasTouch() ? StrId::STR_SET_DATE_TOUCH_HINT : StrId::STR_SET_DATE_HINT),
-      hintWidth);
-  renderer.drawText(UI_10_FONT_ID, sidePadding, hintTop, hint.c_str());
-
-  if (mappedInput.hasTouch()) {
-    GUI.drawActionButton(renderer,
-                         gameTouchActionRect(pageWidth, renderer.getScreenHeight(), metrics.contentSidePadding,
-                                             metrics.menuSpacing, metrics.menuRowHeight, 0, 3),
-                         "-");
-    GUI.drawActionButton(renderer,
-                         gameTouchActionRect(pageWidth, renderer.getScreenHeight(), metrics.contentSidePadding,
-                                             metrics.menuSpacing, metrics.menuRowHeight, 1, 3),
-                         "+");
-    GUI.drawActionButton(renderer,
-                         gameTouchActionRect(pageWidth, renderer.getScreenHeight(), metrics.contentSidePadding,
-                                             metrics.menuSpacing, metrics.menuRowHeight, 2, 3),
-                         tr(STR_CONFIRM));
-  }
-
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_CONFIRM), tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-  renderer.displayBuffer();
+void ReadingDateSelectionActivity::buildDetails(RickyStatsPage& page) {
+  const auto date = getSelectedDateLabel();
+  const auto area = page.take(page.measure(date.c_str(), RickyDesignUi::BODY, page.viewport.width));
+  RickyDesignUi::text(renderer, area, date.c_str(), RickyDesignUi::BODY, false, freeink::ui::TextAlign::Left, 16);
+  const char* hint = I18N.get(mappedInput.hasTouch() ? StrId::STR_SET_DATE_TOUCH_HINT : StrId::STR_SET_DATE_HINT);
+  const auto hintArea = page.take(page.measure(hint, RickyDesignUi::CAPTION, page.viewport.width));
+  RickyDesignUi::secondaryText(renderer, hintArea, hint, RickyDesignUi::CAPTION, false, freeink::ui::TextAlign::Left,
+                               16);
 }

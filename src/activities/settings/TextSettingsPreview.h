@@ -18,7 +18,7 @@ struct PreviewKey {
   int maxLines = -1;
   float lineCompression = -1.0f;
   uint8_t alignment = 0xFF;
-  uint8_t extraParagraphSpacing = 0;  // 0=off, 1..5=0.5x/0.75x/1x/1.25x/1.5x
+  uint16_t paragraphSpacingPercent = 100;  // 0..400%, 100% preserves authored gaps
   uint8_t firstLineIndent = 0;
   uint8_t paragraphIndentSpaces = 3;
   int8_t characterSpacing = 0;

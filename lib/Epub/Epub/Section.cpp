@@ -75,18 +75,25 @@ namespace {
 //  120 /121 - a page's last line needs only its glyph height, not the full line pitch
 //  122 /123 - the same on the Read Pico (imageOutset header)
 //  124 /125 - the same on the Metalio Plus (imageOutset header)
+//  133/135/137/139/141 - paragraph spacing is a 0..200 percentage, not a six-level enum
+// 153/155/157/159/161 - paragraph spacing becomes uint16_t, supporting 0..400%.
 // Boards without the imageOutset field come first: host tests read the first declaration.
 #if !FREEINK_DEVICE_METALIO_PLUS && !FREEINK_DEVICE_READPICO
-constexpr uint8_t SECTION_FILE_VERSION = 121;
+constexpr uint8_t SECTION_FILE_VERSION = 153;
 constexpr uint32_t IMAGE_LAYOUT_HEADER_SIZE = 0;
 #elif FREEINK_DEVICE_READPICO
 // A uint16 imageOutset follows verticalText, as on the Plus; its own number keeps a
 // card moved between devices from reading another board's pagination as its own.
-constexpr uint8_t SECTION_FILE_VERSION = 123;
+constexpr uint8_t SECTION_FILE_VERSION = 157;
 constexpr uint32_t IMAGE_LAYOUT_HEADER_SIZE = sizeof(uint16_t);
 #else
 // Plus-only v81 adds a uint16 imageOutset after verticalText; v83 collapses margins.
-constexpr uint8_t SECTION_FILE_VERSION = 125;
+#if RICKYOS_WEBP
+// Decoder capability change: rebuild pages that previously omitted WebP images.
+constexpr uint8_t SECTION_FILE_VERSION = 159;
+#else
+constexpr uint8_t SECTION_FILE_VERSION = 161;
+#endif
 constexpr uint32_t IMAGE_LAYOUT_HEADER_SIZE = sizeof(uint16_t);
 #endif
 // Written into the version field while a build is in progress; patched to
@@ -106,7 +113,7 @@ constexpr uint8_t SECTION_FILE_INCOMPLETE_VERSION = 0;
 // only fails (noisily, via the block-decode error path) when a page is loaded.
 // Derived so the pairing can't be forgotten: 0xFE for v28, 0xFD for v29, ...
 constexpr uint8_t SECTION_FILE_PARTIAL_VERSION = 0xFE - (SECTION_FILE_VERSION - 28);
-constexpr uint32_t HEADER_SIZE = sizeof(uint8_t) + sizeof(int) + sizeof(float) + sizeof(uint8_t) + sizeof(uint8_t) +
+constexpr uint32_t HEADER_SIZE = sizeof(uint8_t) + sizeof(int) + sizeof(float) + sizeof(uint16_t) + sizeof(uint8_t) +
                                  sizeof(uint8_t) + sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint16_t) +
                                  sizeof(bool) + sizeof(bool) + sizeof(uint8_t) + sizeof(bool) + sizeof(bool) +
                                  sizeof(uint32_t) * 5 + sizeof(int8_t) + sizeof(uint8_t) + sizeof(uint8_t) +
@@ -169,7 +176,7 @@ void Section::writeSectionFileHeader(const ReaderRenderSpec& spec) {
     return;
   }
   static_assert(HEADER_SIZE == sizeof(SECTION_FILE_VERSION) + sizeof(spec.fontId) + sizeof(spec.lineCompression) +
-                                   sizeof(spec.extraParagraphSpacing) + sizeof(spec.firstLineIndent) +
+                                   sizeof(spec.paragraphSpacingPercent) + sizeof(spec.firstLineIndent) +
                                    sizeof(spec.paragraphIndentSpaces) + sizeof(spec.paragraphAlignment) +
                                    sizeof(spec.viewportWidth) + sizeof(spec.viewportHeight) + sizeof(pageCount) +
                                    sizeof(spec.hyphenationEnabled) + sizeof(spec.embeddedStyle) +
@@ -184,7 +191,7 @@ void Section::writeSectionFileHeader(const ReaderRenderSpec& spec) {
   serialization::writePod(file, SECTION_FILE_INCOMPLETE_VERSION);
   serialization::writePod(file, spec.fontId);
   serialization::writePod(file, spec.lineCompression);
-  serialization::writePod(file, spec.extraParagraphSpacing);
+  serialization::writePod(file, spec.paragraphSpacingPercent);
   serialization::writePod(file, spec.firstLineIndent);
   serialization::writePod(file, spec.paragraphIndentSpaces);
   serialization::writePod(file, spec.paragraphAlignment);
@@ -234,7 +241,7 @@ bool Section::loadSectionFile(const ReaderRenderSpec& spec) {
     uint16_t fileViewportWidth = 0;
     uint16_t fileViewportHeight = 0;
     float fileLineCompression = 0;
-    uint8_t fileExtraParagraphSpacing = 0;
+    uint16_t fileParagraphSpacingPercent = 0;
     // FirstLineIndent::Auto(0)/Indent(1)/NoIndent(2). Read as a byte so the
     // three states round-trip; a bool would collapse Indent and NoIndent.
     uint8_t fileFirstLineIndent = 0;
@@ -253,8 +260,8 @@ bool Section::loadSectionFile(const ReaderRenderSpec& spec) {
 #endif
     bool headerValid =
         serialization::readPod(file, fileFontId) && serialization::readPod(file, fileLineCompression) &&
-        serialization::readPod(file, fileExtraParagraphSpacing) && serialization::readPod(file, fileFirstLineIndent) &&
-        serialization::readPod(file, fileParagraphIndentSpaces) &&
+        serialization::readPod(file, fileParagraphSpacingPercent) &&
+        serialization::readPod(file, fileFirstLineIndent) && serialization::readPod(file, fileParagraphIndentSpaces) &&
         serialization::readPod(file, fileParagraphAlignment) && serialization::readPod(file, fileViewportWidth) &&
         serialization::readPod(file, fileViewportHeight) && serialization::readPod(file, fileHyphenationEnabled) &&
         serialization::readPod(file, fileEmbeddedStyle) && serialization::readPod(file, fileImageRendering) &&
@@ -271,7 +278,7 @@ bool Section::loadSectionFile(const ReaderRenderSpec& spec) {
     headerValid = headerValid && serialization::readPod(file, fileBookFontsKey);
 
     if (!headerValid || spec.fontId != fileFontId || spec.lineCompression != fileLineCompression ||
-        spec.extraParagraphSpacing != fileExtraParagraphSpacing || spec.firstLineIndent != fileFirstLineIndent ||
+        spec.paragraphSpacingPercent != fileParagraphSpacingPercent || spec.firstLineIndent != fileFirstLineIndent ||
         spec.paragraphIndentSpaces != fileParagraphIndentSpaces || spec.paragraphAlignment != fileParagraphAlignment ||
         spec.viewportWidth != fileViewportWidth || spec.viewportHeight != fileViewportHeight ||
         spec.hyphenationEnabled != fileHyphenationEnabled || spec.embeddedStyle != fileEmbeddedStyle ||
@@ -364,6 +371,10 @@ bool Section::createSectionFile(const ReaderRenderSpec& spec, const std::functio
 }
 
 bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void()>& popupFn) {
+  return startBuildInternal(spec, popupFn, false);
+}
+
+bool Section::startBuildInternal(const ReaderRenderSpec& spec, const std::function<void()>& popupFn, bool recoverHtml) {
   buildError_ = BuildError::Io;
   collectTouchLinks_ = spec.collectTouchLinks;
   if (build_) {
@@ -482,6 +493,16 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
   // htmlCached == "htmlPath is the live cache" (reused, or just promoted). finalizeBuild/abandonBuild
   // then leave the cached HTML alone; only an un-promoted temp (rename failed) is theirs to clean up.
   ctx->reusedHtml = htmlCached;
+  // A small per-HTML hint avoids re-entering the strict failure when resuming
+  // a partially indexed malformed chapter. No book or layout format changes.
+  const std::string recoveryHint = htmlPath + ".recover-v1";
+  recoverHtml = recoverHtml || Storage.exists(recoveryHint.c_str());
+  if (recoverHtml && !Storage.exists(recoveryHint.c_str())) {
+    HalFile hint;
+    if (Storage.openFileForWrite("SCT", recoveryHint, hint)) hint.write(static_cast<uint8_t>(1));
+  }
+  ctx->recoveringHtml = recoverHtml;
+  ctx->spec = spec;
   ctx->htmlPath = htmlPath;
   ctx->tmpHtmlPath = tmpHtmlPath;
   ctx->parsePath = htmlCached ? htmlPath : tmpHtmlPath;
@@ -496,7 +517,13 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
   // that ImageBlock::ensureExtracted() accepts on existence alone. Bump it in
   // lockstep with SECTION_FILE_VERSION above. Pre-upgrade "img_*" files are simply
   // never referenced again.
+#if RICKYOS_WEBP
+  // Previously omitted WebP entries shift subsequent image counters. Never
+  // reuse an extracted JPEG/PNG or pixel cache belonging to a different entry.
+  ctx->imageBasePath = epub->getCachePath() + "/img_webp1_" + std::to_string(spineIndex) + "_";
+#else
   ctx->imageBasePath = epub->getCachePath() + "/img2_" + std::to_string(spineIndex) + "_";
+#endif
 
   if (spec.embeddedStyle) {
     ctx->cssParser = epub->getCssParser();
@@ -538,7 +565,7 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
   // offset (progress, bookmarks and chapter jumps all use it). 0 for everything else.
   const uint32_t visibleBase = epub->txtVisibleBase(spineIndex);
   ctx->parser = makeUniqueNoThrow<ChapterHtmlSlimParser>(
-      epub, ctxPtr->parsePath, renderer, spec.fontId, spec.lineCompression, spec.extraParagraphSpacing,
+      epub, ctxPtr->parsePath, renderer, spec.fontId, spec.lineCompression, spec.paragraphSpacingPercent,
       spec.firstLineIndent, spec.paragraphAlignment, spec.viewportWidth, spec.viewportHeight, spec.hyphenationEnabled,
       spec.focusReadingEnabled,
       [this, ctxPtr, visibleBase](std::unique_ptr<Page> page, const uint16_t paragraphIndex,
@@ -570,7 +597,7 @@ bool Section::startBuild(const ReaderRenderSpec& spec, const std::function<void(
 #endif
   Hyphenator::setPreferredLanguage(epub->getLanguage());
 
-  if (!build_->parser->beginParse()) {
+  if (!build_->parser->beginParse(recoverHtml)) {
     LOG_ERR("SCT", "Failed to begin parse");
     if (build_->parser->allocationFailed()) buildError_ = BuildError::OutOfMemory;
     releaseBuildResources();
@@ -598,6 +625,16 @@ bool Section::buildSomeMore(const int maxPages) {
         buildError_ = BuildError::OutOfMemory;
         break;
       case ChapterHtmlSlimParser::ParseStatus::Error:
+        if (build_->parser->syntaxFailed() && !build_->recoveringHtml) {
+          const ReaderRenderSpec spec = build_->spec;
+          LOG_INF("SCT", "Retry malformed chapter %d with bounded HTML recovery", spineIndex);
+          // Throw away every page/LUT/anchor from the strict attempt. Reusing
+          // them would duplicate text or mix incompatible pagination on retry.
+          abandonBuild();
+          if (!startBuildInternal(spec, nullptr, true)) return false;
+          if (maxPages > 0) return true;  // Let the UI process exit/navigation.
+          continue;
+        }
         buildError_ = build_->parser->ioFailed() ? BuildError::Io : BuildError::InvalidData;
         break;
       case ChapterHtmlSlimParser::ParseStatus::Done:

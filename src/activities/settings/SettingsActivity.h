@@ -37,6 +37,8 @@ enum class SettingAction {
   RickyScreenRepair,
   RickyGestures,
   RickyKeys,
+  ReaderTouchZones,
+  UiTypography,
 };
 
 struct SettingInfo {
@@ -44,6 +46,7 @@ struct SettingInfo {
   SettingType type;
   uint8_t CrossPointSettings::* valuePtr = nullptr;
   int8_t CrossPointSettings::* signedValuePtr = nullptr;
+  uint16_t CrossPointSettings::* wideValuePtr = nullptr;
   std::vector<StrId> enumValues;
   std::span<const StrId> staticEnumValues;
   std::vector<std::string> enumStringValues;  // runtime alternative to StrId enumValues (for SD card fonts etc.)
@@ -146,6 +149,18 @@ struct SettingInfo {
     s.nameId = nameId;
     s.type = SettingType::VALUE;
     s.valuePtr = ptr;
+    s.valueRange = valueRange;
+    s.key = key;
+    s.category = category;
+    return s;
+  }
+
+  static SettingInfo WideValue(StrId nameId, uint16_t CrossPointSettings::* ptr, const ValueRange valueRange,
+                               const char* key = nullptr, StrId category = StrId::STR_NONE_OPT) {
+    SettingInfo s;
+    s.nameId = nameId;
+    s.type = SettingType::VALUE;
+    s.wideValuePtr = ptr;
     s.valueRange = valueRange;
     s.key = key;
     s.category = category;
@@ -293,11 +308,7 @@ class SettingsActivity final : public UiTabListActivity {
   void onEnter() override;
   void onExit() override;
   void render(RenderLock&&) override;
-  MainTab mainTab() const override {
-    return categoryRoot_ ? MainTab::Settings : MainTab::None;
-  }
-  bool mainTabBackReturnsToTabs() const override {
-    return categoryRoot_;
-  }
+  MainTab mainTab() const override { return categoryRoot_ ? MainTab::Settings : MainTab::None; }
+  bool mainTabBackReturnsToTabs() const override { return categoryRoot_; }
   void selectMainTabContentEdge(MainTabContentEdge edge) override;
 };

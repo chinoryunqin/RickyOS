@@ -969,6 +969,7 @@ void FileBrowserActivity::buildScreen(UiScreen& screen) {
   // of a page can end up in leftover space: draw it as a partial preview so
   // files past the fold are visibly present, not silently absent.
   props.partialTrailingRow = UITheme::getInstance().hasMainTabs();
+  props.partialTrailingInteractive = true;
   syncListViewport(screen, props);
   requestedMetadataStart_.store(nav.top);
   rowLabelWidth_ = std::max(1, screen.body().width - std::max<int>(0, props.rowInset) * 2 -

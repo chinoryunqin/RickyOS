@@ -68,8 +68,7 @@ void worker(void*) {
     result.error = ESP_OK;
     if (job != Job::Save) {
       UsbUvcStill::JpegBuffer jpeg;
-      UsbUvcStill::DetectInfo info;
-      result.error = freeink::metalio_camera::capture(jpeg, info);
+      result.error = freeink::metalio_camera::capture(jpeg, job == Job::Preview);
       const auto diag = freeink::metalio_camera::diagnostic();
       result.phase = diag.phase;
       result.configDescriptorBytes = diag.configDescriptorBytes;
@@ -224,6 +223,7 @@ bool prepareForSleep() {
   const uint32_t started = millis();
   while (busy() && millis() - started < 45000) delay(20);
   if (busy()) return false;
+  freeink::metalio_camera::close();
   pump();
   return true;
 }

@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 class RickyReaderChromeTest(unittest.TestCase):
     def test_actual_chrome_is_bounded_in_portrait_landscape_and_respects_visibility(self):
         source = (ROOT / 'src/components/themes/BaseTheme.cpp').read_text()
-        run_cpp(r'''
+        program = r'''
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
@@ -88,7 +88,7 @@ struct BaseTheme {
 #define GUI gui
 ''' + method(source, 'void BaseTheme::drawRickyReaderChrome(') + r'''
 int main() {
-  for (const auto size : {Rect{0,0,684,1216},Rect{0,0,1216,684},Rect{0,0,600,1000},Rect{0,0,1000,600}})
+  for (const auto size : {Rect{0,0,684,1216},Rect{0,0,1216,684},Rect{0,0,480,800},Rect{0,0,800,480},Rect{0,0,600,1000},Rect{0,0,1000,600}})
   for (const int rowHeight : {28,34,42,56}) {
     GfxRenderer r{size.width,size.height,rowHeight};
     settings.spec.progressBarMode=0;
@@ -108,18 +108,22 @@ int main() {
       if(flags&8) {
         const auto track=RickyDesignUi::runs.back();
         const auto chrome=readerChrome::compactLayout(rowHeight,settings.spec.headerLaneVisible(),
-                                                      settings.spec.footerLaneVisible(),true,6);
+                                                      settings.spec.footerLaneVisible(),true,6,ricky::panel::nativeSmall);
         assert(track.percent==42);
         if(settings.spec.footerLaneVisible()) {
           // One footer row: the bar sits on it, between the page count and the percent.
           const int textY=r.h-8-chrome.footerTextBottom;
-          assert(track.r.y>=textY && track.r.y+track.r.height<=textY+chrome.rowHeight);
+          if (ricky::panel::nativeSmall) {
+            assert(track.r.y+track.r.height+8<=textY);
+            assert(track.r.x==5+ricky::ds::layout::kReaderChromeInset);
+            assert(track.r.width==r.w-10-2*ricky::ds::layout::kReaderChromeInset);
+          } else assert(track.r.y>=textY && track.r.y+track.r.height<=textY+chrome.rowHeight);
           for(size_t i=0;i+1<RickyDesignUi::runs.size();++i) {
             const auto& run=RickyDesignUi::runs[i];
             if(run.r.y!=textY) continue;  // header runs
-            assert(run.r.x>=track.r.x+track.r.width || run.r.x<track.r.x);
+            if (!ricky::panel::nativeSmall) assert(run.r.x>=track.r.x+track.r.width || run.r.x<track.r.x);
           }
-        } else assert(track.r.y+track.r.height==r.h-8-4);
+        } else assert(track.r.y+track.r.height==r.h-8-(ricky::panel::nativeSmall?16:4));
         assert(track.r.y>=r.h-8-chrome.footerReserve+8);
       }
     }
@@ -128,7 +132,7 @@ int main() {
     RickyDesignUi::runs.clear();
     BaseTheme::drawRickyReaderChrome(r,42.0f,3,11,"章节",false,false,false);
     assert(static_cast<int>(RickyDesignUi::runs.size())==3);
-    const auto chrome=readerChrome::compactLayout(rowHeight,true,true,true,6);
+    const auto chrome=readerChrome::compactLayout(rowHeight,true,true,true,6,ricky::panel::nativeSmall);
     // A hidden footer (no page count, no percent, no bar) reserves nothing.
     assert(readerChrome::compactLayout(rowHeight,true,false,false,6).footerReserve==0);
     assert(readerChrome::compactLayout(rowHeight,false,true,false,6).headerReserve==0);
@@ -143,7 +147,9 @@ int main() {
     assert(RickyDesignUi::runs.back().percent==100);
   }
 }
-''', include_dirs=(ROOT / 'src',))
+'''
+        for profile in ((), ('SIMULATOR_DEVICE_METALIO_EINK4=1',)):
+            run_cpp(program, include_dirs=(ROOT / 'src',), defines=profile)
 
     def test_reservation_and_render_share_tokens_without_forcing_reader_preferences(self):
         reader = (ROOT / 'src/activities/reader/EpubReaderActivity.cpp').read_text()

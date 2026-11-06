@@ -7,6 +7,9 @@ import sys
 Import("env")
 if env["PIOENV"] in ("rickyos_metalio_eink4", "rickyos_metalio_eink4_core", "simulator_rickyos_metalio_eink4"):
     root = Path(env.subst("$PROJECT_DIR"))
+    env.AppendUnique(CPPPATH=[str(root / "freeink-sdk/libs/font/FreeInkFont/third_party/freetype/include")])
+    env.Append(LIBS=[env.BuildLibrary(
+        "$BUILD_DIR/metalio-cff", str(root / "ports/metalio-e-ink4/freetype-cff"), src_filter="+<ft_*.c>")])
     sys.path.insert(0, str(root / 'scripts'))
     from metalio_module_config import modules_from_defines
     modules = modules_from_defines(env.ParseFlags(env.GetProjectOption('build_flags')).get('CPPDEFINES', []))
@@ -30,6 +33,9 @@ if env["PIOENV"] in ("rickyos_metalio_eink4", "rickyos_metalio_eink4_core", "sim
     ):
         subprocess.run([sys.executable, str(root / "scripts/compress_metalio_fonts.py"), "--native-small"], check=True)
     env.Append(CPPPATH=[str(root / "generated")])
+    if env["PIOENV"] != "simulator_rickyos_metalio_eink4":
+        subprocess.run([sys.executable, str(root / "scripts/pack_metalio_font_metadata.py")], check=True)
+        env.Append(CPPPATH=[str(root / "generated/native-font-metadata")])
     if env["PIOENV"] == "simulator_rickyos_metalio_eink4":
         env.Prepend(CPPPATH=[str(root / '.pio/libdeps' / env['PIOENV'] / 'simulator/src'), str(root / 'lib/hal')])
         env.BuildSources("$BUILD_DIR/preview-hal", "$PROJECT_DIR/lib/hal", src_filter=[

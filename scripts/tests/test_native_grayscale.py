@@ -64,8 +64,8 @@ def main():
     class CrossPointSettings {
      public:
       enum SLEEP_SCREEN_MODE : uint8_t { LIGHT, CUSTOM };
-      enum : uint8_t { RICKY_POWER_OFF_CUSTOM = 1 };
-      uint8_t rickyPowerOffScreen = 0;
+      enum { RICKY_POWER_OFF_SAME, RICKY_POWER_OFF_DEFAULT, RICKY_POWER_OFF_BLANK, RICKY_POWER_OFF_CUSTOM };
+      uint8_t rickyPowerOffScreen = RICKY_POWER_OFF_SAME;
       enum class SLEEP_SCREEN_COVER_MODE { FIT, CROP };
       enum class SLEEP_SCREEN_COVER_FILTER { NO_FILTER, BLACK_AND_WHITE, INVERTED_BLACK_AND_WHITE };
       SLEEP_SCREEN_COVER_MODE sleepScreenCoverMode = SLEEP_SCREEN_COVER_MODE::FIT;
@@ -119,6 +119,7 @@ def main():
             'lib/Epub/Epub/converters/JpegToFramebufferConverter.cpp',
             'lib/Epub/Epub/converters/PngToFramebufferConverter.cpp',
             'lib/Epub/Epub/converters/ImageToFramebufferDecoder.cpp',
+            'lib/Epub/Epub/converters/ImageDecoderFactory.cpp', 'lib/FsHelpers/FsHelpers.cpp',
             'lib/JpegToBmpConverter/JpegToBmpConverter.cpp', 'lib/Memory/BuildScratch.cpp',
             'lib/Epub/Epub/converters/ImageDimsProbe.cpp',
             'src/activities/apps/airpage/AirPageImageRenderer.cpp',
@@ -138,6 +139,10 @@ def main():
             subprocess.run(['cc', '-O1', '-I' + str(PNG), '-c', str(source), '-o', str(obj)], check=True)
             objects.append(obj)
         png_fixtures(work)
+        image = (ROOT / 'lib/Epub/Epub/blocks/ImageBlock.cpp').read_text()
+        start = image.index('bool ImageBlock::renderPreview(')
+        end = image.index('\n}\n', start) + 3
+        (work / 'ImageBlockPreviewProbe.h').write_text(image[start:end])
         subprocess.run([CXX, *flags, *map(str, sources), *map(str, objects), '-o', str(binary)], check=True)
         subprocess.run([str(binary), str(ROOT / 'test/native_grayscale/gray16.jpg'), str(work)], check=True)
 

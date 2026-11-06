@@ -45,6 +45,7 @@ struct EpdFontFamily {
   void getTextDimensions(const char*,int* w,int* h,Style) const { measured=this;*w=20;*h=20; }
 };
 struct GfxRenderer {
+  mutable int fixedTextFontId_=0;
   std::map<int,EpdFontFamily> fontMap;
   std::map<int,std::array<int,2>> fallbackFontMap_;
   std::map<int,int> preferredFontMap_;
@@ -114,6 +115,7 @@ constexpr int CJK_UI_12_FONT_ID=6;
 constexpr int READER_STATUS_FONT_ID=7, READER_ESTIMATE_FONT_ID=8;
 constexpr int CJK_UI_14_FONT_ID=14, CJK_UI_16_FONT_ID=16;
 struct GfxRenderer {
+  mutable int fixedTextFontId_=0;
   std::vector<int> preferred, fallback;
   void clearPreferredFonts() { preferred.clear(); }
   void setPreferredFont(int id,int) { preferred.push_back(id); }
@@ -173,6 +175,7 @@ struct TtfEpdFont {
 template<class T> auto makeUniqueNoThrow() { return std::make_unique<T>(); }
 int computeTtfFontId(const char*,int pt) { return 100+pt; }
 struct GfxRenderer {
+  mutable int fixedTextFontId_=0;
   std::map<int,std::array<int,2>> fallback;
   std::map<int,int> fonts;
   const auto& getFontMap() const { return fonts; }
@@ -212,6 +215,7 @@ int main() {
 #include <string>
 #include <vector>
 struct GfxRenderer {
+  mutable int fixedTextFontId_=0;
   std::vector<int> removed;
   bool fixedUiFallback=true;
   void unregisterTtfFont(int) {}
@@ -225,6 +229,7 @@ struct SdCardFontSystem {
   std::vector<int> ttfUiIds_{108,110}, ttfUi_{8,10};
   OwnedFont ttf_; bool sourcesFreed=false;
   void freeTtfSources() { sourcesFreed=true; }
+  void releaseDisplayFaces(GfxRenderer&) {}
   void unloadTtf(GfxRenderer&);
 };
 ''' + method(system, 'void SdCardFontSystem::unloadTtf(') + r'''
@@ -248,6 +253,7 @@ int main() {
 namespace BidiUtils { bool isTransparentMark(uint32_t) { return false; } }
 enum class TextRotation { None, Rotated90CW };
 struct GfxRenderer {
+  mutable int fixedTextFontId_=0;
   mutable int calls=0, x=0, y=0, w=0, h=0;
   mutable bool black=false;
   bool visible=true;

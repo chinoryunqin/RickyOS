@@ -9,33 +9,30 @@
 #include <Txt.h>
 
 #include <algorithm>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
 
-#include "AppMetricCard.h"
 #include "BookReadingAdjustmentActivity.h"
 #include "InxItemLayout.h"
 #include "ReadingStatsStore.h"
+#include "components/RickyDesignUi.h"
+#include "components/RickyStatsLayout.h"
 #include "components/UITheme.h"
 #include "components/icons/settings2.h"
 #include "fontIds.h"
 #include "util/BookCoverLoader.h"
-#include "util/HeaderDateUtils.h"
 #include "util/ReadingStatsAnalytics.h"
 #include "util/TimeUtils.h"
 
 namespace {
 constexpr int COVER_WIDTH = 96;
 constexpr int COVER_HEIGHT = 140;
-constexpr int PROGRESS_BLOCK_HEIGHT = 38;
-constexpr int METRIC_CARD_HEIGHT = 78;
-constexpr int METRIC_CARD_GAP = 8;
 constexpr int DETAIL_FOCUS_ITEM_COUNT = 2;
 constexpr int DETAIL_ADJUST_FOCUS_INDEX = 1;
-constexpr int ADJUST_BUTTON_SIZE = 54;
-constexpr int SUMMARY_BANNER_HEIGHT = 46;
+constexpr int ADJUST_BUTTON_SIZE = ricky::ds::layout::kTouchMin;
 constexpr int SUMMARY_BANNER_GAP = 8;
 constexpr int DETAIL_SCROLL_STEP = 128;
 constexpr size_t MAX_RESOLVED_COVERS = 16;
@@ -243,16 +240,30 @@ std::string buildEstimatedTimeLeftText(const ReadingBookStats& book) {
 }
 
 void drawMetricCard(const GfxRenderer& renderer, const Rect& rect, const char* label, const std::string& value) {
-  AppMetricCard::Options options;
-  options.shrinkValue = false;
-  options.labelMode = AppMetricCard::LabelMode::Truncate;
-  AppMetricCard::draw(renderer, rect, label, value, options);
+  namespace design = RickyDesignUi;
+  namespace ds = ricky::ds;
+  const freeink::ui::Rect card{static_cast<int16_t>(rect.x), static_cast<int16_t>(rect.y),
+                               static_cast<int16_t>(rect.width), static_cast<int16_t>(rect.height)};
+  design::softCard(renderer, card, false);
+  const int pad = ds::space::kCardPadding;
+  const int valueHeight = std::max(renderer.getLineHeight(design::HEADLINE), renderer.getLineHeight(design::BODY));
+  const freeink::ui::Rect valueBox{static_cast<int16_t>(rect.x + pad), static_cast<int16_t>(rect.y + pad),
+                                   static_cast<int16_t>(rect.width - pad * 2), static_cast<int16_t>(valueHeight)};
+  design::text(renderer, valueBox, value.c_str(), design::HEADLINE);
+  design::secondaryText(renderer,
+                        {valueBox.x, static_cast<int16_t>(valueBox.bottom() + ds::space::kTextStackGap), valueBox.width,
+                         static_cast<int16_t>(rect.height - pad * 2 - valueHeight - ds::space::kTextStackGap)},
+                        label, design::CAPTION, false, freeink::ui::TextAlign::Left, 2);
 }
 
 void drawAdjustTimeButton(const GfxRenderer& renderer, const Rect& rect, const bool selected) {
-  const bool foregroundBlack = AppMetricCard::drawSelectablePanel(renderer, rect, selected);
+  RickyDesignUi::fill(renderer,
+                      {static_cast<int16_t>(rect.x), static_cast<int16_t>(rect.y), static_cast<int16_t>(rect.width),
+                       static_cast<int16_t>(rect.height)},
+                      selected ? ricky::ds::gray::kInk : ricky::ds::gray::kPaper, ricky::ds::radius::kControl);
+  const bool foregroundBlack = !selected;
 
-  constexpr int iconSize = 32;
+  constexpr int iconSize = 32;  // Settings2Icon is a native 32 x 32 mask.
   const int iconX = rect.x + (rect.width - iconSize) / 2;
   const int iconY = rect.y + (rect.height - iconSize) / 2;
   if (foregroundBlack)
@@ -284,30 +295,44 @@ DetailHeroLayout detailHeroLayout(const ThemeMetrics& metrics, const int content
 
 void drawSummaryBanner(const GfxRenderer& renderer, const Rect& rect, const char* title, const std::string& summary,
                        const bool inverted = false) {
-  const bool foregroundBlack = AppMetricCard::drawSelectablePanel(renderer, rect, inverted, true, true);
-
-  renderer.drawText(UI_10_FONT_ID, rect.x + 10, rect.y + 6, title, foregroundBlack, EpdFontFamily::BOLD);
-  const auto summaryLines =
-      renderer.wrappedText(UI_10_FONT_ID, summary.c_str(), rect.width - 20, 2, EpdFontFamily::REGULAR);
-  int summaryY = rect.y + 23;
-  for (const auto& line : summaryLines) {
-    renderer.drawText(UI_10_FONT_ID, rect.x + 10, summaryY, line.c_str(), foregroundBlack, EpdFontFamily::REGULAR);
-    summaryY += renderer.getLineHeight(UI_10_FONT_ID);
-  }
+  namespace design = RickyDesignUi;
+  namespace ds = ricky::ds;
+  design::softCard(renderer,
+                   {static_cast<int16_t>(rect.x), static_cast<int16_t>(rect.y), static_cast<int16_t>(rect.width),
+                    static_cast<int16_t>(rect.height)},
+                   inverted);
+  const int pad = ds::space::kCardPadding;
+  const int line = std::max(renderer.getLineHeight(design::CAPTION), renderer.getLineHeight(design::BODY));
+  design::text(renderer,
+               {static_cast<int16_t>(rect.x + pad), static_cast<int16_t>(rect.y + pad),
+                static_cast<int16_t>(rect.width - pad * 2), static_cast<int16_t>(line)},
+               title, design::CAPTION, inverted);
+  design::secondaryText(renderer,
+                        {static_cast<int16_t>(rect.x + pad), static_cast<int16_t>(rect.y + pad + line + 4),
+                         static_cast<int16_t>(rect.width - pad * 2), static_cast<int16_t>(line * 2)},
+                        summary.c_str(), design::CAPTION, inverted, freeink::ui::TextAlign::Left, 2);
 }
 
 void drawProgressBlock(const GfxRenderer& renderer, const Rect& rect, const char* label, const uint8_t percent) {
-  const std::string percentText = std::to_string(std::min<int>(percent, 100)) + "%";
-  const int percentWidth = renderer.getTextWidth(UI_10_FONT_ID, percentText.c_str(), EpdFontFamily::BOLD);
-
-  renderer.drawText(UI_10_FONT_ID, rect.x, rect.y, label);
-  renderer.drawText(UI_10_FONT_ID, rect.x + rect.width - percentWidth, rect.y, percentText.c_str(), true,
-                    EpdFontFamily::BOLD);
-
-  // Place the bar a line-height below the label row so CJK text doesn't overlap it.
-  const int barTop = rect.y + renderer.getLineHeight(UI_10_FONT_ID) + 4;
-  const Rect barRect{rect.x, barTop, rect.width, 10};
-  AppMetricCard::drawProgressBar(renderer, barRect, percent);
+  namespace design = RickyDesignUi;
+  namespace ds = ricky::ds;
+  char text[8];
+  snprintf(text, sizeof(text), "%u%%", std::min<unsigned>(percent, 100));
+  const int line = std::max(renderer.getLineHeight(design::CAPTION), renderer.getLineHeight(design::BODY));
+  const int valueWidth = renderer.getTextWidth(design::CAPTION, text);
+  design::secondaryText(
+      renderer,
+      {static_cast<int16_t>(rect.x), static_cast<int16_t>(rect.y),
+       static_cast<int16_t>(std::max(1, rect.width - valueWidth - ds::space::kInlineGap)), static_cast<int16_t>(line)},
+      label);
+  design::text(renderer,
+               {static_cast<int16_t>(rect.x + rect.width - valueWidth), static_cast<int16_t>(rect.y),
+                static_cast<int16_t>(valueWidth), static_cast<int16_t>(line)},
+               text, design::CAPTION);
+  design::progress(renderer,
+                   {static_cast<int16_t>(rect.x), static_cast<int16_t>(rect.y + line + ds::space::k2),
+                    static_cast<int16_t>(rect.width), ds::layout::kProgressHeight},
+                   percent);
 }
 
 void drawCover(const GfxRenderer& renderer, const Rect& rect, const std::string& coverPath) {
@@ -577,6 +602,14 @@ void ReadingStatsDetailActivity::render(RenderLock&&) {
   }
 
   const auto& metrics = UITheme::getInstance().getMetrics();
+  namespace design = RickyDesignUi;
+  namespace ds = ricky::ds;
+  const int captionHeight = std::max(renderer.getLineHeight(design::CAPTION), renderer.getLineHeight(design::BODY));
+  const int valueHeight = std::max(renderer.getLineHeight(design::HEADLINE), renderer.getLineHeight(design::BODY));
+  const int metricCardHeight = RickyStatsLayout::summaryCardHeight(valueHeight, captionHeight * 2);
+  const int metricCardGap = ds::space::kGutter;
+  const int progressBlockHeight = captionHeight + ds::space::k2 + ds::layout::kProgressHeight;
+  const int summaryBannerHeight = captionHeight * 3 + ds::space::kCardPadding * 2 + ds::space::k1;
   const int pageWidth = renderer.getScreenWidth();
   const auto* book = findBook(bookPath);
   const auto& lastSessionSnapshot = READING_STATS.getLastSessionSnapshot();
@@ -586,7 +619,7 @@ void ReadingStatsDetailActivity::render(RenderLock&&) {
   if (!book) {
     renderer.clearScreen();
     invalidateBaseScreenBuffer();
-    HeaderDateUtils::drawHeaderWithDate(renderer, tr(STR_READING_STATS));
+    GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_READING_STATS));
     renderer.drawText(UI_10_FONT_ID, metrics.contentSidePadding, metrics.topPadding + metrics.headerHeight + 30,
                       tr(STR_NO_READING_STATS));
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
@@ -608,39 +641,40 @@ void ReadingStatsDetailActivity::render(RenderLock&&) {
 
   int currentY = contentTop + 6;
   const int titleTop = currentY;
-  const auto wrappedTitle =
-      renderer.wrappedText(UI_12_FONT_ID, getDisplayTitle(*book).c_str(), textWidth, 2, EpdFontFamily::BOLD);
-  currentY += static_cast<int>(wrappedTitle.size()) * renderer.getLineHeight(UI_12_FONT_ID);
+  const std::string& title = book->title.empty() ? book->path : book->title;
+  const int titleFont = renderer.textFontId(design::bookTitleFontFor(renderer, title.c_str()), title.c_str());
+  const auto wrappedTitle = renderer.wrappedText(titleFont, title.c_str(), textWidth, 2, EpdFontFamily::REGULAR);
+  currentY += static_cast<int>(wrappedTitle.size()) * renderer.getLineHeight(titleFont);
 
   const int authorTop = currentY + 4;
   if (!book->author.empty()) {
-    currentY += renderer.getLineHeight(UI_10_FONT_ID) + 10;
+    currentY += captionHeight + 10;
   } else {
     currentY += 10;
   }
 
   currentY += 6;
   const int bookProgressTop = currentY;
-  currentY += PROGRESS_BLOCK_HEIGHT + 14;
+  currentY += progressBlockHeight + 14;
   const int chapterProgressTop = currentY;
-  currentY += PROGRESS_BLOCK_HEIGHT + 14;
+  currentY += progressBlockHeight + 14;
   const int chapterLabelTop = currentY;
-  currentY += renderer.getLineHeight(UI_10_FONT_ID) + 6;
+  currentY += captionHeight + 6;
   const int chapterTextTop = currentY;
   const std::string currentChapter = book->chapterTitle.empty() ? std::string(tr(STR_NOT_SET)) : book->chapterTitle;
   const auto chapterLines =
-      renderer.wrappedText(UI_10_FONT_ID, currentChapter.c_str(), textWidth, 2, EpdFontFamily::BOLD);
-  currentY += static_cast<int>(chapterLines.size()) * renderer.getLineHeight(UI_10_FONT_ID);
+      renderer.wrappedText(design::BODY, currentChapter.c_str(), textWidth, 2, EpdFontFamily::REGULAR);
+  currentY += static_cast<int>(chapterLines.size()) * captionHeight;
 
   int cardsTop =
       std::max(adjustButtonBaseRect.y + adjustButtonBaseRect.height, currentY) + metrics.verticalSpacing + 10;
   const int summaryBannerTop = cardsTop;
   if (showCompletionBanner) {
-    cardsTop += SUMMARY_BANNER_HEIGHT + SUMMARY_BANNER_GAP;
+    cardsTop += summaryBannerHeight + SUMMARY_BANNER_GAP;
   }
 
-  const int estimateCardTop = cardsTop + (METRIC_CARD_HEIGHT + METRIC_CARD_GAP) * 4;
-  const int contentBottom = estimateCardTop + METRIC_CARD_HEIGHT + metrics.verticalSpacing;
+  const int estimateCardTop = cardsTop + (metricCardHeight + metricCardGap) * 4;
+  const int contentBottom = estimateCardTop + metricCardHeight + metrics.verticalSpacing;
   maxScrollOffset = std::max(0, contentBottom - viewportBottom);
   scrollOffset = std::clamp(scrollOffset, 0, maxScrollOffset);
   const int scrollDy = -scrollOffset;
@@ -648,7 +682,9 @@ void ReadingStatsDetailActivity::render(RenderLock&&) {
   const Rect adjustButtonRect = offsetRect(adjustButtonBaseRect, scrollDy);
   const bool adjustSelected = scrollOffset == 0 && selectedStatsItem == DETAIL_ADJUST_FOCUS_INDEX;
 
-  const bool baseScreenRestored = restoreBaseScreenBuffer();
+  // A cached 1-bit background cannot restore native gray. The gray path redraws
+  // from state and does not allocate an additional framebuffer.
+  const bool baseScreenRestored = !renderer.isGrayscale16Active() && restoreBaseScreenBuffer();
   if (!baseScreenRestored) {
     renderer.clearScreen();
     {
@@ -663,62 +699,74 @@ void ReadingStatsDetailActivity::render(RenderLock&&) {
 
       currentY = titleTop + scrollDy;
       for (const auto& line : wrappedTitle) {
-        renderer.drawText(UI_12_FONT_ID, textX, currentY, line.c_str(), true, EpdFontFamily::BOLD);
-        currentY += renderer.getLineHeight(UI_12_FONT_ID);
+        design::text(renderer,
+                     {static_cast<int16_t>(textX), static_cast<int16_t>(currentY), static_cast<int16_t>(textWidth),
+                      static_cast<int16_t>(renderer.getLineHeight(titleFont))},
+                     line.c_str(), titleFont);
+        currentY += renderer.getLineHeight(titleFont);
       }
 
       if (!book->author.empty()) {
-        renderer.drawText(UI_10_FONT_ID, textX, authorTop + scrollDy, book->author.c_str());
+        design::secondaryText(renderer,
+                              {static_cast<int16_t>(textX), static_cast<int16_t>(authorTop + scrollDy),
+                               static_cast<int16_t>(textWidth), static_cast<int16_t>(captionHeight)},
+                              book->author.c_str());
       }
 
-      drawProgressBlock(renderer, Rect{textX, bookProgressTop + scrollDy, textWidth, PROGRESS_BLOCK_HEIGHT},
+      drawProgressBlock(renderer, Rect{textX, bookProgressTop + scrollDy, textWidth, progressBlockHeight},
                         tr(STR_BOOK_PROGRESS), book->lastProgressPercent);
-      drawProgressBlock(renderer, Rect{textX, chapterProgressTop + scrollDy, textWidth, PROGRESS_BLOCK_HEIGHT},
+      drawProgressBlock(renderer, Rect{textX, chapterProgressTop + scrollDy, textWidth, progressBlockHeight},
                         tr(STR_CHAPTER_PROGRESS), book->chapterProgressPercent);
 
-      renderer.drawText(UI_10_FONT_ID, textX, chapterLabelTop + scrollDy, tr(STR_CURRENT_CHAPTER));
+      design::secondaryText(renderer,
+                            {static_cast<int16_t>(textX), static_cast<int16_t>(chapterLabelTop + scrollDy),
+                             static_cast<int16_t>(textWidth), static_cast<int16_t>(captionHeight)},
+                            tr(STR_CURRENT_CHAPTER));
 
       currentY = chapterTextTop + scrollDy;
       for (const auto& line : chapterLines) {
-        renderer.drawText(UI_10_FONT_ID, textX, currentY, line.c_str(), true, EpdFontFamily::BOLD);
-        currentY += renderer.getLineHeight(UI_10_FONT_ID);
+        design::text(renderer,
+                     {static_cast<int16_t>(textX), static_cast<int16_t>(currentY), static_cast<int16_t>(textWidth),
+                      static_cast<int16_t>(captionHeight)},
+                     line.c_str(), design::BODY);
+        currentY += captionHeight;
       }
 
       int drawCardsTop = cardsTop + scrollDy;
       if (showCompletionBanner) {
         drawSummaryBanner(renderer,
                           Rect{metrics.contentSidePadding, summaryBannerTop + scrollDy,
-                               pageWidth - metrics.contentSidePadding * 2, SUMMARY_BANNER_HEIGHT},
+                               pageWidth - metrics.contentSidePadding * 2, summaryBannerHeight},
                           tr(STR_BOOK_FINISHED), tr(STR_COMPLETED_THIS_SESSION), true);
       }
 
-      const int cardWidth = (pageWidth - metrics.contentSidePadding * 2 - METRIC_CARD_GAP) / 2;
+      const int cardWidth = (pageWidth - metrics.contentSidePadding * 2 - metricCardGap) / 2;
 
-      drawMetricCard(renderer, Rect{metrics.contentSidePadding, drawCardsTop, cardWidth, METRIC_CARD_HEIGHT},
+      drawMetricCard(renderer, Rect{metrics.contentSidePadding, drawCardsTop, cardWidth, metricCardHeight},
                      tr(STR_LAST_SESSION), ReadingStatsAnalytics::formatDurationHm(book->lastSessionMs));
       drawMetricCard(
           renderer,
-          Rect{metrics.contentSidePadding + cardWidth + METRIC_CARD_GAP, drawCardsTop, cardWidth, METRIC_CARD_HEIGHT},
+          Rect{metrics.contentSidePadding + cardWidth + metricCardGap, drawCardsTop, cardWidth, metricCardHeight},
           tr(STR_TOTAL_TIME), ReadingStatsAnalytics::formatDurationHm(book->totalReadingMs));
       drawMetricCard(renderer,
-                     Rect{metrics.contentSidePadding, drawCardsTop + METRIC_CARD_HEIGHT + METRIC_CARD_GAP, cardWidth,
-                          METRIC_CARD_HEIGHT},
+                     Rect{metrics.contentSidePadding, drawCardsTop + metricCardHeight + metricCardGap, cardWidth,
+                          metricCardHeight},
                      tr(STR_SESSIONS), std::to_string(book->sessions));
       drawMetricCard(renderer,
-                     Rect{metrics.contentSidePadding + cardWidth + METRIC_CARD_GAP,
-                          drawCardsTop + METRIC_CARD_HEIGHT + METRIC_CARD_GAP, cardWidth, METRIC_CARD_HEIGHT},
+                     Rect{metrics.contentSidePadding + cardWidth + metricCardGap,
+                          drawCardsTop + metricCardHeight + metricCardGap, cardWidth, metricCardHeight},
                      tr(STR_STATUS), book->completed ? std::string(tr(STR_DONE)) : std::string(tr(STR_IN_PROGRESS)));
       drawMetricCard(renderer,
-                     Rect{metrics.contentSidePadding, drawCardsTop + (METRIC_CARD_HEIGHT + METRIC_CARD_GAP) * 2,
-                          pageWidth - metrics.contentSidePadding * 2, METRIC_CARD_HEIGHT},
+                     Rect{metrics.contentSidePadding, drawCardsTop + (metricCardHeight + metricCardGap) * 2,
+                          pageWidth - metrics.contentSidePadding * 2, metricCardHeight},
                      tr(STR_LAST_READ_DATE), formatDate(book->lastReadAt));
       drawMetricCard(renderer,
-                     Rect{metrics.contentSidePadding, drawCardsTop + (METRIC_CARD_HEIGHT + METRIC_CARD_GAP) * 3,
-                          pageWidth - metrics.contentSidePadding * 2, METRIC_CARD_HEIGHT},
+                     Rect{metrics.contentSidePadding, drawCardsTop + (metricCardHeight + metricCardGap) * 3,
+                          pageWidth - metrics.contentSidePadding * 2, metricCardHeight},
                      tr(STR_START_END_DATE), formatDateRange(book->firstReadAt, getCompletionDateForDisplay(*book)));
       drawMetricCard(renderer,
-                     Rect{metrics.contentSidePadding, drawCardsTop + (METRIC_CARD_HEIGHT + METRIC_CARD_GAP) * 4,
-                          pageWidth - metrics.contentSidePadding * 2, METRIC_CARD_HEIGHT},
+                     Rect{metrics.contentSidePadding, drawCardsTop + (metricCardHeight + metricCardGap) * 4,
+                          pageWidth - metrics.contentSidePadding * 2, metricCardHeight},
                      tr(STR_ESTIMATED_TIME_LEFT), buildEstimatedTimeLeftText(*book));
     }
 
@@ -726,9 +774,9 @@ void ReadingStatsDetailActivity::render(RenderLock&&) {
     if (viewportBottom < pageHeight) {
       renderer.fillRect(0, viewportBottom, pageWidth, pageHeight - viewportBottom, false);
     }
-    HeaderDateUtils::drawHeaderWithDate(renderer, tr(STR_READING_STATS));
+    GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_READING_STATS));
 
-    storeBaseScreenBuffer();
+    if (!renderer.isGrayscale16Active()) storeBaseScreenBuffer();
   }
 
   if (adjustSelected) {

@@ -14,9 +14,9 @@ enum class MainTabFocus : uint8_t { Tabs, Content };
 enum class MainTabContentEdge : uint8_t { First, Last };
 
 struct MainTabLayout {
-  Rect tabBar;
-  Rect statusBar;
-  Rect content;
+  Rect tabBar{0, 0, 0, 0};
+  Rect statusBar{0, 0, 0, 0};
+  Rect content{0, 0, 0, 0};
 };
 
 namespace MainTabs {

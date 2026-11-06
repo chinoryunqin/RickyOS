@@ -34,3 +34,17 @@ camera/cellular modules. The default build retains the complete feature set;
 profile. Device acceptance remains scoped to dev16; dev17 has not been flashed.
 See `docs/metalio-eink4-architecture-20261104.md` for ownership, lifecycle,
 host checks and the deferred hardware/release work.
+
+The local `1.2.16-metalio-dev18` candidate syncs the Plus 1.2.16 application
+delta and adapts its reader to the ordinary panel. See
+`docs/metalio-eink4-plus-sync-1216-20261105.md` for the donor, layout and checks.
+
+The local `1.2.17-metalio-dev19` candidate adds the Plus 1.2.17 application
+changes and reading history recovery. See
+`docs/metalio-eink4-plus-sync-1217-20261106.md` for build and validation details.
+
+The 2026-11-06 handoff includes these application syncs and the camera work.
+See `docs/metalio-eink4-handoff-20261106.md` before flashing. The installed
+single-shot camera build differs from the latest continuous-preview source.
+The user reports severe lag and an inaccessible camera, so usability remains
+an open issue.

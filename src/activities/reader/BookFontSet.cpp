@@ -96,7 +96,7 @@ void BookFontSet::collectFaces() {
   if (!css || css->empty()) return;
   collected_ = true;
   // Revision of how looks are derived (ink mapping etc.): a change re-lays chapters out.
-  constexpr uint32_t kLookRevision = 4;  // 4: book paragraph margins replace the reader spacing
+  constexpr uint32_t kLookRevision = 6;  // 6: archive-validated candidates cannot crowd out later families
   uint32_t hash = (2166136261u ^ kLookRevision) * 16777619u;
   const auto mix = [&hash](const std::string_view text) {
     for (const char c : text) {
@@ -110,8 +110,10 @@ void BookFontSet::collectFaces() {
     const CssParser::FontFace declared = css->fontFaceAt(i);
     if (declared.path.empty()) continue;  // a system-font name only (宋体 / 楷体 …)
     bool known = false;
-    for (const auto& face : faces_) known = known || equalsCaseless(face.family, declared.family);
-    if (known) continue;  // an earlier declaration of this family already has a file
+    for (const auto& face : faces_) {
+      known = known || (equalsCaseless(face.family, declared.family) && face.path == declared.path);
+    }
+    if (known) continue;
     Face face;
     face.path.assign(declared.path.data(), declared.path.size());
     size_t length = 0;
@@ -142,7 +144,7 @@ uint8_t BookFontSet::faceForFamily(const std::string_view candidates) {
     const std::string_view name = trimmed(candidates.substr(start, end - start));
     if (!name.empty()) {
       for (size_t i = 0; i < faces_.size(); ++i) {
-        if (equalsCaseless(faces_[i].family, name)) return faces_[i].failed ? 0 : static_cast<uint8_t>(i + 1);
+        if (!faces_[i].failed && equalsCaseless(faces_[i].family, name)) return static_cast<uint8_t>(i + 1);
       }
     }
     start = end + 1;
@@ -153,16 +155,23 @@ uint8_t BookFontSet::faceForFamily(const std::string_view candidates) {
 int BookFontSet::fontIdFor(const uint8_t face, const int baseFontId, uint16_t /*size*/) {
 #if CROSSPOINT_VECTOR_FONTS
   if (face == 0 || face > faces_.size()) return baseFontId;
-  Face& entry = faces_[face - 1];
-  if (entry.failed) return baseFontId;
-  if (entry.refusedAt != 0) {
-    if (millis() - entry.refusedAt < kRetryAfterMs) return baseFontId;
-    entry.refusedAt = 0;
+  const std::string_view family = faces_[face - 1].family;
+  for (size_t i = face - 1; i < faces_.size(); ++i) {
+    Face& entry = faces_[i];
+    if (entry.failed || !equalsCaseless(entry.family, family)) continue;
+    if (entry.refusedAt != 0) {
+      if (millis() - entry.refusedAt < kRetryAfterMs) return baseFontId;
+      entry.refusedAt = 0;
+    }
+    const uint8_t pointSize = SETTINGS.fontPointSize;
+    if (entry.font && entry.pointSize == pointSize) return entry.fontId;
+    if (entry.font) releaseFont(entry);
+    if (load(entry, pointSize, baseFontId)) return entry.fontId;
+    // Permanent file/font errors may fall through; memory pressure waits under
+    // the original reserve rather than loading more candidates in a loop.
+    if (!entry.failed) return baseFontId;
   }
-  const uint8_t pointSize = SETTINGS.fontPointSize;
-  if (entry.font && entry.pointSize == pointSize) return entry.fontId;
-  if (entry.font) releaseFont(entry);  // the reader size changed; keep the bytes
-  return load(entry, pointSize, baseFontId) ? entry.fontId : baseFontId;
+  return baseFontId;
 #else
   (void)face;
   return baseFontId;

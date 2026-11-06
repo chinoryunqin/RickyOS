@@ -17,9 +17,11 @@
 
 #include "I18nKeys.h"
 #include "ReaderFontSizes.h"
+#include "ReaderTapZonesJson.h"
 #include "SettingsList.h"
 #include "fontIds.h"
 #include "util/ParagraphIndentMigration.h"
+#include "util/ReaderImageBrightness.h"
 
 // Resolved here (not in the header) so I18nKeys.h — auto-generated and
 // changed on every translation edit — doesn't pull a recompile of every
@@ -204,6 +206,7 @@ uint8_t CrossPointSettings::sleepTimeoutEnumToMinutes(const uint8_t legacyValue)
 }
 
 void CrossPointSettings::enforceProductLayout() {
+  standbySwipeUnlock = 0;
   uiTheme = INX;
   inxRecentLayout = static_cast<uint8_t>(InxRecentLayout::Flow);
   inxLibraryLayout = static_cast<uint8_t>(InxItemLayout::Icons);
@@ -218,7 +221,7 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
     if (!isSettingAvailableForPersistence(info)) continue;
     if (!info.key) continue;
     // Dynamic entries (KOReader etc.) are stored in their own files — skip.
-    if (!info.valuePtr && !info.signedValuePtr && !info.stringOffset) continue;
+    if (!info.valuePtr && !info.signedValuePtr && !info.wideValuePtr && !info.stringOffset) continue;
 
     if (info.stringOffset) {
       const char* strPtr = (const char*)&s + info.stringOffset;
@@ -229,6 +232,8 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
       } else {
         doc[info.key] = strPtr;
       }
+    } else if (info.wideValuePtr) {
+      doc[info.key] = s.*(info.wideValuePtr);
     } else if (info.signedValuePtr) {
       doc[info.key] = s.*(info.signedValuePtr);
     } else {
@@ -239,18 +244,27 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   // The Home key gestures are appended only to the menu list (getSettingsList), so the
   // base-list loop above never saw them; without this they reset on every boot.
   for (unsigned i = 0; i < 3; ++i) doc[home_button::KEYS[i]] = s.*home_button::FIELDS[i];
-
 #if FREEINK_DEVICE_METALIO_PLUS
+  // Plus's per-key menu is also outside getBaseSettingsList(). Persist its
+  // short/long actions and the two independent feedback switches explicitly.
   doc["plusTouchFeedback"] = plusTouchFeedback;
+  doc["plusSideKeyFeedback"] = plusSideKeyFeedback;
   JsonArray plusKeys = doc["plusKeyActions"].to<JsonArray>();
   for (uint8_t value : plusKeyActions) plusKeys.add(value);
 #endif
+  doc["uiFontFamily"] = uiFontFamily;
+  doc["uiTextScale"] = uiTextScale;
   doc["fakeBoldVersion"] = FAKE_BOLD_VERSION;
   // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
   doc["frontButtonBack"] = frontButtonBack;
   doc["readingMode"] = readingMode;
   doc["libraryListView"] = libraryListView;
+  doc["lineSpacingPercent"] = lineSpacingPercent;
+  doc["readerImageContrast"] = readerImageContrast;
+  doc["readerImageBrightness"] = readerImageBrightness;
+  doc["readerImageBrightnessScaleVersion"] = readerImageBrightness::kScaleVersion;
   doc["standbyCoverLayout"] = standbyCoverLayout;
+  doc["standbyCalendarReversed"] = standbyCalendarReversed;
   doc["standbyShowExcerpt"] = standbyShowExcerpt;
   doc["rickyBadgesSeen"] = rickyBadgesSeen;
   doc["frontButtonConfirm"] = frontButtonConfirm;
@@ -266,6 +280,7 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
     object["b"] = entry.button;
   }
   // Apps use stable IDs beyond the uint8_t-only SettingsList, so persist the mask manually.
+  ::readerTapZones::save(doc, readerTapZones);
   doc["hiddenAppsMask"] = hiddenAppsMask;
   doc["appsCatalogVersion"] = appsCatalogVersion;
   doc["buddyClaimed"] = buddyClaimed;
@@ -289,11 +304,10 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   doc["rickyHomePhrase"] = rickyHomePhrase;
   doc["rickyGestureBack"] = rickyGestureBack;
   doc["rickyGestureHome"] = rickyGestureHome;
-  doc["standbySwipeUnlock"] = standbySwipeUnlock;
+  doc["standbySwipeUnlock"] = 0;
   doc["rickyCompanion"] = rickyCompanion;
   doc["rickyGestureControl"] = rickyGestureControl;
   doc["rickyGestureStatus"] = rickyGestureStatus;
-  doc["speakerVolume"] = speakerVolume;
   doc["rickyTextWeight"] = rickyTextWeight;
   doc["nativePageTurn"] = nativePageTurn;
   doc["readerFastRefresh"] = readerFastRefresh;
@@ -324,7 +338,6 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
 bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   CrossPointSettings& s = *this;
   bool needsResave = false;
-  speakerVolume = std::min<unsigned>(doc["speakerVolume"] | 35u, 100u);
 
   auto clamp = [](uint8_t val, uint8_t maxVal, uint8_t def) -> uint8_t { return val < maxVal ? val : def; };
 
@@ -345,8 +358,10 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   for (const auto& info : getBaseSettingsList()) {
     if (!isSettingAvailableForPersistence(info)) continue;
     if (!info.key) continue;
+    // Validate and migrate this percentage below, before narrowing.
+    if (info.wideValuePtr == &CrossPointSettings::paragraphSpacingPercent) continue;
     // Dynamic entries (KOReader etc.) are stored in their own files — skip.
-    if (!info.valuePtr && !info.signedValuePtr && !info.stringOffset) continue;
+    if (!info.valuePtr && !info.signedValuePtr && !info.wideValuePtr && !info.stringOffset) continue;
 
     if (info.stringOffset) {
       // destPtr starts out holding the struct-initializer default; it stays that
@@ -387,6 +402,11 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
           copyToField(destPtr, raw, info.stringMaxLen);
         }
       }
+    } else if (info.wideValuePtr) {
+      const uint16_t fieldDefault = s.*(info.wideValuePtr);
+      const auto saved = doc[info.key];
+      const int value = saved.is<int>() ? saved.as<int>() : fieldDefault;
+      s.*(info.wideValuePtr) = value >= info.valueRange.min && value <= info.valueRange.max ? value : fieldDefault;
     } else if (info.signedValuePtr) {
       const int8_t fieldDefault = s.*(info.signedValuePtr);
       int value = doc[info.key] | static_cast<int>(fieldDefault);
@@ -419,12 +439,47 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     needsResave = true;
   }
 
+  // Use a separate key: the previous percentage meant an additional gap,
+  // while 100% now preserves the book's paragraph margins.
+  const auto savedParagraphSpacing = doc["paragraphSpacingScalePercent"];
+  if (savedParagraphSpacing.isNull()) {
+    const auto previousPercent = doc["paragraphSpacingPercent"];
+    const auto legacySpacing = doc["extraParagraphSpacing"];
+    const int level = legacySpacing.is<bool>() ? (legacySpacing.as<bool>() ? 1 : 0) : (legacySpacing | 0);
+    paragraphSpacingPercent =
+        previousPercent.isNull()
+            ? paragraphSpacing::fromLegacy(level)
+            : paragraphSpacing::fromAdditional(previousPercent.is<int>() ? previousPercent.as<int>() : -1);
+    if (!previousPercent.isNull() || !legacySpacing.isNull()) needsResave = true;
+  } else {
+    const int percent = savedParagraphSpacing.is<int>() ? savedParagraphSpacing.as<int>() : -1;
+    paragraphSpacingPercent =
+        percent >= 0 && percent <= paragraphSpacing::MAX_PERCENT ? percent : paragraphSpacing::DEFAULT_PERCENT;
+    if (percent < 0 || percent > paragraphSpacing::MAX_PERCENT) needsResave = true;
+  }
+
+  copyToField(uiFontFamily, doc["uiFontFamily"] | "", sizeof(uiFontFamily));
+  const int uiScale = doc["uiTextScale"] | 100;
+  uiTextScale = uiScale >= 80 && uiScale <= 140 ? static_cast<uint8_t>(uiScale) : 100;
+
   // Reading mode lives in the reader menu, not in SettingsList, so it loads here.
   // The custom reading background became the puppy reading mode.
   rickyBadgesSeen = doc["rickyBadgesSeen"] | static_cast<uint32_t>(0);
   libraryListView = (doc["libraryListView"] | static_cast<uint8_t>(0)) != 0 ? 1 : 0;
+  readerImageContrast = static_cast<int8_t>(std::clamp(doc["readerImageContrast"] | 0, -50, 50));
+  const int savedImageBrightness = doc["readerImageBrightness"] | 0;
+  if ((doc["readerImageBrightnessScaleVersion"] | 0) < readerImageBrightness::kScaleVersion) {
+    readerImageBrightness = static_cast<int8_t>(readerImageBrightness::fromLegacy(savedImageBrightness));
+    needsResave = true;
+  } else {
+    readerImageBrightness = static_cast<int8_t>(std::clamp(savedImageBrightness, -40, 40));
+  }
+  const uint16_t spacingPercent = doc["lineSpacingPercent"] | static_cast<uint16_t>(0);
+  lineSpacingPercent =
+      spacingPercent >= LINE_SPACING_PERCENT_MIN && spacingPercent <= LINE_SPACING_PERCENT_MAX ? spacingPercent : 0;
   standbyCoverLayout =
       clamp(doc["standbyCoverLayout"] | static_cast<uint8_t>(STANDBY_COVER_PICTURE), STANDBY_COVER_LAYOUT_COUNT, 0);
+  standbyCalendarReversed = clamp(doc["standbyCalendarReversed"] | uint8_t(0), 2, 0);
   standbyShowExcerpt = (doc["standbyShowExcerpt"] | static_cast<uint8_t>(1)) != 0 ? 1 : 0;
   if (doc["readingMode"].isNull()) {
     readingMode = (doc["readingBackgroundEnabled"] | static_cast<uint8_t>(0)) != 0 ? 1 : 0;  // 1 = Puppy
@@ -472,10 +527,11 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
 #if FREEINK_DEVICE_METALIO_PLUS
   plusTouchFeedback = clamp(doc["plusTouchFeedback"] | uint8_t(1), 2, 1);
+  plusSideKeyFeedback = clamp(doc["plusSideKeyFeedback"] | uint8_t(0), 2, 0);
   for (unsigned i = 0; i < plus_keys::FIELD_COUNT; ++i) {
     const auto value = doc["plusKeyActions"][i];
     plusKeyActions[i] = value.is<uint8_t>() ? plus_keys::valid(value.as<uint8_t>(), i % 2)
-                                           : (i % 2 ? plus_keys::Ignore : plus_keys::Default);
+                                            : (i % 2 ? plus_keys::Ignore : plus_keys::Default);
   }
 #endif
   frontButtonBack = clamp(doc["frontButtonBack"] | (uint8_t)FRONT_HW_BACK, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_BACK);
@@ -485,6 +541,7 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   frontButtonRight =
       clamp(doc["frontButtonRight"] | (uint8_t)FRONT_HW_RIGHT, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_RIGHT);
   validateFrontButtonMapping(s);
+  readerTapZones = ::readerTapZones::load(doc);
   bluetoothEnabled = clamp(doc["bluetoothEnabled"] | static_cast<uint8_t>(0), static_cast<uint8_t>(2), 0);
   bleKeyMap = {};
   const JsonArrayConst storedBleMap = doc["bleKeyMap"];
@@ -551,7 +608,11 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   // Missing keys take the defaults: Home swipe starts off for everyone, as agreed.
   rickyGestureBack = (doc["rickyGestureBack"] | 1) ? 1 : 0;
   rickyGestureHome = (doc["rickyGestureHome"] | 0) ? 1 : 0;
-  standbySwipeUnlock = (doc["standbySwipeUnlock"] | 0) ? 1 : 0;
+  // Swipe unlock is retired: migrate enabled/invalid old values and persist Off.
+  const auto savedSwipeUnlock = doc["standbySwipeUnlock"];
+  if (!savedSwipeUnlock.isNull() && (!savedSwipeUnlock.is<uint8_t>() || savedSwipeUnlock.as<uint8_t>() != 0))
+    needsResave = true;
+  standbySwipeUnlock = 0;
   rickyCompanion = (doc["rickyCompanion"] | 0) == RICKY_COMPANION_CAT ? RICKY_COMPANION_CAT : RICKY_COMPANION_DOG;
   rickyGestureControl = (doc["rickyGestureControl"] | 1) ? 1 : 0;
   rickyGestureStatus = (doc["rickyGestureStatus"] | 1) ? 1 : 0;
@@ -657,8 +718,7 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     language = static_cast<uint8_t>(I18n::languageFromCode(doc["language"].as<const char*>()));
   }
 
-  // Migrate the split-build region marker before enforcing the current rule
-  // that UI language and service region move together.
+  // Keep the stored service region independent of the interface language.
   const char* langSku = doc["langSku"] | "";
   const uint8_t storedProfile = doc["contentProfile"].is<uint8_t>() ? doc["contentProfile"].as<uint8_t>() : UINT8_MAX;
   if (storedProfile <= static_cast<uint8_t>(ContentProfile::China)) {
@@ -676,10 +736,6 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   }
   if (!I18n::isLanguageAvailable(static_cast<Language>(language))) {
     language = defaultLanguageIndex();
-    needsResave = true;
-  }
-  if (contentProfile != contentProfileForLanguage(static_cast<Language>(language))) {
-    applyLanguageSelection(language);
     needsResave = true;
   }
   onboardingVersion = doc["onboardingVersion"].is<uint8_t>() ? doc["onboardingVersion"].as<uint8_t>() : 0;
@@ -774,7 +830,7 @@ bool CrossPointSettings::loadFromBinaryFile() {
   };
 
   sleepScreen = validated(0, sleepScreen, SLEEP_SCREEN_MODE_COUNT);
-  extraParagraphSpacing = value(1, extraParagraphSpacing);
+  if (fileSettingsCount > 1) paragraphSpacingPercent = paragraphSpacing::fromLegacy(values[1]);
   shortPwrBtn = validated(2, shortPwrBtn, SHORT_PWRBTN_COUNT);
   statusBar = validated(3, statusBar, STATUS_BAR_MODE_COUNT);
   orientation = validated(4, orientation, ORIENTATION_COUNT);
@@ -803,6 +859,12 @@ bool CrossPointSettings::loadFromBinaryFile() {
   marginTop = marginBottom = marginLeft = marginRight = screenMargin;
   sleepScreenCoverMode = validated(14, sleepScreenCoverMode, SLEEP_SCREEN_COVER_MODE_COUNT);
   textAntiAliasing = value(15, textAntiAliasing);
+#if (defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)
+  // The A4's gray pass does not clear the previous page, so every anti-aliased turn
+  // left its ghost on screen until the next one. Its text is always B/W, whatever an
+  // earlier firmware stored.
+  textAntiAliasing = 0;
+#endif
   hideBatteryPercentage = validated(16, hideBatteryPercentage, HIDE_BATTERY_PERCENTAGE_COUNT);
   longPressButtonBehavior = validated(17, longPressButtonBehavior, LONG_PRESS_BUTTON_BEHAVIOR_COUNT);
   hyphenationEnabled = value(18, hyphenationEnabled);
@@ -848,7 +910,7 @@ ReaderRenderSpec CrossPointSettings::readerRenderSpec(const uint16_t viewportWid
   ReaderRenderSpec spec;
   spec.fontId = getReaderFontId();
   spec.lineCompression = getReaderLineCompression();
-  spec.extraParagraphSpacing = extraParagraphSpacing;
+  spec.paragraphSpacingPercent = paragraphSpacingPercent;
   spec.firstLineIndent = firstLineIndent;
   spec.paragraphIndentSpaces = paragraphIndentSpaces;
   spec.characterSpacing = getCharacterSpacing();
@@ -863,7 +925,14 @@ ReaderRenderSpec CrossPointSettings::readerRenderSpec(const uint16_t viewportWid
   return spec;
 }
 
+uint16_t CrossPointSettings::getReaderLineSpacingPercent() const {
+  return static_cast<uint16_t>(getReaderLineCompression() * 100.0f + 0.5f);
+}
+
 float CrossPointSettings::getReaderLineCompression() const {
+  if (lineSpacingPercent >= LINE_SPACING_PERCENT_MIN && lineSpacingPercent <= LINE_SPACING_PERCENT_MAX) {
+    return static_cast<float>(lineSpacingPercent) / 100.0f;
+  }
   // SD card and vector fonts get a wider scale than the built-ins: their
   // faces carry their own (often generous) natural line height, so the old
   // Bookerly-tuned 1.1/1.2 steps were visually near-indistinguishable. At

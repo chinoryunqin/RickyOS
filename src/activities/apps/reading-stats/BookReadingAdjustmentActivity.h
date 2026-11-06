@@ -3,20 +3,17 @@
 #include <cstdint>
 #include <string>
 
-#include "activities/Activity.h"
-#include "util/ButtonNavigator.h"
+#include "RickyStatsEditor.h"
 
-class BookReadingAdjustmentActivity final : public Activity {
-  ButtonNavigator buttonNavigator;
+class BookReadingAdjustmentActivity final : public RickyStatsEditor {
   std::string bookPath;
   std::string bookTitle;
-  int selectedField = 0;
   int selectedOperation = 0;
   int selectedDuration = 1;
   uint32_t selectedDayOrdinal = 0;
   bool lastApplyFailed = false;
 
-  void adjustSelectedValue(int delta);
+  void adjustSelectedValue(int delta) override;
   void openDateSelection();
   void initializeSelectedDate();
   int32_t getSelectedDeltaMs() const;
@@ -31,11 +28,18 @@ class BookReadingAdjustmentActivity final : public Activity {
  public:
   explicit BookReadingAdjustmentActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string bookPath,
                                          std::string bookTitle)
-      : Activity("BookReadingAdjustment", renderer, mappedInput),
+      : RickyStatsEditor("BookReadingAdjustment", renderer, mappedInput),
         bookPath(std::move(bookPath)),
         bookTitle(std::move(bookTitle)) {}
 
   void onEnter() override;
-  void loop() override;
-  void render(RenderLock&&) override;
+
+ protected:
+  const char* headerTitle() const override;
+  const char* fieldLabel(int index) const override;
+  std::string fieldValue(int index) const override;
+  const char* contextText() const override { return bookTitle.c_str(); }
+  void buildDetails(RickyStatsPage& page) override;
+  void activateField() override;
+  const char* confirmLabel() const override;
 };

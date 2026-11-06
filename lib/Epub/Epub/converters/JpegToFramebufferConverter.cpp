@@ -242,6 +242,7 @@ int jpegDrawCallback(JPEGDRAW* pDraw) {
   }
 
   const auto writeSample = [&](int outX, int outY, uint8_t gray) {
+    gray = ctx->config->adjustTone(gray);
     if (ctx->config->output == DecodeOutput::NativeGrayscale16) {
       renderer.drawGrayscale16Pixel(outX, outY, gray);
       return;
@@ -272,7 +273,7 @@ int jpegDrawCallback(JPEGDRAW* pDraw) {
         const int lx = fineScaleFPX == FP_ONE ? dstX - blockX
                                               : clampSampleIndex(((dstX * invScaleFPX) >> FP_SHIFT) - blockX, validW);
         const int outX = cfgX + dstX;
-        for (int i = 0; i < rows; ++i) renderer.drawGrayscale16Pixel(outX, cfgY + dstYStart + i, srcRow[i][lx]);
+        for (int i = 0; i < rows; ++i) renderer.drawGrayscale16Pixel(outX, cfgY + dstYStart + i, ctx->config->adjustTone(srcRow[i][lx]));
       }
       return 1;
     }
@@ -321,7 +322,7 @@ int jpegDrawCallback(JPEGDRAW* pDraw) {
           const int top = (row0[cols.col0] * fxInv + row0[cols.col1] * fx) >> FP_SHIFT;
           const int bot = (row1[cols.col0] * fxInv + row1[cols.col1] * fx) >> FP_SHIFT;
           const uint8_t gray = static_cast<uint8_t>((top * (FP_ONE - fy) + bot * fy) >> FP_SHIFT);
-          renderer.drawGrayscale16Pixel(cfgX + dstX, cfgY + dstY, gray);
+          renderer.drawGrayscale16Pixel(cfgX + dstX, cfgY + dstY, ctx->config->adjustTone(gray));
         }
       }
       return 1;
@@ -627,7 +628,7 @@ bool JpegToFramebufferConverter::decodeToFramebuffer(const std::string& imagePat
   ctx.caching = !config.cachePath.empty();
   if (ctx.caching) {
     const int maxBlockDstRows = (int)(((int64_t)16 * ctx.fineScaleFPY) >> FP_SHIFT) + 2;
-    if (!ctx.cache.begin(config.cachePath, destWidth, destHeight, config.x, config.y, maxBlockDstRows)) {
+    if (!ctx.cache.begin(config.cachePath, destWidth, destHeight, config.x, config.y, maxBlockDstRows, config.cacheIdentity)) {
       LOG_ERR("JPG", "Failed to start cache stream%s", cacheOnly ? "" : ", continuing without caching");
       ctx.caching = false;
       if (cacheOnly) return false;

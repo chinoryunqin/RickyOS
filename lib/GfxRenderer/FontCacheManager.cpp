@@ -64,14 +64,14 @@ void FontCacheManager::clearCache() {
   }
 }
 
-void FontCacheManager::releaseSdFontCaches() {
+void FontCacheManager::releaseSdFontCaches([[maybe_unused]] bool (*keepTtfFace)(int)) {
   if (fontDecompressor_) fontDecompressor_->clearCache();
   for (auto& [id, font] : sdCardFonts_) {
     font->releaseResidentCaches();
   }
 #if CROSSPOINT_VECTOR_FONTS
   for (auto& [id, font] : ttfFonts_) {
-    if (font) font->releaseResidentCaches();
+    if (font && (!keepTtfFace || !keepTtfFace(id))) font->releaseResidentCaches();
   }
 #endif
 }

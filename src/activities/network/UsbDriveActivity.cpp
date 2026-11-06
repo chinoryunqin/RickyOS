@@ -1,3 +1,4 @@
+#include "SystemUiFonts.h"
 #include "UsbDriveActivity.h"
 
 #if FREEINK_CAP_USB_MSC || defined(RICKYOS_USB_PREVIEW)
@@ -22,6 +23,10 @@ void UsbDriveActivity::onEnter() {
   bleinput::stop();
 #endif
   Activity::onEnter();
+  {
+    RenderLock lock(*this);
+    systemUiFonts::suspend(renderer);
+  }
   BookCoverLoader::forgetDrawnCovers();  // the computer may change books and their caches
   resetUi();
   app.setScreen(&UsbDriveActivity::driveScreen, this);
@@ -53,6 +58,7 @@ void UsbDriveActivity::onEnter() {
 }
 
 void UsbDriveActivity::onExit() {
+  systemUiFonts::resume();
 #if !defined(RICKYOS_USB_PREVIEW)
   if (!restartRequested) Storage.endUsbDrive();
   RickyStorageActivity::invalidateScan();  // files may have arrived or left

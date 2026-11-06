@@ -62,6 +62,7 @@ class PageImage final : public PageElement {
   PageElementTag getTag() const override { return TAG_PageImage; }
   static std::unique_ptr<PageImage> deserialize(HalFile& file);
   ImageBlock& getImageBlock() { return *imageBlock; }
+  std::unique_ptr<ImageBlock> takeImageBlock() { return std::move(imageBlock); }
   const ImageBlock& getImageBlock() const { return *imageBlock; }
 };
 

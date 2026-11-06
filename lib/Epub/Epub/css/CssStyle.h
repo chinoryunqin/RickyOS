@@ -102,6 +102,7 @@ struct CssPropertyFlags {
   uint16_t background : 1;
   uint16_t border : 1;
   uint16_t borderRadius : 1;
+  uint16_t backgroundImage : 1;
 
   CssPropertyFlags()
       : textAlign(0),
@@ -128,13 +129,14 @@ struct CssPropertyFlags {
         fontFamily(0),
         background(0),
         border(0),
-        borderRadius(0) {}
+        borderRadius(0),
+        backgroundImage(0) {}
 
   [[nodiscard]] bool anySet() const {
     return textAlign || fontStyle || fontWeight || textDecoration || textIndent || marginTop || marginBottom ||
            marginLeft || marginRight || paddingTop || paddingBottom || paddingLeft || paddingRight || imageHeight ||
            imageWidth || display || direction || verticalAlign || listStyleType || fontSize || color || fontFamily ||
-           background || border || borderRadius;
+           background || border || borderRadius || backgroundImage;
   }
 
   void clearAll() {
@@ -143,14 +145,14 @@ struct CssPropertyFlags {
     paddingTop = paddingBottom = paddingLeft = paddingRight = 0;
     imageHeight = imageWidth = display = direction = verticalAlign = listStyleType = 0;
     fontSize = color = fontFamily = 0;
-    background = border = borderRadius = 0;
+    background = border = borderRadius = backgroundImage = 0;
   }
 };
 
-// Cache serializes defined flags as uint32_t with bit indices 0..24.
+// Cache serializes defined flags as uint32_t with bit indices 0..25.
 static_assert(sizeof(CssPropertyFlags) <= sizeof(uint32_t),
               "CssPropertyFlags exceeds 32 bits; update cache read/write in CssParser.cpp");
-static_assert(sizeof(CssPropertyFlags) * 8 >= 25,
+static_assert(sizeof(CssPropertyFlags) * 8 >= 26,
               "CssPropertyFlags has fewer bits than properties; update bitfield widths");
 
 // Represents a collection of CSS style properties
@@ -188,6 +190,7 @@ struct CssStyle {
   // Block decoration: a panel behind the block's lines (background over white paper and a
   // uniform border, both as luminance), with rounded corners.
   uint8_t backgroundLuma = 255;
+  uint16_t backgroundImage = 0;  // 1-based bounded CSS resource pool; 0 = none.
   uint8_t borderLuma = 0;
   CssLength borderWidth;
   CssLength borderRadius;
@@ -289,6 +292,10 @@ struct CssStyle {
       backgroundLuma = base.backgroundLuma;
       defined.background = 1;
     }
+    if (base.hasBackgroundImage()) {
+      backgroundImage = base.backgroundImage;
+      defined.backgroundImage = 1;
+    }
     if (base.hasBorder()) {
       borderWidth = base.borderWidth;
       borderLuma = base.borderLuma;
@@ -322,6 +329,7 @@ struct CssStyle {
   [[nodiscard]] bool hasFontSize() const { return defined.fontSize; }
   [[nodiscard]] bool hasColor() const { return defined.color; }
   [[nodiscard]] bool hasFontFamily() const { return defined.fontFamily; }
+  [[nodiscard]] bool hasBackgroundImage() const { return defined.backgroundImage; }
   [[nodiscard]] bool hasBackground() const { return defined.background; }
   [[nodiscard]] bool hasBorder() const { return defined.border; }
   [[nodiscard]] bool hasBorderRadius() const { return defined.borderRadius; }
@@ -343,6 +351,7 @@ struct CssStyle {
     colorLuma = 0;
     fontFamily = 0;
     backgroundLuma = 255;
+    backgroundImage = 0;
     borderLuma = 0;
     borderWidth = borderRadius = CssLength{};
     defined.clearAll();

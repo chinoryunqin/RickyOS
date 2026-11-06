@@ -30,12 +30,13 @@ class EpubReaderMenuActivity final : public UiListActivity {
     SYNC,
     DELETE_CACHE,
     DICTIONARY,
-    IMAGE_SCALING,  // Legacy action ID; image scaling remains in Settings.
+    IMAGE_SCALING,  // Stable action ID; opens reading-only image adjustments.
     READING_MODE,   // 原版 / 小狗伴读 / 沉浸 / 古籍; applied when the menu closes.
     READING_LINE,   // 阅读线: off or one of its looks; redrawn when the menu closes.
     FONT_SIZE,      // 字号: re-paginated when the menu closes.
     TEXT_WEIGHT,    // 字重: redrawn when the menu closes.
-    HOLDING_HAND    // 惯用手 (pageTurnDirection): mirrors the page-turn taps and swipes at once.
+    HOLDING_HAND,   // 惯用手 (pageTurnDirection): mirrors the page-turn taps and swipes at once.
+    TOUCH_ZONES
   };
 
   struct MenuItem {

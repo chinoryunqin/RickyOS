@@ -25,12 +25,47 @@ bool ImageDimsProbe::feed(const uint8_t b) {
         state = State::JpegSoi;
       } else if (b == PNG_SIG[0]) {
         state = State::PngHeader;
+#if RICKYOS_WEBP
+      } else if (b == 'R') {
+        webpHeader[0]=b;state=State::WebpHeader;
+#endif
       } else {
         state = State::Failed;
         return false;
       }
       pos = 1;
       return true;
+
+    case State::WebpHeader: {
+      if(pos>=sizeof(webpHeader)){state=State::Failed;return false;}
+      webpHeader[pos++]=b;
+      const auto le24=[](const uint8_t* p){return uint32_t(p[0])|(uint32_t(p[1])<<8)|(uint32_t(p[2])<<16);};
+      if(pos==12 && (webpHeader[1]!='I'||webpHeader[2]!='F'||webpHeader[3]!='F'||
+          webpHeader[8]!='W'||webpHeader[9]!='E'||webpHeader[10]!='B'||webpHeader[11]!='P')){
+        state=State::Failed;return false;
+      }
+      if(pos==25 && webpHeader[12]=='V'&&webpHeader[13]=='P'&&webpHeader[14]=='8'&&
+         webpHeader[15]=='L'&&webpHeader[20]==0x2f&&(webpHeader[24]&0xe0)==0){
+        const auto* p=webpHeader;
+        width=1+(uint32_t(p[21])|((uint32_t(p[22])&0x3f)<<8));
+        height=1+((uint32_t(p[22])>>6)|(uint32_t(p[23])<<2)|((uint32_t(p[24])&15)<<10));
+        format=Format::Webp;state=State::Done;return false;
+      }
+      if(pos==30){
+        const uint8_t* p=webpHeader;
+        if(p[12]=='V'&&p[13]=='P'&&p[14]=='8'&&p[15]=='X'){
+          width=le24(p+24)+1;height=le24(p+27)+1;
+        }else if(p[12]=='V'&&p[13]=='P'&&p[14]=='8'&&p[15]==' '&&p[23]==0x9d&&p[24]==1&&p[25]==0x2a){
+          width=(uint32_t(p[26])|(uint32_t(p[27])<<8))&0x3fff;
+          height=(uint32_t(p[28])|(uint32_t(p[29])<<8))&0x3fff;
+        }else if(p[12]=='V'&&p[13]=='P'&&p[14]=='8'&&p[15]=='L'&&p[20]==0x2f&&(p[24]&0xe0)==0){
+          width=1+(uint32_t(p[21])|((uint32_t(p[22])&0x3f)<<8));
+          height=1+((uint32_t(p[22])>>6)|(uint32_t(p[23])<<2)|((uint32_t(p[24])&15)<<10));
+        }else{state=State::Failed;return false;}
+        format=Format::Webp;state=State::Done;return false;
+      }
+      return true;
+    }
 
     case State::PngHeader:
       // Bytes 1..7: signature; 8..11: IHDR length; 12..15: "IHDR"; 16..23: dims.

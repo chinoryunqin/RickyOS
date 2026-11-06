@@ -54,7 +54,7 @@ class CssParser {
   };
 
   // Bump when CSS cache format or rules change; section caches are invalidated when this changes
-  static constexpr uint8_t CSS_CACHE_VERSION = 14;  // 14: background, border, border-radius
+  static constexpr uint8_t CSS_CACHE_VERSION = 17;  // 17: document background image paths in a separate bounded pool
 
   // System-font categories named by local() sources or by family names such as 宋体 / serif.
   // The reader maps them to its own downloadable faces when installed.
@@ -84,7 +84,11 @@ class CssParser {
    * @param source Open file handle to read from
    * @return Complete unless bounded storage stopped rule growth or the source was invalid
    */
-  ParseResult loadFromStream(HalFile& source, std::string_view stylesheetPath = {});
+  // Optional archive metadata probe; rejects absent sources BEFORE they occupy
+  // the bounded face store. It never reads/decompresses font bytes.
+  using FontSourceCheck = bool (*)(const void* context, const std::string& path);
+  ParseResult loadFromStream(HalFile& source, std::string_view stylesheetPath = {},
+                             FontSourceCheck fontSourceCheck = nullptr, const void* fontSourceContext = nullptr);
 
   /**
    * Look up the style for an HTML element, considering tag name and class attributes.
@@ -114,7 +118,8 @@ class CssParser {
    */
   [[nodiscard]] static CssStyle parseInlineStyle(std::string_view styleValue);
   // Same, keeping font-family: the candidate list joins this parser's family pool.
-  [[nodiscard]] CssStyle parseInlineStyleWithFamilies(std::string_view styleValue) const;
+  [[nodiscard]] CssStyle parseInlineStyleWithFamilies(std::string_view styleValue, std::string_view sourcePath = {}) const;
+  [[nodiscard]] std::string_view backgroundImageAt(uint16_t index) const;
 
   // font-family candidate list for a CssStyle::fontFamily index (1-based); empty if unknown.
   [[nodiscard]] std::string_view familyAt(uint16_t index) const;
@@ -135,6 +140,10 @@ class CssParser {
    * Clear all loaded rules
    */
   void clear() {
+    backgroundOffsets_.reset();
+    backgroundChars_.reset();
+    backgroundCount_ = backgroundCharsUsed_ = 0;
+    backgroundPartial_ = false;
     descendantRules_.reset();
     descendantCount_ = 0;
     descendantIndexDirty_ = true;
@@ -234,6 +243,16 @@ class CssParser {
   mutable uint32_t familyCharsUsed_ = 0;
   uint16_t internFamily(std::string_view candidates) const;
 
+  // Separate from font-family storage so decorative art cannot evict book fonts.
+  // Allocated only on first local background URL: 4 KiB + 66 bytes, checked/fallible.
+  static constexpr uint16_t MAX_BACKGROUND_IMAGES = 32;
+  static constexpr uint16_t MAX_BACKGROUND_CHARS = 4096;
+  mutable std::unique_ptr<uint16_t[]> backgroundOffsets_;
+  mutable std::unique_ptr<char[]> backgroundChars_;
+  mutable uint16_t backgroundCount_ = 0, backgroundCharsUsed_ = 0;
+  mutable bool backgroundPartial_ = false;
+  uint16_t internBackgroundImage(std::string_view path) const;
+
   struct FaceRecord {
     uint16_t familyOff, familyLen, pathOff, pathLen;
     FontCategory category;
@@ -260,8 +279,8 @@ class CssParser {
   PoolResult ensureStyleCapacity(size_t needed);
   PoolResult internStyle(const CssStyle& style, uint16_t& indexOut);
   // owner (optional) keeps font-family candidate lists; without it font-family is ignored.
-  static CssStyle parseDeclarations(std::string_view declBlock, const CssParser* owner = nullptr);
-  static void parseDeclarationIntoStyle(std::string_view decl, CssStyle& style, const CssParser* owner = nullptr);
+  static CssStyle parseDeclarations(std::string_view declBlock, const CssParser* owner = nullptr, std::string_view sourcePath = {});
+  static void parseDeclarationIntoStyle(std::string_view decl, CssStyle& style, const CssParser* owner = nullptr, std::string_view sourcePath = {});
 
   // Individual property value parsers
   static CssTextAlign interpretAlignment(std::string_view val);

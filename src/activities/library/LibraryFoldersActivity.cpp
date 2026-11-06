@@ -36,8 +36,8 @@ void LibraryFoldersActivity::onEnter() {
   UiListActivity::onEnter();
   waitForButtons = mappedInput.isPressed(MappedInputManager::Button::Confirm) ||
                    mappedInput.isPressed(MappedInputManager::Button::Back);
-  // Skip levels that hold no books and a single subfolder ("/" -> "/books"), so the
-  // first screen is the one with a choice on it.
+  // Skip common ancestor levels, but keep every indexed/enrolled folder as a
+  // selectable row. Skipping the only leaf would leave just All Folders.
   root.clear();
   for (;;) {
     std::string only;
@@ -49,11 +49,15 @@ void LibraryFoldersActivity::onEnter() {
         books = true;
         break;
       }
-      if (only.empty()) only = name;
-      else if (only != name) several = true;
+      if (only.empty())
+        only = name;
+      else if (only != name)
+        several = true;
     }
     if (books || several || only.empty()) break;
-    root = join(root, only);
+    const std::string next = join(root, only);
+    if (std::any_of(folders.begin(), folders.end(), [&](const Folder& folder) { return folder.path == next; })) break;
+    root = next;
   }
   // Open where the shelf's folder lives, so changing it is one step.
   std::string start = root;

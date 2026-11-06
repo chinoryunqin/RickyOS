@@ -30,7 +30,7 @@ class BookFontSet final : public bookfonts::Resolver {
   BookFontSet(const BookFontSet&) = delete;
   BookFontSet& operator=(const BookFontSet&) = delete;
 
-  // Read the book's usable faces (a declared file that exists in the EPUB, first per family).
+  // Read ordered usable candidates. Bytes stay lazy; corrupt faces fall through within the same family.
   void open(const Epub& epub);
   bool empty() const { return faces_.empty(); }
   // A face is in use: the reader font then carries less of the text.

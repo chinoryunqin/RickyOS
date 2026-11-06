@@ -11,8 +11,8 @@ struct LibrarySource {
   char path[256]{};
 };
 
-// Only allocated while managing/importing sources: starts at eight rules
-// (~2 KB), grows fallibly to 128. Never resident on the ordinary shelf or
+// Only allocated while managing/importing sources or opening the folder picker:
+// starts at eight rules (~2 KB), grows fallibly to 128. Never resident on the ordinary shelf or
 // placed on a task stack. Books in a folder do not consume source slots.
 class LibrarySources {
  public:

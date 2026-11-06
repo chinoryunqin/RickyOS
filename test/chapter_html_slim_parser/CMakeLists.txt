@@ -2,6 +2,7 @@ add_executable(ChapterHtmlSlimParserTest
   ChapterHtmlSlimParserTest.cpp
   ParserLinkStubs.cpp
   ${REPO_ROOT}/lib/Epub/Epub/parsers/ChapterHtmlSlimParser.cpp
+  ${REPO_ROOT}/lib/Epub/Epub/parsers/RecoveringHtmlStream.cpp
   ${REPO_ROOT}/lib/Epub/Epub/css/CssParser.cpp
   ${REPO_ROOT}/lib/Epub/Epub/ParsedText.cpp
   ${REPO_ROOT}/lib/Epub/Epub/BookFonts.cpp
@@ -18,7 +19,7 @@ add_executable(ChapterHtmlSlimParserTest
 file(READ ${REPO_ROOT}/lib/Epub/Epub/Section.cpp SECTION_CPP_SOURCE)
 string(REGEX MATCHALL "constexpr uint8_t SECTION_FILE_VERSION = [0-9]+" _section_versions "${SECTION_CPP_SOURCE}")
 if(RICKYOS_TEST_DEVICE STREQUAL "plus")
-  list(GET _section_versions 2 _section_declaration)
+  list(GET _section_versions -1 _section_declaration)
 elseif(RICKYOS_TEST_DEVICE STREQUAL "readpico")
   list(GET _section_versions 1 _section_declaration)
 else()
@@ -46,6 +47,7 @@ target_include_directories(ChapterHtmlSlimParserTest PRIVATE
   ${REPO_ROOT}/lib/MiniBidi
   ${REPO_ROOT}/lib/FsHelpers
   ${REPO_ROOT}/lib/XmlParserUtils
+  ${REPO_ROOT}/lib/Txt
   ${REPO_ROOT}/lib/Serialization
 )
 
@@ -65,6 +67,7 @@ add_executable(UpstreamParserTest
   ${REPO_ROOT}/lib/MiniBidi/BidiUtils.cpp
   ${REPO_ROOT}/lib/MiniBidi/minibidi.c
   ${REPO_ROOT}/lib/Epub/Epub/parsers/ChapterHtmlSlimParser.cpp
+  ${REPO_ROOT}/lib/Epub/Epub/parsers/RecoveringHtmlStream.cpp
   ${REPO_ROOT}/lib/Epub/Epub/css/CssParser.cpp
   ${REPO_ROOT}/lib/Epub/Epub/ParsedText.cpp
   ${REPO_ROOT}/lib/Epub/Epub/BookFonts.cpp
@@ -88,6 +91,7 @@ target_include_directories(UpstreamParserTest PRIVATE
   ${REPO_ROOT}/lib/MiniBidi
   ${REPO_ROOT}/lib/FsHelpers
   ${REPO_ROOT}/lib/XmlParserUtils
+  ${REPO_ROOT}/lib/Txt
   ${REPO_ROOT}/lib/Serialization
 )
 

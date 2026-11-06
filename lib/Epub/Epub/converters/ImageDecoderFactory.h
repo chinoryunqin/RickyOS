@@ -7,6 +7,9 @@
 
 class JpegToFramebufferConverter;
 class PngToFramebufferConverter;
+#if RICKYOS_WEBP
+class WebpToFramebufferConverter;
+#endif
 
 class ImageDecoderFactory {
  public:
@@ -17,4 +20,7 @@ class ImageDecoderFactory {
  private:
   static std::unique_ptr<JpegToFramebufferConverter> jpegDecoder;
   static std::unique_ptr<PngToFramebufferConverter> pngDecoder;
+#if RICKYOS_WEBP
+  static std::unique_ptr<WebpToFramebufferConverter> webpDecoder;
+#endif
 };

@@ -331,8 +331,6 @@ bool CrossPointWebServer::begin() {
   server->on("/api/fonts/upload", HTTP_POST, [this] { handleFontUpload(); }, [this] { handleFontUploadData(); });
   server->on("/api/fonts/delete", HTTP_POST, [this] { handleFontDelete(); });
 
-
-
   // Wi-Fi credential endpoints
   server->on("/api/wifi", HTTP_GET, [this] { handleGetWifiNetworks(); });
   server->on("/api/wifi", HTTP_POST, [this] { handlePostWifiNetwork(); });
@@ -410,8 +408,6 @@ bool CrossPointWebServer::begin() {
   LOG_DBG("WEB", "[MEM] Free heap after server.begin(): %d bytes", ESP.getFreeHeap());
   return true;
 }
-
-
 
 bool CrossPointWebServer::dropUploadIfCancelled() const {
   if (!uploadCancelCheck || !uploadCancelCheck()) return false;
@@ -1624,6 +1620,8 @@ void CrossPointWebServer::handleGetSettings() const {
         doc["type"] = "value";
         if (s.valuePtr) {
           doc["value"] = static_cast<int>(SETTINGS.*(s.valuePtr));
+        } else if (s.wideValuePtr) {
+          doc["value"] = static_cast<int>(SETTINGS.*(s.wideValuePtr));
         } else if (s.signedValuePtr) {
           doc["value"] = static_cast<int>(SETTINGS.*(s.signedValuePtr));
         }
@@ -1721,6 +1719,8 @@ void CrossPointWebServer::handlePostSettings() {
         if (val >= s.valueRange.min && val <= s.valueRange.max) {
           if (s.valuePtr) {
             SETTINGS.*(s.valuePtr) = static_cast<uint8_t>(val);
+          } else if (s.wideValuePtr) {
+            SETTINGS.*(s.wideValuePtr) = static_cast<uint16_t>(val);
           } else if (s.signedValuePtr) {
             SETTINGS.*(s.signedValuePtr) = static_cast<int8_t>(val);
           }
@@ -1754,9 +1754,6 @@ void CrossPointWebServer::handlePostSettings() {
 }
 
 // ---- OPDS Server API ----
-
-
-
 
 // ---- Wi-Fi Credentials API ----
 
@@ -1923,21 +1920,7 @@ void CrossPointWebServer::sendJson(const JsonDocument& doc) const {
   server->send(200, "application/json", out);
 }
 
-
-
-
 namespace {}  // namespace
-
-
-
-
-
-
-
-
-
-
-
 
 // WebSocket callback trampoline
 void CrossPointWebServer::wsEventCallback(uint8_t num, WStype_t type, uint8_t* payload, size_t length) {
@@ -2123,9 +2106,9 @@ void CrossPointWebServer::onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* 
         filePath += wsUploadFileName;
         clearBookCache(filePath.c_str());
         if (isLibraryBookFile(wsUploadFileName)) {
-              library::LibraryIncoming::add(filePath.c_str());
-              library::markLibraryIndexDirty();
-            }
+          library::LibraryIncoming::add(filePath.c_str());
+          library::markLibraryIndexDirty();
+        }
         if (isFontFile(wsUploadFileName)) sdFontSystem.markRegistryDirty();
 
         wsServer->sendTXT(num, "DONE");

@@ -23,13 +23,13 @@ class RickyReadingStatsTest(unittest.TestCase):
         self.assertIn('{AppId::ReadingStats, StrId::STR_READING_STATS, UIIcon::ReadingStats, '
                       '&ActivityManager::goToRickyReadingStats}', menu)
         header = (ROOT / 'src/activities/apps/reading-stats/RickyReadingStatsActivity.h').read_text()
-        self.assertIn('int listCount() const override { return 0; }', header)  # nothing to drill into
+        self.assertIn('public RickyStatsActivity', header)  # nothing to drill into
 
     def test_mascot_follows_today_against_the_goal(self):
         mascot = (ROOT / 'src/components/RickyMascot.h').read_text()
         self.assertIn('if (todayMs < 60ULL * 1000ULL) return Mood::Sleeping;', mascot)
         self.assertIn('return todayMs >= goalMs ? Mood::Happy : Mood::Reading;', mascot)
-        build = body(PAGE.read_text(), 'void RickyReadingStatsActivity::buildScreen(')
+        build = body(PAGE.read_text(), 'void RickyReadingStatsActivity::buildPage(')
         self.assertIn('rickyMascot::moodFor(todayMs, goalMs)', build)
         home = (ROOT / 'src/components/RickyHomeUi.cpp').read_text()
         self.assertIn('rickyMascot::moodFor(todayMs, goalMs), true', home)
@@ -41,13 +41,13 @@ class RickyReadingStatsTest(unittest.TestCase):
 
     def test_month_calendar_uses_the_reading_streak(self):
         page = PAGE.read_text()
-        build = body(page, 'void RickyReadingStatsActivity::buildScreen(')
+        build = body(page, 'void RickyReadingStatsActivity::buildPage(')
         self.assertIn('rickyStreak::evaluate(marks, monthStart, monthDays)', build)
         self.assertIn('rickyPaw::draw(renderer', build)
         self.assertIn('ACTION_DAY', build)
         # Months move within the reader's history, by touch or the page buttons.
         self.assertIn('std::clamp(month, firstMonth_, currentMonth_)', body(page, 'void RickyReadingStatsActivity::showMonth('))
-        keys = body(page, 'bool RickyReadingStatsActivity::handleCustomInput(')
+        keys = body(page, 'bool RickyReadingStatsActivity::handleStatsInput(')
         for button in ('Left', 'PageBack', 'Right', 'PageForward'):
             self.assertIn(f'Button::{button}', keys)
         # The home card and header share the same streak; the store's goal-only count

@@ -1,3 +1,8 @@
+#if RICKYOS_WEBP
+#include <HalDisplay.h>
+extern HalDisplay display;
+#endif
+#include "Epub/converters/WebpToFramebufferConverter.h"
 #include "Epub.h"
 
 #include <FsHelpers.h>
@@ -23,6 +28,25 @@
 #include "Epub/parsers/TocNcxParser.h"
 
 namespace {
+#if RICKYOS_WEBP
+bool hasWebpExtension(const std::string_view path){return FsHelpers::checkFileExtension(path,".webp");}
+bool usableBmpCache(const std::string& path){
+ HalFile f;if(!Storage.openFileForRead("WEBP",path,f))return false;
+ if(f.size()>=54)return true;
+ f.close();Storage.remove(path.c_str());return false;
+}
+bool convertWebpCover(const Epub& epub,const std::string& href,const std::string& out,int width,int height,bool crop){
+ const std::string tmp=epub.getCachePath()+"/.cover.webp";
+ const ScopedCleanup clean{[&]{Storage.remove(tmp.c_str());}};
+ if(!epub.extractItemToFile(href,tmp))return false;
+ bool ok=false;{HalFile input,output;
+  if(Storage.openFileForRead("WEBP",tmp,input)&&Storage.openFileForWrite("WEBP",out,output))
+   ok=WebpToFramebufferConverter::toBmp(input,output,width,height,crop);
+ }
+ if(!ok)Storage.remove(out.c_str());return ok;
+}
+#endif
+
 enum class CoverImageType : uint8_t { None, Jpeg, Png };
 
 CoverImageType coverImageType(const std::string& path) {
@@ -197,7 +221,11 @@ bool Epub::parseContentOpf(BookMetadataCache::BookMetadata& bookMetadata, const 
             const auto ref = std::string_view{coverPageHtml}.substr(pos, endPos - pos);
             // Cover BMP generation supports JPG/PNG only; skip GIF so an unsupported wrapper image
             // does not block a later supported cover reference.
-            if (FsHelpers::hasPngExtension(ref) || FsHelpers::hasJpgExtension(ref)) {
+            if (FsHelpers::hasPngExtension(ref) || FsHelpers::hasJpgExtension(ref)
+#if RICKYOS_WEBP
+                || hasWebpExtension(ref)
+#endif
+            ) {
               imageRef = ref;
               break;
             }
@@ -467,7 +495,14 @@ CssParser::ParseResult Epub::parseCssFiles(const CssParser::CacheStatus existing
       parseResult = CssParser::ParseResult::Error;
       continue;
     }
-    const CssParser::ParseResult streamResult = cssParser->loadFromStream(tempCssFile, cssPath);
+    const CssParser::ParseResult streamResult = cssParser->loadFromStream(
+        tempCssFile, cssPath,
+        [](const void* context, const std::string& path) {
+          size_t length = 0;
+          return static_cast<const Epub*>(context)->getItemSize(path, &length) && length >= 64 &&
+                 length <= 4 * 1024 * 1024;  // same per-face bound as BookFontSet
+        },
+        this);
     // Explicitly close() file before calling Storage.remove()
     tempCssFile.close();
     Storage.remove(tmpCssPath.c_str());
@@ -892,6 +927,12 @@ bool Epub::generateCoverBmp(bool cropped, bool originalThresholds) const {
   }
 
   const auto coverImageHref = bookMetadataCache->coreMetadata.coverItemHref;
+#if RICKYOS_WEBP
+  if(hasWebpExtension(coverImageHref)){
+    return convertWebpCover(*this,coverImageHref,getCoverBmpPath(cropped,originalThresholds),
+                            display.getDisplayHeight(),display.getDisplayWidth(),cropped);
+  }
+#endif
   if (FsHelpers::hasJpgExtension(coverImageHref) || FsHelpers::hasPngExtension(coverImageHref)) {
     const std::string outputPath = getCoverBmpPath(cropped, originalThresholds);
     if (convertExtractedCover(
@@ -940,7 +981,13 @@ std::string Epub::getThumbBmpPath(int height) const {
 
 bool Epub::generateThumbBmp(int height) const {
   // Already generated, return true
-  if (Storage.exists(getThumbBmpPath(height).c_str())) {
+  if (
+#if RICKYOS_WEBP
+      usableBmpCache(getThumbBmpPath(height))
+#else
+      Storage.exists(getThumbBmpPath(height).c_str())
+#endif
+  ) {
     return true;
   }
 
@@ -953,7 +1000,11 @@ bool Epub::generateThumbBmp(int height) const {
 }
 
 bool Epub::generateThumbBmpFromSource(int height) {
+#if RICKYOS_WEBP
+  if (usableBmpCache(getThumbBmpPath(height))) return true;
+#else
   if (Storage.exists(getThumbBmpPath(height).c_str())) return true;
+#endif
   if (hasCoverOverride()) return generateThumbBmpForCover(height, "");
   if (Txt::isTxtOrMd(filepath)) {
     std::string companionCover = Txt::findCompanionCoverImage(filepath);
@@ -1010,6 +1061,9 @@ bool Epub::generateThumbBmpForCover(int height, const std::string& coverImageHre
     return Txt::convertCoverImageToBmp(coverImageHref, getThumbBmpPath(height), height);
   }
 
+#if RICKYOS_WEBP
+  if(hasWebpExtension(coverImageHref))return convertWebpCover(*this,coverImageHref,outputPath,targetWidth,height,true);
+#endif
   if (FsHelpers::hasJpgExtension(coverImageHref) || FsHelpers::hasPngExtension(coverImageHref)) {
     if (convertExtractedCover(
             *this, coverImageHref, outputPath, "thumbnail",

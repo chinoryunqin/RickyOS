@@ -1,0 +1,21 @@
+{
+  "license": "SIL OFL 1.1",
+  "source": "https://github.com/notofonts/noto-cjk/tree/main/Sans/OTF",
+  "faces": {
+    "sc_regular": {
+      "file": "NotoSansCJKsc-Regular.otf",
+      "source_sha256": "2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b",
+      "bytes": 184784,
+      "sha256": "585388a9cd2c9f89afc130d6de931148a8995a8dd4e519ded37fc0fc9c2c322a",
+      "characters": 1036
+    },
+    "tc_regular": {
+      "file": "NotoSansCJKtc-Regular.otf",
+      "source_sha256": "dce08bd4fd91aa8aa76ed8fea4b694c2dfb8550f67871e326843212ddbeb88b4",
+      "bytes": 216492,
+      "sha256": "3985de372dca09a90d894296c9dda41de7450d60b653514e02f24da800d94122",
+      "characters": 1048
+    }
+  },
+  "total_bytes": 401276
+}

@@ -1,4 +1,8 @@
+#include "SystemUiFonts.h"
 #include <Arduino.h>
+#if RICKYOS_PLUS_BLE_DIAG
+#include <hal/usb_serial_jtag_ll.h>
+#endif
 #include <BoardConfig.h>
 #if FREEINK_DEVICE_METALIO_PLUS && RICKYOS_PLUS_FIELD_DIAG
 #include <PlusFieldDiagnostics.h>
@@ -110,12 +114,52 @@ static_assert(HalGPIO::BTN_BACK == SoundFeedback::BUTTON_BACK &&
               HalGPIO::BTN_POWER == SoundFeedback::BUTTON_POWER);
 #endif
 
+#if RICKYOS_PLUS_BLE_DIAG
+bool readPlusBleDiagnosticLine(char* output, const size_t capacity) {
+  static char pending[48];
+  static size_t used = 0;
+  static bool dropping = false;
+  // IDF owns the USB console; Arduino logSerial's input is physical UART0.
+  // Poll only the existing RX FIFO, without installing a second ISR/driver.
+  if (usb_serial_jtag_ll_rxfifo_data_available()) {
+    usb_serial_jtag_ll_clr_intsts_mask(USB_SERIAL_JTAG_INTR_SERIAL_OUT_RECV_PKT);
+  }
+  for (unsigned i = 0; i < 64 && usb_serial_jtag_ll_rxfifo_data_available(); ++i) {
+    uint8_t byte;
+    if (usb_serial_jtag_ll_read_rxfifo(&byte, 1) != 1) break;
+    if (byte == '\r') continue;
+    if (byte == '\n') {
+      if (dropping || used + 1 > capacity) {
+        dropping = false;
+        used = 0;
+        continue;
+      }
+      memcpy(output, pending, used);
+      output[used] = 0;
+      used = 0;
+      return true;
+    }
+    if (used + 1 >= sizeof(pending)) dropping = true;
+    if (!dropping) pending[used++] = static_cast<char>(byte);
+  }
+  return false;
+}
+#endif
+
 void updateBluetoothLifecycle() {
 #if FREEINK_CAP_BLE_HID_HOST
   static unsigned long nextStartAttemptAt = 0;
   const auto wanted = [] {
-    return SETTINGS.bluetoothEnabled && activityManager.keepsBluetoothAlive() &&
-           !activityManager.requiresExclusiveStorageLoop() && WiFi.getMode() == WIFI_MODE_NULL;
+    bool keepForPage = activityManager.keepsBluetoothAlive();
+#if FREEINK_DEVICE_METALIO_PLUS
+    // Explicit pairing reserves the controller before reader/font allocations.
+    // Keep that host through ordinary page transitions; tearing it down here
+    // disconnects the remote and can make the next start fail the memory gate.
+    // Standby, Wi-Fi, USB exclusive access and the user's switch still stop it.
+    keepForPage = keepForPage || (bleinput::isRunning() && !activityManager.standbyShowing());
+#endif
+    return SETTINGS.bluetoothEnabled && keepForPage && !activityManager.requiresExclusiveStorageLoop() &&
+           WiFi.getMode() == WIFI_MODE_NULL;
   };
   if (!wanted()) {
     bleinput::stop();
@@ -153,12 +197,20 @@ static bool wakePowerReleasePending = false;
 
 #include "components/RickyPanelProfile.h"
 #if RICKYOS_NATIVE_SMALL_PANEL
+#if RICKYOS_METALIO_FONT_METADATA
+#include <NativeFontMetadata.h>
+#include <nativefontmeta/metalio_body_10_regular.packed.h>
+#include <nativefontmeta/metalio_book_10_medium.packed.h>
+#else
 #include <fonts/metalio_body_10_regular.packed.h>
 #include <fonts/metalio_book_10_medium.packed.h>
-#include <fonts/metalio_caption_8_regular.packed.h>
+#endif
 #include <fonts/metalio_display_19_bold.packed.h>
+#if !RICKYOS_SYSTEM_UI_FONTS
+#include <fonts/metalio_caption_8_regular.packed.h>
 #include <fonts/metalio_headline_12_medium.packed.h>
 #include <fonts/metalio_title_14_bold.packed.h>
+#endif
 #else
 #include <fonts/ricky_book_12_medium.packed.h>
 #include <fonts/ricky_caption_10_regular.packed.h>
@@ -199,17 +251,29 @@ EpdFontFamily ui12FontFamily(&ui12RegularFont, &ui12BoldFont);
 
 #if RICKYOS_NATIVE_SMALL_PANEL
 EpdFont nativeBodyFont(&metalio_body_10_regular);
+#if RICKYOS_SYSTEM_UI_FONTS
+EpdFont cjk14Font(&metalio_body_10_regular);
+EpdFont cjk16Font(&metalio_body_10_regular);
+EpdFont designCaptionFont(&metalio_body_10_regular);
+#else
 EpdFont cjk14Font(&metalio_headline_12_medium);
 EpdFont cjk16Font(&metalio_title_14_bold);
 EpdFont designCaptionFont(&metalio_caption_8_regular);
+#endif
 EpdFont designDisplayFont(&metalio_display_19_bold);
 EpdFont bookTitleFont(&metalio_book_10_medium);
 EpdFontFamily cjk8FontFamily(&designCaptionFont);
 #else
 EpdFontFamily cjk8FontFamily(&offlineReaderFont);
+#if RICKYOS_SYSTEM_UI_FONTS
+EpdFont cjk14Font(&cjk12Data);
+EpdFont cjk16Font(&cjk12Data);
+EpdFont designCaptionFont(&cjk12Data);
+#else
 EpdFont cjk14Font(&ricky_headline_14_medium);
 EpdFont cjk16Font(&ricky_title_16_bold);
 EpdFont designCaptionFont(&ricky_caption_10_regular);
+#endif
 EpdFont designDisplayFont(&ricky_display_23_bold);
 EpdFont bookTitleFont(&ricky_book_12_medium);
 #endif
@@ -560,6 +624,16 @@ bool setupDisplayAndFonts(bool seamless = false, bool logSdFontLoadHeap = false)
   // deferred. Idempotent, so any other path that initialises the panel is safe.
   gpio.beginInput();
 #endif
+#if RICKYOS_METALIO_FONT_METADATA
+  const bool metadataReady = NativeFontMetadata::initialize(metalio_body_10_regular, metalio_book_10_medium);
+  nativeBodyFont.data = metadataReady ? &metalio_body_10_regular : &cjk12Data;
+  bookTitleFont.data = metadataReady ? &metalio_book_10_medium : &cjk12Data;
+#if RICKYOS_SYSTEM_UI_FONTS
+  cjk14Font.data = cjk16Font.data = designCaptionFont.data = nativeBodyFont.data;
+#endif
+#else
+  constexpr bool metadataReady = true;
+#endif
   renderer.begin();
   activityManager.begin();
   LOG_DBG("MAIN", "Display initialized");
@@ -647,9 +721,10 @@ bool setupDisplayAndFonts(bool seamless = false, bool logSdFontLoadHeap = false)
             static_cast<unsigned>(ESP.getMaxAllocHeap()));
   }
   sdFontSystem.begin(renderer);
+  systemUiFonts::ensureLoaded(renderer);
 
   LOG_DBG("MAIN", "Fonts setup");
-  return fontDecompressorReady;
+  return fontDecompressorReady && metadataReady;
 }
 
 void continueChineseFontInstall(const uint8_t expectedPointSize) {
@@ -1212,7 +1287,8 @@ void loop() {
   }
 #endif
 #if FREEINK_DEVICE_METALIO_PLUS
-  gpio.updateHapticFeedback(activityManager.standbyShowing() ? 0 : SETTINGS.plusTouchFeedback);
+  gpio.updateHapticFeedback(activityManager.standbyShowing() ? 0 : SETTINGS.plusTouchFeedback,
+                           activityManager.standbyShowing() ? 0 : SETTINGS.plusSideKeyFeedback);
 #elif FREEINK_CAP_HAPTIC
   gpio.updateHapticFeedback(SETTINGS.hapticFeedbackLevel);
 #endif
@@ -1299,8 +1375,21 @@ void loop() {
 
   // Handle incoming serial commands,
   // nb: we use logSerial from logging to avoid deprecation warnings
+#if RICKYOS_PLUS_BLE_DIAG
+  char bleDiagnosticLine[48];
+  const bool hasBleDiagnosticLine = readPlusBleDiagnosticLine(bleDiagnosticLine, sizeof(bleDiagnosticLine));
+  if (hasBleDiagnosticLine) {
+    // Serial automation bypasses touch activity. Keep its diagnostic session at
+    // the same CPU performance as real page entry; never compile this into a
+    // normal candidate, where the user's usual idle/sleep policy must apply.
+    static HalPowerManager::Lock diagnosticPowerLock;
+  }
+  if (hasBleDiagnosticLine || logSerial.available() > 0) {
+    String line = hasBleDiagnosticLine ? String(bleDiagnosticLine) : logSerial.readStringUntil('\n');
+#else
   if (logSerial.available() > 0) {
     String line = logSerial.readStringUntil('\n');
+#endif
     if (line.startsWith("CMD:")) {
       String cmd = line.substring(4);
       cmd.trim();
@@ -1391,6 +1480,35 @@ void loop() {
         logSerial.write(buf, bufferSize);
         logSerial.printf("SCREENSHOT_END\n");
       }
+#if RICKYOS_PLUS_BLE_DIAG
+      else if (cmd == "BLE_DIAG_OPEN") {
+        activityManager.cancelIdleRender("BLE diagnostic open", true);
+        RenderLock lock;
+        SETTINGS.bluetoothEnabled = false;  // Test session only; never persist this override.
+        bleinput::stop();
+        if (!RECENT_BOOKS.getBooks().empty()) {
+          activityManager.goToReader(RECENT_BOOKS.getBooks().front().path);
+          LOG_INF("BTTEST", "Opening recent book with BLE stopped");
+        } else {
+          LOG_ERR("BTTEST", "No recent book for reader memory test");
+        }
+      } else if (cmd == "BLE_DIAG_START") {
+        // Match the real input path: cancel glyph/page warm-up before waiting
+        // for RenderLock, otherwise this command can wait behind the idle pass.
+        activityManager.cancelIdleRender("BLE diagnostic start", true);
+        LOG_INF("BTTEST", "Starting after idle cancellation");
+        RenderLock lock;
+        SETTINGS.bluetoothEnabled = true;
+        const auto result = bleinput::ensureStarted(renderer, activityManager.isReaderActivity()
+                                                                ? bleinput::StartContext::Reader
+                                                                : bleinput::StartContext::Explicit);
+        LOG_INF("BTTEST", "start result=%u reader=%u", static_cast<unsigned>(result),
+                activityManager.isReaderActivity());
+      } else if (cmd == "BLE_DIAG_HOME") {
+        activityManager.goToInxRecent();
+        LOG_INF("BTTEST", "Returning home with existing BLE host");
+      }
+#endif
     }
   }
 

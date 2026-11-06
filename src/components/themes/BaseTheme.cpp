@@ -269,9 +269,8 @@ void BaseTheme::drawBatteryRight(const GfxRenderer& renderer, Rect rect, const b
   const uint16_t percentage = powerManager.getBatteryPercentage();
   if (percentage > 100) return;
   // Align the visible numeric ink, rather than the font's line box/leading.
-  const int y = UiHighDpiProfile::enabled
-                    ? ricky::battery::iconTop(renderer, numericFontId, rect.y, rect.height)
-                    : rect.y + 6;
+  const int y =
+      UiHighDpiProfile::enabled ? ricky::battery::iconTop(renderer, numericFontId, rect.y, rect.height) : rect.y + 6;
   const int gap = UiHighDpiProfile::enabled ? UiHighDpiProfile::controlGap : batteryPercentSpacing;
 
   if (showPercentage) {
@@ -578,8 +577,7 @@ void BaseTheme::applyHeaderStatus(const GfxRenderer& renderer, freeink::ui::Head
   // strings only need to outlive the fui::header() call that consumes them.
   static char percentText[8];
   status.battery.label = "";
-  if (percentage <= 100 &&
-      SETTINGS.hideBatteryPercentage != CrossPointSettings::HIDE_BATTERY_PERCENTAGE::HIDE_ALWAYS) {
+  if (percentage <= 100 && SETTINGS.hideBatteryPercentage != CrossPointSettings::HIDE_BATTERY_PERCENTAGE::HIDE_ALWAYS) {
     snprintf(percentText, sizeof(percentText), "%u%%", static_cast<unsigned>(percentage));
     status.battery.label = percentText;
   }
@@ -631,7 +629,8 @@ void BaseTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* t
 
 void BaseTheme::drawHeaderWithStyle(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle,
                                     const bool backButton, const bool upstreamStyle, const int trailingReserve) {
-  if (UiHighDpiProfile::enabled && SETTINGS.uiTheme == CrossPointSettings::INX && backButton && title) {
+  if ((UiHighDpiProfile::enabled || ricky::panel::nativeSmall) && SETTINGS.uiTheme == CrossPointSettings::INX &&
+      backButton && title) {
     namespace ds = ricky::ds;
     namespace fui = freeink::ui;
     const int statusHeight = std::min<int>(ds::layout::kStatusBarHeight, rect.height);
@@ -1145,14 +1144,16 @@ void BaseTheme::drawRickyReaderChrome(GfxRenderer& renderer, const float bookPro
                                       const bool estimated, const bool header, const Rect* area) {
   namespace ds = ricky::ds;
   const auto sb = SETTINGS.statusBarSpec();
+  const int numericFont = ricky::panel::nativeSmall ? RickyDesignUi::CAPTION : STATUS_NUMERIC_FONT_ID;
   const Rect safe = area ? *area : UITheme::getInstance().getScreenSafeArea(renderer);
   const int left = safe.x + ds::layout::kReaderChromeInset;
   const int right = safe.x + safe.width - ds::layout::kReaderChromeInset;
   if (right <= left) return;
   const GfxRenderer::ClipScope clip(renderer, safe.x, safe.y, safe.width, safe.height);
   const auto chrome = readerChrome::compactLayout(
-      std::max(renderer.getLineHeight(RickyDesignUi::CAPTION), renderer.getLineHeight(STATUS_NUMERIC_FONT_ID)),
-      sb.headerLaneVisible(), sb.footerLaneVisible(), sb.showsProgressBar(), sb.progressBarHeightPx);
+      std::max(renderer.getLineHeight(RickyDesignUi::CAPTION), renderer.getLineHeight(numericFont)),
+      sb.headerLaneVisible(), sb.footerLaneVisible(), sb.showsProgressBar(), sb.progressBarHeightPx,
+      ricky::panel::nativeSmall);
   // Bookmark and Bluetooth marks lead the footer row; with the footer hidden they lead
   // the header instead, since the text then runs down to where the footer was.
   const bool marksInHeader = !sb.footerLaneVisible();
@@ -1170,35 +1171,37 @@ void BaseTheme::drawRickyReaderChrome(GfxRenderer& renderer, const float bookPro
     // Retain clock visibility/12-hour policy. Its old side setting remains
     // meaningful: a right clock precedes the battery, a left clock leads.
     if (sb.showBattery) {
-      int width = UiHighDpiProfile::batteryWidth;
+      int width = ricky::panel::pixels(UiHighDpiProfile::batteryWidth, 24);
       if (sb.showBatteryPercent) {
         char percent[8];
         snprintf(percent, sizeof(percent), "%u%%", powerManager.getBatteryPercentage());
-        width += batteryPercentSpacing + renderer.getTextWidth(STATUS_NUMERIC_FONT_ID, percent);
+        width += batteryPercentSpacing + renderer.getTextWidth(numericFont, percent);
       }
       titleRight -= width;
       GUI.drawBatteryLeft(renderer,
-                          Rect{titleRight, y + 4, UiHighDpiProfile::batteryWidth, UiHighDpiProfile::batteryHeight},
+                          Rect{titleRight, y + 4, ricky::panel::pixels(UiHighDpiProfile::batteryWidth, 24),
+                               ricky::panel::pixels(UiHighDpiProfile::batteryHeight, 16)},
                           sb.showBatteryPercent);
       titleRight -= ds::space::k4;
     }
     if (sb.showsClock()) {
       char time[9];
       if (!TimeUtils::formatCurrentTime(time, sizeof(time), sb.clock12h)) snprintf(time, sizeof(time), "--:--");
-      const int width = renderer.getTextWidth(STATUS_NUMERIC_FONT_ID, time);
+      const int width = renderer.getTextWidth(numericFont, time);
       const bool clockRight = sb.clockMode == CrossPointSettings::STATUS_BAR_CLOCK_RIGHT;
       const int x = clockRight ? titleRight - width : titleLeft;
-      renderer.drawText(STATUS_NUMERIC_FONT_ID, x, y, time);
+      renderer.drawText(numericFont, x, y, time);
       if (clockRight)
         titleRight = x - ds::space::k4;
       else
         titleLeft += width + ds::space::k4;
     }
     if (title && *title && titleRight > titleLeft) {
-      RickyDesignUi::secondaryText(renderer,
-                                   {static_cast<int16_t>(titleLeft), static_cast<int16_t>(y),
-                                    static_cast<int16_t>(titleRight - titleLeft), static_cast<int16_t>(chrome.rowHeight)},
-                                   title, RickyDesignUi::CAPTION, false, freeink::ui::TextAlign::Center);
+      RickyDesignUi::secondaryText(
+          renderer,
+          {static_cast<int16_t>(titleLeft), static_cast<int16_t>(y), static_cast<int16_t>(titleRight - titleLeft),
+           static_cast<int16_t>(chrome.rowHeight)},
+          title, RickyDesignUi::CAPTION, false, freeink::ui::TextAlign::Center);
     }
   }
   // The footer row's free span, between the page count and the percent: the bar's place.
@@ -1217,13 +1220,14 @@ void BaseTheme::drawRickyReaderChrome(GfxRenderer& renderer, const float bookPro
     if (sb.showChapterPageCount) {
       char pages[32];
       snprintf(pages, sizeof(pages), "%s%d / %d", estimated ? "~" : "", currentPage, pageCount);
-      RickyDesignUi::secondaryText(renderer,
-                                   {static_cast<int16_t>(counterLeft), static_cast<int16_t>(textY),
-                                    static_cast<int16_t>((right - counterLeft) / 2), static_cast<int16_t>(chrome.rowHeight)},
-                                   pages, RickyDesignUi::CAPTION);
+      RickyDesignUi::secondaryText(
+          renderer,
+          {static_cast<int16_t>(counterLeft), static_cast<int16_t>(textY),
+           static_cast<int16_t>((right - counterLeft) / 2), static_cast<int16_t>(chrome.rowHeight)},
+          pages, RickyDesignUi::CAPTION);
       counterLeft += renderer.getTextWidth(RickyDesignUi::fontFor(renderer, RickyDesignUi::CAPTION, pages), pages);
     }
-    barLeft = counterLeft == left ? left : counterLeft + ds::space::k4;
+    if (!ricky::panel::nativeSmall) barLeft = counterLeft == left ? left : counterLeft + ds::space::k4;
     if (sb.showBookProgressPercent) {
       char percent[12];
       snprintf(percent, sizeof(percent), "%.0f%%", std::clamp(bookProgress, 0.0f, 100.0f));
@@ -1231,8 +1235,10 @@ void BaseTheme::drawRickyReaderChrome(GfxRenderer& renderer, const float bookPro
                                    {static_cast<int16_t>(left), static_cast<int16_t>(textY),
                                     static_cast<int16_t>(right - left), static_cast<int16_t>(chrome.rowHeight)},
                                    percent, RickyDesignUi::CAPTION, false, freeink::ui::TextAlign::Right);
-      barRight = right - renderer.getTextWidth(RickyDesignUi::fontFor(renderer, RickyDesignUi::CAPTION, percent),
-                                               percent) - ds::space::k4;
+      if (!ricky::panel::nativeSmall)
+        barRight = right -
+                   renderer.getTextWidth(RickyDesignUi::fontFor(renderer, RickyDesignUi::CAPTION, percent), percent) -
+                   ds::space::k4;
     }
   }
   if (sb.showsProgressBar()) {
@@ -1251,8 +1257,7 @@ void BaseTheme::drawRickyReaderChrome(GfxRenderer& renderer, const float bookPro
 #endif
       RickyDesignUi::progress(
           renderer,
-          {static_cast<int16_t>(barLeft),
-           static_cast<int16_t>(safe.y + safe.height - height - chrome.progressBottom),
+          {static_cast<int16_t>(barLeft), static_cast<int16_t>(safe.y + safe.height - height - chrome.progressBottom),
            static_cast<int16_t>(barRight - barLeft), static_cast<int16_t>(height)},
           percent, false, plusReaderLineTrack);
     }

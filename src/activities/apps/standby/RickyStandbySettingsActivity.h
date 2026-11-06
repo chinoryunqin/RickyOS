@@ -10,9 +10,8 @@
 // 壁纸: what the screen shows in Standby, once powered off and under the reading page,
 // as one page with a live preview. Standby tab: the preview with the corner, fit and
 // filter choices beside it, the five styles as cards, the picture strip (or the
-// transparent overlay's controls), and when Standby starts. Power-off tab: the
-// preview, the four power-off screens as cards, and when Standby powers off by
-// itself. Reading tab: a sample page on the background, the paper (a picture or ruled
+// transparent overlay's controls). Power-off tab: the preview and four power-off
+// screens as cards. Reading tab: a sample page on the background, the paper (a picture or ruled
 // lines, grid or dots), its shade, and the picture.
 // Every control is one stop on the tab ring, in reading order.
 class RickyStandbySettingsActivity final : public UiTabListActivity {
@@ -49,13 +48,11 @@ class RickyStandbySettingsActivity final : public UiTabListActivity {
     AllPictures,
     ChooseSticker,
     ClearSticker,
-    AutoStandby,
     PowerOff0,
     PowerOff1,
     PowerOff2,
     PowerOff3,
     ChangePowerOffPicture,
-    AutoPowerOff,
     ReadingPaper0,
     ReadingPaper1,
     ReadingPaper2,
@@ -65,6 +62,7 @@ class RickyStandbySettingsActivity final : public UiTabListActivity {
     ReadingShade2,
     ReadingShade3,
     ChangeReadingPicture,
+    CalendarDirection,
     ItemKinds
   };
   static constexpr int kStripTiles = 4;
@@ -100,7 +98,6 @@ class RickyStandbySettingsActivity final : public UiTabListActivity {
   int tab_ = StandbyTab;
   Item items_[ItemKinds] = {};
   int itemCount_ = 0;
-  char minutes_[24] = {};  // the auto-standby value when it is not one of the presets
   char allPictures_[24] = {};
 
   // The picture strip: the gallery's first pictures, thumbnails made in the background.

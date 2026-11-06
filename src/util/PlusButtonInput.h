@@ -3,7 +3,7 @@
 
 namespace plus_keys {
 // Stable persisted values. Default retains the board/navigation mapping.
-enum Action : uint8_t { Default, Ignore, Back, Confirm, Previous, Next, Home, Menu, Refresh, Light, Control, Count };
+enum Action : uint8_t { Default, Ignore, Back, Confirm, Previous, Next, Home, Menu, Refresh, Light, Control, Bookmark, HoldingHand, Count };
 constexpr unsigned KEY_COUNT = 5;
 constexpr unsigned FIELD_COUNT = KEY_COUNT * 2;
 constexpr uint32_t HOLD_MS = 600;

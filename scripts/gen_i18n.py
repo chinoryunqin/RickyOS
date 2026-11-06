@@ -707,36 +707,26 @@ def generate_strings_cpp(
         lang_strings = [translations[key][lang_idx] for key in string_keys]
         is_english = lang_idx == 0
 
+        offsets: List[int] = []
+        current_offset = 0
+        blob_strings = []
+        string_offsets: Dict[str, int] = {}
+        for i, text in enumerate(lang_strings):
+            if not is_english and text == en_strings[i]:
+                offsets.append(en_offsets[i] | 0x8000)
+                continue
+            if text not in string_offsets:
+                string_offsets[text] = current_offset
+                current_offset += len(text.encode("utf-8")) + 1
+                blob_strings.append(text)
+            offsets.append(string_offsets[text])
+        if current_offset > 0x7FFF:
+            raise ValueError(
+                f"Language {code}: blob size ({current_offset} bytes) exceeds "
+                "15-bit offset limit (32767)"
+            )
         if is_english:
-            # Precompute byte offsets (UTF-8 encoded, +1 per string for null terminator)
-            offsets: List[int] = []
-            current_offset = 0
-            for s in lang_strings:
-                offsets.append(current_offset)
-                current_offset += len(s.encode("utf-8")) + 1
-            if current_offset > 0x7FFF:
-                raise ValueError(
-                    f"Language {code}: blob size ({current_offset} bytes) exceeds "
-                    "15-bit offset limit (32767)"
-                )
             en_offsets = list(offsets)
-            blob_strings = lang_strings
-        else:
-            offsets = []
-            current_offset = 0
-            blob_strings = []
-            for i, (s, en_s) in enumerate(zip(lang_strings, en_strings)):
-                if s == en_s:
-                    offsets.append(en_offsets[i] | 0x8000)
-                else:
-                    offsets.append(current_offset)
-                    current_offset += len(s.encode("utf-8")) + 1
-                    blob_strings.append(s)
-            if current_offset > 0x7FFF:
-                raise ValueError(
-                    f"Language {code}: blob size ({current_offset} bytes) exceeds "
-                    "15-bit offset limit (32767)"
-                )
 
         # Flat string data blob — all strings concatenated with \0 separators.
         lines.append(f"const char STRINGS_{code}_DATA[] =")

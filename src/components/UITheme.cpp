@@ -1,3 +1,4 @@
+#include "SystemUiFonts.h"
 #include "UITheme.h"
 
 #include <EpdFont.h>
@@ -75,8 +76,18 @@ const ThemeMetrics& UITheme::getMetrics() const {
   // Touch availability can flip after static construction, and the setting can
   // change while this screen is open, so cache against the effective policy.
   const bool showButtonHints = currentTheme->buttonHintsVisible();
-  if (!metricsValid || showButtonHints != metricsForButtonHints) {
+  if (!metricsValid || showButtonHints != metricsForButtonHints || metricsScale != systemUiFonts::scale()) {
     adjustedMetrics = *currentMetrics;
+    metricsScale = systemUiFonts::scale();
+    if (metricsScale > 100) {
+      const auto grow = [this](int value) { return (value * metricsScale + 99) / 100; };
+      adjustedMetrics.listRowHeight = grow(adjustedMetrics.listRowHeight);
+      adjustedMetrics.listWithSubtitleRowHeight = grow(adjustedMetrics.listWithSubtitleRowHeight);
+      adjustedMetrics.menuRowHeight = grow(adjustedMetrics.menuRowHeight);
+      adjustedMetrics.headerHeight = grow(adjustedMetrics.headerHeight);
+      adjustedMetrics.tabBarHeight = grow(adjustedMetrics.tabBarHeight);
+      adjustedMetrics.optionPopupItemSpacing = grow(adjustedMetrics.optionPopupItemSpacing);
+    }
     // InxMetrics already applies the hardware preset, then the product's
     // design tokens. Applying the old preset again silently undid margins,
     // subpage header height, keyboard size and row cadence at runtime.

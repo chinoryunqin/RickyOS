@@ -313,14 +313,17 @@ uint8_t HalGPIO::physicalPressedMask() const { return inputMgr.physicalPressedMa
 
 #if FREEINK_DEVICE_METALIO_PLUS
 bool HalGPIO::wasTouchContactPressed() const { return inputMgr.wasTouchContactPressed(); }
-void HalGPIO::updateHapticFeedback(uint8_t enabled) {
-  if (!enabled) { plus_haptic::stop(); return; }
+void HalGPIO::updateHapticFeedback(uint8_t touchEnabled, uint8_t sideKeysEnabled) {
+  if (!touchEnabled && !sideKeysEnabled) { plus_haptic::stop(); return; }
   float x, y;
-  // Completed taps exclude drags and screen holds. Cover keys use independent
-  // physical/contact edges, before the user's logical remapping.
-  const bool key = wasHomeKeyPressed() || wasPressed(BTN_BACK) || wasPressed(BTN_CONFIRM) ||
-                   wasPressed(BTN_LEFT) || wasPressed(BTN_RIGHT) || wasPressed(BTN_UP) || wasPressed(BTN_DOWN);
-  if (key || (inputMgr.wasTouchTap(x, y) && inputMgr.lastTouchHeldMs() < 500)) plus_haptic::pulse();
+  // The FT6336 bottom cover keys report LEFT/RIGHT and capacitive Home;
+  // they belong to touch feedback, even though two are exposed as button IDs.
+  // The travel keys are AI/CONFIRM and expander UP/DOWN. Filter raw contacts
+  // before remapping so their feedback follows the hardware, not its action.
+  const bool key = sideKeysEnabled && (wasPressed(BTN_CONFIRM) || wasPressed(BTN_UP) || wasPressed(BTN_DOWN));
+  const bool touch = touchEnabled && (wasHomeKeyPressed() || wasPressed(BTN_LEFT) || wasPressed(BTN_RIGHT) ||
+      wasPressed(BTN_BACK) || (inputMgr.wasTouchTap(x, y) && inputMgr.lastTouchHeldMs() < 500));
+  if (key || touch) plus_haptic::pulse();
 }
 void HalGPIO::stopHapticFeedback() { plus_haptic::stop(); }
 void HalGPIO::pulseHapticFeedback() { plus_haptic::pulse(); }

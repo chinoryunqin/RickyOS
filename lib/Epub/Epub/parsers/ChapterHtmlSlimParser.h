@@ -1,12 +1,13 @@
 #pragma once
+#include "RecoveringHtmlStream.h"
 #if __has_include(<BoardConfig.h>)
 #include <BoardConfig.h>
 #endif
 
-#include <algorithm>
 #include <HalStorage.h>
 #include <expat.h>
 
+#include <algorithm>
 #include <array>
 #include <climits>
 #include <functional>
@@ -62,7 +63,7 @@ class ChapterHtmlSlimParser {
   }
   int fontId;
   float lineCompression;
-  uint8_t extraParagraphSpacing;  // 0=off, 1..5=0.5x/0.75x/1x/1.25x/1.5x line height
+  uint16_t paragraphSpacingPercent;  // 0..400%, 100% keeps authored paragraph gaps
   uint8_t firstLineIndent;
   uint8_t paragraphIndentSpaces = 3;
   int8_t characterSpacing = 0;
@@ -182,6 +183,8 @@ class ChapterHtmlSlimParser {
   bool checkMemory();
   bool insideBody = false;
   bool htmlEnded_ = false;
+  bool syntaxFailed_ = false;
+  std::unique_ptr<RecoveringHtmlStream> recovery_;
   bool syntheticCharacterData = false;
   uint16_t nonVisibleTextDepth = 0;
 
@@ -219,6 +222,13 @@ class ChapterHtmlSlimParser {
   void addTableRowSeparator();
   void setCurrentPageVisibleOffset(uint32_t offset);
   bool allocatePage();
+#if RICKYOS_WEBP
+  // One document canvas image, lazily extracted through the existing ImageBlock path.
+  std::string bodyBackgroundSource_, bodyBackgroundCache_;
+  int16_t bodyBackgroundWidth_ = 0, bodyBackgroundHeight_ = 0;
+  void configureBodyBackground(const CssStyle& style);
+  bool addBodyBackgroundToPage();
+#endif
   void makePages();
   static EpdFontFamily::Style fontStyleForTextDecoration(CssTextDecoration decoration);
   static void applyDirectionToEntry(StyleStackEntry& entry, const CssStyle& css);
@@ -236,7 +246,7 @@ class ChapterHtmlSlimParser {
  public:
   explicit ChapterHtmlSlimParser(
       std::shared_ptr<Epub> epub, const std::string& filepath, GfxRenderer& renderer, const int fontId,
-      const float lineCompression, const uint8_t extraParagraphSpacing, const uint8_t firstLineIndent,
+      const float lineCompression, const uint16_t paragraphSpacingPercent, const uint8_t firstLineIndent,
       const uint8_t paragraphAlignment, const uint16_t viewportWidth, const uint16_t viewportHeight,
       const bool hyphenationEnabled, const bool focusReadingEnabled,
       const std::function<void(std::unique_ptr<Page>, uint16_t, uint16_t, uint32_t)>& completePageFn,
@@ -250,7 +260,7 @@ class ChapterHtmlSlimParser {
         renderer(renderer),
         fontId(fontId),
         lineCompression(lineCompression),
-        extraParagraphSpacing(extraParagraphSpacing),
+        paragraphSpacingPercent(paragraphSpacingPercent),
         firstLineIndent(firstLineIndent),
         paragraphAlignment(paragraphAlignment),
         viewportWidth(viewportWidth),
@@ -294,7 +304,8 @@ class ChapterHtmlSlimParser {
     ioFailed_ = true;
     stopParsing();
   }
-  bool beginParse();
+  bool syntaxFailed() const { return syntaxFailed_; }
+  bool beginParse(bool recoverHtml = false);
   ParseStatus parseStep();
   bool finishParse();  // flush the trailing page and tear down; returns true
   void abortParse();   // tear down without flushing (error / abandon)

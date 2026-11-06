@@ -13,6 +13,7 @@
 #include "RecentBooksStore.h"
 #include "activities/Activity.h"
 #include "components/RickyHomeUi.h"
+#include "util/BookCoverLoader.h"
 
 #if defined(BOARD_HAS_PSRAM) && !defined(SIMULATOR) && !defined(CROSSPOINT_EMULATED)
 #include <cstddef>
@@ -58,6 +59,11 @@ class InxRecentActivity final : public Activity {
   // Set by render() when a cover may still need a thumbnail; loop() prepares it
   // after that frame is on the panel instead of holding the frame back.
   std::atomic<bool> coverWorkPending{false};
+  BookCoverLoader::ThumbnailJob coverJob;
+  unsigned long coverWorkSince = 0;
+  int coverJobIndex = -1;
+  int coverJobHeight = 0;
+  std::array<bool, RecentBooksStore::MAX_RECENT_BOOKS> visibleCovers{};
   std::unique_ptr<RickyHomeUi> rickyHome;
   GfxRenderer* coverRenderer = nullptr;  // Render-task-only optional design canvas.
 
@@ -95,6 +101,8 @@ class InxRecentActivity final : public Activity {
 
   void onEnter() override;
   void onExit() override;
+  bool readyToLeave() const override { return !coverJob.running(); }
+  void prepareForSleep() override { coverJob.wait(); }
   void loop() override;
   void render(RenderLock&&) override;
   MainTab mainTab() const override { return MainTab::Recent; }

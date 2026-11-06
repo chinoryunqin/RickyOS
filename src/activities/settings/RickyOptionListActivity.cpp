@@ -35,7 +35,6 @@ const RickyOptionList& gestures() {
   static const RickyOptionRow rows[] = {
       {StrId::STR_RICKY_GESTURE_BACK, &SETTINGS.rickyGestureBack, nullptr, 0, StrId::STR_RICKY_GESTURE_GLOBAL},
       {StrId::STR_RICKY_GESTURE_HOME, &SETTINGS.rickyGestureHome},
-      {StrId::STR_RICKY_STANDBY_SWIPE_UNLOCK, &SETTINGS.standbySwipeUnlock},
       {StrId::STR_RICKY_GESTURE_CONTROL, &SETTINGS.rickyGestureControl},
       {StrId::STR_RICKY_GESTURE_STATUS, &SETTINGS.rickyGestureStatus},
       {StrId::STR_RICKY_GESTURE_TOUCH_TURN, &SETTINGS.touchReaderControls, nullptr, 0,
@@ -56,6 +55,7 @@ const RickyOptionList& keys() {
       // The Plus sets each key's short/long press on its own page; the Read Pico rows
       // (left/right page keys, long press, middle-key standby) duplicated those there.
       {StrId::STR_PLUS_TOUCH_FEEDBACK, &SETTINGS.plusTouchFeedback},
+      {StrId::STR_PLUS_SIDE_KEY_FEEDBACK, &SETTINGS.plusSideKeyFeedback},
 #else
       {StrId::STR_RICKY_KEYS_SIDE, &SETTINGS.sideButtonLayout, kSideKeyLabels, countOf(kSideKeyLabels)},
       {StrId::STR_RICKY_KEYS_LONG_PRESS, &SETTINGS.longPressButtonBehavior, kLongPressLabels,
@@ -67,7 +67,7 @@ const RickyOptionList& keys() {
 #if !((defined(FREEINK_DEVICE_EEGO_A4) && FREEINK_DEVICE_EEGO_A4) || defined(SIMULATOR_DEVICE_EEGO_A4)) && \
     !FREEINK_DEVICE_METALIO_PLUS
   // A Home key device has no Back-to-Standby shortcut on Home: drop its row. The Plus
-  // list above never had it (its one row is touch feedback, which must stay).
+  // list above never had it (its feedback switches must stay).
   static const RickyOptionList homeKeyList{StrId::STR_RICKY_KEYS, rows + 1, static_cast<int>(std::size(rows)) - 1};
   if (BoardConfig::hasHomeKey()) return homeKeyList;
 #endif

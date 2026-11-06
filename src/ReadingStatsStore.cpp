@@ -17,6 +17,9 @@
 
 namespace {
 constexpr char READING_STATS_FILE_JSON[] = "/.crosspoint/reading_stats.json";
+constexpr char READING_STATS_BACKUP[] = "/.crosspoint/reading_stats.json.bak";
+constexpr char READING_STATS_TEMP[] = "/.crosspoint/reading_stats.json.tmp";
+constexpr char READING_STATS_DAMAGED[] = "/.crosspoint/reading_stats.json.bad";
 constexpr unsigned long MAX_READING_GAP_MS = 30UL * 60UL * 1000UL;
 constexpr unsigned long SESSION_HEARTBEAT_MS = 60UL * 1000UL;
 constexpr unsigned long CHECKPOINT_INTERVAL_MS = 10UL * 60UL * 1000UL;
@@ -560,23 +563,12 @@ void ReadingStatsStore::markDirty() {
 }
 
 bool ReadingStatsStore::shouldSaveCheckpoint() const {
-  if (!dirty || !activeSession.active) {
+  if (!dirty || !activeSession.active || persistence == Persistence::Blocked) {
     return false;
   }
   const unsigned long nowMs = millis();
   return (nowMs - dirtySinceMs) >= CHECKPOINT_INTERVAL_MS &&
          (lastSaveAttemptMs == 0 || (nowMs - lastSaveAttemptMs) >= CHECKPOINT_RETRY_INTERVAL_MS);
-}
-
-bool ReadingStatsStore::persistToFile(const char* path) const {
-  Storage.mkdir("/.crosspoint");
-  lastSaveAttemptMs = millis();
-  const bool saved = JsonSettingsIO::saveReadingStats(*this, path);
-  if (saved) {
-    dirty = false;
-    dirtySinceMs = 0;
-  }
-  return saved;
 }
 
 void ReadingStatsStore::rebuildSummaryCache() const {
@@ -1071,8 +1063,7 @@ bool ReadingStatsStore::importFromFile(const std::string& path) {
     return false;
   }
 
-  const bool loaded = JsonSettingsIO::loadReadingStatsFromFile(*this, path.c_str());
-  if (!loaded) {
+  if (JsonSettingsIO::loadReadingStatsFromFile(*this, path.c_str()) != JsonSettingsIO::ReadingStatsLoadResult::Loaded) {
     return false;
   }
 
@@ -1097,25 +1088,72 @@ bool ReadingStatsStore::importFromFile(const std::string& path) {
 }
 
 bool ReadingStatsStore::saveToFile() const {
-  if (!dirty && Storage.exists(READING_STATS_FILE_JSON)) {
+  if (!dirty) {
     return true;
   }
-  return persistToFile(READING_STATS_FILE_JSON);
+  const HalStorage::StorageLock lock;
+  lastSaveAttemptMs = millis();
+  if (persistence == Persistence::Blocked ||
+      (persistence == Persistence::NewFile &&
+       (Storage.exists(READING_STATS_FILE_JSON) || Storage.exists(READING_STATS_BACKUP) ||
+        Storage.exists(READING_STATS_TEMP)))) {
+    LOG_ERR("RST", "Reading stats save blocked to preserve existing history");
+    return false;
+  }
+  Storage.mkdir("/.crosspoint");
+  persistence = Persistence::Ready;
+  if (!JsonSettingsIO::saveReadingStats(*this, READING_STATS_FILE_JSON, READING_STATS_BACKUP)) {
+    return false;
+  }
+  dirty = false;
+  dirtySinceMs = 0;
+  return true;
 }
 
 bool ReadingStatsStore::loadFromFile() {
-  const std::string tempPath = std::string(READING_STATS_FILE_JSON) + ".tmp";
-  if (!Storage.exists(READING_STATS_FILE_JSON) && Storage.exists(tempPath.c_str())) {
-    if (Storage.rename(tempPath.c_str(), READING_STATS_FILE_JSON)) {
-      LOG_DBG("RST", "Recovered reading_stats.json from interrupted temp file");
-    }
-  }
-
-  if (!Storage.exists(READING_STATS_FILE_JSON)) {
+  using JsonSettingsIO::ReadingStatsLoadResult;
+  const HalStorage::StorageLock lock;
+  persistence = Persistence::Blocked;
+  if (!Storage.ready()) {
+    LOG_ERR("RST", "Storage unavailable while loading reading stats");
     return false;
   }
 
-  const bool loaded = JsonSettingsIO::loadReadingStatsFromFile(*this, READING_STATS_FILE_JSON);
+  const bool primaryExists = Storage.exists(READING_STATS_FILE_JSON);
+  const auto primaryResult = primaryExists ? JsonSettingsIO::loadReadingStatsFromFile(*this, READING_STATS_FILE_JSON)
+                                           : ReadingStatsLoadResult::Unavailable;
+  bool loaded = primaryResult == ReadingStatsLoadResult::Loaded;
+  if (loaded) {
+    persistence = Persistence::Ready;
+  } else {
+    bool foundFile = primaryExists;
+    for (const char* path : {READING_STATS_BACKUP, READING_STATS_TEMP}) {
+      if (!Storage.exists(path)) {
+        continue;
+      }
+      foundFile = true;
+      if (JsonSettingsIO::loadReadingStatsFromFile(*this, path) != ReadingStatsLoadResult::Loaded) {
+        continue;
+      }
+      loaded = true;
+      // Keep an unreadable primary intact. Only move it aside when its bytes
+      // are known to be malformed and a recovery copy has been parsed.
+      if ((!primaryExists || (primaryResult == ReadingStatsLoadResult::Invalid &&
+                              !Storage.exists(READING_STATS_DAMAGED) &&
+                              Storage.rename(READING_STATS_FILE_JSON, READING_STATS_DAMAGED))) &&
+          Storage.rename(path, READING_STATS_FILE_JSON)) {
+        persistence = Persistence::Ready;
+        LOG_DBG("RST", "Recovered reading stats from %s", path);
+      }
+      break;
+    }
+    if (!foundFile) {
+      persistence = Persistence::NewFile;
+    } else if (persistence == Persistence::Blocked) {
+      LOG_ERR("RST", "Could not restore reading stats on disk; keeping existing files");
+    }
+  }
+
   if (loaded) {
     const bool needsSave = dirty;
     normalizeReadingDays(readingDays);
@@ -1182,13 +1220,9 @@ bool ReadingStatsStore::releaseMemoryForNetwork() {
 }
 
 bool ReadingStatsStore::reloadAfterNetwork() {
-  if (!Storage.exists(READING_STATS_FILE_JSON)) {
-    return true;
-  }
-
   const bool loaded = loadFromFile();
-  if (!loaded) {
+  if (!loaded && persistence != Persistence::NewFile) {
     LOG_ERR("RST", "Failed to reload reading stats after network operation");
   }
-  return loaded;
+  return loaded || persistence == Persistence::NewFile;
 }

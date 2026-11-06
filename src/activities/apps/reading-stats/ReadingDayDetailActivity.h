@@ -16,7 +16,7 @@ class ReadingDayDetailActivity final : public UiListActivity {
   int listCount() const override { return static_cast<int>(entries.size()); }
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
-  void drawChrome() override;
+  const char* headerTitle() const override;
   void drawFooter() override;
 
   void refreshEntries();
@@ -29,5 +29,4 @@ class ReadingDayDetailActivity final : public UiListActivity {
   std::string dateLabel;
   std::string totalReadingText;
   std::string bookCountText;
-  std::string topBookTitle;
 };

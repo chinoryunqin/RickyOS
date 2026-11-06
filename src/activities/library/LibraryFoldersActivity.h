@@ -9,8 +9,8 @@
 // Picks the folder the Library shelf shows, one level at a time: a folder with
 // subfolders opens, Back goes up, and the first row takes the folder being viewed
 // (with everything under it). Counts include subfolders. The result is
-// FilePathResult{path}, "" for every folder. The caller builds the folder list from
-// the open index, so this screen never touches the card.
+// FilePathResult{path}, "" for every folder. The caller merges indexed paths with enrolled
+// folder sources, so this screen never touches the card.
 class LibraryFoldersActivity final : public UiListActivity {
  public:
   struct Folder {

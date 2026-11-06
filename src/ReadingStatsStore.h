@@ -52,9 +52,9 @@ struct ReadingSessionLogEntry {
 
 class ReadingStatsStore;
 namespace JsonSettingsIO {
-bool saveReadingStats(const ReadingStatsStore& store, const char* path);
-bool loadReadingStats(ReadingStatsStore& store, const char* json);
-bool loadReadingStatsFromFile(ReadingStatsStore& store, const char* path);
+enum class ReadingStatsLoadResult;
+bool saveReadingStats(const ReadingStatsStore& store, const char* path, const char* backupPath);
+ReadingStatsLoadResult loadReadingStatsFromFile(ReadingStatsStore& store, const char* path);
 }  // namespace JsonSettingsIO
 
 class ReadingStatsStore {
@@ -93,10 +93,11 @@ class ReadingStatsStore {
   mutable bool dirty = false;
   mutable unsigned long dirtySinceMs = 0;
   mutable unsigned long lastSaveAttemptMs = 0;
+  enum class Persistence { Blocked, NewFile, Ready };
+  mutable Persistence persistence = Persistence::Blocked;
 
-  friend bool JsonSettingsIO::saveReadingStats(const ReadingStatsStore&, const char*);
-  friend bool JsonSettingsIO::loadReadingStats(ReadingStatsStore&, const char*);
-  friend bool JsonSettingsIO::loadReadingStatsFromFile(ReadingStatsStore&, const char*);
+  friend bool JsonSettingsIO::saveReadingStats(const ReadingStatsStore&, const char*, const char*);
+  friend JsonSettingsIO::ReadingStatsLoadResult JsonSettingsIO::loadReadingStatsFromFile(ReadingStatsStore&, const char*);
 
   size_t findBookIndexByPath(const std::string& path) const;
   size_t findBookIndexByBookId(const std::string& bookId) const;
@@ -124,7 +125,6 @@ class ReadingStatsStore {
   void invalidateSummaryCache();
   void rebuildSummaryCache() const;
   void markDirty();
-  bool persistToFile(const char* path) const;
   static bool isClockValid(uint32_t epochSeconds);
 
  public:
