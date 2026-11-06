@@ -23,6 +23,7 @@
 #include <WiFi.h>
 #include <esp_system.h>
 
+#include "ReaderGrayPlane.h"
 #include "ReaderUiProfile.h"
 #include "activities/settings/ReaderTouchZonesActivity.h"
 #include "util/ReadingBackground.h"
@@ -364,7 +365,26 @@ EpubReaderActivity::~EpubReaderActivity() {
   }
 }
 
+#if FREEINK_DEVICE_METALIO_EINK4
+void EpubReaderActivity::onEnter() {
+  const size_t bytes = static_cast<size_t>(renderer.getDisplayWidthBytes()) * renderer.getDisplayHeight();
+  // A full plane cannot fit on the render stack. PSRAM preserves internal/DMA
+  // headroom; one allocation per reading session avoids per-page fragmentation.
+  if (memory::psramHasHeadroom(bytes, bytes, 16 * 1024)) {
+    grayPlaneBuffer_ = memory::makePsramByteBufferUninitializedNoThrow(bytes);
+  }
+  if (!grayPlaneBuffer_) {
+    LOG_ERR("ERS", "PSRAM gray plane unavailable (%u bytes); keeping strip rendering", static_cast<unsigned>(bytes));
+  }
+  ReaderActivity::onEnter();
+}
+#endif
+
 void EpubReaderActivity::onExit() {
+#if FREEINK_DEVICE_METALIO_EINK4
+  renderer.waitRefreshComplete();
+  grayPlaneBuffer_.reset();
+#endif
 #if FREEINK_DEVICE_METALIO_PLUS
   // Finish any display borrower before releasing its reader-owned buffers.
   // ActivityManager already holds RenderLock and has cancelled idle rendering.
@@ -3462,6 +3482,9 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
 
     auto renderPlaneToBuffer = [&](const bool lsbPlane, uint8_t* buf) {
       renderer.setRenderMode(lsbPlane ? GfxRenderer::GRAYSCALE_LSB : GfxRenderer::GRAYSCALE_MSB);
+#if FREEINK_DEVICE_METALIO_EINK4
+      ReaderUtils::renderWholeGrayPlane(renderer, buf, gh, renderGrayscalePass);
+#else
       for (int y = 0; y < gh; y += STRIP_ROWS) {
         const int rows = (gh - y < STRIP_ROWS) ? (gh - y) : STRIP_ROWS;
         renderer.beginStripTarget(buf + static_cast<size_t>(y) * gwBytes, y, rows);
@@ -3469,6 +3492,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
         renderGrayscalePass();
         renderer.endStripTarget();
       }
+#endif
     };
 
     constexpr size_t PLANE_BUF_HEADROOM = 60000;
@@ -3488,11 +3512,16 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       }
       return memory::ByteBuffer{};
     };
-    auto lsbPlaneBuf = overlapRefresh ? allocatePlane() : memory::ByteBuffer{};
+    uint8_t* reusablePlane = nullptr;
+#if FREEINK_DEVICE_METALIO_EINK4
+    reusablePlane = grayPlaneBuffer_.get();
+#endif
+    auto lsbPlaneBuf = overlapRefresh && !reusablePlane ? allocatePlane() : memory::ByteBuffer{};
     auto msbPlaneBuf = lsbPlaneBuf ? allocatePlane() : memory::ByteBuffer{};
+    uint8_t* lsbPlane = reusablePlane ? reusablePlane : lsbPlaneBuf.get();
 
-    if (lsbPlaneBuf) {
-      renderPlaneToBuffer(true, lsbPlaneBuf.get());
+    if (lsbPlane) {
+      renderPlaneToBuffer(true, lsbPlane);
       if (msbPlaneBuf) renderPlaneToBuffer(false, msbPlaneBuf.get());
       const auto tGrayRender = millis();
 
@@ -3505,14 +3534,18 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
         return;
       }
 
-      renderer.writeGrayscalePlaneStrip(true, lsbPlaneBuf.get(), 0, gh);
+      renderer.writeGrayscalePlaneStrip(true, lsbPlane, 0, gh);
       if (msbPlaneBuf) {
         renderer.writeGrayscalePlaneStrip(false, msbPlaneBuf.get(), 0, gh);
       } else {
-        renderPlaneToBuffer(false, lsbPlaneBuf.get());
-        renderer.writeGrayscalePlaneStrip(false, lsbPlaneBuf.get(), 0, gh);
+        renderPlaneToBuffer(false, lsbPlane);
+        renderer.writeGrayscalePlaneStrip(false, lsbPlane, 0, gh);
       }
       const auto tGrayWrite = millis();
+      if (activityManager.isSwitchPending()) {
+        abandonGrayscale();
+        return;
+      }
 
       renderer.setRenderMode(GfxRenderer::BW);
       renderer.displayGrayBuffer();
@@ -3521,8 +3554,12 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       renderer.cleanupGrayscaleWithFrameBuffer();
       const auto tEnd = millis();
 
+#if FREEINK_DEVICE_METALIO_EINK4
+      LOG_INF("ERS",
+#else
       LOG_DBG("ERS",
-              "Page render (tiled async): prewarm=%lums bw_render=%lums display=%lums gray_render=%lums "
+#endif
+              "Page render (buffered gray): prewarm=%lums bw_render=%lums display=%lums gray_render=%lums "
               "wait=%lums gray_write=%lums gray_display=%lums cleanup=%lums total=%lums (planes buffered: %d)",
               tPrewarm - t0, tBwRender - tPrewarm, tDisplay - tBwRender, tGrayRender - tDisplay, tWait - tGrayRender,
               tGrayWrite - tWait, tGrayDisplay - tGrayWrite, tEnd - tGrayDisplay, tEnd - t0, msbPlaneBuf ? 2 : 1);

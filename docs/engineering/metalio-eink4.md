@@ -455,3 +455,91 @@ flash is performed for publication. Detailed recorded 100-page/video acceptance
 remains pending. The shared document carries current test and rollback commands
 and the default rollout on Sticky, both SSD1677 Murphy M4 batches and Waveshare
 3.97. Those panels' independent optical acceptance remains pending.
+
+### 2026-11-06 ordinary E-Ink4 reading candidate (dev20)
+
+The `codex/metalio-eink4-1.2.11` branch at `945380e9` is the base for the
+`1.2.17-metalio-dev20` candidate. The ordinary panel previously
+replayed each grayscale plane in six 80-row bands. This means twelve page
+traversals for the two gray planes, in addition to the B/W and prewarm passes.
+The synchronous text-AA backend normally takes that scratch-strip path.
+
+`EpubReaderActivity::onEnter()` now owns one physical gray plane in PSRAM
+(100-byte stride × 480 physical rows = 48,000 bytes). It renders each plane
+once and uploads it through the existing HAL strip API, reusing the buffer for
+the second plane and subsequent pages. The B/W framebuffer remains intact.
+The allocation is too large for the render stack; PSRAM avoids consuming
+internal/DMA RAM. Allocation failure retains the existing strip fallback, and
+`onExit()` releases the plane. The buffer and full-plane rendering are compiled
+only for ordinary E-Ink4. No SDK waveform, cleaning cadence or C3 buffer budget
+is changed. Less repeated CPU work is the expected mechanism; elapsed-time
+improvement has not been measured.
+
+The production `ReaderGrayPlane.h` helper is checked against the previous strip
+traversal for both planes and four orientation patterns, including canaries and
+B/W preservation, under ASan/UBSan:
+
+```sh
+python3 -m unittest scripts.tests.test_reader_gray_plane
+python3 -m unittest scripts.tests.test_ssd1677_text_aa
+```
+
+Both commands passed. The full `rickyos_metalio_eink4` build passed: firmware
+6,406,224 bytes, app-slot headroom 147,376 bytes, SHA-256
+`2ba853e1a2b494ef4cb2893b6e44bbc8ef6446df7c41a05668cf72a422436c5d`.
+The SDK overlay check passed for all 104 paths. The two
+legacy `test_metalio_display.py` sequence tests fail assertions with the synced
+SDK overlay; none of their input files were changed by this candidate. The
+repository-wide `./bin/ci-check` stops at uninitialized unrelated submodules.
+These are incomplete checks, not a full CI pass.
+
+Hardware acceptance is pending: use the same EPUB, font and size; turn at least
+20 text pages forward/backward, cross a chapter, open an image page, return to
+the menu and reopen the book. Keep the normal periodic clean setting. Check
+rapid input, gray/menu residue and saved progress after reboot. Serial
+`Page render (buffered gray)` reports stage timing, while `MEM` lines provide
+internal heap and PSRAM observations. Compare repeated sessions for continuing
+memory decline and compare elapsed times with the prior firmware before
+claiming a performance gain.
+
+Initial USB ROM handshakes timed out. After the user woke/reconnected the unit, the expected ROM MAC `10:20:BA:6D:6C:CC` and 16 MiB flash were verified.
+A complete current-flash backup was read and verified by the ROM tool before
+writing, SHA-256
+`d8a480e8c77139e389422089d5df6bdce010330f130335bcd22a9abe367f6d92`.
+
+The actual pre-install partition table differed from the handoff: NVS at
+`0x9000/0x6000`, OTA data at `0xf000/0x2000`, app at `0x20000/0x400000`,
+and separate assets/storage. Its app descriptor was `eego`,
+`b99de7cf-dirty`. The 4 MiB slot cannot hold this build, so application-only
+installation was rejected before writing. The matched full-install image uses
+`partitions.csv`: bootloader `0`, table `0x8000`, OTA initializer `0xe000`,
+application `0x10000`. Its padding initializes the new NVS area; old internal
+system/settings are recoverable from the verified full backup. The flasher
+does not access the SD card. Full image: 6,471,760 bytes, SHA-256
+`2a7e28354abffa44545c7bfc16988ff73906e8a078e5feda2a4886cc813acd41`.
+The full installation and ROM digest verification passed. Independent readback
+of all 6,471,760 bytes matched the full-image SHA-256. The new firmware booted
+as `1.2.17-metalio-dev20`, detected `metalio_eink4`, mounted SDMMC and entered
+`InxRecent`. At 10/20 seconds the internal free heap was 128,428 bytes with an
+86,004-byte largest block; PSRAM free was 5,060,156 bytes with a
+4,980,724-byte largest block. These are idle boot snapshots, not a repeated
+reading/leak test. The known missing-IMU log and initially absent NVS namespaces
+were observed. No panic, abort or heap-corruption marker was observed in this
+initial boot capture. Reading latency and visual acceptance remain pending.
+
+Local artifacts and verified backup:
+`/Volumes/Seagate/RickyOS-device-backups/metalio-dev20-20261106/`.
+Frozen install artifacts:
+`/Volumes/Seagate/RickyOS-build-output/metalio-dev20-20261106/`.
+User feedback after installation: slightly smoother, but still sluggish and
+not following input closely. This candidate is not a completed performance fix.
+The subsequent serial capture confirmed a responsive main loop and a reader
+framebuffer, but captured no active page-turn timing records. Do not use those
+idle samples to attribute the remaining latency. Capture actual turns and compare
+`prewarm`, `bw_render`, `gray_render`/`gray_write`, and `gray_display` next.
+
+A source candidate for input latency is the synchronous next-page font prewarm
+in `EpubReaderActivity::loop()` before page-turn dispatch. It runs only for
+eligible SD fonts, so first confirm the active font and measure it; this
+investigation has not changed that path. SDK sources still match the existing
+104-path overlay, and the pinned SDK gitlink is unchanged.

@@ -4,6 +4,7 @@
 #include <Epub/FootnoteEntry.h>
 #include <Epub/PageLink.h>
 #include <Epub/Section.h>
+#include <Memory.h>
 
 #include <atomic>
 #include <memory>
@@ -67,6 +68,10 @@ class EpubReaderActivity final : public ReaderActivity {
   int idlePrewarmSpine = -1;
   int idlePrewarmPage = -1;
   unsigned long lastRenderCompleteMs = 0;
+#if FREEINK_DEVICE_METALIO_EINK4
+  // One physical plane (48 KB on this board), PSRAM only, reused until onExit().
+  memory::ByteBuffer grayPlaneBuffer_;
+#endif
 
   bool nativeGray16Page(const Page& page) const;
 
@@ -342,6 +347,9 @@ class EpubReaderActivity final : public ReaderActivity {
       : ReaderActivity("EpubReader", renderer, mappedInput, std::move(bookPath), allowFastInitialRefresh) {}
   ~EpubReaderActivity() override;
 
+#if FREEINK_DEVICE_METALIO_EINK4
+  void onEnter() override;
+#endif
   void onExit() override;
   void loop() override;
   void render(RenderLock&& lock) override;
