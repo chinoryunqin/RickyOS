@@ -31,8 +31,11 @@ int begins = 0, ends = 0, switches = 0, aborts = 0;
 int writeError = 0, endError = 0;
 bool networkError = false, cutDownload = false, missingPartition = false, cosDown = false;
 uint16_t runningChip = 9;
+const std::string boardName = ricky_ota::BOARD;
+const std::string boardTag = "CROSSPOINT-BOARD-V1:" + boardName + ";";
 const std::string noUpdate =
-    R"({"schema":1,"product":"RickyOS","board":"readpico","channel":"stable","status":"no_update"})";
+    R"({"schema":1,"product":"RickyOS","board":")" + boardName +
+    R"(","channel":"stable","status":"no_update"})";
 const std::string offeredVersion = "1.1.1";
 
 void reset() {
@@ -44,7 +47,7 @@ void reset() {
   image[1] = 1;
   image[12] = 9;
   image[13] = 0;
-  const std::string identity = std::string("RickyOS\0", 8) + offeredVersion + '\0' + "CROSSPOINT-BOARD-V1:readpico;";
+  const std::string identity = std::string("RickyOS\0", 8) + offeredVersion + '\0' + boardTag;
   std::memcpy(image.data() + 100, identity.data(), identity.size());
   next = {0x650000, 0x640000};
   begins = ends = switches = aborts = writeError = endError = 0;
@@ -63,7 +66,8 @@ std::string sha(const std::vector<uint8_t>& bytes) {
   return text;
 }
 std::string offer(const std::string& version = offeredVersion) {
-  return "{\"schema\":1,\"product\":\"RickyOS\",\"board\":\"readpico\",\"channel\":\"stable\","
+  return "{\"schema\":1,\"product\":\"RickyOS\",\"board\":\"" + boardName +
+         "\",\"channel\":\"stable\","
          "\"status\":\"update_available\",\"version\":\"" +
          version + "\",\"file\":\"firmware/RickyOS-test.bin\",\"bytes\":4096,\"sha256\":\"" + sha(image) +
          "\",\"approved\":true,\"hardwareAccepted\":true,\"chipId\":9,\"flashBytes\":16777216}";
@@ -136,13 +140,13 @@ bool HttpDownloader::fetchVerifiedUrl(const std::string& url, const DataCallback
   urls.push_back(url);
   if (networkError || (cos && cosDown)) return false;
   const std::string path = url.substr(std::strlen(cos ? ricky_ota::COS_BASE : ricky_ota::SITE_BASE));
-  if (path == "ota.json") {
+  if (url == (cos ? ricky_ota::COS_MANIFEST_URL : ricky_ota::MANIFEST_URL)) {
     for (const auto& character : response) {
       if (!consume(reinterpret_cast<const uint8_t*>(&character), 1)) return false;
     }
     return true;
   }
-  if (path == "ota-notes.txt") return true;
+  if (url == (cos ? ricky_ota::COS_NOTES_URL : ricky_ota::NOTES_URL)) return true;
   CHECK(path == "firmware/RickyOS-test.bin");
   for (size_t i = 0; i < image.size(); i += 7) {
     if (cutDownload && i > 1000) return false;
@@ -158,8 +162,18 @@ int main() {
     CHECK(parses(offer(), chunk));
   }
   const auto good = offer();
+#if FREEINK_DEVICE_METALIO_EINK4
+  CHECK(boardName == "metalio_eink4");
+  CHECK(std::string_view(ricky_ota::MANIFEST_URL).ends_with("/metalio-eink4/ota.json"));
+  CHECK(std::string_view(ricky_ota::COS_MANIFEST_URL).ends_with("/metalio-eink4/ota.json"));
+  CHECK(!parses(replace(good, boardName, "readpico")));
+  CHECK(!parses(replace(good, boardName, "metalio-plus-s31")));
+  CHECK(!parses(replace(good, ":4096", ":6434288")));  // dev29 exceeded the reserved space.
+#endif
+  CHECK(parses(replace(good, ":4096", ":6029312")));
+  CHECK(!parses(replace(good, ":4096", ":6029316")));
   for (const auto& bad : {replace(good, "RickyOS\"", "CrossMux\""),
-                          replace(good, "readpico", "x4pro"),
+                          replace(good, boardName, "x4pro"),
                           replace(good, "stable", "nightly"),
                           replace(good, "true", "false"),
                           replace(good, "\"schema\":1", "\"schema\":1,\"schema\":1"),
@@ -199,7 +213,7 @@ int main() {
   for (const auto c : scanBytes) scanner.feed(reinterpret_cast<const uint8_t*>(&c), 1);
   CHECK(scanner.found());
   board_tag::Scanner board;
-  const std::string tag = "CROSSPOINT-BOARD-V1:readpico;";
+  const auto& tag = boardTag;
   for (const auto c : tag) board.feed(reinterpret_cast<const uint8_t*>(&c), 1);
   CHECK(board.found() && !board.mismatch());
   reset();

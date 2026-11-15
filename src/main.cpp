@@ -19,6 +19,7 @@
 #include <HalFrontlight.h>
 #include <HalGPIO.h>
 #include <HalMemory.h>
+#include <HalNetwork.h>
 #include <HalOtaSlot.h>
 #include <HalPowerManager.h>
 #include <HalStorage.h>
@@ -200,7 +201,6 @@ static bool wakePowerReleasePending = false;
 #if RICKYOS_METALIO_FONT_METADATA
 #include <NativeFontMetadata.h>
 #include <nativefontmeta/metalio_body_10_regular.packed.h>
-#include <nativefontmeta/metalio_book_10_medium.packed.h>
 #else
 #include <fonts/metalio_body_10_regular.packed.h>
 #include <fonts/metalio_book_10_medium.packed.h>
@@ -261,7 +261,11 @@ EpdFont cjk16Font(&metalio_title_14_bold);
 EpdFont designCaptionFont(&metalio_caption_8_regular);
 #endif
 EpdFont designDisplayFont(&metalio_display_19_bold);
+#if RICKYOS_METALIO_FONT_METADATA
+EpdFont& bookTitleFont = nativeBodyFont;
+#else
 EpdFont bookTitleFont(&metalio_book_10_medium);
+#endif
 EpdFontFamily cjk8FontFamily(&designCaptionFont);
 #else
 EpdFontFamily cjk8FontFamily(&offlineReaderFont);
@@ -349,6 +353,7 @@ static bool sdFontReloadPending = false;
 static bool finishWifiSessionWithoutRestart() {
   if (!BoardConfig::hasTouch()) return false;
   if (esp_sntp_enabled()) esp_sntp_stop();
+  if (HalNetwork::wifiKept()) return true;
   WiFi.mode(WIFI_OFF);
   delay(100);
   LOG_DBG("MAIN", "WiFi stopped without restart on touch device");
@@ -625,9 +630,8 @@ bool setupDisplayAndFonts(bool seamless = false, bool logSdFontLoadHeap = false)
   gpio.beginInput();
 #endif
 #if RICKYOS_METALIO_FONT_METADATA
-  const bool metadataReady = NativeFontMetadata::initialize(metalio_body_10_regular, metalio_book_10_medium);
+  const bool metadataReady = NativeFontMetadata::initialize(metalio_body_10_regular);
   nativeBodyFont.data = metadataReady ? &metalio_body_10_regular : &cjk12Data;
-  bookTitleFont.data = metadataReady ? &metalio_book_10_medium : &cjk12Data;
 #if RICKYOS_SYSTEM_UI_FONTS
   cjk14Font.data = cjk16Font.data = designCaptionFont.data = nativeBodyFont.data;
 #endif
@@ -1191,6 +1195,21 @@ void loop() {
   }
   HalCamera::pump();
   HalCellular::pump();
+#if RICKYOS_METALIO_CELLULAR_ENABLED
+  static auto lastRoute = HalNetwork::Route::None;
+  static uint32_t routePollAt = 0;
+  const uint32_t now = millis();
+  if (now - routePollAt >= 250) {
+    routePollAt = now;
+    const auto route = HalNetwork::route();
+    if (route != lastRoute) {
+      lastRoute = route;
+      LOG_INF("NET", "Default route: %s", route == HalNetwork::Route::Wifi ? "Wi-Fi"
+                                         : route == HalNetwork::Route::Cellular ? "4G" : "none");
+      activityManager.refreshMainTabStatus();
+    }
+  }
+#endif
 #if FREEINK_DEVICE_METALIO_EINK4
   if (!deepSleepInProgress && ((cameraDiagnosticRestart && !HalCamera::busy()) || HalCamera::consumeRestartRequest())) {
     // Camera owns the native USB PHY until reset. Do not use silentRestart(),
@@ -1270,7 +1289,7 @@ void loop() {
   gpio.setSharedConfirmPowerShortPressEmitsPower(SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP);
   mappedInputManager.update();
   if (activityManager.standbyShowing()) mappedInputManager.suppressStandbyHomeActions();
-#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4
   // Cancel before any handler can wait for the framebuffer lock. These are
   // snapshot queries: they do not consume the gesture from its normal owner.
 #if CROSSPOINT_EMULATED
@@ -1394,7 +1413,12 @@ void loop() {
       String cmd = line.substring(4);
       cmd.trim();
 #if FREEINK_DEVICE_METALIO_EINK4
-      if (cmd == "CAMERA_DELAY_TEST") {
+      if (cmd == "READER_MOTION_OFF") {
+        activityManager.cancelIdleRender("motion diagnostic", true);
+        RenderLock lock;
+        SETTINGS.nativePageTurn = 0;
+        logSerial.printf("READER_MOTION_OFF saved=%u\n", static_cast<unsigned>(SETTINGS.saveToFile()));
+      } else if (cmd == "CAMERA_DELAY_TEST") {
         cameraDelayedAt = millis() + 20000;
         logSerial.println("CAMERA_TEST_ARMED 20s");
       } else if (cmd == "CAMERA_VIEW_TEST") {

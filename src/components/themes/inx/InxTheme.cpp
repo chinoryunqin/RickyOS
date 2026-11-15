@@ -2,8 +2,12 @@
 
 #include <GfxRenderer.h>
 #include <HalGPIO.h>
+#include <HalNetwork.h>
+#include <HalPowerManager.h>
+#include <MetalioFeatures.h>
 
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -546,7 +550,28 @@ void InxTheme::drawMainTabStatusBar(const GfxRenderer& renderer, const Rect rect
     TimeUtils::formatCurrentTime(time, sizeof(time), SETTINGS.clockFormat == 1);
     renderer.drawText(numericFontId, std::max(rect.x, edgeInset), textY, time);
   }
+  const bool showBatteryPercent =
+      SETTINGS.hideBatteryPercentage != CrossPointSettings::HIDE_BATTERY_PERCENTAGE::HIDE_ALWAYS;
+#if RICKYOS_METALIO_CELLULAR_ENABLED
+  const auto route = HalNetwork::route();
+  if (route != HalNetwork::Route::None) {
+    const char* label = route == HalNetwork::Route::Wifi ? tr(STR_STATUS_WIFI) : tr(STR_STATUS_CELL);
+    const uint16_t battery = powerManager.getBatteryPercentage();
+    int end = right;
+    if (battery <= 100) {
+      end -= metrics.batteryWidth + ricky::ds::space::kInlineGap;
+      if (showBatteryPercent) {
+        char percent[8];
+        snprintf(percent, sizeof(percent), "%u%%", static_cast<unsigned>(battery));
+        end -= renderer.getTextWidth(numericFontId, percent) + batteryPercentSpacing;
+      }
+    }
+    const int font = RickyDesignUi::CAPTION;
+    const int width = renderer.getTextWidth(font, label);
+    const int y = textY + (renderer.getLineHeight(numericFontId) - renderer.getLineHeight(font)) / 2;
+    renderer.drawText(font, end - width, y, label);
+  }
+#endif
   drawBatteryRight(renderer, Rect{right - metrics.batteryWidth, textY, metrics.batteryWidth, metrics.batteryHeight},
-                   SETTINGS.hideBatteryPercentage != CrossPointSettings::HIDE_BATTERY_PERCENTAGE::HIDE_ALWAYS,
-                   numericFontId);
+                   showBatteryPercent, numericFontId);
 }

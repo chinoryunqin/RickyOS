@@ -2,6 +2,7 @@
 #include <HalGPIO.h>
 #if FREEINK_DEVICE_METALIO_EINK4
 #include <Logging.h>
+#include <driver/PaperMonoDriver.h>
 
 #include "UiGrayRaster.h"
 #endif
@@ -251,7 +252,7 @@ uint8_t* HalDisplay::beginGrayscaleUi() {
 #endif
 }
 
-bool HalDisplay::commitGrayscaleUi(bool forceClean) {
+bool HalDisplay::commitGrayscaleUi(bool forceClean, bool photo) {
 #if FREEINK_DEVICE_METALIO_EINK4
   if (!uiGrayActive) return false;
   uiGrayActive = false;
@@ -261,8 +262,14 @@ bool HalDisplay::commitGrayscaleUi(bool forceClean) {
     uiGrayRaster::row(uiGrayFrame.get() + y * grayStride, getFrameBuffer() + y * stride, stride,
                       uiGrayRaster::Plane::Base);
 #if FREEINK_METALIO_UI_RETAINED
-  if (einkDisplay.displayUiGrayscale(uiGrayFrame.get(), forceClean)) return true;
-  LOG_ERR("DISP", "UI retained unavailable/failed; original refresh fallback");
+  // The combined UI waveform drives both midtones alike. Photos use the
+  // original four-tone overlay waveform, including its separate gray drives.
+  if (!photo) {
+    if (einkDisplay.displayUiGrayscale(uiGrayFrame.get(), forceClean)) return true;
+    LOG_ERR("DISP", "UI retained unavailable/failed; original refresh fallback");
+  }
+#else
+  (void)forceClean;
 #endif
   // Reuse the characterized overlay waveform and its physical gray cleanup.
   // Never enable the unvalidated factory/absolute LUT for this panel.
@@ -279,10 +286,11 @@ bool HalDisplay::commitGrayscaleUi(bool forceClean) {
   einkDisplay.displayGrayBuffer(false);
   const bool committed = einkDisplay.displayCommitted();
   if (committed) einkDisplay.cleanupGrayscaleBuffers(getFrameBuffer());
-  LOG_INF("DISP", "UI gray physical=4 raster=4bpp committed=%d", committed);
+  LOG_INF("DISP", "%s gray physical=4 raster=4bpp committed=%d", photo ? "Photo" : "UI", committed);
   return committed;
 #else
   (void)forceClean;
+  (void)photo;
   return commitGrayscale16();
 #endif
 }
@@ -332,12 +340,17 @@ void HalDisplay::setNextPageTurn(uint8_t style, uint8_t orientation, bool fromRi
   freeink::metalioPlusSetPageTurn(style, orientation, fromRight, originX, originY);
 #elif FREEINK_DEVICE_READPICO
   freeink::epdiyLcdSetPageTurn(style, orientation, fromRight);
+#elif FREEINK_DEVICE_METALIO_EINK4
+  freeink::paperMonoSetPageTurn(style, orientation, fromRight, originX, originY);
 #else
   (void)style;
   (void)orientation;
   (void)fromRight;
 #endif
 }
+#if FREEINK_DEVICE_METALIO_EINK4
+bool HalDisplay::displayCommitted() const { return einkDisplay.displayCommitted(); }
+#endif
 void HalDisplay::setNextGray16ReaderRefresh(int x, int y, int width, int height) {
 #if FREEINK_DEVICE_METALIO_PLUS
   freeink::metalioPlusSetGray16ReaderRefresh(x, y, width, height);

@@ -8,6 +8,8 @@
 #include <HalDisplay.h>
 #include <HalFrontlight.h>
 #include <HalGPIO.h>
+#include <HalNetwork.h>
+#include <MetalioFeatures.h>
 #include <I18n.h>
 
 #include <algorithm>
@@ -24,6 +26,13 @@
 #include "components/icons/customListIcons.h"
 #include "components/icons/listIcons.h"
 #include "ReadingStatsStore.h"
+#if RICKYOS_METALIO_CELLULAR_ENABLED
+#include <HalCellular.h>
+#include "NetworkStartup.h"
+#include "WifiCredentialStore.h"
+#include "activities/apps/MetalioPeripheralActivity.h"
+#include "activities/network/WifiSelectionActivity.h"
+#endif
 #include "util/TimeUtils.h"
 
 #include "activities/ActivityManager.h"
@@ -240,6 +249,20 @@ void FrontlightPanelActivity::onTileEvent(const fui::ActionEvent& event, void* u
     self->app.clearTapFlash();
     self->openBluetoothSettings();
     return;
+  }
+#endif
+#if RICKYOS_METALIO_CELLULAR_ENABLED
+  if (event.longPress) {
+    if (event.value == static_cast<int16_t>(Tile::Wifi)) {
+      self->app.clearTapFlash();
+      self->openWifiSettings();
+      return;
+    }
+    if (event.value == static_cast<int16_t>(Tile::Cellular)) {
+      self->app.clearTapFlash();
+      self->startActivityForResultWith<MetalioPeripheralActivity>([](const ActivityResult&) {}, false);
+      return;
+    }
   }
 #endif
   if (event.dragPermille >= 0 || event.value == kVolumeStep || event.value == -kVolumeStep) {
@@ -504,12 +527,23 @@ void FrontlightPanelActivity::runRickyTile(const Tile tile) {
       toggleLight();
       break;
     case Tile::FastRefresh:
+#if !FREEINK_DEVICE_METALIO_EINK4
       SETTINGS.readerFastRefresh = SETTINGS.readerFastRefresh ? 0 : 1;
       SETTINGS.saveToFile();
       requestUpdate();
+#endif
       break;
     case Tile::Bluetooth:
       toggleBluetooth();
+      break;
+    case Tile::Wifi:
+      toggleWifi();
+      break;
+    case Tile::Cellular:
+#if RICKYOS_METALIO_CELLULAR_ENABLED
+      HalCellular::enable(!HalCellular::snapshot().enabled);
+      requestUpdate();
+#endif
       break;
     case Tile::Preview:
       break;  // ACTION_TILE dispatcher owns the audio preview command.
@@ -529,6 +563,34 @@ uint8_t FrontlightPanelActivity::bluetoothState() const {
 void FrontlightPanelActivity::openBluetoothSettings() {
 #if FREEINK_CAP_BLE_HID_HOST
   startActivityForResultWith<BluetoothSettingsActivity>([this](const ActivityResult&) { requestUpdate(); });
+#endif
+}
+
+void FrontlightPanelActivity::openWifiSettings() {
+#if RICKYOS_METALIO_CELLULAR_ENABLED
+  startActivityForResultWith<WifiSelectionActivity>([](const ActivityResult&) {}, false, true);
+#endif
+}
+
+void FrontlightPanelActivity::toggleWifi() {
+#if RICKYOS_METALIO_CELLULAR_ENABLED
+  if (HalNetwork::wifiEnabled()) {
+    HalNetwork::turnOffWifi();
+  } else {
+    {
+      RenderLock lock;
+      WIFI_STORE.loadFromFile();
+    }
+    const auto ssid = WIFI_STORE.getLastConnectedSsid();
+    const auto credential = WIFI_STORE.findCredential(ssid);
+    if (NetworkStartup::setMode(renderer, WIFI_STA)) {
+      WiFi.persistent(false);
+      HalNetwork::keepWifi();
+      // The saved SSID also covers an open network with no stored password.
+      if (!ssid.empty()) WiFi.begin(ssid.c_str(), credential ? credential->password.c_str() : nullptr);
+    }
+  }
+  requestUpdate();
 #endif
 }
 
@@ -579,7 +641,11 @@ int FrontlightPanelActivity::rickyPanelHeight() const {
   int y = tokens.spaceMd + std::max<int>(metrics.batteryHeight, title) + tokens.spaceXs + small;  // clock, date
   if (mappedInput.hasTouch()) {
     y += kGroupGap + tileRow;
+#if RICKYOS_METALIO_CELLULAR_ENABLED
+    if (!landscape) y += kTileSpacing + tileRow;
+#else
     if (!landscape && overReader) y += kTileSpacing + tileRow;
+#endif
     const bool light = Frontlight.present();
     const bool warm = light && Frontlight.hasColorTemperature();
     const bool sound = HalAudioOutput::present();
@@ -625,9 +691,9 @@ void FrontlightPanelActivity::roundActionRow(UiScreen& screen, const RoundAction
     target.text(fui::Rect{static_cast<int16_t>(tile.x + 4), static_cast<int16_t>(tile.y + kTilePad + 40 + kTileLabelGap),
                           static_cast<int16_t>(width - 8), labelHeight},
                 action.label, label);
-    screen.frame().hit(tile, ACTION_TILE, static_cast<int16_t>(action.tile),
-                       action.tile == Tile::Bluetooth ? static_cast<uint16_t>(fui::InputTouch | fui::InputLongPress)
-                                                      : fui::InputTouch);
+    const bool longPress = action.tile == Tile::Bluetooth || action.tile == Tile::Wifi || action.tile == Tile::Cellular;
+    const uint16_t inputMask = longPress ? static_cast<uint16_t>(fui::InputTouch | fui::InputLongPress) : fui::InputTouch;
+    screen.frame().hit(tile, ACTION_TILE, static_cast<int16_t>(action.tile), inputMask);
   }
 }
 
@@ -681,7 +747,7 @@ void FrontlightPanelActivity::buildRickyPanel(UiScreen& screen) {
   // Every control below is a touch target; a buttons-only board keeps just the clock.
   if (!mappedInput.hasTouch()) return;
   screen.spacer(kGroupGap);
-  RoundAction actions[8] = {
+  RoundAction actions[9] = {
       {Tile::Night, &icon_ricky_night_40, tr(STR_NIGHT_MODE), SETTINGS.screenInverted != 0},
       {Tile::Refresh, &icon_ricky_refresh_40, tr(STR_FORCE_REFRESH), false},
       {Tile::Standby, &icon_ricky_standby_40, tr(STR_RICKY_STANDBY_NOW), false},
@@ -700,8 +766,9 @@ void FrontlightPanelActivity::buildRickyPanel(UiScreen& screen) {
       {Tile::Orientation, orientation % 2 ? &icon_ricky_landscape_40 : &icon_ricky_portrait_40,
        I18N.get(kOrientNames[orientation]), false},
       {Tile::Clean, &icon_ricky_clean_40, refreshText, false},
-      // Reading refresh: 快刷 (on) or 高清.
+#if !FREEINK_DEVICE_METALIO_EINK4
       {Tile::FastRefresh, &icon_ricky_fast_40, tr(STR_RICKY_CC_FAST_REFRESH), SETTINGS.readerFastRefresh != 0},
+#endif
   };
   int count = 4;
 #if FREEINK_CAP_BLE_HID_HOST
@@ -712,15 +779,34 @@ void FrontlightPanelActivity::buildRickyPanel(UiScreen& screen) {
                                                              : tr(STR_BLUETOOTH);
   actions[count++] = {Tile::Bluetooth, &kBluetoothIcon, bluetoothLabel, SETTINGS.bluetoothEnabled != 0};
 #endif
+#if RICKYOS_METALIO_CELLULAR_ENABLED
+  const RoundAction wifi{Tile::Wifi, &icon_wifi_32, tr(STR_STATUS_WIFI), HalNetwork::wifiEnabled()};
+  const RoundAction cell{Tile::Cellular, &icon_ricky_cellular_40, tr(STR_STATUS_CELL), HalCellular::snapshot().enabled};
+  if (landscape) {
+    actions[count++] = wifi;
+    actions[count++] = cell;
+  }
+#endif
   // Landscape has room for the reading actions in the same row.
   if (landscape && overReader)
     for (const auto& action : reading) actions[count++] = action;
   roundActionRow(screen, actions, count);
-  // Reading: only over a book, where each of these changes the page underneath.
+  // Narrow portrait: the two network toggles share the second row with the book controls.
+#if RICKYOS_METALIO_CELLULAR_ENABLED
+  if (!landscape) {
+    RoundAction secondary[2 + std::size(reading)] = {wifi, cell};
+    int secondCount = 2;
+    if (overReader)
+      for (const auto& item : reading) secondary[secondCount++] = item;
+    screen.spacer(kTileSpacing);
+    roundActionRow(screen, secondary, secondCount);
+  }
+#else
   if (!landscape && overReader) {
     screen.spacer(kTileSpacing);
     roundActionRow(screen, reading, static_cast<int>(std::size(reading)));
   }
+#endif
 
   const bool light = Frontlight.present();
   const bool warm = light && Frontlight.hasColorTemperature();

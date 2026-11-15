@@ -24,6 +24,7 @@ const ICONS = [
   ['filter', 'sliders-horizontal'],
   // Control center actions.
   ['night', 'contrast'], ['refresh', 'refresh-cw'], ['standby', 'moon'], ['transfer', 'arrow-up-down'],
+  ['cellular', 'signal'],
   ['portrait', 'rectangle-vertical'], ['landscape', 'rectangle-horizontal'], ['clean', 'sparkles'], ['fast', 'zap'],
   // Pushed pages and reader shortcuts share the same optical stroke family.
   ['back', 'arrow-left'], ['contents', 'list'], ['bookmark', 'bookmark'],

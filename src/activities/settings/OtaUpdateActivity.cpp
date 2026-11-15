@@ -5,6 +5,7 @@
 #include <HalClock.h>
 #include <I18n.h>
 #include <Memory.h>
+#include <HalNetwork.h>
 #include <WiFi.h>
 
 #include <algorithm>
@@ -215,7 +216,7 @@ void OtaUpdateActivity::beginWifiSelection() {
 void OtaUpdateActivity::onExit() {
   Activity::onExit();
 
-  const bool wifiWasEnabled = WiFi.getMode() != WIFI_MODE_NULL;
+  const bool wifiWasEnabled = !HalNetwork::wifiKept() && WiFi.getMode() != WIFI_MODE_NULL;
   if (wifiWasEnabled) {
     WiFi.disconnect(false);
     delay(30);

@@ -164,7 +164,7 @@ class HalDisplay {
   uint8_t* beginGrayscale16();
   // Full UI raster, quantized to the board's actual physical gray levels.
   uint8_t* beginGrayscaleUi();
-  bool commitGrayscaleUi(bool forceClean = false);
+  bool commitGrayscaleUi(bool forceClean = false, bool photo = false);
   void cancelGrayscaleUi();
   const uint8_t* lastUiGrayscaleRaster() const {
 #if FREEINK_DEVICE_METALIO_EINK4
@@ -181,6 +181,9 @@ class HalDisplay {
   void setNextGray16Profile(uint8_t profile);
   // Optional one-shot native wavefront; only supported on the raw parallel panels.
   void setNextPageTurn(uint8_t style, uint8_t orientation, bool fromRight, int originX = -1, int originY = -1);
+#if FREEINK_DEVICE_METALIO_EINK4
+  bool displayCommitted() const;
+#endif
   // Plus: reading turns use the short text-turn table without motion (快刷) instead of
   // the full reader waveform (高清). Persistent until changed; a no-op on other panels.
   void setReaderFastRefresh(bool on);

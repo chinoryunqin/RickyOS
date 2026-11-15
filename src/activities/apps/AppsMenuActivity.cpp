@@ -34,11 +34,8 @@ struct AppEntry {
 };
 
 constexpr AppEntry kAppEntries[] = {
-#if RICKYOS_METALIO_CELLULAR_ENABLED
-    {AppId::Cellular, StrId::STR_CELL_TITLE, UIIcon::Transfer, &ActivityManager::goToCellular},
-#endif
 #if RICKYOS_METALIO_CAMERA_ENABLED
-    {AppId::Camera, StrId::STR_CAMERA_TITLE, UIIcon::Gallery, &ActivityManager::goToCamera},
+    {AppId::Camera, StrId::STR_CAMERA_TITLE, UIIcon::Camera, &ActivityManager::goToCamera},
 #endif
     {AppId::FileTransfer, StrId::STR_FILE_TRANSFER, UIIcon::Transfer, &ActivityManager::goToFileTransfer},
     {AppId::WeRead, StrId::STR_WEREAD_TITLE, UIIcon::WeRead, &ActivityManager::goToWeRead},
@@ -114,10 +111,10 @@ const uint8_t* rickyAppIcon(const UIIcon icon) {
       return ricky_app_gomoku_40;
     case UIIcon::Calculator:
       return ricky_app_calculator_40;
-    case UIIcon::Standby:
-      return ricky_app_standby_40;
     case UIIcon::Recorder:
       return ricky_app_recorder_40;
+    case UIIcon::Camera:
+      return ricky_app_camera_40;
     case UIIcon::Gallery:
       return ricky_app_gallery_40;
     case UIIcon::Wallpaper:

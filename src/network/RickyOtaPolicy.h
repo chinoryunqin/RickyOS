@@ -29,6 +29,17 @@ inline constexpr bool COS_ENABLED = RickyCos::ENABLED;
 inline constexpr char COS_BASE[] = RICKYOS_COS_BASE RICKYOS_OTA_COS_DIR;
 inline constexpr char COS_MANIFEST_URL[] = RICKYOS_COS_BASE RICKYOS_OTA_COS_DIR "plus/ota.json";
 inline constexpr char COS_NOTES_URL[] = RICKYOS_COS_BASE RICKYOS_OTA_COS_DIR "plus/ota-notes.txt";
+#elif FREEINK_DEVICE_METALIO_EINK4
+inline constexpr char BOARD[] = "metalio_eink4";
+inline constexpr uint16_t CHIP_ID = 9;  // ESP32-S3
+inline constexpr bool SITE_ENABLED = true;
+inline constexpr char SITE_BASE[] = "https://chinoryunqin.github.io/RickyOS-site/";
+inline constexpr char MANIFEST_URL[] = "https://chinoryunqin.github.io/RickyOS-site/metalio-eink4/ota.json";
+inline constexpr char NOTES_URL[] = "https://chinoryunqin.github.io/RickyOS-site/metalio-eink4/ota-notes.txt";
+inline constexpr bool COS_ENABLED = RickyCos::ENABLED;
+inline constexpr char COS_BASE[] = RICKYOS_COS_BASE "/ota/";
+inline constexpr char COS_MANIFEST_URL[] = RICKYOS_COS_BASE "/ota/metalio-eink4/ota.json";
+inline constexpr char COS_NOTES_URL[] = RICKYOS_COS_BASE "/ota/metalio-eink4/ota-notes.txt";
 #else
 inline constexpr char BOARD[] = "readpico";
 inline constexpr uint16_t CHIP_ID = 9;  // ESP32-S3

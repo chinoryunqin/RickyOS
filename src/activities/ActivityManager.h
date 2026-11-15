@@ -206,6 +206,7 @@ class ActivityManager {
   void goToGallery();
 #if FREEINK_DEVICE_METALIO_EINK4
   void goToCellular();
+  void refreshMainTabStatus();
   void goToCamera();
 #endif
   void goToWeRead();

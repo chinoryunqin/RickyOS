@@ -23,7 +23,7 @@ function sized(svg, size) {
 }
 
 const sets = [
-  ...['transfer', 'opds', 'weread', 'stats', 'gomoku', 'calculator', 'standby'].map(name => ({
+  ...['transfer', 'opds', 'weread', 'stats', 'gomoku', 'calculator', 'standby', 'camera'].map(name => ({
     name: `ricky_app_${name}_40`, size: 40,
     svg: () => sized(fs.readFileSync(path.join(iconRoot, 'sources/rickyos/apps', name + '.svg'), 'utf8'), 40),
   })),

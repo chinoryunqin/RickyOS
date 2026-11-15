@@ -6,6 +6,7 @@
 #include <esp_wifi.h>
 #endif
 #include <GfxRenderer.h>
+#include <HalNetwork.h>
 #include <HalClock.h>
 #include <I18n.h>
 #include <Logging.h>
@@ -46,8 +47,11 @@ bool readStationMac(uint8_t (&mac)[6]) {
 }  // namespace
 
 WifiSelectionActivity::WifiSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                                             const bool autoConnect)
-    : Activity("WifiSelection", renderer, mappedInput), UiAppHost(renderer), allowAutoConnect(autoConnect) {}
+                                             const bool autoConnect, const bool keepConnection)
+    : Activity("WifiSelection", renderer, mappedInput),
+      UiAppHost(renderer),
+      keepUserConnection(keepConnection),
+      allowAutoConnect(autoConnect) {}
 
 void WifiSelectionActivity::onRowEvent(const fui::ActionEvent& event, void* user) {
   auto* self = static_cast<WifiSelectionActivity*>(user);
@@ -158,6 +162,7 @@ void WifiSelectionActivity::onEnter() {
   Activity::onEnter();
   inheritedConfirmPending = mappedInput.isPressed(MappedInputManager::Button::Confirm);
   if (allowAutoConnect && WiFi.status() == WL_CONNECTED) {
+    if (keepUserConnection) HalNetwork::keepWifi();
     selectedSSID = WiFi.SSID().c_str();
     connectedIP = WiFi.localIP().toString().c_str();
     onComplete(true);
@@ -250,6 +255,16 @@ void WifiSelectionActivity::onExit() {
   WiFi.scanDelete();
   LOG_DBG("WIFI", "Free heap after scanDelete: %d bytes", ESP.getFreeHeap());
 
+  if (keepUserConnection && !HalNetwork::wifiConnected()) {
+    if (HalNetwork::wifiKept()) {
+      const auto ssid = WIFI_STORE.getLastConnectedSsid();
+      const auto entry = WIFI_STORE.findCredential(ssid);
+      if (!ssid.empty()) WiFi.begin(ssid.c_str(), entry ? entry->password.c_str() : nullptr);
+    } else {
+      HalNetwork::turnOffWifi();
+    }
+  }
+
   // Note: We do NOT disconnect WiFi here - the parent activity
   // (CrossPointWebServerActivity) manages WiFi connection state. We just clean
   // up the scan and task.
@@ -292,7 +307,7 @@ bool WifiSelectionActivity::beginScan() {
     LOG_ERR("WIFI", "Station initialization failed");
     return recoverScan("mode", 0);
   }
-  WiFi.disconnect();
+  if (!keepUserConnection || !HalNetwork::wifiConnected()) WiFi.disconnect();
   delay(100);
 
   if (WiFi.scanNetworks(true) == WIFI_SCAN_FAILED) {
@@ -645,6 +660,7 @@ void WifiSelectionActivity::checkConnectionStatus() {
     snprintf(ipStr, sizeof(ipStr), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
     connectedIP = ipStr;
     autoConnecting = false;
+    if (keepUserConnection) HalNetwork::keepWifi();
 
 #if defined(ENABLE_SERIAL_LOG) && LOG_LEVEL >= 2
     uint8_t connectedBssid[6] = {};

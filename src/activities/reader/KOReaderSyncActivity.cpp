@@ -440,7 +440,7 @@ void KOReaderSyncActivity::onEnter() {
 void KOReaderSyncActivity::onExit() {
   Activity::onExit();
 
-  if (wifiActivated) {
+  if (wifiActivated && !HalNetwork::wifiKept()) {
     WiFi.disconnect(false);
     delay(30);
     silentRestartToReader();

@@ -46,6 +46,8 @@ class FrontlightPanelActivity final : public Activity, private UiAppHost {
     Light,
     FastRefresh,
     Bluetooth,
+    Wifi,
+    Cellular,
     Preview = 200
   };
   struct RoundAction {
@@ -62,6 +64,8 @@ class FrontlightPanelActivity final : public Activity, private UiAppHost {
   void toggleBluetooth();
   void openBluetoothSettings();
   uint8_t bluetoothState() const;
+  void openWifiSettings();
+  void toggleWifi();
   char refreshText[24] = {};
   void runRickyTile(Tile tile);
   void cycleCleanRefresh();

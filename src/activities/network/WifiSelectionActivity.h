@@ -84,6 +84,7 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
   bool usedSavedPassword = false;
 
   // Whether to attempt auto-connect on entry
+  const bool keepUserConnection;
   const bool allowAutoConnect;
 
   // Whether we are attempting to auto-connect or auto-scan saved networks.
@@ -154,7 +155,8 @@ class WifiSelectionActivity final : public Activity, private UiAppHost {
   void onComplete(bool connected);
 
  public:
-  explicit WifiSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool autoConnect = true);
+  explicit WifiSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool autoConnect = true,
+                                 bool keepConnection = false);
   void onEnter() override;
   void onExit() override;
   void loop() override;

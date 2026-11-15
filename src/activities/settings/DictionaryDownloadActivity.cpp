@@ -6,6 +6,7 @@
 #include <HalSystem.h>
 #include <Logging.h>
 #include <Memory.h>
+#include <HalNetwork.h>
 #include <WiFi.h>
 #include <esp_rom_crc.h>
 
@@ -23,6 +24,7 @@
 #include "fontIds.h"
 #include "network/HttpDownloader.h"
 #include "network/RickyReaderResources.h"
+#include "util/DictionaryRegistry.h"
 
 namespace fui = freeink::ui;
 
@@ -70,17 +72,50 @@ void DictionaryDownloadActivity::onEnter() {
   app.on(ACTION_RETURN_TO_LIST, &DictionaryDownloadActivity::onReturnToList, this);
   app.on(ACTION_RETRY_DOWNLOAD, &DictionaryDownloadActivity::onRetryDownload, this);
   app.setScreen(&DictionaryDownloadActivity::stateScreen, this);
-  startWifiSelection();
+  showLocalDictionaries();
+}
+
+void DictionaryDownloadActivity::showLocalDictionaries() {
+  std::vector<DictionaryEntry> entries;
+  DictionaryRegistry::discover(entries);
+  {
+    RenderLock lock(*this);
+    items_.clear();
+    items_.reserve(entries.size());
+    for (auto& entry : entries) {
+      if (entry.name.size() >= sizeof(SETTINGS.dictionaryName)) continue;
+      ManifestItem item;
+      item.id = std::move(entry.name);
+      item.name = item.id;
+      item.localState = DictionaryResource::LocalState::Installed;
+      items_.push_back(std::move(item));
+    }
+    selectedIndex_ = 0;
+    operation_ = Operation::None;
+    localMode_ = true;
+    state_ = State::List;
+  }
+  requestUpdate();
+}
+
+Rect DictionaryDownloadActivity::dictionaryListBounds(Rect content) const {
+  if (localMode_) {
+    const auto& metrics = UITheme::getInstance().getMetrics();
+    const int offset = 2 * renderer.getLineHeight(UI_10_FONT_ID) + SubpageLayout::relatedGap(metrics);
+    content.y += offset;
+    content.height = std::max(1, content.height - offset);
+  }
+  return content;
 }
 
 void DictionaryDownloadActivity::startWifiSelection() {
   auto wifiSelection = makeUniqueNoThrow<WifiSelectionActivity>(renderer, mappedInput);
   if (!wifiSelection) {
     LOG_ERR("DICTDL", "OOM allocating WifiSelectionActivity (%zu bytes)", sizeof(WifiSelectionActivity));
-    finish();
     return;
   }
 
+  onlineRequested_ = true;
   startActivityForResult(std::move(wifiSelection),
                          [this](const ActivityResult& result) { onWifiSelectionComplete(!result.isCancelled); });
 }
@@ -90,7 +125,7 @@ void DictionaryDownloadActivity::onExit() {
   std::vector<ManifestItem>().swap(items_);
   std::string().swap(baseUrl_);
   logHeap("exit");
-  if (WiFi.getMode() != WIFI_MODE_NULL) {
+  if (onlineRequested_ && !HalNetwork::wifiKept() && WiFi.getMode() != WIFI_MODE_NULL) {
     WiFi.disconnect(false);
     delay(30);
     silentRestart();
@@ -99,11 +134,12 @@ void DictionaryDownloadActivity::onExit() {
 
 void DictionaryDownloadActivity::onWifiSelectionComplete(const bool success) {
   if (!success) {
-    finish();
+    showLocalDictionaries();
     return;
   }
   {
     RenderLock lock(*this);
+    localMode_ = false;
     state_ = State::Loading;
   }
   requestUpdateAndWait();
@@ -503,13 +539,14 @@ void DictionaryDownloadActivity::retryOperation() {
       updateAll();
       break;
     case Operation::None:
-      onWifiSelectionComplete(true);
+      if (localMode_) returnToList();
+      else onWifiSelectionComplete(true);
       break;
   }
 }
 
 bool DictionaryDownloadActivity::showUpdateAllRow() const {
-  return std::any_of(items_.begin(), items_.end(), [](const auto& item) {
+  return !localMode_ && std::any_of(items_.begin(), items_.end(), [](const auto& item) {
     return item.localState == DictionaryResource::LocalState::UpdateAvailable;
   });
 }
@@ -570,6 +607,27 @@ void DictionaryDownloadActivity::loop() {
 
   if (state_ == State::List) {
     auto activate = [this] {
+      if (isOnlineDownloadRow(selectedIndex_)) {
+        startWifiSelection();
+        return;
+      }
+      if (localMode_) {
+        const int index = itemIndexFromList(selectedIndex_);
+        if (index < 0 || index >= static_cast<int>(items_.size())) return;
+        char previous[sizeof(SETTINGS.dictionaryName)];
+        memcpy(previous, SETTINGS.dictionaryName, sizeof(previous));
+        snprintf(SETTINGS.dictionaryName, sizeof(SETTINGS.dictionaryName), "%s", items_[index].id.c_str());
+        if (SETTINGS.saveToFile()) {
+          finish();
+        } else {
+          memcpy(SETTINGS.dictionaryName, previous, sizeof(previous));
+          RenderLock lock(*this);
+          errorMessage_ = StrId::STR_DICTIONARY_SAVE_FAILED;
+          state_ = State::Error;
+          requestUpdate();
+        }
+        return;
+      }
       if (isUpdateAllRow(selectedIndex_)) {
         operation_ = Operation::UpdateAll;
         currentFileIndex_ = 0;
@@ -595,13 +653,14 @@ void DictionaryDownloadActivity::loop() {
     };
 
     if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
-      finish();
+      if (localMode_) finish();
+      else showLocalDictionaries();
       return;
     }
     const int count = listItemCount();
     const auto& metrics = UITheme::getInstance().getMetrics();
-    const Rect content =
-        SubpageLayout::contentRect(UITheme::getInstance().getScreenSafeArea(renderer, true, false), metrics);
+    const Rect content = dictionaryListBounds(
+        SubpageLayout::contentRect(UITheme::getInstance().getScreenSafeArea(renderer, true, false), metrics));
     const int pageItems = GUI.getListPageItems(content.height, true);
     if (count > 0) {
       switch (handleListTouch(selectedIndex_, count, content.y, content.height, true)) {
@@ -649,11 +708,8 @@ void DictionaryDownloadActivity::loop() {
   } else if (state_ == State::Error) {
     if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
       operation_ = Operation::None;
-      if (items_.empty()) {
-        finish();
-        return;
-      }
-      returnToList();
+      if (items_.empty()) showLocalDictionaries();
+      else returnToList();
     } else if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
       closeRouting();
       retryOperation();
@@ -704,7 +760,7 @@ void DictionaryDownloadActivity::onReturnToList(const fui::ActionEvent&, void* u
   if (self->state_ != State::Complete && self->state_ != State::Error) return;
   if (self->state_ == State::Error && self->items_.empty()) {
     self->app.clearTapFlash();
-    self->finish();
+    self->showLocalDictionaries();
     return;
   }
   self->app.clearTapFlash();
@@ -741,30 +797,37 @@ void DictionaryDownloadActivity::render(RenderLock&&) {
   const int lineHeight = renderer.getLineHeight(UI_10_FONT_ID);
   renderer.clearScreen();
   GUI.drawHeader(renderer, Rect{safeArea.x, safeArea.y + metrics.topPadding, safeArea.width, metrics.headerHeight},
-                 tr(STR_DICTIONARY_BROWSER));
+                 tr(STR_MANAGE_DICTIONARIES));
 
   if (state_ == State::Loading) {
     UITheme::drawCenteredText(renderer, textBounds, UI_12_FONT_ID, SubpageLayout::centeredTop(content, titleHeight),
                               tr(STR_LOADING_DICTIONARY_LIST));
   } else if (state_ == State::List) {
-    if (items_.empty()) {
+    if (localMode_) {
+      UITheme::drawCenteredWrappedText(renderer, Rect{textBounds.x, content.y, textBounds.width, lineHeight * 2},
+                                       UI_10_FONT_ID, tr(STR_DICTIONARY_LOCAL_HINT), 2);
+    }
+    if (listItemCount() == 0) {
       UITheme::drawCenteredText(renderer, textBounds, UI_12_FONT_ID, SubpageLayout::centeredTop(content, titleHeight),
                                 tr(STR_NO_DICTIONARIES_AVAILABLE));
     } else {
       GUI.drawList(
-          renderer, content, listItemCount(), selectedIndex_,
+          renderer, dictionaryListBounds(content), listItemCount(), selectedIndex_,
           [this](const int index) {
+            if (isOnlineDownloadRow(index)) return std::string(tr(STR_DICTIONARY_DOWNLOAD_ONLINE));
             if (isUpdateAllRow(index)) return std::string(tr(STR_UPDATE_ALL));
             return items_[itemIndexFromList(index)].name;
           },
           [this](const int index) {
-            if (isUpdateAllRow(index)) return std::string();
+            if (isOnlineDownloadRow(index) || isUpdateAllRow(index)) return std::string();
             return items_[itemIndexFromList(index)].description;
           },
           nullptr,
           [this](const int index) {
-            if (isUpdateAllRow(index)) return std::string();
-            switch (items_[itemIndexFromList(index)].localState) {
+            if (isOnlineDownloadRow(index) || isUpdateAllRow(index)) return std::string();
+            const auto& item = items_[itemIndexFromList(index)];
+            if (localMode_) return item.id == SETTINGS.dictionaryName ? std::string(tr(STR_SELECTED)) : std::string();
+            switch (item.localState) {
               case DictionaryResource::LocalState::Installed:
                 return std::string(tr(STR_INSTALLED));
               case DictionaryResource::LocalState::UpdateAvailable:
@@ -778,13 +841,17 @@ void DictionaryDownloadActivity::render(RenderLock&&) {
           },
           true,
           [this](const int index) {
-            return !isUpdateAllRow(index) &&
+            return !isOnlineDownloadRow(index) && !isUpdateAllRow(index) &&
                    items_[itemIndexFromList(index)].localState == DictionaryResource::LocalState::Installed;
           });
     }
     const char* action = "";
-    if (!items_.empty()) {
-      if (isUpdateAllRow(selectedIndex_)) {
+    if (listItemCount() > 0) {
+      if (isOnlineDownloadRow(selectedIndex_)) {
+        action = tr(STR_DOWNLOAD);
+      } else if (localMode_) {
+        action = tr(STR_SELECT);
+      } else if (isUpdateAllRow(selectedIndex_)) {
         action = tr(STR_UPDATE);
       } else {
         const auto localState = items_[itemIndexFromList(selectedIndex_)].localState;

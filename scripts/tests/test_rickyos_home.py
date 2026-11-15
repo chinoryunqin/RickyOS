@@ -164,6 +164,7 @@ int main() {
 
     def test_real_cover_renderer_preserves_ratio_and_centers_without_changing_stock(self):
         source = (ROOT / 'src/activities/home/InxRecentActivity.cpp').read_text()
+        renderer = (ROOT / 'lib/GfxRenderer/GfxRenderer.cpp').read_text()
         program = r'''
 #include <cassert>
 #include <initializer_list>
@@ -173,23 +174,27 @@ struct Bitmap { int w,h; bool gray=false; int getWidth() const {return w;} int g
   bool is1Bit() const {return !gray;} };
 struct GfxRenderer {
   mutable Rect drawn{};
-  mutable bool cropped = false, grayPath = false;
+  enum class BitmapGrayMode { Native, Cover };
+  mutable bool grayPath = false;
+  mutable BitmapGrayMode grayMode = BitmapGrayMode::Native;
   bool active = false;
   bool isGrayscale16Active() const {return active;}
   bool drawBitmap(const Bitmap&, int x,int y,int w,int h) const {drawn={x,y,w,h};return true;}
-  bool drawBitmapGrayscale16(const Bitmap&, int x,int y,int w,int h) const {grayPath=true;drawn={x,y,w,h};return true;}
-  bool drawBitmapCropToFill(const Bitmap&, int x,int y,int w,int h) const {
-    cropped=true;drawn={x,y,w,h};return true;
+  bool drawBitmapGrayscale16(const Bitmap&, int x, int y, int w, int h, float = 0, float = 0,
+                             BitmapGrayMode mode = BitmapGrayMode::Native) const {
+    grayPath = true;
+    grayMode = mode;
+    drawn = {x,y,w,h};
+    return true;
   }
+  bool drawCoverBitmap(const Bitmap&, int x, int y, int w, int h) const;
 };
-''' + method(source, 'bool drawRecentCover(') + r'''
+''' + method(renderer, 'bool GfxRenderer::drawCoverBitmap(') + '\n' + method(source, 'bool drawRecentCover(') + r'''
 int main() {
   Rect cell{30,210,200,300};
   for (Bitmap b : {Bitmap{600,900},Bitmap{900,600},Bitmap{500,1000},Bitmap{800,800},Bitmap{80,120}}) {
     GfxRenderer r;
     assert(drawRecentCover(r,b,cell));
-#ifdef RICKYOS_PRODUCT
-    assert(!r.cropped);
     assert(r.drawn.width>0 && r.drawn.height>0);
     assert(r.drawn.width<=cell.width && r.drawn.height<=cell.height);
     assert(r.drawn.width<=b.w && r.drawn.height<=b.h);
@@ -200,18 +205,16 @@ int main() {
     GfxRenderer g; g.active=true;
     Bitmap gray=b; gray.gray=true;
     assert(drawRecentCover(g,gray,cell) && g.grayPath);
+    assert((g.grayMode == GfxRenderer::BitmapGrayMode::Cover) == FREEINK_DEVICE_METALIO_EINK4);
     assert(g.drawn.x==r.drawn.x && g.drawn.y==r.drawn.y && g.drawn.width==r.drawn.width && g.drawn.height==r.drawn.height);
     GfxRenderer mono; mono.active=true;
     assert(drawRecentCover(mono,b,cell) && !mono.grayPath);
-#else
-    assert(r.cropped && r.drawn.width==cell.width && r.drawn.height==cell.height);
-#endif
   }
   assert(RickyHomeLayout::fitBitmap(0,100,200,300).width==0);
   assert(RickyHomeLayout::fitBitmap(100,100,0,300).width==0);
 }
 '''
-        for defines in ((), ('RICKYOS_PRODUCT',)):
+        for defines in (('FREEINK_DEVICE_METALIO_EINK4=0',), ('FREEINK_DEVICE_METALIO_EINK4=1',)):
             run_cpp(program, include_dirs=(ROOT / 'src',), defines=defines)
         actual = source[source.index('bool InxRecentActivity::tryDrawBookCover('):
                         source.index('bool InxRecentActivity::drawBookCover(')]

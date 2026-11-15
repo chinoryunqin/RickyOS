@@ -82,6 +82,9 @@ class FontDecompressor {
   // eight slots thrashed: each tab paint re-inflated its groups (~15 ms per text call).
   // One slot per group: each inflates once, <= ~2.5 MB PSRAM, ~6 KB of slot headers.
   static constexpr uint8_t HOT_GROUP_SLOTS = 160;
+#elif FREEINK_DEVICE_METALIO_EINK4
+  // 8 MB PSRAM target: bound retained UI groups to 16 LRU slots (~256 KB at 16 KB/group).
+  static constexpr uint8_t HOT_GROUP_SLOTS = 16;
 #elif defined(RICKYOS_PRODUCT)
   static constexpr uint8_t HOT_GROUP_SLOTS = 8;  // <= 8 x ~16 KB, PSRAM-preferred (fiFontMalloc)
 #else

@@ -88,19 +88,21 @@ export function activeOffset(ota) {
   requireThat(seqs.length > 0, '没有明确的有效启动槽。');
   return [0x10000, 0x650000][(Math.max(...seqs) - 1) % 2];
 }
-export function checkImage(bytes, product = false, version = '') {
+export function checkImage(bytes, product = false, version = '', board = 'readpico') {
   requireThat(bytes.length >= 24 && bytes[0] === 0xe9 && bytes[1] >= 1 && bytes[1] <= 16 &&
     new DataView(bytes.buffer, bytes.byteOffset).getUint16(12, true) === 9, '不是有效的 ESP32-S3 应用镜像。');
-  requireThat(contains(bytes, TAG), '镜像缺少 Read Pico 机型标记。');
+  requireThat(contains(bytes, `CROSSPOINT-BOARD-V1:${board};`), '镜像缺少目标机型标记。');
   // Reject conflicting board tags rather than accepting any matching substring.
   const text = new TextDecoder('latin1').decode(bytes);
   const tags = [...text.matchAll(/CROSSPOINT-BOARD-V1:([\w-]+);/g)].map(m => m[1]);
-  requireThat(tags.every(tag => tag === 'readpico'), '镜像包含其他机型标记。');
+  requireThat(tags.every(tag => tag === board), '镜像包含其他机型标记。');
   if (product) requireThat(contains(bytes, 'RickyOS') && contains(bytes, version), '固件品牌或版本不匹配。');
 }
-export function checkRelease(release) {
-  requireThat(release?.approved === true && release.hardwareAccepted === true &&
-    ['app-upgrade', 'auto-install'].includes(release.mode) && release.board === 'readpico' && release.chipId === 9 &&
+export function checkRelease(release, board = 'readpico') {
+  const modes = board === 'metalio_eink4' ? ['app-upgrade'] : ['app-upgrade', 'auto-install'];
+  requireThat((board === 'readpico' || board === 'metalio_eink4') &&
+    release?.approved === true && release.hardwareAccepted === true &&
+    modes.includes(release.mode) && release.board === board && release.chipId === 9 &&
     release.flashBytes === FLASH_BYTES && typeof release.version === 'string' &&
     /^\d+\.\d+\.\d+$/.test(release.version) &&
     Number.isInteger(release.bytes) && release.bytes >= 24 && release.bytes % 4 === 0 &&
@@ -177,11 +179,11 @@ export function checkPlanRelease(plan, release) {
       '识别到原厂系统，但这种分区布局尚未通过安装验收。请保存备份并联系 Ricky AI Studio。');
   }
 }
-export async function checkFirmware(bytes, release) {
-  checkRelease(release);
+export async function checkFirmware(bytes, release, board = 'readpico') {
+  checkRelease(release, board);
   requireThat(bytes.length === release.bytes && await sha256(bytes) === release.sha256,
     '固件大小或 SHA-256 不匹配，禁止写入。');
-  checkImage(bytes, true, release.version);
+  checkImage(bytes, true, release.version, board);
 }
 export async function inspectBackup(bytes) {
   requireThat(bytes.length === FLASH_BYTES, '完整 Flash 备份必须为 16 MB。');

@@ -44,9 +44,11 @@ namespace gray {
 using Level = uint8_t;            // 0..15, 0 = black
 inline constexpr Level kInk = 0;  // #000000 文字/图标/反白底/主按钮
 #if RICKYOS_NATIVE_SMALL_PANEL
-inline constexpr Level kInk2 = 5;
+// Metalio four-tone output maps level 5 to the visibly lighter middle tone.
+// Secondary ink and rules use level 8 for the next darker physical tone.
+inline constexpr Level kInk2 = 8;
 inline constexpr Level kMute = 10;
-inline constexpr Level kLine = 5;
+inline constexpr Level kLine = 8;
 inline constexpr Level kTint = 15;
 #elif RICKYOS_GRAY_PRESET == 3
 inline constexpr Level kInk2 = 3;   // 次级文字（仅静止帧）

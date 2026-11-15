@@ -58,7 +58,7 @@ struct MockWire {
   unsigned cursor=0;
   bool fail=false, beginOk=true;
   unsigned failWrites=0;
-  bool begin(int sda,int scl,unsigned hz) { assert(sda==41 && scl==42 && hz==400000); return beginOk; }
+  bool begin(int sda,int scl,unsigned hz) { assert(sda==41 && scl==42 && hz==200000); return beginOk; }
   void end() {}
   void setTimeOut(unsigned) {}
   void beginTransmission(uint8_t addr) { address=addr; data.clear(); }

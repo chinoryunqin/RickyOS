@@ -92,6 +92,7 @@ inline RickyUiTarget makeUiTarget(const GfxRenderer& renderer, bool upstreamStyl
 // 24 for single-line rows, 32 for label+subtitle rows.
 inline freeink::ui::BitmapRef listIconFor(const UIIcon icon, const int size = 24) {
   if (icon == UIIcon::Recorder) return {ricky_app_recorder_40, 40, 40, freeink::ui::BitmapFormat::Mask1, true};
+  if (icon == UIIcon::Camera) return {ricky_app_camera_40, 40, 40, freeink::ui::BitmapFormat::Mask1, true};
   if (UiHighDpiProfile::enabled) {
     switch (icon) {
       case UIIcon::Settings:

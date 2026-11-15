@@ -81,13 +81,19 @@ void MetalioCameraActivity::activate(int index) {
   if (index == 0) {
     // Check the last completed refresh under the same lock as render().
     RenderLock lock(RenderLock::Mode::Try);
-    if (lock.ownsLock() && imageReady_ && !HalCamera::busy() &&
-        HalCamera::snapshot().generation == displayedGeneration_ && HalCamera::saveCurrent()) {
+    if (!lock.ownsLock() || HalCamera::busy()) return;
+    const auto camera = HalCamera::snapshot();
+    const bool shownFrame = camera.state != HalCamera::State::Error && imageReady_ && displayedGeneration_ != 0 &&
+                            camera.generation == displayedGeneration_;
+    // Save the frame the reader actually saw. If there is no preview yet,
+    // allow a single capture and save without depending on the viewfinder.
+    if (shownFrame ? HalCamera::saveCurrent() : HalCamera::capture()) {
       paused_ = true;
+      shown_ = HalCamera::snapshot();
     }
   } else if (index == 1) {
     paused_ = !paused_;
-    if (!imageReady_ || shown_.state == HalCamera::State::Error) paused_ = false;
+    if (bitmap_ && decoder_ && (!imageReady_ || shown_.state == HalCamera::State::Error)) paused_ = false;
     nextPreview_ = millis();
   } else if (index == 2 && !HalCamera::busy()) {
     paused_ = true;
@@ -162,8 +168,9 @@ void MetalioCameraActivity::loop() {
 void MetalioCameraActivity::render(RenderLock&&) {
   renderer.clearScreen();
   const auto& m = UITheme::getInstance().getMetrics();
-  const char* status = shown_.state == HalCamera::State::Error   ? tr(STR_CELL_ERROR)
+  const char* status = shown_.state == HalCamera::State::Error   ? tr(STR_CAMERA_ERROR)
                        : shown_.state == HalCamera::State::Saved ? tr(STR_CAMERA_SAVED)
+                       : shown_.state == HalCamera::State::Working && paused_ ? tr(STR_CAMERA_CAPTURING)
                        : !imageReady_                            ? tr(STR_CAMERA_CONNECTING)
                        : paused_                                 ? tr(STR_CAMERA_PAUSED)
                                                                  : tr(STR_CAMERA_VIEWFINDER);
@@ -179,7 +186,8 @@ void MetalioCameraActivity::render(RenderLock&&) {
           renderer.drawPixel(area.x + x, y + row, true);
   } else
     renderer.drawCenteredText(UI_10_FONT_ID, area.y + area.height / 2, status);
-  renderer.drawCenteredText(UI_10_FONT_ID, area.y + area.height + 20, tr(STR_CAMERA_LIVE_HINT));
+  const char* hint = shown_.state == HalCamera::State::Error ? tr(STR_CAMERA_RETRY_HINT) : tr(STR_CAMERA_LIVE_HINT);
+  renderer.drawCenteredText(UI_10_FONT_ID, area.y + area.height + 20, hint);
   const char* labels[] = {tr(STR_CAMERA_SHUTTER), paused_ ? tr(STR_CAMERA_RESUME) : tr(STR_CAMERA_PAUSE),
                           tr(STR_GALLERY_TITLE)};
   for (int i = 0; i < 3; ++i) {

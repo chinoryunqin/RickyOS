@@ -3,6 +3,7 @@
 #if FREEINK_DEVICE_METALIO_EINK4
 #include <HalCamera.h>
 #include <HalCellular.h>
+#include <HalNetwork.h>
 
 #include "activities/UiListActivity.h"
 
@@ -17,7 +18,7 @@ class MetalioPeripheralActivity final : public UiListActivity {
   bool handleHomeGesture() override;
 
  private:
-  int listCount() const override { return camera_ ? 5 : 10; }
+  int listCount() const override { return camera_ ? 5 : 9; }
   const char* headerTitle() const override;
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
@@ -25,8 +26,10 @@ class MetalioPeripheralActivity final : public UiListActivity {
   bool camera_;
   uint32_t lastPoll_ = 0;
   HalCellular::Snapshot cell_;
+  HalNetwork::Route route_ = HalNetwork::Route::None;
+  bool wifiEnabled_ = false;
   HalCamera::Snapshot photo_;
-  freeink::ui::ListItem rows_[10]{};
-  char values_[10][160]{};
+  freeink::ui::ListItem rows_[9]{};
+  char values_[9][160]{};
 };
 #endif

@@ -14,6 +14,8 @@
 
 #include <algorithm>
 
+#include "BlueNoiseDither.h"
+
 // Named fill grays on the 16-level frame; RICKYOS_GRAY_PRESET (RickyDesignTokens.h) deepens them.
 #ifndef RICKYOS_GRAY_PRESET
 #define RICKYOS_GRAY_PRESET 3
@@ -2131,7 +2133,7 @@ bool GfxRenderer::beginGrayscale16Offscreen(uint8_t* frame) {
   return true;
 }
 
-bool GfxRenderer::commitGrayscale16() const {
+bool GfxRenderer::commitGrayscale16(const bool photo) const {
   if (!grayscale16Buffer) return false;
 #if FREEINK_DEVICE_METALIO_PLUS
   // Standby/overlay exit requests a clean baseline. Native16 must honor the
@@ -2140,9 +2142,11 @@ bool GfxRenderer::commitGrayscale16() const {
   if (nextRefreshNeedsCleanup()) display.setNextGray16Profile(2);
 #endif
 #if FREEINK_DEVICE_METALIO_EINK4
-  const bool committed = display.commitGrayscaleUi(nextRefreshNeedsCleanup());
+  const bool committed = display.commitGrayscaleUi(nextRefreshNeedsCleanup(), photo);
   if (!committed) display.cancelGrayscaleUi();
+  if (committed && photo) clearNextRefreshOverride();
 #else
+  (void)photo;
   const bool committed = commitNativeGray(display);
   if (!committed) cancelNativeGray(display);
 #endif
@@ -2459,8 +2463,21 @@ void GfxRenderer::copyBwToGrayscale16(const int x, const int y, const int width,
   }
 }
 
+bool GfxRenderer::drawCoverBitmap(const Bitmap& bitmap, const int x, const int y, const int maxWidth,
+                                  const int maxHeight) const {
+  if (isGrayscale16Active() && !bitmap.is1Bit()) {
+#if FREEINK_DEVICE_METALIO_EINK4
+    return drawBitmapGrayscale16(bitmap, x, y, maxWidth, maxHeight, 0, 0, BitmapGrayMode::Cover);
+#else
+    return drawBitmapGrayscale16(bitmap, x, y, maxWidth, maxHeight);
+#endif
+  }
+  return drawBitmap(bitmap, x, y, maxWidth, maxHeight);
+}
+
 bool GfxRenderer::drawBitmapGrayscale16(const Bitmap& bitmap, const int x, const int y, const int maxWidth,
-                                        const int maxHeight, const float cropX, const float cropY) const {
+                                        const int maxHeight, const float cropX, const float cropY,
+                                        const BitmapGrayMode mode) const {
   if (!grayscale16Buffer || !std::isfinite(cropX) || !std::isfinite(cropY) || cropX < 0 || cropX >= 1 || cropY < 0 ||
       cropY >= 1 || bitmap.getWidth() <= 0 || bitmap.getHeight() <= 0)
     return false;
@@ -2487,10 +2504,21 @@ bool GfxRenderer::drawBitmapGrayscale16(const Bitmap& bitmap, const int x, const
   if (grayscale16PrefersColumns()) band.reset(new (std::nothrow) uint8_t[static_cast<size_t>(targetWidth) * kBandRows]);
   int bandDestY[kBandRows];
   int bandCount = 0;
+  const auto drawSample = [&](const int destX, const int destY, const uint8_t gray) {
+    const int screenX = x + destX;
+    const int screenY = y + destY;
+    uint8_t tone = gray;
+    if (mode == BitmapGrayMode::BlueNoise4) {
+      tone = blueNoiseDither::gray4(gray, screenX, screenY);
+    } else if (mode == BitmapGrayMode::Cover) {
+      tone = blueNoiseDither::coverGray(gray, destX, destY);
+    }
+    drawGrayscale16Pixel(screenX, screenY, tone);
+  };
   const auto flushBand = [&] {
     for (int destX = 0; destX < targetWidth; ++destX) {
       for (int i = 0; i < bandCount; ++i) {
-        drawGrayscale16Pixel(x + destX, y + bandDestY[i], band[static_cast<size_t>(i) * targetWidth + destX]);
+        drawSample(destX, bandDestY[i], band[static_cast<size_t>(i) * targetWidth + destX]);
       }
     }
     bandCount = 0;
@@ -2512,7 +2540,7 @@ bool GfxRenderer::drawBitmapGrayscale16(const Bitmap& bitmap, const int x, const
     }
     for (int destX = 0; destX < targetWidth; ++destX) {
       const int sourceX = cropPixX + destX * sourceWidth / targetWidth;
-      drawGrayscale16Pixel(x + destX, y + destY, row[sourceX]);
+      drawSample(destX, destY, row[sourceX]);
     }
   }
   if (band && bandCount > 0) flushBand();

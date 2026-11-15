@@ -48,6 +48,7 @@ int imageWarms=0;bool cancelImage=false;
 template<class... Args> void log(const char*,const char*,Args...) {}
 #define LOG_ERR(...) log(__VA_ARGS__)
 #define LOG_DBG(...) log(__VA_ARGS__)
+#define LOG_INF(...) log(__VA_ARGS__)
 unsigned long millis() { return 0; }
 struct Manager {
   bool cancelled=false, switching=false;
@@ -88,11 +89,11 @@ struct GfxRenderer {
   RenderMode mode=BW;
   std::array<uint8_t,16> frame;
   FontCacheManager fonts;
-  bool inverted=false;
+  bool inverted=false, strip=FREEINK_DEVICE_METALIO_EINK4;
   GfxRenderer() {frame.fill(0xA5);}
   bool hasFrameBuffer() const {return true;}
   bool isInverted() const {return inverted;}
-  bool supportsStripGrayscale() const {return false;}
+  bool supportsStripGrayscale() const {return strip;}
   bool supportsTextOnlyCombinedBase() const {return true;}
   int getScreenWidth() const {return 16;}
   int getScreenHeight() const {return 8;}
@@ -147,6 +148,7 @@ struct Page {
   std::vector<std::unique_ptr<PageLine>> elements;
   Page() {for(int i=0;i<3;++i) {auto p=std::make_unique<PageLine>(); p->yPos=i; elements.push_back(std::move(p));}}
   bool hasImages() const {return images;}
+  bool hasPanelFill() const {return false;}
   bool hasImagesNeedingDecode() const {return images;}
   bool warmImages(GfxRenderer& r,int,int,CancelCheck c) {
     ++imageWarms;r.frame.fill(0x11);r.mode=GfxRenderer::GRAYSCALE_MSB;
@@ -252,11 +254,12 @@ int main() {
     CHANGE(imageAdjustments,1); CHANGE(page,0); CHANGE(spine,0); CHANGE(sectionGeneration,2); CHANGE(renderEpoch,2);
     CHANGE(orientation,1); CHANGE(fakeBold,1); CHANGE(textWeight,0); CHANGE(antiAliasing,false); CHANGE(inverted,true);
     CHANGE(guideLine,true); CHANGE(guideStyle,1); CHANGE(guideOffset,1);
-    CHANGE(spec.fontId,2); CHANGE(spec.lineCompression,2); CHANGE(spec.extraParagraphSpacing,1);
+    CHANGE(spec.fontId,2); CHANGE(spec.lineCompression,2); CHANGE(spec.paragraphSpacingPercent,150); CHANGE(spec.paragraphIndentSpaces,2);
     CHANGE(spec.firstLineIndent,2); CHANGE(spec.characterSpacing,1); CHANGE(spec.wordSpacingPercent,120);
     CHANGE(spec.paragraphAlignment,2); CHANGE(spec.viewportWidth,2); CHANGE(spec.viewportHeight,2);
     CHANGE(spec.hyphenationEnabled,true); CHANGE(spec.embeddedStyle,false); CHANGE(spec.imageRendering,2);
     CHANGE(spec.focusReadingEnabled,true); CHANGE(spec.collectTouchLinks,true);
+    CHANGE(spec.verticalText,true); CHANGE(spec.bookFontsKey,42);
 #undef CHANGE
     // This failed before the fix: consumption overwrote all cached margins first.
     assert(!r.consume(2,2,2,2));
@@ -269,7 +272,7 @@ int main() {
   for(bool fail: {false,true}) {
     reset(); EpubReaderActivity r; r.section->images=!fail; r.section->fail=fail;
     for(int i=0;i<100;++i) r.renderIdle(0);
-    assert(r.section->loads==2 && memory::allocations==(fail?0:1));
+    assert(r.section->loads==2 && memory::allocations==((fail || FREEINK_DEVICE_METALIO_EINK4)?0:1));
     for(const auto& slot:r.pageCache_) assert(slot.state==ReaderPageCache::State::Skipped);
     r.section->images=false; r.section->fail=false;
     assert(!r.consume()); r.renderIdle(0); assert(r.section->loads==4);
@@ -277,8 +280,8 @@ int main() {
   reset();
   {EpubReaderActivity r; r.section->images=true;auto original=r.renderer.frame;
    imageWarms=0;cancelImage=true;r.renderIdle(0);cancelImage=false;
-   assert(imageWarms==1 && r.renderer.frame==original && r.renderer.mode==GfxRenderer::BW);
-   assert(memory::live==1 && !r.pageCacheFailed_ && !r.pageCacheBase_[0]);
+   assert(imageWarms==(FREEINK_DEVICE_METALIO_EINK4?0:1) && r.renderer.frame==original && r.renderer.mode==GfxRenderer::BW);
+   assert(memory::live==(FREEINK_DEVICE_METALIO_EINK4?0:1) && !r.pageCacheFailed_ && !r.pageCacheBase_[0]);
    r.freePageCache();assert(memory::live==0);}
   reset();
   {EpubReaderActivity r;r.section->images=true;memory::headroom=false;r.renderIdle(0);
@@ -319,11 +322,72 @@ int main() {
   reset();
   {EpubReaderActivity r; r.overlay=EpubReaderActivity::Overlay::Menu; r.renderIdle(0); assert(r.section->loads==0);}
   {EpubReaderActivity r; r.imagePreview_=EpubReaderActivity::ImagePreview::Adjusted; r.renderIdle(0); assert(r.section->loads==0);}
+  {EpubReaderActivity r; r.renderer.strip=!FREEINK_DEVICE_METALIO_EINK4;
+   r.renderIdle(0); assert(r.section->loads==0 && memory::allocations==0);}
   {EpubReaderActivity r; r.renderIdle(0); r.imageIdentity=1; assert(!r.consume());}
   reset();
 }
 '''
-        run_cpp(program, (ROOT / 'src/activities/reader', ROOT / 'lib/Epub', ROOT / 'lib/Memory'))
+        for ordinary in (0, 1):
+            with self.subTest(ordinary=ordinary):
+                run_cpp(program, (ROOT / 'src/activities/reader', ROOT / 'lib/Epub', ROOT / 'lib/Memory'),
+                        defines=(f'FREEINK_DEVICE_METALIO_EINK4={ordinary}',))
+
+    def test_ordinary_cached_planes_match_uncached_uploads(self):
+        source = READER.read_text()
+        consumer = method(source, 'auto renderPlaneToBuffer =') + ';'
+        program = r'''
+#include <array>
+#include <cassert>
+#include <cstring>
+#include "ReaderGrayPlane.h"
+struct Renderer {
+  enum Mode {BW, GRAYSCALE_LSB, GRAYSCALE_MSB};
+  Mode mode=BW;
+  mutable uint8_t* target=nullptr;
+  void setRenderMode(Mode m) {mode=m;}
+  void beginStripTarget(uint8_t* p,int y,int rows) const {assert(!target && y==0 && rows==480);target=p;}
+  void clearScreen(uint8_t color) const {memset(target,color,48000);}
+  void endStripTarget() const {target=nullptr;}
+};
+using GfxRenderer=Renderer;
+struct Buffer {std::array<uint8_t,48000> bytes;uint8_t* get(){return bytes.data();}};
+int main() {
+  Renderer renderer;
+  Buffer pageCacheLsb_[2],pageCacheMsb_[2];
+  const int gh=480;
+  const size_t planeBytes=48000;
+  for(int orientation=0;orientation<4;++orientation) {
+    for(int slot=0;slot<2;++slot) {
+      for(size_t i=0;i<planeBytes;++i) {
+        pageCacheLsb_[slot].bytes[i]=static_cast<uint8_t>(i+orientation+17*slot);
+        pageCacheMsb_[slot].bytes[i]=static_cast<uint8_t>(i*3+orientation+31*slot);
+      }
+    }
+    for(int pageCacheLiveSlot_=0;pageCacheLiveSlot_<2;++pageCacheLiveSlot_) {
+      for(bool pageCacheHit:{false,true}) {
+        int paints=0;
+        auto renderGrayscalePass=[&] {
+          ++paints;
+          auto& src=renderer.mode==Renderer::GRAYSCALE_LSB ? pageCacheLsb_[pageCacheLiveSlot_]
+                                                        : pageCacheMsb_[pageCacheLiveSlot_];
+          memcpy(renderer.target,src.get(),planeBytes);
+        };
+''' + consumer + r'''
+        for(bool lsb:{false,true}) {
+          std::array<uint8_t,48002> upload;upload.fill(0xA5);
+          renderPlaneToBuffer(lsb,upload.data()+1);
+          const auto* expected=lsb ? pageCacheLsb_[pageCacheLiveSlot_].get() : pageCacheMsb_[pageCacheLiveSlot_].get();
+          assert(memcmp(upload.data()+1,expected,planeBytes)==0);
+          assert(upload.front()==0xA5 && upload.back()==0xA5 && !renderer.target);
+        }
+        assert(paints==(pageCacheHit?0:2));
+      }
+    }
+  }
+}
+'''
+        run_cpp(program, (ROOT / 'src/activities/reader',), defines=('FREEINK_DEVICE_METALIO_EINK4=1',))
 
     def test_readpico_input_cancellation_on_hardware_and_simulator(self):
         source = (ROOT / 'src/main.cpp').read_text()
@@ -362,13 +426,14 @@ int main() {
   }
 }
 '''
-        for pico, plus in ((1, 0), (0, 1), (0, 0)):
+        for pico, plus, ordinary in ((1, 0, 0), (0, 1, 0), (0, 0, 1), (0, 0, 0)):
             for emulated in (0, 1):
-                with self.subTest(pico=pico, plus=plus, emulated=emulated):
+                with self.subTest(pico=pico, plus=plus, ordinary=ordinary, emulated=emulated):
                     definitions = (f'#define CROSSPOINT_EMULATED {emulated}\n'
                                    f'#define FREEINK_DEVICE_READPICO {pico}\n'
-                                   f'#define FREEINK_DEVICE_METALIO_PLUS {plus}\n')
-                    case = program if pico or plus else program.replace(
+                                   f'#define FREEINK_DEVICE_METALIO_PLUS {plus}\n'
+                                   f'#define FREEINK_DEVICE_METALIO_EINK4 {ordinary}\n')
+                    case = program if pico or plus or ordinary else program.replace(
                         'cancellations==1 && *event', 'cancellations==0 && *event')
                     run_cpp(definitions + case)
 
@@ -400,6 +465,8 @@ std::vector<unsigned> waits;
 struct Settings {int screenInverted=0;} SETTINGS;
 struct Display {void setInverted(bool) {}} display;
 struct RenderLock {};
+namespace systemUiFonts {void ensureLoaded(int) {}}
+int renderer=0;
 struct HalPowerManager {struct Lock {~Lock() {}};};
 struct ActivityManager;
 ActivityManager* manager;

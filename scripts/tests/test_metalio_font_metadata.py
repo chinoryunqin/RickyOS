@@ -40,10 +40,8 @@ inline void heap_caps_free(void* pointer) {++releases;std::free(pointer);}
 #include "NativeFontMetadata.h"
 #if RICKYOS_METALIO_FONT_METADATA
 #include <nativefontmeta/metalio_body_10_regular.packed.h>
-#include <nativefontmeta/metalio_book_10_medium.packed.h>
 #else
 #include <fonts/metalio_body_10_regular.packed.h>
-#include <fonts/metalio_book_10_medium.packed.h>
 #endif
 uint64_t hash=1469598103934665603ULL;
 void mix(uint64_t value){hash^=value;hash*=1099511628211ULL;}
@@ -60,20 +58,18 @@ int main(){
 #if RICKYOS_METALIO_FONT_METADATA
   assert(!metalio_body_10_regular.glyph && metalio_body_10_regular.intervalCount==0);
   failAllocation=true;
-  assert(!NativeFontMetadata::initialize(metalio_body_10_regular,metalio_book_10_medium));
+  assert(!NativeFontMetadata::initialize(metalio_body_10_regular));
   assert(allocations==0 && !metalio_body_10_regular.glyph);
   failAllocation=false;
 #if TEST_CORRUPT
-  assert(!NativeFontMetadata::initialize(metalio_body_10_regular,metalio_book_10_medium));
+  assert(!NativeFontMetadata::initialize(metalio_body_10_regular));
   assert(allocations==1 && releases==1);
   assert(!metalio_body_10_regular.glyph && metalio_body_10_regular.intervalCount==0);
-  assert(!metalio_book_10_medium.glyph && metalio_book_10_medium.intervalCount==0);
   return 0;
 #else
-  assert(NativeFontMetadata::initialize(metalio_body_10_regular,metalio_book_10_medium));
-  assert(NativeFontMetadata::initialize(metalio_body_10_regular,metalio_book_10_medium));
+  assert(NativeFontMetadata::initialize(metalio_body_10_regular));
+  assert(NativeFontMetadata::initialize(metalio_body_10_regular));
   assert(allocations==1 && releases==0);
-  assert(metalio_body_10_regular.intervals==metalio_book_10_medium.intervals);
 #endif
 #endif
 '''

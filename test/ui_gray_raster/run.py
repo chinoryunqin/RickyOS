@@ -5,6 +5,7 @@ import tempfile
 
 root = Path(__file__).resolve().parents[2]
 source = r'''
+#include "BlueNoiseDither.h"
 #include "UiGrayRaster.h"
 #include "UiSceneFit.h"
 #include <cassert>
@@ -27,6 +28,40 @@ int main() {
       row(flat, out, 100, plane);
       for (auto byte : out) assert(byte==out[0] && (byte==0 || byte==255));
     }
+  }
+  // Photo shadows stay distinct while the same four panel tones are used.
+  unsigned previous = 0;
+  for (unsigned lum = 0; lum < 256; ++lum) {
+    unsigned sum = 0;
+    for (unsigned y = 0; y < 32; ++y) {
+      for (unsigned x = 0; x < 32; ++x) {
+        const auto level = blueNoiseDither::gray4(lum, x, y);
+        assert(level % 85 == 0);
+        sum += level;
+      }
+    }
+    assert(sum >= previous);
+    if (lum == 0 || lum == 255) assert(sum == lum * 1024);
+    if (lum == 12) assert(sum > lum * 1024);
+    if (lum == 64 || lum == 128) assert(sum >= (lum + 20) * 1024);
+    previous = sum;
+  }
+  // Cover rasters use the three visible fast-refresh tones and preserve gradients
+  // on either side of the one physical midtone.
+  previous = 0;
+  for (unsigned lum = 0; lum < 256; ++lum) {
+    unsigned sum = 0;
+    for (unsigned y = 0; y < 32; ++y) {
+      for (unsigned x = 0; x < 32; ++x) {
+        const auto shade = blueNoiseDither::coverGray(lum, x, y);
+        assert(shade == 0 || shade == 170 || shade == 255);
+        sum += shade == 170 ? 128 : shade;
+      }
+    }
+    assert(sum >= previous);
+    if (lum == 0 || lum == 255) assert(sum == lum * 1024);
+    if (lum == 72 || lum == 172) assert(sum > (lum + 5) * 1024);
+    previous = sum;
   }
   // Zero rows may use null pointers and must perform no access.
   row(nullptr, nullptr, 0, Plane::Base);

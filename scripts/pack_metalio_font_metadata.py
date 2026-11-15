@@ -1,8 +1,7 @@
 """Pack the ordinary panel's existing font tables without changing any glyph.
 
 The bitmap groups stay in flash. One bounded PSRAM allocation holds the decoded
-glyph and Unicode tables for both permanent fallback faces, with shared tables
-stored once. Normal builds need only Python's standard library.
+glyph and Unicode tables for the native fallback face. Normal builds need only Python's standard library.
 """
 import hashlib
 import json
@@ -12,7 +11,7 @@ import struct
 import zlib
 
 ROOT = Path(__file__).resolve().parents[1]
-FACES = ("metalio_body_10_regular", "metalio_book_10_medium")
+FACES = ("metalio_body_10_regular",)
 SCHEMAS = (("EpdGlyph", "Glyphs", "<BBHhhH2xI"), ("EpdUnicodeInterval", "Intervals", "<III"))
 
 

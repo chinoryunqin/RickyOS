@@ -37,7 +37,7 @@ class EpubReaderActivity final : public ReaderActivity {
   bool lastPageHadPanelFill_ = false;  // the shown page has a gray CSS panel (clean the turn off it)
   std::atomic<uint32_t> pendingNativeTurn_{0};
   bool previousNativeText_ = false;
-  // When the last 16-level page finished driving; a turn taken within kQueuedTurnMs of
+  // When the last motion-capable text page finished driving; a turn taken within kQueuedTurnMs of
   // it was tapped during that drive.
   unsigned long lastNativeCommitEnd_ = 0;
   static constexpr unsigned long kQueuedTurnMs = 150;
@@ -75,8 +75,8 @@ class EpubReaderActivity final : public ReaderActivity {
 
   bool nativeGray16Page(const Page& page) const;
 
-#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
-  // Two slots of four reusable PSRAM frames each (~812 KiB total); too large for
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4
+  // Two slots of four reusable PSRAM planes (384 KB total on ordinary E-Ink4); too large for
   // the render task's stack. The activity owns them and releases them in onExit().
   //
   // Two slots because the cache only pays off for the page the reader actually turns
@@ -107,7 +107,7 @@ class EpubReaderActivity final : public ReaderActivity {
   ReaderPageCacheKey pageCacheKey(int page, int top, int right, int bottom, int left) const;
   uint32_t idleRenderDelayMs() const override;
   void renderIdle(uint32_t generation) override;
-#if FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4
   void renderIdleWarmup(uint32_t generation) override;
 #endif
   // Build one page into one cache slot; only called from renderIdle().

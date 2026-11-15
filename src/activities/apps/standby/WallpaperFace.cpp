@@ -216,7 +216,7 @@ bool WallpaperFace::renderNative(GfxRenderer& renderer, const Rect& viewport) {
   // frame against it and drives only the changed clock/date area (no full flash),
   // with a clean pass over that area every kClockCleanupEvery minutes.
   // A filter is a B/W look: render() draws it.
-  if (renderer.getGrayscaleLevels() != 16 || filtered()) return false;
+  if ((!FREEINK_DEVICE_METALIO_EINK4 && renderer.getGrayscaleLevels() != 16) || filtered()) return false;
   HalFile file;
   if (!Storage.openFileForRead("STANDBY", path_, file)) {
     hasPicture_ = false;
@@ -231,13 +231,15 @@ bool WallpaperFace::renderNative(GfxRenderer& renderer, const Rect& viewport) {
   const int screenWidth = renderer.getScreenWidth();
   const int screenHeight = renderer.getScreenHeight();
   const Placement at = placeBitmap(bitmap, screenWidth, screenHeight);
-  bool shown = renderer.beginGrayscale16() &&
-               renderer.drawBitmapGrayscale16(bitmap, at.x, at.y, screenWidth, screenHeight, at.cropX, at.cropY);
+  constexpr bool blueNoise = FREEINK_DEVICE_METALIO_EINK4;
+  constexpr auto mode = blueNoise ? GfxRenderer::BitmapGrayMode::BlueNoise4 : GfxRenderer::BitmapGrayMode::Native;
+  bool shown = (blueNoise ? renderer.beginGrayscaleUi() : renderer.beginGrayscale16()) &&
+               renderer.drawBitmapGrayscale16(bitmap, at.x, at.y, screenWidth, screenHeight, at.cropX, at.cropY, mode);
   if (shown) {
     drawCorner(renderer, viewport, true);
     constexpr uint8_t kClockCleanupEvery = 30;
     if (grayShown_) renderer.setNextGray16UiRefresh(0, 0, 0, 0, kClockCleanupEvery, kClockCleanupEvery);
-    shown = renderer.commitGrayscale16();
+    shown = renderer.commitGrayscale16(blueNoise);
   }
   renderer.cancelGrayscale16();
   grayShown_ = shown;

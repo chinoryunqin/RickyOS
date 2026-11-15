@@ -110,7 +110,7 @@ void RickyWallpaperDownloadActivity::onEnter() {
 
 void RickyWallpaperDownloadActivity::onExit() {
   Activity::onExit();
-  const bool wifiWasEnabled = WiFi.getMode() != WIFI_MODE_NULL;
+  const bool wifiWasEnabled = !HalNetwork::wifiKept() && WiFi.getMode() != WIFI_MODE_NULL;
   if (wifiWasEnabled) {
     WiFi.disconnect(false);
     delay(30);

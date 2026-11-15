@@ -395,8 +395,9 @@ void ImageViewerActivity::onEnter() {
 
       GUI.fillPopupProgress(renderer, popupRect, 50);
 
-      // The 16-level pass below draws the picture itself; a B/W pass first only cost time.
-      const bool native16 = bitmap.hasGreyscale() && renderer.getGrayscaleLevels() == 16;
+      // A grayscale frame draws the picture itself and also fills the B/W proxy.
+      constexpr bool blueNoise = FREEINK_DEVICE_METALIO_EINK4;
+      const bool native16 = bitmap.hasGreyscale() && (blueNoise || renderer.getGrayscaleLevels() == 16);
       renderer.clearScreen();
       if (!native16 && !renderer.drawBitmap(bitmap, x, y, pageWidth, pageHeight, 0, 0)) {
         renderer.clearScreen();
@@ -411,10 +412,11 @@ void ImageViewerActivity::onEnter() {
       // Native 16-gray, as Standby and the sleep screen draw it. The overlay-mask path
       // also painted the Set button into its gray planes, turning it into a dark bar
       // with no readable label. Here the button is drawn in B/W and copied in.
-      if (bitmap.hasGreyscale() && renderer.getGrayscaleLevels() == 16 && bitmap.rewindToData() == BmpReaderError::Ok) {
+      if (native16 && bitmap.rewindToData() == BmpReaderError::Ok) {
+        constexpr auto mode = blueNoise ? GfxRenderer::BitmapGrayMode::BlueNoise4 : GfxRenderer::BitmapGrayMode::Native;
         const unsigned long tGray = millis();
-        bool shown =
-            renderer.beginGrayscale16() && renderer.drawBitmapGrayscale16(bitmap, x, y, pageWidth, pageHeight, 0, 0);
+        bool shown = (blueNoise ? renderer.beginGrayscaleUi() : renderer.beginGrayscale16()) &&
+                     renderer.drawBitmapGrayscale16(bitmap, x, y, pageWidth, pageHeight, 0, 0, mode);
         LOG_DBG("IMGV", "timing: gray16 draw %lu ms", millis() - tGray);
         const unsigned long tCommit = millis();
 #if !defined(SIMULATOR)
@@ -426,11 +428,17 @@ void ImageViewerActivity::onEnter() {
           drawActions();
           renderer.copyBwToGrayscale16(action.x, action.y, action.width, action.height);
         }
-        shown = shown && renderer.commitGrayscale16();
+        shown = shown && renderer.commitGrayscale16(blueNoise);
         LOG_DBG("IMGV", "timing: gray16 commit %lu ms", millis() - tCommit);
         renderer.cancelGrayscale16();
         if (!shown) {
-          LOG_ERR("BMP", "16-gray preview failed");
+          LOG_ERR("BMP", "Grayscale preview failed");
+          if (blueNoise && bitmap.rewindToData() == BmpReaderError::Ok) {
+            renderer.clearScreen();
+            shown = renderer.drawBitmap(bitmap, x, y, pageWidth, pageHeight, 0, 0);
+            GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+            drawActions();
+          }
           renderer.displayBuffer(HalDisplay::HALF_REFRESH);
         }
         imageReady = shown;

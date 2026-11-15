@@ -7,6 +7,8 @@
 #include <HalGPIO.h>
 #include <I18n.h>
 #include <Memory.h>
+#include <HalNetwork.h>
+#include <MetalioFeatures.h>
 #include <WiFi.h>
 
 #include <algorithm>
@@ -131,7 +133,7 @@ void CrossPointWebServerActivity::onExit() {
     if (isApMode) {
       WiFi.softAPdisconnect(true);
     } else {
-      WiFi.disconnect(false);
+      HalNetwork::releaseWifi();
     }
     delay(30);
     NetworkStartup::logMemory("web exit before restart");
@@ -241,7 +243,12 @@ void CrossPointWebServerActivity::startAccessPoint() {
   LOG_DBG("WEBACT", "Free heap before AP start: %d bytes", ESP.getFreeHeap());
 
   // Configure and start the AP
-  if (!NetworkStartup::setMode(renderer, WIFI_AP)) {
+#if RICKYOS_METALIO_CELLULAR_ENABLED
+  const auto mode = HalNetwork::wifiKept() ? WIFI_AP_STA : WIFI_AP;
+#else
+  constexpr auto mode = WIFI_AP;
+#endif
+  if (!NetworkStartup::setMode(renderer, mode)) {
     LOG_ERR("WEBACT", "Failed to initialize WiFi for Access Point");
     onGoHome();
     return;

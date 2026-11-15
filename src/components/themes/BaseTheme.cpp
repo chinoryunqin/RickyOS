@@ -3,6 +3,8 @@
 #include <FreeInkUIGfxRenderer.h>
 #include <GfxRenderer.h>
 #include <HalGPIO.h>
+#include <HalNetwork.h>
+#include <MetalioFeatures.h>
 #include <HalPowerManager.h>
 #include <HalStorage.h>
 #include <Logging.h>
@@ -256,10 +258,7 @@ bool BaseTheme::drawCoverThumbFill(const GfxRenderer& renderer, const Bitmap& bi
   const int top = std::max(slot.y, clip[1]);
   renderer.setClipRect(left, top, std::max(0, std::min(slot.x + slot.width, clip[0] + clip[2]) - left),
                        std::max(0, std::min(slot.y + slot.height, clip[1] + clip[3]) - top));
-  // Gray thumbnails keep their tones on a 16-level frame; the 2-bit path would dither them.
-  const bool drawn = renderer.isGrayscale16Active() && !bitmap.is1Bit()
-                         ? renderer.drawBitmapGrayscale16(bitmap, x, y, bitmap.getWidth(), bitmap.getHeight())
-                         : renderer.drawBitmap(bitmap, x, y, bitmap.getWidth(), bitmap.getHeight());
+  const bool drawn = renderer.drawCoverBitmap(bitmap, x, y, bitmap.getWidth(), bitmap.getHeight());
   renderer.setClipRect(clip[0], clip[1], clip[2], clip[3]);
   return drawn;
 }
@@ -1196,6 +1195,18 @@ void BaseTheme::drawRickyReaderChrome(GfxRenderer& renderer, const float bookPro
       else
         titleLeft += width + ds::space::k4;
     }
+#if RICKYOS_METALIO_CELLULAR_ENABLED
+    const auto route = HalNetwork::route();
+    if (route != HalNetwork::Route::None) {
+      const char* label = route == HalNetwork::Route::Wifi ? tr(STR_STATUS_WIFI) : tr(STR_STATUS_CELL);
+      const int width = renderer.getTextWidth(numericFont, label);
+      if (titleRight - width >= titleLeft) {
+        titleRight -= width;
+        renderer.drawText(numericFont, titleRight, y, label);
+        titleRight -= ds::space::k4;
+      }
+    }
+#endif
     if (title && *title && titleRight > titleLeft) {
       RickyDesignUi::secondaryText(
           renderer,

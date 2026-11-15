@@ -259,7 +259,7 @@ BmpReaderError Bitmap::parseHeaders() {
   const bool highColor = !nativePalette;
   if (highColor && dithering) {
     if (USE_ATKINSON) {
-      atkinsonDitherer = new (std::nothrow) AtkinsonDitherer(width, originalThresholds);
+      atkinsonDitherer = new (std::nothrow) AtkinsonDitherer(width, originalThresholds, ditherErrorShift);
       if (!atkinsonDitherer || !atkinsonDitherer->isValid()) {
         delete atkinsonDitherer;
         atkinsonDitherer = nullptr;

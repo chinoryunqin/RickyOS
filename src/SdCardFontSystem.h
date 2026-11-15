@@ -161,7 +161,7 @@ class SdCardFontSystem {
   // One style source file. SMALL files are read fully into `bytes` (resident,
   // PSRAM when present); LARGE files stream from `file` (kept open) so a multi-MB
   // file never sits in RAM. All faces (reader + UI sizes) share these sources.
-#if FREEINK_DEVICE_METALIO_PLUS && CROSSPOINT_VECTOR_FONTS
+#if (FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4) && CROSSPOINT_VECTOR_FONTS
  public:
   // Idle warm-up of the reader TTF face: rasterize up to `count` of the next common
   // characters (frequency order) not yet drawn. True while more remain. Render task only.
@@ -170,7 +170,7 @@ class SdCardFontSystem {
   void resetReaderWarmup() { prerasterCursor_ = 0; }
 
  private:
-  size_t prerasterCursor_ = 0;  // byte offset into kPlusCommonChars; reset on every face load
+  size_t prerasterCursor_ = 0;  // byte offset into the common-character list; reset on every face load
 #endif
   struct TtfSource {
     // Resident form: the whole file. Streamed form: a PSRAM prefix cache of the
@@ -181,7 +181,7 @@ class SdCardFontSystem {
     bool flash = false;  // read from the flash font cache instead of the SD card
     unsigned long size = 0;
     bool present = false;
-#if FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4
     // Streamed tail (glyf): FreeType reads one glyph as ~4 small pieces (~225 B each)
     // and each went to the card (~1.2 ms apiece). Serve them from whole 4 KB blocks,
     // least recently used first out, in PSRAM (128 KB per streamed face, on first use).

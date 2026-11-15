@@ -73,8 +73,8 @@ class Bitmap {
 
   static const char* errorToString(BmpReaderError err);
 
-  explicit Bitmap(HalFile& file, bool dithering = false, bool originalThresholds = false)
-      : file(&file), dithering(dithering), originalThresholds(originalThresholds) {}
+  explicit Bitmap(HalFile& file, bool dithering = false, bool originalThresholds = false, uint8_t ditherErrorShift = 3)
+      : file(&file), dithering(dithering), originalThresholds(originalThresholds), ditherErrorShift(ditherErrorShift) {}
 #if defined(BOARD_HAS_PSRAM) || defined(CROSSPOINT_EMULATED)
   // Non-owning memory source. The caller must keep `data` alive for the
   // Bitmap's lifetime; sequential rows are copied into the existing internal
@@ -118,6 +118,7 @@ class Bitmap {
 #endif
   bool dithering = false;
   bool originalThresholds = false;
+  uint8_t ditherErrorShift = 3;
   int width = 0;
   int height = 0;
   bool topDown = false;

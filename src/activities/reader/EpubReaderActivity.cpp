@@ -401,7 +401,7 @@ void EpubReaderActivity::onExit() {
   READING_STATS.endSession();
   ACHIEVEMENTS.recordSessionEnded(READING_STATS.getLastSessionSnapshot());
   reading_excerpt::persist();
-#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4
   // Four frames of PSRAM; the reader is the only owner and gives them back here.
   freePageCache();
 #endif
@@ -1939,7 +1939,7 @@ void EpubReaderActivity::beginLoanTimeSync() {
     }
     GUI.drawPopup(renderer, tr(STR_SYNCING_TIME));
     const bool synced = trustedtime::syncNow(5000);
-    WiFi.disconnect(false);
+    HalNetwork::releaseWifi();
     delay(30);
     if (!synced) {
       // Reopening would hit the same unverified-time refusal: offer a retry.
@@ -2171,7 +2171,7 @@ void EpubReaderActivity::renderBook() {
       return;
     }
 
-#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4
     ++sectionGeneration_;
 #endif
     const bool cacheLoaded = section->loadSectionFile(renderSpec);
@@ -2606,7 +2606,7 @@ bool EpubReaderActivity::nativeGray16Page(const Page& page) const {
 #endif
 }
 
-#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4
 bool EpubReaderActivity::pageCacheEligible() const {
   // No !section->isBuilding() here, deliberately. The page cache renders ONE page --
   // the current one or the next -- and Section::loadPage() is written to serve exactly
@@ -2620,12 +2620,17 @@ bool EpubReaderActivity::pageCacheEligible() const {
   // engages at all -- every turn is a full render instead of the cached one.
   return !pageCacheFailed_ && section && renderer.hasFrameBuffer() && !activityManager.isSwitchPending() &&
          overlay == Overlay::None && imagePreview_ == ImagePreview::None && fontPromptState == FontPromptState::Idle &&
-         !renderer.isInverted() && !renderer.supportsStripGrayscale() &&
+         !renderer.isInverted() &&
+#if FREEINK_DEVICE_METALIO_EINK4
+         renderer.supportsStripGrayscale() && renderer.supportsTextOnlyCombinedBase() && SETTINGS.textAntiAliasing;
+#else
+         !renderer.supportsStripGrayscale() &&
 #if FREEINK_DEVICE_METALIO_PLUS
          renderer.getGrayscaleLevels() == 16 &&
          (SETTINGS.textAntiAliasing || (SETTINGS.nativePageTurn > 0 && SETTINGS.nativePageTurn <= 3));
 #else
          SETTINGS.textAntiAliasing && renderer.supportsTextOnlyCombinedBase();
+#endif
 #endif
 }
 
@@ -2668,7 +2673,7 @@ void EpubReaderActivity::freePageCache() {
   }
 }
 
-#if FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4
 // After the page cache: warm the TTF reader face's common characters, eight at a time
 // while input stays quiet. A first-seen glyph costs ~4 ms to rasterize from the card, and
 // page turns are where it was paid. Interrupted warm-up resumes on the next idle pass.
@@ -2756,7 +2761,9 @@ void EpubReaderActivity::renderIdle(const uint32_t generation) {
   auto forward = layout;
   ++forward.page;
   if (forward.page < static_cast<int>(section->pageCount)) {
+#if !FREEINK_DEVICE_METALIO_EINK4
     activityManager.setTouchTolerantIdle(true);
+#endif
     build(0, forward);
     activityManager.setTouchTolerantIdle(false);
   }
@@ -2839,6 +2846,10 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
     LOG_DBG("ERS", "Page cache: slot %d, page %d cancelled after the load", slot, key.page);
     return false;
   }
+#if FREEINK_DEVICE_METALIO_EINK4
+  // This port caches only text; retain the established image/panel rendering paths.
+  if (page->hasImages() || page->hasPanelFill()) return false;
+#endif
   const bool native16 = nativeGray16Page(*page);
   if (page->hasImages() && !native16) {
     if (slot != 0 || !page->hasImagesNeedingDecode()) return false;
@@ -3053,7 +3064,7 @@ bool EpubReaderActivity::buildPageCacheSlot(const int slot, const ReaderPageCach
   }
   pageCacheMissingCodepoint_[slot] = fcm ? fcm->consumeMissingChineseCodepoint() : 0;
   pageCache_[slot].state = ReaderPageCache::State::Ready;
-#if RICKYOS_PLUS_READER_TIMING && FREEINK_DEVICE_METALIO_PLUS
+#if (RICKYOS_PLUS_READER_TIMING && FREEINK_DEVICE_METALIO_PLUS) || FREEINK_DEVICE_METALIO_EINK4
   LOG_INF("ReaderCache", "ready slot=%d spine=%d page=%d epoch=%lu ms=%lu", slot, key.spine, key.page,
           static_cast<unsigned long>(key.renderEpoch), millis() - started);
 #endif
@@ -3068,6 +3079,9 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   [[maybe_unused]] const auto nativeTurnRequest = pendingNativeTurn_.exchange(0);
   [[maybe_unused]] const int nativeTurnDirection = nativePageTurn::direction(nativeTurnRequest);
   [[maybe_unused]] const bool previousNativeText = std::exchange(previousNativeText_, false);
+#if FREEINK_DEVICE_METALIO_EINK4 && !defined(SIMULATOR)
+  display.setNextPageTurn(0, 0, false);
+#endif
   const auto t0 = millis();
   const int fontId = SETTINGS.getReaderFontId();
   const bool vertical = readingMode::setsVertically(readingMode::modeFor(SETTINGS.readingMode));
@@ -3121,7 +3135,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       if (manager) manager->clearCache();
     }
   } rawFontCacheGuard;
-#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4
   const auto key = pageCacheKey(section ? section->currentPage : -1, orientedMarginTop, orientedMarginRight,
                                 orientedMarginBottom, orientedMarginLeft);
   // Either slot may hold this page: slot 0 was built for it as a forward turn, slot 1
@@ -3176,7 +3190,11 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
             use16LevelText, nativeTurnDirection, previousNativeText, pageHasImages, renderer.isInverted());
   }
 #endif
-  const bool needsAnyGrayscale = grayscaleEnabled && (SETTINGS.textAntiAliasing || pageHasImages);
+  const bool needsAnyGrayscale = grayscaleEnabled && (SETTINGS.textAntiAliasing || pageHasImages
+#if FREEINK_DEVICE_METALIO_EINK4
+                                                      || (SETTINGS.nativePageTurn > 0 && SETTINGS.nativePageTurn <= 3)
+#endif
+                                                      );
   const bool absoluteImageGrayscale = grayscaleEnabled && pageHasImages && !gpio.deviceIsX3() &&
                                       display.getController() == HalDisplay::Controller::UC8279 &&
                                       renderer.grayscaleCapabilities(HalDisplay::GrayscaleMode::Absolute).supported();
@@ -3239,7 +3257,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   };
 
   unsigned long cacheBaseMs = 0;
-#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4
   if (use16LevelText) {
     // The 16-level pass below clears the frame and renders (or copies from the cache)
     // the page, writing the B/W proxy as it goes, so a B/W render here is thrown away.
@@ -3254,7 +3272,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   {
     renderPageWithGuideLines();
   }
-#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4
   const uint32_t missingCodepoint =
       pageCacheHit ? pageCacheMissingCodepoint_[pageCacheLiveSlot_] : fcm->consumeMissingChineseCodepoint();
 #else
@@ -3316,7 +3334,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     const auto t16Begin = millis();
     if (renderer.beginGrayscale16()) {
       const auto t16Cleared = millis();
-#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4
       if (pageCacheHit && pageCacheIs16_[pageCacheLiveSlot_] && pageCache16_[pageCacheLiveSlot_]) {
         memcpy(renderer.grayscale16Frame(), pageCache16_[pageCacheLiveSlot_].get(), renderer.grayscale16FrameBytes());
         memcpy(renderer.getFrameBuffer(), pageCacheBase_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
@@ -3483,7 +3501,13 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     auto renderPlaneToBuffer = [&](const bool lsbPlane, uint8_t* buf) {
       renderer.setRenderMode(lsbPlane ? GfxRenderer::GRAYSCALE_LSB : GfxRenderer::GRAYSCALE_MSB);
 #if FREEINK_DEVICE_METALIO_EINK4
-      ReaderUtils::renderWholeGrayPlane(renderer, buf, gh, renderGrayscalePass);
+      if (pageCacheHit) {
+        const auto* cached = lsbPlane ? pageCacheLsb_[pageCacheLiveSlot_].get()
+                                      : pageCacheMsb_[pageCacheLiveSlot_].get();
+        memcpy(buf, cached, planeBytes);
+      } else {
+        ReaderUtils::renderWholeGrayPlane(renderer, buf, gh, renderGrayscalePass);
+      }
 #else
       for (int y = 0; y < gh; y += STRIP_ROWS) {
         const int rows = (gh - y < STRIP_ROWS) ? (gh - y) : STRIP_ROWS;
@@ -3548,11 +3572,32 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       }
 
       renderer.setRenderMode(GfxRenderer::BW);
+#if FREEINK_DEVICE_METALIO_EINK4 && !defined(SIMULATOR)
+      const bool queuedTurn = lastNativeCommitEnd_ != 0 && lastPageTurnTime - lastNativeCommitEnd_ < kQueuedTurnMs;
+      if (combinedGrayscaleBase && !cleanImageBasePending && !pageHasImages && !page->hasPanelFill() &&
+          nativeTurnDirection != 0 && previousNativeText && !queuedTurn &&
+          previousNativeSpine_ == currentSpineIndex &&
+          previousNativePage_ + nativeTurnDirection == section->currentPage &&
+          previousNativeOrientation_ == static_cast<uint8_t>(renderer.getOrientation())) {
+        display.setNextPageTurn(SETTINGS.nativePageTurn, static_cast<uint8_t>(renderer.getOrientation()),
+                                (nativeTurnDirection > 0) != (SETTINGS.pageTurnDirection != 0),
+                                nativePageTurn::originX(nativeTurnRequest), nativePageTurn::originY(nativeTurnRequest));
+      }
+#endif
       renderer.displayGrayBuffer();
       const auto tGrayDisplay = millis();
 
       renderer.cleanupGrayscaleWithFrameBuffer();
       const auto tEnd = millis();
+#if FREEINK_DEVICE_METALIO_EINK4 && !defined(SIMULATOR)
+      if (combinedGrayscaleBase && display.displayCommitted()) {
+        previousNativeText_ = !pageHasImages && !page->hasPanelFill();
+        previousNativeSpine_ = currentSpineIndex;
+        previousNativePage_ = section->currentPage;
+        previousNativeOrientation_ = static_cast<uint8_t>(renderer.getOrientation());
+        lastNativeCommitEnd_ = tEnd;
+      }
+#endif
 
 #if FREEINK_DEVICE_METALIO_EINK4
       LOG_INF("ERS",
@@ -3560,9 +3605,10 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       LOG_DBG("ERS",
 #endif
               "Page render (buffered gray): prewarm=%lums bw_render=%lums display=%lums gray_render=%lums "
-              "wait=%lums gray_write=%lums gray_display=%lums cleanup=%lums total=%lums (planes buffered: %d)",
+              "wait=%lums gray_write=%lums gray_display=%lums cleanup=%lums total=%lums (planes buffered: %d) cache=%u",
               tPrewarm - t0, tBwRender - tPrewarm, tDisplay - tBwRender, tGrayRender - tDisplay, tWait - tGrayRender,
-              tGrayWrite - tWait, tGrayDisplay - tGrayWrite, tEnd - tGrayDisplay, tEnd - t0, msbPlaneBuf ? 2 : 1);
+              tGrayWrite - tWait, tGrayDisplay - tGrayWrite, tEnd - tGrayDisplay, tEnd - t0, msbPlaneBuf ? 2 : 1,
+              static_cast<unsigned>(pageCacheHit));
     } else {
       auto scratch = makeUniqueNoThrow<uint8_t[]>(static_cast<size_t>(gwBytes) * STRIP_ROWS);
       renderer.waitRefreshComplete();
@@ -3640,7 +3686,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
       }
       const auto tBwStore = millis();
 
-#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4
       if (pageCacheHit) {
         // Both planes were rendered at idle; putting them in place is one copy
         // each instead of a full page render each.
@@ -3667,7 +3713,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
         return;
       }
 
-#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4
       if (pageCacheHit) {
         memcpy(renderer.getFrameBuffer(), pageCacheMsb_[pageCacheLiveSlot_].get(), renderer.getBufferSize());
         renderer.copyGrayscaleMsbBuffers();
@@ -3848,7 +3894,7 @@ void EpubReaderActivity::invalidateImageRendering() {
   RenderLock lock(*this);
   discardOverlayPage();
   ImageBlock::releaseRenderCache();
-#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4
   freePageCache();
 #endif
   pagesUntilFullRefresh = 0;

@@ -33,6 +33,7 @@ void delay(int) {}
 bool readStationMac(uint8_t (&)[6]) { return false; }
 namespace fui { struct ActionEvent {}; }
 enum class WifiSelectionState { SCANNING, NETWORK_ERROR, NETWORK_LIST, AUTO_CONNECTING, CONNECTING, CONNECTION_FAILED };
+namespace HalNetwork { bool wifiConnected() { return false; } }
 namespace NetworkStartup {
 int starts = 0;
 bool success = false;
@@ -63,7 +64,7 @@ class WifiSelectionActivity {
  struct { void reset() {} } listNav;
  struct { void clearTapFlash() {} } app;
  WifiSelectionState state = WifiSelectionState::NETWORK_LIST;
- bool scanRecoveryUsed = false;
+ bool scanRecoveryUsed = false, keepUserConnection = false;
  bool beginScan();
  bool recoverScan(const char*, int);
  void closeRouting() { ++routingCloses; }
@@ -131,7 +132,7 @@ struct {
 namespace DNSReplyCode { constexpr int NoError = 0; }
 struct DNSServer {
  void setErrorReplyCode(int) {}
- void start(int, const char*, IPAddress) { ++dnsCalls; }
+ bool start(int, const char*, IPAddress) { ++dnsCalls; return true; }
 };
 DNSServer* dnsServer = nullptr;
 void stopDnsServer() { delete dnsServer; dnsServer = nullptr; }

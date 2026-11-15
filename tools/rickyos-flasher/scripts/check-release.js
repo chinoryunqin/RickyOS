@@ -16,8 +16,10 @@ async function filesIn(path, prefix = '') {
   }
   return files;
 }
-const paths = catalog.releases.flatMap(item => {
-  checkRelease(item);
+const devices = catalog.releases.map(item => [item, 'readpico']);
+if (catalog.metalioEink4 != null) devices.push([catalog.metalioEink4, 'metalio_eink4']);
+const paths = devices.flatMap(([item, board]) => {
+  checkRelease(item, board);
   return [item.file, ...(item.fullInstall?.segments ?? []).map(segment => segment.file)];
 });
 requireThat(new Set(paths).size === paths.length, '发行包文件路径不能重复。');
@@ -25,11 +27,11 @@ const listed = new Set(paths);
 for (const path of await filesIn(root)) {
   requireThat(path === 'releases.json' || listed.has(path), `未登记的公开资源 ${path}，停止构建。`);
 }
-for (const release of catalog.releases) {
-  await checkFirmware(new Uint8Array(await readFile(resolve(root, release.file))), release);
+for (const [release, board] of devices) {
+  await checkFirmware(new Uint8Array(await readFile(resolve(root, release.file))), release, board);
   if (release.mode === 'auto-install') {
     const assets = await Promise.all(release.fullInstall.segments.map(item => readFile(resolve(root, item.file))));
     await checkInstallAssets(assets.map(item => new Uint8Array(item)), release);
   }
 }
-console.log(catalog.releases.length ? '发行镜像校验通过。' : '发行目录为空：只构建网站，不附带固件。');
+console.log(devices.length ? '发行镜像校验通过。' : '发行目录为空：只构建网站，不附带固件。');

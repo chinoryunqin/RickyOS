@@ -183,7 +183,8 @@ enum UIIcon {
   Blocks,
   Recorder,
   Gallery,
-  Wallpaper
+  Wallpaper,
+  Camera
 };
 
 // Default theme implementation (Classic Theme)

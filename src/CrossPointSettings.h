@@ -434,7 +434,13 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t sleepTimeoutMinutes = 10;
   // E-ink refresh frequency (default 15 pages)
   uint8_t refreshFrequency = REFRESH_15;
-  uint8_t nativePageTurn = 1;  // off / skim (default) / shallow arc / ripple. Saved IDs never reorder.
+  // Ordinary SSD1677 motion needs two activations; keep its experimental styles opt-in.
+#if FREEINK_DEVICE_METALIO_EINK4
+  static constexpr uint8_t DEFAULT_NATIVE_PAGE_TURN = 0;
+#else
+  static constexpr uint8_t DEFAULT_NATIVE_PAGE_TURN = 1;
+#endif
+  uint8_t nativePageTurn = DEFAULT_NATIVE_PAGE_TURN;  // off / skim / shallow arc / ripple. Saved IDs never reorder.
   // Plus reading refresh: 0 = 高清 (full reader waveform, ink restore, motion), 1 = 快刷
   // (the short text-turn table, unchanged pixels held, no motion). Switched in the
   // control center over a book; other panels ignore it.

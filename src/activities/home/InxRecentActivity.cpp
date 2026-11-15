@@ -38,9 +38,7 @@ bool drawRecentCover(const GfxRenderer& renderer, const Bitmap& bitmap, const Re
   if (fit.width <= 0 || fit.height <= 0) return false;
   const int x = bounds.x + (bounds.width - fit.width) / 2;
   const int y = bounds.y + (bounds.height - fit.height) / 2;
-  if (renderer.isGrayscale16Active() && !bitmap.is1Bit())
-    return renderer.drawBitmapGrayscale16(bitmap, x, y, fit.width, fit.height);
-  return renderer.drawBitmap(bitmap, x, y, fit.width, fit.height);
+  return renderer.drawCoverBitmap(bitmap, x, y, fit.width, fit.height);
 }
 
 void drawMiniProgress(const GfxRenderer& renderer, const Rect rect, const uint8_t percent) {

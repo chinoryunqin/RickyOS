@@ -16,10 +16,15 @@
 #include "CrossPointSettings.h"
 #include "ReaderFontSizes.h"
 #include "fontIds.h"
-#if FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4
 #include <Utf8.h>
 
+#if FREEINK_DEVICE_METALIO_EINK4
+#include "ReaderCommonChars.generated.h"
+#else
 #include "PlusCommonChars.h"
+static constexpr auto& kReaderCommonChars = kPlusCommonChars;
+#endif
 #endif
 
 namespace {
@@ -405,7 +410,7 @@ void SdCardFontSystem::freeTtfSources() {
     s.bytes.clear();
     freeink::font::PsramVector<uint8_t>().swap(s.bytes);  // actually release
     if (s.file) s.file.close();
-#if FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4
     heap_caps_free(s.blockData);
     s.blockData = nullptr;
     for (auto& length : s.blockLen) length = 0;
@@ -582,7 +587,7 @@ unsigned long SdCardFontSystem::readStreamTail(TtfSource* s, const unsigned long
     return SdCardFontRegistry::halFileRead(&s->file, at, out, length);
 #endif
   };
-#if FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4
   constexpr unsigned long kBlock = TtfSource::kBlockBytes;
   if (count == 0 || count > kBlock) return cardRead(offset, buffer, count);  // seek probe / bulk read
   if (!s->blockData && !s->blockAllocFailed) {
@@ -649,19 +654,19 @@ void SdCardFontSystem::addTtfSources(TtfEpdFont& font) {
   }
 }
 
-#if FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4
 bool SdCardFontSystem::prerasterizeCommon(const unsigned count) {
   if (!ttf_ || ttfFontId_ == 0) return false;
   unsigned done = 0;
-  while (done < count && kPlusCommonChars[prerasterCursor_] != 0) {
-    const auto* p = kPlusCommonChars + prerasterCursor_;
+  while (done < count && kReaderCommonChars[prerasterCursor_] != 0) {
+    const auto* p = kReaderCommonChars + prerasterCursor_;
     const uint32_t cp = utf8NextCodepoint(&p);
     const auto result = ttf_->prerasterize(cp);
     if (result == TtfEpdFont::Prerasterize::Full) return false;
-    prerasterCursor_ = static_cast<size_t>(p - kPlusCommonChars);
+    prerasterCursor_ = static_cast<size_t>(p - kReaderCommonChars);
     if (result == TtfEpdFont::Prerasterize::Done) ++done;
   }
-  return kPlusCommonChars[prerasterCursor_] != 0;
+  return kReaderCommonChars[prerasterCursor_] != 0;
 }
 #endif
 
@@ -745,10 +750,12 @@ void SdCardFontSystem::loadTtfFamily(const SdCardFontFamilyInfo& family, GfxRend
   // flush-everything ceiling.
   const size_t cacheBytes = havePsram ? 4 * 1024 * 1024 : 32 * 1024;
   const uint16_t maxGlyphs = havePsram ? 8192 : 768;
-  prerasterCursor_ = 0;
 #else
   const size_t cacheBytes = havePsram ? 1024 * 1024 : 32 * 1024;
   const uint16_t maxGlyphs = havePsram ? 4096 : 768;
+#endif
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4
+  prerasterCursor_ = 0;
 #endif
 
   // Same family, only the reader size changed (size preview): the open style

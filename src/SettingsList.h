@@ -241,12 +241,12 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
                           {StrId::STR_PAGES_1, StrId::STR_PAGES_5, StrId::STR_PAGES_10, StrId::STR_PAGES_15,
                            StrId::STR_PAGES_30, StrId::STR_NEVER},
                           "refreshFrequency", StrId::STR_CAT_DISPLAY),
-#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4
         SettingInfo::Enum(StrId::STR_NATIVE_PAGE_TURN, &CrossPointSettings::nativePageTurn,
                           {StrId::STR_STATE_OFF, StrId::STR_NATIVE_TURN_SKIM, StrId::STR_NATIVE_TURN_ARC,
                            StrId::STR_NATIVE_TURN_RIPPLE},
                           "nativePageTurn", StrId::STR_CAT_DISPLAY),
-#if RICKYOS_MAIN_TAB_MOTION_ENABLED
+#if RICKYOS_MAIN_TAB_MOTION_ENABLED && (FREEINK_DEVICE_READPICO || FREEINK_DEVICE_METALIO_PLUS)
         SettingInfo::Toggle(StrId::STR_MAIN_TAB_MOTION, &CrossPointSettings::mainTabMotion, "mainTabMotion",
                             StrId::STR_CAT_DISPLAY),
 #endif

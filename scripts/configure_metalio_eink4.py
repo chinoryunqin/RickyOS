@@ -7,6 +7,8 @@ import sys
 Import("env")
 if env["PIOENV"] in ("rickyos_metalio_eink4", "rickyos_metalio_eink4_core", "simulator_rickyos_metalio_eink4"):
     root = Path(env.subst("$PROJECT_DIR"))
+    # Generated headers are ignored: a fresh checkout must create the warm-up list before LDF.
+    subprocess.run([sys.executable, str(root / "scripts/generate_reader_common_chars.py")], check=True)
     env.AppendUnique(CPPPATH=[str(root / "freeink-sdk/libs/font/FreeInkFont/third_party/freetype/include")])
     env.Append(LIBS=[env.BuildLibrary(
         "$BUILD_DIR/metalio-cff", str(root / "ports/metalio-e-ink4/freetype-cff"), src_filter="+<ft_*.c>")])

@@ -622,7 +622,7 @@ void SleepActivity::onEnter() {
 }
 
 void SleepActivity::renderCustomSleepScreen() const {
-  const bool native = renderer.getGrayscaleLevels() == 16 &&
+  const bool native = (renderer.getGrayscaleLevels() == 16 || FREEINK_DEVICE_METALIO_EINK4) &&
                       SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER;
   const bool independent = SETTINGS.rickyPowerOffScreen == CrossPointSettings::RICKY_POWER_OFF_CUSTOM;
   const char* picturePath = independent ? "/poweroff.bmp" : "/sleep.bmp";
@@ -632,7 +632,7 @@ void SleepActivity::renderCustomSleepScreen() const {
     Bitmap bitmap(file, !native,
                   renderer.grayscaleCapabilities(sleepGrayscaleMode(renderer)).supported() &&
                       display.getController() == HalDisplay::Controller::SSD1677 &&
-                      SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER);
+                      SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER, 4);
     if (bitmap.parseHeaders() == BmpReaderError::Ok) {
       LOG_DBG("SLP", "Loading: %s", picturePath);
       renderBitmapSleepScreen(bitmap, false, native);
@@ -657,7 +657,7 @@ void SleepActivity::renderCustomSleepScreen() const {
       Bitmap bitmap(randFile, !native,
                     renderer.grayscaleCapabilities(sleepGrayscaleMode(renderer)).supported() &&
                         display.getController() == HalDisplay::Controller::SSD1677 &&
-                        SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER);
+                        SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER, 4);
       if (bitmap.parseHeaders() == BmpReaderError::Ok) {
         renderBitmapSleepScreen(bitmap, false, native);
         randFile.close();
@@ -703,22 +703,23 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap, const bool pre
       bitmap.hasGreyscale() && (preserveBackground || SETTINGS.sleepScreenCoverFilter ==
                                                           CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER);
 
-  if (nativeCustomImage && !preserveBackground && renderer.getGrayscaleLevels() == 16 &&
+  constexpr bool blueNoise = FREEINK_DEVICE_METALIO_EINK4;
+  if (nativeCustomImage && !preserveBackground &&
       SETTINGS.sleepScreenCoverFilter == CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER) {
-    bool displayed = renderer.beginGrayscale16() &&
-                     renderer.drawBitmapGrayscale16(bitmap, x, y, pageWidth, pageHeight, cropX, cropY);
+    const auto mode = blueNoise ? GfxRenderer::BitmapGrayMode::BlueNoise4 : GfxRenderer::BitmapGrayMode::Native;
+    bool displayed = (blueNoise ? renderer.beginGrayscaleUi() : renderer.beginGrayscale16()) &&
+                     renderer.drawBitmapGrayscale16(bitmap, x, y, pageWidth, pageHeight, cropX, cropY, mode);
     if (displayed && marksPowerOff()) {
       // The indicator draws directly into the open native frame. Copying its
       // B/W proxy back would flatten caption gray and erase the rounded corners.
       GUI.drawRickyStandbyIndicator(renderer, true);
     }
-    displayed = displayed && renderer.commitGrayscale16();
+    displayed = displayed && renderer.commitGrayscale16(blueNoise);
     renderer.cancelGrayscale16();
-    if (!displayed) {
-      LOG_ERR("SLP", "Native grayscale sleep image failed");
-      renderDefaultSleepScreen();
-    }
-    return;
+    if (displayed) return;
+    LOG_ERR("SLP", "Grayscale sleep image failed");
+    if (!blueNoise || bitmap.rewindToData() != BmpReaderError::Ok) return renderDefaultSleepScreen();
+    renderer.clearScreen();
   }
 
   if (!renderer.drawBitmap(bitmap, x, y, pageWidth, pageHeight, cropX, cropY, preserveBackground)) {

@@ -8,21 +8,25 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 endif()
 
 find_package(OpenSSL REQUIRED)
-add_executable(RickyOtaTest
-  RickyOtaTest.cpp
-  ${REPO_ROOT}/src/network/OtaUpdater.cpp
-  ${REPO_ROOT}/src/network/FirmwareBoardTag.cpp
-)
-target_include_directories(RickyOtaTest PRIVATE
-  stubs
-  ${REPO_ROOT}
-  ${REPO_ROOT}/lib/JsonParser
-  ${REPO_ROOT}/freeink-sdk/libs/network/JsonSax/include
-)
-target_compile_definitions(RickyOtaTest PRIVATE RICKYOS_PRODUCT=1 CROSSPOINT_VERSION="1.1.0-dev")
-target_link_libraries(RickyOtaTest PRIVATE OpenSSL::Crypto)
-target_compile_options(RickyOtaTest PRIVATE -UNDEBUG)
-add_test(NAME RickyOtaTest COMMAND RickyOtaTest)
+function(add_ota_test target)
+  add_executable(${target}
+    RickyOtaTest.cpp
+    ${REPO_ROOT}/src/network/OtaUpdater.cpp
+    ${REPO_ROOT}/src/network/FirmwareBoardTag.cpp
+  )
+  target_include_directories(${target} PRIVATE
+    stubs
+    ${REPO_ROOT}
+    ${REPO_ROOT}/lib/JsonParser
+    ${REPO_ROOT}/freeink-sdk/libs/network/JsonSax/include
+  )
+  target_compile_definitions(${target} PRIVATE RICKYOS_PRODUCT=1 ${ARGN} CROSSPOINT_VERSION="1.1.0-dev")
+  target_link_libraries(${target} PRIVATE OpenSSL::Crypto)
+  target_compile_options(${target} PRIVATE -UNDEBUG)
+  add_test(NAME ${target} COMMAND ${target})
+endfunction()
+add_ota_test(RickyOtaTest)
+add_ota_test(MetalioOtaTest FREEINK_DEVICE_METALIO_EINK4=1)
 
 add_executable(HttpDownloaderTrustTest
   HttpDownloaderTrustTest.cpp

@@ -45,3 +45,27 @@ test('notes travel in their own file, never as an ota.json key old devices refus
   }
   assert.doesNotThrow(() => otaNotes(catalog({ ...accepted, notes: ['一'.repeat(32)] })));
 });
+
+test('ordinary E-Ink 4 offers are separate from the Pico installer and require the matching image', async () => {
+  const { checkImage, checkRelease } = await import('../src/policy.js');
+  const { otaNotes } = await import('../scripts/build-ota.js');
+  const board = 'metalio_eink4';
+  const release = { ...accepted, board, version: '1.2.24', file: 'firmware/RickyOS-metalio-eink4-1.2.24.bin' };
+  const both = { ...catalog(accepted), metalioEink4: release };
+  assert.equal(otaManifest(catalog(), board).status, 'no_update');
+  assert.equal(otaManifest(both).file, accepted.file);
+  assert.equal(otaManifest(both, board).file, release.file);
+  assert.equal(otaNotes(both, board), '1.2.24\n');
+  assert.throws(() => checkRelease(release));  // The Pico web installer keeps its own board check.
+  assert.throws(() => otaManifest({ ...both, metalioEink4: accepted }, board));
+  assert.throws(() => otaManifest({ ...both, metalioEink4: { ...release, mode: 'auto-install' } }, board));
+  assert.throws(() => otaManifest({ ...both, metalioEink4: { ...release, bytes: 6029316 } }, board));
+
+  const image = new Uint8Array(128);
+  image[0] = 0xe9;
+  image[1] = 1;
+  image[12] = 9;
+  image.set(new TextEncoder().encode('RickyOS\0' + release.version + '\0CROSSPOINT-BOARD-V1:metalio_eink4;'), 24);
+  assert.doesNotThrow(() => checkImage(image, true, release.version, board));
+  assert.throws(() => checkImage(image, true, release.version));
+});

@@ -129,7 +129,7 @@ def main():
         sources += [JPEG / 'JPEGDEC.cpp', SIM / 'src/HalStorage.cpp']
         sources += [PNG / 'PNGdec.cpp']
         flags = ['-std=c++20', '-O1', '-ffunction-sections', '-fdata-sections', '-DCROSSPOINT_EMULATED=1',
-                 '-DDESTRUCTOR_CLOSES_FILE=1', '-D__LINUX__=1', '-DSIMULATOR=1', '-DPNG_MAX_BUFFERED_PIXELS=16416']
+                 '-DDESTRUCTOR_CLOSES_FILE=1', '-D__LINUX__=1', '-DSIMULATOR=1', '-DFREEINK_DEVICE_METALIO_EINK4=0', '-DPNG_MAX_BUFFERED_PIXELS=16416']
         flags += ['-I' + str(p) for p in includes]
         flags += ['-Wl,-dead_strip' if platform.system() == 'Darwin' else '-Wl,--gc-sections']
         binary = work / 'test'

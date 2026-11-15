@@ -129,7 +129,8 @@ class Atkinson1BitDitherer {
 // Less error buildup = fewer artifacts than Floyd-Steinberg
 class AtkinsonDitherer {
  public:
-  explicit AtkinsonDitherer(int width, bool originalThresholds = false) : originalThresholds(originalThresholds) {
+  explicit AtkinsonDitherer(int width, bool originalThresholds = false, uint8_t errorShift = 3)
+      : originalThresholds(originalThresholds), errorShift(errorShift > 7 ? 7 : errorShift) {
     if (width <= 0) return;
     const size_t candidateRowSize = static_cast<size_t>(width) + 4;
     if (candidateRowSize > SIZE_MAX / (3 * sizeof(int16_t))) return;
@@ -192,8 +193,8 @@ class AtkinsonDitherer {
 
     if (!isValid()) return quantized;
 
-    // Calculate error (only distribute 6/8 = 75%)
-    int error = (adjusted - quantizedValue) >> 3;  // error/8
+    // Default: distribute 6/8 = 75%. Custom wallpapers use 3/8 = 37.5%.
+    int error = (adjusted - quantizedValue) >> errorShift;
 
     // Distribute 1/8 to each of 6 neighbors
     errorRow0[x + 3] += error;  // Right
@@ -229,6 +230,7 @@ class AtkinsonDitherer {
   int16_t* errorRow1 = nullptr;
   int16_t* errorRow2 = nullptr;
   const bool originalThresholds;
+  const uint8_t errorShift;
 };
 
 // Floyd-Steinberg error diffusion dithering with serpentine scanning

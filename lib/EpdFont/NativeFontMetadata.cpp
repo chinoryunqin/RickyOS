@@ -26,7 +26,7 @@ struct NativeFontOffsets {
 };
 #include <NativeFontMetadata.generated.inc>
 
-// These two offline faces live for the whole boot. The table pool is PSRAM-only
+// This offline face lives for the whole boot. The table pool is PSRAM-only
 // and capped by the generator, preserving internal display/USB/radio reserves.
 uint8_t* metadataPool = nullptr;
 
@@ -50,7 +50,7 @@ bool decode(const NativeMetadataTable& table, uint8_t* pool) {
 }
 }  // namespace
 
-bool NativeFontMetadata::initialize(EpdFontData& regular, EpdFontData& medium) {
+bool NativeFontMetadata::initialize(EpdFontData& regular) {
   if (!metadataPool) {
     auto* pool = static_cast<uint8_t*>(heap_caps_malloc(kNativeFontMetadataBytes, MALLOC_CAP_SPIRAM));
     if (!pool) {
@@ -67,12 +67,10 @@ bool NativeFontMetadata::initialize(EpdFontData& regular, EpdFontData& medium) {
     }
     metadataPool = pool;
   }
-  EpdFontData* faces[] = {&regular, &medium};
-  for (size_t i = 0; i < 2; ++i) {
-    faces[i]->glyph = reinterpret_cast<const EpdGlyph*>(metadataPool + kNativeFontOffsets[i].glyphs);
-    faces[i]->intervals = reinterpret_cast<const EpdUnicodeInterval*>(metadataPool + kNativeFontOffsets[i].intervals);
-    faces[i]->intervalCount = kNativeFontOffsets[i].intervalCount;
-  }
+  const auto& offsets = kNativeFontOffsets[0];
+  regular.glyph = reinterpret_cast<const EpdGlyph*>(metadataPool + offsets.glyphs);
+  regular.intervals = reinterpret_cast<const EpdUnicodeInterval*>(metadataPool + offsets.intervals);
+  regular.intervalCount = offsets.intervalCount;
   return true;
 }
 #endif

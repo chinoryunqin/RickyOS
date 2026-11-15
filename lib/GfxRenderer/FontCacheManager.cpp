@@ -50,9 +50,9 @@ void FontCacheManager::setFontDecompressor(FontDecompressor* d) { fontDecompress
 
 void FontCacheManager::clearCache() {
   // Preserve bounded TTF glyph caches across renders; memory pressure uses releaseResidentCaches().
-#if FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4
   // Hot groups hold only the built-in UI faces (compile-time data at fixed addresses), one
-  // slot per group (<= ~2.5 MB of the 16 MB PSRAM). Freeing them on every reader page made
+  // slot per group on Plus; ordinary E-Ink4 uses a smaller 16-slot LRU. Freeing them on every page made
   // the status bar re-inflate its groups each turn (105-131 ms of every ~920 ms cached turn).
   // releaseSdFontCaches() still frees them under memory pressure.
   if (fontDecompressor_) fontDecompressor_->clearPageCache();

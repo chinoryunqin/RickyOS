@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "activities/network/WifiSelectionActivity.h"
 #include "activities/util/ImageViewerActivity.h"
 #include "components/UITheme.h"
 #include "standby/StandbyGalleryActivity.h"
@@ -26,6 +27,8 @@ const char* stateName(HalCellular::State state) {
       return tr(STR_CELL_DENIED);
     case S::Searching:
       return tr(STR_CELL_SEARCHING);
+    case S::WifiPreferred:
+      return tr(STR_CELL_WIFI_PREFERRED);
     case S::Error:
       return tr(STR_CELL_ERROR);
   }
@@ -39,6 +42,8 @@ const char* MetalioPeripheralActivity::headerTitle() const {
 }
 void MetalioPeripheralActivity::onEnter() {
   cell_ = HalCellular::snapshot();
+  route_ = HalNetwork::route();
+  wifiEnabled_ = HalNetwork::wifiEnabled();
   photo_ = HalCamera::snapshot();
   UiListActivity::onEnter();
 }
@@ -59,9 +64,15 @@ void MetalioPeripheralActivity::loop() {
     lastPoll_ = millis();
     const auto cell = HalCellular::snapshot();
     const auto photo = HalCamera::snapshot();
-    if (memcmp(&cell_, &cell, sizeof(cell)) || memcmp(&photo_, &photo, sizeof(photo))) {
+    const auto route = HalNetwork::route();
+    const bool wifiEnabled = HalNetwork::wifiEnabled();
+    const bool changed = camera_ ? memcmp(&photo_, &photo, sizeof(photo)) != 0
+                                 : cell_ != cell || route_ != route || wifiEnabled_ != wifiEnabled;
+    if (changed) {
       RenderLock lock;
       cell_ = cell;
+      route_ = route;
+      wifiEnabled_ = wifiEnabled;
       photo_ = photo;
       requestUpdate();
     }
@@ -73,6 +84,7 @@ void MetalioPeripheralActivity::buildScreen(UiScreen& screen) {
   screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
                                                 static_cast<int16_t>(metrics.buttonHintsHeight), 0});
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+  for (auto& row : rows_) row = {};
   for (auto& value : values_) value[0] = 0;
   if (camera_) {
     const StrId ids[] = {StrId::STR_CELL_STATUS, StrId::STR_CAMERA_SHUTTER, StrId::STR_CAMERA_PREVIEW,
@@ -99,16 +111,28 @@ void MetalioPeripheralActivity::buildScreen(UiScreen& screen) {
     else if (photo_.state == HalCamera::State::Error)
       snprintf(values_[0], sizeof(values_[0]), "%s (%d)", status, photo_.error);
   } else {
-    const StrId ids[] = {StrId::STR_CELL_STATUS, StrId::STR_CELL_CARRIER, StrId::STR_CELL_SIGNAL,  StrId::STR_CELL_SIM,
-                         StrId::STR_CELL_IP,     StrId::STR_CELL_ENABLE,  StrId::STR_CELL_DISABLE, StrId::STR_CELL_SIM1,
-                         StrId::STR_CELL_SIM2,   StrId::STR_CELL_REFRESH};
-    for (int i = 0; i < 10; ++i) rows_[i].label = I18N.get(ids[i]);
-    snprintf(values_[0], sizeof(values_[0]), "%s", cell_.busy ? tr(STR_CELL_STARTING) : stateName(cell_.state));
-    snprintf(values_[1], sizeof(values_[1]), "%s", cell_.carrier);
+    const StrId ids[] = {StrId::STR_CELL_DATA,  StrId::STR_CELL_SIM1, StrId::STR_CELL_SIM2,
+                         StrId::STR_WIFI_NETWORKS, StrId::STR_CELL_STATUS, StrId::STR_CELL_CARRIER,
+                         StrId::STR_CELL_SIGNAL, StrId::STR_CELL_IP, StrId::STR_CELL_REFRESH};
+    for (int i = 0; i < 9; ++i) rows_[i].label = I18N.get(ids[i]);
+    rows_[0].toggle = true;
+    rows_[0].toggleChecked = cell_.enabled;
+    rows_[1].enabled = rows_[2].enabled = !cell_.busy;
+    for (int slot = 0; slot < 2; ++slot) {
+      const char* value = cell_.pendingSimSlot == slot ? tr(STR_CELL_STARTING)
+                          : cell_.simSlot == slot      ? tr(STR_CELL_SELECTED)
+                                                       : "";
+      snprintf(values_[slot + 1], sizeof(values_[slot + 1]), "%s", value);
+    }
+    snprintf(values_[3], sizeof(values_[3]), "%s",
+             route_ == HalNetwork::Route::Wifi ? tr(STR_CELL_CONNECTED) : wifiEnabled_ ? "" : tr(STR_CELL_OFF));
+    snprintf(values_[4], sizeof(values_[4]), "%s", stateName(cell_.state));
+    snprintf(values_[5], sizeof(values_[5]), "%s", cell_.carrier);
     if (cell_.signal >= 0 && cell_.signal <= 31)
-      snprintf(values_[2], sizeof(values_[2]), "%d dBm", -113 + cell_.signal * 2);
-    if (cell_.simSlot < 2) snprintf(values_[3], sizeof(values_[3]), "SIM %u", cell_.simSlot + 1);
-    snprintf(values_[4], sizeof(values_[4]), "%s", cell_.ip);
+      snprintf(values_[6], sizeof(values_[6]), "%d dBm", -113 + cell_.signal * 2);
+    snprintf(values_[7], sizeof(values_[7]), "%s", cell_.ip);
+    for (int i = 4; i <= 7; ++i) rows_[i].enabled = false;
+    rows_[8].enabled = !cell_.busy && cell_.enabled && route_ != HalNetwork::Route::Wifi;
   }
   for (int i = 0; i < listCount(); ++i) {
     rows_[i].value = values_[i];
@@ -139,25 +163,27 @@ void MetalioPeripheralActivity::activateIndex(int index) {
                                                          StandbyGalleryActivity::Mode::Browse);
     }
   } else {
-    if (cell_.busy && index != 6) return;
     switch (index) {
-      case 5:
-        HalCellular::enable(true);
+      case 0:
+        HalCellular::enable(!HalCellular::snapshot().enabled);
         break;
-      case 6:
-        HalCellular::enable(false);
+      case 1:
+      case 2:
+        HalCellular::selectSim(static_cast<uint8_t>(index - 1));
         break;
-      case 7:
-        HalCellular::selectSim(0);
-        break;
+      case 3:
+        app.clearTapFlash();
+        startActivityForResultWith<WifiSelectionActivity>([](const ActivityResult&) {}, false, true);
+        return;
       case 8:
-        HalCellular::selectSim(1);
-        break;
-      case 9:
         HalCellular::refresh();
         break;
       default:
-        break;
+        return;
+    }
+    {
+      RenderLock lock;
+      cell_ = HalCellular::snapshot();
     }
   }
   requestUpdate();

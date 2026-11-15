@@ -64,6 +64,8 @@ class DictionaryDownloadActivity final : public Activity, private UiAppHost {
   bool waitForConfirmRelease_ = false;
   bool waitForBackRelease_ = false;
   bool goHomeRequested_ = false;
+  bool localMode_ = true;
+  bool onlineRequested_ = false;
 
   static constexpr freeink::ui::ActionId ACTION_CANCEL_DOWNLOAD = 1;
   static constexpr freeink::ui::ActionId ACTION_RETURN_TO_LIST = 2;
@@ -75,7 +77,9 @@ class DictionaryDownloadActivity final : public Activity, private UiAppHost {
   void buildStateScreen(UiScreen& screen);
   void returnToList();
 
+  void showLocalDictionaries();
   void startWifiSelection();
+  Rect dictionaryListBounds(Rect content) const;
   void onWifiSelectionComplete(bool success);
   bool fetchAndParseManifest();
   void recoverInstall(const char* id);
@@ -92,7 +96,9 @@ class DictionaryDownloadActivity final : public Activity, private UiAppHost {
   static bool ifoUses64BitOffsets(const char* path);
   static std::string formatSize(size_t bytes);
   bool showUpdateAllRow() const;
-  int itemIndexFromList(int listIndex) const { return listIndex - (showUpdateAllRow() ? 1 : 0); }
-  int listItemCount() const { return static_cast<int>(items_.size()) + (showUpdateAllRow() ? 1 : 0); }
-  bool isUpdateAllRow(int index) const { return showUpdateAllRow() && index == 0; }
+  bool isOnlineDownloadRow(int index) const { return localMode_ && index == 0; }
+  bool isUpdateAllRow(int index) const { return index == 0 && showUpdateAllRow(); }
+  int extraListRows() const { return localMode_ || showUpdateAllRow() ? 1 : 0; }
+  int itemIndexFromList(int index) const { return index - extraListRows(); }
+  int listItemCount() const { return static_cast<int>(items_.size()) + extraListRows(); }
 };

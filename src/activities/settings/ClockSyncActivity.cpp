@@ -40,7 +40,7 @@ void ClockSyncActivity::onExit() {
   Activity::onExit();
   if (syncStarted && halClock.syncState() == ClockSyncState::Syncing) halClock.cancelSync();
 
-  if (shouldTearDownWifiOnExit && WiFi.getMode() != WIFI_MODE_NULL) {
+  if (shouldTearDownWifiOnExit && !HalNetwork::wifiKept() && WiFi.getMode() != WIFI_MODE_NULL) {
     WiFi.disconnect(false);
     delay(30);
     silentRestart();

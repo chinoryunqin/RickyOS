@@ -618,11 +618,13 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   rickyGestureStatus = (doc["rickyGestureStatus"] | 1) ? 1 : 0;
   rickyTextWeight = doc["rickyTextWeight"] | static_cast<uint8_t>(RICKY_TEXT_WEIGHT_STANDARD);
   if (rickyTextWeight >= RICKY_TEXT_WEIGHT_COUNT) rickyTextWeight = RICKY_TEXT_WEIGHT_STANDARD;
-  // Settings saved before these options existed take the defaults: both on. A choice
-  // the user saved (including off) is kept.
-  nativePageTurn = doc["nativePageTurn"] | static_cast<uint8_t>(1);
-  if (nativePageTurn > 3) nativePageTurn = 1;
+  // Preserve a saved style, including off. Missing/invalid values use the panel's default.
+  nativePageTurn = doc["nativePageTurn"] | DEFAULT_NATIVE_PAGE_TURN;
+  if (nativePageTurn > 3) nativePageTurn = DEFAULT_NATIVE_PAGE_TURN;
   readerFastRefresh = (doc["readerFastRefresh"] | static_cast<uint8_t>(0)) ? 1 : 0;
+#if FREEINK_DEVICE_METALIO_EINK4
+  readerFastRefresh = 0;
+#endif
   mainTabMotion = (doc["mainTabMotion"] | 1) == 1 ? 1 : 0;
   rickyStandbyFace = doc["rickyStandbyFace"] | static_cast<uint8_t>(RICKY_STANDBY_PICTURE);
   if (rickyStandbyFace >= RICKY_STANDBY_FACE_COUNT) rickyStandbyFace = RICKY_STANDBY_PICTURE;

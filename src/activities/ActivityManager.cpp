@@ -255,7 +255,7 @@ void ActivityManager::renderTaskLoop() {
           settleToGray(std::move(lock), idleGeneration);
         } else {
           currentActivity->renderIdle(idleGeneration);
-#if FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4
           if (!idleRenderCancelled(idleGeneration)) currentActivity->renderIdleWarmup(idleGeneration);
 #endif
         }
@@ -267,7 +267,7 @@ void ActivityManager::renderTaskLoop() {
     // An idle timeout must never acknowledge requestUpdateAndWait(): its
     // notification may have arrived while the idle callback was cancelling.
     if (!foreground) {
-#if FREEINK_DEVICE_METALIO_PLUS
+#if FREEINK_DEVICE_METALIO_PLUS || FREEINK_DEVICE_METALIO_EINK4
       // Input can arrive during renderIdle(), not just during its timeout.
       // A touch-up without a queued redraw must leave interrupted prefetch
       // retryable after a new quiet window. Do not retry successful passes,
@@ -430,14 +430,15 @@ void ActivityManager::settleToGray(RenderLock&& lock, const uint32_t generation)
 
 void ActivityManager::trackInputMode() {
   if (!mappedInput.hasTouch()) return;
+  const bool redrawSelection = currentActivity && !currentActivity->isReaderActivity();
   if (mappedInput.wasAnyPressed()) {
     if (!keyFocusShown) {
       keyFocusShown = true;
-      requestUpdate();
+      if (redrawSelection) requestUpdate();
     }
   } else if (keyFocusShown && mappedInput.wasScreenTouchReleased()) {
     keyFocusShown = false;
-    requestUpdate();  // a touch on empty space produces no frame of its own
+    if (redrawSelection) requestUpdate();  // Empty-space taps have no redraw of their own.
   }
 }
 
@@ -1255,6 +1256,10 @@ void RenderLock::unlock() {
 bool RenderLock::peek() { return xQueuePeek(activityManager.renderingMutex, NULL, 0) != pdTRUE; };
 
 #if FREEINK_DEVICE_METALIO_EINK4
+void ActivityManager::refreshMainTabStatus() {
+  if (currentActivity && currentActivity->usesMainTabBar() && !isSwitchPending()) requestUpdate();
+}
+
 void ActivityManager::goToCellular() {
 #if RICKYOS_METALIO_CELLULAR_ENABLED
   replaceActivityWith<MetalioPeripheralActivity>(false);

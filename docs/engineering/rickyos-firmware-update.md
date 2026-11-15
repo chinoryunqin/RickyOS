@@ -1,6 +1,6 @@
 # RickyOS 设备在线更新
 
-本契约仅适用于 `RICKYOS_PRODUCT` / `rickyos_readpico`。上游其他机型的
+本契约适用于 RickyOS 产品的 Read Pico 和普通版 Metalio E-Ink 4。上游其他机型的
 CrossMux Stable / Nightly 逻辑不变。设备设置入口为「RickyOS 更新」，只使用
 自己的正式频道，不显示 Nightly 开关，也不读取旧设置中的 Nightly 标记。
 
@@ -89,3 +89,20 @@ macOS Homebrew 可向 CMake 传 `-DOPENSSL_ROOT_DIR=/opt/homebrew/opt/openssl@3`
 实机还必须验收有效/错误时间、正常/错误证书、低内存、断网恢复、两种运行槽、
 错误摘要/机型/版本拒绝、重启后版本及阅读数据保持。主机测试和编译不能代替
 真实 TLS 握手、Flash 写入与重启验收。测试构建不可自动发布或刷入设备。
+
+## 普通版 Metalio E-Ink 4
+
+普通版使用 `metalio_eink4` 机型标记和 ESP32-S3 芯片 ID 9。从同一网站和
+COS 根目录读取 `metalio-eink4/ota.json` 和 `metalio-eink4/ota-notes.txt`，
+固件文件仍相对于根目录的 `firmware/`。应用槽大小为 0x640000，沿用 512 KiB
+预留和 4 KiB 对齐，单个 OTA 镜像最多 6,029,312 字节。普通版产品目标构建时也检查这个上限。
+
+网站 `public/releases.json` 的可选 `metalioEink4` 字段使用一条已通过实机验收的
+`app-upgrade` 记录。省略此字段时生成明确的 `no_update`。网站构建核对镜像长度、
+摘要、版本和普通版机型标记，网页 USB 安装入口仍只处理原有 Pico 目录。
+COS 发布脚本的 `--device metalio-eink4` 参数可验证普通版的发布计划。
+测试镜像和正式目录分开审核，首次装入支持普通版 OTA 的固件用 USB 或已验收的 SD 更新路径。
+
+首发真机验证应从一份带阅读进度、统计和设置的普通版开始，验证成功写入另一槽、
+重启和再次更新，并验证中断下载时原槽可启动。现有主机测试同时验证 Pico
+和普通版的解析、镜像完整性、另一槽写入、错误机型拒绝和失败时不切换启动槽。

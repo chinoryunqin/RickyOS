@@ -542,7 +542,7 @@ void WeReadActivity::onExit() {
   stageRenderPending_.store(false);
   if (shelfFile_.isOpen()) shelfFile_.close();
   std::vector<TabInfo>().swap(mainTabs_);
-  if (wifiSessionActive_ && WiFi.getMode() != WIFI_MODE_NULL) {
+  if (wifiSessionActive_ && !HalNetwork::wifiKept() && WiFi.getMode() != WIFI_MODE_NULL) {
     WiFi.disconnect(false);
     delay(100);
     WiFi.mode(WIFI_OFF);
@@ -1339,6 +1339,8 @@ void WeReadActivity::handleIntroductionInput() {
 }
 
 void WeReadActivity::buildIntroductionPages() {
+  // Font measurement shares mutable TTF state with the render task.
+  RenderLock lock;
   introPage_ = 0;
   introPageCount_ = 1;
   introPagesTruncated_ = false;
@@ -1402,7 +1404,7 @@ void WeReadActivity::openBook(const char* path) {
 #ifdef CROSSPOINT_EMULATED
   activityManager.goToReader(path);
 #else
-  if (WiFi.getMode() == WIFI_MODE_NULL) {
+  if (HalNetwork::wifiKept() || WiFi.getMode() == WIFI_MODE_NULL) {
     activityManager.goToReader(path);
     return;
   }
@@ -1454,7 +1456,11 @@ void WeReadActivity::activateDisclaimerSelection() {
 }
 
 void WeReadActivity::handleDisclaimerInput() {
-  const Rect actions = disclaimerActionsBounds();
+  Rect actions;
+  {
+    RenderLock lock;
+    actions = disclaimerActionsBounds();
+  }
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int gap = disclaimerActionGap(actions.width, metrics.verticalSpacing);
   const int buttonWidth = std::max(1, (actions.width - gap) / kDisclaimerActionCount);

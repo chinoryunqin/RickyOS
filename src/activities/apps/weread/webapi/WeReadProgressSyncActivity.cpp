@@ -108,7 +108,7 @@ void WeReadProgressSyncActivity::onEnter() {
 void WeReadProgressSyncActivity::onExit() {
   operation_.reset();
   Activity::onExit();
-  if (!wifiActivated_) return;
+  if (!wifiActivated_ || HalNetwork::wifiKept()) return;
   WiFi.disconnect(false);
   delay(30);
   silentRestartToReader();

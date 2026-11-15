@@ -1,2 +1,4 @@
 #pragma once
+#if !FREEINK_DEVICE_METALIO_EINK4
 #define FREEINK_DEVICE_READPICO 1
+#endif

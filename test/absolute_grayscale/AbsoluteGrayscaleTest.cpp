@@ -75,6 +75,15 @@ TEST(AbsoluteGrayscale, ImageQuantizersRetainFourEvenLevels) {
   EXPECT_EQ(overlay.processPixel(85, 0), 2);
 }
 
+TEST(AbsoluteGrayscale, ReducedWallpaperDitherSoftensPropagation) {
+  AtkinsonDitherer original(1, true);
+  AtkinsonDitherer reduced(1, true, 4);
+  EXPECT_EQ(original.processPixel(127, 0), 1);
+  EXPECT_EQ(reduced.processPixel(127, 0), 1);
+  EXPECT_EQ(original.processPixel(124, 1), 2);
+  EXPECT_EQ(reduced.processPixel(124, 1), 1);
+}
+
 TEST(AbsoluteGrayscale, TransparentPassesRetainBackgroundWithoutClearingBetweenPlanes) {
   // Alternating B/W background, with four opaque pixels and four transparent ones.
   uint8_t frame = 0xaa;

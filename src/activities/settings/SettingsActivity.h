@@ -23,6 +23,7 @@ enum class SettingAction {
   ClockSettings,
   KOReaderSync,
   Network,
+  Cellular,
   ClearCache,
   RestoreSystemSettings,
   CheckForUpdates,

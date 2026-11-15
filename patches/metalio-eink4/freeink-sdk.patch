@@ -1,5 +1,5 @@
 diff --git a/libs/display/EpdiyLcd/include/EpdiyLcd.h b/libs/display/EpdiyLcd/include/EpdiyLcd.h
-index b8ebaefc8edfa37395bde4a9200274aa5276ab7d..d81a2b8cd9aca5a6aa3f7cb9785c5a926b08a6a2 100644
+index b8ebaef..d81a2b8 100644
 --- a/libs/display/EpdiyLcd/include/EpdiyLcd.h
 +++ b/libs/display/EpdiyLcd/include/EpdiyLcd.h
 @@ -90,6 +90,17 @@ void epdiyLcdEnd();
@@ -21,7 +21,7 @@ index b8ebaefc8edfa37395bde4a9200274aa5276ab7d..d81a2b8cd9aca5a6aa3f7cb9785c5a92
  
  /// 推一帧。`fb` 是 1bpp、MSB 在前、每行 width/8 字节、height 行；位约定由
 diff --git a/libs/display/EpdiyLcd/src/EpdiyLcd.cpp b/libs/display/EpdiyLcd/src/EpdiyLcd.cpp
-index 72f56ea3d69e1bc116a0630dc4a431d3a91bd673..77cdfa2325fc181a726068a5f3dc00a2fbe69572 100644
+index 72f56ea..77cdfa2 100644
 --- a/libs/display/EpdiyLcd/src/EpdiyLcd.cpp
 +++ b/libs/display/EpdiyLcd/src/EpdiyLcd.cpp
 @@ -9,6 +9,7 @@
@@ -249,7 +249,7 @@ index 72f56ea3d69e1bc116a0630dc4a431d3a91bd673..77cdfa2325fc181a726068a5f3dc00a2
  }  // namespace freeink
 diff --git a/libs/display/EpdiyLcd/src/RickyNativeGrayRefreshPolicy.h b/libs/display/EpdiyLcd/src/RickyNativeGrayRefreshPolicy.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..c1b1711e68a334e7c19b485ff10c911b6465b398
+index 0000000..c1b1711
 --- /dev/null
 +++ b/libs/display/EpdiyLcd/src/RickyNativeGrayRefreshPolicy.h
 @@ -0,0 +1,131 @@
@@ -385,7 +385,7 @@ index 0000000000000000000000000000000000000000..c1b1711e68a334e7c19b485ff10c911b
 +};
 +}  // namespace ricky::gray
 diff --git a/libs/display/EpdiyLcd/src/epdiy/src/output_common/render_context.c b/libs/display/EpdiyLcd/src/epdiy/src/output_common/render_context.c
-index 5db0a970bc4b09722c0ad411b96de17dfb501085..c6a6ffe6d2f942938edc7461d36586bbe849a536 100644
+index 5db0a97..c6a6ffe 100644
 --- a/libs/display/EpdiyLcd/src/epdiy/src/output_common/render_context.c
 +++ b/libs/display/EpdiyLcd/src/epdiy/src/output_common/render_context.c
 @@ -67,6 +67,15 @@ void get_buffer_params(
@@ -424,7 +424,7 @@ index 5db0a970bc4b09722c0ad411b96de17dfb501085..c6a6ffe6d2f942938edc7461d36586bb
      ctx->lines_consumed = 0;
      if (ctx->line_threads != NULL) {
 diff --git a/libs/display/EpdiyLcd/src/epdiy/src/render.c b/libs/display/EpdiyLcd/src/epdiy/src/render.c
-index 956ede3f9b117b0543548af563273ff313eb79c2..c46ba36d96ddc04e4f3551454991cd1a6f280040 100644
+index 956ede3..c46ba36 100644
 --- a/libs/display/EpdiyLcd/src/epdiy/src/render.c
 +++ b/libs/display/EpdiyLcd/src/epdiy/src/render.c
 @@ -369,7 +369,8 @@ bool epd_renderer_init(enum EpdInitOptions options) {
@@ -438,7 +438,7 @@ index 956ede3f9b117b0543548af563273ff313eb79c2..c46ba36d96ddc04e4f3551454991cd1a
          render_context.line_queues[i] = lq_init(queue_len, render_context.display_width / 4);
          if (render_context.line_queues[i].bufs == NULL) goto fail;
 diff --git a/libs/display/FreeInkDisplay/include/FreeInkDisplay.h b/libs/display/FreeInkDisplay/include/FreeInkDisplay.h
-index 444ad155d01148d3bb6f21b65c180dcea6a52ae3..ecee43ef4fecfb71a98f3a7699c1dca7fac690c0 100644
+index 444ad15..ecee43e 100644
 --- a/libs/display/FreeInkDisplay/include/FreeInkDisplay.h
 +++ b/libs/display/FreeInkDisplay/include/FreeInkDisplay.h
 @@ -38,9 +38,6 @@ class FreeInkDisplay {
@@ -472,7 +472,7 @@ index 444ad155d01148d3bb6f21b65c180dcea6a52ae3..ecee43ef4fecfb71a98f3a7699c1dca7
    // CrossPoint compatibility state (see the compatibility surface above).
    // _redRamSynced mirrors whether the X4 RED-RAM baseline is current (advisory);
 diff --git a/libs/display/FreeInkDisplay/src/FreeInkDisplay.cpp b/libs/display/FreeInkDisplay/src/FreeInkDisplay.cpp
-index f24576e01f5ee87188713e7a6c3fe95d42cfec32..17c1e3e0d233bf1b3430bdd0d67cf33ab41f68f8 100644
+index f24576e..17c1e3e 100644
 --- a/libs/display/FreeInkDisplay/src/FreeInkDisplay.cpp
 +++ b/libs/display/FreeInkDisplay/src/FreeInkDisplay.cpp
 @@ -21,44 +21,16 @@
@@ -743,7 +743,7 @@ index f24576e01f5ee87188713e7a6c3fe95d42cfec32..17c1e3e0d233bf1b3430bdd0d67cf33a
  bool FreeInkDisplay::combinesGrayscaleBase() const {
  #if FREEINK_SSD1677_TEXT_ROUTING
 diff --git a/libs/display/FreeInkDisplay/src/bus/EpdBus.cpp b/libs/display/FreeInkDisplay/src/bus/EpdBus.cpp
-index 10727339ba15faeaef9e0fb47fd73ceb14406ba6..d707bc05cf1a608960a6f60c82e5d76beccd47a0 100644
+index 1072733..d707bc0 100644
 --- a/libs/display/FreeInkDisplay/src/bus/EpdBus.cpp
 +++ b/libs/display/FreeInkDisplay/src/bus/EpdBus.cpp
 @@ -9,13 +9,6 @@
@@ -802,7 +802,7 @@ index 10727339ba15faeaef9e0fb47fd73ceb14406ba6..d707bc05cf1a608960a6f60c82e5d76b
    // frame (the C3 boards have no RAM to spare for one). Same single CS-low
    // burst contract as sendPlaneFlipped().
 diff --git a/libs/display/FreeInkDisplay/src/driver/CrossMuxSsd1677Driver.cpp b/libs/display/FreeInkDisplay/src/driver/CrossMuxSsd1677Driver.cpp
-index 00c541ae5947151770a9504e43098efc693dae73..4e03474d9cbd3067f2bc5f56f3c66bde7ede7362 100644
+index 00c541a..591c6b6 100644
 --- a/libs/display/FreeInkDisplay/src/driver/CrossMuxSsd1677Driver.cpp
 +++ b/libs/display/FreeInkDisplay/src/driver/CrossMuxSsd1677Driver.cpp
 @@ -1,14 +1,18 @@
@@ -1068,7 +1068,7 @@ index 00c541ae5947151770a9504e43098efc693dae73..4e03474d9cbd3067f2bc5f56f3c66bde
  
    const unsigned char* selectedLut = lut;
    if (selectedLut == nullptr) {
-@@ -896,6 +928,98 @@ void CrossMuxSsd1677Driver::cleanupGrayscaleBuffers(EpdBus& bus, const uint8_t*
+@@ -896,6 +928,113 @@ void CrossMuxSsd1677Driver::cleanupGrayscaleBuffers(EpdBus& bus, const uint8_t*
    }
  }
  
@@ -1114,52 +1114,67 @@ index 00c541ae5947151770a9504e43098efc693dae73..4e03474d9cbd3067f2bc5f56f3c66bde
 +      return false;
 +    }
 +  }
-+  uint32_t changed = 0;
++  const auto started = millis();
 +  const bool known = _uiHistoryValid && _opticalState == OpticalState::Gray && !_needsInitialFull && !_needsGrayClear;
++  const uint32_t changed =
++      known ? metalioUiGray::countChanges(raster, _uiPrevious, static_cast<size_t>(_bufferSize) * 8) : 0;
 +  if (known) {
-+    for (size_t pixel = 0; pixel < static_cast<size_t>(_bufferSize) * 8; ++pixel)
-+      changed += metalioUiGray::tone(raster, pixel) != metalioUiGray::historyTone(_uiPrevious, pixel);
 +    if (!changed && !forceClean) {
 +      esp_rom_printf("[MUI] unchanged; no activation\n");
 +      return true;
 +    }
 +  }
++  const auto scanDone = millis();
 +  // Bound the experiment's cleanup debt. Only completed changed frames count.
 +  const bool delta = known && !forceClean && _uiUpdates < 5;
 +  _uiHistoryValid = false;
-+  const auto started = millis();
++  uint8_t lut[110];
++  metalioUiGray::makeCombinedLut(lut);
++  for (unsigned i = 105; i < sizeof(lut); ++i) lut[i] = pgm_read_byte(_cfg.grayLut + i);
++  uint32_t uploadDone = 0, driveStarted = 0, driveDone = 0;
 +  if (delta) {
 +    _opticalState = _pendingOpticalState = OpticalState::Unknown;
-+    writeUiPlane(bus, CMD_WRITE_RAM_BW, raster, 0, true);
-+    writeUiPlane(bus, CMD_WRITE_RAM_RED, raster, 1, true);
-+    uint8_t lut[110];
-+    for (unsigned i = 0; i < sizeof(lut); ++i) lut[i] = pgm_read_byte(_cfg.fastLut + i);
-+    // Keep the board's existing W->B / B->W pulses, timing and voltage tail.
-+    // Both unchanged selector classes must idle, including held gray pixels.
-+    memset(lut, 0, 10);
-+    memset(lut + 30, 0, 10);
++    bus.cmd(CMD_DISPLAY_UPDATE_CTRL1);
++    bus.data(0x00);
++    bus.data(0x00);
++    writeUiPlane(bus, CMD_WRITE_RAM_BW, raster, static_cast<unsigned>(metalioUiGray::Plane::CombinedBw), true);
++    writeUiPlane(bus, CMD_WRITE_RAM_RED, raster, static_cast<unsigned>(metalioUiGray::Plane::CombinedOld), true);
++    uploadDone = millis();
 +    setCustomLut(bus, true, lut);
++    if (_cfg.grayPowerUpFirst) powerOn(bus);
++    if (!completeRefresh(bus)) return false;
++    driveStarted = millis();
 +    refresh(bus, RefreshMode::Fast, false);
 +    if (!completeRefresh(bus)) return false;
++    driveDone = millis();
 +    setCustomLut(bus, false, nullptr);
++    _grayState = GrayState::BaselineSynced;
++    _absoluteInput = false;
++    _opticalState = OpticalState::Gray;
 +  } else {
 +    displayGrayscaleBaseWithContext(bus, bw, RefreshMode::Half, false, RefreshContext::Normal);
 +    if (!displayCommitted()) return false;
++    writeUiPlane(bus, CMD_WRITE_RAM_BW, raster, static_cast<unsigned>(metalioUiGray::Plane::GrayLsb), false);
++    writeUiPlane(bus, CMD_WRITE_RAM_RED, raster, static_cast<unsigned>(metalioUiGray::Plane::GrayMsb), false);
++    displayGray(bus, bw, false, lut, false);
++    if (!displayCommitted()) return false;
 +  }
-+  const auto baseDone = millis();
-+  writeUiPlane(bus, CMD_WRITE_RAM_BW, raster, 2, delta);
-+  writeUiPlane(bus, CMD_WRITE_RAM_RED, raster, 3, delta);
-+  displayGray(bus, bw, false, nullptr, false);
-+  if (!displayCommitted()) return false;
++  const auto restoreStarted = millis();
 +  cleanupGrayscaleBuffers(bus, bw);
 +  if (!completeRefresh(bus)) return false;
 +  metalioUiGray::packHistory(raster, _uiPrevious, static_cast<size_t>(_bufferSize) * 8);
 +  _uiHistoryValid = true;
 +  _uiUpdates = delta ? _uiUpdates + 1 : 0;
-+  esp_rom_printf("[MUI] %s changed=%lu base=%lu gray=%lu total=%lu updates=%u\n", delta ? "delta" : "clean",
-+                 static_cast<unsigned long>(changed), static_cast<unsigned long>(baseDone - started),
-+                 static_cast<unsigned long>(millis() - baseDone), static_cast<unsigned long>(millis() - started),
-+                 _uiUpdates);
++  if (delta) {
++    esp_rom_printf("[MUI] combined changed=%lu scan=%lu upload=%lu drive=%lu restore=%lu total=%lu updates=%u\n",
++                   static_cast<unsigned long>(changed), static_cast<unsigned long>(scanDone - started),
++                   static_cast<unsigned long>(uploadDone - scanDone), static_cast<unsigned long>(driveDone - driveStarted),
++                   static_cast<unsigned long>(millis() - restoreStarted), static_cast<unsigned long>(millis() - started),
++                   _uiUpdates);
++  } else {
++    esp_rom_printf("[MUI] clean changed=%lu total=%lu updates=%u\n", static_cast<unsigned long>(changed),
++                   static_cast<unsigned long>(millis() - started), _uiUpdates);
++  }
 +  return true;
 +}
 +#endif
@@ -1167,7 +1182,7 @@ index 00c541ae5947151770a9504e43098efc693dae73..4e03474d9cbd3067f2bc5f56f3c66bde
  void CrossMuxSsd1677Driver::setCustomLut(EpdBus& bus, bool enabled, const unsigned char* data) {
    if (!enabled) {
      _customLutActive = false;
-@@ -932,6 +1056,9 @@ void CrossMuxSsd1677Driver::setCustomLut(EpdBus& bus, bool enabled, const unsign
+@@ -932,6 +1071,9 @@ void CrossMuxSsd1677Driver::setCustomLut(EpdBus& bus, bool enabled, const unsign
  }
  
  void CrossMuxSsd1677Driver::deepSleep(EpdBus& bus) {
@@ -1177,7 +1192,7 @@ index 00c541ae5947151770a9504e43098efc693dae73..4e03474d9cbd3067f2bc5f56f3c66bde
    if (_cfg.cleanPolicy != CrossMuxSsd1677CleanPolicy::Legacy) {
      bus.waitRefreshComplete("sleep wait");
      if (!completeRefresh(bus)) return;
-@@ -945,11 +1072,6 @@ void CrossMuxSsd1677Driver::deepSleep(EpdBus& bus) {
+@@ -945,11 +1087,6 @@ void CrossMuxSsd1677Driver::deepSleep(EpdBus& bus) {
    // treat RAM as a valid diff baseline after wake — initController() re-arms
    // _needsInitialFull, so the first paint is an absolute clean anyway.
    bus.cmd(CMD_DEEP_SLEEP);
@@ -1189,7 +1204,7 @@ index 00c541ae5947151770a9504e43098efc693dae73..4e03474d9cbd3067f2bc5f56f3c66bde
    {
      bus.data(0x03);
    }
-@@ -986,8 +1108,8 @@ static const CrossMuxSsd1677Config& crossmuxSsd1677ActiveConfig() {
+@@ -986,8 +1123,8 @@ static const CrossMuxSsd1677Config& crossmuxSsd1677ActiveConfig() {
      case BoardConfig::Board::XteinkX4Pro:
        return crossmuxSsd1677DefaultConfig();
  #endif
@@ -1200,7 +1215,7 @@ index 00c541ae5947151770a9504e43098efc693dae73..4e03474d9cbd3067f2bc5f56f3c66bde
  #ifdef FREEINK_X4_FAST_DU_SHORTCUT
      case BoardConfig::Board::XteinkX4:
        return crossmuxSsd1677X4Config();
-@@ -1003,13 +1125,6 @@ PanelDriver& crossmuxSsd1677Driver() {
+@@ -1003,13 +1140,6 @@ PanelDriver& crossmuxSsd1677Driver() {
    return instance;
  }
  
@@ -1215,7 +1230,7 @@ index 00c541ae5947151770a9504e43098efc693dae73..4e03474d9cbd3067f2bc5f56f3c66bde
  
  #endif
 diff --git a/libs/display/FreeInkDisplay/src/driver/CrossMuxSsd1677Driver.h b/libs/display/FreeInkDisplay/src/driver/CrossMuxSsd1677Driver.h
-index fab91086b401b323168feb53b296296f1104ea27..13e8fdc78c753e1d830ddd1ec1438d8bff74062f 100644
+index fab9108..13e8fdc 100644
 --- a/libs/display/FreeInkDisplay/src/driver/CrossMuxSsd1677Driver.h
 +++ b/libs/display/FreeInkDisplay/src/driver/CrossMuxSsd1677Driver.h
 @@ -1,9 +1,5 @@
@@ -1288,11 +1303,106 @@ index fab91086b401b323168feb53b296296f1104ea27..13e8fdc78c753e1d830ddd1ec1438d8b
 -#endif
  
  }  // namespace freeink
+diff --git a/libs/display/FreeInkDisplay/src/driver/NativePageTurnGeometry.h b/libs/display/FreeInkDisplay/src/driver/NativePageTurnGeometry.h
+new file mode 100644
+index 0000000..123e5f8
+--- /dev/null
++++ b/libs/display/FreeInkDisplay/src/driver/NativePageTurnGeometry.h
+@@ -0,0 +1,76 @@
++// SPDX-License-Identifier: LGPL-3.0-or-later
++// Geometry shared with RickyOS Plus ricky_native_turn.h.
++// Ordinary SSD1677 uses two spatial groups, each receiving the complete LUT.
++#pragma once
++#include <stdbool.h>
++#include <stdint.h>
++
++typedef struct {
++    uint8_t style;       // 0 off, 1 skim, 2 shallow arc, 3 ripple
++    uint8_t orientation; // GfxRenderer: portrait, landscape CW, portrait inverted, landscape CCW
++    bool from_right;     // logical screen direction, independent of the panel mounting
++    bool has_origin;
++    uint16_t origin_x, origin_y; // logical normalized 0..1023; not mirrored again for RTL
++} RickyNativeTurn;
++
++
++static inline uint32_t ricky_turn_isqrt(uint64_t value) {
++    uint64_t result = 0, bit = UINT64_C(1) << 62;
++    while (bit > value) bit >>= 2;
++    while (bit) {
++        if (value >= result + bit) {
++            value -= result + bit;
++            result = (result >> 1) + bit;
++        } else result >>= 1;
++        bit >>= 2;
++    }
++    return (uint32_t)result;
++}
++
++typedef struct { int x, y; uint32_t radius; } RickyRippleGeometry;
++static inline RickyRippleGeometry ricky_ripple_geometry(RickyNativeTurn turn, int w, int h) {
++    RickyRippleGeometry g = {0, 0, 0};
++    if (w < 2 || h < 2 || turn.orientation > 3) return g;
++    const bool rotated = turn.orientation == 0 || turn.orientation == 2;
++    const int lw = rotated ? h : w, lh = rotated ? w : h;
++    const bool origin = turn.has_origin && turn.origin_x <= 1023 && turn.origin_y <= 1023;
++    const int cx = origin ? (int)((int64_t)turn.origin_x * (lw - 1) / 1023) : (turn.from_right ? lw - 1 : 0);
++    const int cy = origin ? (int)((int64_t)turn.origin_y * (lh - 1) / 1023) : (lh - 1) / 2;
++    // Rotate the origin once; Euclidean distance is invariant under rotation.
++    switch (turn.orientation) {
++        case 0:g.x=cy;g.y=h-1-cx;break;
++        case 1:g.x=w-1-cx;g.y=h-1-cy;break;
++        case 2:g.x=w-1-cy;g.y=cx;break;
++        default:g.x=cx;g.y=cy;break;
++    }
++    const int64_t farX = g.x > w - 1 - g.x ? g.x : w - 1 - g.x;
++    const int64_t farY = g.y > h - 1 - g.y ? g.y : h - 1 - g.y;
++    g.radius = ricky_turn_isqrt((uint64_t)(farX * farX + farY * farY));
++    return g;
++}
++static inline int ricky_ripple_axis(RickyRippleGeometry g, int x, int y) {
++    const int64_t dx = (int64_t)x - g.x, dy = (int64_t)y - g.y;
++    const uint32_t distance = ricky_turn_isqrt((uint64_t)(dx * dx + dy * dy));
++    return g.radius ? (int)((uint64_t)distance * 1024 / g.radius) : 0;
++}
++
++// Pure, bounded geometry shared by both boards and host acceptance tests.
++static inline int ricky_turn_axis(RickyNativeTurn turn, int x, int y, int w, int h) {
++    if (turn.style == 3) return ricky_ripple_axis(ricky_ripple_geometry(turn,w,h),x,y);
++    int lx, ly, lw, lh;
++    switch (turn.orientation) {
++        case 0: lx = h - 1 - y; ly = x; lw = h; lh = w; break;
++        case 1: lx = w - 1 - x; ly = h - 1 - y; lw = w; lh = h; break;
++        case 2: lx = y; ly = w - 1 - x; lw = h; lh = w; break;
++        default: lx = x; ly = y; lw = w; lh = h; break;
++    }
++    if (lw < 2 || lh < 2 || turn.style < 1 || turn.style > 3) return 0;
++    int axis = (turn.from_right ? lw - 1 - lx : lx) * 1024 / (lw - 1);
++    if (turn.style == 2) {
++        const int v = ly * 2048 / (lh - 1) - 1024;
++        const int bow = 1024 - v * v / 1024;
++        axis = (axis * 100 + bow * 16) / 116;
++    }
++    return axis;
++}
++
 diff --git a/libs/display/FreeInkDisplay/src/driver/PaperMonoDriver.cpp b/libs/display/FreeInkDisplay/src/driver/PaperMonoDriver.cpp
-index 86892914a93bef7569f812f0c584b3cfa5cc9018..b0c188793debffc3c4641bfd6d7efb2fa23ed617 100644
+index 8689291..1c0e431 100644
 --- a/libs/display/FreeInkDisplay/src/driver/PaperMonoDriver.cpp
 +++ b/libs/display/FreeInkDisplay/src/driver/PaperMonoDriver.cpp
-@@ -198,6 +198,24 @@ bool PaperMonoDriver::allocateBuffers() {
+@@ -86,6 +86,12 @@ constexpr uint8_t BOOT_CLEAN_EXTRA_PASSES = 2;
+ // SPI transaction setup count from 94 to 3 per plane without consuming the
+ // render task's 8 KB stack.
+ DRAM_ATTR uint8_t ROTATE_CHUNK[ROTATE_CHUNK_BYTES];
++#if FREEINK_DEVICE_METALIO_EINK4
++// Ordinary text routing does not otherwise need the 16 KB rotation buffer.
++// A bounded SPI chunk keeps motion off the render stack and preserves internal heap.
++constexpr uint16_t PAGE_TURN_CHUNK_BYTES = 2048;
++DRAM_ATTR uint8_t PAGE_TURN_CHUNK[PAGE_TURN_CHUNK_BYTES];
++#endif
+ 
+ constexpr std::array<uint8_t, 256> makeReverseBitsLut() {
+   std::array<uint8_t, 256> lut{};
+@@ -198,6 +204,24 @@ bool PaperMonoDriver::allocateBuffers() {
    return ok;
  }
  
@@ -1317,7 +1427,61 @@ index 86892914a93bef7569f812f0c584b3cfa5cc9018..b0c188793debffc3c4641bfd6d7efb2f
  void PaperMonoDriver::begin(EpdBus& bus) {
    if (!allocateBuffers()) return;
    _ioFailed = false;
-@@ -573,12 +591,9 @@ uint16_t PaperMonoDriver::makeTriLut(uint8_t out[111], bool bgTopUp) const {
+@@ -354,6 +378,53 @@ void PaperMonoDriver::writePlane(EpdBus& bus, uint8_t command, const uint8_t* da
+   bus.endTxn();
+ }
+ 
++#if FREEINK_DEVICE_METALIO_EINK4
++void PaperMonoDriver::setPageTurn(uint8_t style, uint8_t orientation, bool fromRight, int originX, int originY) {
++  _pageTurn = {};
++  if (style < 1 || style > 3 || orientation > 3) return;
++  _pageTurn.style = style;
++  _pageTurn.orientation = orientation;
++  _pageTurn.from_right = fromRight;
++  _pageTurn.has_origin = originX >= 0 && originX <= 1023 && originY >= 0 && originY <= 1023;
++  if (_pageTurn.has_origin) {
++    _pageTurn.origin_x = originX;
++    _pageTurn.origin_y = originY;
++  }
++}
++
++void PaperMonoDriver::preparePageTurn(const RickyNativeTurn& turn) {
++  memset(_pageTurnFirst, 0, sizeof(_pageTurnFirst));
++  for (unsigned y = 0; y < HEIGHT; y += 16) {
++    for (unsigned x = 0; x < WIDTH; x += 16) {
++      const unsigned cell = (y / 16) * (WIDTH / 16) + x / 16;
++      if (ricky_turn_axis(turn, x + 8, y + 8, WIDTH, HEIGHT) < 512)
++        _pageTurnFirst[cell / 8] |= 1u << (cell & 7);
++    }
++  }
++}
++
++void PaperMonoDriver::writePageTurnPlane(EpdBus& bus, uint8_t command, const uint8_t* data, unsigned group) {
++  resetRamCounter(bus);
++  bus.cmd(command);
++  bus.beginTxn();
++  for (uint32_t sent = 0; sent < BUFFER_SIZE; sent += PAGE_TURN_CHUNK_BYTES) {
++    const uint16_t count = std::min<uint32_t>(BUFFER_SIZE - sent, PAGE_TURN_CHUNK_BYTES);
++    for (uint16_t i = 0; i < count; ++i) {
++      const uint32_t pixelByte = sent + i;
++      const unsigned cell = ((pixelByte / WIDTH_BYTES) / 16) * (WIDTH / 16) + (pixelByte % WIDTH_BYTES) / 2;
++      const unsigned first = (_pageTurnFirst[cell / 8] >> (cell & 7)) & 1;
++      PAGE_TURN_CHUNK[i] = first == (group == 0) ? data[pixelByte] : 0;
++    }
++    bus.rawWriteBytes(PAGE_TURN_CHUNK, count);
++  }
++  bus.endTxn();
++}
++
++void paperMonoSetPageTurn(uint8_t style, uint8_t orientation, bool fromRight, int originX, int originY) {
++  paperMonoDriver().setPageTurn(style, orientation, fromRight, originX, originY);
++}
++#endif
++
+ void PaperMonoDriver::writePlaneWindow(EpdBus& bus, uint8_t command, const uint8_t* data, uint16_t x, uint16_t y,
+                                        uint16_t w, uint16_t h) {
+   if (!data) return;
+@@ -573,12 +644,9 @@ uint16_t PaperMonoDriver::makeTriLut(uint8_t out[111], bool bgTopUp) const {
    // Every boundary at which a class changes voltage. Between two consecutive
    // boundaries all entries have a constant source selection and fit one group.
    uint16_t bounds[7] = {
@@ -1333,7 +1497,7 @@ index 86892914a93bef7569f812f0c584b3cfa5cc9018..b0c188793debffc3c4641bfd6d7efb2f
        tail,
    };
    sortAscending(bounds, 7);
-@@ -654,8 +669,7 @@ bool PaperMonoDriver::runOtpUpdate(EpdBus& bus, const uint8_t* bwTarget, bool fo
+@@ -654,8 +722,7 @@ bool PaperMonoDriver::runOtpUpdate(EpdBus& bus, const uint8_t* bwTarget, bool fo
      const uint8_t oldNonWhite = _glassNonWhite[i];
      const uint8_t oldBlack = _glassBlack[i];
      const uint8_t oldGray = static_cast<uint8_t>(oldNonWhite & ~oldBlack);
@@ -1343,7 +1507,7 @@ index 86892914a93bef7569f812f0c584b3cfa5cc9018..b0c188793debffc3c4641bfd6d7efb2f
      changedBits |= changedMask;
  #ifdef ENABLE_SERIAL_LOG
      changed += popcount8(changedMask);
-@@ -700,9 +714,9 @@ bool PaperMonoDriver::runOtpUpdate(EpdBus& bus, const uint8_t* bwTarget, bool fo
+@@ -700,9 +767,9 @@ bool PaperMonoDriver::runOtpUpdate(EpdBus& bus, const uint8_t* bwTarget, bool fo
        activateOtp(bus);
      }
  #else
@@ -1356,7 +1520,89 @@ index 86892914a93bef7569f812f0c584b3cfa5cc9018..b0c188793debffc3c4641bfd6d7efb2f
  #endif
    }
    if (!checkIdle(bus)) return false;
-@@ -989,7 +1003,8 @@ void PaperMonoDriver::displayWindow(EpdBus& bus, const uint8_t* fb, const uint8_
+@@ -750,6 +817,10 @@ uint16_t PaperMonoDriver::makeTextTurnLut(uint8_t out[111]) const {
+ }
+ 
+ bool PaperMonoDriver::runUpdate(EpdBus& bus, const uint8_t* bwTarget, bool useGray, bool corrective, bool overlayOnly) {
++#if FREEINK_DEVICE_METALIO_EINK4
++  const auto turn = _pageTurn;
++  _pageTurn = {};
++#endif
+   if (!useGray) {
+     const bool otpRan = runOtpUpdate(bus, bwTarget, corrective);
+     if (otpRan) _displayCommitted = true;
+@@ -800,8 +871,26 @@ bool PaperMonoDriver::runUpdate(EpdBus& bus, const uint8_t* bwTarget, bool useGr
+     bus.data(0x00);
+   }
+ 
+-  writePlane(bus, CMD_WRITE_NEW, _sel24);
+-  writePlane(bus, CMD_WRITE_OLD, _sel26);
++  unsigned groups = 1;
++#if FREEINK_DEVICE_METALIO_EINK4
++  if (textTurn && turn.style) {
++    preparePageTurn(turn);
++    groups = 2;
++  }
++#endif
++  const auto writeGroup = [&]([[maybe_unused]] unsigned group) {
++#if FREEINK_DEVICE_METALIO_EINK4
++    if (groups == 2) {
++      writePageTurnPlane(bus, CMD_WRITE_NEW, _sel24, group);
++      writePageTurnPlane(bus, CMD_WRITE_OLD, _sel26, group);
++    } else
++#endif
++    {
++      writePlane(bus, CMD_WRITE_NEW, _sel24);
++      writePlane(bus, CMD_WRITE_OLD, _sel26);
++    }
++  };
++  writeGroup(0);
+   loadCustomLut(bus, lut);
+ #if FREEINK_SSD1677_TEXT_ROUTING
+   if (!_controllerPowered && (textTurn || combinedAa::calibration().powerUpFirst)) {
+@@ -810,10 +899,21 @@ bool PaperMonoDriver::runUpdate(EpdBus& bus, const uint8_t* bwTarget, bool useGr
+     _controllerPowered = true;
+   }
+ #endif
+-  if (displayWorkCancelled()) return false;
+-  activate(bus, _controllerPowered ? CTRL_DISPLAY_HOLD_WARM : CTRL_CUSTOM_HOLD_COLD);
+-  if (!checkIdle(bus)) return false;
+-  _controllerPowered = true;
++  for (unsigned group = 0; group < groups; ++group) {
++    if (group != 0) writeGroup(group);
++    if (displayWorkCancelled()) {
++      // A completed first group is a partial physical page. The next paint must clean.
++      if (group != 0) {
++        _needsFull = true;
++        _lastBwValid = false;
++        _transitionSource = OpticalState::Unknown;
++      }
++      return false;
++    }
++    activate(bus, _controllerPowered ? CTRL_DISPLAY_HOLD_WARM : CTRL_CUSTOM_HOLD_COLD);
++    if (!checkIdle(bus)) return false;
++    _controllerPowered = true;
++  }
+   // Residue cleaning belongs to the OTP path. Repeating the legacy tri LUT
+   // would reapply its anti-target kick and visibly disturb the completed page.
+ 
+@@ -829,9 +929,13 @@ bool PaperMonoDriver::runUpdate(EpdBus& bus, const uint8_t* bwTarget, bool useGr
+   _panelHasGray = hasGray != 0;
+ 
+ #ifdef ENABLE_SERIAL_LOG
+-  Serial.printf("[%lu] SSD1677 AA: textTurn=%u frames=%u changed=%lu full=%u elapsed=%lums\n", millis(),
++  unsigned motionStyle = 0;
++#if FREEINK_DEVICE_METALIO_EINK4
++  if (groups == 2) motionStyle = turn.style;
++#endif
++  Serial.printf("[%lu] SSD1677 AA: textTurn=%u frames=%u style=%u groups=%u changed=%lu full=%u elapsed=%lums\n", millis(),
+                 static_cast<unsigned>(textTurn), static_cast<unsigned>(firstFrames),
+-                static_cast<unsigned long>(changed), static_cast<unsigned>(corrective), millis() - started);
++                motionStyle, groups, static_cast<unsigned long>(changed), static_cast<unsigned>(corrective), millis() - started);
+ #else
+   (void)firstFrames;
+   (void)started;
+@@ -989,7 +1093,8 @@ void PaperMonoDriver::displayWindow(EpdBus& bus, const uint8_t* fb, const uint8_
    if (turnOff) powerOffController(bus);
  }
  
@@ -1366,7 +1612,7 @@ index 86892914a93bef7569f812f0c584b3cfa5cc9018..b0c188793debffc3c4641bfd6d7efb2f
    display(bus, fb, prev, mode, turnOff);
    return false;
  }
-@@ -1073,7 +1088,7 @@ bool PaperMonoDriver::markGrayRows(GrayPlane plane, uint16_t yStart, uint16_t nu
+@@ -1073,7 +1178,7 @@ bool PaperMonoDriver::markGrayRows(GrayPlane plane, uint16_t yStart, uint16_t nu
  }
  
  void PaperMonoDriver::writeGrayscalePlaneStrip(EpdBus& bus, GrayPlane plane, const uint8_t* rows, uint16_t yStart,
@@ -1375,7 +1621,7 @@ index 86892914a93bef7569f812f0c584b3cfa5cc9018..b0c188793debffc3c4641bfd6d7efb2f
    (void)bus;
    if (!rows || numRows == 0 || yStart + numRows > HEIGHT || !allocateBuffers()) return;
    uint8_t* target = plane == GrayPlane::Lsb ? _grayLsb : _grayMsb;
-@@ -1098,7 +1113,7 @@ void PaperMonoDriver::prepareGrayscaleTarget(const uint8_t* bw) {
+@@ -1098,7 +1203,7 @@ void PaperMonoDriver::prepareGrayscaleTarget(const uint8_t* bw) {
  }
  
  void PaperMonoDriver::displayGray(EpdBus& bus, const uint8_t* fb, bool turnOff, const unsigned char* lut,
@@ -1384,7 +1630,7 @@ index 86892914a93bef7569f812f0c584b3cfa5cc9018..b0c188793debffc3c4641bfd6d7efb2f
    (void)turnOff;
    (void)lut;
    (void)factoryMode;
-@@ -1116,8 +1131,7 @@ void PaperMonoDriver::displayGray(EpdBus& bus, const uint8_t* fb, bool turnOff,
+@@ -1116,8 +1221,7 @@ void PaperMonoDriver::displayGray(EpdBus& bus, const uint8_t* fb, bool turnOff,
      return;
    }
  
@@ -1394,7 +1640,7 @@ index 86892914a93bef7569f812f0c584b3cfa5cc9018..b0c188793debffc3c4641bfd6d7efb2f
                         _grayMsbGeneration == _renderGeneration;
    if (_pendingTri) {
      commitPending(bus, useGray);
-@@ -1147,7 +1161,7 @@ void PaperMonoDriver::displayGray(EpdBus& bus, const uint8_t* fb, bool turnOff,
+@@ -1147,7 +1251,7 @@ void PaperMonoDriver::displayGray(EpdBus& bus, const uint8_t* fb, bool turnOff,
  }
  
  void PaperMonoDriver::displayGrayCalibration(EpdBus& bus, const uint8_t* fb, uint16_t customX, uint16_t customY,
@@ -1403,7 +1649,7 @@ index 86892914a93bef7569f812f0c584b3cfa5cc9018..b0c188793debffc3c4641bfd6d7efb2f
    // There is a single gray tone and a single waveform now, so a side-by-side
    // "reference vs current" split has nothing left to compare. Render the whole
    // frame through the production path instead, driving every pixel so the
-@@ -1161,8 +1175,7 @@ void PaperMonoDriver::displayGrayCalibration(EpdBus& bus, const uint8_t* fb, uin
+@@ -1161,8 +1265,7 @@ void PaperMonoDriver::displayGrayCalibration(EpdBus& bus, const uint8_t* fb, uin
    _pendingTri = true;
    _pendingCorrective = true;
    _pendingGeneration = _renderGeneration;
@@ -1413,7 +1659,7 @@ index 86892914a93bef7569f812f0c584b3cfa5cc9018..b0c188793debffc3c4641bfd6d7efb2f
                         _grayMsbGeneration == _renderGeneration;
    commitPending(bus, useGray);
  }
-@@ -1183,8 +1196,7 @@ void PaperMonoDriver::cleanupGrayscaleBuffers(EpdBus& bus, const uint8_t* bw) {
+@@ -1183,8 +1286,7 @@ void PaperMonoDriver::cleanupGrayscaleBuffers(EpdBus& bus, const uint8_t* bw) {
    // displayGray() bailed without consuming the stashed target (no selectors
    // were ever staged, for instance). The frame must still reach the panel.
    if (bw && _pendingBw) memcpy(_pendingBw, bw, BUFFER_SIZE);
@@ -1423,12 +1669,37 @@ index 86892914a93bef7569f812f0c584b3cfa5cc9018..b0c188793debffc3c4641bfd6d7efb2f
                         _grayMsbGeneration == _renderGeneration;
    commitPending(bus, useGray);
  }
+@@ -1236,6 +1338,9 @@ void PaperMonoDriver::requestResync(uint8_t settlePasses) {
+ }
+ 
+ void PaperMonoDriver::resetGray() {
++#if FREEINK_DEVICE_METALIO_EINK4
++  _pageTurn = {};
++#endif
+   _transitionSource = OpticalState::Unknown;
+   _panelHasGray = false;
+   clearGrayStaging();
 diff --git a/libs/display/FreeInkDisplay/src/driver/PaperMonoDriver.h b/libs/display/FreeInkDisplay/src/driver/PaperMonoDriver.h
-index 892460aa5dde30e718d85f411b9ef5907f675d58..a25c162e4e5d96c8f77200c870a2a26f8c559684 100644
+index 892460a..37082f3 100644
 --- a/libs/display/FreeInkDisplay/src/driver/PaperMonoDriver.h
 +++ b/libs/display/FreeInkDisplay/src/driver/PaperMonoDriver.h
-@@ -90,13 +90,17 @@ class PaperMonoDriver final : public PanelDriver {
+@@ -3,6 +3,9 @@
+ #include <atomic>
+ 
+ #include "PanelDriver.h"
++#if FREEINK_DEVICE_METALIO_EINK4
++#include "NativePageTurnGeometry.h"
++#endif
+ 
+ namespace freeink {
+ 
+@@ -88,15 +91,22 @@ class PaperMonoDriver final : public PanelDriver {
+   void setGrayParams(const PaperMonoGrayParams& params);
+   void abortGray() { abortPostRefresh(); }
    void resetGray();
++#if FREEINK_DEVICE_METALIO_EINK4
++  void setPageTurn(uint8_t style, uint8_t orientation, bool fromRight, int originX, int originY);
++#endif
  
   private:
 +  friend class FreeInkDisplay;
@@ -1448,7 +1719,21 @@ index 892460aa5dde30e718d85f411b9ef5907f675d58..a25c162e4e5d96c8f77200c870a2a26f
    };
  
    PanelDriver* _originalDriver = nullptr;
-@@ -164,14 +168,14 @@ class PaperMonoDriver final : public PanelDriver {
+@@ -112,6 +122,13 @@ class PaperMonoDriver final : public PanelDriver {
+   void restoreFullRamWindow(EpdBus& bus);
+   void resetRamCounter(EpdBus& bus);
+   void writePlane(EpdBus& bus, uint8_t command, const uint8_t* data);
++#if FREEINK_DEVICE_METALIO_EINK4
++  void preparePageTurn(const RickyNativeTurn& turn);
++  void writePageTurnPlane(EpdBus& bus, uint8_t command, const uint8_t* data, unsigned group);
++  RickyNativeTurn _pageTurn{};
++  // 16x16-pixel geometry cells, one bit each; SPI staging is bounded separately.
++  uint8_t _pageTurnFirst[(50 * 30 + 7) / 8]{};
++#endif
+   void writePlaneWindow(EpdBus& bus, uint8_t command, const uint8_t* data, uint16_t x, uint16_t y, uint16_t w,
+                         uint16_t h);
+   void activate(EpdBus& bus, uint8_t control);
+@@ -164,14 +181,14 @@ class PaperMonoDriver final : public PanelDriver {
  
    // All logical raster order; writePlane() applies the 180-degree mount
    // transform on the way out.
@@ -1469,8 +1754,17 @@ index 892460aa5dde30e718d85f411b9ef5907f675d58..a25c162e4e5d96c8f77200c870a2a26f
    static constexpr uint16_t GRAY_ROWS = 480;
    static constexpr uint16_t GRAY_COVERAGE_BYTES = GRAY_ROWS / 8;
    uint8_t _grayLsbCoverage[GRAY_COVERAGE_BYTES]{};
+@@ -184,5 +201,8 @@ PaperMonoDriver& paperMonoDriver();
+ void paperMonoSetGrayParams(const PaperMonoGrayParams& params);
+ void paperMonoAbortGray();
+ void paperMonoResetGray();
++#if FREEINK_DEVICE_METALIO_EINK4
++void paperMonoSetPageTurn(uint8_t style, uint8_t orientation, bool fromRight, int originX, int originY);
++#endif
+ 
+ }  // namespace freeink
 diff --git a/libs/display/FreeInkDisplay/src/driver/Uc8279cA4Driver.cpp b/libs/display/FreeInkDisplay/src/driver/Uc8279cA4Driver.cpp
-index 9878268e7a1930080a60b6ee8ce58e4e84ee99ad..ba2cb82afb10bd65fc3dc8ed3f59d14a273a878b 100644
+index 9878268..ba2cb82 100644
 --- a/libs/display/FreeInkDisplay/src/driver/Uc8279cA4Driver.cpp
 +++ b/libs/display/FreeInkDisplay/src/driver/Uc8279cA4Driver.cpp
 @@ -29,8 +29,7 @@ constexpr uint8_t CMD_TCON = 0xe1;
@@ -1635,7 +1929,7 @@ index 9878268e7a1930080a60b6ee8ce58e4e84ee99ad..ba2cb82afb10bd65fc3dc8ed3f59d14a
    writeFrame(bus, CMD_DTM2, bw);
  }
 diff --git a/libs/display/FreeInkDisplay/src/driver/Uc8279cA4Driver.h b/libs/display/FreeInkDisplay/src/driver/Uc8279cA4Driver.h
-index 0d5038b23b796450616bb5bfaf33702395349f39..67317b1444bd1fceac546d176107243dbf38b3ce 100644
+index 0d5038b..67317b1 100644
 --- a/libs/display/FreeInkDisplay/src/driver/Uc8279cA4Driver.h
 +++ b/libs/display/FreeInkDisplay/src/driver/Uc8279cA4Driver.h
 @@ -35,9 +35,9 @@ class Uc8279cA4Driver : public PanelDriver {
@@ -1661,47 +1955,146 @@ index 0d5038b23b796450616bb5bfaf33702395349f39..67317b1444bd1fceac546d176107243d
  };
 diff --git a/libs/display/FreeInkDisplay/src/lut/MetalioUiGray.h b/libs/display/FreeInkDisplay/src/lut/MetalioUiGray.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..9a594241b6e8d533d0c708dc84fb711c1c8b13de
+index 0000000..e260bc1
 --- /dev/null
 +++ b/libs/display/FreeInkDisplay/src/lut/MetalioUiGray.h
-@@ -0,0 +1,35 @@
+@@ -0,0 +1,134 @@
 +#pragma once
 +
++#include <array>
 +#include <cstddef>
 +#include <cstdint>
++#include <cstring>
++
++#include "Ssd1677CombinedAa.h"
 +
 +namespace freeink::metalioUiGray {
-+// Same four-tone quantization as the UI HAL; low nibble is the first pixel.
++// Four tones from the 4bpp UI raster: 0=black, 1/2=middle, 3=white.
 +inline uint8_t tone(const uint8_t* raster, size_t pixel) {
 +  return (((raster[pixel / 2] >> ((pixel & 1) * 4)) & 15) + 2) / 5;
 +}
 +// Optical history stores the committed four-tone value, not intermediate
 +// coverage. Four pixels per byte, low pair first; composition remains 4bpp.
 +inline uint8_t historyTone(const uint8_t* packed, size_t pixel) { return (packed[pixel / 4] >> ((pixel & 3) * 2)) & 3; }
++// Two-pixel conversion tables stay in flash. A pair packs its first pixel low.
++inline constexpr auto quantizedPairs = [] {
++  std::array<uint8_t, 256> values{};
++  for (unsigned byte = 0; byte < values.size(); ++byte)
++    values[byte] = ((byte & 15) + 2) / 5 | ((((byte >> 4) + 2) / 5) << 2);
++  return values;
++}();
 +inline void packHistory(const uint8_t* raster, uint8_t* packed, size_t pixels) {
-+  for (size_t pixel = 0; pixel < pixels; pixel += 4) {
++  size_t pixel = 0;
++  for (; pixels - pixel >= 4; pixel += 4)
++    packed[pixel / 4] = quantizedPairs[raster[pixel / 2]] | (quantizedPairs[raster[pixel / 2 + 1]] << 4);
++  if (pixel < pixels) {
 +    uint8_t value = 0;
 +    for (unsigned i = 0; i < 4 && pixel + i < pixels; ++i) value |= tone(raster, pixel + i) << (i * 2);
 +    packed[pixel / 4] = value;
 +  }
 +}
-+enum class Plane { EndpointBw, EndpointOld, GrayLsb, GrayMsb };
++inline constexpr auto changedPairs = [] {
++  std::array<uint8_t, 256> values{};
++  for (unsigned pair = 0; pair < values.size(); ++pair)
++    values[pair] = ((pair & 3) != ((pair >> 4) & 3)) + (((pair >> 2) & 3) != ((pair >> 6) & 3));
++  return values;
++}();
++inline uint32_t countChanges(const uint8_t* raster, const uint8_t* previous, size_t pixels) {
++  uint32_t changed = 0;
++  size_t pixel = 0;
++  for (; pixels - pixel >= 4; pixel += 4) {
++    const uint8_t old = previous[pixel / 4];
++    changed += changedPairs[(quantizedPairs[raster[pixel / 2]] << 4) | (old & 15)];
++    changed += changedPairs[(quantizedPairs[raster[pixel / 2 + 1]] << 4) | (old >> 4)];
++  }
++  for (; pixel < pixels; ++pixel) changed += tone(raster, pixel) != historyTone(previous, pixel);
++  return changed;
++}
++enum class Plane { EndpointBw, EndpointOld, GrayLsb, GrayMsb, CombinedBw, CombinedOld };
++// Each plane gets two bits, with its first pixel in the high bit.
++inline constexpr auto selectorPairs = [] {
++  std::array<uint16_t, 256> values{};
++  for (unsigned pair = 0; pair < values.size(); ++pair) {
++    for (unsigned pixel = 0; pixel < 2; ++pixel) {
++      const unsigned target = (pair >> (4 + pixel * 2)) & 3;
++      const unsigned previous = (pair >> (pixel * 2)) & 3;
++      if (target == previous) continue;
++      const unsigned bits = (target == 3) | ((target != 3) << 2) | ((target == 1) << 4) |
++                            ((target == 1 || target == 2) << 6) | ((target == 0 || target == 3) << 8) |
++                            ((target != 3) << 10);
++      values[pair] |= bits << (1 - pixel);
++    }
++  }
++  return values;
++}();
 +inline uint8_t selectors(const uint8_t* next, const uint8_t* previous, size_t first, Plane plane) {
 +  uint8_t result = 0;
++  // Panel rows submit aligned bytes. Retain the per-pixel path for other offsets.
++  if ((first & 3) == 0) {
++    for (unsigned pair = 0; pair < 4; ++pair) {
++      const unsigned old = (previous[first / 4 + pair / 2] >> ((pair & 1) * 4)) & 15;
++      const unsigned target = quantizedPairs[next[first / 2 + pair]];
++      const unsigned bits = selectorPairs[(target << 4) | old];
++      result |= ((bits >> (static_cast<unsigned>(plane) * 2)) & 3) << (6 - pair * 2);
++    }
++    return result;
++  }
 +  for (unsigned bit = 0; bit < 8; ++bit) {
 +    const auto target = tone(next, first + bit);
 +    if (target == historyTone(previous, first + bit)) continue;
 +    const bool set = plane == Plane::EndpointBw    ? target == 3
 +                     : plane == Plane::EndpointOld ? target != 3
 +                     : plane == Plane::GrayLsb     ? target == 1
-+                                                   : target == 1 || target == 2;
++                     : plane == Plane::GrayMsb     ? target == 1 || target == 2
++                     : plane == Plane::CombinedBw  ? target == 0 || target == 3
++                                                   : target != 3;
 +    if (set) result |= 0x80 >> bit;
 +  }
 +  return result;
 +}
++
++// Changed white/gray/black select LUT entries 1/2/3; held pixels select idle.
++// Finish middle tones with a bounded strong-black dose; weak rail alone is too light.
++inline constexpr uint16_t grayDevelopFrames = 32;
++inline constexpr uint16_t grayStrongFrames = 2;
++inline uint16_t makeCombinedLut(uint8_t* out) {
++  constexpr uint8_t black = 1, white = 2, weak = 3;
++  const auto& panel = combinedAa::metalio;
++  const auto& timing = panel.textTurn;
++  const uint16_t grayWhite = timing.grayWhite;
++  const uint16_t grayEnd = grayWhite + grayDevelopFrames;
++  const uint16_t grayStrong = grayEnd - grayStrongFrames;
++  const uint16_t whiteStart = timing.whiteStart;
++  const uint16_t whiteEnd = whiteStart + timing.white;
++  const uint16_t blackStart = timing.blackStart;
++  const uint16_t blackEnd = blackStart + panel.black;
++  std::array<uint16_t, 8> bounds{0, whiteStart, whiteEnd, grayWhite, grayStrong, grayEnd, blackStart, blackEnd};
++  for (size_t i = 1; i < bounds.size(); ++i) {
++    for (size_t j = i; j > 0 && bounds[j] < bounds[j - 1]; --j) std::swap(bounds[j], bounds[j - 1]);
++  }
++  std::memset(out, 0, 110);
++  uint8_t group = 0;
++  uint16_t previous = 0;
++  for (const uint16_t current : bounds) {
++    if (current <= previous) continue;
++    if (previous >= whiteStart && previous < whiteEnd) out[10 + group] |= white << 6;
++    if (previous < grayEnd) {
++      const uint8_t drive = previous < grayWhite ? white : previous < grayStrong ? weak : black;
++      out[20 + group] |= drive << 6;
++    }
++    if (previous >= blackStart && previous < blackEnd) out[30 + group] |= black << 6;
++    out[50 + group * 5] = static_cast<uint8_t>(current - previous);
++    ++group;
++    previous = current;
++  }
++  const uint8_t frameRate = panel.frameRate & 0x0F;
++  for (unsigned i = 100; i < 105; ++i) out[i] = frameRate | (frameRate << 4);
++  const uint16_t endpointEnd = whiteEnd > blackEnd ? whiteEnd : blackEnd;
++  return grayEnd > endpointEnd ? grayEnd : endpointEnd;
++}
 +}  // namespace freeink::metalioUiGray
 diff --git a/libs/display/FreeInkDisplay/src/lut/Ssd1677CombinedAa.h b/libs/display/FreeInkDisplay/src/lut/Ssd1677CombinedAa.h
-index fbc49ca967b222285ce06f48f527dd2b43997fe5..4994ceaf6f09f4a7ff82a8506ab9f186c539276f 100644
+index fbc49ca..4994cea 100644
 --- a/libs/display/FreeInkDisplay/src/lut/Ssd1677CombinedAa.h
 +++ b/libs/display/FreeInkDisplay/src/lut/Ssd1677CombinedAa.h
 @@ -54,15 +54,7 @@ inline const Calibration murphy{16, 24, 32, 0x08, lut_grayscale + 105, 0xC0, 0x0
@@ -1722,7 +2115,7 @@ index fbc49ca967b222285ce06f48f527dd2b43997fe5..4994ceaf6f09f4a7ff82a8506ab9f186
  #else
    return sticky;
 diff --git a/libs/display/FreeInkDisplay/src/lut/Ssd1677Luts.h b/libs/display/FreeInkDisplay/src/lut/Ssd1677Luts.h
-index bd458f466fe53ad59f776e29b76a7f960f5d715d..0ffdf42f64746b9bc7a432d80f47c6128d128280 100644
+index bd458f4..0ffdf42 100644
 --- a/libs/display/FreeInkDisplay/src/lut/Ssd1677Luts.h
 +++ b/libs/display/FreeInkDisplay/src/lut/Ssd1677Luts.h
 @@ -21,16 +21,9 @@ inline const unsigned char lut_grayscale[] PROGMEM = {
@@ -1853,7 +2246,7 @@ index bd458f466fe53ad59f776e29b76a7f960f5d715d..0ffdf42f64746b9bc7a432d80f47c612
 +    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 +    0x00, 0x00, 0x00, 0x00, 0x01, 0x22, 0x22, 0x22, 0x22, 0x22, 0x17, 0x46, 0xA8, 0x32, 0x30};
 diff --git a/libs/display/FreeInkDisplay/test/host/ssd1677_stubs/esp_heap_caps.h b/libs/display/FreeInkDisplay/test/host/ssd1677_stubs/esp_heap_caps.h
-index ab2828cc45f3f69342d0780850b0d71487e8c2b7..ffd2f170066cfb35e9af17e5b25ca4f6315fdc48 100644
+index ab2828c..ffd2f17 100644
 --- a/libs/display/FreeInkDisplay/test/host/ssd1677_stubs/esp_heap_caps.h
 +++ b/libs/display/FreeInkDisplay/test/host/ssd1677_stubs/esp_heap_caps.h
 @@ -3,7 +3,9 @@
@@ -1868,7 +2261,7 @@ index ab2828cc45f3f69342d0780850b0d71487e8c2b7..ffd2f170066cfb35e9af17e5b25ca4f6
    void* p = std::malloc(n);
 diff --git a/libs/display/FreeInkDisplay/test/host/test_eego_a4.py b/libs/display/FreeInkDisplay/test/host/test_eego_a4.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..4b41887aa665d980665e46f97bada802a18abeaf
+index 0000000..4b41887
 --- /dev/null
 +++ b/libs/display/FreeInkDisplay/test/host/test_eego_a4.py
 @@ -0,0 +1,132 @@
@@ -2006,10 +2399,10 @@ index 0000000000000000000000000000000000000000..4b41887aa665d980665e46f97bada802
 +print('A4 driver: planes, padding, drive registers, baseline, cadence, wake and PSRAM OOM passed')
 diff --git a/libs/display/FreeInkDisplay/test/host/test_metalio_ui_retained.cpp b/libs/display/FreeInkDisplay/test/host/test_metalio_ui_retained.cpp
 new file mode 100644
-index 0000000000000000000000000000000000000000..2ccac7cfb7b55419ad4476adf68254d56dc73837
+index 0000000..72a5a95
 --- /dev/null
 +++ b/libs/display/FreeInkDisplay/test/host/test_metalio_ui_retained.cpp
-@@ -0,0 +1,141 @@
+@@ -0,0 +1,220 @@
 +#include <array>
 +#include <cassert>
 +#include <vector>
@@ -2049,7 +2442,93 @@ index 0000000000000000000000000000000000000000..2ccac7cfb7b55419ad4476adf68254d5
 +  }
 +  return bw;
 +}
++void checkSelectorTables() {
++  for (unsigned byte = 0; byte < 256; ++byte) {
++    Raster raster;
++    raster.fill(byte);
++    for (unsigned old = 0; old < 16; ++old) {
++      std::array<uint8_t, 64> previous;
++      previous.fill(old | (old << 4));
++      for (unsigned first = 0; first < 12; ++first) {
++        for (unsigned plane = 0; plane < 6; ++plane) {
++          uint8_t expected = 0;
++          for (unsigned bit = 0; bit < 8; ++bit) {
++            const unsigned pixel = first + bit;
++            const unsigned target = (((raster[pixel / 2] >> ((pixel & 1) * 4)) & 15) + 2) / 5;
++            const unsigned before = (previous[pixel / 4] >> ((pixel & 3) * 2)) & 3;
++            const bool set = plane == 0 ? target == 3
++                             : plane == 1 ? target != 3
++                             : plane == 2 ? target == 1
++                             : plane == 3 ? target == 1 || target == 2
++                             : plane == 4 ? target == 0 || target == 3
++                                          : target != 3;
++            if (target != before && set) expected |= 0x80 >> bit;
++          }
++          assert(metalioUiGray::selectors(raster.data(), previous.data(), first,
++                                         static_cast<metalioUiGray::Plane>(plane)) == expected);
++        }
++      }
++      unsigned expectedChanges = 0;
++      for (unsigned pixel = 0; pixel < raster.size() * 2; ++pixel)
++        expectedChanges += metalioUiGray::tone(raster.data(), pixel) != metalioUiGray::historyTone(previous.data(), pixel);
++      assert(metalioUiGray::countChanges(raster.data(), previous.data(), raster.size() * 2) == expectedChanges);
++    }
++    for (unsigned pixels = 0; pixels < 32; ++pixels) {
++      std::array<uint8_t, 12> packed, expected;
++      packed.fill(0xa5);
++      expected = packed;
++      for (unsigned first = 0; first < pixels; first += 4) {
++        uint8_t value = 0;
++        for (unsigned i = 0; i < 4 && first + i < pixels; ++i) {
++          const unsigned pixel = first + i;
++          const unsigned level = (raster[pixel / 2] >> ((pixel & 1) * 4)) & 15;
++          value |= ((level + 2) / 5) << (i * 2);
++        }
++        expected[first / 4 + 1] = value;
++      }
++      metalioUiGray::packHistory(raster.data(), packed.data() + 1, pixels);
++      assert(packed == expected);
++    }
++  }
++}
++void checkCombinedWaveform(const std::vector<uint8_t>& lut) {
++  unsigned frame = 0;
++  unsigned whiteTicks = 0, grayWhiteTicks = 0, grayWeakTicks = 0, grayStrongTicks = 0, blackTicks = 0;
++  constexpr unsigned strongStart = 32 + metalioUiGray::grayDevelopFrames - metalioUiGray::grayStrongFrames;
++  for (unsigned group = 0; group < 10; ++group) {
++    assert(lut[50 + group * 5 + 4] == 0);
++    for (unsigned phase = 0; phase < 4; ++phase) {
++      const unsigned duration = lut[50 + group * 5 + phase];
++      for (unsigned tick = 0; tick < duration; ++tick, ++frame) {
++        assert(frame < 32 + metalioUiGray::grayDevelopFrames);
++        for (unsigned entry = 0; entry < 5; ++entry) {
++          const unsigned vs = (lut[entry * 10 + group] >> ((3 - phase) * 2)) & 3;
++          unsigned expected = 0;
++          if (entry == 1 && frame >= 24 && frame < 56) {
++            expected = 2;
++            ++whiteTicks;
++          } else if (entry == 2) {
++            expected = frame < 32 ? 2 : frame < strongStart ? 3 : 1;
++            if (frame < 32) ++grayWhiteTicks;
++            else if (frame < strongStart) ++grayWeakTicks;
++            else ++grayStrongTicks;
++          } else if (entry == 3 && frame >= 24 && frame < 56) {
++            expected = 1;
++            ++blackTicks;
++          }
++          assert(vs == expected);
++        }
++      }
++    }
++  }
++  assert(frame == 32 + metalioUiGray::grayDevelopFrames);
++  assert(whiteTicks == 32 && grayWhiteTicks == 32 &&
++         grayWeakTicks == metalioUiGray::grayDevelopFrames - metalioUiGray::grayStrongFrames &&
++         grayStrongTicks == metalioUiGray::grayStrongFrames && blackTicks == 32);
++  for (unsigned i = 100; i < 105; ++i) assert(lut[i] == 0x88);
++}
 +int main() {
++  checkSelectorTables();
 +  EpdBus bus;
 +  CrossMuxSsd1677Driver driver(crossmuxSsd1677MetalioConfig());
 +  driver.begin(bus);
@@ -2063,36 +2542,34 @@ index 0000000000000000000000000000000000000000..2ccac7cfb7b55419ad4476adf68254d5
 +  };
 +  assert(submit());
 +  assert(lastAllocationSize == raster.size() / 2);  // Four committed pixels per byte.
-+  assert(paints(bus).size() == 3);                  // existing endpoint clean, base and gray
++  const auto initial = paints(bus);
++  assert(initial.size() == 3);  // existing endpoint clean, base and gray
++  checkCombinedWaveform(initial.back().lut);  // Cleaning uses the same middle-tone waveform.
 +  assert(driver.displayCommitted());
 +  bus.clear();
 +  assert(submit() && bus.events.empty());  // identical frames never flash
-+  // All 16 source/target combinations; endpoints and both middle tones survive.
++  // Quantized 0 is black and 3 is white. Every changed source/target pair is explicit.
 +  for (unsigned old = 0; old < 4; ++old)
 +    for (unsigned target = 0; target < 4; ++target) put(raster, old * 4 + target, target * 5);
 +  assert(submit());
 +  auto p = paints(bus);
-+  assert(p.size() == 2);
++  assert(p.size() == 1);
 +  for (unsigned old = 0; old < 4; ++old) {
 +    for (unsigned target = 0; target < 4; ++target) {
 +      const unsigned pixel = old * 4 + target;
 +      const bool changed = old != target;
-+      assert(bit(p[0].bw, pixel) == (changed && target == 3));
++      const bool endpoint = target == 0 || target == 3;
++      assert(bit(p[0].bw, pixel) == (changed && endpoint));
 +      assert(bit(p[0].old, pixel) == (changed && target != 3));
-+      assert(bit(p[1].bw, pixel) == (changed && target == 1));
-+      assert(bit(p[1].old, pixel) == (changed && (target == 1 || target == 2)));
 +    }
 +  }
 +  for (unsigned pixel = 16; pixel < 256; ++pixel)
-+    for (const auto& paint : p) assert(!bit(paint.bw, pixel) && !bit(paint.old, pixel));
-+  // Uploaded pulse timing and analog bytes match the existing board LUT. Only
-+  // the two unchanged selector classes are disabled in the endpoint pass.
-+  for (unsigned i = 0; i < 105; ++i) {
-+    const bool idle = i < 10 || (i >= 30 && i < 40);
-+    assert(p[0].lut.at(i) == (idle ? 0 : lut_fast_metalio[i]));
-+    assert(p[1].lut.at(i) == lut_grayscale[i]);
-+  }
-+  // Quantization-equivalent changes do not consume the cleanup budget.
++    assert(!bit(p[0].bw, pixel) && !bit(p[0].old, pixel));
++  checkCombinedWaveform(p[0].lut);
++  const auto& panel = combinedAa::metalio;
++  assert(bus.last(0x03) == std::vector<uint8_t>{panel.voltages[0]});
++  assert(bus.last(0x04) == std::vector<uint8_t>(panel.voltages + 1, panel.voltages + 4));
++  assert(bus.last(0x2C) == std::vector<uint8_t>{panel.voltages[4]});
 +  bus.clear();
 +  put(raster, 0, 1);
 +  assert(submit() && bus.events.empty());
@@ -2100,14 +2577,13 @@ index 0000000000000000000000000000000000000000..2ccac7cfb7b55419ad4476adf68254d5
 +    bus.clear();
 +    put(raster, 24, (update & 1) ? 15 : 0);
 +    assert(submit());
-+    assert(paints(bus).size() == (update == 4 ? 3 : 2));
++    assert(paints(bus).size() == (update == 4 ? 3 : 1));
 +  }
 +  bus.clear();
 +  assert(submit(true) && paints(bus).size() == 3);
 +  bus.clear();
 +  driver.requestResync(1);
 +  assert(submit() && paints(bus).size() == 3);
-+  // A non-UI page invalidates retained history even if it leaves valid gray.
 +  bus.clear();
 +  auto bw = base(raster);
 +  driver.display(bus, bw.data(), nullptr, RefreshMode::Fast, false);
@@ -2118,20 +2594,16 @@ index 0000000000000000000000000000000000000000..2ccac7cfb7b55419ad4476adf68254d5
 +  driver.begin(bus);
 +  bus.clear();
 +  assert(submit() && paints(bus).size() == 3);
-+  // No RAM writes after either failed delta activation. The next recovered
-+  // transaction must clean, never reuse the failed frame as optical history.
-+  for (unsigned phase = 1; phase <= 2; ++phase) {
-+    bus.clear();
-+    put(raster, 25, phase == 1 ? 0 : 15);
-+    bus.failAt = bus.activation + phase;
-+    assert(!submit());
-+    assert(!driver.displayCommitted() && bus.busy);
-+    assert(bus.events.back().cmd == -1);
-+    bus.failAt = 0;
-+    bus.busy = false;
-+    bus.clear();
-+    assert(submit() && paints(bus).size() == 3);
-+  }
++  bus.clear();
++  put(raster, 25, 0);
++  bus.failAt = bus.activation + 1;
++  assert(!submit());
++  assert(!driver.displayCommitted() && bus.busy);
++  assert(bus.events.back().cmd == -1);
++  bus.failAt = 0;
++  bus.busy = false;
++  bus.clear();
++  assert(submit() && paints(bus).size() == 3);
 +  for (unsigned phase = 1; phase <= 3; ++phase) {
 +    bus.clear();
 +    bus.failAt = bus.activation + phase;
@@ -2153,7 +2625,7 @@ index 0000000000000000000000000000000000000000..2ccac7cfb7b55419ad4476adf68254d5
 +}
 diff --git a/libs/display/FreeInkDisplay/test/host/test_metalio_ui_retained.py b/libs/display/FreeInkDisplay/test/host/test_metalio_ui_retained.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..bddb4e483412d9d19315a11dc5c91604cda4b948
+index 0000000..bddb4e4
 --- /dev/null
 +++ b/libs/display/FreeInkDisplay/test/host/test_metalio_ui_retained.py
 @@ -0,0 +1,8 @@
@@ -2166,7 +2638,7 @@ index 0000000000000000000000000000000000000000..bddb4e483412d9d19315a11dc5c91604
 +          flags=('-fsanitize=address,undefined',))
 +print('Metalio retained UI: 16 transitions, held pixels, no-op, cadence, resync, sleep and BUSY failures passed')
 diff --git a/libs/display/FreeInkDisplay/test/host/test_ssd1677.cpp b/libs/display/FreeInkDisplay/test/host/test_ssd1677.cpp
-index b898da591bdc51247cbe038cc6f7c7a17d316f6a..1702f600c86e4778c5625933aaf384fa794b4b5c 100644
+index b898da5..1702f60 100644
 --- a/libs/display/FreeInkDisplay/test/host/test_ssd1677.cpp
 +++ b/libs/display/FreeInkDisplay/test/host/test_ssd1677.cpp
 @@ -70,26 +70,26 @@ void testDriverSequences() {
@@ -2356,7 +2828,7 @@ index b898da591bdc51247cbe038cc6f7c7a17d316f6a..1702f600c86e4778c5625933aaf384fa
    d.begin(b);  // A new controller session cannot inherit the prior optical estimate.
    assert(d.opticalState() == OpticalState::Unknown);
 diff --git a/libs/display/FreeInkDisplay/test/host/test_ssd1677.py b/libs/display/FreeInkDisplay/test/host/test_ssd1677.py
-index 3c7c5876de38d7bac5017e7dc460e8bd1699efd0..9c788a8764c11c444109f801fc905b6fa2089505 100644
+index 3c7c587..9c788a8 100644
 --- a/libs/display/FreeInkDisplay/test/host/test_ssd1677.py
 +++ b/libs/display/FreeInkDisplay/test/host/test_ssd1677.py
 @@ -9,7 +9,7 @@ HERE = pathlib.Path(__file__).resolve().parent
@@ -2377,7 +2849,7 @@ index 3c7c5876de38d7bac5017e7dc460e8bd1699efd0..9c788a8764c11c444109f801fc905b6f
          binary = tmp / "trace"
          command += [str(source or HERE / "test_ssd1677.cpp")]
 diff --git a/libs/display/FreeInkDisplay/test/host/test_ssd1677_text_route.cpp b/libs/display/FreeInkDisplay/test/host/test_ssd1677_text_route.cpp
-index bccdaeb9e4da8eb82869735b09e587a37796b7a9..dd0504d696909ba19bc1ab0077ff3f77368656b3 100644
+index bccdaeb..54d30c8 100644
 --- a/libs/display/FreeInkDisplay/test/host/test_ssd1677_text_route.cpp
 +++ b/libs/display/FreeInkDisplay/test/host/test_ssd1677_text_route.cpp
 @@ -117,7 +117,32 @@ int main(int argc, char** argv) {
@@ -2471,7 +2943,7 @@ index bccdaeb9e4da8eb82869735b09e587a37796b7a9..dd0504d696909ba19bc1ab0077ff3f77
 +    bus.clear();
 +    assert(d.displayUiGrayscale(raster.data(), false) && pixels(bus) == 0);
 +    raster[0] = 0x55;
-+    assert(d.displayUiGrayscale(raster.data(), false) && pixels(bus) == 2);
++    assert(d.displayUiGrayscale(raster.data(), false) && pixels(bus) == 1);
 +    bus.clear();
 +    assert(d.displayUiGrayscale(raster.data(), true) && pixels(bus) == 3);
 +    bus.clear();
@@ -2538,7 +3010,7 @@ index bccdaeb9e4da8eb82869735b09e587a37796b7a9..dd0504d696909ba19bc1ab0077ff3f77
  
  #endif
 diff --git a/libs/display/FreeInkDisplay/test/host/test_ssd1677_text_route.py b/libs/display/FreeInkDisplay/test/host/test_ssd1677_text_route.py
-index 3c9758fe40b151a15cca264ce46328b05f9fefff..59f0e9e0c08c0b70c7abff7bb8923e0f7c06236c 100644
+index 3c9758f..59f0e9e 100644
 --- a/libs/display/FreeInkDisplay/test/host/test_ssd1677_text_route.py
 +++ b/libs/display/FreeInkDisplay/test/host/test_ssd1677_text_route.py
 @@ -12,12 +12,11 @@ LIB = HERE.parents[1]
@@ -2621,8 +3093,99 @@ index 3c9758fe40b151a15cca264ce46328b05f9fefff..59f0e9e0c08c0b70c7abff7bb8923e0f
                      for scenario in scenarios:
                          subprocess.run([str(binary), scenario], check=True)
                      if device == "MURPHY_M4":
+diff --git a/libs/display/FreeInkDisplay/test/host/test_ssd1677_text_turn.cpp b/libs/display/FreeInkDisplay/test/host/test_ssd1677_text_turn.cpp
+index c2be70d..5e77ac5 100644
+--- a/libs/display/FreeInkDisplay/test/host/test_ssd1677_text_turn.cpp
++++ b/libs/display/FreeInkDisplay/test/host/test_ssd1677_text_turn.cpp
+@@ -297,5 +297,72 @@ int main() {
+     page();
+     assert(paints(bus).empty());
+   }
++#if FREEINK_DEVICE_METALIO_EINK4
++  for (unsigned style = 1; style <= 3; ++style) {
++    for (unsigned orientation = 0; orientation < 4; ++orientation) {
++      for (bool fromRight : {false, true}) {
++        bw.fill(0xff);
++        gray.fill(0);
++        page(RefreshMode::Half);
++        bus.clear();
++        bw.fill(0x33);
++        gray.fill(0x55);
++        stage();
++        d.setPageTurn(style, orientation, fromRight, fromRight ? 1023 : 0, 512);
++        finish();
++        const auto turns = paints(bus);
++        assert(turns.size() == 2 && d.displayCommitted() && d._pageTurn.style == 0);
++        unsigned driven[2]{};
++        for (size_t i = 0; i < bw.size(); ++i) {
++          const auto nonWhite = static_cast<uint8_t>(gray[i] | ~bw[i]);
++          const auto black = static_cast<uint8_t>(~bw[i] & ~gray[i]);
++          assert((turns[0].next[i] & turns[1].next[i]) == 0);
++          assert((turns[0].old[i] & turns[1].old[i]) == 0);
++          assert((turns[0].next[i] | turns[1].next[i]) == static_cast<uint8_t>(~nonWhite | black));
++          assert((turns[0].old[i] | turns[1].old[i]) == static_cast<uint8_t>(black | gray[i]));
++          for (unsigned group = 0; group < 2; ++group) driven[group] += turns[group].next[i] != 0;
++        }
++        assert(driven[0] && driven[1]);
++        assert(turns[0].lut == expected && turns[1].lut == expected);
++        bus.clear();
++        d.setPageTurn(style, orientation, fromRight, -1, -1);
++        page();
++        assert(paints(bus).empty() && d._pageTurn.style == 0);
++      }
++    }
++  }
++  // A partial animated page cannot become the baseline after cancellation.
++  bw.fill(0xff);
++  gray.fill(0);
++  stage();
++  d.setPageTurn(1, 0, true, -1, -1);
++  bus.clear();
++  bus.onRefreshComplete = cancelDuringRefresh;
++  finish();
++  bus.onRefreshComplete = nullptr;
++  assert(paints(bus).size() == 1 && !d.displayCommitted());
++  assert(d._needsFull && !d._lastBwValid);
++  bus.clear();
++  page();
++  assert(paints(bus).size() == 2 && d.displayCommitted());
++  for (unsigned failure = 1; failure <= 2; ++failure) {
++    bw.fill(0xff);
++    gray.fill(0);
++    page(RefreshMode::Half);
++    bus.clear();
++    bw.fill(0x33);
++    gray.fill(0x55);
++    stage();
++    d.setPageTurn(3, 0, true, 512, 512);
++    bus.failAt = bus.activation + failure;
++    finish();
++    assert(bus.busy && !d.displayCommitted() && d._needsFull && !d._lastBwValid);
++    bus.failAt = 0;
++    bus.busy = false;
++    bus.clear();
++    page();
++    assert(paints(bus).size() == 2 && d.displayCommitted());
++  }
++#endif
+   assert(allocationCalls == allocations);
+ }
+diff --git a/libs/font/FreeInkFont/third_party/freetype/include/freetype/config/ftmodule.h b/libs/font/FreeInkFont/third_party/freetype/include/freetype/config/ftmodule.h
+index 99f7c73..df56544 100644
+--- a/libs/font/FreeInkFont/third_party/freetype/include/freetype/config/ftmodule.h
++++ b/libs/font/FreeInkFont/third_party/freetype/include/freetype/config/ftmodule.h
+@@ -20,3 +20,9 @@ FT_USE_MODULE( FT_Renderer_Class, ft_raster1_renderer_class )
+ #if FREEINK_FONT_ENABLE_AUTOHINT
+ FT_USE_MODULE( FT_Module_Class, autofit_module_class )
+ #endif
++
++#if FREEINK_FONT_ENABLE_CFF
++FT_USE_MODULE( FT_Module_Class, psaux_module_class )
++FT_USE_MODULE( FT_Module_Class, pshinter_module_class )
++FT_USE_MODULE( FT_Driver_ClassRec, cff_driver_class )
++#endif
 diff --git a/libs/hardware/BatteryMonitor/include/BatteryMonitor.h b/libs/hardware/BatteryMonitor/include/BatteryMonitor.h
-index 41b404c14bfda28ddebe98d7bd0e3de94f2821ce..70a817a3a703a51406b7199750f09bc713a6e3fc 100644
+index 41b404c..70a817a 100644
 --- a/libs/hardware/BatteryMonitor/include/BatteryMonitor.h
 +++ b/libs/hardware/BatteryMonitor/include/BatteryMonitor.h
 @@ -21,6 +21,8 @@ public:
@@ -2654,7 +3217,7 @@ index 41b404c14bfda28ddebe98d7bd0e3de94f2821ce..70a817a3a703a51406b7199750f09bc7
      uint16_t readMillivolts() const;
 diff --git a/libs/hardware/BatteryMonitor/include/PmuBatterySample.h b/libs/hardware/BatteryMonitor/include/PmuBatterySample.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..195cff633c5d97add91f34e5052abe803cea464c
+index 0000000..195cff6
 --- /dev/null
 +++ b/libs/hardware/BatteryMonitor/include/PmuBatterySample.h
 @@ -0,0 +1,53 @@
@@ -2712,7 +3275,7 @@ index 0000000000000000000000000000000000000000..195cff633c5d97add91f34e5052abe80
 +}  // namespace battery
 +}  // namespace freeink
 diff --git a/libs/hardware/BatteryMonitor/src/BatteryMonitor.cpp b/libs/hardware/BatteryMonitor/src/BatteryMonitor.cpp
-index e674fecfa8da1544887dc504c5633349d61e96df..fd15f9db485de81472cd7d3af5e3d889027bef86 100644
+index e674fec..fd15f9d 100644
 --- a/libs/hardware/BatteryMonitor/src/BatteryMonitor.cpp
 +++ b/libs/hardware/BatteryMonitor/src/BatteryMonitor.cpp
 @@ -4,6 +4,16 @@
@@ -2903,9 +3466,10 @@ index e674fecfa8da1544887dc504c5633349d61e96df..fd15f9db485de81472cd7d3af5e3d889
 +}
 +#endif
 diff --git a/libs/hardware/BoardConfig/include/BoardConfig.h b/libs/hardware/BoardConfig/include/BoardConfig.h
+index 609a713..efd3faa 100644
 --- a/libs/hardware/BoardConfig/include/BoardConfig.h
 +++ b/libs/hardware/BoardConfig/include/BoardConfig.h
-@@ -26,62 +26,16 @@
+@@ -26,218 +26,58 @@
  // ============================================================================
  
  // --- 1) Devices are selected explicitly --------------------------------------
@@ -2950,20 +3514,19 @@ diff --git a/libs/hardware/BoardConfig/include/BoardConfig.h b/libs/hardware/Boa
 -#endif
 -#ifndef FREEINK_DEVICE_PAPERS3
 -#define FREEINK_DEVICE_PAPERS3 0
--#endif
--#ifndef FREEINK_DEVICE_MURPHY_M4
--#define FREEINK_DEVICE_MURPHY_M4 0
 +// RickyOS builds one ESP32-S3 device per binary. The Plus port has its own
 +// BoardConfig; ordinary Metalio E-Ink 4 uses the SPI/SDMMC profile below.
 +#ifndef FREEINK_DEVICE_METALIO_EINK4
 +#define FREEINK_DEVICE_METALIO_EINK4 0
-+#endif
+ #endif
+-#ifndef FREEINK_DEVICE_MURPHY_M4
+-#define FREEINK_DEVICE_MURPHY_M4 0
 +#ifndef FREEINK_DEVICE_METALIO_PLUS
 +#define FREEINK_DEVICE_METALIO_PLUS 0
  #endif
  #ifndef FREEINK_DEVICE_EEGO_A4
  #define FREEINK_DEVICE_EEGO_A4 0
--#endif
+ #endif
 -#ifndef FREEINK_DEVICE_WAVESHARE_EPAPER_397
 -#define FREEINK_DEVICE_WAVESHARE_EPAPER_397 0
 -#endif
@@ -2972,27 +3535,24 @@ diff --git a/libs/hardware/BoardConfig/include/BoardConfig.h b/libs/hardware/Boa
 -#endif
 -#ifndef FREEINK_DEVICE_ONEPAGE
 -#define FREEINK_DEVICE_ONEPAGE 0
- #endif
+-#endif
  // Read Pico (小纸 Pico, RDP-G01-W) — ESP32-S3 N16R8 with an E0470A01 684x1216
  // raw-parallel panel, SY7636A rails behind an FCA9555, CST836U touch,
-@@ -89,155 +43,41 @@
+ // SC7A20H accelerometer and a CW32L010 PMU. See docs/engineering/read-pico.md.
  #ifndef FREEINK_DEVICE_READPICO
  #define FREEINK_DEVICE_READPICO 0
  #endif
 -#ifndef FREEINK_DEVICE_WS397
 -#define FREEINK_DEVICE_WS397 0
 -#endif
--
+ 
 -// --- 2) Coherence: exactly one MCU family, at least one device ---------------
 -#if !(FREEINK_DEVICE_X4 || FREEINK_DEVICE_X3 || FREEINK_DEVICE_X4PRO || FREEINK_DEVICE_X4CLASSIC ||            \
 -      FREEINK_DEVICE_M5 || FREEINK_DEVICE_MURPHY || FREEINK_DEVICE_DELINK || FREEINK_DEVICE_LILYGO ||          \
 -      FREEINK_DEVICE_M5PAPER || FREEINK_DEVICE_STICKY || FREEINK_DEVICE_PAPERMONO || FREEINK_DEVICE_PAPERS3 || \
 -      FREEINK_DEVICE_MURPHY_M4 || FREEINK_DEVICE_EEGO_A4 || FREEINK_DEVICE_WAVESHARE_EPAPER_397 ||             \
 -      FREEINK_DEVICE_ONEPAGE || FREEINK_DEVICE_METALIO_EINK4 || FREEINK_DEVICE_READPICO || FREEINK_DEVICE_WS397)
-+
-+// --- 2) Coherence: exactly one device ----------------------------------------
-+#if (FREEINK_DEVICE_EEGO_A4 + FREEINK_DEVICE_READPICO + FREEINK_DEVICE_METALIO_EINK4) != 1
- #error \
+-#error \
 -    "FreeInk: no device selected. Pass at least one -DFREEINK_DEVICE_<NAME> (X4, X3, X4PRO, X4CLASSIC, M5, MURPHY, DELINK, LILYGO, M5PAPER, STICKY, PAPERMONO, PAPERS3, MURPHY_M4, EEGO_A4, WAVESHARE_EPAPER_397, METALIO_EINK4, ONEPAGE, READPICO, WS397) in your build env — see platformio.sample.ini."
 -#endif
 -// Each device belongs to one MCU family; a binary targets exactly one. X3/X4 are
@@ -3008,11 +3568,12 @@ diff --git a/libs/hardware/BoardConfig/include/BoardConfig.h b/libs/hardware/Boa
 -   FREEINK_DEVICE_WAVESHARE_EPAPER_397 || FREEINK_DEVICE_METALIO_EINK4 || FREEINK_DEVICE_READPICO || FREEINK_DEVICE_WS397)
 -#define FREEINK_MCU_ESP32 (FREEINK_DEVICE_M5PAPER)
 -#if (FREEINK_MCU_C3 + FREEINK_MCU_C61 + FREEINK_MCU_S3 + FREEINK_MCU_ESP32) != 1
--#error \
++// --- 2) Coherence: exactly one device ----------------------------------------
++#if (FREEINK_DEVICE_EEGO_A4 + FREEINK_DEVICE_READPICO + FREEINK_DEVICE_METALIO_EINK4) != 1
+ #error \
 -    "FreeInk: all selected devices must share one MCU family — ESP32-C3 (X3/X4), ESP32-C61 (OnePage), ESP32-S3 (M5/Murphy/de-link/LilyGo/Sticky/X4Pro), or ESP32 (M5Paper). Build one binary per family."
--#endif
 +    "FreeInk: select exactly one device: -DFREEINK_DEVICE_READPICO=1 or -DFREEINK_DEVICE_EEGO_A4=1 or -DFREEINK_DEVICE_METALIO_EINK4=1."
-+#endif
+ #endif
 +#define FREEINK_MCU_S3 1
  
  // --- 3) Derive panel drivers from the device set -----------------------------
@@ -3123,7 +3684,8 @@ diff --git a/libs/hardware/BoardConfig/include/BoardConfig.h b/libs/hardware/Boa
 +#define FREEINK_DRIVER_SSD1677 FREEINK_DEVICE_METALIO_EINK4
  #ifndef FREEINK_SSD1677_COMBINED_AA
 -#define FREEINK_SSD1677_COMBINED_AA (!(FREEINK_DEVICE_X4PRO || FREEINK_DEVICE_X4CLASSIC))
--#endif
++#define FREEINK_SSD1677_COMBINED_AA 1
+ #endif
 -#if FREEINK_SSD1677_COMBINED_AA && CONFIG_IDF_TARGET_ESP32S3 &&                                               \
 -    (FREEINK_DEVICE_STICKY || FREEINK_DEVICE_X4PRO || FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_MURPHY_M4 || \
 -     FREEINK_DEVICE_WAVESHARE_EPAPER_397 || FREEINK_DEVICE_METALIO_EINK4)
@@ -3132,8 +3694,6 @@ diff --git a/libs/hardware/BoardConfig/include/BoardConfig.h b/libs/hardware/Boa
 -#define FREEINK_SSD1677_TEXT_ROUTING 0
 -#endif
 -// Trusted text handoffs are default only on the selected platforms.
-+#define FREEINK_SSD1677_COMBINED_AA 1
-+#endif
 +#define FREEINK_SSD1677_TEXT_ROUTING (FREEINK_DEVICE_METALIO_EINK4 && FREEINK_SSD1677_COMBINED_AA)
  #ifndef FREEINK_SSD1677_READER_TRANSITIONS
 -#define FREEINK_SSD1677_READER_TRANSITIONS                                                   \
@@ -3144,9 +3704,8 @@ diff --git a/libs/hardware/BoardConfig/include/BoardConfig.h b/libs/hardware/Boa
 -#define FREEINK_DRIVER_PAPER_MONO 1
 -#else
 -#define FREEINK_DRIVER_PAPER_MONO 0
--#endif
 +#define FREEINK_SSD1677_READER_TRANSITIONS FREEINK_SSD1677_TEXT_ROUTING
-+#endif
+ #endif
 +#define FREEINK_DRIVER_PAPER_MONO FREEINK_SSD1677_TEXT_ROUTING
  
  // --- 4) Derive default capabilities (override with -DFREEINK_CAP_*=0/1) -------
@@ -3269,8 +3828,8 @@ diff --git a/libs/hardware/BoardConfig/include/BoardConfig.h b/libs/hardware/Boa
 -#define FREEINK_LOG_TRANSPORT FREEINK_LOG_TRANSPORT_ROM_PRINTF
 -#else
  #define FREEINK_LOG_TRANSPORT FREEINK_LOG_TRANSPORT_SERIAL
--#endif
  #endif
+-#endif
  
  // Bidirectional serial transport exposed by the board's physical USB-C port.
  // Most boards route it through Arduino's selected Serial implementation, while
@@ -3294,7 +3853,7 @@ diff --git a/libs/hardware/BoardConfig/include/BoardConfig.h b/libs/hardware/Boa
  
  // Physical device family. X3 and X4 are sibling devices on the same ESP32-C3
  // board (identical pinout, different panel/size): both profiles compile into the
-@@ -460,23 +272,23 @@
+@@ -460,23 +272,23 @@ enum class Board : uint8_t {
    WaveshareEpaper397,
    OnePage,  // OnePage: ESP32-C61, SSD1677 800x480 SPI panel, 4-key ADC ladder + 3 side keys
    MetalioEink4,
@@ -3329,7 +3888,7 @@ diff --git a/libs/hardware/BoardConfig/include/BoardConfig.h b/libs/hardware/Boa
    // Read Pico: NO GPIO buttons at all. Navigation comes from the CST836U touch
    // plus three capacitive key zones that live in the strip of the (taller) touch
    // panel BELOW the drawn image — they are hit-tested on raw coordinates by the
-@@ -689,8 +501,8 @@
+@@ -689,8 +501,8 @@ struct AudioConfig {
                       // high only while playing; PIN_UNASSIGNED if none. Active-high.
    int8_t codecSda;   // codec control I2C — may be a shared bus (e.g. touch)
    int8_t codecScl;
@@ -3340,7 +3899,7 @@ diff --git a/libs/hardware/BoardConfig/include/BoardConfig.h b/libs/hardware/Boa
    uint16_t ampSettleMs = 0;  // silence after amp enable before PCM; board-calibrated
  };
  
-@@ -771,8 +583,8 @@
+@@ -771,8 +583,8 @@ struct I2cFrontlightConfig {
    uint8_t address;
    int8_t enable;
  };
@@ -3351,7 +3910,7 @@ diff --git a/libs/hardware/BoardConfig/include/BoardConfig.h b/libs/hardware/Boa
  
  // Power-rail latch pins a battery-powered board must drive HIGH early in boot
  // to keep itself on (PWR_HOLD / PWR_LOCK style latches, e.g. the Sticky's
-@@ -866,33 +678,6 @@
+@@ -866,33 +678,6 @@ struct BoardProfile {
    HapticConfig haptic = {};
  };
  
@@ -3385,7 +3944,7 @@ diff --git a/libs/hardware/BoardConfig/include/BoardConfig.h b/libs/hardware/Boa
  constexpr FrontlightConfig NO_FRONTLIGHT = {PIN_UNASSIGNED, 0, 0, true};
  constexpr AudioConfig NO_AUDIO = {AudioOutput::None,
                                    PIN_UNASSIGNED,
-@@ -907,58 +692,15 @@
+@@ -907,59 +692,16 @@ constexpr AudioConfig NO_AUDIO = {AudioOutput::None,
                                    0,
                                    PIN_UNASSIGNED};
  constexpr LedConfig NO_LEDS = {PIN_UNASSIGNED, 0, LedColorOrder::GRB, false};
@@ -3440,13 +3999,14 @@ diff --git a/libs/hardware/BoardConfig/include/BoardConfig.h b/libs/hardware/Boa
  constexpr SdmmcPins NO_SDMMC = {
      PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, 0};
  constexpr BatteryGaugeConfig NO_GAUGE = {PIN_UNASSIGNED, PIN_UNASSIGNED, 0, 0, 0};  // ADC battery
--
+ 
 -// Shared display SPI default for every Xteink board and controller variant.
 -constexpr uint32_t XTEINK_DISPLAY_SPI_HZ = 10000000u;
- 
+-
  // --- Xteink X4 — ESP32-C3, SSD1677 (800x480) ---------------------------------
  // Default 10 MHz, like the other Xteink profiles. Preserve the explicit legacy
-@@ -968,371 +710,34 @@
+ // 40 MHz opt-in for consumers that have validated it on their hardware.
+@@ -968,984 +710,53 @@ constexpr uint32_t XTEINK_DISPLAY_SPI_HZ = 10000000u;
  #else
  #define FREEINK_X4_DISPLAY_SPI_HZ 10000000u
  #endif
@@ -3616,25 +4176,10 @@ diff --git a/libs/hardware/BoardConfig/include/BoardConfig.h b/libs/hardware/Boa
 -    800,
 -    480,
 -    {15, 14, 16, 17, PIN_UNASSIGNED, 18, PIN_UNASSIGNED},
-+// --- EEGO A4 — ESP32-S3 N16R8, UC8279C + GSLX680 ---------------------------
-+// This profile follows the validated EEGO A4 template pinout and calibration.
-+constexpr BoardProfile EEGO_A4 = {
-+    Board::EegoA4,
-+    "eego_a4",
-+    InputStyle::DigitalButtons,
-+    DisplayController::UC8279C,
-+    768,
-+    552,
-+    {42, 45, 21, 14, 13, 41, 6},
-     20000000,
+-    20000000,
 -    {PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, false, 0},
 -    {PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, 2, 3, PIN_UNASSIGNED, false},
-+    {39, 40, 38, 47, PIN_UNASSIGNED, true, 20000000},
-+    {PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, 5, 7, 8, true},
-+    10,
-+    11,
-+    1.559f,
-     PIN_UNASSIGNED,
+-    PIN_UNASSIGNED,
 -    PIN_UNASSIGNED,
 -    2.0f,
 -    PIN_UNASSIGNED,
@@ -3830,18 +4375,13 @@ diff --git a/libs/hardware/BoardConfig/include/BoardConfig.h b/libs/hardware/Boa
 -    {TouchController::Gt911, 21, 22, 36, PIN_UNASSIGNED, 0x5D, 0, 959, 0, 539, false, 0x14, false,
 -     true,                                // gt911CoordsAtByte0: reports coords at byte 0 (no track-id) on M5Paper
 -     PIN_UNASSIGNED, true, false, true},  // powerEnable, swapXY=true, flipX=false, flipY=true
-+    // The GSLX680 backend applies the official 1.2.7 calibration
-+    // (InputManager::pollGslx680) and returns panel-native
-+    // x=0..767, y=0..551; no raw-range mapping is needed here.
-+    {TouchController::Gslx680, 2,     1,     PIN_UNASSIGNED, 3,    0x40, 0, 767, 0, 551, false, 0, false, false,
-+     PIN_UNASSIGNED,           false, false, false,          true, true},
-     NO_FRONTLIGHT,
-     NO_AUDIO,
-     NO_LEDS,
-@@ -1340,612 +745,18 @@
-     NO_SDMMC,
-     NO_GAUGE,
-     NO_MIC,
+-    NO_FRONTLIGHT,
+-    NO_AUDIO,
+-    NO_LEDS,
+-    NO_FLIP,
+-    NO_SDMMC,
+-    NO_GAUGE,
+-    NO_MIC,
 -    NO_SENSORS,
 -    1.2f,  // uiScale: 4.7" 960x540 touch (~234 PPI) — finger-sized chrome, like Sticky
 -    // Power latch: main-power MOSFET on GPIO2, driven HIGH first thing in boot
@@ -4180,8 +4720,8 @@ diff --git a/libs/hardware/BoardConfig/include/BoardConfig.h b/libs/hardware/Boa
 -    {9, 7, 3, 7},
 -    true};  // batteryChargeStatusActiveHigh: GPIO21 STAT is driven HIGH while charging
 -
--// --- EEGO A4 — ESP32-S3 N16R8, UC8279C + GSLX680 ---------------------------
--// This profile follows the validated EEGO A4 template pinout and calibration.
+ // --- EEGO A4 — ESP32-S3 N16R8, UC8279C + GSLX680 ---------------------------
+ // This profile follows the validated EEGO A4 template pinout and calibration.
 -constexpr BoardProfile EEGO_A4 = {Board::EegoA4,
 -                                  "eego_a4",
 -                                  InputStyle::DigitalButtons,
@@ -4222,19 +4762,31 @@ diff --git a/libs/hardware/BoardConfig/include/BoardConfig.h b/libs/hardware/Boa
 -constexpr BoardProfile MURPHY_M4 = {
 -    Board::MurphyM4,
 -    "murphy_m4",
--    InputStyle::DigitalButtons,
++constexpr BoardProfile EEGO_A4 = {
++    Board::EegoA4,
++    "eego_a4",
+     InputStyle::DigitalButtons,
 -    DisplayController::SSD1677,
 -    800,
 -    480,
 -    {4, 3, 5, 6, 7, 8, PIN_UNASSIGNED},
--    20000000,
++    DisplayController::UC8279C,
++    768,
++    552,
++    {42, 45, 21, 14, 13, 41, 6},
+     20000000,
 -    {PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, 10, false,
 -     0, false},
 -    {PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, 1, 2, 0, false},
 -    9,
 -    43,
 -    2.0f,
--    PIN_UNASSIGNED,
++    {39, 40, 38, 47, PIN_UNASSIGNED, true, 20000000},
++    {PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, 5, 7, 8, true},
++    10,
++    11,
++    1.559f,
+     PIN_UNASSIGNED,
 -    // The portrait controller frame is swapped into the 800x480 panel frame.
 -    // GPIO46 is the unusable active-low IRQ, GPIO7 shares reset with the display,
 -    // and GPIO45 powers the touch controller while LOW.
@@ -4259,12 +4811,19 @@ diff --git a/libs/hardware/BoardConfig/include/BoardConfig.h b/libs/hardware/Boa
 -     false,
 -     false},
 -    {47, 25000, 10, true, 48},
--    NO_AUDIO,
--    NO_LEDS,
--    NO_FLIP,
++    // The GSLX680 backend applies the official 1.2.7 calibration
++    // (InputManager::pollGslx680) and returns panel-native
++    // x=0..767, y=0..551; no raw-range mapping is needed here.
++    {TouchController::Gslx680, 2,     1,     PIN_UNASSIGNED, 3,    0x40, 0, 767, 0, 551, false, 0, false, false,
++     PIN_UNASSIGNED,           false, false, false,          true, true},
++    NO_FRONTLIGHT,
+     NO_AUDIO,
+     NO_LEDS,
+     NO_FLIP,
 -    {16, 15, 17, 18, 11, 14, 4},
--    NO_GAUGE,
--    NO_MIC,
++    NO_SDMMC,
+     NO_GAUGE,
+     NO_MIC,
 -    {13, 12, 400000, 0x32, 0, 0, 1, RtcType::Rx8010, ImuType::None},
 +    {2, 1, 400000, 0x51, 0, 0, 0, RtcType::Pcf8563, ImuType::None},
      1.2f,
@@ -4459,7 +5018,7 @@ diff --git a/libs/hardware/BoardConfig/include/BoardConfig.h b/libs/hardware/Boa
  
  // Metalio E-Ink 4: metalio-hw-test/main/hal/metalio-e-ink-4/config.h.
  constexpr BoardProfile METALIO_EINK4 = {
-@@ -1971,9 +782,9 @@
+@@ -1971,9 +782,9 @@ constexpr BoardProfile METALIO_EINK4 = {
      NO_FLIP,
      {38, 40, 39, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, 1},
      // CX25601N at 0x6B is NOT BQ25896-compatible. Use gauge-native charging status.
@@ -4471,7 +5030,7 @@ diff --git a/libs/hardware/BoardConfig/include/BoardConfig.h b/libs/hardware/Boa
      1.2f};
  static_assert(METALIO_EINK4.displayWidth / 8 * METALIO_EINK4.displayHeight == 48000);
  static_assert(METALIO_EINK4.sdmmc.busWidth == 1 && METALIO_EINK4.sdmmc.d3 == PIN_UNASSIGNED);
-@@ -1995,9 +806,18 @@
+@@ -1995,9 +806,18 @@ static_assert(METALIO_EINK4.sdmmc.busWidth == 1 && METALIO_EINK4.sdmmc.d3 == PIN
  // reset, the EPD rails and the SD card detect are all FCA9555 Port-0 lines, the
  // battery/time/power handoff is the PMU frame protocol, and the panel's 16-bit i80
  // wiring + power hooks are the board's LgfxEpdConfig. Those live in BoardReadPico.
@@ -4493,7 +5052,7 @@ diff --git a/libs/hardware/BoardConfig/include/BoardConfig.h b/libs/hardware/Boa
  
  constexpr BoardProfile READ_PICO = {
      Board::ReadPico,
-@@ -2008,12 +828,12 @@
+@@ -2008,12 +828,12 @@ constexpr BoardProfile READ_PICO = {
      684,   // displayHeight: gate lines  (epdiy E0470_DISPLAY.height)
      {PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED,
       PIN_UNASSIGNED},  // no SPI display pins: the 16-bit i80 bus lives in LgfxEpdConfig
@@ -4509,7 +5068,7 @@ diff --git a/libs/hardware/BoardConfig/include/BoardConfig.h b/libs/hardware/Boa
      PIN_UNASSIGNED,  // batteryAdc: none — the CW32L010 PMU reports battery/SoC
      PIN_UNASSIGNED,  // batteryChargeStatus: none — charge state comes from the PMU
      1.0f,            // batteryDividerMultiplier: unused (no ADC path)
-@@ -2047,8 +867,8 @@
+@@ -2047,8 +867,8 @@ constexpr BoardProfile READ_PICO = {
      // not repeated: swapXY alone (no flipY) transposes the axes, and reverting to
      // swapXY = false makes the mapping rotate 90 degrees -- which is what put a
      // top-bar tap onto a middle book row and opened the reader.
@@ -4520,7 +5079,7 @@ diff --git a/libs/hardware/BoardConfig/include/BoardConfig.h b/libs/hardware/Boa
      NO_FRONTLIGHT,
      READ_PICO_AUDIO,  // AudioOutput::None; LEDC buzzer on GPIO2 (Buzzer lib)
      NO_LEDS,
-@@ -2063,105 +883,42 @@
+@@ -2063,105 +883,42 @@ constexpr BoardProfile READ_PICO = {
      // SC7A20H at 0x19 (WHO_AM_I 0x11). The CW32L010 (0x2A) also carries the RTC
      // and alarms, reached through the PMU protocol rather than a register map.
      {39, 40, 400000, 0x2A, 0, 0x19, 0, RtcType::Cw32L010Pmu, ImuType::Sc7a20h},
@@ -4638,7 +5197,7 @@ diff --git a/libs/hardware/BoardConfig/include/BoardConfig.h b/libs/hardware/Boa
  #endif
  
  // Runtime-active profile. Defaults to DEFAULT_DEVICE — identical to the old
-@@ -2176,72 +933,9 @@
+@@ -2176,103 +933,20 @@ inline void holdPowerRails();  // defined below; used by selectDevice()
  // leaves ACTIVE unchanged) if `which` was not included via -DFREEINK_DEVICE_*.
  inline bool selectDevice(Board which) {
    switch (which) {
@@ -4708,43 +5267,44 @@ diff --git a/libs/hardware/BoardConfig/include/BoardConfig.h b/libs/hardware/Boa
 -#if FREEINK_DEVICE_PAPERS3
 -    case Board::M5PaperS3:
 -      ACTIVE = M5PAPER_S3;
-+#if FREEINK_DEVICE_METALIO_EINK4
-+    case Board::MetalioEink4:
-+      ACTIVE = METALIO_EINK4;
-       break;
- #endif
- #if FREEINK_DEVICE_EEGO_A4
-@@ -2249,29 +943,9 @@
-       ACTIVE = EEGO_A4;
-       break;
- #endif
+-      break;
+-#endif
+-#if FREEINK_DEVICE_EEGO_A4
+-    case Board::EegoA4:
+-      ACTIVE = EEGO_A4;
+-      break;
+-#endif
 -#if FREEINK_DEVICE_WAVESHARE_EPAPER_397
 -    case Board::WaveshareEpaper397:
 -      ACTIVE = WAVESHARE_EPAPER_397;
 -      break;
 -#endif
--#if FREEINK_DEVICE_METALIO_EINK4
--    case Board::MetalioEink4:
--      ACTIVE = METALIO_EINK4;
--      break;
--#endif
+ #if FREEINK_DEVICE_METALIO_EINK4
+     case Board::MetalioEink4:
+       ACTIVE = METALIO_EINK4;
+       break;
+ #endif
 -#if FREEINK_DEVICE_ONEPAGE
 -    case Board::OnePage:
 -      ACTIVE = ONEPAGE;
--      break;
--#endif
++#if FREEINK_DEVICE_EEGO_A4
++    case Board::EegoA4:
++      ACTIVE = EEGO_A4;
+       break;
+ #endif
  #if FREEINK_DEVICE_READPICO
      case Board::ReadPico:
        ACTIVE = READ_PICO;
--      break;
+       break;
 -#endif
 -#if FREEINK_DEVICE_WS397
 -    case Board::WsEpaper397:
 -      ACTIVE = WS_EPAPER_397;
-       break;
+-      break;
  #endif
      default:
-@@ -2295,7 +969,7 @@
+       return false;
+@@ -2295,7 +969,7 @@ inline bool isX4Pro() { return ACTIVE.board == Board::XteinkX4Pro; }
  inline bool isX4Classic() { return ACTIVE.board == Board::XteinkX4Classic; }
  inline bool isPaperMono() { return ACTIVE.board == Board::PaperMono; }
  inline bool isEegoA4() { return ACTIVE.board == Board::EegoA4; }
@@ -4753,7 +5313,7 @@ diff --git a/libs/hardware/BoardConfig/include/BoardConfig.h b/libs/hardware/Boa
  inline bool isMurphyM4() { return ACTIVE.board == Board::MurphyM4; }
  inline bool isWaveshareEpaper397() { return ACTIVE.board == Board::WaveshareEpaper397; }
  inline bool isOnePage() { return ACTIVE.board == Board::OnePage; }
-@@ -2334,6 +1008,9 @@
+@@ -2334,6 +1008,9 @@ inline bool latchConflictsWithBus(int8_t pin) {
  // the user releases the power button. Releasing the pins (driving them LOW)
  // is a software power-off. No-op on boards without a latch.
  inline void holdPowerRails() {
@@ -4764,7 +5324,7 @@ diff --git a/libs/hardware/BoardConfig/include/BoardConfig.h b/libs/hardware/Boa
      if (pin < 0) continue;
      if (latchConflictsWithBus(pin)) {
 diff --git a/libs/hardware/BoardConfig/include/M5Pm1.h b/libs/hardware/BoardConfig/include/M5Pm1.h
-index fe74493c5471bf0bedcb13521ebe34fb81d4846c..3b2f1739b7844422236b67d27721d8aa8ea56413 100644
+index fe74493..3b2f173 100644
 --- a/libs/hardware/BoardConfig/include/M5Pm1.h
 +++ b/libs/hardware/BoardConfig/include/M5Pm1.h
 @@ -27,19 +27,11 @@ constexpr uint8_t ADDR = 0x6E;
@@ -4788,6 +5348,7 @@ index fe74493c5471bf0bedcb13521ebe34fb81d4846c..3b2f1739b7844422236b67d27721d8aa
  constexpr int SCL = FREEINK_M5PM1_SCL;
  constexpr uint32_t I2C_HZ = 100000;
 diff --git a/libs/hardware/BoardConfig/include/MetalioEink4Board.h b/libs/hardware/BoardConfig/include/MetalioEink4Board.h
+index 2158e18..f9f451a 100644
 --- a/libs/hardware/BoardConfig/include/MetalioEink4Board.h
 +++ b/libs/hardware/BoardConfig/include/MetalioEink4Board.h
 @@ -4,6 +4,9 @@
@@ -4800,7 +5361,7 @@ diff --git a/libs/hardware/BoardConfig/include/MetalioEink4Board.h b/libs/hardwa
  
  // Shared Wire owns transaction serialization (endTransmission(false) + requestFrom).
  // Only the input/setup/shutdown task writes the expander's output shadow.
-@@ -115,6 +118,40 @@
+@@ -115,6 +118,40 @@ inline bool setOutput(uint16_t value) {
    return true;
  }
  
@@ -4841,7 +5402,7 @@ diff --git a/libs/hardware/BoardConfig/include/MetalioEink4Board.h b/libs/hardwa
  inline bool begin() {
    if (ready) return true;
    pinMode(44, OUTPUT);
-@@ -122,16 +159,34 @@
+@@ -122,16 +159,34 @@ inline bool begin() {
    gpio_hold_dis(GPIO_NUM_44);  // Release the previous deep sleep's LOW hold, including capability-off builds.
    pinMode(46, INPUT_PULLUP);   // SD DAT3/CD: input-only, never part of the 1-bit data bus.
    pinMode(2, INPUT_PULLUP);
@@ -4886,7 +5447,7 @@ diff --git a/libs/hardware/BoardConfig/include/MetalioEink4Board.h b/libs/hardwa
  }
  
  inline uint8_t buttons() {
-@@ -143,7 +198,7 @@
+@@ -143,7 +198,7 @@ inline uint8_t buttons() {
    if (!read(EXPANDER, 0, data, sizeof(data))) {
      nextRead = now + 2000;
      state = 0;  // A failed read must never retain a held key.
@@ -4895,7 +5456,7 @@ diff --git a/libs/hardware/BoardConfig/include/MetalioEink4Board.h b/libs/hardwa
      return state;
    }
    nextRead = now + 20;
-@@ -173,16 +228,17 @@
+@@ -173,16 +228,17 @@ inline bool externalPowerConnected(bool& connected) {
  }
  
  // Caller has saved state, parked the display and waited for its BUSY completion.
@@ -4903,13 +5464,12 @@ diff --git a/libs/hardware/BoardConfig/include/MetalioEink4Board.h b/libs/hardwa
 -  while (!begin()) {
 -    esp_rom_printf("[metalio] Power-off initialization failed; retrying\r\n");
 -    delay(1000);
--  }
--  esp_rom_printf("[metalio] Power-off pulses until hardware cuts power\r\n");
 +inline void shutdown() {
 +  if (!begin()) {
 +    esp_rom_printf("[metalio] Power-off initialization failed; GPIO3 sleep fallback\r\n");
 +    return;
-+  }
+   }
+-  esp_rom_printf("[metalio] Power-off pulses until hardware cuts power\r\n");
 +  esp_rom_printf("[metalio] Power-off pulses for up to five seconds\r\n");
    constexpr uint32_t PULSE_HALF_MS = 100;
    uint32_t lastError = millis() - 1000;
@@ -4922,7 +5482,7 @@ diff --git a/libs/hardware/BoardConfig/include/MetalioEink4Board.h b/libs/hardwa
      const bool highOk = setOutput(rails | POWER_PULSE);
      delay(PULSE_HALF_MS);
 diff --git a/libs/hardware/BoardConfig/test/host/test_metalio_charger.py b/libs/hardware/BoardConfig/test/host/test_metalio_charger.py
-index 3a69f3ab97b8fa1e077cfccf85f9706d84fe223f..c1c09b843883a979967485579aaa8b902746b35b 100644
+index 3a69f3a..c1c09b8 100644
 --- a/libs/hardware/BoardConfig/test/host/test_metalio_charger.py
 +++ b/libs/hardware/BoardConfig/test/host/test_metalio_charger.py
 @@ -16,15 +16,18 @@ class MetalioChargerTest(unittest.TestCase):
@@ -4954,7 +5514,7 @@ index 3a69f3ab97b8fa1e077cfccf85f9706d84fe223f..c1c09b843883a979967485579aaa8b90
    void beginTransmission(uint8_t addr) { (void)addr; tx.clear(); }
    void write(uint8_t value) { tx.push_back(value); }
 diff --git a/libs/hardware/BoardReadPico/include/BoardReadPico.h b/libs/hardware/BoardReadPico/include/BoardReadPico.h
-index 4dfafadd8198cf8df91d1b18d2bfb7fb551c3cdd..5c3eda096560d5dc96289e6f6b4f4d66d685f5cf 100644
+index 4dfafad..5c3eda0 100644
 --- a/libs/hardware/BoardReadPico/include/BoardReadPico.h
 +++ b/libs/hardware/BoardReadPico/include/BoardReadPico.h
 @@ -37,6 +37,16 @@ bool ready();
@@ -4975,7 +5535,7 @@ index 4dfafadd8198cf8df91d1b18d2bfb7fb551c3cdd..5c3eda096560d5dc96289e6f6b4f4d66
  // TF card detect, FCA9555 P0.6, ACTIVE-LOW (0 = card present). Returns false on
  // any I2C read failure — a failed read must never be reported as "present"
 diff --git a/libs/hardware/BoardReadPico/src/BoardReadPico.cpp b/libs/hardware/BoardReadPico/src/BoardReadPico.cpp
-index 99595b1ba910919b68c067a2771af368c7c3312b..429ccab1a2ceb10ae312997be8e5ab1004339f1b 100644
+index 99595b1..429ccab 100644
 --- a/libs/hardware/BoardReadPico/src/BoardReadPico.cpp
 +++ b/libs/hardware/BoardReadPico/src/BoardReadPico.cpp
 @@ -224,6 +224,7 @@ bool pmuParseIdentity(const uint8_t* raw) {
@@ -5043,7 +5603,7 @@ index 99595b1ba910919b68c067a2771af368c7c3312b..429ccab1a2ceb10ae312997be8e5ab10
  
  bool pmuTimeGet(uint32_t& unixSec, bool& synced) {
 diff --git a/libs/hardware/FrontlightManager/include/FrontlightManager.h b/libs/hardware/FrontlightManager/include/FrontlightManager.h
-index bdcb0e0f0308e1b9ade161d39ed5f3f53655ed4d..84d6b856ed977584c4644c56338e5d9e2beef8db 100644
+index bdcb0e0..84d6b85 100644
 --- a/libs/hardware/FrontlightManager/include/FrontlightManager.h
 +++ b/libs/hardware/FrontlightManager/include/FrontlightManager.h
 @@ -122,6 +122,7 @@ class FrontlightManager {
@@ -5055,7 +5615,7 @@ index bdcb0e0f0308e1b9ade161d39ed5f3f53655ed4d..84d6b856ed977584c4644c56338e5d9e
    bool _i2cConfigured = false;
  #endif
 diff --git a/libs/hardware/FrontlightManager/src/FrontlightManager.cpp b/libs/hardware/FrontlightManager/src/FrontlightManager.cpp
-index 1ee59e94c2cb49d749d1415d9921985b4112795b..b7347dd1633114b25e83d5bcfb077bc69e5ff6ca 100644
+index 1ee59e9..b7347dd 100644
 --- a/libs/hardware/FrontlightManager/src/FrontlightManager.cpp
 +++ b/libs/hardware/FrontlightManager/src/FrontlightManager.cpp
 @@ -203,6 +203,9 @@ void FrontlightManager::begin() {
@@ -5104,7 +5664,7 @@ index 1ee59e94c2cb49d749d1415d9921985b4112795b..b7347dd1633114b25e83d5bcfb077bc6
    writeChannel(fl.gpio, LEDC_CH_COOL, physicalDuty(coolDuty, full, fl.activeHigh));
  
 diff --git a/libs/hardware/HapticManager/src/HapticManager.cpp b/libs/hardware/HapticManager/src/HapticManager.cpp
-index 4aa6727a2605e8a7dd772d8a7af4916dca52d55b..b061d597d1476d0f68361381d8837ebf605da64f 100644
+index 4aa6727..b061d59 100644
 --- a/libs/hardware/HapticManager/src/HapticManager.cpp
 +++ b/libs/hardware/HapticManager/src/HapticManager.cpp
 @@ -117,11 +117,6 @@ bool HapticManager::begin() {
@@ -5120,7 +5680,7 @@ index 4aa6727a2605e8a7dd772d8a7af4916dca52d55b..b061d597d1476d0f68361381d8837ebf
    pinMode(s.config.gpio, OUTPUT);
    digitalWrite(s.config.gpio, s.config.activeHigh ? LOW : HIGH);
 diff --git a/libs/hardware/HapticManager/test/host/run.sh b/libs/hardware/HapticManager/test/host/run.sh
-index 4ee4c066d1c4560cf8f41a77336f5f27f9139e9f..27fb22a7f51d08d6cecd423375f2d3fee7c2599b 100644
+index 4ee4c06..27fb22a 100644
 --- a/libs/hardware/HapticManager/test/host/run.sh
 +++ b/libs/hardware/HapticManager/test/host/run.sh
 @@ -5,9 +5,9 @@ BUILD_DIR=$(mktemp -d "${TMPDIR:-/tmp}/freeink-haptic.XXXXXX")
@@ -5137,7 +5697,7 @@ index 4ee4c066d1c4560cf8f41a77336f5f27f9139e9f..27fb22a7f51d08d6cecd423375f2d3fe
    c++ -std=c++17 -Wall -Wextra -Werror -Wno-unused-parameter $FLAGS \
      -Istubs -I../../../InputManager/test/host/metalio_stubs \
 diff --git a/libs/hardware/HapticManager/test/host/test_haptic.cpp b/libs/hardware/HapticManager/test/host/test_haptic.cpp
-index f07d68aaec7ff3346ec0ff64437c60b8a0472e64..eea7bc03d6d458fc3fef754ed45bc5ec0640c096 100644
+index f07d68a..eea7bc0 100644
 --- a/libs/hardware/HapticManager/test/host/test_haptic.cpp
 +++ b/libs/hardware/HapticManager/test/host/test_haptic.cpp
 @@ -23,7 +23,6 @@ int main(int argc, char**) {
@@ -5149,7 +5709,7 @@ index f07d68aaec7ff3346ec0ff64437c60b8a0472e64..eea7bc03d6d458fc3fef754ed45bc5ec
    assert(!haptic.pulse()); // explicit init
    failCreate = true;
 diff --git a/libs/hardware/Imu/include/Imu.h b/libs/hardware/Imu/include/Imu.h
-index a9d79de7babe3f83fb0aec4b967fbeb4ea30dc1d..3a8ad6bc0444146781687cbcb1cb819fffda23f2 100644
+index a9d79de..3a8ad6b 100644
 --- a/libs/hardware/Imu/include/Imu.h
 +++ b/libs/hardware/Imu/include/Imu.h
 @@ -44,12 +44,30 @@ class Imu {
@@ -5184,7 +5744,7 @@ index a9d79de7babe3f83fb0aec4b967fbeb4ea30dc1d..3a8ad6bc0444146781687cbcb1cb819f
  
  }  // namespace freeink
 diff --git a/libs/hardware/Imu/src/Imu.cpp b/libs/hardware/Imu/src/Imu.cpp
-index e6350929229fffceb86b436419eec1fbd41d36b7..3e12532fcde45e46c345c0b03e5d9eb9434bf1b1 100644
+index e635092..3e12532 100644
 --- a/libs/hardware/Imu/src/Imu.cpp
 +++ b/libs/hardware/Imu/src/Imu.cpp
 @@ -5,6 +5,8 @@
@@ -5356,7 +5916,7 @@ index e6350929229fffceb86b436419eec1fbd41d36b7..3e12532fcde45e46c345c0b03e5d9eb9
  
  #endif  // FREEINK_CAP_IMU
 diff --git a/libs/hardware/Imu/test/host/run.sh b/libs/hardware/Imu/test/host/run.sh
-index b61e821cb3de3f08169548d15e411cdbe2e026ea..dd9a3ddd80004507a7608b992611794ccb4cc1d9 100644
+index b61e821..dd9a3dd 100644
 --- a/libs/hardware/Imu/test/host/run.sh
 +++ b/libs/hardware/Imu/test/host/run.sh
 @@ -4,7 +4,7 @@ cd "$(dirname "$0")"
@@ -5369,7 +5929,7 @@ index b61e821cb3de3f08169548d15e411cdbe2e026ea..dd9a3ddd80004507a7608b992611794c
    c++ -std=c++17 -Wall -Wextra -Werror -Wno-unused-parameter -Wno-unused-private-field -Wno-unused-function -Wno-unused-const-variable $flags \
      -Istubs -I../../../InputManager/test/host/metalio_stubs \
 diff --git a/libs/hardware/Imu/test/host/test_sc7a20h.cpp b/libs/hardware/Imu/test/host/test_sc7a20h.cpp
-index 42f68d106ebe97b528eb12fd6242c0a98d61b34d..3920a61e6940445d812b12721e87cb9fde65167f 100644
+index 42f68d1..3920a61 100644
 --- a/libs/hardware/Imu/test/host/test_sc7a20h.cpp
 +++ b/libs/hardware/Imu/test/host/test_sc7a20h.cpp
 @@ -24,8 +24,8 @@ int main() {
@@ -5384,7 +5944,7 @@ index 42f68d106ebe97b528eb12fd6242c0a98d61b34d..3920a61e6940445d812b12721e87cb9f
    assert(!imu.begin());
    chip(0x19, 0x33); // A LIS3DH-compatible layout isn't sufficient identity.
 diff --git a/libs/hardware/InputManager/include/InputManager.h b/libs/hardware/InputManager/include/InputManager.h
-index ed6c8401ea180d90e44cf2ca7516e237ea01fb03..90a17022013079be26ecb5ebe268e22ba2d51279 100644
+index ed6c840..90a1702 100644
 --- a/libs/hardware/InputManager/include/InputManager.h
 +++ b/libs/hardware/InputManager/include/InputManager.h
 @@ -16,13 +16,6 @@
@@ -5495,7 +6055,7 @@ index ed6c8401ea180d90e44cf2ca7516e237ea01fb03..90a17022013079be26ecb5ebe268e22b
    // Read Pico's CST836U is polled from the main loop only -- nothing in this
    // tree calls beginAsync(), so this constant is the hard ceiling on the touch
 diff --git a/libs/hardware/InputManager/src/InputManager.cpp b/libs/hardware/InputManager/src/InputManager.cpp
-index 791ba2c28e2d3e13a5b78df070157e10f557992d..716b87cb790d79f180bc37c33f79ea714761a663 100644
+index 791ba2c..716b87c 100644
 --- a/libs/hardware/InputManager/src/InputManager.cpp
 +++ b/libs/hardware/InputManager/src/InputManager.cpp
 @@ -15,17 +15,11 @@
@@ -6004,7 +6564,7 @@ index 791ba2c28e2d3e13a5b78df070157e10f557992d..716b87cb790d79f180bc37c33f79ea71
  
  #if FREEINK_DEVICE_EEGO_A4
 diff --git a/libs/hardware/InputManager/test/host/metalio_stubs/Arduino.h b/libs/hardware/InputManager/test/host/metalio_stubs/Arduino.h
-index 4fbd4512d0f10d4dedb5b20b67b2c5fa9e0c98a4..d98dab2846fa7b3a6649803e8ce324491aff8202 100644
+index 4fbd451..d98dab2 100644
 --- a/libs/hardware/InputManager/test/host/metalio_stubs/Arduino.h
 +++ b/libs/hardware/InputManager/test/host/metalio_stubs/Arduino.h
 @@ -10,9 +10,10 @@ constexpr int HIGH=1, LOW=0, INPUT=1, OUTPUT=3, INPUT_PULLUP=5, INPUT_PULLDOWN=6
@@ -6031,7 +6591,7 @@ index 4fbd4512d0f10d4dedb5b20b67b2c5fa9e0c98a4..d98dab2846fa7b3a6649803e8ce32449
 +inline void attachInterruptArg(int, void(*fn)(void*), void* arg, int) { touchIsrArg=fn; touchIsrContext=arg; touchIsr=touchIsrDispatch; }
 +inline void detachInterrupt(int) { touchIsr=nullptr; }
 diff --git a/libs/hardware/InputManager/test/host/metalio_stubs/Wire.h b/libs/hardware/InputManager/test/host/metalio_stubs/Wire.h
-index 11099044b3a7c73ecece3e1298dc097781d88465..566bad6076ccb4623a4d0afa103123a1e69d574c 100644
+index 1109904..566bad6 100644
 --- a/libs/hardware/InputManager/test/host/metalio_stubs/Wire.h
 +++ b/libs/hardware/InputManager/test/host/metalio_stubs/Wire.h
 @@ -9,14 +9,16 @@ struct WireStub {
@@ -6054,7 +6614,7 @@ index 11099044b3a7c73ecece3e1298dc097781d88465..566bad6076ccb4623a4d0afa103123a1
      if (address==0x20 && tx.size()>1) {
        writes.push_back(tx);
 diff --git a/libs/hardware/InputManager/test/host/metalio_stubs/driver/gpio.h b/libs/hardware/InputManager/test/host/metalio_stubs/driver/gpio.h
-index c558447f95cdc1d413c2b0d7a8913b0d10f621fb..505265868be157cab1ce21618e981549f5c0f531 100644
+index c558447..5052658 100644
 --- a/libs/hardware/InputManager/test/host/metalio_stubs/driver/gpio.h
 +++ b/libs/hardware/InputManager/test/host/metalio_stubs/driver/gpio.h
 @@ -2,3 +2,5 @@
@@ -6064,7 +6624,7 @@ index c558447f95cdc1d413c2b0d7a8913b0d10f621fb..505265868be157cab1ce21618e981549
 +
 +constexpr int GPIO_NUM_44=44;
 diff --git a/libs/hardware/InputManager/test/host/test_metalio.cpp b/libs/hardware/InputManager/test/host/test_metalio.cpp
-index f53820e252c9a631c650141e73a966761ec63c11..694265fe3f26f2fe358f2930b97e22ac6646319f 100644
+index f53820e..694265f 100644
 --- a/libs/hardware/InputManager/test/host/test_metalio.cpp
 +++ b/libs/hardware/InputManager/test/host/test_metalio.cpp
 @@ -18,7 +18,7 @@ int main() {
@@ -6152,7 +6712,7 @@ index f53820e252c9a631c650141e73a966761ec63c11..694265fe3f26f2fe358f2930b97e22ac
  }
 diff --git a/libs/hardware/IotEth/idf_component.yml b/libs/hardware/IotEth/idf_component.yml
 new file mode 100644
-index 0000000000000000000000000000000000000000..1fc0c4874afe131f8fdd3e84fc02086dbf15b07a
+index 0000000..1fc0c48
 --- /dev/null
 +++ b/libs/hardware/IotEth/idf_component.yml
 @@ -0,0 +1,12 @@
@@ -6170,7 +6730,7 @@ index 0000000000000000000000000000000000000000..1fc0c4874afe131f8fdd3e84fc02086d
 +version: 0.1.0
 diff --git a/libs/hardware/IotEth/include/iot_eth.h b/libs/hardware/IotEth/include/iot_eth.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..9d97485eb9e082a764ef846600ab46adc94b92ae
+index 0000000..9d97485
 --- /dev/null
 +++ b/libs/hardware/IotEth/include/iot_eth.h
 @@ -0,0 +1,165 @@
@@ -6341,7 +6901,7 @@ index 0000000000000000000000000000000000000000..9d97485eb9e082a764ef846600ab46ad
 +#endif
 diff --git a/libs/hardware/IotEth/include/iot_eth_interface.h b/libs/hardware/IotEth/include/iot_eth_interface.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..cdf59814729fe8cbb3e3ee36142fbb24e37fd1e6
+index 0000000..cdf5981
 --- /dev/null
 +++ b/libs/hardware/IotEth/include/iot_eth_interface.h
 @@ -0,0 +1,118 @@
@@ -6465,7 +7025,7 @@ index 0000000000000000000000000000000000000000..cdf59814729fe8cbb3e3ee36142fbb24
 +#endif
 diff --git a/libs/hardware/IotEth/include/iot_eth_netif_glue.h b/libs/hardware/IotEth/include/iot_eth_netif_glue.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..126021ff10db12abd58031a756fbd2cbfdfb58a0
+index 0000000..126021f
 --- /dev/null
 +++ b/libs/hardware/IotEth/include/iot_eth_netif_glue.h
 @@ -0,0 +1,38 @@
@@ -6509,7 +7069,7 @@ index 0000000000000000000000000000000000000000..126021ff10db12abd58031a756fbd2cb
 +#endif
 diff --git a/libs/hardware/IotEth/include/iot_eth_types.h b/libs/hardware/IotEth/include/iot_eth_types.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..b9128a12798d3c657dc8312ec5c79fc09a63dba3
+index 0000000..b9128a1
 --- /dev/null
 +++ b/libs/hardware/IotEth/include/iot_eth_types.h
 @@ -0,0 +1,23 @@
@@ -6538,7 +7098,7 @@ index 0000000000000000000000000000000000000000..b9128a12798d3c657dc8312ec5c79fc0
 +#endif
 diff --git a/libs/hardware/IotEth/interface/iot_eth_interface.h b/libs/hardware/IotEth/interface/iot_eth_interface.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..cdf59814729fe8cbb3e3ee36142fbb24e37fd1e6
+index 0000000..cdf5981
 --- /dev/null
 +++ b/libs/hardware/IotEth/interface/iot_eth_interface.h
 @@ -0,0 +1,118 @@
@@ -6662,7 +7222,7 @@ index 0000000000000000000000000000000000000000..cdf59814729fe8cbb3e3ee36142fbb24
 +#endif
 diff --git a/libs/hardware/IotEth/iot_eth.c b/libs/hardware/IotEth/iot_eth.c
 new file mode 100644
-index 0000000000000000000000000000000000000000..9dc0d2b0459b6894bf5323044c8333d9e1ef8c64
+index 0000000..9dc0d2b
 --- /dev/null
 +++ b/libs/hardware/IotEth/iot_eth.c
 @@ -0,0 +1,156 @@
@@ -6824,7 +7384,7 @@ index 0000000000000000000000000000000000000000..9dc0d2b0459b6894bf5323044c8333d9
 +}
 diff --git a/libs/hardware/IotEth/iot_eth_netif_glue.c b/libs/hardware/IotEth/iot_eth_netif_glue.c
 new file mode 100644
-index 0000000000000000000000000000000000000000..42ea133572d5daa87521a50fb3210e77848d8b74
+index 0000000..42ea133
 --- /dev/null
 +++ b/libs/hardware/IotEth/iot_eth_netif_glue.c
 @@ -0,0 +1,173 @@
@@ -7003,7 +7563,7 @@ index 0000000000000000000000000000000000000000..42ea133572d5daa87521a50fb3210e77
 +}
 diff --git a/libs/hardware/IotEth/library.json b/libs/hardware/IotEth/library.json
 new file mode 100644
-index 0000000000000000000000000000000000000000..0a18b5002f144b1189a5007f27553bdab2922ed8
+index 0000000..0a18b50
 --- /dev/null
 +++ b/libs/hardware/IotEth/library.json
 @@ -0,0 +1,18 @@
@@ -7027,7 +7587,7 @@ index 0000000000000000000000000000000000000000..0a18b5002f144b1189a5007f27553bda
 +}
 diff --git a/libs/hardware/IotEth/license.txt b/libs/hardware/IotEth/license.txt
 new file mode 100644
-index 0000000000000000000000000000000000000000..d645695673349e3947e8e5ae42332d0ac3164cd7
+index 0000000..d645695
 --- /dev/null
 +++ b/libs/hardware/IotEth/license.txt
 @@ -0,0 +1,202 @@
@@ -7235,7 +7795,7 @@ index 0000000000000000000000000000000000000000..d645695673349e3947e8e5ae42332d0a
 +   limitations under the License.
 diff --git a/libs/hardware/IotEth/upstream-source.json b/libs/hardware/IotEth/upstream-source.json
 new file mode 100644
-index 0000000000000000000000000000000000000000..dae9f92f4a3936cfe42f36af161c54b823a5eb8d
+index 0000000..dae9f92
 --- /dev/null
 +++ b/libs/hardware/IotEth/upstream-source.json
 @@ -0,0 +1,13 @@
@@ -7254,7 +7814,7 @@ index 0000000000000000000000000000000000000000..dae9f92f4a3936cfe42f36af161c54b8
 +}
 diff --git a/libs/hardware/MetalioCamera/LICENSE.CloudZao b/libs/hardware/MetalioCamera/LICENSE.CloudZao
 new file mode 100644
-index 0000000000000000000000000000000000000000..f6b3ad5d6761e533ef16d0018b503438467b2cb4
+index 0000000..f6b3ad5
 --- /dev/null
 +++ b/libs/hardware/MetalioCamera/LICENSE.CloudZao
 @@ -0,0 +1,21 @@
@@ -7281,6 +7841,7 @@ index 0000000000000000000000000000000000000000..f6b3ad5d6761e533ef16d0018b503438
 +SOFTWARE.
 diff --git a/libs/hardware/MetalioCamera/include/MetalioCamera.h b/libs/hardware/MetalioCamera/include/MetalioCamera.h
 new file mode 100644
+index 0000000..886c2c4
 --- /dev/null
 +++ b/libs/hardware/MetalioCamera/include/MetalioCamera.h
 @@ -0,0 +1,31 @@
@@ -7317,7 +7878,7 @@ new file mode 100644
 +}  // namespace freeink::metalio_camera
 diff --git a/libs/hardware/MetalioCamera/library.json b/libs/hardware/MetalioCamera/library.json
 new file mode 100644
-index 0000000000000000000000000000000000000000..8bdb0896f8b6894fcb30438b03c12f6cea6bec35
+index 0000000..8bdb089
 --- /dev/null
 +++ b/libs/hardware/MetalioCamera/library.json
 @@ -0,0 +1,8 @@
@@ -7331,6 +7892,7 @@ index 0000000000000000000000000000000000000000..8bdb0896f8b6894fcb30438b03c12f6c
 +}
 diff --git a/libs/hardware/MetalioCamera/src/CameraPower.cpp b/libs/hardware/MetalioCamera/src/CameraPower.cpp
 new file mode 100644
+index 0000000..ba3b9ce
 --- /dev/null
 +++ b/libs/hardware/MetalioCamera/src/CameraPower.cpp
 @@ -0,0 +1,95 @@
@@ -7431,7 +7993,7 @@ new file mode 100644
 +extern "C" bool freeink_metalio_recover_camera_power() { return freeink::metalio_camera::powerOff(); }
 diff --git a/libs/hardware/MetalioCamera/src/CameraPower.h b/libs/hardware/MetalioCamera/src/CameraPower.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..294004db60c78dd581b3dd5eba41c90fc46e69fe
+index 0000000..294004d
 --- /dev/null
 +++ b/libs/hardware/MetalioCamera/src/CameraPower.h
 @@ -0,0 +1,15 @@
@@ -7452,6 +8014,7 @@ index 0000000000000000000000000000000000000000..294004db60c78dd581b3dd5eba41c90f
 +}  // namespace freeink::metalio_camera
 diff --git a/libs/hardware/MetalioCamera/src/MetalioCamera.cpp b/libs/hardware/MetalioCamera/src/MetalioCamera.cpp
 new file mode 100644
+index 0000000..064fc39
 --- /dev/null
 +++ b/libs/hardware/MetalioCamera/src/MetalioCamera.cpp
 @@ -0,0 +1,143 @@
@@ -7600,7 +8163,7 @@ new file mode 100644
 +}
 diff --git a/libs/hardware/MetalioCamera/src/host/LICENSE.Espressif b/libs/hardware/MetalioCamera/src/host/LICENSE.Espressif
 new file mode 100644
-index 0000000000000000000000000000000000000000..d645695673349e3947e8e5ae42332d0ac3164cd7
+index 0000000..d645695
 --- /dev/null
 +++ b/libs/hardware/MetalioCamera/src/host/LICENSE.Espressif
 @@ -0,0 +1,202 @@
@@ -7808,6 +8371,7 @@ index 0000000000000000000000000000000000000000..d645695673349e3947e8e5ae42332d0a
 +   limitations under the License.
 diff --git a/libs/hardware/MetalioCamera/src/host/enum.c b/libs/hardware/MetalioCamera/src/host/enum.c
 new file mode 100644
+index 0000000..8fbb01d
 --- /dev/null
 +++ b/libs/hardware/MetalioCamera/src/host/enum.c
 @@ -0,0 +1,1403 @@
@@ -9216,7 +9780,7 @@ new file mode 100644
 +}
 diff --git a/libs/hardware/MetalioCamera/src/host/enum.h b/libs/hardware/MetalioCamera/src/host/enum.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..b1869f2398e4c86e82f30e64ac230af599f6c136
+index 0000000..b1869f2
 --- /dev/null
 +++ b/libs/hardware/MetalioCamera/src/host/enum.h
 @@ -0,0 +1,177 @@
@@ -9399,7 +9963,7 @@ index 0000000000000000000000000000000000000000..b1869f2398e4c86e82f30e64ac230af5
 +#endif
 diff --git a/libs/hardware/MetalioCamera/src/host/ext_hub.h b/libs/hardware/MetalioCamera/src/host/ext_hub.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..f58b9a3383c7ba76d355d71515ce4b81028dd4eb
+index 0000000..f58b9a3
 --- /dev/null
 +++ b/libs/hardware/MetalioCamera/src/host/ext_hub.h
 @@ -0,0 +1,271 @@
@@ -9676,7 +10240,7 @@ index 0000000000000000000000000000000000000000..f58b9a3383c7ba76d355d71515ce4b81
 +#endif
 diff --git a/libs/hardware/MetalioCamera/src/host/ext_port.h b/libs/hardware/MetalioCamera/src/host/ext_port.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..0d12a68071dd22189c7f9adbc6923204847d545a
+index 0000000..0d12a68
 --- /dev/null
 +++ b/libs/hardware/MetalioCamera/src/host/ext_port.h
 @@ -0,0 +1,212 @@
@@ -9894,7 +10458,7 @@ index 0000000000000000000000000000000000000000..0d12a68071dd22189c7f9adbc6923204
 +#endif
 diff --git a/libs/hardware/MetalioCamera/src/host/hcd.h b/libs/hardware/MetalioCamera/src/host/hcd.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..eeb1f22709f1cae2821a5cb1ab9da292a6ffddac
+index 0000000..eeb1f22
 --- /dev/null
 +++ b/libs/hardware/MetalioCamera/src/host/hcd.h
 @@ -0,0 +1,548 @@
@@ -10448,7 +11012,7 @@ index 0000000000000000000000000000000000000000..eeb1f22709f1cae2821a5cb1ab9da292
 +#endif
 diff --git a/libs/hardware/MetalioCamera/src/host/hub.h b/libs/hardware/MetalioCamera/src/host/hub.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..e47e11c18918a54f6b803e34f1e820fa3ffb159a
+index 0000000..e47e11c
 --- /dev/null
 +++ b/libs/hardware/MetalioCamera/src/host/hub.h
 @@ -0,0 +1,253 @@
@@ -10707,7 +11271,7 @@ index 0000000000000000000000000000000000000000..e47e11c18918a54f6b803e34f1e820fa
 +#endif
 diff --git a/libs/hardware/MetalioCamera/src/host/upstream-source.json b/libs/hardware/MetalioCamera/src/host/upstream-source.json
 new file mode 100644
-index 0000000000000000000000000000000000000000..3a3e7899b7ce61b23013df24a019fd1665596307
+index 0000000..3a3e789
 --- /dev/null
 +++ b/libs/hardware/MetalioCamera/src/host/upstream-source.json
 @@ -0,0 +1,16 @@
@@ -10729,7 +11293,7 @@ index 0000000000000000000000000000000000000000..3a3e7899b7ce61b23013df24a019fd16
 +}
 diff --git a/libs/hardware/MetalioCamera/src/host/usb_private.h b/libs/hardware/MetalioCamera/src/host/usb_private.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..d8086235cb80b2e111d61cbd1f01f73d6825ce2c
+index 0000000..d808623
 --- /dev/null
 +++ b/libs/hardware/MetalioCamera/src/host/usb_private.h
 @@ -0,0 +1,100 @@
@@ -10835,7 +11399,7 @@ index 0000000000000000000000000000000000000000..d8086235cb80b2e111d61cbd1f01f73d
 +#endif
 diff --git a/libs/hardware/MetalioCamera/src/host/usbh.h b/libs/hardware/MetalioCamera/src/host/usbh.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..a07ff44767a149fd06b1d308dec3e78db585b2ac
+index 0000000..a07ff44
 --- /dev/null
 +++ b/libs/hardware/MetalioCamera/src/host/usbh.h
 @@ -0,0 +1,699 @@
@@ -11540,6 +12104,7 @@ index 0000000000000000000000000000000000000000..a07ff44767a149fd06b1d308dec3e78d
 +#endif
 diff --git a/libs/hardware/MetalioCamera/src/usb_uvc_still.cc b/libs/hardware/MetalioCamera/src/usb_uvc_still.cc
 new file mode 100644
+index 0000000..e4df77d
 --- /dev/null
 +++ b/libs/hardware/MetalioCamera/src/usb_uvc_still.cc
 @@ -0,0 +1,963 @@
@@ -12508,7 +13073,7 @@ new file mode 100644
 +const char* UsbUvcStill::ErrMessage(esp_err_t err) { return esp_err_to_name(err); }
 diff --git a/libs/hardware/MetalioCamera/src/usb_uvc_still.h b/libs/hardware/MetalioCamera/src/usb_uvc_still.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..cde82eabe1dc58181bc95573c18ef45dcf3ea41b
+index 0000000..cde82ea
 --- /dev/null
 +++ b/libs/hardware/MetalioCamera/src/usb_uvc_still.h
 @@ -0,0 +1,57 @@
@@ -12571,7 +13136,7 @@ index 0000000000000000000000000000000000000000..cde82eabe1dc58181bc95573c18ef45d
 +};
 diff --git a/libs/hardware/MetalioCamera/upstream-source.json b/libs/hardware/MetalioCamera/upstream-source.json
 new file mode 100644
-index 0000000000000000000000000000000000000000..5760d19620fbeb0b0c600a884dc612ea9b233b07
+index 0000000..5760d19
 --- /dev/null
 +++ b/libs/hardware/MetalioCamera/upstream-source.json
 @@ -0,0 +1,14 @@
@@ -12591,7 +13156,7 @@ index 0000000000000000000000000000000000000000..5760d19620fbeb0b0c600a884dc612ea
 +}
 diff --git a/libs/hardware/MetalioModem/LICENSE.CloudZao b/libs/hardware/MetalioModem/LICENSE.CloudZao
 new file mode 100644
-index 0000000000000000000000000000000000000000..f6b3ad5d6761e533ef16d0018b503438467b2cb4
+index 0000000..f6b3ad5
 --- /dev/null
 +++ b/libs/hardware/MetalioModem/LICENSE.CloudZao
 @@ -0,0 +1,21 @@
@@ -12618,7 +13183,7 @@ index 0000000000000000000000000000000000000000..f6b3ad5d6761e533ef16d0018b503438
 +SOFTWARE.
 diff --git a/libs/hardware/MetalioModem/Nt26AtResponse.h b/libs/hardware/MetalioModem/Nt26AtResponse.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..9a074054f69d3899d7dc97e42a936725dc3462b1
+index 0000000..9a07405
 --- /dev/null
 +++ b/libs/hardware/MetalioModem/Nt26AtResponse.h
 @@ -0,0 +1,21 @@
@@ -12645,7 +13210,7 @@ index 0000000000000000000000000000000000000000..9a074054f69d3899d7dc97e42a936725
 +}  // namespace nt26
 diff --git a/libs/hardware/MetalioModem/Nt26Frame.h b/libs/hardware/MetalioModem/Nt26Frame.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..d45d6e623f966b276c0b58d7bd17aeb4fddbb157
+index 0000000..d45d6e6
 --- /dev/null
 +++ b/libs/hardware/MetalioModem/Nt26Frame.h
 @@ -0,0 +1,51 @@
@@ -12702,7 +13267,7 @@ index 0000000000000000000000000000000000000000..d45d6e623f966b276c0b58d7bd17aeb4
 +}  // namespace nt26
 diff --git a/libs/hardware/MetalioModem/library.json b/libs/hardware/MetalioModem/library.json
 new file mode 100644
-index 0000000000000000000000000000000000000000..ea4d556f831e1ac1554845d5fed1e75cccf50823
+index 0000000..ea4d556
 --- /dev/null
 +++ b/libs/hardware/MetalioModem/library.json
 @@ -0,0 +1,19 @@
@@ -12727,7 +13292,7 @@ index 0000000000000000000000000000000000000000..ea4d556f831e1ac1554845d5fed1e75c
 +}
 diff --git a/libs/hardware/MetalioModem/uart_eth_modem.cc b/libs/hardware/MetalioModem/uart_eth_modem.cc
 new file mode 100644
-index 0000000000000000000000000000000000000000..8329a100e9f93f279d9433dde594c27c4915d033
+index 0000000..8329a10
 --- /dev/null
 +++ b/libs/hardware/MetalioModem/uart_eth_modem.cc
 @@ -0,0 +1,2133 @@
@@ -14866,7 +15431,7 @@ index 0000000000000000000000000000000000000000..8329a100e9f93f279d9433dde594c27c
 +}
 diff --git a/libs/hardware/MetalioModem/uart_eth_modem.h b/libs/hardware/MetalioModem/uart_eth_modem.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..e1607dd49b244ed3e8f22460b3f8ba702a4cf390
+index 0000000..e1607dd
 --- /dev/null
 +++ b/libs/hardware/MetalioModem/uart_eth_modem.h
 @@ -0,0 +1,451 @@
@@ -15323,7 +15888,7 @@ index 0000000000000000000000000000000000000000..e1607dd49b244ed3e8f22460b3f8ba70
 +};
 diff --git a/libs/hardware/MetalioModem/upstream-source.json b/libs/hardware/MetalioModem/upstream-source.json
 new file mode 100644
-index 0000000000000000000000000000000000000000..7b5b50973b08226c0fd6d7ec86cf0a672fd8dcde
+index 0000000..7b5b509
 --- /dev/null
 +++ b/libs/hardware/MetalioModem/upstream-source.json
 @@ -0,0 +1,7 @@
@@ -15335,7 +15900,7 @@ index 0000000000000000000000000000000000000000..7b5b50973b08226c0fd6d7ec86cf0a67
 +  }
 +}
 diff --git a/libs/hardware/Microphone/src/Microphone.cpp b/libs/hardware/Microphone/src/Microphone.cpp
-index a086df95eabffbe86f95331453ab432650ea620c..b4a4c083714de5e2df01e8611cdd64a4e7d48b92 100644
+index a086df9..b4a4c08 100644
 --- a/libs/hardware/Microphone/src/Microphone.cpp
 +++ b/libs/hardware/Microphone/src/Microphone.cpp
 @@ -8,9 +8,6 @@
@@ -15406,7 +15971,7 @@ index a086df95eabffbe86f95331453ab432650ea620c..b4a4c083714de5e2df01e8611cdd64a4
      i2s_channel_disable(static_cast<i2s_chan_handle_t>(rxChan_));
      i2s_del_channel(static_cast<i2s_chan_handle_t>(rxChan_));
 diff --git a/libs/hardware/PowerManager/src/PowerManager.cpp b/libs/hardware/PowerManager/src/PowerManager.cpp
-index 419b8c9ace937ae82f899dd5727a8a018d4b2e57..1c3c541113b1694e92a2032a5eb9ae45ae5d6d1c 100644
+index 419b8c9..1c3c541 100644
 --- a/libs/hardware/PowerManager/src/PowerManager.cpp
 +++ b/libs/hardware/PowerManager/src/PowerManager.cpp
 @@ -10,9 +10,6 @@
@@ -15452,7 +16017,7 @@ index 419b8c9ace937ae82f899dd5727a8a018d4b2e57..1c3c541113b1694e92a2032a5eb9ae45
    // esp_deep_sleep_start() does not return in normal operation -- reaching
    // this line means sleep entry was rejected/aborted by the SoC rather than
 diff --git a/libs/hardware/Rtc/src/Rtc.cpp b/libs/hardware/Rtc/src/Rtc.cpp
-index 74af62326711060bbf8b83dbb62a9d328712d5a2..a8ad40d2bae723e08ec551fbede324dd5a1145b6 100644
+index 74af623..a8ad40d 100644
 --- a/libs/hardware/Rtc/src/Rtc.cpp
 +++ b/libs/hardware/Rtc/src/Rtc.cpp
 @@ -17,9 +17,6 @@ void Rtc::setPmuTimeHooks(const PmuTimeHooks& hooks) { g_pmuTimeHooks = hooks; }
@@ -15558,7 +16123,7 @@ index 74af62326711060bbf8b83dbb62a9d328712d5a2..a8ad40d2bae723e08ec551fbede324dd
    const uint8_t centuryBit = dt.year < 2000 ? 0x80U : 0x00U;
    ensureWire();
 diff --git a/libs/hardware/SDCardManager/include/SDCardManager.h b/libs/hardware/SDCardManager/include/SDCardManager.h
-index d5988d04a0e0fbe429afef600ee42d36ca5c1f78..8e863eaa0745f348b081cea6d145635bbede46e6 100644
+index d5988d0..8e863ea 100644
 --- a/libs/hardware/SDCardManager/include/SDCardManager.h
 +++ b/libs/hardware/SDCardManager/include/SDCardManager.h
 @@ -112,6 +112,9 @@ class SDCardManager {
@@ -15572,7 +16137,7 @@ index d5988d04a0e0fbe429afef600ee42d36ca5c1f78..8e863eaa0745f348b081cea6d145635b
    // USB-MSC owner. The caller must reinitialize the manager (begin()) after the
    // owner releases the card. Returns null when nothing is mounted.
 diff --git a/libs/hardware/SDCardManager/src/SDCardManager.cpp b/libs/hardware/SDCardManager/src/SDCardManager.cpp
-index 49fda1ccbfe6bf978e43863c75c644aa929ecad0..fb6ccf59e4dd446d38416d33fdb31af8b741f610 100644
+index 49fda1c..fb6ccf5 100644
 --- a/libs/hardware/SDCardManager/src/SDCardManager.cpp
 +++ b/libs/hardware/SDCardManager/src/SDCardManager.cpp
 @@ -1,9 +1,6 @@
@@ -15636,7 +16201,7 @@ index 49fda1ccbfe6bf978e43863c75c644aa929ecad0..fb6ccf59e4dd446d38416d33fdb31af8
  #endif
  
 diff --git a/libs/hardware/SDCardManager/src/SdmmcBlockDevice.cpp b/libs/hardware/SDCardManager/src/SdmmcBlockDevice.cpp
-index 22bd0dd08558a90b6a2dae8d14b72147db108066..150d06876fd3a7c17f91ab8b7d3b2d4e4e494e25 100644
+index 22bd0dd..150d068 100644
 --- a/libs/hardware/SDCardManager/src/SdmmcBlockDevice.cpp
 +++ b/libs/hardware/SDCardManager/src/SdmmcBlockDevice.cpp
 @@ -9,10 +9,9 @@
@@ -15674,7 +16239,7 @@ index 22bd0dd08558a90b6a2dae8d14b72147db108066..150d06876fd3a7c17f91ab8b7d3b2d4e
      free(card);
 diff --git a/libs/hardware/UartUhci/README.md b/libs/hardware/UartUhci/README.md
 new file mode 100644
-index 0000000000000000000000000000000000000000..3a844aad05fc3b2e684774eea1f7b77b1ac63433
+index 0000000..3a844aa
 --- /dev/null
 +++ b/libs/hardware/UartUhci/README.md
 @@ -0,0 +1,99 @@
@@ -15779,7 +16344,7 @@ index 0000000000000000000000000000000000000000..3a844aad05fc3b2e684774eea1f7b77b
 +Apache-2.0
 diff --git a/libs/hardware/UartUhci/idf_component.yml b/libs/hardware/UartUhci/idf_component.yml
 new file mode 100644
-index 0000000000000000000000000000000000000000..5e0b0994a31da6cbf03b433b6926f93a57f4c081
+index 0000000..5e0b099
 --- /dev/null
 +++ b/libs/hardware/UartUhci/idf_component.yml
 @@ -0,0 +1,12 @@
@@ -15797,7 +16362,7 @@ index 0000000000000000000000000000000000000000..5e0b0994a31da6cbf03b433b6926f93a
 +version: 0.2.1
 diff --git a/libs/hardware/UartUhci/include/uart_uhci.h b/libs/hardware/UartUhci/include/uart_uhci.h
 new file mode 100644
-index 0000000000000000000000000000000000000000..cda1952eca4641193cb19fe49d88e9c31523b38a
+index 0000000..cda1952
 --- /dev/null
 +++ b/libs/hardware/UartUhci/include/uart_uhci.h
 @@ -0,0 +1,190 @@
@@ -15993,7 +16558,7 @@ index 0000000000000000000000000000000000000000..cda1952eca4641193cb19fe49d88e9c3
 +};
 diff --git a/libs/hardware/UartUhci/library.json b/libs/hardware/UartUhci/library.json
 new file mode 100644
-index 0000000000000000000000000000000000000000..b21fbcc932874df976341fef113aa3f3ae4b90a3
+index 0000000..b21fbcc
 --- /dev/null
 +++ b/libs/hardware/UartUhci/library.json
 @@ -0,0 +1,8 @@
@@ -16007,7 +16572,7 @@ index 0000000000000000000000000000000000000000..b21fbcc932874df976341fef113aa3f3
 +}
 diff --git a/libs/hardware/UartUhci/src/uart_uhci.cc b/libs/hardware/UartUhci/src/uart_uhci.cc
 new file mode 100644
-index 0000000000000000000000000000000000000000..f9ae9cd73896b99122b28dda188accea03a36657
+index 0000000..f9ae9cd
 --- /dev/null
 +++ b/libs/hardware/UartUhci/src/uart_uhci.cc
 @@ -0,0 +1,557 @@
@@ -16570,7 +17135,7 @@ index 0000000000000000000000000000000000000000..f9ae9cd73896b99122b28dda188accea
 +}
 diff --git a/libs/hardware/UartUhci/upstream-source.json b/libs/hardware/UartUhci/upstream-source.json
 new file mode 100644
-index 0000000000000000000000000000000000000000..752d8b1da69cf3d60d1bc0e833685e068a584f1b
+index 0000000..752d8b1
 --- /dev/null
 +++ b/libs/hardware/UartUhci/upstream-source.json
 @@ -0,0 +1,9 @@
@@ -16584,7 +17149,7 @@ index 0000000000000000000000000000000000000000..752d8b1da69cf3d60d1bc0e833685e06
 +  }
 +}
 diff --git a/libs/network/SecureNet/include/SecureHttpClient.h b/libs/network/SecureNet/include/SecureHttpClient.h
-index fa7e20758cddd26da9c265bc4be0401b34946209..69dde4c3ed9d345f4a385fe36f04731717562b7d 100644
+index fa7e207..69dde4c 100644
 --- a/libs/network/SecureNet/include/SecureHttpClient.h
 +++ b/libs/network/SecureNet/include/SecureHttpClient.h
 @@ -118,6 +118,7 @@ class SecureHttpClient {
@@ -16596,7 +17161,7 @@ index fa7e20758cddd26da9c265bc4be0401b34946209..69dde4c3ed9d345f4a385fe36f047317
  
    void addHeader(const std::string& name, const std::string& value) {
 diff --git a/libs/network/SecureNet/src/SecureClient.cpp b/libs/network/SecureNet/src/SecureClient.cpp
-index 1b5aaf675828015de2cdacaab0504b071a8777f3..dd7fe04deaef9da686a58ad880280690281ee806 100644
+index 1b5aaf6..dd7fe04 100644
 --- a/libs/network/SecureNet/src/SecureClient.cpp
 +++ b/libs/network/SecureNet/src/SecureClient.cpp
 @@ -89,9 +89,14 @@ int SecureClient::connectWithMethod(const char* host, uint16_t port, void* metho
@@ -16629,7 +17194,7 @@ index 1b5aaf675828015de2cdacaab0504b071a8777f3..dd7fe04deaef9da686a58ad880280690
    wolfSSL_SetIOWriteCtx(ssl, &_transport);
    wolfSSL_UseSNI(ssl, WOLFSSL_SNI_HOST_NAME, host, strlen(host));
 diff --git a/libs/ui/FreeInkUI/include/FreeInkUIGfxRenderer.h b/libs/ui/FreeInkUI/include/FreeInkUIGfxRenderer.h
-index 18f0773b37ea0b03f3d5f00af0ab2c3b1d71be38..5af8b414fd28105880c3ea69de7cf6b96bcc9c1d 100644
+index 18f0773..5af8b41 100644
 --- a/libs/ui/FreeInkUI/include/FreeInkUIGfxRenderer.h
 +++ b/libs/ui/FreeInkUI/include/FreeInkUIGfxRenderer.h
 @@ -168,6 +168,15 @@ class GfxRendererTarget final : public DrawTarget {
@@ -16661,8 +17226,53 @@ index 18f0773b37ea0b03f3d5f00af0ab2c3b1d71be38..5af8b414fd28105880c3ea69de7cf6b9
      renderer.drawLine(from.x, from.y, to.x, to.y, width, paint.color != Color::White);
    }
  
+diff --git a/libs/ui/FreeInkUI/include/components/lists/list.h b/libs/ui/FreeInkUI/include/components/lists/list.h
+index 57e82e2..1f9d0cf 100644
+--- a/libs/ui/FreeInkUI/include/components/lists/list.h
++++ b/libs/ui/FreeInkUI/include/components/lists/list.h
+@@ -2,6 +2,7 @@
+ 
+ #include "../../FreeInkUICore.h"
+ 
++#include <algorithm>
+ #include <atomic>
+ #if __has_include(<BoardConfig.h>)
+ #include <BoardConfig.h>
+@@ -163,6 +164,9 @@ struct ListProps {
+   // pixel clipping; omitted on targets without clipping. Only full rows count
+   // towards navigation and interaction.
+   bool partialTrailingRow = false;
++  // Opt in when a visible file preview should open on tap. Its hit rect is
++  // clipped to the same viewport; it still does not count as a full nav row.
++  bool partialTrailingInteractive = false;
+   int16_t partialTrailingMinHeight = 18;
+   // Additional marker drawn on the selected row (the v1 theme Underline and
+   // Triangle selection styles).
+@@ -721,7 +725,7 @@ void list(Frame<MaxInteractions> &frame, Rect rect, const ListProps &props) {
+       state |= StateSelected;
+     if (!item.enabled)
+       state |= StateDisabled;
+-    if (!partial && props.action != NO_ACTION && item.enabled) {
++    if ((!partial || props.partialTrailingInteractive) && props.action != NO_ACTION && item.enabled) {
+       // item.enabled controls interactivity; a StateDisabled carried in
+       // item.state is visual-only dimming and must not block touch routing
+       // (findTouch skips disabled interactions).
+@@ -744,10 +748,10 @@ void list(Frame<MaxInteractions> &frame, Rect rect, const ListProps &props) {
+       // this row. Horizontal expansion still covers the reserved scroll strip.
+       if (props.partialTrailingRow) {
+         hit.y = row.y;
+-        hit.height = row.height;
++        hit.height = static_cast<int16_t>(std::min<int>(row.height, rowArea.bottom() - row.y));
+       }
+-      frame.hit(hit, props.action, item.actionValue, props.inputMask, hitState);
+-      if (revealed)
++      if (hit.height > 0) frame.hit(hit, props.action, item.actionValue, props.inputMask, hitState);
++      if (!partial && revealed)
+         frame.hit(actionRect, reveal->action, item.actionValue,
+                   InputTouch, StateNormal);
+     }
 diff --git a/libs/ui/FreeInkUI/src/FreeInkUI.cpp b/libs/ui/FreeInkUI/src/FreeInkUI.cpp
-index d3cc7801875db4429943f1e277b11dc516f44ae4..39062256a339752e760540fa114e920cef8330f6 100644
+index d3cc780..3906225 100644
 --- a/libs/ui/FreeInkUI/src/FreeInkUI.cpp
 +++ b/libs/ui/FreeInkUI/src/FreeInkUI.cpp
 @@ -2240,6 +2240,11 @@ int16_t clampInt16(int32_t value, int16_t minValue, int16_t maxValue) {
@@ -16677,60 +17287,3 @@ index d3cc7801875db4429943f1e277b11dc516f44ae4..39062256a339752e760540fa114e920c
      text.color = foreground.color;
      // `color` already names the ink; DisplayTarget::text() treats `inverted`
      // as a further flip of it. Setting both made a white foreground resolve
-diff --git a/libs/font/FreeInkFont/third_party/freetype/include/freetype/config/ftmodule.h b/libs/font/FreeInkFont/third_party/freetype/include/freetype/config/ftmodule.h
---- a/libs/font/FreeInkFont/third_party/freetype/include/freetype/config/ftmodule.h
-+++ b/libs/font/FreeInkFont/third_party/freetype/include/freetype/config/ftmodule.h
-@@ -20,3 +20,9 @@
- #if FREEINK_FONT_ENABLE_AUTOHINT
- FT_USE_MODULE( FT_Module_Class, autofit_module_class )
- #endif
-+
-+#if FREEINK_FONT_ENABLE_CFF
-+FT_USE_MODULE( FT_Module_Class, psaux_module_class )
-+FT_USE_MODULE( FT_Module_Class, pshinter_module_class )
-+FT_USE_MODULE( FT_Driver_ClassRec, cff_driver_class )
-+#endif
-diff --git a/libs/ui/FreeInkUI/include/components/lists/list.h b/libs/ui/FreeInkUI/include/components/lists/list.h
---- a/libs/ui/FreeInkUI/include/components/lists/list.h
-+++ b/libs/ui/FreeInkUI/include/components/lists/list.h
-@@ -2,6 +2,7 @@
- 
- #include "../../FreeInkUICore.h"
- 
-+#include <algorithm>
- #include <atomic>
- #if __has_include(<BoardConfig.h>)
- #include <BoardConfig.h>
-@@ -163,6 +164,9 @@
-   // pixel clipping; omitted on targets without clipping. Only full rows count
-   // towards navigation and interaction.
-   bool partialTrailingRow = false;
-+  // Opt in when a visible file preview should open on tap. Its hit rect is
-+  // clipped to the same viewport; it still does not count as a full nav row.
-+  bool partialTrailingInteractive = false;
-   int16_t partialTrailingMinHeight = 18;
-   // Additional marker drawn on the selected row (the v1 theme Underline and
-   // Triangle selection styles).
-@@ -721,7 +725,7 @@
-       state |= StateSelected;
-     if (!item.enabled)
-       state |= StateDisabled;
--    if (!partial && props.action != NO_ACTION && item.enabled) {
-+    if ((!partial || props.partialTrailingInteractive) && props.action != NO_ACTION && item.enabled) {
-       // item.enabled controls interactivity; a StateDisabled carried in
-       // item.state is visual-only dimming and must not block touch routing
-       // (findTouch skips disabled interactions).
-@@ -744,10 +748,10 @@
-       // this row. Horizontal expansion still covers the reserved scroll strip.
-       if (props.partialTrailingRow) {
-         hit.y = row.y;
--        hit.height = row.height;
-+        hit.height = static_cast<int16_t>(std::min<int>(row.height, rowArea.bottom() - row.y));
-       }
--      frame.hit(hit, props.action, item.actionValue, props.inputMask, hitState);
--      if (revealed)
-+      if (hit.height > 0) frame.hit(hit, props.action, item.actionValue, props.inputMask, hitState);
-+      if (!partial && revealed)
-         frame.hit(actionRect, reveal->action, item.actionValue,
-                   InputTouch, StateNormal);
-     }

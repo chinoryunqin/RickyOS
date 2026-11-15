@@ -15,6 +15,7 @@
 #include <HalGPIO.h>
 #endif
 #include <Memory.h>
+#include <MetalioFeatures.h>
 #include <WiFi.h>
 
 #include <algorithm>
@@ -50,6 +51,9 @@
 #include "StatusBarSettingsActivity.h"
 #include "TextSettingsActivity.h"
 #include "activities/network/WifiSelectionActivity.h"
+#if RICKYOS_METALIO_CELLULAR_ENABLED
+#include "activities/apps/MetalioPeripheralActivity.h"
+#endif
 #include "activities/settings/RickyOptionListActivity.h"
 #include "activities/util/ConfirmationActivity.h"
 #include "activities/util/ImageViewerActivity.h"
@@ -337,7 +341,8 @@ void SettingsActivity::reorganizeRickySettings() {
   // Standby & power-off lives in Apps (one entry); Display keeps the display rows.
   // Network & Sync.
   moveMatching(systemSettings, connectionSettings, [](const SettingInfo& setting) {
-    return setting.action == SettingAction::Network || setting.action == SettingAction::KOReaderSync;
+    return setting.action == SettingAction::Network || setting.action == SettingAction::Cellular ||
+           setting.action == SettingAction::KOReaderSync;
   });
   moveMatching(controlsSettings, connectionSettings,
                [](const SettingInfo& setting) { return setting.action == SettingAction::Bluetooth; });
@@ -487,6 +492,9 @@ void SettingsActivity::rebuildSettingsLists() {
   }
 #endif
   systemSettings.push_back(SettingInfo::Action(StrId::STR_WIFI_NETWORKS, SettingAction::Network));
+#if RICKYOS_METALIO_CELLULAR_ENABLED
+  systemSettings.push_back(SettingInfo::Action(StrId::STR_CELL_TITLE, SettingAction::Cellular));
+#endif
   systemSettings.push_back(SettingInfo::Action(StrId::STR_KOREADER_SYNC, SettingAction::KOReaderSync));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CLEAR_READING_CACHE, SettingAction::ClearCache));
   systemSettings.push_back(
@@ -955,7 +963,15 @@ void SettingsActivity::toggleCurrentSetting() {
       case SettingAction::KOReaderSync:
         startActivityForResultWith<KOReaderSettingsActivity>(resultHandler);
         break;
+      case SettingAction::Cellular:
+#if RICKYOS_METALIO_CELLULAR_ENABLED
+        startActivityForResultWith<MetalioPeripheralActivity>(resultHandler, false);
+#endif
+        break;
       case SettingAction::Network: {
+#if RICKYOS_METALIO_CELLULAR_ENABLED
+        startActivityForResultWith<WifiSelectionActivity>(resultHandler, false, true);
+#else
         auto activity = makeUniqueNoThrow<WifiSelectionActivity>(renderer, mappedInput, false);
         if (!activity) {
           LOG_ERR("SETTINGS", "OOM: WifiSelectionActivity");
@@ -975,7 +991,7 @@ void SettingsActivity::toggleCurrentSetting() {
           RenderLock lock;
           silentRestartToSettings();
         });
-
+#endif
         break;
       }
       case SettingAction::ClearCache:

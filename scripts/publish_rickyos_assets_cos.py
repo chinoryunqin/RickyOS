@@ -42,7 +42,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from rickyos_asset_routes import check_cos_base  # noqa: E402
 
 KINDS = ("fonts", "wallpapers", "ota")
-DEVICES = {"readpico": ("", "readpico"), "plus": ("plus/", "metalio-plus-s31")}
+DEVICES = {
+    "readpico": ("", "readpico"),
+    "plus": ("plus/", "metalio-plus-s31"),
+    "metalio-eink4": ("metalio-eink4/", "metalio_eink4"),
+}
 IMMUTABLE = "Cache-Control:public,max-age=31536000,immutable"
 ROLLING = "Cache-Control:no-cache"
 
